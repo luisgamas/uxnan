@@ -579,6 +579,16 @@ export const en = {
   "shortcuts.closeCenterDesc": "Close the active center tab (terminal, file, or diff); prompts to save when a file has unsaved changes.",
   "shortcuts.saveFile": "Save file",
   "shortcuts.saveFileDesc": "Save the file open in the editor.",
+  "shortcuts.toggleTerminalPassthrough": "Toggle terminal focus mode",
+  "shortcuts.toggleTerminalPassthroughDesc": "Send every key to the TUI/agent in the focused terminal (even reserved uxnan shortcuts).",
+  "shortcuts.catTerminalKeyboard": "Terminal keyboard",
+  "shortcuts.terminalKeyboardIntro": "While a terminal is focused, each shortcut can go to uxnan or to the TUI/agent. The default reserves low-collision shortcuts for uxnan and sends the rest (Ctrl+W, Ctrl+P, Ctrl+S, …) to the terminal. Switch any per action below, or set a leader key to send the next key to uxnan on demand.",
+  "shortcuts.leaderKey": "Leader key",
+  "shortcuts.leaderKeyDesc": "In a focused terminal, press this then a shortcut to send it to uxnan (whatever its policy).",
+  "shortcuts.leaderOff": "Off",
+  "shortcuts.terminalPolicyHint": "In a focused terminal, does this chord go to uxnan or the TUI/agent? Click to switch.",
+  "shortcuts.termWinsUxnan": "uxnan",
+  "shortcuts.termWinsTui": "TUI",
   "shortcuts.newTerminal": "New terminal",
   "shortcuts.newTerminalDesc": "Open a new terminal in the active workspace's focused region.",
   "shortcuts.newGlobalTerminal": "New global terminal",
@@ -793,6 +803,8 @@ export const en = {
 
   // Terminal tab state
   "terminal.exited": "exited",
+  "terminal.focusMode": "Focus mode",
+  "terminal.focusModeOn": "Focus mode is on — every key goes to the TUI/agent. Click to turn off.",
   "terminal.spawnFailed": "Failed to start the terminal — check the shell profile.",
 
   // Settings — terminal section

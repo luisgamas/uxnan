@@ -57,6 +57,9 @@
     eventToChord,
     formatChord,
     resolveBinding,
+    resolveTerminalPolicy,
+    resolveLeaderChord,
+    type TerminalPolicy,
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
   import { divider, icon, iconButton, panel, tab, text } from "$lib/design";
@@ -108,6 +111,22 @@
   function resetBinding(id: string) {
     const { [id]: _drop, ...rest } = app.settings.keybindings ?? {};
     app.settings.keybindings = rest;
+    // Also drop any terminal-focus policy override for this action.
+    const { [id]: _p, ...restPolicy } = app.settings.terminalKeyPolicy ?? {};
+    app.settings.terminalKeyPolicy = restPolicy;
+    persistNow();
+  }
+
+  /** Set which side wins an action's chord while a terminal is focused. */
+  function setTerminalPolicy(id: string, policy: TerminalPolicy) {
+    app.settings.terminalKeyPolicy = { ...(app.settings.terminalKeyPolicy ?? {}), [id]: policy };
+    persistNow();
+  }
+
+  /** The leader chord is captured through the same flow, under this sentinel id. */
+  const LEADER_ID = "__leader__";
+  function setLeaderKey(chord: string) {
+    app.settings.leaderKey = chord;
     persistNow();
   }
 
@@ -125,7 +144,8 @@
       }
       const chord = eventToChord(e);
       if (chord) {
-        setBinding(capturing, chord);
+        if (capturing === LEADER_ID) setLeaderKey(chord);
+        else setBinding(capturing, chord);
         capturing = null;
       }
       return;
@@ -784,6 +804,56 @@
         {:else if app.settingsSection === "shortcuts"}
           <SettingsSection bare title={i18n.t("settings.shortcuts")} description={i18n.t("settings.shortcutsDesc")}>
             <div class="space-y-6">
+              <div class="space-y-2">
+                <span class={cn("px-1", text.section)}>{i18n.t("shortcuts.catTerminalKeyboard")}</span>
+                <div class="space-y-3 rounded-xl border border-border/50 bg-card/50 px-5 py-3 shadow-xs">
+                  <p class={text.meta}>{i18n.t("shortcuts.terminalKeyboardIntro")}</p>
+                  <div class="flex items-center gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class={text.body}>{i18n.t("shortcuts.leaderKey")}</div>
+                      <div class={cn("line-clamp-2", text.meta)}>{i18n.t("shortcuts.leaderKeyDesc")}</div>
+                    </div>
+                    <TooltipSimple title={i18n.t("shortcuts.rebind")}>
+                      {#snippet children(tp)}
+                        <button
+                          {...tp}
+                          type="button"
+                          class={cn(
+                            "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                            text.body,
+                            capturing === LEADER_ID
+                              ? "border-primary text-primary"
+                              : "border-border hover:bg-accent/50",
+                          )}
+                          onclick={() => (capturing = capturing === LEADER_ID ? null : LEADER_ID)}
+                        >
+                          {#if capturing === LEADER_ID}
+                            {i18n.t("shortcuts.press")}
+                          {:else if resolveLeaderChord()}
+                            {formatChord(resolveLeaderChord())}
+                          {:else}
+                            <span class="text-muted-foreground">{i18n.t("shortcuts.leaderOff")}</span>
+                          {/if}
+                        </button>
+                      {/snippet}
+                    </TooltipSimple>
+                    <TooltipSimple title={i18n.t("shortcuts.disable")}>
+                      {#snippet children(tp)}
+                        <Button
+                          {...tp}
+                          variant="ghost"
+                          size="icon"
+                          class={iconButton.action}
+                          disabled={resolveLeaderChord() === ""}
+                          onclick={() => setLeaderKey("")}
+                        >
+                          <XIcon class={icon.button} />
+                        </Button>
+                      {/snippet}
+                    </TooltipSimple>
+                  </div>
+                </div>
+              </div>
             {#each SHORTCUT_GROUPS as group (group.titleKey)}
               <div class="space-y-2">
                 <span class={cn("px-1", text.section)}>{i18n.t(group.titleKey)}</span>
@@ -794,8 +864,34 @@
                     <div class="flex items-center gap-3 py-3">
                       <div class="min-w-0 flex-1">
                         <div class={text.body}>{i18n.t(action.labelKey)}</div>
-                        <div class={cn("truncate", text.meta)}>{i18n.t(action.descKey)}</div>
+                        <div class={cn("line-clamp-2", text.meta)}>{i18n.t(action.descKey)}</div>
                       </div>
+                      {#if action.id !== "toggleTerminalPassthrough"}
+                        <TooltipSimple title={i18n.t("shortcuts.terminalPolicyHint")}>
+                          {#snippet children(tp)}
+                            <button
+                              {...tp}
+                              type="button"
+                              class={cn(
+                                "inline-flex h-7 shrink-0 items-center justify-center rounded-md border px-2",
+                                text.meta,
+                                resolveTerminalPolicy(action.id) === "app"
+                                  ? "border-primary/40 text-primary"
+                                  : "border-border hover:bg-accent/50",
+                              )}
+                              onclick={() =>
+                                setTerminalPolicy(
+                                  action.id,
+                                  resolveTerminalPolicy(action.id) === "app" ? "terminal" : "app",
+                                )}
+                            >
+                              {resolveTerminalPolicy(action.id) === "app"
+                                ? i18n.t("shortcuts.termWinsUxnan")
+                                : i18n.t("shortcuts.termWinsTui")}
+                            </button>
+                          {/snippet}
+                        </TooltipSimple>
+                      {/if}
                       <TooltipSimple title={i18n.t("shortcuts.rebind")}>
                         {#snippet children(tp)}
                           <button

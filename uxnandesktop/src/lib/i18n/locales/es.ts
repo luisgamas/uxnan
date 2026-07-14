@@ -575,6 +575,16 @@ export const es: Record<MessageKey, string> = {
   "shortcuts.closeCenter": "Cerrar pestaña",
   "shortcuts.closeCenterDesc": "Cierra la pestaña activa del panel central (terminal, archivo o diff); pide guardar si un archivo tiene cambios sin guardar.",
   "shortcuts.saveFile": "Guardar archivo",
+  "shortcuts.toggleTerminalPassthrough": "Alternar modo foco de terminal",
+  "shortcuts.toggleTerminalPassthroughDesc": "Envía todas las teclas al TUI/agente en la terminal enfocada (incluso los atajos reservados de uxnan).",
+  "shortcuts.catTerminalKeyboard": "Teclado de terminal",
+  "shortcuts.terminalKeyboardIntro": "Con la terminal enfocada, cada atajo puede ir a uxnan o al TUI/agente. Por defecto uxnan se reserva los atajos de baja colisión y manda el resto (Ctrl+W, Ctrl+P, Ctrl+S, …) a la terminal. Cámbialo por atajo abajo, o define una tecla líder para mandar la siguiente tecla a uxnan cuando quieras.",
+  "shortcuts.leaderKey": "Tecla líder",
+  "shortcuts.leaderKeyDesc": "Con la terminal enfocada, presiónala y luego un atajo para mandarlo a uxnan (sea cual sea su política).",
+  "shortcuts.leaderOff": "Desactivada",
+  "shortcuts.terminalPolicyHint": "Con la terminal enfocada, ¿este atajo va a uxnan o al TUI/agente? Clic para cambiar.",
+  "shortcuts.termWinsUxnan": "uxnan",
+  "shortcuts.termWinsTui": "TUI",
   "shortcuts.saveFileDesc": "Guarda el archivo abierto en el editor.",
   "shortcuts.newTerminal": "Nueva terminal",
   "shortcuts.newTerminalDesc": "Abre una nueva terminal en la región activa del espacio de trabajo actual.",
@@ -790,6 +800,8 @@ export const es: Record<MessageKey, string> = {
 
   // Terminal tab state
   "terminal.exited": "finalizada",
+  "terminal.focusMode": "Modo foco",
+  "terminal.focusModeOn": "Modo foco activo — todas las teclas van al TUI/agente. Clic para desactivar.",
   "terminal.spawnFailed": "No se pudo iniciar la terminal — revisa el perfil de shell.",
 
   // Settings — terminal section

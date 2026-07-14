@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **user quick commands**). 163 Rust backend tests + 127 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **user quick commands**). 163 Rust backend tests + 137 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 

@@ -184,6 +184,13 @@ export interface AppSettings {
   /** Custom keyboard-shortcut overrides, keyed by action id → chord string
    *  (e.g. `closeCenter` → `Ctrl+W`). Missing = default binding; "" = disabled. */
   keybindings?: Record<string, string>;
+  /** Per-action override for which side wins a chord while a terminal is focused:
+   *  `"app"` (uxnan wins) or `"terminal"` (send it to the TUI/agent). Missing =
+   *  the action's default (`DEFAULT_TERMINAL_POLICY`). */
+  terminalKeyPolicy?: Record<string, "app" | "terminal">;
+  /** Leader chord (tmux-style). When set, pressing it in a focused terminal routes
+   *  the *next* shortcut to uxnan whatever its policy. "" / missing = off. */
+  leaderKey?: string;
   /** Active theme id: a built-in ("system"/"light"/"dark"/…) or a custom id. */
   activeThemeId?: string;
   /** User-created themes (exportable / importable). */

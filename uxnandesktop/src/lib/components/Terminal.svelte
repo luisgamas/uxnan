@@ -30,8 +30,10 @@
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
   import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
-  import { matchAction, isMac } from "$lib/keybindings";
-  import { projects } from "$lib/state/projects.svelte";
+  import { arbitrateTerminalKey, isMac, type ArbiterContext } from "$lib/keybindings";
+  import { runAppAction } from "$lib/keyactions";
+  import { terminalKeyboard } from "$lib/state/terminalKeyboard.svelte";
+  import { agentStatus } from "$lib/state/agentStatus.svelte";
 
   // Effective terminal appearance (general theme base + per-terminal overrides:
   // font, size, line height, spacing, weight, ligatures, cursor, ANSI colors).
@@ -324,11 +326,54 @@
 
     const ptyWrite = (data: string) => invoke("pty_write", { id, data }).catch(() => {});
 
+    // Leader (tmux-style one-shot override): after the leader chord, the next key
+    // is routed to uxnan whatever its per-action terminal policy. Cleared after
+    // one key or a short timeout.
+    let leaderPending = false;
+    let leaderTimer: ReturnType<typeof setTimeout> | undefined;
+    // Interrupt inference (fallback for a missed Stop hook): watch — WITHOUT
+    // consuming — for Ctrl+C (SIGINT, no selection) or a double-Escape, then after
+    // a settle synthesize `done + interrupted`, but only if the agent is still
+    // `working` and no genuine hook arrived meanwhile (so a real hook always wins).
+    let lastEscAt = 0;
+    let interruptTimer: ReturnType<typeof setTimeout> | undefined;
+    const armInterrupt = () => {
+      const armed = agentStatus.get(id);
+      if (!armed || armed.status !== "working") return;
+      const at = armed.lastUpdate;
+      if (interruptTimer) clearTimeout(interruptTimer);
+      interruptTimer = setTimeout(() => {
+        const now = agentStatus.get(id);
+        if (now && now.status === "working" && now.lastUpdate === at) {
+          agentStatus.synthesizeInterruptedDone(id);
+        }
+      }, 1500);
+    };
+    const noteInterruptIntent = (e: KeyboardEvent) => {
+      // Ctrl+C is SIGINT only when there's no selection (else it copies below).
+      if (
+        e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey &&
+        e.key.toLowerCase() === "c" &&
+        !term?.hasSelection()
+      ) {
+        armInterrupt();
+        return;
+      }
+      if (e.key === "Escape") {
+        const now = Date.now();
+        if (now - lastEscAt < 500) armInterrupt();
+        lastEscAt = now;
+      }
+    };
+
     // Custom key handling (everything else — Ctrl+←/→ word nav, Home/End, … —
     // falls through to xterm's defaults and on to the PTY):
-    //  - Configurable app shortcuts (close tab, tab cycle, split focus) win even
-    //    while a terminal is focused — the global +page handler ignores keys
-    //    inside xterm, so they're matched here against the user's chords.
+    //  - The arbiter (`keybindings.ts`) decides app-shortcut vs TUI/agent per the
+    //    user's per-action policy, with a leader one-shot override and a
+    //    per-terminal focus (passthrough) mode; a resolved app action runs through
+    //    the shared dispatcher (same code as the global +page handler).
     //  - Ctrl+C copies when there's a selection, else passes through as SIGINT.
     //  - Ctrl+V pastes once (preventDefault stops a duplicate native paste).
     //  - When an app negotiates the Kitty/CSI-u keyboard protocol, keys are
@@ -348,52 +393,40 @@
       }
       if (e.type !== "keydown") return true;
 
-      // Configurable app shortcuts that always win, even under the keyboard
-      // protocol. `closeCenter` (default Ctrl/⌘+W) closes this tab with the
-      // usual unsaved-file prompt; the others cycle tabs / move split focus.
-      // Anything else (Ctrl+W rebound away, other actions) falls through to the
-      // shell as before.
-      switch (matchAction(e)) {
-        case "closeCenter":
-          void terminals.closeTabAnywhere(id);
-          e.preventDefault();
-          return false;
-        case "newTerminal":
-          app.openTerminal();
-          e.preventDefault();
-          return false;
-        case "newGlobalTerminal":
-          app.openGlobalTerminal();
-          e.preventDefault();
-          return false;
-        case "splitRight":
-          app.splitActiveTerminal("row");
-          e.preventDefault();
-          return false;
-        case "splitDown":
-          app.splitActiveTerminal("col");
-          e.preventDefault();
-          return false;
-        case "cycleTabNext":
-          terminals.cycleTab(true);
-          e.preventDefault();
-          return false;
-        case "cycleTabPrev":
-          terminals.cycleTab(false);
-          e.preventDefault();
-          return false;
-        case "focusSplitNext":
-          terminals.focusSplit(1);
-          e.preventDefault();
-          return false;
-        case "focusSplitPrev":
-          terminals.focusSplit(-1);
-          e.preventDefault();
-          return false;
-        case "newWorktree":
-          projects.requestNewWorktree();
-          e.preventDefault();
-          return false;
+      // Interrupt inference watches (never consumes) for Ctrl+C / double-Esc.
+      noteInterruptIntent(e);
+
+      // Arbitrate app-shortcut vs TUI/agent per the user's per-action policy, with
+      // the leader one-shot override and per-terminal focus (passthrough) mode. A
+      // resolved app action runs through the shared dispatcher (same code as the
+      // global +page handler); everything else falls through to the PTY below.
+      const ctx: ArbiterContext = {
+        passthrough: terminalKeyboard.passthrough(id),
+        leaderPending,
+      };
+      const disp = arbitrateTerminalKey(e, ctx);
+      // A pending leader is consumed by exactly one following key.
+      if (leaderPending && disp.kind !== "leader") {
+        leaderPending = false;
+        if (leaderTimer) clearTimeout(leaderTimer);
+      }
+      if (disp.kind === "passthrough") {
+        terminalKeyboard.toggle(id);
+        e.preventDefault();
+        return false;
+      }
+      if (disp.kind === "leader") {
+        leaderPending = true;
+        if (leaderTimer) clearTimeout(leaderTimer);
+        leaderTimer = setTimeout(() => {
+          leaderPending = false;
+        }, 2000);
+        e.preventDefault();
+        return false;
+      }
+      if (disp.kind === "app" && runAppAction(disp.action, { terminalId: id })) {
+        e.preventDefault();
+        return false;
       }
 
       // Copy / paste on the platform's primary modifier: ⌘ on macOS, Ctrl
@@ -584,6 +617,7 @@
 
   onDestroy(() => {
     terminals.unregisterController(id);
+    terminalKeyboard.clear(id);
     unlisteners.forEach((fn) => fn());
     resizeObserver?.disconnect();
     if (stableFitRaf !== null) cancelAnimationFrame(stableFitRaf);
@@ -601,10 +635,27 @@
      so glyphs never slide under the scrollbar or the right panel. The background
      matches the xterm theme so the inset blends seamlessly. -->
 <div
-  bind:this={el}
+  class="relative"
   style:width="calc(100% - 4px)"
   style:height="calc(100% - 4px)"
   style:margin-top="4px"
   style:margin-left="4px"
-  style:background-color={termOpts.theme.background}
-></div>
+>
+  <div
+    bind:this={el}
+    style:width="100%"
+    style:height="100%"
+    style:background-color={termOpts.theme.background}
+  ></div>
+  {#if terminalKeyboard.passthrough(id)}
+    <!-- Focus mode: every key goes to the TUI/agent. Click to turn it back off. -->
+    <button
+      type="button"
+      class="absolute right-2 top-1.5 z-10 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-[3px] text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-amber-500"
+      title={i18n.t("terminal.focusModeOn")}
+      onclick={() => terminalKeyboard.toggle(id)}
+    >
+      {i18n.t("terminal.focusMode")}
+    </button>
+  {/if}
+</div>

@@ -361,6 +361,15 @@ pub struct AppSettings {
     /// binding; an empty string disables the action. Defaults are in the frontend.
     #[serde(default)]
     pub keybindings: std::collections::HashMap<String, String>,
+    /// Per-action override for which side wins a chord while a terminal is focused:
+    /// `"app"` (uxnan) or `"terminal"` (the TUI/agent). Missing actions use their
+    /// default policy (defined in the frontend). Persisted opaquely.
+    #[serde(default)]
+    pub terminal_key_policy: std::collections::HashMap<String, String>,
+    /// Leader chord (tmux-style) that, in a focused terminal, routes the next
+    /// shortcut to uxnan. Empty = off. Persisted opaquely.
+    #[serde(default)]
+    pub leader_key: String,
     /// Active theme id (built-in "system"/"light"/"dark"/… or a custom id).
     #[serde(default = "default_theme_id")]
     pub active_theme_id: String,
@@ -745,6 +754,8 @@ impl Default for AppSettings {
             auto_install_hooks: true,
             language: default_language(),
             keybindings: std::collections::HashMap::new(),
+            terminal_key_policy: std::collections::HashMap::new(),
+            leader_key: String::new(),
             active_theme_id: default_theme_id(),
             custom_themes: Vec::new(),
             fonts: None,

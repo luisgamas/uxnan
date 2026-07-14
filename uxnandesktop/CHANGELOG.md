@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — configurable terminal keyboard arbitration + interrupt inference
+
+- **You now control which shortcuts go to uxnan vs the TUI/agent while a terminal
+  is focused.** A single per-action policy (**Settings → Keyboard shortcuts** — a
+  uxnan/TUI toggle on each shortcut) replaces the two old hardcoded switches. The
+  default reserves the low-collision chords for uxnan and **yields the ones shells
+  & TUIs rely on** — `Ctrl+W` (delete-word), `Ctrl+P` (history), `Ctrl+S` (XOFF),
+  `Ctrl+J` (newline), `Ctrl+B` (tmux prefix). Cross-platform via the `Mod` (⌘ on
+  macOS, Ctrl elsewhere) + `Alt` (⌥) tokens. (Behaviour change from before:
+  `Ctrl+W` no longer steals delete-word from the shell, and `Ctrl+,` /
+  `Ctrl+Shift+P` now work inside a terminal.)
+- **Focus mode (passthrough)** — flip a terminal so every key reaches the TUI (even
+  reserved uxnan shortcuts), shown by an on-terminal badge; click it (or bind
+  `toggleTerminalPassthrough`) to exit.
+- **Leader key (tmux-style, opt-in)** — set a leader chord in Settings; in a focused
+  terminal, press it then a shortcut to send that one to uxnan whatever its policy.
+- **Interrupt inference** — `Ctrl+C` / double-`Esc` while an agent is `working` with
+  no closing `Stop` hook now settles its card to `done + interrupted`. The keys are
+  **observed, never consumed** (the agent still gets its SIGINT/Esc), and a genuine
+  later hook always wins.
+- Refactor: a shared dispatcher (`keyactions.ts` `runAppAction`) and a pure,
+  unit-tested arbiter (`terminalArbiter.ts` `decideTerminalKey` — 10 new Vitest
+  cases → 137); settings `AppSettings.terminalKeyPolicy` + `leaderKey`. Spec:
+  `architecture/02b` §4.b.
+
 ### Added — sub-agent (Task-tool child) tracking in the agent view
 
 - When a Claude Code session spawns **sub-agents** (via the Task tool), they now

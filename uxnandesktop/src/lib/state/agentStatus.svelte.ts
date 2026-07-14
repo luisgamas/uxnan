@@ -163,6 +163,19 @@ class AgentStatusStore {
     return !!s && Date.now() - s.lastUpdate > STALE_MS;
   }
 
+  /** Force a working agent to `done + interrupted` — the interrupt-inference
+   *  fallback (Ctrl+C / double-Esc with no closing hook). No-op unless the agent
+   *  is currently `working`, and it stamps a fresh `lastUpdate` so a genuine
+   *  later hook still wins. Display-only (the next real hook re-syncs it). */
+  synthesizeInterruptedDone(id: string): void {
+    const prev = this.byId[id];
+    if (!prev || prev.status !== "working") return;
+    this.byId = {
+      ...this.byId,
+      [id]: { ...prev, status: "done", interrupted: true, lastUpdate: Date.now() },
+    };
+  }
+
   /** Let the hook itself establish the tab's agent identity. A hook report is
    *  self-declared (it carries the agent type), which is authoritative — so an
    *  agent the user typed by hand in a terminal shows up in the agent view (and

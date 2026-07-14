@@ -263,6 +263,47 @@ Se liberan los recursos del PTY en Rust (drop automático del struct, que cierra
 
 ---
 
+## 4.b Arbitraje de teclado (atajo de app vs TUI/agente)
+
+Con una terminal enfocada, xterm entrega cada tecla al handler
+`attachCustomKeyEventHandler` (`Terminal.svelte`), que decide —vía el arbitrador
+**puro** `decideTerminalKey` (`terminalArbiter.ts`)— si la maneja uxnan
+(`preventDefault`, no va al PTY) o se envía al TUI/agente (`return true`).
+Sustituye los dos `switch` hardcodeados previos (uno en `+page.svelte`, otro en
+`Terminal.svelte`) por **una sola política por-atajo**:
+
+- **Política por-atajo** (`DEFAULT_TERMINAL_POLICY` en `terminalArbiter.ts`,
+  override en `AppSettings.terminalKeyPolicy`): cada acción es `app` (uxnan gana en
+  la terminal — el "set reservado") o `terminal` (la tecla va al TUI). El default
+  reserva los atajos de baja colisión (Mod+Shift / Mod+Alt) y cede los que
+  shells/TUIs necesitan (Ctrl+W borrar-palabra, Ctrl+P historial, Ctrl+S XOFF,
+  Ctrl+J newline, Ctrl+B prefijo tmux). **Multiplataforma:** los chords usan el
+  token `Mod` (⌘ en macOS, Ctrl en Win/Linux) y `Alt` (⌥) vía `isMac`.
+- **Modo foco (passthrough)** por-terminal (`terminalKeyboard.svelte.ts`): con él
+  activo, **todas** las teclas van al TUI (excepto el propio toggle, para poder
+  salir); un badge en la terminal lo indica y lo alterna.
+- **Tecla líder** (tmux-style, `AppSettings.leaderKey`, opt-in): en una terminal,
+  tras la tecla líder, el **siguiente** atajo va a uxnan sea cual sea su política —
+  determinismo bajo demanda.
+- **Despachador compartido** (`keyactions.ts` `runAppAction`): las acciones se
+  ejecutan en un solo lugar, consultado tanto por el handler global (`+page`) como
+  por el de la terminal, evitando que los dos caminos deriven.
+
+Se configura en **Settings → Atajos de teclado** (un toggle uxnan/TUI por acción +
+la tecla líder). La decisión pura (`decideTerminalKey`) tiene tests unitarios
+(`terminalArbiter.test.ts`).
+
+### Inferencia de interrupción (fallback de `done`)
+
+El mismo handler **observa sin consumir** `Ctrl+C` (SIGINT, sin selección) y el
+doble-`Esc`: si el agente estaba `working` y tras ~1.5 s no llegó un `Stop` ni
+output nuevo (el `lastUpdate` del hook no cambió), sintetiza `done + interrupted`
+en el display (`agentStatus.synthesizeInterruptedDone`), respetando el done-gate de
+subagentes (`02d`). Un hook real posterior siempre re-sincroniza. Cubre un turno
+abortado por el usuario que el CLI no reporta por hook.
+
+---
+
 ## 5. Lanzamiento y Control de Agentes
 
 ### 5.1 Flujo de Lanzamiento

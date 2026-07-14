@@ -216,6 +216,7 @@ Para evitar que estados obsoletos contaminen la interfaz:
 - **Marca de stale:** Si un agente no reporta estado en **30 minutos**, su estado se marca como "stale".
 - **Visualizacion diferenciada:** Los estados stale se muestran con **opacidad reducida** en la UI, tanto en la sidebar como en la barra de tabs. Esto indica al usuario que la informacion puede no estar actualizada.
 - **Neutralizacion de atencion obsoleta:** un estado de atencion (`waiting`/`blocked`) que quedo obsoleto (stale, sin evento de cierre que lo resuelva) se degrada a `idle` neutral en la UI, para que ningun agente atascado domine la lane «Te necesita» indefinidamente. `done`/`working` conservan su significado. (`state/agentDisplay.ts`.)
+- **Inferencia de interrupcion:** un turno abortado por el usuario (`Ctrl+C` / doble-`Esc`) que el CLI no reporta por hook se resuelve a `done + interrupted` observando (sin consumir) esas teclas en la terminal; guardado para que un `Stop` real siempre gane. Detalle en `02b-terminal-engine.md` §4.b (`state/agentStatus.svelte.ts` `synthesizeInterruptedDone`).
 - **Limpieza automatica:** Al cabo de **7 dias sin actividad**, el registro del agente se elimina del cache persistente en disco. Esto evita acumulacion indefinida de datos de agentes antiguos.
 
 ---

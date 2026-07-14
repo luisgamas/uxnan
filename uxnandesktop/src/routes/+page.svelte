@@ -7,6 +7,7 @@
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
+  import { runAppAction } from "$lib/keyactions";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
   import { divider } from "$lib/design";
@@ -147,6 +148,9 @@
   }
 
   // Global keyboard shortcuts (configurable in Settings → Keyboard shortcuts).
+  // The terminal handler (`Terminal.svelte`) owns keys while a terminal is
+  // focused (it arbitrates app-shortcut vs TUI per action); here we only run the
+  // matched action via the shared dispatcher when a terminal is *not* focused.
   function onKeyDown(e: KeyboardEvent) {
     // Settings (full-screen) owns its own keys, including shortcut rebinding.
     if (app.settingsOpen) return;
@@ -155,88 +159,7 @@
     if (el?.closest(".xterm")) return;
     const action = matchAction(e);
     if (!action) return;
-    switch (action) {
-      case "closeCenter":
-        // Close the active center tab (terminal / file / diff). Only when one is
-        // open; otherwise let the key through.
-        if (terminals.root) {
-          e.preventDefault();
-          terminals.closeActiveTab();
-        }
-        return;
-      case "cycleTabNext":
-        if (terminals.root) {
-          e.preventDefault();
-          terminals.cycleTab(true);
-        }
-        return;
-      case "cycleTabPrev":
-        if (terminals.root) {
-          e.preventDefault();
-          terminals.cycleTab(false);
-        }
-        return;
-      case "focusSplitNext":
-        if (terminals.root) {
-          e.preventDefault();
-          terminals.focusSplit(1);
-        }
-        return;
-      case "focusSplitPrev":
-        if (terminals.root) {
-          e.preventDefault();
-          terminals.focusSplit(-1);
-        }
-        return;
-      case "newTerminal":
-        // Tied to the active workspace (bootstraps the first terminal if it's
-        // empty — same as the empty-state button).
-        e.preventDefault();
-        app.openTerminal();
-        return;
-      case "newGlobalTerminal":
-        e.preventDefault();
-        app.openGlobalTerminal();
-        return;
-      case "splitRight":
-        e.preventDefault();
-        app.splitActiveTerminal("row");
-        return;
-      case "splitDown":
-        e.preventDefault();
-        app.splitActiveTerminal("col");
-        return;
-      case "saveFile":
-        return; // handled by the editor's own keymap when focused
-      case "worktreePalette":
-        e.preventDefault();
-        projects.paletteOpen = true;
-        return;
-      case "addProject":
-        e.preventDefault();
-        projects.pickerOpen = true;
-        return;
-      case "newWorktree":
-        e.preventDefault();
-        projects.requestNewWorktree(); // no-op outside a repo
-        return;
-      case "openSettings":
-        e.preventDefault();
-        app.openSettings();
-        return;
-      case "openQuickCommands":
-        e.preventDefault();
-        app.quickCommandsMenuOpen = true;
-        return;
-      case "toggleLeftSidebar":
-        e.preventDefault();
-        toggleLeftSidebar();
-        return;
-      case "toggleRightSidebar":
-        e.preventDefault();
-        toggleRightSidebar();
-        return;
-    }
+    if (runAppAction(action)) e.preventDefault();
   }
 </script>
 
