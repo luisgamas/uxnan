@@ -173,13 +173,18 @@ En la agent view (`AgentRow.svelte`) los subagentes **activos** se muestran como
 (evita un ✓ prematuro cuando un hijo de fondo sobrevive al `Stop` del padre).
 
 El roster es **agnostico al agente**: cualquier agente que reporte senales de hijo se
-enchufa. Hoy esta cableado **Claude**; **OpenCode** es estructuralmente compatible
-(sus sesiones llevan `parentID`) pero aun no se expone (requiere trabajo en su plugin
-+ captura empirica del payload — `FOR-DEV.md`). `SubagentStart`/`Stop` de Claude estan
-**validados contra Claude Code 2.1.209** (ambos traen `agent_id` + `agent_type`;
-`SubagentStop` agrega la respuesta final del hijo). El extractor
-(`hooks::source_subagent`) sigue defensivo — **ignora un evento sin id de hijo
-estable** (nunca inventa una fila) — por si los campos cambian entre versiones.
+enchufa. Hoy estan cableados **Claude** y **OpenCode**. En OpenCode una sub-tarea
+(`task`) corre como **sesion hija** (un `session.created` con `parentID`); su plugin
+la detecta, reporta su ciclo de vida como `SubagentStart`/`SubagentStop` (nombrada por
+su titulo `"… (@<nombre> subagent)"`) y **no deja que los eventos de una hija volteen
+el estado del padre** (antes una hija que terminaba leia el padre como `done`). El
+ruteo backend es agnostico al agente (`hooks::is_subagent_event`), asi Claude y
+OpenCode comparten un mismo camino de roster. Ambos estan **validados capturando
+eventos/payloads reales**: Claude Code **2.1.209** (`SubagentStart`/`Stop` traen
+`agent_id` + `agent_type`; `SubagentStop` agrega la respuesta final del hijo) y
+OpenCode **1.17.20** (eventos del bus con `session.created.parentID` + `sessionID`).
+El extractor (`hooks::source_subagent`) sigue defensivo — **ignora un evento sin id de
+hijo estable** (nunca inventa una fila) — por si los campos cambian entre versiones.
 
 ### 1.3 Capa 2: Deteccion por Titulo de Terminal
 

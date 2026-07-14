@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — OpenCode sub-agents in the agent view
+
+- OpenCode's delegated sub-agents (the `task` tool, which OpenCode runs as **child
+  sessions**) now appear as nested rows under the parent, the same as Claude's. The
+  OpenCode status plugin detects a child session (a `session.created` carrying a
+  `parentID`), reports its lifecycle as `SubagentStart` / `SubagentStop` (named from
+  its title `"… (@<name> subagent)"`), and — the key fix — **no longer lets a child
+  session's busy/idle flip the parent's status** (a background child finishing used
+  to read the parent as done). The backend sub-agent routing is now agent-agnostic
+  (`is_subagent_event`), so Claude and OpenCode share one roster path. **Validated
+  against OpenCode 1.17.20** by capturing real bus events.
+  (`static/hooks/uxnan-opencode-status-plugin.js`, `src-tauri/src/hooks.rs`.)
+
 ### Changed — left-panel polish
 
 - Subtle refinements to the left panel, keeping the neutral token-driven style
@@ -52,7 +65,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   cache entry (keyed by a child id pulled from the raw payload, capped at 32),
   **without ever touching the parent's own status**. The roster is **agent-generic**,
   so any agent that later reports child signals plugs in (OpenCode sub-sessions are
-  structurally supported but not yet surfaced — see `FOR-DEV.md`).
+  wired too — see the OpenCode entry above).
 - `src-tauri/src/model.rs` (`SubagentEntry` + `upsert_subagent`), `hooks.rs`
   (`source_subagent`, subagent routing in `handle_hook`, `subagents` on
   `AgentStatusEvent`), `agent_hooks.rs` (`CLAUDE_EVENTS`), and the frontend

@@ -250,8 +250,10 @@ fn source_subagent(source: &Value) -> Option<(String, Option<String>, Option<Str
     Some((id, agent_type, description))
 }
 
-/// Whether a Claude hook event name is a sub-agent lifecycle event.
-fn is_claude_subagent_event(event: &str) -> bool {
+/// Whether a hook event name is a sub-agent lifecycle event. Claude sends these
+/// natively (`SubagentStart`/`SubagentStop`); OpenCode's plugin maps its
+/// child-session lifecycle to the same names, so the routing is agent-agnostic.
+fn is_subagent_event(event: &str) -> bool {
     matches!(event, "SubagentStart" | "SubagentStop")
 }
 
@@ -507,14 +509,12 @@ async fn handle_hook(
     let source = source_owned.as_ref();
     let event = body_get("event").or_else(|| source.and_then(event_name));
 
-    // Sub-agent (child) lifecycle: a Claude Task-tool subagent runs inside the
-    // same CLI process / PTY, so its report arrives under the parent's
-    // `agent_id`. Route it to the parent's roster WITHOUT touching the parent's
-    // own status (a child spawn/finish must not flip the parent), then broadcast
-    // the parent entry with its updated child list.
-    if agent_type.as_deref() == Some("claude")
-        && event.as_deref().is_some_and(is_claude_subagent_event)
-    {
+    // Sub-agent (child) lifecycle. A child runs inside the parent's session
+    // (Claude's Task tool = same PTY; OpenCode = a child session), so its report
+    // arrives under the parent's `agent_id`. Route it to the parent's roster
+    // WITHOUT touching the parent's own status (a child spawn/finish must not flip
+    // the parent), then broadcast the parent entry with its updated child list.
+    if event.as_deref().is_some_and(is_subagent_event) {
         let child_status = if event.as_deref() == Some("SubagentStart") {
             AgentStatus::Working
         } else {
@@ -841,11 +841,11 @@ mod tests {
     }
 
     #[test]
-    fn is_claude_subagent_event_matches_lifecycle() {
-        assert!(is_claude_subagent_event("SubagentStart"));
-        assert!(is_claude_subagent_event("SubagentStop"));
-        assert!(!is_claude_subagent_event("Stop"));
-        assert!(!is_claude_subagent_event("PreToolUse"));
+    fn is_subagent_event_matches_lifecycle() {
+        assert!(is_subagent_event("SubagentStart"));
+        assert!(is_subagent_event("SubagentStop"));
+        assert!(!is_subagent_event("Stop"));
+        assert!(!is_subagent_event("PreToolUse"));
     }
 
     #[test]
