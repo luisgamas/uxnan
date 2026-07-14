@@ -132,6 +132,8 @@
   "conversationCopyResponse": "Copiar respuesta",
   "conversationResponseCopied": "Respuesta copiada",
   "conversationCopyMessage": "Copiar mensaje",
+  "conversationShowMore": "Mostrar más",
+  "conversationShowLess": "Mostrar menos",
   "conversationMessageCopied": "Mensaje copiado",
   "conversationLastEdits": "Últimos cambios",
   "conversationFilesCount": "{count, plural, =1{1 archivo} other{{count} archivos}}",

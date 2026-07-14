@@ -403,6 +403,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationCopyMessage => 'Copy message';
 
   @override
+  String get conversationShowMore => 'Show more';
+
+  @override
+  String get conversationShowLess => 'Show less';
+
+  @override
   String get conversationMessageCopied => 'Message copied';
 
   @override

@@ -404,6 +404,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get conversationCopyMessage => 'Copiar mensaje';
 
   @override
+  String get conversationShowMore => 'Mostrar más';
+
+  @override
+  String get conversationShowLess => 'Mostrar menos';
+
+  @override
   String get conversationMessageCopied => 'Mensaje copiado';
 
   @override

@@ -836,6 +836,18 @@ abstract class AppLocalizations {
   /// **'Copy message'**
   String get conversationCopyMessage;
 
+  /// Expands a long user message from its default preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Show more'**
+  String get conversationShowMore;
+
+  /// Collapses an expanded long user message back to its preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Show less'**
+  String get conversationShowLess;
+
   /// Snackbar confirming the user's message was copied.
   ///
   /// In en, this message translates to:

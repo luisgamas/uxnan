@@ -645,6 +645,14 @@ visible and copyable without closing the voice channel.
 | **High** | Mass selection with metadata | Search + associative filtering | **Dropdown + Fuzzy Search + Chip Tags** | Avoids saturation; inline animated chips |
 | **Variable** | N/A | Structured AI response | **Editorial Layout** (bold titles + cards + inline media) | Central principle of Neural Expressive |
 
+**Conversation implementation:** the assistant's answer remains the editorial
+foreground. Secondary process information (reasoning, tool activity, and file
+changes) uses quiet borderless tonal disclosures, collapsed by default; opening
+reasoning or activity auto-collapses the previously open process disclosure in
+that same turn. Streaming follows the latest response only until the user
+manually scrolls, and long user prompts use an expandable visual-line preview
+so neither automation nor message length takes control of the reading surface.
+
 ---
 
 ## 6. Implementation in Flutter

@@ -18,6 +18,7 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/conversation_auto_follow_policy.dart';
 import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
@@ -61,6 +62,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // access) is the pre-load fallback for a thread the bridge has no mode for.
   ApprovalMode _approvalMode = kDefaultApprovalMode;
   final ScrollController _scroll = ScrollController();
+  final ConversationAutoFollowPolicy _autoFollow =
+      ConversationAutoFollowPolicy();
+  bool _followFrameScheduled = false;
   String? _gitCwd;
   // Vanished-cwd detection: the thread's folder/worktree can be removed outside
   // the app. We probe `workspace/exists` once per cwd; a confirmed-gone cwd
@@ -204,10 +208,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   void _onScroll() {
     if (!_scroll.hasClients) return;
     final distance = _scroll.position.maxScrollExtent - _scroll.offset;
-    final show = distance > 320;
-    if (show != _showJumpToBottom) {
-      setState(() => _showJumpToBottom = show);
-    }
+    // Show after a deliberate detach as soon as the latest content is outside
+    // the near-bottom zone. Otherwise retain the wider threshold/hysteresis so
+    // streaming layout changes cannot make the affordance flicker.
+    final show = _autoFollow.isDetached
+        ? distance >= 200
+        : (_showJumpToBottom ? distance > 200 : distance > 320);
+    _setJumpToBottomVisibility(show);
     // Persist the position per thread so reopening restores it (never the
     // top). `atBottom` follows the newest message on the next open instead of
     // pinning a now-stale offset. Only record once the initial restore has
@@ -222,6 +229,36 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
+  void _setJumpToBottomVisibility(bool visible) {
+    if (visible != _showJumpToBottom) {
+      setState(() => _showJumpToBottom = visible);
+    }
+  }
+
+  /// Gives pointer-driven scrolling authority over streaming updates. A drag
+  /// suspends auto-follow immediately; settling near the latest content arms it
+  /// again. Returning false lets the notification continue bubbling normally.
+  bool _onScrollNotification(ScrollNotification notification) {
+    switch (notification) {
+      case ScrollStartNotification(:final dragDetails) when dragDetails != null:
+        _autoFollow.beginUserScroll();
+      case ScrollUpdateNotification(:final dragDetails)
+          when dragDetails != null:
+        // ScrollUpdate can be the first pointer notification delivered after a
+        // rebuild, so make the pause idempotent instead of relying on Start.
+        _autoFollow.beginUserScroll();
+      case ScrollEndNotification():
+        if (_autoFollow.isDetached) {
+          final nearBottom = _isNearBottom();
+          _autoFollow.endUserScroll(nearBottom: nearBottom);
+          _setJumpToBottomVisibility(!nearBottom);
+        }
+      default:
+        break;
+    }
+    return false;
+  }
+
   /// Restores the saved scroll position for this thread once its content is
   /// first laid out: jumps to where the user left off, or to the newest
   /// message when there's no saved position (or the user was at the bottom).
@@ -232,6 +269,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final saved = ref.read(conversationScrollStoreProvider).positionFor(
           widget.threadId,
         );
+    _autoFollow.restore(atBottom: saved == null || saved.atBottom);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
       if (saved == null || saved.atBottom) {
@@ -251,7 +289,25 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   void _scrollToBottom() {
-    if (!_scroll.hasClients) return;
+    _autoFollow.resume();
+    _scheduleFollowLatest();
+  }
+
+  /// Coalesces streaming updates to one post-layout correction per frame. The
+  /// policy is checked again inside every delayed callback, so a drag that
+  /// starts after scheduling still cancels the programmatic jump.
+  void _scheduleFollowLatest() {
+    if (_followFrameScheduled) return;
+    _followFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _followFrameScheduled = false;
+      if (!mounted || !_scroll.hasClients || !_autoFollow.shouldFollow) return;
+      _jumpToLiveBottom();
+    });
+  }
+
+  void _jumpToLiveBottom() {
+    if (!_scroll.hasClients || !_autoFollow.shouldFollow) return;
     // Jump (don't animate) to the bottom: an animation captures a target at one
     // moment, but streaming tokens / variable-height messages / images keep
     // growing the content, so the animation lands short and the next emission
@@ -262,7 +318,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // measurement), growing the extent; re-jump next frame so we reach the real
     // bottom instead of stopping a little short.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scroll.hasClients) return;
+      if (!mounted || !_scroll.hasClients || !_autoFollow.shouldFollow) {
+        return;
+      }
       final max = _scroll.position.maxScrollExtent;
       if (max - _scroll.offset > 1) _scroll.jumpTo(max);
     });
@@ -552,9 +610,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       }
       // After the initial restore, keep following the bottom on new content
       // when the user is already near it (or just sent a message).
-      if (_forceScrollOnSend || _isNearBottom()) {
+      if (_forceScrollOnSend) {
         _forceScrollOnSend = false;
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+        _autoFollow.resume();
+      }
+      if (_autoFollow.shouldFollow) {
+        _scheduleFollowLatest();
       }
     });
 
@@ -573,65 +634,70 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () => FocusScope.of(context).unfocus(),
-            child: CustomScrollView(
-              controller: _scroll,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                // Spacer so the first content sits below the transparent top
-                // bar (it overlays the scroll).
-                SliverToBoxAdapter(child: SizedBox(height: topInset)),
-                // "Load earlier" header when the rendered window does not yet
-                // cover the whole local history.
-                if (snapshot != null &&
-                    snapshot.messages.isNotEmpty &&
-                    snapshot.hasMore)
-                  SliverToBoxAdapter(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: UxnanSpacing.sm,
-                        ),
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              ref.read(threadManagerProvider).loadMoreHistory(),
-                          icon: const Icon(Icons.history_rounded, size: 18),
-                          label: Text(l10n.conversationLoadEarlier),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (snapshot == null)
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (snapshot.messages.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(),
-                  )
-                else
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      contentInset,
-                      UxnanSpacing.sm,
-                      contentInset,
-                      UxnanSpacing.lg,
-                    ),
-                    sliver: SliverList.builder(
-                      itemCount: snapshot.messages.length,
-                      itemBuilder: (context, index) => MessageBubble(
-                        message: snapshot.messages[index],
-                      ),
-                    ),
-                  ),
-                // Reserve room for the floating composer + its banners so the
-                // last message rests just above the pill instead of behind it.
-                SliverToBoxAdapter(
-                  child: SizedBox(height: _bottomChromeHeight),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScrollNotification,
+              child: CustomScrollView(
+                controller: _scroll,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
                 ),
-              ],
+                slivers: [
+                  // Spacer so the first content sits below the transparent top
+                  // bar (it overlays the scroll).
+                  SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                  // "Load earlier" header when the rendered window does not yet
+                  // cover the whole local history.
+                  if (snapshot != null &&
+                      snapshot.messages.isNotEmpty &&
+                      snapshot.hasMore)
+                    SliverToBoxAdapter(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: UxnanSpacing.sm,
+                          ),
+                          child: TextButton.icon(
+                            onPressed: () => ref
+                                .read(threadManagerProvider)
+                                .loadMoreHistory(),
+                            icon: const Icon(Icons.history_rounded, size: 18),
+                            label: Text(l10n.conversationLoadEarlier),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (snapshot == null)
+                    const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (snapshot.messages.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyState(),
+                    )
+                  else
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        contentInset,
+                        UxnanSpacing.sm,
+                        contentInset,
+                        UxnanSpacing.lg,
+                      ),
+                      sliver: SliverList.builder(
+                        itemCount: snapshot.messages.length,
+                        itemBuilder: (context, index) => MessageBubble(
+                          key: ValueKey(snapshot.messages[index].id),
+                          message: snapshot.messages[index],
+                        ),
+                      ),
+                    ),
+                  // Reserve room for the floating composer + its banners so
+                  // the last message rests above the pill, not behind it.
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: _bottomChromeHeight),
+                  ),
+                ],
+              ),
             ),
           ),
           // Jump-to-latest button: appears (with a small spring) when the user

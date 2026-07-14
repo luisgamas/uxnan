@@ -1305,6 +1305,16 @@ Reglas de streaming:
 - Si el usuario scrollea durante streaming, el auto-scroll se pausa.
 - Al completar el turno, si el usuario esta cerca del fondo, auto-scroll se reactiva.
 
+> ✅ **Implementación actual:** `ConversationScreen` usa una política explícita
+> de auto-follow. Cualquier drag manual se impone inmediatamente a los eventos
+> de streaming; los saltos post-layout se agrupan por frame y vuelven a validar
+> la intención antes de mover el `ScrollController`. El seguimiento se reactiva
+> al volver cerca del fondo, usar "jump to latest" o enviar con la preferencia
+> correspondiente activa. Los disclosures secundarios de proceso
+> (razonamiento/actividad) son paneles tonales sin borde, contraídos por defecto
+> y con expansión exclusiva dentro de cada turno; los prompts largos del
+> usuario ofrecen una vista previa expandible sin alterar la copia completa.
+
 #### 5.6.4 Reconciliacion de historial
 
 ```dart

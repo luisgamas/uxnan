@@ -28,11 +28,16 @@ connected to live bridge data, validated on-device against a real bridge.
   Direct transport indicator).
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
-  **"Responding…"** activity indicator.
+  **"Responding…"** activity indicator. Timeline auto-follow yields to manual
+  scrolling, stays detached while older content is being read, and resumes at
+  the bottom or through an explicit jump/send action.
 - **Structured agent turns** — assistant replies without a bubble, consecutive
-  text merged, collapsible **Work log (N)**, collapsible **Changed files (N) ·
-  +a −d** with per-file diffs, **Copy response**, **Last edits** strip above the
-  composer; **Thinking** section (settings-gated, default off).
+  text merged, borderless tonal **Work log (N)** / **Thinking** process
+  disclosures (collapsed by default and exclusively expanded per turn),
+  collapsible **Changed files (N) · +a −d** with per-file diffs, **Copy
+  response**, **Last edits** strip above the composer; **Thinking** remains
+  settings-gated. Long user text defaults to a ten-line expandable preview and
+  still copies in full.
 - **New conversation flow** — `project/list` + `agent/list` + `agent/models` +
   **folder browser** (`workspace/browseDirs`) to root a thread anywhere. The
   full-screen Neural Expressive dialog compares agents in one dynamic-corner

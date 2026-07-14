@@ -186,6 +186,14 @@
   "@conversationCopyMessage": {
     "description": "Action that copies the user's own message (revealed by tapping the bubble)."
   },
+  "conversationShowMore": "Show more",
+  "@conversationShowMore": {
+    "description": "Expands a long user message from its default preview."
+  },
+  "conversationShowLess": "Show less",
+  "@conversationShowLess": {
+    "description": "Collapses an expanded long user message back to its preview."
+  },
   "conversationMessageCopied": "Message copied",
   "@conversationMessageCopied": {
     "description": "Snackbar confirming the user's message was copied."

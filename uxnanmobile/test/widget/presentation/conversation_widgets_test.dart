@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -333,6 +334,7 @@ void main() {
         CommandExecutionContent(
           command: 'flutter test',
           status: CommandStatus.completed,
+          output: 'All tests passed',
         ),
         DiffContent(
           filename: 'lib/a.dart',
@@ -355,10 +357,31 @@ void main() {
     expect(find.text('+10'), findsOneWidget);
     expect(find.text('−2'), findsOneWidget);
     expect(find.text('Copy response'), findsOneWidget);
-    // The work log shows its commands inline (≤ preview), so the single command
-    // is already visible; the changed-files section is still collapsed.
+    // Each disclosure owns a clipped Material surface, so InkWell paints its
+    // ripple inside the same rounded shape instead of the page-level rectangle.
+    for (final label in ['Work log', 'Changed files']) {
+      final materials = tester.widgetList<Material>(
+        find.ancestor(of: find.text(label), matching: find.byType(Material)),
+      );
+      expect(
+        materials.any(
+          (material) =>
+              material.clipBehavior == Clip.antiAlias &&
+              material.shape is RoundedRectangleBorder,
+        ),
+        isTrue,
+        reason: '$label must clip its Material ink response',
+      );
+    }
+    // The compact work-log summary keeps the latest command visible, but its
+    // output and the changed-files rows remain collapsed.
     expect(find.textContaining('flutter test'), findsOneWidget);
+    expect(find.text('All tests passed'), findsNothing);
     expect(find.text('lib/a.dart'), findsNothing);
+
+    await tester.tap(find.text('Work log'));
+    await tester.pumpAndSettle();
+    expect(find.text('All tests passed'), findsOneWidget);
 
     // Expanding changed files reveals the file row.
     await tester.tap(find.text('Changed files'));
@@ -426,6 +449,41 @@ void main() {
     expect(find.text('weighing the options'), findsOneWidget);
   });
 
+  testWidgets('assistant process disclosures expand exclusively per turn',
+      (tester) async {
+    final message = Message(
+      id: 'm-process',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        ThinkingContent('private reasoning detail'),
+        CommandExecutionContent(
+          command: 'dart analyze',
+          status: CommandStatus.completed,
+          output: 'No issues found',
+        ),
+        TextContent('Finished.'),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Thinking'));
+    await tester.pumpAndSettle();
+    expect(find.text('private reasoning detail'), findsOneWidget);
+    expect(find.text('No issues found'), findsNothing);
+
+    await tester.tap(find.text('Work log'));
+    await tester.pumpAndSettle();
+    expect(find.text('private reasoning detail'), findsNothing);
+    expect(find.text('No issues found'), findsOneWidget);
+  });
+
   testWidgets('thinking section is hidden when the setting is off',
       (tester) async {
     SharedPreferences.setMockInitialValues({
@@ -481,6 +539,64 @@ void main() {
     await tester.tap(find.byType(MarkdownBody));
     await tester.pumpAndSettle();
     expect(find.text('Copy message'), findsNothing);
+  });
+
+  testWidgets('long user messages collapse, re-expand and copy full text',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copiedText =
+            (call.arguments as Map<Object?, Object?>)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    final fullText = List.generate(
+      24,
+      (index) => 'Detailed prompt line ${index + 1}',
+    ).join('\n');
+    final message = Message(
+      id: 'u-long',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.user,
+      contents: [TextContent(fullText)],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Show more'), findsOneWidget);
+    expect(find.text('Show less'), findsNothing);
+
+    await tester.tap(find.text('Show more'));
+    await tester.pumpAndSettle();
+    expect(find.text('Show less'), findsOneWidget);
+
+    await tester.tapAt(
+      tester.getTopLeft(find.byType(MarkdownBody)) + const Offset(4, 4),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Copy message'));
+    await tester.pumpAndSettle();
+    expect(copiedText, fullText);
+
+    await tester.tap(find.text('Show less'));
+    await tester.pumpAndSettle();
+    expect(find.text('Show more'), findsOneWidget);
   });
 
   testWidgets('ComposerBar shows a Stop button while running and calls onStop',

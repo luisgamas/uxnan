@@ -6,6 +6,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — calmer, controllable conversation timeline
+- Streaming auto-follow now yields immediately to a manual timeline drag. The
+  conversation keeps following naturally when untouched, remains detached
+  while the user reads older content, and resumes only after returning near the
+  bottom, tapping the existing jump-to-latest affordance, or sending with
+  "Scroll to latest on send" enabled. Post-layout corrections are coalesced and
+  re-check user intent so a delayed callback cannot pull against a gesture.
+- Thinking, work-log, and changed-files disclosures now use quiet borderless
+  `surfaceContainerLow` panels that morph from compact pills into rounded
+  expanded surfaces. Their Material ink response is clipped to the same
+  animated shape, so taps never paint a square ripple beyond the rounded
+  corners. Thinking and work-log panels start collapsed; the compact work log
+  retains its count and latest one-line activity summary, and opening one
+  process panel collapses the previously open panel in that assistant turn.
+- Long user-message text now starts as a responsive ten-line preview with a
+  subtle tonal fade and explicit Show more / Show less actions. Expansion does
+  not hide image attachments, short messages keep their previous behavior, and
+  Copy message always copies the complete source rather than the visible
+  preview.
+
 ### Changed — Neural Expressive new-conversation full-screen dialog
 - Restored direct agent comparison cards in the full-screen creation flow,
   replacing the sparse agent combobox and its extra picker sheet. Agent cards
