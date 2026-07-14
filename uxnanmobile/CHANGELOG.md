@@ -6,6 +6,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Profile screen: activity heatmap, stats & customization
+- A new **Profile** screen (a person icon in the Devices app bar) aggregates
+  activity across every paired PC — all derived locally, no bridge call: an
+  identity header, headline stat tiles (time connected, longest session, agents
+  used, conversations, messages, sessions, git actions, most-used transport,
+  models), a **GitHub-style contribution heatmap** (one cell per day, a full
+  year, with a year selector to browse past years and a metric selector —
+  Combined / Conversations / Messages / Work — captioning exactly what's shown;
+  tapping a day shows its count, tapping elsewhere on the heatmap clears it), and
+  a per-agent breakdown (one card per agent: logo, a proportional bar and its
+  labelled conversation count).
+- **Profile customization:** a display name and an avatar — a picked gallery
+  image (downscaled to 256 px and stored inline) or one of 12 preset icons —
+  edited from a bottom sheet (tap the header or the pencil) and persisted
+  on-device. Defaults to a neutral name + person glyph until set.
+- Metrics come from a new local `MetricsRepository` aggregating the
+  already-persisted threads / messages / git actions plus the connection-session
+  log; the heatmap and totals recompute on open (`autoDispose`). No wire contract
+  — everything is phone-local.
+
 ### Added — connection-session log (metrics foundation)
 - New phone-local drift table (schema **v6**) recording each phone→PC connection
   session: device, transport (relay/direct), the real endpoint, start,

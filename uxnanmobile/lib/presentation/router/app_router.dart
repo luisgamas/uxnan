@@ -5,6 +5,7 @@ import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/manual_code_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
+import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
@@ -30,6 +31,9 @@ class AppRoutes {
 
   /// App settings (notification preferences, …).
   static const String settings = '/settings';
+
+  /// The user's aggregate activity profile (metrics across all PCs).
+  static const String profile = '/profile';
 
   /// Per-device threads screen path pattern (`:deviceId`).
   static const String deviceThreadsPattern = '/device/:deviceId/threads';
@@ -93,6 +97,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.settings,
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.profile,
+        builder: (context, state) => const ProfileScreen(),
       ),
       GoRoute(
         path: AppRoutes.conversationPattern,

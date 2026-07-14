@@ -173,6 +173,109 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesTitle => 'Devices';
 
   @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileDisplayName => 'Uxnan user';
+
+  @override
+  String profileMemberSince(String date) {
+    return 'Member since $date';
+  }
+
+  @override
+  String profilePairedPcs(int count) {
+    return '$count PCs';
+  }
+
+  @override
+  String profileActiveSessions(int count) {
+    return '$count online now';
+  }
+
+  @override
+  String get statConversations => 'Conversations';
+
+  @override
+  String get statAgentsUsed => 'Agents used';
+
+  @override
+  String get statMessages => 'Messages';
+
+  @override
+  String get statGitActions => 'Git actions';
+
+  @override
+  String get statSessions => 'Sessions';
+
+  @override
+  String get statTimeConnected => 'Time connected';
+
+  @override
+  String get statLongestSession => 'Longest session';
+
+  @override
+  String get statMostUsedTransport => 'Most-used';
+
+  @override
+  String get statModelsUsed => 'Models';
+
+  @override
+  String get profileActivity => 'Activity';
+
+  @override
+  String get profileByAgent => 'By agent';
+
+  @override
+  String get profileNoData => 'No activity yet';
+
+  @override
+  String get profileActivityLess => 'Less';
+
+  @override
+  String get profileActivityMore => 'More';
+
+  @override
+  String profileHeatmapSummary(int count, int activeDays) {
+    return '$count actions · $activeDays active days';
+  }
+
+  @override
+  String profileHeatmapDay(String date, int count) {
+    return '$date · $count actions';
+  }
+
+  @override
+  String get metricCombined => 'Combined';
+
+  @override
+  String get metricConversations => 'Conversations';
+
+  @override
+  String get metricMessages => 'Messages';
+
+  @override
+  String get metricWork => 'Work';
+
+  @override
+  String get profileEditTitle => 'Edit profile';
+
+  @override
+  String get profileChoosePhoto => 'Choose photo';
+
+  @override
+  String get profilePickIcon => 'Or pick an icon';
+
+  @override
+  String get profileNameLabel => 'Name';
+
+  @override
+  String get profileNameHint => 'Your name';
+
+  @override
+  String get profileAgentConversationsLabel => 'conversations';
+
+  @override
   String get deviceActive => 'Active';
 
   @override

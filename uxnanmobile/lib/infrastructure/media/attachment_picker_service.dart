@@ -52,6 +52,26 @@ class AttachmentPickerService {
     }
   }
 
+  /// Picks a small avatar image from the gallery, downscaled to 256 px (q80) so
+  /// it stays tiny enough to store inline. Returns its base64 + MIME, or `null`
+  /// when the user cancels or the pick fails.
+  Future<({String base64, String mime})?> pickAvatar() async {
+    try {
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 256,
+        maxHeight: 256,
+        imageQuality: 80,
+      );
+      if (file == null) return null;
+      final bytes = await file.readAsBytes();
+      return (base64: base64Encode(bytes), mime: _mimeFor(file.name));
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('avatar pick failed', error, stackTrace);
+      return null;
+    }
+  }
+
   String _mimeFor(String name) {
     final lower = name.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';

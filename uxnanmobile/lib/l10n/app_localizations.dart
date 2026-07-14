@@ -398,6 +398,192 @@ abstract class AppLocalizations {
   /// **'Devices'**
   String get devicesTitle;
 
+  /// No description provided for @profileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get profileTitle;
+
+  /// No description provided for @profileDisplayName.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan user'**
+  String get profileDisplayName;
+
+  /// Profile subtitle: when the user first started using the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Member since {date}'**
+  String profileMemberSince(String date);
+
+  /// How many PCs are paired, shown in the profile header.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} PCs'**
+  String profilePairedPcs(int count);
+
+  /// How many live sessions the phone currently holds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} online now'**
+  String profileActiveSessions(int count);
+
+  /// No description provided for @statConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get statConversations;
+
+  /// No description provided for @statAgentsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Agents used'**
+  String get statAgentsUsed;
+
+  /// No description provided for @statMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get statMessages;
+
+  /// No description provided for @statGitActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Git actions'**
+  String get statGitActions;
+
+  /// No description provided for @statSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Sessions'**
+  String get statSessions;
+
+  /// No description provided for @statTimeConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Time connected'**
+  String get statTimeConnected;
+
+  /// No description provided for @statLongestSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Longest session'**
+  String get statLongestSession;
+
+  /// No description provided for @statMostUsedTransport.
+  ///
+  /// In en, this message translates to:
+  /// **'Most-used'**
+  String get statMostUsedTransport;
+
+  /// No description provided for @statModelsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Models'**
+  String get statModelsUsed;
+
+  /// No description provided for @profileActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity'**
+  String get profileActivity;
+
+  /// No description provided for @profileByAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'By agent'**
+  String get profileByAgent;
+
+  /// No description provided for @profileNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No activity yet'**
+  String get profileNoData;
+
+  /// No description provided for @profileActivityLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Less'**
+  String get profileActivityLess;
+
+  /// No description provided for @profileActivityMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get profileActivityMore;
+
+  /// Heatmap caption summarizing the whole year.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} actions · {activeDays} active days'**
+  String profileHeatmapSummary(int count, int activeDays);
+
+  /// Heatmap caption for a single tapped day.
+  ///
+  /// In en, this message translates to:
+  /// **'{date} · {count} actions'**
+  String profileHeatmapDay(String date, int count);
+
+  /// No description provided for @metricCombined.
+  ///
+  /// In en, this message translates to:
+  /// **'Combined'**
+  String get metricCombined;
+
+  /// No description provided for @metricConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get metricConversations;
+
+  /// No description provided for @metricMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get metricMessages;
+
+  /// No description provided for @metricWork.
+  ///
+  /// In en, this message translates to:
+  /// **'Work'**
+  String get metricWork;
+
+  /// No description provided for @profileEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get profileEditTitle;
+
+  /// No description provided for @profileChoosePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose photo'**
+  String get profileChoosePhoto;
+
+  /// No description provided for @profilePickIcon.
+  ///
+  /// In en, this message translates to:
+  /// **'Or pick an icon'**
+  String get profilePickIcon;
+
+  /// No description provided for @profileNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get profileNameLabel;
+
+  /// No description provided for @profileNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name'**
+  String get profileNameHint;
+
+  /// No description provided for @profileAgentConversationsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'conversations'**
+  String get profileAgentConversationsLabel;
+
   /// No description provided for @deviceActive.
   ///
   /// In en, this message translates to:

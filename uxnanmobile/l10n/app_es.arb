@@ -54,6 +54,57 @@
   "actionDismiss": "Cerrar",
 
   "devicesTitle": "Mis PCs",
+  "profileTitle": "Perfil",
+  "profileDisplayName": "Usuario de Uxnan",
+  "profileMemberSince": "Miembro desde {date}",
+  "@profileMemberSince": {
+    "description": "Profile subtitle: when the user first started using the app.",
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "profilePairedPcs": "{count} PCs",
+  "@profilePairedPcs": {
+    "description": "How many PCs are paired, shown in the profile header.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "profileActiveSessions": "{count} en línea",
+  "@profileActiveSessions": {
+    "description": "How many live sessions the phone currently holds.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "statConversations": "Conversaciones",
+  "statAgentsUsed": "Agentes usados",
+  "statMessages": "Mensajes",
+  "statGitActions": "Acciones Git",
+  "statSessions": "Sesiones",
+  "statTimeConnected": "Tiempo conectado",
+  "statLongestSession": "Sesión más larga",
+  "statMostUsedTransport": "Más usado",
+  "statModelsUsed": "Modelos",
+  "profileActivity": "Actividad",
+  "profileByAgent": "Por agente",
+  "profileNoData": "Aún no hay actividad",
+  "profileActivityLess": "Menos",
+  "profileActivityMore": "Más",
+  "profileHeatmapSummary": "{count} acciones · {activeDays} días activos",
+  "@profileHeatmapSummary": {
+    "description": "Heatmap caption summarizing the whole year.",
+    "placeholders": { "count": { "type": "int" }, "activeDays": { "type": "int" } }
+  },
+  "profileHeatmapDay": "{date} · {count} acciones",
+  "@profileHeatmapDay": {
+    "description": "Heatmap caption for a single tapped day.",
+    "placeholders": { "date": { "type": "String" }, "count": { "type": "int" } }
+  },
+  "metricCombined": "Combinado",
+  "metricConversations": "Conversaciones",
+  "metricMessages": "Mensajes",
+  "metricWork": "Trabajo",
+  "profileEditTitle": "Editar perfil",
+  "profileChoosePhoto": "Elegir foto",
+  "profilePickIcon": "O elige un icono",
+  "profileNameLabel": "Nombre",
+  "profileNameHint": "Tu nombre",
+  "profileAgentConversationsLabel": "conversaciones",
   "deviceActive": "Activa",
   "deviceConnect": "Conectar",
   "deviceConnectFailed": "No se pudo conectar con {device}. Se mantiene la PC actual.",

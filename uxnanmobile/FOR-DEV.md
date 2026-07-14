@@ -134,14 +134,14 @@ shipping.
 
 ## App-side pending work (no live bridge needed)
 
-- [ ] **Profile + per-PC metrics screens.** The phone-local **connection-session
-      log** (drift v6) that feeds the connection metrics is **DONE**; what remains
-      is the metrics **aggregation** layer + the GitHub-style **`ActivityHeatmap`**
-      widget + the **`ProfileScreen`** (avatar in the Devices app bar + a Settings
-      header with the active-sessions count) and the **per-PC details screen**
-      (reached from the device-card menu). Most metrics aggregate existing
-      persisted data (threads/messages/git actions + the new sessions table); the
-      per-agent usage/credit view is Phase B (the `agent/usageStats` item below).
+- [ ] **Profile: Settings header + per-PC details screen.** The **`ProfileScreen`**
+      (Devices app-bar avatar) — activity heatmap, stat tiles, per-agent breakdown,
+      and name/avatar customization — is **DONE**, on the phone-local metrics
+      aggregation (`MetricsRepository`) + connection-session log. Remaining: a
+      **profile header at the top of Settings** (avatar + name + active-sessions
+      count) and a **per-PC details screen** (reached from the device-card menu,
+      reusing `ActivitySection` + `pcMetricsProvider`). The per-agent usage/credit
+      view is Phase B (the `agent/usageStats` item below).
 - [ ] **Bridge-update: fixed "About" row in Settings.** The bridge-outdated
       **banner** (thread list) and its data are done — `bridgeUpdateProvider`
       exposes `{ currentVersion, latestVersion }` from `bridge/status`

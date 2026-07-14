@@ -75,6 +75,57 @@
   "actionDismiss": "Dismiss",
 
   "devicesTitle": "Devices",
+  "profileTitle": "Profile",
+  "profileDisplayName": "Uxnan user",
+  "profileMemberSince": "Member since {date}",
+  "@profileMemberSince": {
+    "description": "Profile subtitle: when the user first started using the app.",
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "profilePairedPcs": "{count} PCs",
+  "@profilePairedPcs": {
+    "description": "How many PCs are paired, shown in the profile header.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "profileActiveSessions": "{count} online now",
+  "@profileActiveSessions": {
+    "description": "How many live sessions the phone currently holds.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "statConversations": "Conversations",
+  "statAgentsUsed": "Agents used",
+  "statMessages": "Messages",
+  "statGitActions": "Git actions",
+  "statSessions": "Sessions",
+  "statTimeConnected": "Time connected",
+  "statLongestSession": "Longest session",
+  "statMostUsedTransport": "Most-used",
+  "statModelsUsed": "Models",
+  "profileActivity": "Activity",
+  "profileByAgent": "By agent",
+  "profileNoData": "No activity yet",
+  "profileActivityLess": "Less",
+  "profileActivityMore": "More",
+  "profileHeatmapSummary": "{count} actions · {activeDays} active days",
+  "@profileHeatmapSummary": {
+    "description": "Heatmap caption summarizing the whole year.",
+    "placeholders": { "count": { "type": "int" }, "activeDays": { "type": "int" } }
+  },
+  "profileHeatmapDay": "{date} · {count} actions",
+  "@profileHeatmapDay": {
+    "description": "Heatmap caption for a single tapped day.",
+    "placeholders": { "date": { "type": "String" }, "count": { "type": "int" } }
+  },
+  "metricCombined": "Combined",
+  "metricConversations": "Conversations",
+  "metricMessages": "Messages",
+  "metricWork": "Work",
+  "profileEditTitle": "Edit profile",
+  "profileChoosePhoto": "Choose photo",
+  "profilePickIcon": "Or pick an icon",
+  "profileNameLabel": "Name",
+  "profileNameHint": "Your name",
+  "profileAgentConversationsLabel": "conversations",
   "deviceActive": "Active",
   "deviceConnect": "Connect",
   "deviceConnectFailed": "Couldn't reach {device}. Staying on the current PC.",

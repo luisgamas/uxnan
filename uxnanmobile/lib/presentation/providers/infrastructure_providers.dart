@@ -7,6 +7,7 @@ import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
 import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
+import 'package:uxnan/domain/repositories/i_metrics_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
@@ -17,6 +18,7 @@ import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repositor
 import 'package:uxnan/infrastructure/repositories/drift_connection_session_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
+import 'package:uxnan/infrastructure/repositories/drift_metrics_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
 import 'package:uxnan/infrastructure/repositories/trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
@@ -26,6 +28,7 @@ import 'package:uxnan/infrastructure/storage/conversation_preferences_store.dart
 import 'package:uxnan/infrastructure/storage/local_database.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
+import 'package:uxnan/infrastructure/storage/profile_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/prompt_templates_store.dart';
 import 'package:uxnan/infrastructure/storage/question_response_store.dart';
 import 'package:uxnan/infrastructure/storage/secure_store.dart';
@@ -75,6 +78,15 @@ final connectionSessionRepositoryProvider =
   (ref) => DriftConnectionSessionRepository(ref.watch(databaseProvider)),
 );
 
+/// Read-only metrics aggregation over the local data (threads, messages, git
+/// actions, connection sessions) for the profile / per-PC screens.
+final metricsRepositoryProvider = Provider<IMetricsRepository>(
+  (ref) => DriftMetricsRepository(
+    ref.watch(databaseProvider),
+    ref.watch(connectionSessionRepositoryProvider),
+  ),
+);
+
 /// Encrypted secure storage (Keychain / Keystore).
 final secureStoreProvider =
     Provider<SecureStore>((ref) => FlutterSecureStore());
@@ -94,6 +106,11 @@ final notificationPreferencesStoreProvider =
 final conversationPreferencesStoreProvider =
     Provider<ConversationPreferencesStore>(
   (ref) => ConversationPreferencesStore(),
+);
+
+/// Persists the user's profile name + avatar (non-sensitive, on-device).
+final profilePreferencesStoreProvider = Provider<ProfilePreferencesStore>(
+  (ref) => ProfilePreferencesStore(),
 );
 
 /// Persists appearance + language preferences (non-sensitive, on-device).

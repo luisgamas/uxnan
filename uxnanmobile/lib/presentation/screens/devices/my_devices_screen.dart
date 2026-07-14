@@ -173,6 +173,11 @@ class MyDevicesScreen extends ConsumerWidget {
           ],
         ),
         IconSurface(
+          icon: Icons.person_outline_rounded,
+          tooltip: l10n.profileTitle,
+          onPressed: () => context.push(AppRoutes.profile),
+        ),
+        IconSurface(
           icon: Icons.settings_outlined,
           tooltip: l10n.settingsTitle,
           onPressed: () => context.push(AppRoutes.settings),

@@ -23,6 +23,7 @@ import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/activity_metric.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
@@ -33,6 +34,8 @@ import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
+import 'package:uxnan/domain/value_objects/profile_avatar.dart';
+import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
@@ -73,8 +76,7 @@ final sessionCoordinatorProvider = Provider<SessionCoordinator>((ref) {
     transportSelector: ref.watch(transportSelectorProvider),
     identityResolver: () => ref.read(phoneIdentityStoreProvider).loadOrCreate(),
     trustedDeviceRepository: ref.watch(trustedDeviceRepositoryProvider),
-    connectionSessionRepository:
-        ref.watch(connectionSessionRepositoryProvider),
+    connectionSessionRepository: ref.watch(connectionSessionRepositoryProvider),
     pairingValidator: ref.watch(pairingValidatorProvider),
   );
   ref.onDispose(coordinator.dispose);
@@ -174,6 +176,92 @@ final bridgeUpdateProvider =
 /// Reactive list of paired trusted devices (PCs), for the UI.
 final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
   (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),
+);
+
+/// Aggregated profile metrics across all paired PCs. `autoDispose` so
+/// re-opening the profile recomputes from the current data.
+final profileMetricsProvider = FutureProvider.autoDispose<ProfileMetrics>(
+  (ref) => ref.watch(metricsRepositoryProvider).loadMetrics(),
+);
+
+/// Aggregated metrics scoped to a single PC (its `macDeviceId`).
+final pcMetricsProvider =
+    FutureProvider.autoDispose.family<ProfileMetrics, String>(
+  (ref, deviceId) =>
+      ref.watch(metricsRepositoryProvider).loadMetrics(deviceId: deviceId),
+);
+
+/// Query for the activity heatmap: which metric, which calendar year, and an
+/// optional PC scope (null = all PCs).
+typedef HeatmapQuery = ({ActivityMetric metric, int year, String? deviceId});
+
+/// Activity counts bucketed by local day for the heatmap, for a given
+/// [HeatmapQuery]. Empty days are absent from the map.
+final activityHeatmapProvider = FutureProvider.autoDispose
+    .family<Map<DateTime, int>, HeatmapQuery>((ref, query) {
+  final from = DateTime(query.year);
+  final to = DateTime(query.year + 1).subtract(const Duration(milliseconds: 1));
+  return ref.watch(metricsRepositoryProvider).activityByDay(
+        from: from,
+        to: to,
+        metric: query.metric,
+        deviceId: query.deviceId,
+      );
+});
+
+/// The user's custom profile display name, or null to use the default label.
+/// Persisted on-device; hydrates after returning null synchronously.
+class ProfileName extends Notifier<String?> {
+  @override
+  String? build() {
+    unawaited(_hydrate());
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref.read(profilePreferencesStoreProvider).readName();
+    if (stored != state) state = stored;
+  }
+
+  /// Persists and applies the display name; a null/empty value clears it.
+  Future<void> set(String? name) async {
+    final value = (name == null || name.trim().isEmpty) ? null : name.trim();
+    if (value == state) return;
+    state = value;
+    await ref.read(profilePreferencesStoreProvider).writeName(value);
+  }
+}
+
+/// The user's custom profile display name (persisted; null = default label).
+final profileNameProvider =
+    NotifierProvider<ProfileName, String?>(ProfileName.new);
+
+/// The user's chosen profile avatar (default person / preset icon / picked
+/// image). Persisted; defaults to the fallback glyph, then hydrates.
+class ProfileAvatarSetting extends Notifier<ProfileAvatar> {
+  @override
+  ProfileAvatar build() {
+    unawaited(_hydrate());
+    return const ProfileAvatar.fallback();
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref.read(profilePreferencesStoreProvider).readAvatar();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the avatar.
+  Future<void> set(ProfileAvatar avatar) async {
+    if (avatar == state) return;
+    state = avatar;
+    await ref.read(profilePreferencesStoreProvider).writeAvatar(avatar);
+  }
+}
+
+/// The user's chosen profile avatar (persisted).
+final profileAvatarProvider =
+    NotifierProvider<ProfileAvatarSetting, ProfileAvatar>(
+  ProfileAvatarSetting.new,
 );
 
 /// Classifies inbound bridge notifications into domain events.

@@ -174,6 +174,109 @@ class AppLocalizationsEs extends AppLocalizations {
   String get devicesTitle => 'Mis PCs';
 
   @override
+  String get profileTitle => 'Perfil';
+
+  @override
+  String get profileDisplayName => 'Usuario de Uxnan';
+
+  @override
+  String profileMemberSince(String date) {
+    return 'Miembro desde $date';
+  }
+
+  @override
+  String profilePairedPcs(int count) {
+    return '$count PCs';
+  }
+
+  @override
+  String profileActiveSessions(int count) {
+    return '$count en línea';
+  }
+
+  @override
+  String get statConversations => 'Conversaciones';
+
+  @override
+  String get statAgentsUsed => 'Agentes usados';
+
+  @override
+  String get statMessages => 'Mensajes';
+
+  @override
+  String get statGitActions => 'Acciones Git';
+
+  @override
+  String get statSessions => 'Sesiones';
+
+  @override
+  String get statTimeConnected => 'Tiempo conectado';
+
+  @override
+  String get statLongestSession => 'Sesión más larga';
+
+  @override
+  String get statMostUsedTransport => 'Más usado';
+
+  @override
+  String get statModelsUsed => 'Modelos';
+
+  @override
+  String get profileActivity => 'Actividad';
+
+  @override
+  String get profileByAgent => 'Por agente';
+
+  @override
+  String get profileNoData => 'Aún no hay actividad';
+
+  @override
+  String get profileActivityLess => 'Menos';
+
+  @override
+  String get profileActivityMore => 'Más';
+
+  @override
+  String profileHeatmapSummary(int count, int activeDays) {
+    return '$count acciones · $activeDays días activos';
+  }
+
+  @override
+  String profileHeatmapDay(String date, int count) {
+    return '$date · $count acciones';
+  }
+
+  @override
+  String get metricCombined => 'Combinado';
+
+  @override
+  String get metricConversations => 'Conversaciones';
+
+  @override
+  String get metricMessages => 'Mensajes';
+
+  @override
+  String get metricWork => 'Trabajo';
+
+  @override
+  String get profileEditTitle => 'Editar perfil';
+
+  @override
+  String get profileChoosePhoto => 'Elegir foto';
+
+  @override
+  String get profilePickIcon => 'O elige un icono';
+
+  @override
+  String get profileNameLabel => 'Nombre';
+
+  @override
+  String get profileNameHint => 'Tu nombre';
+
+  @override
+  String get profileAgentConversationsLabel => 'conversaciones';
+
+  @override
   String get deviceActive => 'Activa';
 
   @override
