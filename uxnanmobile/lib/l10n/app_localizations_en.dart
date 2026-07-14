@@ -187,6 +187,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceLastSeenLabel => 'Last seen';
 
   @override
+  String get deviceAddressReveal => 'Show address';
+
+  @override
+  String get deviceAddressHide => 'Hide address';
+
+  @override
   String get deviceNeverConnected => 'Never connected';
 
   @override

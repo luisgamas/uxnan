@@ -87,6 +87,14 @@ class SessionCoordinator {
   // not make it look connected. The connection indicators key off this.
   final BehaviorSubject<TrustedDevice?> _connectedDevice =
       BehaviorSubject<TrustedDevice?>.seeded(null);
+  // The URL the live channel is actually served through — the direct
+  // LAN/Tailscale host that won the dial race, or the relay. Distinct from the
+  // device's advertised hosts (whose first entry is a lexicographic guess, not
+  // the endpoint in use); the PC card reads this to show the real address.
+  // Mirrors [_connectedDevice]'s lifecycle: set on commit, cleared on any
+  // teardown/reconnect.
+  final BehaviorSubject<String?> _connectedEndpoint =
+      BehaviorSubject<String?>.seeded(null);
   // The device a connection attempt is currently in flight for (so only that
   // PC shows "connecting", never the others).
   final BehaviorSubject<TrustedDevice?> _connectingDevice =
@@ -148,6 +156,13 @@ class SessionCoordinator {
 
   /// The device that currently has a live channel, if any.
   TrustedDevice? get connectedDevice => _connectedDevice.value;
+
+  /// Stream of the URL the live channel is served through (the winning direct
+  /// host, or the relay), or null when not connected.
+  Stream<String?> get connectedEndpointStream => _connectedEndpoint.stream;
+
+  /// The URL the live channel is served through, if any.
+  String? get connectedEndpoint => _connectedEndpoint.value;
 
   /// Stream of the device a connection attempt is in flight for (or null).
   Stream<TrustedDevice?> get connectingDeviceStream => _connectingDevice.stream;
@@ -389,6 +404,7 @@ class SessionCoordinator {
     _transport = null;
     _channel = null;
     _connectedDevice.add(null);
+    _connectedEndpoint.add(null);
     unawaited(handleReconnect());
   }
 
@@ -410,6 +426,7 @@ class SessionCoordinator {
     );
     if (!_disposed) {
       _connectedDevice.add(null);
+      _connectedEndpoint.add(null);
       _connectingDevice.add(null);
       _connectionPhase.add(ConnectionPhase.disconnected);
     }
@@ -516,6 +533,7 @@ class SessionCoordinator {
   Future<void> _runReconnectLoop(TrustedDevice device) async {
     _connectionPhase.add(ConnectionPhase.reconnecting);
     _connectedDevice.add(null);
+    _connectedEndpoint.add(null);
     await _rxSubscription?.cancel();
     _rxSubscription = null;
 
@@ -568,6 +586,7 @@ class SessionCoordinator {
     await _recoveryState.close();
     await _activeMac.close();
     await _connectedDevice.close();
+    await _connectedEndpoint.close();
     await _connectingDevice.close();
     await _incoming.close();
   }
@@ -637,6 +656,9 @@ class SessionCoordinator {
     _startReceiving(transport);
     await _flushOutbound();
     _connectedDevice.add(device);
+    // Surface the real endpoint in use (the winning direct host, or the relay)
+    // so the PC card shows the address we're actually connected through.
+    _connectedEndpoint.add(transport.connectedUrl);
     _connectingDevice.add(null);
     _connectionPhase.add(ConnectionPhase.connected);
     _startHeartbeat();

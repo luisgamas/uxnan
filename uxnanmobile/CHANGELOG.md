@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — truthful, privacy-blurred PC address on the devices card
+- The address under each PC name now reflects the endpoint the live channel is
+  **actually** served through (the direct LAN/Tailscale host that won the dial
+  race, or the relay) instead of the first advertised host. The bridge sorts its
+  advertised hosts lexicographically, so a Tailscale `100.x` address always
+  sorted ahead of a LAN `192.168.x` one and was shown even while connected over
+  LAN — a display-only bug (the connection itself already picked the reachable
+  host). The connected endpoint is now carried from the transport through the
+  session coordinator (`connectedEndpointStream`) to the card. When not
+  connected, it still falls back to the relay host, then the first advertised
+  host.
+- The address is now **blurred by default and revealed on tap** (tap again to
+  re-hide), so a PC's network topology (its LAN/Tailscale IP) isn't exposed at a
+  glance to shoulder-surfing, screenshots, or screen-sharing. The blur animates
+  (reduced-motion aware), carries an eye affordance, and is accessibility
+  labelled ("Show address" / "Hide address"). Its own tap handling never opens
+  the PC's threads.
+
 ### Changed — focused composer and compact turn context
 - The Neural Expressive composer now contracts slightly while idle, then
   stretches, gains vertical breathing room and subtle elevation when focused,

@@ -106,6 +106,15 @@ final connectingDeviceProvider = StreamProvider<TrustedDevice?>(
   (ref) => ref.watch(sessionCoordinatorProvider).connectingDeviceStream,
 );
 
+/// The URL the live channel is actually served through (the winning direct
+/// LAN/Tailscale host, or the relay), or null when not connected. Lets the PC
+/// card show the REAL address in use instead of the first advertised host
+/// (which is just a lexicographic guess and often the Tailscale `100.x` IP even
+/// on LAN).
+final connectedEndpointProvider = StreamProvider<String?>(
+  (ref) => ref.watch(sessionCoordinatorProvider).connectedEndpointStream,
+);
+
 /// The connected bridge's status (`bridge/status`), refreshed whenever the
 /// connected device changes. Null while not connected or against an older
 /// bridge — short-circuits before touching the session when offline. Drives the

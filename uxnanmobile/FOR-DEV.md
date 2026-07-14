@@ -25,7 +25,10 @@ connected to live bridge data, validated on-device against a real bridge.
   `hosts` entry from the QR first, falls back to the relay.
 - **Multi-PC connection-targeting** — all live actions target the PC we actually
   hold a channel to; browsing is read-only. `bridge/status` consumed (Relay /
-  Direct transport indicator).
+  Direct transport indicator). The devices card shows the **real connected
+  endpoint** (the direct host that won the dial race, or the relay — carried on
+  `connectedEndpointStream`), not the first advertised host, and **blurs it by
+  default with tap-to-reveal** so the network topology isn't exposed at a glance.
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual

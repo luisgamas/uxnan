@@ -422,6 +422,18 @@ abstract class AppLocalizations {
   /// **'Last seen'**
   String get deviceLastSeenLabel;
 
+  /// Accessibility label / tooltip for the blurred PC address; tapping reveals the IP or relay host.
+  ///
+  /// In en, this message translates to:
+  /// **'Show address'**
+  String get deviceAddressReveal;
+
+  /// Accessibility label / tooltip for the revealed PC address; tapping blurs it again.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide address'**
+  String get deviceAddressHide;
+
   /// No description provided for @deviceNeverConnected.
   ///
   /// In en, this message translates to:

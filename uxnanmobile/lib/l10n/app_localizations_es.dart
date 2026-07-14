@@ -188,6 +188,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceLastSeenLabel => 'Última conexión';
 
   @override
+  String get deviceAddressReveal => 'Mostrar dirección';
+
+  @override
+  String get deviceAddressHide => 'Ocultar dirección';
+
+  @override
   String get deviceNeverConnected => 'Nunca conectado';
 
   @override

@@ -27,13 +27,18 @@ class _InMemoryTransport implements WebSocketTransport {
   late _InMemoryTransport peer;
 
   @override
+  String? connectedUrl;
+
+  @override
   Stream<Uint8List> get incoming => incomingController.stream;
 
   @override
   Stream<TransportState> get stateChanges => const Stream.empty();
 
   @override
-  Future<void> connect(String url, {Map<String, String>? headers}) async {}
+  Future<void> connect(String url, {Map<String, String>? headers}) async {
+    connectedUrl = url;
+  }
 
   @override
   Future<void> disconnect() async => forceClose();
@@ -191,6 +196,12 @@ class _FakeSelector implements TransportSelector {
     final bridge = _InMemoryTransport();
     phone.peer = bridge;
     bridge.peer = phone;
+    // Mirror the real selector: the winning transport records the endpoint it
+    // connected through (the relay here, or a direct ws:// host), so the
+    // coordinator can surface the real address in use.
+    phone.connectedUrl = device.relayUrl.isNotEmpty
+        ? device.relayUrl
+        : (device.hosts.isNotEmpty ? 'ws://${device.hosts.first}' : null);
     phoneSides.add(phone);
     final fakeBridge = _FakeBridge(bridge, identity, handler);
     currentBridge = fakeBridge;
@@ -287,6 +298,20 @@ void main() {
     expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
     expect(harness.coordinator.activeMac?.macDeviceId, 'mac-1');
     expect(harness.coordinator.connectedDevice?.macDeviceId, 'mac-1');
+  });
+
+  test('exposes the connected endpoint while live, clears it on disconnect',
+      () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    // The winning transport's endpoint is surfaced so the UI can show the real
+    // address in use (the relay here, per the active device).
+    expect(harness.coordinator.connectedEndpoint, 'wss://relay.test');
+
+    await harness.coordinator.disconnect();
+    expect(harness.coordinator.connectedEndpoint, isNull);
   });
 
   test('switchMac keeps the current session when the target is unreachable',

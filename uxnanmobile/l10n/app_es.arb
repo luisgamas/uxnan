@@ -63,6 +63,14 @@
     }
   },
   "deviceLastSeenLabel": "Última conexión",
+  "deviceAddressReveal": "Mostrar dirección",
+  "@deviceAddressReveal": {
+    "description": "Accessibility label / tooltip for the blurred PC address; tapping reveals the IP or relay host."
+  },
+  "deviceAddressHide": "Ocultar dirección",
+  "@deviceAddressHide": {
+    "description": "Accessibility label / tooltip for the revealed PC address; tapping blurs it again."
+  },
   "deviceNeverConnected": "Nunca conectado",
   "devicePairedLabel": "Pareado",
   "deviceRename": "Renombrar",

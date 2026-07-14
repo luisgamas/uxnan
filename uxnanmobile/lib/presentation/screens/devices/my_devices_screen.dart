@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -132,6 +134,12 @@ class MyDevicesScreen extends ConsumerWidget {
     // shows it.
     final relayConnected =
         ref.watch(bridgeStatusProvider).value?.relayConnected;
+    // The endpoint the live channel is ACTUALLY served through (the winning
+    // direct host, or the relay), so the connected card shows the real address
+    // in use — not the first advertised host (a lexicographic guess that is
+    // usually the Tailscale `100.x` IP even when we're on LAN). Null until
+    // known; only the connected PC uses it.
+    final connectedEndpoint = ref.watch(connectedEndpointProvider).value;
 
     if (devices.isEmpty) {
       return const Scaffold(body: _PairEmptyState());
@@ -190,6 +198,9 @@ class MyDevicesScreen extends ConsumerWidget {
                 isConnecting: device.macDeviceId == connectingId,
                 relayConnected:
                     device.macDeviceId == connectedId ? relayConnected : null,
+                connectedEndpoint: device.macDeviceId == connectedId
+                    ? connectedEndpoint
+                    : null,
                 onOpen: () => _open(context, device),
                 onConnect: () => _connect(ref, context, device),
                 onRename: () => _rename(ref, context, device),
@@ -220,6 +231,7 @@ class _DeviceCard extends StatelessWidget {
     required this.isConnected,
     required this.isConnecting,
     required this.relayConnected,
+    required this.connectedEndpoint,
     required this.onOpen,
     required this.onConnect,
     required this.onRename,
@@ -234,6 +246,11 @@ class _DeviceCard extends StatelessWidget {
   /// For the connected PC: whether the live channel runs over the relay (true)
   /// or direct LAN/Tailscale (false); null when unknown / not connected.
   final bool? relayConnected;
+
+  /// For the connected PC: the URL the live channel is actually served through
+  /// (the winning direct host, or the relay); null when unknown / not connected.
+  /// Preferred over [TrustedDevice.hosts] for the displayed address.
+  final String? connectedEndpoint;
   final VoidCallback onOpen;
   final VoidCallback onConnect;
   final VoidCallback onRename;
@@ -247,7 +264,7 @@ class _DeviceCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final host = _addressLabel(device);
+    final host = _addressLabel(device, connectedEndpoint);
 
     return NeCard(
       onTap: onOpen,
@@ -276,15 +293,10 @@ class _DeviceCard extends StatelessWidget {
                           color: colors.onSurfaceVariant,
                         ),
                         const SizedBox(width: UxnanSpacing.xs),
-                        Flexible(
-                          child: Text(
-                            host,
-                            style: UxnanTypography.codeSmall.copyWith(
-                              color: colors.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+                        // Privacy: the address is blurred by default (it
+                        // exposes the network topology — LAN/Tailscale IPs).
+                        // Tapping it reveals it; tapping again re-hides it.
+                        Flexible(child: _RevealableAddress(address: host)),
                       ],
                     ),
                   ],
@@ -391,15 +403,136 @@ class _DeviceCard extends StatelessWidget {
     return '${l10n.deviceLastSeenLabel}: ${_relativeTime(lastSeen)}';
   }
 
-  /// The address shown under the device name: the relay host when a relay is
-  /// configured, otherwise the first direct LAN/Tailscale host (a pure
-  /// LAN/Tailscale device has no relay).
-  static String _addressLabel(TrustedDevice device) {
+  /// The address shown under the device name.
+  ///
+  /// Prefers [connectedEndpoint] — the endpoint the live channel is ACTUALLY
+  /// served through (the winning direct host, or the relay) — so the connected
+  /// card shows the real address in use. Falls back, when not connected, to the
+  /// relay host, then the first advertised direct host. (Using the advertised
+  /// `hosts.first` alone was misleading: the bridge sorts its hosts
+  /// lexicographically, so the Tailscale `100.x` address always sorts ahead of
+  /// a LAN `192.168.x` one and showed even while connected over LAN.)
+  static String _addressLabel(TrustedDevice device, String? connectedEndpoint) {
+    if (connectedEndpoint != null && connectedEndpoint.isNotEmpty) {
+      return _hostFromEndpoint(connectedEndpoint);
+    }
     if (device.relayUrl.isNotEmpty) {
       final host = Uri.tryParse(device.relayUrl)?.host;
       return host == null || host.isEmpty ? device.relayUrl : host;
     }
     return device.hosts.isNotEmpty ? device.hosts.first : '';
+  }
+
+  /// The human-readable `host` (or `host:port`) from a transport URL. A direct
+  /// endpoint carries an explicit port (`ws://192.168.1.5:8765` → `192.168.1.5:
+  /// 8765`); the relay usually does not (`wss://relay.uxnan.dev` → `relay.uxnan.
+  /// dev`). Falls back to the raw string if it doesn't parse as a URI.
+  static String _hostFromEndpoint(String endpoint) {
+    final uri = Uri.tryParse(endpoint);
+    if (uri == null || uri.host.isEmpty) return endpoint;
+    return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  }
+}
+
+/// The PC's address (its LAN/Tailscale IP or relay host) rendered blurred by
+/// default and revealed on tap — a low-friction privacy affordance so the
+/// network topology isn't exposed at a glance (shoulder-surfing, screenshots,
+/// screen-sharing). Tapping toggles between blurred and clear; the blur
+/// animates unless the OS has reduced motion enabled.
+///
+/// The tap is handled by this widget's own [InkWell], which wins the gesture
+/// arena over the enclosing card — so revealing the address never opens the
+/// PC's threads.
+class _RevealableAddress extends StatefulWidget {
+  const _RevealableAddress({required this.address});
+
+  final String address;
+
+  @override
+  State<_RevealableAddress> createState() => _RevealableAddressState();
+}
+
+class _RevealableAddressState extends State<_RevealableAddress> {
+  /// Blur strength (logical px) applied while hidden — enough to make an 11 px
+  /// monospace IP unreadable while preserving its shape and length.
+  static const double _blurSigma = 5;
+
+  bool _revealed = false;
+
+  void _toggle() => setState(() => _revealed = !_revealed);
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final label = _revealed ? l10n.deviceAddressHide : l10n.deviceAddressReveal;
+
+    return Semantics(
+      button: true,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: _toggle,
+          borderRadius: const BorderRadius.all(UxnanRadius.md),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UxnanSpacing.xs,
+              vertical: 1,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: _revealed ? 0 : _blurSigma),
+                    duration: reduceMotion
+                        ? Duration.zero
+                        : const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, sigma, child) {
+                      // Below a hair of blur, drop the filter entirely: an
+                      // exactly-zero-sigma ImageFilter can smear on some GPUs,
+                      // and skipping it while revealed is cheaper.
+                      if (sigma < 0.05) return child!;
+                      return ImageFiltered(
+                        imageFilter: ImageFilter.blur(
+                          sigmaX: sigma,
+                          sigmaY: sigma,
+                          tileMode: TileMode.decal,
+                        ),
+                        child: child,
+                      );
+                    },
+                    child: Text(
+                      widget.address,
+                      style: UxnanTypography.codeSmall.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: UxnanSpacing.xs),
+                // Decorative affordance; the Semantics label above already
+                // announces the reveal/hide action.
+                ExcludeSemantics(
+                  child: Icon(
+                    _revealed
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    size: 13,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
