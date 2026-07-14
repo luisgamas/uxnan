@@ -41,6 +41,29 @@ distinct, precise states** plus a derived idle:
 | `idle` *(derived)* | Agent at rest, no precise report | Gray |
 | `stale` *(any)* | No update in > 30 min | Same color, dimmed (`opacity-40`) |
 
+> **`done` vs `waiting`.** A finished turn reads as **`done`** (the resting state) —
+> even though the agent is technically idle at its prompt waiting for your next
+> message. `waiting` is reserved for a genuine **mid-turn** prompt where the agent
+> needs your answer to continue (a permission / question / elicitation). So Claude's
+> post-turn idle notification maps to `done`, not `waiting` — the card shows "Done"
+> + an unread badge, and only a real mid-turn prompt pins it in the **Needs you**
+> lane. A stale `waiting`/`blocked` (no update in > 30 min, no closing event) decays
+> to a neutral `idle` so nothing sits in **Needs you** forever.
+>
+> **Identity from the hook.** A hook report is self-declared (it carries the agent
+> type), so an agent you start **by hand** in any ADE terminal shows its brand +
+> precise state as soon as its first hook lands — even a wrapper / renamed /
+> `node`-launched agent that process detection can't name. Process detection is only
+> the fallback for agents that report no hook.
+>
+> **Sub-agents.** When an agent spawns children — **Claude Code's Task tool** or
+> **OpenCode's `task`** (which runs as a child session) — they show as **nested
+> rows** under the parent with a count badge (active / total), and the parent won't
+> read "Done" while a child is still working. Children ride the same
+> `SubagentStart` / `SubagentStop` lifecycle (OpenCode's plugin maps its child
+> sessions to it), keyed by the child's id so a background child never flips the
+> parent. Codex / Gemini / Pi have no sub-agent concept.
+
 These states show up everywhere you track an agent:
 
 - **Sidebar** — a colored dot next to each agent terminal, on the project /
@@ -122,8 +145,11 @@ for each of Claude Code, Codex, Gemini CLI, OpenCode and Pi:
 In **Settings → Agents → Hooks**, a master **Install agent hooks** switch installs
 / removes all five and persists the choice (`AppSettings.autoInstallHooks`); each
 agent card also has its own **Install** / **Uninstall** and an honest status
-badge. The **Claude Code** card's **Show JSON config** inspects/copies the exact
-`hooks` block.
+badge. Every agent card has a **Show config** disclosure that inspects/copies the
+exact config the ADE installs — the `hooks` block for **Claude Code** / **Gemini
+CLI**, the `~/.codex/hooks.json` body for **Codex** (its `trusted_hash` in
+`config.toml` is managed automatically), and the plugin / extension source for
+**OpenCode** / **Pi**.
 
 **Verify.** Launch Claude Code in any terminal. The tab should show a colored
 dot from a precise state (working while it's thinking / using a tool, waiting

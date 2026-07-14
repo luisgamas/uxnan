@@ -54,7 +54,7 @@ available today are:
   doing (needs you · done · working · idle).
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
   ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
-  Canvas rendering, and scrollback that survives recreating a pane — built on
+  WebGL rendering with DOM fallback, and scrollback that survives recreating a pane — built on
   `portable-pty` and xterm.js.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
@@ -87,6 +87,13 @@ available today are:
   automatically — and, via an injected **browser-control MCP server**, discover
   `browser_*` tools to preview and test what they build with no setup. See
   [the integrated browser](./docs/browser.md).
+- **Quick commands.** Program shell commands you run often and launch them from a
+  top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.
+  Each command carries a scope (**global · project · worktree**, pruned with its
+  project/worktree), substitution variables (`{worktree}` `{branch}` `{repo}` …),
+  and, under advanced options, where it runs (a new tab or the focused terminal),
+  whether it runs immediately or is only pre-typed, the working directory, and the
+  shell. Opens with `Ctrl/⌘+Shift+P`.
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated

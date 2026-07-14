@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
 use crate::error::{AppError, CommandError};
 use crate::git::{self, WorktreeEntry};
-use crate::model::{AgentStateEntry, AppData, AppSettings, RepoData};
+use crate::model::{AgentStateEntry, AppData, AppSettings, QuickCommand, RepoData};
 use crate::state::{AppState, HookServerInfo};
 
 /// Return the full persisted application state. The frontend calls this once at
@@ -35,6 +35,21 @@ pub async fn update_settings(
     data.settings = settings;
     state.persistence.save(&data).map_err(CommandError::from)?;
     Ok(data.clone())
+}
+
+/// Replace the full set of user-programmed quick commands. Create / edit /
+/// duplicate / delete / move / prune all funnel through this snapshot setter,
+/// mirroring [`update_settings`] — the frontend owns the array and persists the
+/// whole list. Pruning on project/worktree removal is done frontend-side (it
+/// holds the live worktree paths) and lands here as a plain overwrite.
+#[tauri::command]
+pub async fn quick_commands_set(
+    state: State<'_, AppState>,
+    commands: Vec<QuickCommand>,
+) -> Result<(), CommandError> {
+    let mut data = state.data.write().await;
+    data.quick_commands = commands;
+    state.persistence.save(&data).map_err(CommandError::from)
 }
 
 /// Lightweight liveness probe. Used by the frontend at startup to confirm the
@@ -161,12 +176,14 @@ pub async fn pty_create(
     // (`UXNAN_BROWSER_URL` + `_TOKEN`), and point `$BROWSER` at the bundled shim so
     // tools that honor it (logins/previews) land in-app too. Honors the user's
     // link policy on arrival (see `browser::route_url`).
-    let (browser_enabled, allow_agents, mcp_enabled) = {
+    let (browser_enabled, allow_agents, mcp_enabled, mcp_managed_frictionless) = {
         let data = state.data.read().await;
+        let b = &data.settings.browser;
         (
-            data.settings.browser.enabled,
-            data.settings.browser.allow_agents,
-            data.settings.browser.mcp_enabled,
+            b.enabled,
+            b.allow_agents,
+            b.mcp_enabled,
+            b.mcp_injection == crate::model::McpInjection::Managed && b.friction_free,
         )
     };
     if browser_enabled && allow_agents {
@@ -198,6 +215,14 @@ pub async fn pty_create(
                 crate::mcpinject::mcp_endpoint(&h.url),
             ));
             env.push((crate::mcpinject::TOKEN_ENV.to_string(), h.token.clone()));
+        }
+        // Frictionless (managed mode): trust the workspace for Gemini so it doesn't
+        // prompt to trust the folder on launch. A version-robust env var is used
+        // instead of a launch flag on purpose — an unknown env var is a harmless
+        // no-op, whereas newer Gemini rejects the `--skip-trust` flag and would fail
+        // the whole launch. Only a Gemini process reads it; scoped to this terminal.
+        if mcp_managed_frictionless {
+            env.push(("GEMINI_CLI_TRUST_WORKSPACE".to_string(), "true".to_string()));
         }
         crate::mcpinject::prepare(&app, cwd.as_deref().unwrap_or_default()).await;
     }
@@ -1257,6 +1282,15 @@ pub async fn set_prevent_sleep(
 pub struct HookScripts {
     /// The rendered `hooks` block ready to paste into `~/.claude/settings.json`.
     pub claude_json: String,
+    /// The rendered `hooks` block for `~/.gemini/settings.json`.
+    pub gemini_json: String,
+    /// The full `~/.codex/hooks.json` body (the `trusted_hash` in `config.toml` is
+    /// auto-managed, so it isn't shown here).
+    pub codex_json: String,
+    /// The in-process plugin source the ADE drops in OpenCode's `plugins/` dir.
+    pub opencode_plugin_js: String,
+    /// The in-process extension source the ADE drops in Pi's `extensions/` dir.
+    pub pi_extension_js: String,
     /// The shell-agnostic relay shared by Codex / Gemini / OpenCode.
     pub status_relay_cjs: String,
     pub wrapper_bash: String,
@@ -1412,8 +1446,15 @@ pub async fn get_hook_scripts(
     };
     let claude_json = agent_hooks::render_claude_settings_json(&install.status_relay_script)
         .map_err(CommandError::from)?;
+    let gemini_json = agent_hooks::render_gemini_settings_json(&install.status_relay_script)
+        .map_err(CommandError::from)?;
+    let codex_json = agent_hooks::render_codex_hooks_json(&install).map_err(CommandError::from)?;
     Ok(Some(HookScripts {
         claude_json,
+        gemini_json,
+        codex_json,
+        opencode_plugin_js: agent_hooks::OPENCODE_STATUS_PLUGIN.to_string(),
+        pi_extension_js: agent_hooks::PI_STATUS_EXTENSION.to_string(),
         status_relay_cjs: agent_hooks::STATUS_RELAY_SCRIPT.to_string(),
         wrapper_bash: agent_hooks::WRAPPER_BASH.to_string(),
         wrapper_powershell: agent_hooks::WRAPPER_POWERSHELL.to_string(),

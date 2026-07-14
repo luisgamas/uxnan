@@ -5,6 +5,197 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — OpenCode sub-agents in the agent view
+
+- OpenCode's delegated sub-agents (the `task` tool, which OpenCode runs as **child
+  sessions**) now appear as nested rows under the parent, the same as Claude's. The
+  OpenCode status plugin detects a child session (a `session.created` carrying a
+  `parentID`), reports its lifecycle as `SubagentStart` / `SubagentStop` (named from
+  its title `"… (@<name> subagent)"`), and — the key fix — **no longer lets a child
+  session's busy/idle flip the parent's status** (a background child finishing used
+  to read the parent as done). The backend sub-agent routing is now agent-agnostic
+  (`is_subagent_event`), so Claude and OpenCode share one roster path. **Validated
+  against OpenCode 1.17.20** by capturing real bus events.
+  (`static/hooks/uxnan-opencode-status-plugin.js`, `src-tauri/src/hooks.rs`.)
+
+### Changed — left-panel polish
+
+- Subtle refinements to the left panel, keeping the neutral token-driven style
+  (projects stay borderless): the agent-view **"Agents · n"** label is more legible
+  (8px → 10px), the **unread / "needs review"** dot on project & worktree cards is a
+  touch larger with a soft halo (so a finished-but-unreviewed agent reads at a
+  glance without tinting the card), and the collapsed agent-avatar strip gains a
+  tactile hover + a more legible "+N". (`AgentSpace.svelte`, `WorktreeRow.svelte`,
+  `ProjectCard.svelte`.)
+
+### Added — configurable terminal keyboard arbitration + interrupt inference
+
+- **You now control which shortcuts go to uxnan vs the TUI/agent while a terminal
+  is focused.** A single per-action policy (**Settings → Keyboard shortcuts** — a
+  uxnan/TUI toggle on each shortcut) replaces the two old hardcoded switches. The
+  default reserves the low-collision chords for uxnan and **yields the ones shells
+  & TUIs rely on** — `Ctrl+W` (delete-word), `Ctrl+P` (history), `Ctrl+S` (XOFF),
+  `Ctrl+J` (newline), `Ctrl+B` (tmux prefix). Cross-platform via the `Mod` (⌘ on
+  macOS, Ctrl elsewhere) + `Alt` (⌥) tokens. (Behaviour change from before:
+  `Ctrl+W` no longer steals delete-word from the shell, and `Ctrl+,` /
+  `Ctrl+Shift+P` now work inside a terminal.)
+- **Focus mode (passthrough)** — flip a terminal so every key reaches the TUI (even
+  reserved uxnan shortcuts), shown by an on-terminal badge; click it (or bind
+  `toggleTerminalPassthrough`) to exit.
+- **Leader key (tmux-style, opt-in)** — set a leader chord in Settings; in a focused
+  terminal, press it then a shortcut to send that one to uxnan whatever its policy.
+- **Interrupt inference** — `Ctrl+C` / double-`Esc` while an agent is `working` with
+  no closing `Stop` hook now settles its card to `done + interrupted`. The keys are
+  **observed, never consumed** (the agent still gets its SIGINT/Esc), and a genuine
+  later hook always wins.
+- Refactor: a shared dispatcher (`keyactions.ts` `runAppAction`) and a pure,
+  unit-tested arbiter (`terminalArbiter.ts` `decideTerminalKey` — 10 new Vitest
+  cases → 137); settings `AppSettings.terminalKeyPolicy` + `leaderKey`. Spec:
+  `architecture/02b` §4.b.
+
+### Added — sub-agent (Task-tool child) tracking in the agent view
+
+- When a Claude Code session spawns **sub-agents** (via the Task tool), they now
+  appear as **nested rows** under the parent in the left-panel agent view, each
+  with its own status dot, and the parent shows a **count badge** (active / total).
+  The parent is **done-gated**: it won't flash "Done" while a spawned child is
+  still working (a background child can outlive the parent's own Stop).
+- Rides the same hook transport: the ADE now subscribes Claude's `SubagentStart` /
+  `SubagentStop` and tracks children in a **per-session roster** on the parent's
+  cache entry (keyed by a child id pulled from the raw payload, capped at 32),
+  **without ever touching the parent's own status**. The roster is **agent-generic**,
+  so any agent that later reports child signals plugs in (OpenCode sub-sessions are
+  wired too — see the OpenCode entry above).
+- `src-tauri/src/model.rs` (`SubagentEntry` + `upsert_subagent`), `hooks.rs`
+  (`source_subagent`, subagent routing in `handle_hook`, `subagents` on
+  `AgentStatusEvent`), `agent_hooks.rs` (`CLAUDE_EVENTS`), and the frontend
+  (`types.ts`, `agentStatus.svelte.ts`, `agentDisplay.ts` done-gate, `AgentRow.svelte`
+  nested rows + badge, EN/ES i18n). 4 new Rust tests (163 total). **Validated against
+  Claude Code 2.1.209** by capturing real hook payloads: `SubagentStart` / `SubagentStop`
+  both carry `agent_id` + `agent_type`, and `SubagentStop` adds the child's final reply.
+  The extractor stays defensive — it **ignores an event with no stable child id** (no
+  bogus rows) — since the fields are version-sensitive.
+
+### Fixed — agent status no longer sticks on "Waiting for input" after a turn ends
+
+- **Claude:** a finished turn now reads as **Done**, not "Waiting for input".
+  When Claude finishes it fires `Stop` (→ `done`) and then, sitting idle at the
+  prompt, a `Notification` with `notification_type: "idle_prompt"`. The ADE was
+  mapping that idle notice to **`waiting`**, which — because the state cache is
+  last-write-wins — clobbered the `done` and left the worktree card stuck on
+  "Waiting for input" (and pinned in the **Needs you** lane). `idle_prompt` now
+  maps to **`done`** (the resting/finished state) and the transient `auth_success`
+  notice is ignored; only genuine mid-turn prompts (`permission_prompt` /
+  `elicitation_dialog` / `agent_needs_input`) still mean `waiting`. This affected
+  Claude only — Codex doesn't subscribe to `Notification`, and Gemini/OpenCode/Pi
+  already map their idle/finish events to `done`. (`src-tauri/src/hooks.rs`.)
+- A **stale** `waiting`/`blocked` hook state (no update in > 30 min and no closing
+  event) now decays to a neutral **`idle`** in the UI instead of dominating the
+  **Needs you** lane forever — an agent-agnostic backstop for any agent that gets
+  stuck without a terminal event. (`src/lib/state/agentDisplay.ts`.)
+
+### Changed — a hook report now establishes the tab's agent identity
+
+- An agent started **by hand** in any ADE terminal (not just via the launch
+  button) now appears in the agent view — and drives the worktree status dot — as
+  soon as its **first hook** arrives, instead of waiting for (or depending on)
+  process-tree detection matching its executable name. A hook is self-declared (it
+  carries the agent type), so a wrapper / renamed / `node`-launched agent that
+  process detection can't name is no longer invisible while still reporting precise
+  states. Process detection remains the fallback for agents with no hook.
+  (`src/lib/state/agentStatus.svelte.ts`.)
+
+### Added — user quick commands (top-bar ⚡ launcher + Settings)
+
+- Program shell commands you run often and launch them in the active
+  worktree — or a project/worktree of your choice — from a new **⚡ launcher** in
+  the top bar. It sits in the fixed window-controls slot (left of
+  minimize/maximize/close), so a hidden panel never covers it. Empty → a "create
+  your first command" entry that jumps to settings; otherwise a stable menu with
+  two titled sections — **active worktree/project** commands, then **global** ones
+  — plus **Manage commands…**. Opens with **`Ctrl/⌘+Shift+P`** (rebindable in
+  Settings → Keyboard shortcuts).
+- **Settings → Quick commands** — create / edit / duplicate / delete / **move**
+  commands. Each command has: a name + optional icon, the command line with
+  **insertable variables** (`{worktree}` `{branch}` `{repo}` `{repoName}` `{path}`,
+  substituted at run time, each a click-to-insert chip with a tooltip), a **scope**
+  (global / project / worktree — the move target), and, under **Advanced options**,
+  where it runs (**a new terminal tab** or the **currently-focused terminal**),
+  whether it **runs immediately or is only pre-typed**, the **working directory**
+  (active worktree / project root / a custom path), the **shell** (any configured
+  terminal profile), and an optional **confirm-before-running** toggle.
+- Commands persist flat in `AppData.quickCommands` (new `quick_commands_set`
+  command; `#[serde(default)]`, so older state loads with no schema bump).
+  Project- and worktree-scoped commands are **pruned automatically** when their
+  project or worktree is removed. Running reuses the existing terminal
+  `runCommand` launch path (so PowerShell/pwsh's slower startup is handled by the
+  same shell-settle timing as agent launch), threading a new `runCommandExecute`
+  flag to omit the trailing Enter for "type only". EN/ES i18n; 10 new Vitest cases
+  in `src/lib/quickCommands.test.ts` (token substitution, cwd resolution, scope
+  filters).
+
+### Changed — agent MCP/trust setup no longer writes to your project or prompts
+
+- The browser-control MCP server is now injected **only** into each CLI's
+  **user-global** config (`~/.claude.json`, `~/.codex/config.toml`,
+  `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`) — **never a file in
+  your project folder**. User-global config isn't project-approval-gated, so no CLI
+  shows an "approve this MCP server?" prompt. This replaces the old project-scoped
+  `Workspace` mode, which was the only thing that dropped files in the working
+  directory and triggered per-project approval. The injection setting is now
+  `Off | Managed (default) | Global`; a saved `Workspace` choice migrates to
+  `Managed`.
+- Gemini's injected entry now carries `trust: true`, so it no longer asks for
+  per-tool confirmation of the browser server.
+- New **Frictionless launch** setting (Settings → Browser → Agent browser MCP;
+  default on, Managed mode only): app-launched agents skip the CLI's "trust this
+  folder?" prompt — Gemini via the `GEMINI_CLI_TRUST_WORKSPACE` env var
+  (version-robust; an unknown env var is a no-op, unlike the `--skip-trust` flag that
+  newer Gemini rejects), Codex via a per-folder
+  `[projects."<cwd>"].trust_level = "trusted"` seed — keyed with **forward slashes**
+  as Codex itself stores project paths (even on Windows), canonicalized, and
+  respecting any explicit user choice. Turn it off to keep the CLIs' native prompts.
+- Agent status **hooks** are unchanged — they were already written to user-global
+  config (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.codex/hooks.json`)
+  and the OpenCode/Pi plugin dirs, never the project.
+
+### Added
+
+- Settings → Agents → Hooks: **every** agent card now has a **Show config**
+  disclosure (previously Claude Code only) that inspects and copies the exact config
+  the ADE installs — the `hooks` block for Claude Code / Gemini CLI, the
+  `~/.codex/hooks.json` body for Codex, and the plugin / extension source for
+  OpenCode / Pi.
+
+### Fixed
+
+- Terminal text selection no longer starts one or two columns before the click, and the selection highlight no longer appears to sit on top of the glyphs. With ligatures enabled the terminal was falling back to xterm's DOM renderer, which shapes text off the fixed monospace grid while the mouse maps selection to the grid; ligatures now render through the WebGL renderer's character joiner (as in VS Code), so every terminal stays on the grid-aligned accelerated renderer.
+- Terminals no longer leave ghosted/stale frames after resizing an adjacent panel: the WebGL renderer now recovers from a lost GPU context (`onContextLoss`) instead of compositing a frozen frame, and a grid change or pane reveal forces a single full repaint (clearing the glyph atlas and cell model) instead of tearing down and recreating the render surface each time (which also removes a disposer race that could leave a pane blank).
+- Stabilized agent launch by waiting for interactive shell startup before typing the command, and preserved scrollback position across pane fits.
+
+### Changed
+
+- The terminal always uses xterm's WebGL renderer (the accelerated path VS Code uses), including when ligatures are enabled; the DOM renderer remains only as an automatic fallback when WebGL is unavailable.
+
+### Fixed — updater notification phases and responsive layout
+
+- The update notification no longer shows release notes while the installer is
+  downloading; that link appears only in the persistent ready-to-install state.
+- The pinned update card now uses a compact vertical layout aligned with the app
+  tokens: a larger title, normal-sized supporting text, top-right dismissal, and
+  full-width actions at the bottom.
+- Release-note URLs now follow the selected stable/nightly release tag.
+
+### Fixed — provider usage popover focus and live worktree discovery
+
+- The status-bar provider-usage popover no longer moves focus to **Refresh** on
+  open or restores focus to the status-bar trigger on close, preventing tooltips
+  from appearing while the pointer is elsewhere. Any pending gauge or Refresh
+  tooltip is also cancelled when the popover closes.
+- The Projects sidebar now reconciles each registered repository's worktree list
+  every 3 seconds. Worktrees created externally by an agent or Git therefore
+  appear automatically in the project card and in the **By status** view; only
+  changed lists are applied to keep ordering stable.
 ### Added — richer provider usage (reset time, Codex resets, account type, $)
 
 - **Absolute reset time.** Every quota window and credit line now shows *when* a

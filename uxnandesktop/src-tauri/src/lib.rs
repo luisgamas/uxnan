@@ -212,6 +212,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_app_state,
             commands::update_settings,
+            commands::quick_commands_set,
             commands::ping,
             commands::usage_read,
             commands::usage_detect,

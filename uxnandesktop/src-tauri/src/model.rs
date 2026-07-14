@@ -31,6 +31,13 @@ pub struct AppData {
     /// (restored on startup; the backend never interprets it).
     #[serde(default)]
     pub terminal_layout: Option<serde_json::Value>,
+    /// User-programmed quick commands, runnable from the top-bar launcher. A flat
+    /// list: each command carries its own [`QuickCommandScope`] + binding
+    /// (`project_id` / `worktree_path`). Pruned by the frontend when the project
+    /// or worktree it belongs to is removed. `#[serde(default)]` so older state
+    /// loads with an empty list and no schema bump.
+    #[serde(default)]
+    pub quick_commands: Vec<QuickCommand>,
     /// Opaque, frontend-owned serialization of the orchestration engine's runs
     /// (the `Run` graph, step states + captured outputs — spec `02d` §3).
     /// Persisted so a run survives a restart and the engine re-attaches on load;
@@ -47,6 +54,7 @@ impl Default for AppData {
             settings: AppSettings::default(),
             agent_cache: Vec::new(),
             terminal_layout: None,
+            quick_commands: Vec::new(),
             orchestration_runs: None,
         }
     }
@@ -161,6 +169,93 @@ pub struct AgentProfile {
     pub icon: Option<String>,
 }
 
+/// Where a [`QuickCommand`] applies. A flat list of commands is scoped by this:
+/// `Global` is always available; `Project` is bound to a repo id and shows for
+/// every worktree of that project; `Worktree` is bound to a single worktree's
+/// absolute path (worktrees have no stable id — see [`RepoData::worktree_order`]).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandScope {
+    Global,
+    Project,
+    Worktree,
+}
+
+/// Where a [`QuickCommand`] runs. `NewTab` spawns a fresh integrated terminal;
+/// `Active` types into the currently-focused integrated terminal.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandTarget {
+    NewTab,
+    Active,
+}
+
+/// Whether a [`QuickCommand`] auto-runs (`Execute`, typed with a trailing Enter)
+/// or is only pre-typed into the shell for the user to run (`TypeOnly`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandRunMode {
+    Execute,
+    TypeOnly,
+}
+
+/// Working directory a [`QuickCommand`] runs in (only meaningful for
+/// [`QuickCommandTarget::NewTab`]; the `Active` target inherits the focused
+/// terminal's cwd).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickCommandCwd {
+    /// The active worktree/workspace folder.
+    ActiveWorktree,
+    /// The active project's root folder.
+    ProjectRoot,
+    /// A fixed custom path ([`QuickCommand::custom_cwd`]).
+    Custom,
+}
+
+/// A user-programmed quick command, runnable from the top-bar launcher. The
+/// `command` line may contain `{worktree}` / `{branch}` / `{repo}` /
+/// `{repoName}` / `{path}` tokens, substituted with the active context at run
+/// time. Same `camelCase` serialization as the rest of the model, mirrored in
+/// `src/lib/types.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickCommand {
+    pub id: String,
+    pub name: String,
+    /// The shell command line (may contain substitution tokens).
+    pub command: String,
+    /// Optional helper text shown in the menu/settings.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Optional icon: a builtin glyph key or an inline `data:` URL (same form as
+    /// [`RepoData::icon`]); `None` → the default launcher glyph.
+    #[serde(default)]
+    pub icon: Option<String>,
+    pub scope: QuickCommandScope,
+    /// Bound repo id when `scope == Project`.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    /// Bound worktree absolute path when `scope == Worktree`.
+    #[serde(default)]
+    pub worktree_path: Option<String>,
+    #[serde(default = "default_run_mode")]
+    pub run_mode: QuickCommandRunMode,
+    #[serde(default = "default_command_target")]
+    pub target: QuickCommandTarget,
+    #[serde(default = "default_command_cwd")]
+    pub cwd: QuickCommandCwd,
+    /// Fixed working directory when `cwd == Custom`.
+    #[serde(default)]
+    pub custom_cwd: Option<String>,
+    /// Terminal profile (shell) to run in; `None` → the default terminal shell.
+    #[serde(default)]
+    pub shell_profile_id: Option<String>,
+    /// Ask the user to confirm before running (for destructive commands).
+    #[serde(default)]
+    pub confirm: bool,
+}
+
 /// Starter profiles seeded on a fresh install: the shells guaranteed to be
 /// present on the platform, ready to use. On Windows, PowerShell launches with
 /// `-ExecutionPolicy Bypass` so npm-installed agent shims (`.ps1`) run without
@@ -273,6 +368,15 @@ pub struct AppSettings {
     /// binding; an empty string disables the action. Defaults are in the frontend.
     #[serde(default)]
     pub keybindings: std::collections::HashMap<String, String>,
+    /// Per-action override for which side wins a chord while a terminal is focused:
+    /// `"app"` (uxnan) or `"terminal"` (the TUI/agent). Missing actions use their
+    /// default policy (defined in the frontend). Persisted opaquely.
+    #[serde(default)]
+    pub terminal_key_policy: std::collections::HashMap<String, String>,
+    /// Leader chord (tmux-style) that, in a focused terminal, routes the next
+    /// shortcut to uxnan. Empty = off. Persisted opaquely.
+    #[serde(default)]
+    pub leader_key: String,
     /// Active theme id (built-in "system"/"light"/"dark"/… or a custom id).
     #[serde(default = "default_theme_id")]
     pub active_theme_id: String,
@@ -475,19 +579,30 @@ pub enum BrowserLinkPolicy {
 }
 
 /// How the browser-control MCP server (spec `02d` §1.6) is made discoverable to the
-/// CLI agents the ADE launches (see `mcpinject.rs`). `Workspace` is the default: it
-/// writes a project-scoped MCP config into the terminal's working directory so both
-/// app-launched and hand-typed agents there get the `browser_*` tools, and removes
-/// what it created on exit. `Global` registers the server in each CLI's global user
-/// config (works in every project; covers CLIs without a project config). `Off`
-/// injects nothing — the user can wire it manually from the copy-paste snippet in
-/// Settings → Browser.
+/// CLI agents the ADE launches (see `mcpinject.rs`). `Managed` is the default: it
+/// registers the server in each CLI's **user-global** config only — never the
+/// project working directory. User-global config is not project-approval-gated for
+/// any supported CLI, so there is no "approve this MCP server?" prompt and nothing
+/// lands in the user's project folder (which they'd notice and delete). Hand-typed
+/// agents in any folder still pick the server up, because every CLI reads its
+/// user-global config too. With the frictionless setting on
+/// ([`BrowserSettings::friction_free`]), app-launched agents additionally receive
+/// first-party trust-skip flags so the CLI never prompts to trust the folder (see
+/// `mcpinject.rs`). `Global` writes the same user-global config but leaves the CLIs'
+/// own trust prompts intact. `Off` injects nothing — the user can wire it manually
+/// from the copy-paste snippet in Settings → Browser.
+///
+/// The legacy `Workspace` mode (a project-scoped config in the working directory)
+/// was **removed**: it was the sole source of both the project-dir files and the
+/// project-approval prompts, and user-global config covers hand-typed agents just as
+/// well. A persisted `"workspace"` value deserializes to `Managed` via the alias.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum McpInjection {
     Off,
     #[default]
-    Workspace,
+    #[serde(alias = "workspace")]
+    Managed,
     Global,
 }
 
@@ -523,9 +638,17 @@ pub struct BrowserSettings {
     #[serde(default = "default_true")]
     pub mcp_enabled: bool,
     /// How the MCP server is injected into agents (see [`McpInjection`]). Default
-    /// `workspace`.
+    /// `managed`.
     #[serde(default)]
     pub mcp_injection: McpInjection,
+    /// Frictionless agent setup. When on (default) and injection mode is `managed`,
+    /// app-launched agents receive first-party trust-skip flags so the CLI never
+    /// prompts to trust the workspace/folder on launch (e.g. Gemini `--skip-trust`),
+    /// and per-folder trust is pre-seeded where the CLI supports it (e.g. Codex
+    /// `projects."<cwd>".trust_level`). Turn off to keep the CLIs' native trust
+    /// prompts. Applies only in `managed` mode.
+    #[serde(default = "default_true")]
+    pub friction_free: bool,
     /// Agent ids (`claude`, `codex`, `gemini`, `opencode`, `pi`) to skip when
     /// injecting the MCP config. Empty = every supported agent gets it. Default
     /// empty.
@@ -543,6 +666,7 @@ impl Default for BrowserSettings {
             homepage: String::new(),
             mcp_enabled: true,
             mcp_injection: McpInjection::default(),
+            friction_free: true,
             mcp_disabled_agents: Vec::new(),
         }
     }
@@ -637,6 +761,8 @@ impl Default for AppSettings {
             auto_install_hooks: true,
             language: default_language(),
             keybindings: std::collections::HashMap::new(),
+            terminal_key_policy: std::collections::HashMap::new(),
+            leader_key: String::new(),
             active_theme_id: default_theme_id(),
             custom_themes: Vec::new(),
             fonts: None,
@@ -672,6 +798,21 @@ fn default_language() -> String {
 /// Serde default for boolean settings that should default to `true`.
 fn default_true() -> bool {
     true
+}
+
+/// Serde default for [`QuickCommand::run_mode`] — auto-run.
+fn default_run_mode() -> QuickCommandRunMode {
+    QuickCommandRunMode::Execute
+}
+
+/// Serde default for [`QuickCommand::target`] — a fresh terminal tab.
+fn default_command_target() -> QuickCommandTarget {
+    QuickCommandTarget::NewTab
+}
+
+/// Serde default for [`QuickCommand::cwd`] — the active worktree.
+fn default_command_cwd() -> QuickCommandCwd {
+    QuickCommandCwd::ActiveWorktree
 }
 
 impl AppSettings {
@@ -721,6 +862,33 @@ pub struct AgentReport {
     pub summary: Option<String>,
 }
 
+/// Max sub-agents tracked per parent session — a safety cap so a runaway
+/// spawn loop can't grow the roster unbounded (oldest finished child is dropped
+/// first when exceeded).
+pub const MAX_SUBAGENTS: usize = 32;
+
+/// A sub-agent (child a parent agent spawned, e.g. a Claude Task-tool subagent)
+/// tracked *within* a parent PTY session. A child runs inside the parent's CLI
+/// process, so its hook reports carry the same outer `agent_id` (PTY id) as the
+/// parent; the child is distinguished by an id pulled from the raw hook payload.
+/// Children only ever reach `working` / `done`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentEntry {
+    /// Stable id of the child within the parent session (from the raw payload).
+    pub id: String,
+    /// The child's declared kind (a Claude `subagent_type`, e.g. `code-reviewer`),
+    /// if the payload carried one.
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    /// Short description of the child's task, if reported.
+    #[serde(default)]
+    pub description: Option<String>,
+    pub status: AgentStatus,
+    pub started_at: i64,
+    pub last_update: i64,
+}
+
 /// Last-known state reported by an agent via the local hook server (spec `02d`
 /// §1.1). Keyed by `agent_id` — the value the ADE injects as `UXNAN_AGENT_ID`
 /// into each terminal (the PTY id), echoed back by the agent's hook so the
@@ -746,6 +914,10 @@ pub struct AgentStateEntry {
     /// Short preview of the agent's latest response (for `done` notifications).
     #[serde(default)]
     pub summary: Option<String>,
+    /// Sub-agents (children this session spawned, e.g. Claude Task-tool
+    /// subagents). Empty for agents that don't spawn children.
+    #[serde(default)]
+    pub subagents: Vec<SubagentEntry>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -787,12 +959,74 @@ impl AppData {
                 tool: report.tool,
                 interrupted: report.interrupted,
                 summary: report.summary,
+                subagents: Vec::new(),
                 first_seen: now,
                 last_update: now,
             };
             self.agent_cache.push(entry.clone());
             entry
         }
+    }
+
+    /// Record a sub-agent (child) lifecycle event under its parent PTY entry,
+    /// **without touching the parent's own status** (a child spawn/finish must
+    /// not flip the parent to working/done). Upserts the child by id; the parent
+    /// entry is seeded as `working` if the child reports before the parent's first
+    /// status. `parent.last_update` is bumped so an active child keeps the parent
+    /// fresh. Returns the resulting parent entry (cloned) for broadcast.
+    pub fn upsert_subagent(
+        &mut self,
+        parent_agent_id: String,
+        child: SubagentEntry,
+        now: i64,
+    ) -> AgentStateEntry {
+        let idx = match self
+            .agent_cache
+            .iter()
+            .position(|e| e.agent_id == parent_agent_id)
+        {
+            Some(i) => i,
+            None => {
+                self.agent_cache.push(AgentStateEntry {
+                    agent_id: parent_agent_id,
+                    status: AgentStatus::Working,
+                    agent_type: None,
+                    prompt: None,
+                    tool: None,
+                    interrupted: false,
+                    summary: None,
+                    subagents: Vec::new(),
+                    first_seen: now,
+                    last_update: now,
+                });
+                self.agent_cache.len() - 1
+            }
+        };
+        let parent = &mut self.agent_cache[idx];
+        if let Some(existing) = parent.subagents.iter_mut().find(|s| s.id == child.id) {
+            existing.status = child.status;
+            if child.agent_type.is_some() {
+                existing.agent_type = child.agent_type;
+            }
+            if child.description.is_some() {
+                existing.description = child.description;
+            }
+            existing.last_update = now;
+        } else {
+            // Cap the roster: when full, drop the oldest finished child (or the
+            // oldest overall) so a spawn storm can't grow it without bound.
+            if parent.subagents.len() >= MAX_SUBAGENTS {
+                let drop_at = parent
+                    .subagents
+                    .iter()
+                    .position(|s| s.status == AgentStatus::Done)
+                    .unwrap_or(0);
+                parent.subagents.remove(drop_at);
+            }
+            parent.subagents.push(child);
+        }
+        parent.last_update = now;
+        parent.clone()
     }
 
     /// Drop cached agent states not updated within [`AGENT_CACHE_TTL_SECS`].
@@ -1055,6 +1289,53 @@ mod tests {
     }
 
     #[test]
+    fn upsert_subagent_tracks_children_without_touching_parent() {
+        let mut data = AppData::default();
+        // Parent reports working first.
+        data.upsert_agent_state(report("pty1", AgentStatus::Working), 100);
+        // A child spawns (SubagentStart → working). Parent status must not change.
+        let child = |status| SubagentEntry {
+            id: "child-a".into(),
+            agent_type: Some("code-reviewer".into()),
+            description: Some("review the diff".into()),
+            status,
+            started_at: 110,
+            last_update: 110,
+        };
+        let parent = data.upsert_subagent("pty1".into(), child(AgentStatus::Working), 110);
+        assert_eq!(parent.status, AgentStatus::Working);
+        assert_eq!(parent.subagents.len(), 1);
+        assert_eq!(parent.subagents[0].status, AgentStatus::Working);
+        assert_eq!(parent.last_update, 110);
+        // Same child finishes (SubagentStop → done) → updated in place, not duplicated.
+        let parent = data.upsert_subagent("pty1".into(), child(AgentStatus::Done), 120);
+        assert_eq!(parent.subagents.len(), 1);
+        assert_eq!(parent.subagents[0].status, AgentStatus::Done);
+        // Parent's own status is still whatever it last reported.
+        assert_eq!(parent.status, AgentStatus::Working);
+    }
+
+    #[test]
+    fn upsert_subagent_seeds_parent_when_child_reports_first() {
+        let mut data = AppData::default();
+        let parent = data.upsert_subagent(
+            "pty2".into(),
+            SubagentEntry {
+                id: "c1".into(),
+                agent_type: None,
+                description: None,
+                status: AgentStatus::Working,
+                started_at: 5,
+                last_update: 5,
+            },
+            5,
+        );
+        assert_eq!(parent.status, AgentStatus::Working);
+        assert_eq!(data.agent_cache.len(), 1);
+        assert_eq!(data.agent_cache[0].subagents.len(), 1);
+    }
+
+    #[test]
     fn agent_state_entry_round_trips_camel_case() {
         let entry = AgentStateEntry {
             agent_id: "pty1".into(),
@@ -1064,6 +1345,7 @@ mod tests {
             tool: Some("web_search".into()),
             interrupted: true,
             summary: None,
+            subagents: Vec::new(),
             first_seen: 1,
             last_update: 2,
         };

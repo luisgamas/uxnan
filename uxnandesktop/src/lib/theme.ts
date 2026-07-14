@@ -69,7 +69,8 @@ export interface TerminalTheme {
   lineHeight?: number;
   letterSpacing?: number;
   fontWeight?: number | string;
-  /** Enable programming ligatures (forces the DOM renderer — no WebGL). */
+  /** Enable programming ligatures (rendered through the WebGL renderer's character
+   *  joiner — no DOM-renderer fallback, so glyphs stay on the monospace grid). */
   ligatures?: boolean;
   cursorStyle?: "block" | "underline" | "bar";
   cursorBlink?: boolean;
@@ -408,6 +409,7 @@ export function resolveTerminal(base: "light" | "dark", ov: TerminalTheme | null
     cursor: o.cursor || cursorDefault,
     cursorAccent: o.cursorAccent || o.background || bg,
     selectionBackground: o.selectionBackground || "rgba(128,128,128,0.35)",
+    selectionForeground: o.foreground || fg,
   };
   for (const key of ANSI_TOKENS) {
     theme[key] = (o[key] as string) || ansi[key];

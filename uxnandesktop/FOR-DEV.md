@@ -16,7 +16,7 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**). 165 Rust backend tests + 146 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+engine**, **user quick commands**). 174 Rust backend tests + 166 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -24,7 +24,7 @@ mobile pairing) is NOT started.**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
   backups + sequential schema migrations).
-- **PTY terminals** (`portable-pty 0.9`, xterm Canvas + DOM fallback) — tabs +
+- **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
   regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
   recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
@@ -87,6 +87,16 @@ mobile pairing) is NOT started.**
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
   bridge/mobile side is Phase 6 (see below).
+- **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
+  slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
+  Quick commands editor. Commands are persisted flat in `AppData.quickCommands`
+  (`quick_commands_set`), each scoped **global / project / worktree** and pruned
+  when its project/worktree is removed (frontend-side, where live worktree paths
+  are known). Runtime (`projects.runQuickCommand`) reuses the terminal
+  `runCommand` launch path: substitutes `{worktree}`/`{branch}`/`{repo}`/
+  `{repoName}`/`{path}` tokens, resolves the shell (a terminal profile) + cwd, and
+  dispatches to a **new tab** or the **focused terminal** (`pty_write`), running
+  immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
 
 ## Integrated developer browser ☐
 
@@ -119,10 +129,15 @@ clickable terminal links** (`@xterm/addon-web-links`).
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
 `mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/Gemini/
-OpenCode) referencing the `UXNAN_MCP_TOKEN` env (token never in a file), merging
-without clobbering and cleaning up on exit; `BrowserSettings.mcp*` (enabled /
-injection mode `off|workspace|global` / disabled-agents) + `mcp_info` command. See
-`docs/browser.md` → *Agent browser MCP*.
+OpenCode) into its **user-global** config only (never the project dir) referencing
+the `UXNAN_MCP_TOKEN` env (token never in a file), merging without clobbering and
+cleaning up on exit; Gemini's entry carries `trust: true`. `BrowserSettings.mcp*`
+(enabled / injection mode `off|managed|global` / `friction_free` / disabled-agents)
++ `mcp_info` command. **Frictionless** (managed + `friction_free`): app-launched
+agents skip the CLI folder-trust prompt — Gemini via `GEMINI_CLI_TRUST_WORKSPACE`
+(`commands.rs`), Codex via `codex_trust::ensure_project_trust` seeding
+`[projects."<cwd>"].trust_level`. The legacy project-scoped `workspace` mode was
+removed. See `docs/browser.md` → *Agent browser MCP*.
 
 Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` §1.6
 the browser MCP; user guide in `docs/browser.md`.
@@ -307,7 +322,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       (`power.rs`); Windows works.
 - [ ] **Update UI (pinned sonner toast + in-Settings download/install) — visual +
       functional validation pending.** The former top banner is now a pinned
-      sonner toast (`UpdateToast.svelte` + `updateToast.ts`) and the
+      sonner toast (`UpdateToast.svelte` + `updateToast.svelte.ts`) and the
       download/install actions were surfaced inline in **Settings → Updates**.
       `svelte-check` + Vitest pass, but the toast's on-screen appearance and the
       end-to-end download → install flow haven't been exercised in a running build

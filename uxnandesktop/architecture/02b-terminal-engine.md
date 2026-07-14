@@ -24,7 +24,7 @@ El área central del ADE es donde ocurre la interacción directa con los agentes
 
 ### Renderizado con xterm.js
 
-xterm.js renderiza la salida del proceso PTY en un **canvas/WebGL** dentro del webview de Tauri. Esto proporciona emulación de terminal completa:
+xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Se usa para **todas** las terminales —incluidas las que activan ligaduras, que se dibujan a través del *character joiner* del propio renderer WebGL (no del renderer DOM)—, de modo que los glifos siempre quedan alineados a la cuadrícula monoespaciada y la selección de texto con el mouse cae exactamente donde corresponde. Ante una pérdida del contexto GPU en WebView2 el addon se reinstala vía `onContextLoss`; los cambios de cuadrícula y los *reveals* de un pane oculto fuerzan un repintado completo (que limpia el atlas de glifos y el modelo de celdas) para descartar frames obsoletos, sin destruir el contexto. DOM queda solo como fallback automático cuando WebGL no está disponible. Esto proporciona emulación de terminal completa:
 
 - **Colores**: Soporte completo de colores ANSI (16 colores, 256 colores, true color 24-bit).
 - **Cursor**: Movimiento, estilos (bloque, barra, underline), parpadeo configurable.
@@ -65,7 +65,7 @@ Usuario teclea en terminal
     emit('pty:output:{id}', bytes)         ← Tauri event (backend → frontend)
         |
         v
-    xterm.js (renderiza output en canvas/WebGL)
+    xterm.js (renderiza output con WebGLAddon)
 ```
 
 **Diferencia clave con Electron**: En Tauri 2, se usan **Tauri commands** (`#[tauri::command]` en Rust, `invoke()` en JS) para request/response, y **Tauri events** (`emit()`/`listen()`) para streaming unidireccional. Los events de Tauri son más eficientes porque evitan el overhead de serializar respuestas completas, lo cual es ideal para streaming de bytes de PTY.
@@ -263,6 +263,47 @@ Se liberan los recursos del PTY en Rust (drop automático del struct, que cierra
 
 ---
 
+## 4.b Arbitraje de teclado (atajo de app vs TUI/agente)
+
+Con una terminal enfocada, xterm entrega cada tecla al handler
+`attachCustomKeyEventHandler` (`Terminal.svelte`), que decide —vía el arbitrador
+**puro** `decideTerminalKey` (`terminalArbiter.ts`)— si la maneja uxnan
+(`preventDefault`, no va al PTY) o se envía al TUI/agente (`return true`).
+Sustituye los dos `switch` hardcodeados previos (uno en `+page.svelte`, otro en
+`Terminal.svelte`) por **una sola política por-atajo**:
+
+- **Política por-atajo** (`DEFAULT_TERMINAL_POLICY` en `terminalArbiter.ts`,
+  override en `AppSettings.terminalKeyPolicy`): cada acción es `app` (uxnan gana en
+  la terminal — el "set reservado") o `terminal` (la tecla va al TUI). El default
+  reserva los atajos de baja colisión (Mod+Shift / Mod+Alt) y cede los que
+  shells/TUIs necesitan (Ctrl+W borrar-palabra, Ctrl+P historial, Ctrl+S XOFF,
+  Ctrl+J newline, Ctrl+B prefijo tmux). **Multiplataforma:** los chords usan el
+  token `Mod` (⌘ en macOS, Ctrl en Win/Linux) y `Alt` (⌥) vía `isMac`.
+- **Modo foco (passthrough)** por-terminal (`terminalKeyboard.svelte.ts`): con él
+  activo, **todas** las teclas van al TUI (excepto el propio toggle, para poder
+  salir); un badge en la terminal lo indica y lo alterna.
+- **Tecla líder** (tmux-style, `AppSettings.leaderKey`, opt-in): en una terminal,
+  tras la tecla líder, el **siguiente** atajo va a uxnan sea cual sea su política —
+  determinismo bajo demanda.
+- **Despachador compartido** (`keyactions.ts` `runAppAction`): las acciones se
+  ejecutan en un solo lugar, consultado tanto por el handler global (`+page`) como
+  por el de la terminal, evitando que los dos caminos deriven.
+
+Se configura en **Settings → Atajos de teclado** (un toggle uxnan/TUI por acción +
+la tecla líder). La decisión pura (`decideTerminalKey`) tiene tests unitarios
+(`terminalArbiter.test.ts`).
+
+### Inferencia de interrupción (fallback de `done`)
+
+El mismo handler **observa sin consumir** `Ctrl+C` (SIGINT, sin selección) y el
+doble-`Esc`: si el agente estaba `working` y tras ~1.5 s no llegó un `Stop` ni
+output nuevo (el `lastUpdate` del hook no cambió), sintetiza `done + interrupted`
+en el display (`agentStatus.synthesizeInterruptedDone`), respetando el done-gate de
+subagentes (`02d`). Un hook real posterior siempre re-sincroniza. Cubre un turno
+abortado por el usuario que el CLI no reporta por hook.
+
+---
+
 ## 5. Lanzamiento y Control de Agentes
 
 ### 5.1 Flujo de Lanzamiento
@@ -275,6 +316,10 @@ El lanzamiento de un agente sigue un flujo de 6 pasos orquestado entre el fronte
 4. **Se crea el PTY** en el directorio del worktree. El backend Rust invoca `portable-pty` especificando el directorio de trabajo y el shell.
 5. **Se inyecta el comando de startup** al PTY. El comando del agente se escribe al stdin del PTY como si el usuario lo hubiera tecleado.
 6. **El agente arranca** y comienza a reportar estado. El ADE empieza a monitorear via hooks HTTP, secuencias OSC, o heurísticas de título.
+
+#### Comandos rápidos del usuario (lanzador ⚡)
+
+El mismo mecanismo de "comando de una sola vez" (paso 5) alimenta los **comandos rápidos** definidos por el usuario. Persistidos en `AppData.quickCommands` (comando `quick_commands_set`, `#[serde(default)]`), cada uno tiene un **scope** (global / project / worktree — podado al eliminar su proyecto/worktree, del lado frontend que conoce las rutas vivas). Se lanzan desde un menú **⚡** en la barra superior (slot fijo junto a min/max/close; atajo `openQuickCommands` → `Mod+Shift+P`) que separa los comandos del *worktree/proyecto activo* de los *globales*. Al ejecutar (`projects.runQuickCommand`) se sustituyen variables `{worktree}`/`{branch}`/`{repo}`/`{repoName}`/`{path}`, se resuelve el shell (un perfil de terminal) y el cwd, y se despacha a una **pestaña nueva** (`terminals.create` con `runCommand`) o a la **terminal enfocada** (`pty_write`), corriendo de inmediato o solo pre-escribiendo el comando — un flag `runCommandExecute` omite el Enter final para el modo "solo escribir".
 
 ### 5.2 Control del Agente
 

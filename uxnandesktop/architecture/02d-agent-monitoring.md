@@ -95,6 +95,20 @@ Los estados posibles de un agente son cuatro, cada uno con un significado especi
 | `done` | Tarea completada | Punto azul / check |
 | `idle` (derivado) | Agente en reposo, sin reporte preciso | Punto gris |
 
+> **Semantica `done` vs `waiting` (fin de turno).** `done` es el estado de reposo
+> tras completar un turno — la tarjeta muestra "Listo" + badge de no-leido.
+> `waiting` se reserva para **esperas reales a mitad de tarea** (el agente necesita
+> tu respuesta para continuar: permiso, pregunta, elicitacion). En Claude Code esto
+> importa: al terminar dispara `Stop` (→ `done`) y, ya en reposo en el prompt, una
+> `Notification` de tipo `idle_prompt`. Esa notificacion de reposo mapea a **`done`**
+> (no a `waiting`), para que no pise — el cache es last-write-wins — el `done` previo
+> y deje la tarjeta atascada en "Esperando tu respuesta". Solo
+> `permission_prompt` / `elicitation_dialog` / `agent_needs_input` producen
+> `waiting`; `auth_success` y otros avisos transitorios se ignoran
+> (`hooks::normalize_event`). Los demas agentes no tienen este riesgo: Codex no
+> suscribe `Notification`, y Gemini/OpenCode/Pi ya mapean su evento de reposo/fin a
+> `done`.
+
 Ademas, un reporte sin actualizacion por mas de **30 minutos** se considera
 `stale` y se atenua (`opacity-40`) tanto en la sidebar como en la barra de
 tabs. Un terminal plain (sin agente corriendo y sin output reciente) no
@@ -138,6 +152,40 @@ entiende que los estados precisos requieren una instalacion manual
 gobernados por hooks — los tabs plain y los agentes ya conectados no la
 muestran.
 
+### Subagentes (agentes hijos)
+
+Un agente puede lanzar **subagentes** (p. ej. la herramienta Task de Claude Code).
+Como el hijo corre **dentro del mismo proceso/PTY** que el padre, sus hooks llegan
+con el **mismo `agent_id`** (id del PTY) — la separacion sale de campos del payload
+crudo, no del envelope. El ADE suscribe los eventos de ciclo de vida
+`SubagentStart`/`SubagentStop` de Claude (`agent_hooks::CLAUDE_EVENTS`) y mantiene un
+**roster de subagentes por sesion** en la entrada del padre
+(`AgentStateEntry.subagents` + `model::upsert_subagent`), **sin tocar el estado del
+padre** (un spawn/fin de hijo no debe voltear al padre a `working`/`done`). El roster
+esta limitado (`MAX_SUBAGENTS = 32`; se descarta primero el hijo terminado mas
+antiguo). Cada reporte de subagente se difunde reusando `agent:status-changed` con la
+lista `subagents` actualizada.
+
+En la agent view (`AgentRow.svelte`) los subagentes **activos** se muestran como
+**filas hijas indentadas** bajo el padre, cada una con su punto de estado, y un
+**badge** en el padre resume activos/total. El display del padre esta **done-gated**
+(`agentDisplay.ts`): mientras un hijo siga `working`, el padre no se muestra `done`
+(evita un ✓ prematuro cuando un hijo de fondo sobrevive al `Stop` del padre).
+
+El roster es **agnostico al agente**: cualquier agente que reporte senales de hijo se
+enchufa. Hoy estan cableados **Claude** y **OpenCode**. En OpenCode una sub-tarea
+(`task`) corre como **sesion hija** (un `session.created` con `parentID`); su plugin
+la detecta, reporta su ciclo de vida como `SubagentStart`/`SubagentStop` (nombrada por
+su titulo `"… (@<nombre> subagent)"`) y **no deja que los eventos de una hija volteen
+el estado del padre** (antes una hija que terminaba leia el padre como `done`). El
+ruteo backend es agnostico al agente (`hooks::is_subagent_event`), asi Claude y
+OpenCode comparten un mismo camino de roster. Ambos estan **validados capturando
+eventos/payloads reales**: Claude Code **2.1.209** (`SubagentStart`/`Stop` traen
+`agent_id` + `agent_type`; `SubagentStop` agrega la respuesta final del hijo) y
+OpenCode **1.17.20** (eventos del bus con `session.created.parentID` + `sessionID`).
+El extractor (`hooks::source_subagent`) sigue defensivo — **ignora un evento sin id de
+hijo estable** (nunca inventa una fila) — por si los campos cambian entre versiones.
+
 ### 1.3 Capa 2: Deteccion por Titulo de Terminal
 
 Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiza el titulo del terminal y la salida del proceso para inferir el estado del agente.
@@ -155,12 +203,25 @@ El ADE detecta **que proceso esta corriendo en primer plano** en cada PTY:
 - Esta capa no determina el estado especifico del agente, pero confirma que un agente esta activo en un PTY determinado y habilita el monitoreo por las capas superiores.
 - Es la capa mas basica: solo detecta presencia, no estado detallado.
 
+**Identidad por hook (no solo por proceso).** Ademas de `procscan`, **el propio
+reporte de hook (Capa 1) establece la identidad del tab**: como el reporter declara
+su `agentType`, un agente iniciado **a mano** en cualquier terminal del ADE — incluso
+un wrapper, un binario renombrado o uno lanzado via `node` que `procscan` no sabe
+nombrar — aparece en la agent view y alimenta el punto de estado del worktree en
+cuanto llega su **primer hook**, sin depender de la coincidencia por nombre de
+ejecutable. La deteccion de proceso queda como **fallback** para agentes sin hook. El
+hook solo sella la identidad de un tab que aun no la tiene (una identidad de
+lanzamiento o ya detectada siempre gana). Sitio: `state/agentStatus.svelte.ts`
+(`sealIdentity`).
+
 ### 1.5 Staleness y Limpieza
 
 Para evitar que estados obsoletos contaminen la interfaz:
 
 - **Marca de stale:** Si un agente no reporta estado en **30 minutos**, su estado se marca como "stale".
 - **Visualizacion diferenciada:** Los estados stale se muestran con **opacidad reducida** en la UI, tanto en la sidebar como en la barra de tabs. Esto indica al usuario que la informacion puede no estar actualizada.
+- **Neutralizacion de atencion obsoleta:** un estado de atencion (`waiting`/`blocked`) que quedo obsoleto (stale, sin evento de cierre que lo resuelva) se degrada a `idle` neutral en la UI, para que ningun agente atascado domine la lane «Te necesita» indefinidamente. `done`/`working` conservan su significado. (`state/agentDisplay.ts`.)
+- **Inferencia de interrupcion:** un turno abortado por el usuario (`Ctrl+C` / doble-`Esc`) que el CLI no reporta por hook se resuelve a `done + interrupted` observando (sin consumir) esas teclas en la terminal; guardado para que un `Stop` real siempre gane. Detalle en `02b-terminal-engine.md` §4.b (`state/agentStatus.svelte.ts` `synthesizeInterruptedDone`).
 - **Limpieza automatica:** Al cabo de **7 dias sin actividad**, el registro del agente se elimina del cache persistente en disco. Esto evita acumulacion indefinida de datos de agentes antiguos.
 
 ---
@@ -173,11 +234,13 @@ El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un 
 
 **Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). Los agentes reciben la configuracion MCP de su propio CLI apuntando a `/mcp`, pero el **token nunca se escribe en un archivo**: cada config lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente. Consecuencia de diseno: la config inyectada **solo funciona dentro de una terminal lanzada por uxnan** — un agente ejecutado en otro entorno lee el mismo archivo pero no tiene la variable, no autentica y el servidor simplemente no carga para el (no puede secuestrar el navegador in-app).
 
-**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, Gemini, OpenCode) en su ubicacion estandar, segun el modo elegido en Settings → Browser:
+**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, Gemini, OpenCode) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`) — nunca en el directorio del proyecto. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
 
-- **`workspace`** (default): archivo con alcance de proyecto en el directorio de trabajo de la terminal (`.mcp.json`, `.codex/config.toml`, `.gemini/settings.json`, `opencode.json`); cubre agentes lanzados por el ADE y tecleados a mano ahi. Los archivos que el ADE crea se ocultan de Git (`info/exclude`, con soporte de worktrees via `git2`) y se eliminan al salir.
-- **`global`**: config global del usuario de cada CLI (aplica en todos los proyectos; mayor huella).
+- **`managed`** (default): la escritura global-de-usuario descrita arriba, mas — cuando **`friction_free`** esta activo — la supresion del aviso de confianza de carpeta del CLI para agentes lanzados por la app: Gemini via la variable de entorno `GEMINI_CLI_TRUST_WORKSPACE=true` (robusta entre versiones; una variable desconocida es un no-op, a diferencia de un flag rechazado) y Codex via una semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `config.toml` (respeta una decision explicita del usuario). La entrada de Gemini ademas lleva `trust: true`, que evita su confirmacion por-herramienta.
+- **`global`**: identica escritura global-de-usuario, pero sin la supresion de confianza (los CLI conservan sus avisos nativos).
 - **`off`**: no inyecta nada (el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable de Settings).
+
+> El modo `workspace` (config con alcance de proyecto en el directorio de trabajo) **fue eliminado**: era la unica fuente de los archivos en la carpeta del proyecto y de los avisos de aprobacion por-proyecto. Un valor persistido `"workspace"` se migra a `managed`.
 
 El merge preserva el resto de la configuracion del usuario (JSON via `serde_json`, TOML de Codex via `toml_edit`). El registro es extensible: agregar un agente nuevo (p. ej. `agy`/Antigravity, Cursor, Grok, amp, Pi) es una fila en `AGENTS` + un brazo en `config_path`/`write_entry` (receta en `docs/browser.md`).
 

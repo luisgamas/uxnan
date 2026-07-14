@@ -37,8 +37,10 @@ npm run build                  # production SPA build must succeed
 broadcast routing + backpressure), `orchestration/run.ts` (the run engine's DAG
 readiness, context templates, cycle detection, validation + status derivation),
 `updaterLogic.ts` (download-progress fraction + install-policy decision),
-`diffParse.ts` (unified-diff parsing) and `theme.ts` (batch theme-import
-normalization) — 140 tests in `src/lib/**/*.test.ts`, config in
+`diffParse.ts` (unified-diff parsing), `theme.ts` (batch theme-import
+normalization), `quickCommands.ts` (quick-command token substitution + scope
+filters) and `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration) —
+166 tests in `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
 [`../FOR-DEV.md`](../FOR-DEV.md).

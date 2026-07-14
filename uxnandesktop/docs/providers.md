@@ -51,7 +51,11 @@ each provider is read independently.
 
 The bottom status bar shows a **gauge** button (next to the backend indicator)
 whose popover lists the meters you pinned; it tints amber/red as usage nears a
-limit. It's hidden when nothing is pinned.
+limit. It's hidden when nothing is pinned. Opening the popover leaves focus where
+the pointer is; closing it does not restore focus to the gauge trigger, so the
+Refresh and gauge tooltips only appear when their controls are actually hovered
+or explicitly focused from the keyboard. Closing the popover also cancels any
+tooltip that was still waiting to appear.
 
 ## How it's read
 
