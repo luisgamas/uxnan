@@ -138,14 +138,6 @@ push validation (FOR-HUMAN).
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
       instead of the heuristic (slower, per-CLI).
-- [ ] **`agent/usageStats` handler** — the contract exists in `shared`
-      (`ProviderUsage`; see `architecture/02a` §5.8.10 / `02b`) and the desktop
-      already reads AI-provider usage natively in Rust (`uxnandesktop/src-tauri/src/usage.rs`).
-      The bridge must implement the **same reader in TS** (Codex/Claude/Copilot/Gemini/Grok:
-      each CLI's stored token → its official usage API, never cookies / pasted keys)
-      and serve `agent/usageStats`, so a paired phone — which can't see the PC's disk —
-      gets the same data (dual-reader, one contract). Mobile UI is owed in
-      `uxnanmobile/FOR-DEV.md`. Natural pilot for the Phase 6 embedded bridge.
 - [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` is an empty
       stub; no `desktop/*` contracts exist in `shared/`. This is the bridge half of
       the desktop's **Phase 6** (embedded sidecar + mobile pairing); see

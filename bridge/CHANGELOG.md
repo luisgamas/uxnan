@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `agent/usageStats` provider usage reader (bridge side)
+- The bridge now **serves `agent/usageStats`** — previously a known method with no
+  handler (`-32601`). A new TS reader (`src/usage/usage-reader.ts`) ports the
+  desktop's native Rust reader: for each provider the user activated (**Codex,
+  Claude, Copilot, Gemini, Grok**) it reads that CLI's own already-stored OAuth
+  token (or `gh auth token` for Copilot) → the provider's official usage API and
+  returns quota windows (% used + reset), plan/account and credit balance. Only the
+  CLI's own token is read — never browser cookies or pasted keys. Each provider is
+  isolated and best-effort: a slow/failed one degrades to its own `status`
+  (`ok`/`authRequired`/`notInstalled`/`error`) + message and never rejects the whole
+  call; 15 s per‑request timeout; 401/403 → `authRequired`. Handler
+  `src/handlers/usage-handler.ts` validates the provider list. No new method (it was
+  already in `METHOD_NAMES`); the phone-side UI is the remaining piece (mobile).
+
 ### Added — agent commands: discovery (`agent/commands`) + invocation (`turn/send` `command`)
 - **What:** the bridge now discovers each agent's special ("slash") commands and
   runs them remotely. New handler `agent/commands` (`src/handlers/agent-handler.ts`)

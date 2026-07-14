@@ -1814,7 +1814,8 @@ ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
 cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
 **Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
 → `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa). Cada proveedor degrada a un
+**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa) y **Grok**
+(`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
 `status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
 los demas.
 
@@ -1822,9 +1823,11 @@ los demas.
 es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codigo:
 - **Desktop (standalone, hoy):** lo lee **nativo en Rust** (`src-tauri/src/usage.rs`,
   comando `usage_read`), sin dependencia de Node — Settings → Providers.
-- **Bridge (Fase 6):** lo leera en **TS** y lo servira por `agent/usageStats` al
-  telefono, que no ve el disco de la PC directamente. Piloto natural del bridge
-  embebido (ver `uxnandesktop/architecture/02e` y los `FOR-DEV.md` de bridge/mobile).
+- **Bridge (implementado):** lo lee en **TS** (`bridge/src/usage/usage-reader.ts`,
+  handler `agent/usageStats`) portando el mismo reader del desktop, y lo sirve al
+  telefono, que no ve el disco de la PC directamente — mismo contrato, misma
+  postura de datos. La UI del telefono (seccion "Uso y credito" en el perfil) es
+  el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
 
 ---
 
