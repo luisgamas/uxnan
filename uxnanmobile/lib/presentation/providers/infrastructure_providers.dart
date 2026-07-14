@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/discovered_bridge.dart';
 import 'package:uxnan/domain/repositories/i_composer_draft_repository.dart';
+import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_git_action_log_repository.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
@@ -13,6 +14,7 @@ import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
+import 'package:uxnan/infrastructure/repositories/drift_connection_session_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_git_action_log_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
 import 'package:uxnan/infrastructure/repositories/drift_thread_repository.dart';
@@ -63,6 +65,14 @@ final messageRepositoryProvider = Provider<IMessageRepository>(
 /// Git action-log repository, backed by drift.
 final gitActionLogRepositoryProvider = Provider<IGitActionLogRepository>(
   (ref) => DriftGitActionLogRepository(ref.watch(databaseProvider)),
+);
+
+/// Connection-session log repository (phone-only), backed by drift. Powers the
+/// connection metrics (time connected, longest session, sessions count,
+/// relay-vs-direct split) on the profile / per-PC screens.
+final connectionSessionRepositoryProvider =
+    Provider<IConnectionSessionRepository>(
+  (ref) => DriftConnectionSessionRepository(ref.watch(databaseProvider)),
 );
 
 /// Encrypted secure storage (Keychain / Keystore).

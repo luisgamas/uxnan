@@ -73,6 +73,8 @@ final sessionCoordinatorProvider = Provider<SessionCoordinator>((ref) {
     transportSelector: ref.watch(transportSelectorProvider),
     identityResolver: () => ref.read(phoneIdentityStoreProvider).loadOrCreate(),
     trustedDeviceRepository: ref.watch(trustedDeviceRepositoryProvider),
+    connectionSessionRepository:
+        ref.watch(connectionSessionRepositoryProvider),
     pairingValidator: ref.watch(pairingValidatorProvider),
   );
   ref.onDispose(coordinator.dispose);

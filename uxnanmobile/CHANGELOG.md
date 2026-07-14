@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — connection-session log (metrics foundation)
+- New phone-local drift table (schema **v6**) recording each phone→PC connection
+  session: device, transport (relay/direct), the real endpoint, start,
+  last-active (advanced by the heartbeat) and end. The `SessionCoordinator` opens
+  a row on connect, closes it on every teardown, and — at startup — closes any
+  session left dangling by a force-kill at its last-known-alive time, so
+  durations never inflate. This powers the upcoming connection metrics (time
+  connected, longest session, sessions count, relay-vs-direct split) on the
+  profile / per-PC screens. Phone-only — nothing crosses the wire.
+
 ### Changed — truthful, privacy-blurred PC address on the devices card
 - The address under each PC name now reflects the endpoint the live channel is
   **actually** served through (the direct LAN/Tailscale host that won the dial

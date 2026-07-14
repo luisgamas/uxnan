@@ -7,11 +7,14 @@ import 'package:uuid/uuid.dart';
 import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/connection_recovery_state.dart';
+import 'package:uxnan/domain/entities/connection_session.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -43,6 +46,7 @@ class SessionCoordinator {
     required TransportSelector transportSelector,
     required PhoneIdentityResolver identityResolver,
     ITrustedDeviceRepository? trustedDeviceRepository,
+    IConnectionSessionRepository? connectionSessionRepository,
     PairingValidator pairingValidator = const PairingValidator(),
     RequestCorrelator? correlator,
     BackoffCalculator? backoff,
@@ -54,18 +58,27 @@ class SessionCoordinator {
         _transportSelector = transportSelector,
         _identityResolver = identityResolver,
         _trustedDeviceRepository = trustedDeviceRepository,
+        _connectionSessionRepository = connectionSessionRepository,
         _pairingValidator = pairingValidator,
         _correlator = correlator ?? RequestCorrelator(),
         _backoff = backoff ?? BackoffCalculator(),
         _outboundBuffer = outboundBuffer ?? OutboundMessageBuffer(),
         _uuid = uuid ?? const Uuid(),
         _delay = delay ?? Future<void>.delayed,
-        _maxReconnectAttempts = maxReconnectAttempts;
+        _maxReconnectAttempts = maxReconnectAttempts {
+    // Close any session left open by a previous run (an app kill without a
+    // clean disconnect) so its time is bounded at the last-known-alive moment.
+    final repo = _connectionSessionRepository;
+    if (repo != null) {
+      unawaited(repo.closeDanglingSessions().catchError((_) {}));
+    }
+  }
 
   final SecureTransportLayer _secureTransport;
   final TransportSelector _transportSelector;
   final PhoneIdentityResolver _identityResolver;
   final ITrustedDeviceRepository? _trustedDeviceRepository;
+  final IConnectionSessionRepository? _connectionSessionRepository;
   final PairingValidator _pairingValidator;
   final RequestCorrelator _correlator;
   final BackoffCalculator _backoff;
@@ -105,6 +118,9 @@ class SessionCoordinator {
   WebSocketTransport? _transport;
   SecureChannel? _channel;
   StreamSubscription<Uint8List>? _rxSubscription;
+  // Log-row id for the LIVE connection session, or null when not connected.
+  // Set on commit, cleared on teardown.
+  String? _connectionSessionId;
   bool _intentionalDisconnect = false;
   bool _disposed = false;
   bool _reconnecting = false;
@@ -342,6 +358,9 @@ class SessionCoordinator {
       // Checkpoint the applied seq periodically so a hard app-kill mid-session
       // still resumes from a recent point (not just from the last disconnect).
       _persistBridgeSeq();
+      // Advance the connection-session log's last-active time so a force-kill
+      // is bounded at the last-known-alive moment (not inflated).
+      _touchConnectionSession();
     } on Object {
       await _dropAndReconnect();
     }
@@ -384,6 +403,55 @@ class SessionCoordinator {
     );
   }
 
+  /// Opens a row in the phone-local connection-session log for the freshly
+  /// committed session, so the metrics screens can report time connected,
+  /// longest session, sessions count and the relay-vs-direct split. Best-effort
+  /// and non-blocking; a no-op when no repository is wired (e.g. tests).
+  void _startConnectionSession(TrustedDevice device, String? url) {
+    final repo = _connectionSessionRepository;
+    if (repo == null) return;
+    final now = DateTime.now();
+    final id = _uuid.v4();
+    _connectionSessionId = id;
+    // Direct unless the winning endpoint is exactly the device's relay URL.
+    final isRelay = device.relayUrl.isNotEmpty && url == device.relayUrl;
+    unawaited(
+      repo
+          .startSession(
+            ConnectionSession(
+              id: id,
+              deviceId: device.macDeviceId,
+              transport: isRelay
+                  ? ConnectionTransport.relay
+                  : ConnectionTransport.direct,
+              endpoint: url,
+              startedAt: now,
+              lastActiveAt: now,
+            ),
+          )
+          .catchError((_) {}),
+    );
+  }
+
+  /// Advances the live session's last-active time (called from the heartbeat),
+  /// so a later force-kill is closed at the last-known-alive moment.
+  void _touchConnectionSession() {
+    final repo = _connectionSessionRepository;
+    final id = _connectionSessionId;
+    if (repo == null || id == null) return;
+    unawaited(repo.touchSession(id, DateTime.now()).catchError((_) {}));
+  }
+
+  /// Closes the live session's log row (a clean teardown). Idempotent: a second
+  /// call after the id is cleared is a no-op.
+  void _endConnectionSession() {
+    final repo = _connectionSessionRepository;
+    final id = _connectionSessionId;
+    if (repo == null || id == null) return;
+    _connectionSessionId = null;
+    unawaited(repo.endSession(id, DateTime.now()).catchError((_) {}));
+  }
+
   /// Records "last seen = now" for [device] so the PC card reflects the real
   /// last connection instead of "never connected".
   void _touchLastSeen(TrustedDevice device) {
@@ -405,6 +473,7 @@ class SessionCoordinator {
     _channel = null;
     _connectedDevice.add(null);
     _connectedEndpoint.add(null);
+    _endConnectionSession();
     unawaited(handleReconnect());
   }
 
@@ -427,6 +496,7 @@ class SessionCoordinator {
     if (!_disposed) {
       _connectedDevice.add(null);
       _connectedEndpoint.add(null);
+      _endConnectionSession();
       _connectingDevice.add(null);
       _connectionPhase.add(ConnectionPhase.disconnected);
     }
@@ -534,6 +604,7 @@ class SessionCoordinator {
     _connectionPhase.add(ConnectionPhase.reconnecting);
     _connectedDevice.add(null);
     _connectedEndpoint.add(null);
+    _endConnectionSession();
     await _rxSubscription?.cancel();
     _rxSubscription = null;
 
@@ -659,6 +730,7 @@ class SessionCoordinator {
     // Surface the real endpoint in use (the winning direct host, or the relay)
     // so the PC card shows the address we're actually connected through.
     _connectedEndpoint.add(transport.connectedUrl);
+    _startConnectionSession(device, transport.connectedUrl);
     _connectingDevice.add(null);
     _connectionPhase.add(ConnectionPhase.connected);
     _startHeartbeat();
