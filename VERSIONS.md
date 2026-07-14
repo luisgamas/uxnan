@@ -115,6 +115,7 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-14 | — | — | — | 0.0.12-nightly.20260714.1 | — | <!-- desktop: precise agent status (done/waiting fix) + Claude & OpenCode sub-agents + configurable terminal keyboard arbitration + interrupt inference + quick commands + left-panel polish (PR #63) — nightly channel -->
 | 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.2 | — | <!-- desktop: richer provider usage — reset time, Codex resets + redeem, account type, Grok $ (PR #62) — nightly channel -->
 | 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.1 | — | <!-- desktop: multi-agent orchestration run engine + broadcast rework (PR #61) — nightly channel -->
 | 2026-07-11 | — | — | — | 0.0.10-nightly.20260711.1 | — | <!-- desktop: Grok provider usage statistics (PR #60) — nightly channel -->
