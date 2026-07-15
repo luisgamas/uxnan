@@ -1845,6 +1845,44 @@ es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codi
   postura de datos. La UI del telefono (seccion "Uso y credito" en el perfil) es
   el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
 
+#### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
+
+Las metricas del perfil movil (conversaciones, mensajes, agentes/modelos usados,
+tiempo conectado, sesiones, git actions, heatmap de actividad) se derivaban en el
+telefono y **se perdian al desinstalar** la app (no hay login en la nube). Para
+hacerlas durables, el **bridge** pasa a ser la fuente de verdad y las sirve por
+`metrics/*` (contrato `MetricsSnapshot` en `shared/src/models/metrics.ts`; ver 02b
+§1.2). El telefono renderiza un snapshot por PC y suma entre PCs; su store local
+queda como cache. El uso/creditos de proveedores **no** entran aqui (viven en
+`agent/usageStats`, lectura en vivo).
+
+**Que observa el bridge (nadie puede inflarlo desde el telefono):**
+- **Sesiones de conexion** — `handleSecureConnection` abre/cierra una fila por
+  cada canal (con su transporte relay/directo), en `metrics/metrics-store.ts`
+  (`~/.uxnan/metrics.json`). Una sesion colgada por un crash se cierra al inicio
+  en su `startedAt` (cuenta la sesion, nunca infla el tiempo).
+- **Git actions** — `git-handler` cuenta cada operacion mutante (`git/commit`,
+  `push`, `pull`, `checkout`, `createBranch`, `createWorktree`, `discard`,
+  `createPr`, `undoCommit`, `switchBranch`, `revert`, `deleteBranch`,
+  `removeWorktree`) con su resultado.
+- **Conteos de conversacion** — se computan en vivo desde el `ThreadStore`
+  (`conversationMetrics()`): conversaciones, mensajes (ambos roles), agentes y
+  modelos distintos, por-agente, member-since y buckets de actividad por dia.
+
+Los eventos se guardan **con id** para que importar sea idempotente (union por id).
+
+**Backup a prueba de manipulacion (`metrics-seal.ts`):** `metrics/export` sella el
+log de eventos con **AES-256-GCM bajo una clave de 32 bytes del llavero del SO**
+(la cabecera va como AAD, asi cualquier edicion se detecta). Como la clave es
+secreta del bridge y no sale de la PC, un usuario **no puede fabricar ni editar**
+sus stats, y el archivo es **same-PC only** (otra PC tiene otra clave → lo rechaza,
+error `foreign-device`). Una **passphrase** opcional del usuario añade una segunda
+capa (scrypt) por si el archivo se filtra — no es lo que da la infalsificabilidad
+(esa la da la clave del llavero). `metrics/import` verifica el sello, descifra,
+valida y fusiona por id (reimportar no cambia nada). El auto-restore al
+re-emparejar es transparente: el telefono llama a `metrics/get` y ve el historial
+real del PC sin archivo.
+
 ---
 
 ### 5.9 Transporte seguro y mensajeria E2EE

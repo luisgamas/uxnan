@@ -151,11 +151,11 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **62 JSON-RPC methods +
+  E2EE types and runtime validators. The bridge exposes **66 JSON-RPC methods +
   8 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
-  `daemon-config.json`, `pairing-session.json`, `threads.json`,
+  `daemon-config.json`, `pairing-session.json`, `threads.json`, `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
   `logs/`. The Ed25519
   identity is a secret kept in a `SecretStore`, never written in plaintext.

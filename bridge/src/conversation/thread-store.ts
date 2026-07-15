@@ -22,6 +22,7 @@ import type {
 } from '@uxnan/shared';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
+import { startOfLocalDay } from '../metrics/day.js';
 
 interface StoredMessage {
   id: string;
@@ -93,6 +94,28 @@ export interface StartThreadInput {
   agentId?: string;
   model?: string;
   cwd?: string;
+}
+
+/**
+ * Conversation-derived profile metrics, computed from the store in a single read
+ * (for `metrics/get`). Sessions + git actions live elsewhere; this is only what
+ * the conversation history yields.
+ */
+export interface ConversationMetrics {
+  /** Total threads. */
+  conversations: number;
+  /** Distinct agent ids used. */
+  agents: string[];
+  /** Distinct models used. */
+  models: string[];
+  /** Total messages across all turns (both roles). */
+  messages: number;
+  /** Per-agent conversation tallies (unsorted; the caller ranks them). */
+  byAgent: { agentId: string; conversations: number }[];
+  /** Earliest thread creation (epoch ms), or undefined when there are none. */
+  memberSince?: number;
+  /** Local-day activity buckets (day-start epoch ms → conversation/message counts). */
+  activityByDay: { day: number; conversations: number; messages: number }[];
 }
 
 /** Runtime config the AgentManager needs to drive a thread's turns. */
@@ -428,6 +451,58 @@ export class ThreadStore {
     const thread = threads.find((t) => t.id === threadId);
     if (!thread) throw notFound(`thread not found: ${threadId}`);
     return thread;
+  }
+
+  /**
+   * Compute the conversation-derived profile metrics in one read of the store:
+   * conversation/message counts, distinct agents/models, per-agent tallies,
+   * member-since and per-day activity buckets. Read-only.
+   */
+  async conversationMetrics(): Promise<ConversationMetrics> {
+    const threads = await this.#read();
+    const agents = new Set<string>();
+    const models = new Set<string>();
+    const byAgent = new Map<string, number>();
+    const activity = new Map<number, { conversations: number; messages: number }>();
+    let messages = 0;
+    let memberSince: number | undefined;
+
+    const bucket = (day: number): { conversations: number; messages: number } => {
+      let entry = activity.get(day);
+      if (!entry) {
+        entry = { conversations: 0, messages: 0 };
+        activity.set(day, entry);
+      }
+      return entry;
+    };
+
+    for (const thread of threads) {
+      if (thread.agentId !== undefined) {
+        agents.add(thread.agentId);
+        byAgent.set(thread.agentId, (byAgent.get(thread.agentId) ?? 0) + 1);
+      }
+      if (thread.model !== undefined) models.add(thread.model);
+      if (memberSince === undefined || thread.createdAt < memberSince) {
+        memberSince = thread.createdAt;
+      }
+      bucket(startOfLocalDay(thread.createdAt)).conversations += 1;
+      for (const turn of thread.turns) {
+        for (const message of turn.messages) {
+          messages += 1;
+          bucket(startOfLocalDay(message.createdAt)).messages += 1;
+        }
+      }
+    }
+
+    return {
+      conversations: threads.length,
+      agents: [...agents],
+      models: [...models],
+      messages,
+      byAgent: [...byAgent].map(([agentId, conversations]) => ({ agentId, conversations })),
+      ...(memberSince !== undefined ? { memberSince } : {}),
+      activityByDay: [...activity].map(([day, counts]) => ({ day, ...counts })),
+    };
   }
 
   async #read(): Promise<StoredThread[]> {

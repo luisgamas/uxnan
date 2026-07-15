@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — bridge-owned profile metrics + tamper-proof backup (`metrics/*`)
+- The bridge now **serves `metrics/get`, `metrics/export`, `metrics/import`** (66
+  JSON-RPC methods now). It becomes the source of truth for the mobile profile
+  metrics, which were phone-local and lost on an app uninstall.
+- **Observation (the phone can't inflate the numbers):**
+  - `metrics/metrics-store.ts` persists an event log at `~/.uxnan/metrics.json`
+    (sessions + git actions, each with a stable id so imports merge idempotently).
+  - **Connection sessions** are logged by `handleSecureConnection` (transport
+    threaded through as `relay`/`direct`); a session left open by a crash is
+    closed at startup at its own start time (counts the session, never inflates
+    connected time).
+  - **Git actions** are counted in `git-handler` for the mutating operations
+    (commit/push/pull/checkout/createBranch/createWorktree/discard/createPr/
+    undoCommit/switchBranch/revert/deleteBranch/removeWorktree), with outcome.
+  - **Conversation counts** (conversations, messages, distinct agents/models,
+    per-agent, member-since, per-day activity) are computed live from the
+    `ThreadStore` (`conversationMetrics()`).
+- **Tamper-proof export/import** (`metrics/metrics-seal.ts`): the backup file is
+  sealed with AES-256-GCM under a **32-byte key held in the OS keychain**
+  (`metrics-seal-key`, via the existing `SecretStore`), with the header bound as
+  AAD. Only the same bridge can verify + decrypt it, so users cannot fabricate or
+  edit their stats; a foreign/edited file is rejected. **Same-PC only** by design.
+  An optional user passphrase adds a scrypt-derived confidentiality layer.
+- New `BridgeContext.metrics` (`MetricsService`); `metrics.json` added to
+  `DAEMON_FILES`; `metrics-handler` registered. Spec: `architecture/02a` §5.8.11,
+  `02b` §1.2 (method total 63 → 66).
+- **Tests (+3 files):** `test/metrics/metrics-seal.test.ts` (round-trip,
+  foreign-device, wrong-key, edited ciphertext/header, passphrase),
+  `metrics-store.test.ts` (record/read, dangling-close, idempotent merge),
+  `metrics-service.test.ts` (snapshot aggregation, live-session duration,
+  export/import round-trip + rejection, passphrase). Transport/e2e tests that
+  build a bridge switched to the resilient `rmrf` cleanup (the new async metric
+  writes were racing plain `rm` on Windows).
+
 ### Fixed — CLI help/comment no longer calls `start` a skeleton
 - The `start` usage line and the `cli.ts` header comment claimed a
   "skeleton: no live transport yet" — stale wording from an early increment.

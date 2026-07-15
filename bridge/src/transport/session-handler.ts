@@ -6,7 +6,7 @@
  * Transport-agnostic: works over any {@link MessageIO} (relay client or LAN
  * server connection).
  */
-import { validateE2EEnvelope, type SecureEnvelope } from '@uxnan/shared';
+import { validateE2EEnvelope, type MetricsTransport, type SecureEnvelope } from '@uxnan/shared';
 import type { BridgeContext } from '../bridge-context.js';
 import type { HandlerRouter } from '../handler-router.js';
 import type { SecureDeviceState } from '../secure-device-state.js';
@@ -22,6 +22,8 @@ export interface SecureConnectionOptions {
   deviceState: SecureDeviceState;
   trustStore: TrustStore;
   displayName: string;
+  /** Which transport this connection runs over, for the connection metrics. */
+  transport: MetricsTransport;
   expectedSessionId?: string;
 }
 
@@ -30,13 +32,16 @@ export interface SecureConnectionOptions {
  * throws — handshake/transport failures are logged and the channel is closed.
  */
 export async function handleSecureConnection(options: SecureConnectionOptions): Promise<void> {
-  const { io, ctx, router, deviceState, trustStore, displayName } = options;
+  const { io, ctx, router, deviceState, trustStore, displayName, transport } = options;
   const queue = queueFor(io);
   const send = (message: unknown): void => io.send(Buffer.from(JSON.stringify(message), 'utf-8'));
 
   let phoneDeviceId: string | undefined;
   let sessionId: string | undefined;
   let sink: SessionSink | undefined;
+  // Log-row id for this connection's metric session (relay/direct connected time),
+  // or undefined until the channel is established.
+  let metricsSessionId: string | undefined;
   try {
     const handshakeOptions = {
       queue,
@@ -98,6 +103,14 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       lastSeen: ctx.now(),
     });
     ctx.logger.info(`phone session established (${result.mode}): ${result.phoneDeviceId}`);
+    // Open a metric session row so the profile can report connected time, longest
+    // session, session count and the relay-vs-direct split. Best-effort: a failure
+    // never affects the live channel.
+    try {
+      metricsSessionId = await ctx.metrics.startSession(result.phoneDeviceId, transport);
+    } catch (err) {
+      ctx.logger.warn(`failed to open metric session: ${errorMessage(err)}`);
+    }
 
     for (;;) {
       const raw = await queue.next();
@@ -144,6 +157,14 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
         if (sessionId !== undefined) ctx.pushService.clearActiveSession(sessionId);
       }
       ctx.logger.info(`phone session closed: ${phoneDeviceId}`);
+      // Close this connection's metric session at its teardown time. Each
+      // connection owns the row it opened (a reconnecting phone opened its own),
+      // so this is unconditional — not gated on `stillCurrent`.
+      if (metricsSessionId !== undefined) {
+        void ctx.metrics.endSession(metricsSessionId).catch(() => {
+          /* best-effort — a dangling row is closed at startup instead */
+        });
+      }
       // If this was the last connected phone, stop the approval auto-reject
       // countdown so a pending approval waits for the user to return rather than
       // defaulting to reject. No-op while another phone is still connected.

@@ -193,6 +193,24 @@ export {
   type SendTurnOptions as AgentManagerSendTurnOptions,
 } from './agents/agent-manager.js';
 
+// Profile metrics (bridge-owned, survivable stats + tamper-proof backup)
+export { MetricsService, type MetricsServiceOptions } from './metrics/metrics-service.js';
+export {
+  MetricsStore,
+  type MetricsEvents,
+  type SessionEvent,
+  type GitActionEvent,
+} from './metrics/metrics-store.js';
+export {
+  sealMetrics,
+  openMetrics,
+  MetricsSealError,
+  type MetricsSealErrorCode,
+  type SealOptions,
+  type OpenOptions,
+} from './metrics/metrics-seal.js';
+export { startOfLocalDay } from './metrics/day.js';
+
 // Transport (live E2EE)
 export {
   type MessageIO,

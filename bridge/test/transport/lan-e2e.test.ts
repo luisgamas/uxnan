@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { rmrf } from '../helpers/fs.js';
 import { WebSocket } from 'ws';
 import {
   DaemonState,
@@ -39,5 +39,5 @@ test('a phone connects over the real LAN WebSocket and runs encrypted RPC', asyn
 
   phone.close();
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

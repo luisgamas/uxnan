@@ -14,6 +14,7 @@ import { registerProjectHandlers } from './project-handler.js';
 import { registerAgentHandlers } from './agent-handler.js';
 import { registerAccountHandlers } from './account-handler.js';
 import { registerUsageHandlers } from './usage-handler.js';
+import { registerMetricsHandlers } from './metrics-handler.js';
 import { registerNotificationHandlers } from './notifications-handler.js';
 import { registerDesktopHandlers } from './desktop-handler.js';
 import { registerBridgeControlHandlers } from './bridge-control-handler.js';
@@ -26,6 +27,7 @@ export function registerAllHandlers(router: HandlerRouter): void {
   registerAgentHandlers(router);
   registerAccountHandlers(router);
   registerUsageHandlers(router);
+  registerMetricsHandlers(router);
   registerNotificationHandlers(router);
   registerDesktopHandlers(router);
   // Real implementations last so they win over any earlier stub of the same name.

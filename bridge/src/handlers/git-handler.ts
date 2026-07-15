@@ -109,8 +109,57 @@ export function registerGitHandlers(router: HandlerRouter): void {
   };
 
   for (const [method, handler] of Object.entries(handlers)) {
-    router.register(method, handler);
+    if (MUTATING_GIT_METHODS.has(method)) {
+      router.register(method, countGitAction(method, handler));
+    } else {
+      router.register(method, handler);
+    }
   }
+}
+
+/**
+ * The mutating git operations counted as a "git action" in the profile metrics
+ * (reads like status/diff/branches/log/commitShow and stage/unstage are not).
+ * Kept in lock-step with the mobile GitActionManager's action set.
+ */
+const MUTATING_GIT_METHODS: ReadonlySet<string> = new Set([
+  'git/commit',
+  'git/push',
+  'git/pull',
+  'git/checkout',
+  'git/createBranch',
+  'git/createWorktree',
+  'git/discard',
+  'git/createPr',
+  'git/undoCommit',
+  'git/switchBranch',
+  'git/revert',
+  'git/deleteBranch',
+  'git/removeWorktree',
+]);
+
+/**
+ * Wrap a mutating git handler so each attempt is recorded in the bridge-owned
+ * metrics (with its outcome), for the profile's "git actions" tally + activity
+ * heatmap. Best-effort and non-blocking: recording never affects the git result.
+ */
+function countGitAction(method: string, handler: RpcHandler): RpcHandler {
+  return async (params, ctx, session) => {
+    const threadId = readThreadId(params);
+    try {
+      const result = await handler(params, ctx, session);
+      void ctx.metrics.recordGitAction(method, threadId, true).catch(() => {});
+      return result;
+    } catch (err) {
+      void ctx.metrics.recordGitAction(method, threadId, false).catch(() => {});
+      throw err;
+    }
+  };
+}
+
+function readThreadId(params: unknown): string | undefined {
+  const value = (params as Record<string, unknown> | null)?.['threadId'];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 function optionalSafe(params: unknown, key: string): string | undefined {

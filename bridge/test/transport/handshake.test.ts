@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { rmrf } from '../helpers/fs.js';
 import { JsonRpcErrorCode } from '@uxnan/shared';
 import {
   InMemorySecretStore,
@@ -39,6 +39,7 @@ test('a phone completes the handshake and exchanges encrypted JSON-RPC', async (
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
+    transport: 'direct',
     expectedSessionId: sessionId,
   });
 
@@ -56,7 +57,7 @@ test('a phone completes the handshake and exchanges encrypted JSON-RPC', async (
 
   phone.close();
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('the handshake rejects a sessionId that does not match the pairing session', async () => {
@@ -70,11 +71,12 @@ test('the handshake rejects a sessionId that does not match the pairing session'
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
+    transport: 'direct',
     expectedSessionId: 'expected-session',
   });
 
   await assert.rejects(FakePhone.connect(phoneIo, { sessionId: 'wrong-session' }));
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
