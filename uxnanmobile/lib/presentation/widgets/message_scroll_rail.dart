@@ -118,7 +118,10 @@ class MessageScrollRailTheme {
 ///
 /// Tuned to the Neural Expressive language: unobtrusive at rest (faint ticks),
 /// springing to full presence only on interaction, and auto-hiding shortly
-/// after release.
+/// after release. When [visible] is false the whole rail slides off toward its
+/// edge and stops responding — drive it from scroll state so the rail is hidden
+/// at the bottom of the list and slides in from the edge when the user scrolls
+/// up.
 class MessageScrollRail extends StatefulWidget {
   /// Creates a message scroll rail.
   const MessageScrollRail({
@@ -126,6 +129,7 @@ class MessageScrollRail extends StatefulWidget {
     required this.onSelected,
     this.onActiveChanged,
     this.currentIndex,
+    this.visible = true,
     this.edge = MessageScrollRailEdge.right,
     this.theme,
     this.autoHideDelay = const Duration(milliseconds: 1400),
@@ -149,6 +153,11 @@ class MessageScrollRail extends StatefulWidget {
   /// The anchor currently visible in the host's viewport, highlighted as "you
   /// are here". Null disables the highlight.
   final int? currentIndex;
+
+  /// Whether the rail is shown. When false it slides off toward its [edge] and
+  /// becomes non-interactive, animated. Drive this from scroll state (e.g. hide
+  /// at the bottom of the list, show when scrolled up).
+  final bool visible;
 
   /// Which edge the rail hugs.
   final MessageScrollRailEdge edge;
@@ -183,6 +192,10 @@ class _MessageScrollRailState extends State<MessageScrollRail>
   late final AnimationController _glide;
   late Animation<double> _glidePos;
 
+  /// Scroll-driven show/hide: 0 = hidden (slid off the edge), 1 = in place.
+  late final AnimationController _enter;
+  late final Animation<double> _enterCurve;
+
   int? _activeIndex;
   Timer? _hideTimer;
 
@@ -201,6 +214,31 @@ class _MessageScrollRailState extends State<MessageScrollRail>
       duration: const Duration(milliseconds: 150),
     );
     _glidePos = const AlwaysStoppedAnimation<double>(0);
+    _enter = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      reverseDuration: const Duration(milliseconds: 200),
+      value: widget.visible ? 1 : 0,
+    );
+    _enterCurve = CurvedAnimation(
+      parent: _enter,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(MessageScrollRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible != oldWidget.visible) {
+      if (_reduceMotion) {
+        _enter.value = widget.visible ? 1 : 0;
+      } else if (widget.visible) {
+        _enter.forward();
+      } else {
+        _enter.reverse();
+      }
+    }
   }
 
   @override
@@ -208,6 +246,7 @@ class _MessageScrollRailState extends State<MessageScrollRail>
     _hideTimer?.cancel();
     _reveal.dispose();
     _glide.dispose();
+    _enter.dispose();
     super.dispose();
   }
 
@@ -347,7 +386,7 @@ class _MessageScrollRailState extends State<MessageScrollRail>
           _setActive(_indexForY(local.dy, railTop, railHeight));
         }
 
-        return Stack(
+        final content = Stack(
           clipBehavior: Clip.none,
           children: [
             // Painted ticks — visual only; interaction is via the strip below.
@@ -414,6 +453,29 @@ class _MessageScrollRailState extends State<MessageScrollRail>
               ),
             ),
           ],
+        );
+
+        // Scroll-driven slide-in: when hidden the rail slides off toward its
+        // edge and fades; when shown it glides back into place. Kept
+        // non-interactive while mostly hidden.
+        final slide = (resolved.edgeInset + resolved.activeLength + 8) *
+            (isRight ? 1 : -1);
+        return AnimatedBuilder(
+          animation: _enterCurve,
+          builder: (context, child) {
+            final t = _enterCurve.value.clamp(0.0, 1.0);
+            return IgnorePointer(
+              ignoring: t < 0.5,
+              child: Opacity(
+                opacity: t,
+                child: Transform.translate(
+                  offset: Offset((1 - t) * slide, 0),
+                  child: child,
+                ),
+              ),
+            );
+          },
+          child: content,
         );
       },
     );

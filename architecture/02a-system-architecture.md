@@ -1316,10 +1316,12 @@ Reglas de streaming:
 > paneles tonales sin borde, contraídos por defecto y con expansión exclusiva
 > dentro de cada turno; los prompts largos del usuario ofrecen una vista previa
 > expandible sin alterar la copia completa. Para navegar una conversación larga,
-> un **riel de mensajes** reutilizable (`MessageScrollRail`) vive en la orilla
-> derecha — un tick por mensaje del usuario, tenue en reposo — que al
-> arrastrarlo revela un efecto "fisheye" y una vista previa del mensaje y salta a
-> él al soltar. Los atajos de scroll flotantes van **centrados abajo**
+> un **riel de mensajes** reutilizable (`MessageScrollRail`) — un tick por
+> mensaje del usuario, tenue en reposo — vive en la orilla derecha: está oculto
+> mientras el scroll está hasta abajo y **entra deslizándose desde la derecha**
+> (con fade) cuando el usuario sube (la misma señal que muestra "jump to latest"
+> y oculta la cinta de contexto). Al arrastrarlo revela un efecto "fisheye" y una
+> vista previa del mensaje, y salta a él al soltar. Los atajos de scroll flotantes van **centrados abajo**
 > ("jump to latest" en la conversación, que baja; "back to top" en el historial
 > de commits, que sube) y comparten un botón circular neutral de 52 dp. Cuando
 > "jump to latest" aparece, la franja de contexto del turno y el aviso de modo

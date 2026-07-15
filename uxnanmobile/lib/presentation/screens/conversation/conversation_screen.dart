@@ -842,6 +842,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               child: MessageScrollRail(
                 items: railAnchors.items,
                 currentIndex: _currentRailTick,
+                // Hidden at the bottom of the conversation; slides in from the
+                // right edge when the user scrolls up — the same signal that
+                // reveals the jump-to-latest button and hides the composer
+                // ribbon, so the scroll-up chrome moves as one.
+                visible: _showJumpToBottom,
                 onSelected: (tick) {
                   if (tick >= 0 && tick < railAnchors.messageIndices.length) {
                     unawaited(

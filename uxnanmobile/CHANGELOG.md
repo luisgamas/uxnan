@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Message scroll rail hides at the bottom, slides in on scroll-up
+- The conversation's message scroll rail is now **hidden while the timeline is
+  at the bottom** and **slides in from the right edge** (with a fade) when the
+  user scrolls up — driven by the same signal that reveals *Jump to latest* and
+  hides the composer ribbon, so the scroll-up chrome moves as one. It is
+  non-interactive while hidden and honors reduced-motion (a new `visible` prop
+  on the widget, an easeOutCubic slide ~280 ms in / ~200 ms out).
+
 ### Changed — Conversation chrome clears the reading area while scrolled up
 - When **Jump to latest** appears, the turn-context strip (reasoning, approval,
   edits, context and tokens) now slides down toward the composer, fades and

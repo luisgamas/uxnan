@@ -109,4 +109,37 @@ void main() {
     expect(selected, 3, reason: 'active=$active selected=$selected');
     await flush(tester);
   });
+
+  testWidgets('hidden (visible: false) ignores input; shown accepts it',
+      (tester) async {
+    int? selected;
+    final items = List.generate(
+      4,
+      (i) => MessageScrollRailItem(preview: 'm$i'),
+    );
+    Widget railHost({required bool visible}) => host(
+          MessageScrollRail(
+            items: items,
+            visible: visible,
+            haptics: false,
+            onSelected: (i) => selected = i,
+          ),
+        );
+
+    // Hidden: the rail has slid off and is non-interactive.
+    await tester.pumpWidget(railHost(visible: false));
+    await tester.pumpAndSettle();
+    final rect = tester.getRect(find.byType(MessageScrollRail));
+    await tester.tapAt(Offset(rect.right - 16, rect.top + 4));
+    await tester.pump();
+    expect(selected, isNull, reason: 'a hidden rail must ignore taps');
+
+    // Shown: it slides in and accepts input again.
+    await tester.pumpWidget(railHost(visible: true));
+    await tester.pumpAndSettle();
+    await tester.tapAt(Offset(rect.right - 16, rect.top + 4));
+    await tester.pump();
+    expect(selected, isNotNull, reason: 'a shown rail accepts taps');
+    await flush(tester);
+  });
 }
