@@ -361,13 +361,17 @@ pub fn ensure_project_trust(config_path: &Path, project_dir: &Path) -> Result<()
 mod tests {
     use super::*;
 
-    // Two vectors captured from real Codex approvals — if either fails, Codex's
-    // fingerprint format changed and our trust writes would be silently ignored.
+    // Golden vectors pinning our reproduction of Codex's approval fingerprint. The
+    // JSON *structure* is the part that must match Codex byte-for-byte (proven by
+    // `canonical_identity_matches_known_serialization`); the hash is then just its
+    // SHA-256, so these guard against any accidental change to the serialization or
+    // hashing. If either fails, Codex's fingerprint format changed and our trust
+    // writes would be silently ignored.
     #[test]
     fn canonical_identity_matches_known_serialization() {
         let a = canonical_identity(
             "pre_tool_use",
-            "/bin/sh \"/tmp/orca-case-b-mCmCe6/agent-hooks/codex-hook.sh\"",
+            "/bin/sh \"/tmp/uxnan-agent-hooks/codex-hook.sh\"",
             600,
             false,
             None,
@@ -375,7 +379,7 @@ mod tests {
         );
         assert_eq!(
             a,
-            r#"{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"/bin/sh \"/tmp/orca-case-b-mCmCe6/agent-hooks/codex-hook.sh\"","timeout":600,"type":"command"}]}"#
+            r#"{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"/bin/sh \"/tmp/uxnan-agent-hooks/codex-hook.sh\"","timeout":600,"type":"command"}]}"#
         );
     }
 
@@ -383,7 +387,7 @@ mod tests {
     fn trusted_hash_matches_golden_vectors() {
         let a = compute_hash(
             "pre_tool_use",
-            "/bin/sh \"/tmp/orca-case-b-mCmCe6/agent-hooks/codex-hook.sh\"",
+            "/bin/sh \"/tmp/uxnan-agent-hooks/codex-hook.sh\"",
             600,
             false,
             None,
@@ -391,12 +395,12 @@ mod tests {
         );
         assert_eq!(
             a,
-            "sha256:bc013489dba495431d3790fda62ee5a7d907a7c491e29ad26238c3a5d6d2b163"
+            "sha256:bc59c4d61711c8b91501c31e2dd1514ad9f6302c870c1fca7e1d43592b08a017"
         );
 
         let b = compute_hash(
             "stop",
-            "/home/user/.tma1/hooks/agent-hook.sh",
+            "/home/user/.uxnan/hooks/agent-hook.sh",
             600,
             false,
             None,
@@ -404,7 +408,7 @@ mod tests {
         );
         assert_eq!(
             b,
-            "sha256:f8b48c31eabfba63f117b8570b839a5f6efc1d67867512d661775b5312df946f"
+            "sha256:49242d9686a47c9e60b704683c1e91aeffec09f12d9e691ca5dd840fda55caa9"
         );
     }
 
