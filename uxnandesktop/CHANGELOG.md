@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — terminal rendering: blank panes on launch & doubled text
+
+- **Intermittent blank terminal on launch (cursor blinks, no prompt) — the primary
+  fix.** On Windows, ConPTY/PowerShell emit a cursor-position query (DSR `ESC[6n`)
+  at startup and **block until the terminal replies**; xterm generates that reply and
+  delivers it through `onData`. `onData` was wired **after** `pty_create`, but the
+  query arrives *while `pty_create` is still awaited*, so the reply was parsed before
+  the handler existed, got dropped, and the shell hung forever without printing its
+  prompt — an intermittent blank pane (confirmed by instrumentation: the shell sent
+  exactly the 4-byte `ESC[6n` and then went silent). `onData` is now registered
+  **before** `pty_create`, so the reply is always sent and the shell always starts. A
+  `replaying` guard suppresses `onData` while a snapshot is replayed into a remounted
+  xterm, so replies to queries embedded in the replayed bytes don't leak into the live
+  shell. (`src/lib/components/Terminal.svelte`.)
+- **Doubled/ghosted glyphs on ligature-heavy TUIs (e.g. Codex).** `package.json`
+  pinned the xterm core to `^5.5.0` but the renderer addons to `^0.19.0`
+  (`addon-webgl`) and `^0.10.0` (`addon-ligatures`) — those addon versions belong to
+  xterm core **6.0.0**, not 5.5.0 (xterm.js publishes core + addons in lockstep), so a
+  6.0.0 WebGL renderer was reading a 5.5.0 core's internals. Realigned to the matched
+  5.5.0 set — `addon-webgl@^0.18.0`, `addon-ligatures@^0.9.0` (fit/web-links were
+  already correct) — and re-synced the lockfile.
+- **Renderer hardening (secondary, in `Terminal.svelte`).** Ligatures are loaded
+  **before** WebGL so the glyph atlas is baked with ligatures resolved from the first
+  frame; the shared texture atlas is cleared only on a genuine hidden→reveal (not on
+  every resize, which could garble other panes — xterm #4480); WebGL is bound to
+  **visible panes only** — attached on reveal, and on hide/close the GPU context is
+  **explicitly released** (`WEBGL_lose_context.loseContext()` + zeroing the canvas,
+  since plain `dispose()` doesn't reclaim the ANGLE context on Windows), capping live
+  WebGL contexts to the few visible panes so many open terminals/worktrees can't
+  approach WebView2's ~16-context limit; and a visible pane that xterm's
+  `IntersectionObserver` has latched as paused is force-resumed. Hidden terminals keep
+  streaming into their buffer via the DOM fallback, so no output or scrollback is lost.
+
 ### Added — OpenCode sub-agents in the agent view
 
 - OpenCode's delegated sub-agents (the `task` tool, which OpenCode runs as **child

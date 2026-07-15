@@ -90,6 +90,19 @@
   let lastRows = 0;
   let launchTimer: ReturnType<typeof setTimeout> | undefined;
   let ptyReady = false;
+  // True only while replaying a snapshot into a remounted xterm. xterm auto-replies
+  // to any DSR/DA1/color queries embedded in the replayed bytes via `onData`; those
+  // replies must NOT reach the live shell (they'd land as stray input), so `onData`
+  // is suppressed while this is set.
+  let replaying = false;
+  // Debounced release of a hidden pane's GPU context (see `releaseRenderer`): a
+  // hidden terminal drops its scarce WebGL context so many background terminals
+  // never exhaust WebView2's live-context budget. Debounced so a rapid tab flick
+  // doesn't thrash attach/release.
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+  // Timestamp of the last WebGL context loss, to tell a one-off loss (recover) from
+  // a rapid re-loss (we're over the context budget — stay on DOM, don't thrash).
+  let webglLossAt = 0;
 
   // --- Copy / paste --------------------------------------------------------
   function copySelection() {
@@ -121,13 +134,65 @@
     }
   }
 
-  // Force one clean repaint of the whole viewport on the next frame. The WebGL
-  // renderer diffs against a cached cell model and skips cells it deems unchanged,
-  // so after a resize/reveal it can keep compositing stale pixels for those cells
-  // (a leftover sliver of the previous frame). `clearTextureAtlas()` resets that
-  // model and requests a full redraw; the `refresh` covers the DOM fallback. This
-  // is the repaint used on every ordinary resize — no context teardown needed.
+  // Defeat xterm's render-pause gate. xterm's RenderService uses an
+  // IntersectionObserver to pause rendering when it thinks the terminal isn't
+  // visible (a CPU saving for hidden tabs). In WebView2 that observer can latch a
+  // *freshly created or just-revealed* pane as "not intersecting" and then never
+  // fire the resume callback, so every write is swallowed (`refreshRows` only sets
+  // `_needsFullRefresh` while paused) and the pane shows just its blinking cursor —
+  // the intermittent blank-terminal bug, independent of the WebGL/DOM renderer.
+  //
+  // When we KNOW the pane is visible (real geometry) but the service is still
+  // paused, clear the flag ourselves, flush any resize it deferred, and drive a full
+  // refresh. Genuinely hidden panes (no geometry) are left paused, so the CPU saving
+  // is preserved. Reaching into `_core._renderService` is guarded: if a future xterm
+  // renames it, the optional chaining makes this a no-op instead of throwing. This is
+  // the same workaround VS Code and other xterm embedders use for this exact gate.
+  // Returns true when it actually un-paused (so callers can repaint).
+  function forceRenderResume(): boolean {
+    if (!term) return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rs = (term as any)?._core?._renderService;
+    if (!rs || !rs._isPaused) return false; // not paused → fast path, nothing to do
+    if (!hasVisibleGeometry()) return false; // genuinely hidden → keep it paused
+    rs._isPaused = false;
+    try {
+      rs._pausedResizeTask?.flush?.();
+    } catch {
+      // No deferred resize / internal shape changed — the refresh below still paints.
+    }
+    try {
+      term.refresh(0, Math.max(0, term.rows - 1));
+    } catch {
+      // Terminal disposed mid-call; ignore.
+    }
+    return true;
+  }
+
+  // One clean full-viewport redraw on the next frame, used after an ordinary grid
+  // resize. It does NOT clear the glyph texture atlas: a resize doesn't invalidate
+  // glyph bitmaps, and xterm shares one atlas between same-config terminals, so
+  // clearing here would garble other panes mid-stream (xterm #4480). The plain
+  // `refresh` also drives the DOM fallback.
   function forceRepaint() {
+    if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
+    repaintRaf = requestAnimationFrame(() => {
+      repaintRaf = null;
+      if (!term) return;
+      try {
+        term.refresh(0, Math.max(0, term.rows - 1));
+      } catch {
+        // Terminal may have been disposed; ignore.
+      }
+    });
+  }
+
+  // Repaint on a genuine hidden→visible reveal. A hidden canvas can keep its
+  // pre-hide pixels and the atlas can be stale, so here — and ONLY here — we clear
+  // the texture atlas before the full redraw. Atlas clearing is confined to real
+  // reveals precisely because the atlas is shared across same-config terminals;
+  // doing it on every resize/refocus would wipe glyphs other panes are mid-drawing.
+  function revealRepaint() {
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     repaintRaf = requestAnimationFrame(() => {
       repaintRaf = null;
@@ -145,24 +210,33 @@
     });
   }
 
-  // Load the WebGL renderer and wire GPU context-loss recovery. WebView2 can drop
-  // the GL context under heavy compositing (e.g. while dragging a panel divider);
-  // without this handler the addon keeps compositing a frozen/garbage frame — the
-  // "stale frame" artifact. On a real loss we dispose the dead addon (xterm falls
-  // back to the DOM renderer) and reattach a fresh WebGL surface on the next frame,
-  // staying on DOM only if WebGL won't come back. Mirrors xterm's recommended setup
-  // (and VS Code's). Ordinary resizes/reveals just forceRepaint — they never tear
-  // the context down, which is both cheaper and avoids the disposer-throws race.
+  // Attach the WebGL renderer — but ONLY while this pane is actually visible. Each
+  // xterm WebGL renderer holds its own GPU context, and WebView2/Chromium caps the
+  // number of live WebGL contexts (~16); since every terminal stays mounted across
+  // all workspaces, attaching WebGL to hidden panes too piles contexts up until the
+  // browser starts evicting them — new terminals then get an immediately-lost
+  // context (a blank pane) and the loss/recover cycle thrashes the compositor. So
+  // WebGL is bound to the visible pane and released on hide (`releaseRenderer`).
+  //
+  // On context loss we recover from a genuine one-off (WebView2 dropping the context
+  // while a divider is dragged) by reattaching next frame, but NOT from a rapid
+  // re-loss — that means we're over the context budget, so we stay on the DOM
+  // fallback and let the next reveal reattach once contexts have been freed.
   function attachRenderer() {
-    if (!term) return;
+    if (!term || renderer || !hasVisibleGeometry()) return;
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => {
+        const now = Date.now();
+        const rapid = now - webglLossAt < 2000;
+        webglLossAt = now;
         disposeRenderer(webgl);
-        requestAnimationFrame(() => {
-          if (term && !renderer) attachRenderer();
-          forceRepaint();
-        });
+        if (!rapid) {
+          requestAnimationFrame(() => {
+            if (term && !renderer) attachRenderer();
+            forceRepaint();
+          });
+        }
       });
       term.loadAddon(webgl);
       renderer = webgl;
@@ -182,6 +256,40 @@
       target?.dispose();
     } catch {
       // Already disposed or core torn down — nothing else to clean up.
+    }
+  }
+
+  // Release a hidden (or closing) pane's GPU context. `dispose()` alone reverts
+  // xterm to the DOM renderer but on Windows/ANGLE does NOT reclaim the WebGL
+  // context promptly — it waits for GC, so mounted-but-hidden terminals keep
+  // counting against WebView2's live-context budget until new terminals can't get a
+  // context (a blank pane). So after disposing we explicitly lose the context and
+  // zero the canvas, freeing the slot now. xterm keeps streaming into the buffer via
+  // the DOM fallback while hidden, so no output is lost; the next reveal reattaches.
+  function releaseRenderer() {
+    if (!renderer) return;
+    // Capture the WebGL canvas BEFORE dispose detaches it from the DOM.
+    const canvases = el ? Array.from(el.querySelectorAll("canvas")) : [];
+    disposeRenderer(renderer);
+    if (releaseTimer) {
+      clearTimeout(releaseTimer);
+      releaseTimer = undefined;
+    }
+    for (const canvas of canvases) {
+      let gl: WebGL2RenderingContext | null = null;
+      try {
+        gl = canvas.getContext("webgl2");
+      } catch {
+        gl = null;
+      }
+      if (!gl) continue; // a non-WebGL (DOM/2D) canvas — nothing to release
+      try {
+        gl.getExtension("WEBGL_lose_context")?.loseContext();
+      } catch {
+        // Context already lost — the slot is freed regardless.
+      }
+      canvas.width = 0;
+      canvas.height = 0;
     }
   }
 
@@ -209,6 +317,9 @@
     if (distanceFromBottom > 0) {
       term.scrollToLine(Math.max(0, term.buffer.active.baseY - distanceFromBottom));
     }
+    // A settled fit means the pane is laid out and visible — a good moment to clear
+    // any lingering paused-render latch that would otherwise leave it blank.
+    forceRenderResume();
   }
 
   function scheduleAgentLaunch(delay = RUN_COMMAND_QUIET_MS) {
@@ -284,15 +395,18 @@
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
-    // WebGL is the primary renderer in every case. The ligatures addon renders
-    // through WebGL's character joiner (the WebGL renderer resolves joined ranges
-    // itself — the same path VS Code uses), so ligatures are NOT mutually exclusive
-    // with the accelerated renderer. Falling back to the DOM renderer for ligatures
-    // is what let the browser shape text off the monospace grid, drifting glyphs
-    // away from their cells and breaking mouse selection (it anchored to the grid
-    // while glyphs sat elsewhere). Load WebGL first, then stack ligatures on top;
-    // DOM stays the fallback only when WebGL itself is unavailable.
-    attachRenderer();
+    // Ligatures are loaded BEFORE the WebGL renderer, on purpose. xterm bakes its
+    // glyph texture atlas when WebGL activates; a ligatures addon loaded afterwards
+    // registers its character joiner too late to reach the already-baked atlas, so
+    // ligated glyphs render doubled/ghosted over their plain forms on ligature-heavy
+    // TUIs (Codex) — xterm #3303. Registering the character joiner first means the
+    // atlas is built with ligatures resolved from the very first frame. WebGL is
+    // still the renderer for ligatures (the WebGL renderer resolves joined ranges
+    // itself, the same path VS Code uses) — it must NOT fall back to the DOM
+    // renderer, which shapes text off the monospace grid and breaks mouse selection.
+    // The WebGL renderer itself is attached lazily, and only while the pane is
+    // visible (after the first fit + on every reveal), so hidden terminals don't hold
+    // a scarce GPU context. DOM stays the fallback only when WebGL is unavailable.
     if (t.ligatures) {
       try {
         term.loadAddon(new LigaturesAddon());
@@ -490,10 +604,13 @@
       unlisteners.push(() => handler.dispose());
     }
 
-    // Subscribe BEFORE spawning so no early output is missed.
+    // Subscribe BEFORE spawning so no early output is missed. The write callback
+    // runs once the bytes are parsed into the buffer: if xterm's render service
+    // latched this (visible) pane as paused, un-pause it so the output we just wrote
+    // actually paints instead of leaving a blank pane with only a cursor.
     unlisteners.push(
       await listen<number[]>(`pty:output:${id}`, (e) => {
-        term?.write(new Uint8Array(e.payload));
+        term?.write(new Uint8Array(e.payload), () => forceRenderResume());
         agentMonitor.noteOutput(id);
         scheduleAgentLaunch();
       }),
@@ -504,9 +621,35 @@
       }),
     );
 
+    // Register onData BEFORE spawning the shell. On Windows, ConPTY/PowerShell emit a
+    // cursor-position query (DSR `ESC[6n`) at startup and BLOCK until the terminal
+    // replies; xterm generates that reply and delivers it here. If this handler were
+    // wired only after `pty_create` (as it used to be), the query — which arrives
+    // while we're still awaiting `pty_create` — would be parsed before onData exists,
+    // the reply would be dropped, and the shell would hang forever without ever
+    // printing its prompt (an intermittent blank pane). Wiring it first guarantees
+    // the reply is always sent. (`replaying` suppresses replies to queries embedded
+    // in a replayed snapshot so they don't leak into the live shell.)
+    term.onData((data) => {
+      if (replaying) return;
+      invoke("pty_write", { id, data }).catch(() => {});
+    });
+
     // Let the layout settle so the first fit measures real dimensions.
     await tick();
     fitToPane();
+    // Now that the pane is laid out, bind the GPU renderer if it's the visible one.
+    // A pane that mounts hidden (a background workspace/tab) stays on the DOM
+    // fallback until it's revealed — the ResizeObserver below attaches WebGL then —
+    // so it never holds a GPU context while off-screen.
+    wasVisible = hasVisibleGeometry();
+    if (wasVisible) {
+      attachRenderer();
+      forceRepaint();
+      // xterm's IntersectionObserver may still latch this just-created pane as
+      // hidden (an async first callback that races layout); make sure it renders.
+      forceRenderResume();
+    }
 
     // `created` is false when the PTY already existed — i.e. this xterm is a
     // *remount* onto a live session (e.g. the tab was dragged to another region,
@@ -543,14 +686,20 @@
 
     // Remount: replay the backend's retained output so the fresh xterm shows the
     // scrollback it had before, instead of an empty screen until the next byte.
+    // `replaying` is held across the write so xterm's auto-replies to any queries in
+    // the replayed bytes don't leak into the live shell as stray input.
     if (created === false) {
       try {
         const snap = await invoke<{ data: number[]; stale: boolean }>("pty_snapshot", { id });
         if (snap.data.length) {
+          replaying = true;
           term?.reset();
-          term?.write(new Uint8Array(snap.data));
+          term?.write(new Uint8Array(snap.data), () => {
+            replaying = false;
+          });
         }
       } catch {
+        replaying = false;
         // No snapshot (unknown id / not in Tauri) — keep the live stream only.
       }
     }
@@ -561,17 +710,43 @@
       scheduleAgentLaunch(RUN_COMMAND_FALLBACK_MS);
     }
 
-    term.onData((data) => {
-      invoke("pty_write", { id, data }).catch(() => {});
-    });
-
     // Coalesce a burst of layout changes (divider drag, window resize) into a
     // single settled-grid fit, so the PTY isn't spammed with SIGWINCH and the
-    // scrollbar doesn't wobble mid-resize. A display:none → shown transition also
-    // forces a repaint, since a hidden canvas can keep compositing stale pixels.
+    // scrollbar doesn't wobble mid-resize. The same observer drives the GPU
+    // renderer's lifecycle: a display:none pane reports a 0×0 box, so switching
+    // workspace/tab is what tells a pane it went hidden or was revealed.
     resizeObserver = new ResizeObserver(() => {
       const visible = hasVisibleGeometry();
-      if (visible && !wasVisible) forceRepaint();
+      if (visible) {
+        // Cancel a pending release: the pane came back before we freed its context.
+        if (releaseTimer) {
+          clearTimeout(releaseTimer);
+          releaseTimer = undefined;
+        }
+        if (!wasVisible) {
+          // Revealed — reattach a GPU context (fresh atlas) and repaint through any
+          // stale pixels the hidden canvas kept.
+          attachRenderer();
+          revealRepaint();
+        } else if (!renderer) {
+          // Still visible but the renderer was dropped by a recovered context loss —
+          // bring WebGL back now that we can.
+          attachRenderer();
+          forceRepaint();
+        }
+        // A visible pane must never stay stuck on xterm's paused render gate.
+        forceRenderResume();
+      } else if (wasVisible) {
+        // Hidden — free the GPU context shortly (debounced so rapid tab flicking
+        // doesn't thrash attach/release). xterm keeps streaming into its buffer via
+        // the DOM fallback while hidden, so nothing is lost; the reveal above
+        // reattaches WebGL and repaints.
+        if (releaseTimer) clearTimeout(releaseTimer);
+        releaseTimer = setTimeout(() => {
+          releaseTimer = undefined;
+          releaseRenderer();
+        }, 400);
+      }
       wasVisible = visible;
       fitToPane();
     });
@@ -623,6 +798,11 @@
     if (stableFitRaf !== null) cancelAnimationFrame(stableFitRaf);
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     if (launchTimer) clearTimeout(launchTimer);
+    if (releaseTimer) clearTimeout(releaseTimer);
+    // Free the GPU context explicitly before disposing xterm: closing a tab must
+    // reclaim the WebGL slot now (not at GC time) so opening/closing many terminals
+    // never drifts toward WebView2's live-context budget.
+    releaseRenderer();
     term?.dispose();
   });
 </script>

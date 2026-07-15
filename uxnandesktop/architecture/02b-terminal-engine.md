@@ -24,7 +24,11 @@ El área central del ADE es donde ocurre la interacción directa con los agentes
 
 ### Renderizado con xterm.js
 
-xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Se usa para **todas** las terminales —incluidas las que activan ligaduras, que se dibujan a través del *character joiner* del propio renderer WebGL (no del renderer DOM)—, de modo que los glifos siempre quedan alineados a la cuadrícula monoespaciada y la selección de texto con el mouse cae exactamente donde corresponde. Ante una pérdida del contexto GPU en WebView2 el addon se reinstala vía `onContextLoss`; los cambios de cuadrícula y los *reveals* de un pane oculto fuerzan un repintado completo (que limpia el atlas de glifos y el modelo de celdas) para descartar frames obsoletos, sin destruir el contexto. DOM queda solo como fallback automático cuando WebGL no está disponible. Esto proporciona emulación de terminal completa:
+xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Se usa para las terminales que activan ligaduras, que se dibujan a través del *character joiner* del propio renderer WebGL (no del renderer DOM), de modo que los glifos siempre quedan alineados a la cuadrícula monoespaciada y la selección de texto con el mouse cae exactamente donde corresponde.
+
+**Orden de carga (importante):** el addon de ligaduras se carga **antes** de activar WebGL. xterm hornea su *atlas de texturas de glifos* al activarse WebGL; si el *character joiner* de ligaduras se registra después, sus glifos ligados nunca llegan al atlas ya horneado y se dibujan **duplicados/fantasma** sobre su forma plana en TUIs con muchas ligaduras (p. ej. Codex CLI) — xterm #3303. Cargando ligaduras primero, el atlas se construye con las ligaduras resueltas desde el primer frame.
+
+**Contexto GPU acotado a los panes visibles:** cada renderer WebGL mantiene su propio contexto GPU y WebView2/Chromium **limita los contextos WebGL vivos (~16)**. Como cada terminal permanece montada en todos los workspaces, uxnan adjunta WebGL **solo mientras el pane está visible**: se adjunta al revelarse y, al ocultarse (o cerrarse) el contexto se **libera explícitamente** (`WEBGL_lose_context.loseContext()` + `canvas.width/height = 0`, porque en Windows/ANGLE un `dispose()` a secas no recupera el contexto de inmediato). Así el número de contextos vivos queda acotado a los pocos panes visibles sin importar cuántas terminales/worktrees haya abiertos; una terminal oculta sigue recibiendo su output en el buffer vía el fallback DOM (no se pierde nada) y repinta al revelarse. Ante una pérdida de contexto GPU en WebView2 el addon se recupera vía `onContextLoss` reinstalando en el siguiente frame, salvo una **re-pérdida rápida** (señal de estar por encima del presupuesto de contextos): en ese caso se queda en DOM en vez de entrar en un bucle. Solo los *reveals* de un pane oculto limpian el atlas de glifos (nunca un resize/refocus ordinario, que garabatearía el atlas compartido entre panes de igual configuración — xterm #4480). DOM queda como fallback automático cuando WebGL no está disponible. Esto proporciona emulación de terminal completa:
 
 - **Colores**: Soporte completo de colores ANSI (16 colores, 256 colores, true color 24-bit).
 - **Cursor**: Movimiento, estilos (bloque, barra, underline), parpadeo configurable.
@@ -232,6 +236,17 @@ El backend Rust crea un pseudoterminal con `portable-pty` usando el shell config
 El frontend Svelte conecta xterm.js al PTY vía Tauri events. La conexión es bidireccional:
 - **Input del teclado** se envía al backend con `invoke('pty_write')` (Tauri command).
 - **Output del PTY** se emite al frontend con `emit('pty:output:{id}')` (Tauri event).
+
+> **Orden crítico — la respuesta al query de arranque.** En Windows, ConPTY/PowerShell
+> emiten al arrancar un query de posición de cursor (DSR `ESC[6n`) y **se bloquean
+> hasta que el terminal responde**; xterm genera esa respuesta y la entrega por
+> `onData`. Por eso `onData` (que reenvía la respuesta al PTY con `pty_write`) se
+> registra **antes** de `pty_create`: el query llega *mientras* aún se espera
+> `pty_create`, así que un `onData` tardío perdería la respuesta y el shell quedaría
+> colgado sin imprimir nunca su prompt (panel en blanco intermitente). Un flag
+> `replaying` suprime `onData` mientras se reproduce un snapshot en un xterm
+> remontado, para que las respuestas a queries embebidos en esos bytes no se filtren
+> como input al shell vivo.
 
 ### Paso 4: Lanzamiento del Agente
 
