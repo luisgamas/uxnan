@@ -39,11 +39,10 @@ connected to live bridge data, validated on-device against a real bridge.
   The metrics now come from the **bridge** (`metrics/get`), so they **survive an
   app uninstall** (re-fetched on re-pair); the phone keeps a per-PC snapshot
   display cache (`MetricsCacheStore`) and falls back to the local drift
-  aggregation only when the cache is empty. The controller also exposes
-  `metrics/export` / `metrics/import` (tamper-proof backup). **Remaining (next
-  commit):** the profile "local data can be lost" note + the export/import UI +
-  EN/ES strings. The per-agent usage/credit view stays Phase B (the
-  `agent/usageStats` item below).
+  aggregation only when the cache is empty. A profile **"Backup"** section adds a
+  "local data can be lost" note + **Export / Import** of a bridge-sealed,
+  tamper-proof file (`metrics/export` / `metrics/import`), with EN/ES strings. The
+  per-agent usage/credit view stays Phase B (the `agent/usageStats` item below).
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual

@@ -584,6 +584,108 @@ abstract class AppLocalizations {
   /// **'conversations'**
   String get profileAgentConversationsLabel;
 
+  /// No description provided for @profileBackupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup'**
+  String get profileBackupTitle;
+
+  /// No description provided for @profileBackupNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.'**
+  String get profileBackupNote;
+
+  /// No description provided for @profileBackupExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get profileBackupExport;
+
+  /// No description provided for @profileBackupImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get profileBackupImport;
+
+  /// No description provided for @profileBackupOfflineHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to a PC to back up or restore your stats.'**
+  String get profileBackupOfflineHint;
+
+  /// No description provided for @profileBackupPassphraseOptionalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Protect this backup?'**
+  String get profileBackupPassphraseOptionalTitle;
+
+  /// No description provided for @profileBackupPassphraseOptionalHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a passphrase (optional). You\'ll need it to import the file.'**
+  String get profileBackupPassphraseOptionalHint;
+
+  /// No description provided for @profileBackupPassphraseRequiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Passphrase required'**
+  String get profileBackupPassphraseRequiredTitle;
+
+  /// No description provided for @profileBackupPassphraseRequiredHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This backup is protected. Enter its passphrase.'**
+  String get profileBackupPassphraseRequiredHint;
+
+  /// No description provided for @profileBackupPassphraseField.
+  ///
+  /// In en, this message translates to:
+  /// **'Passphrase'**
+  String get profileBackupPassphraseField;
+
+  /// No description provided for @profileBackupCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileBackupCancel;
+
+  /// No description provided for @profileBackupShareSubject.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan stats backup'**
+  String get profileBackupShareSubject;
+
+  /// No description provided for @profileBackupExportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create the backup. Make sure a PC is connected.'**
+  String get profileBackupExportFailed;
+
+  /// Snackbar after a successful metrics import that merged new events.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup restored — {count} new entries.'**
+  String profileBackupImportedNew(int count);
+
+  /// No description provided for @profileBackupImportedNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Your stats are already up to date.'**
+  String get profileBackupImportedNone;
+
+  /// No description provided for @profileBackupImportBadPassphrase.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong passphrase for this backup.'**
+  String get profileBackupImportBadPassphrase;
+
+  /// No description provided for @profileBackupImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t import this file. It may be from another PC or have been modified.'**
+  String get profileBackupImportFailed;
+
   /// No description provided for @profileUsageTitle.
   ///
   /// In en, this message translates to:

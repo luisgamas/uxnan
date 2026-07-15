@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -68,4 +71,57 @@ void main() {
     expect(find.text('Claude Code'), findsOneWidget);
     expect(find.text('Less'), findsOneWidget);
   });
+
+  testWidgets(
+    'Backup: cancelling the export passphrase dialog does not crash',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      tester.view.physicalSize = const Size(1200, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final device = TrustedDevice(
+        macDeviceId: 'pc-1',
+        displayName: 'My PC',
+        macIdentityPublicKey: Uint8List(32),
+        relayUrl: 'wss://relay.example',
+        sessionId: 'sess-1',
+        pairedAt: DateTime(2026, 3),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileMetricsProvider.overrideWith((ref) async => _metrics()),
+            trustedDevicesProvider
+                .overrideWith((ref) => Stream.value([device])),
+            connectedDeviceProvider.overrideWith((ref) => Stream.value(device)),
+            activityHeatmapProvider.overrideWith((ref, arg) async => const {}),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ProfileScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open the export passphrase dialog (the Export button is enabled while
+      // a PC is connected).
+      final exportButton = find.text('Export');
+      await tester.ensureVisible(exportButton);
+      await tester.tap(exportButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      // Cancelling must dismiss it cleanly — previously the dialog's controller
+      // was disposed too early and threw "used after being disposed" during the
+      // close animation.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
 }

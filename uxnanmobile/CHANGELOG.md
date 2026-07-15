@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Profile "Backup" section (encrypted export / import)
+- The profile now has a **Backup** card: a note that stats live on this phone +
+  the PC and **can be lost without a backup**, plus **Export** and **Import**
+  actions. Export seals the metrics into a tamper-proof `.uxmetrics` file via the
+  bridge (`metrics/export`) and opens the native share sheet; Import picks a file
+  and restores it (`metrics/import`) — a foreign/edited file is rejected, and a
+  passphrase-protected file prompts for the phrase and retries. Both actions need
+  a connected PC (the bridge seals/verifies), so they disable with a hint while
+  offline. Full EN/ES strings.
+- The passphrase dialog owns its `TextEditingController` in a `StatefulWidget`
+  (disposed in `dispose()`), so the dialog's close animation never touches a
+  disposed controller. Regression test in `profile_screen_test.dart`.
+
 ### Changed — Profile metrics now come from the bridge (survive an uninstall)
 - The profile / per-PC metrics (conversations, messages, agents/models used,
   connection time, sessions, git actions, activity heatmap) are now sourced from

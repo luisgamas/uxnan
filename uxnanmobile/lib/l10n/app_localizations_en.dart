@@ -276,6 +276,66 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAgentConversationsLabel => 'conversations';
 
   @override
+  String get profileBackupTitle => 'Backup';
+
+  @override
+  String get profileBackupNote =>
+      'Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.';
+
+  @override
+  String get profileBackupExport => 'Export';
+
+  @override
+  String get profileBackupImport => 'Import';
+
+  @override
+  String get profileBackupOfflineHint =>
+      'Connect to a PC to back up or restore your stats.';
+
+  @override
+  String get profileBackupPassphraseOptionalTitle => 'Protect this backup?';
+
+  @override
+  String get profileBackupPassphraseOptionalHint =>
+      'Add a passphrase (optional). You\'ll need it to import the file.';
+
+  @override
+  String get profileBackupPassphraseRequiredTitle => 'Passphrase required';
+
+  @override
+  String get profileBackupPassphraseRequiredHint =>
+      'This backup is protected. Enter its passphrase.';
+
+  @override
+  String get profileBackupPassphraseField => 'Passphrase';
+
+  @override
+  String get profileBackupCancel => 'Cancel';
+
+  @override
+  String get profileBackupShareSubject => 'Uxnan stats backup';
+
+  @override
+  String get profileBackupExportFailed =>
+      'Couldn\'t create the backup. Make sure a PC is connected.';
+
+  @override
+  String profileBackupImportedNew(int count) {
+    return 'Backup restored — $count new entries.';
+  }
+
+  @override
+  String get profileBackupImportedNone => 'Your stats are already up to date.';
+
+  @override
+  String get profileBackupImportBadPassphrase =>
+      'Wrong passphrase for this backup.';
+
+  @override
+  String get profileBackupImportFailed =>
+      'Couldn\'t import this file. It may be from another PC or have been modified.';
+
+  @override
   String get profileUsageTitle => 'Usage & credit';
 
   @override

@@ -5,6 +5,7 @@ import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
+import 'package:uxnan/presentation/screens/profile/profile_backup_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -89,6 +90,11 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(height: UxnanSpacing.sm),
               MetricsAgentBreakdown(byAgent: m.byAgent),
             ],
+            const SizedBox(height: UxnanSpacing.xl),
+            Text(l10n.profileBackupTitle, style: titleStyle),
+            const SizedBox(height: UxnanSpacing.sm),
+            const ProfileBackupSection(),
+            const SizedBox(height: UxnanSpacing.xl),
             const UsageSection(),
           ],
         ),

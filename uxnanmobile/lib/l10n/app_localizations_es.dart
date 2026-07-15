@@ -277,6 +277,67 @@ class AppLocalizationsEs extends AppLocalizations {
   String get profileAgentConversationsLabel => 'conversaciones';
 
   @override
+  String get profileBackupTitle => 'Respaldo';
+
+  @override
+  String get profileBackupNote =>
+      'Tus estadísticas se guardan en este teléfono y en tu PC. Sin un respaldo pueden perderse si desinstalas la app o cambias de teléfono.';
+
+  @override
+  String get profileBackupExport => 'Exportar';
+
+  @override
+  String get profileBackupImport => 'Importar';
+
+  @override
+  String get profileBackupOfflineHint =>
+      'Conéctate a una PC para respaldar o restaurar tus estadísticas.';
+
+  @override
+  String get profileBackupPassphraseOptionalTitle => '¿Proteger este respaldo?';
+
+  @override
+  String get profileBackupPassphraseOptionalHint =>
+      'Agrega una frase de contraseña (opcional). La necesitarás para importar el archivo.';
+
+  @override
+  String get profileBackupPassphraseRequiredTitle =>
+      'Frase de contraseña requerida';
+
+  @override
+  String get profileBackupPassphraseRequiredHint =>
+      'Este respaldo está protegido. Ingresa su frase de contraseña.';
+
+  @override
+  String get profileBackupPassphraseField => 'Frase de contraseña';
+
+  @override
+  String get profileBackupCancel => 'Cancelar';
+
+  @override
+  String get profileBackupShareSubject => 'Respaldo de estadísticas de Uxnan';
+
+  @override
+  String get profileBackupExportFailed =>
+      'No se pudo crear el respaldo. Asegúrate de estar conectado a una PC.';
+
+  @override
+  String profileBackupImportedNew(int count) {
+    return 'Respaldo restaurado — $count entradas nuevas.';
+  }
+
+  @override
+  String get profileBackupImportedNone => 'Tus estadísticas ya están al día.';
+
+  @override
+  String get profileBackupImportBadPassphrase =>
+      'Frase de contraseña incorrecta para este respaldo.';
+
+  @override
+  String get profileBackupImportFailed =>
+      'No se pudo importar este archivo. Puede ser de otra PC o haber sido modificado.';
+
+  @override
   String get profileUsageTitle => 'Uso y crédito';
 
   @override
