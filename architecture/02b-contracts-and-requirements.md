@@ -90,14 +90,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 63 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 66 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 63 metodos request/response** + 8 notificaciones de streaming
+> **Total: 66 metodos request/response** + 8 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -172,6 +172,17 @@ agent/models            -> modelos disponibles del agente activo (AgentModel[] e
 agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/Gemini/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`.
 agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
+
+**Metricas de perfil (3):**
+```
+metrics/get             -> MetricsSnapshot del PC que responde (fuente de verdad = el bridge): conversaciones, agentes/modelos distintos, mensajes, git actions, sesiones, tiempo conectado total/mas largo, split relay-vs-directo, desglose por agente, member-since y buckets de actividad por dia (para el heatmap). El telefono renderiza un snapshot por PC y suma entre PCs. `void` -> MetricsSnapshot.
+metrics/export          -> el bridge sella su log de eventos de metricas en un archivo opaco **a prueba de manipulacion** que solo ESE mismo bridge puede verificar + descifrar (AES-256-GCM bajo un secreto en el llavero del SO → los usuarios no pueden fabricar/editar sus stats). Passphrase opcional = segunda capa de confidencialidad (scrypt). Params { passphrase? } -> { blob, filename, passphraseProtected }.
+metrics/import          -> reingresa un archivo exportado. El bridge rechaza un archivo ajeno/editado, lo descifra (con passphrase si aplica) y fusiona sus eventos **por id** (idempotente: reimportar no cambia nada). Params { blob, passphrase? } -> { imported, snapshot }.
+```
+> **Alcance:** el uso/creditos de proveedores queda **fuera** de metrics/* — se
+> leen en vivo via `agent/usageStats` y nunca se persisten. El sellado es
+> **same-PC only** por diseno: la infalsificabilidad exige un secreto que el
+> usuario no posee (llavero del bridge), asi que otra PC no puede verificarlo.
 
 **Auth (3):**
 ```

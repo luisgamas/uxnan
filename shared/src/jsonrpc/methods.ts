@@ -48,6 +48,13 @@ import type {
   AgentModel,
 } from '../agents/agent-capabilities.js';
 import type { UsageStatsParams, UsageStatsResult } from '../models/usage.js';
+import type {
+  MetricsExportParams,
+  MetricsExportResult,
+  MetricsImportParams,
+  MetricsImportResult,
+  MetricsSnapshot,
+} from '../models/metrics.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
 
 // --- Param shapes -----------------------------------------------------------
@@ -377,6 +384,11 @@ export interface JsonRpcMethodRegistry {
   'agent/commands': { params: AgentCommandsParams; result: AgentCommandsResult };
   // Usage statistics (per-provider quota / credit / local token tally)
   'agent/usageStats': { params: UsageStatsParams; result: UsageStatsResult };
+
+  // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
+  'metrics/get': { params: void; result: MetricsSnapshot };
+  'metrics/export': { params: MetricsExportParams; result: MetricsExportResult };
+  'metrics/import': { params: MetricsImportParams; result: MetricsImportResult };
 
   // Auth (sanitized — never carries tokens/keys; see AuthStatus)
   'auth/status': { params: { agentId: AgentId }; result: AuthStatus };

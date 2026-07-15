@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — profile metrics (`metrics/*`) contract
+- **Three new JSON-RPC methods** (`src/jsonrpc/methods.ts` + `METHOD_NAMES`, now
+  **66 entries**) that make the mobile profile metrics durable by moving ownership
+  to the bridge (they were phone-local and lost on an app uninstall):
+  - **`metrics/get`** — `void` → `MetricsSnapshot`: the requesting PC's aggregated
+    stats (conversations, distinct agents/models, messages, git actions, sessions,
+    total/longest connected time, relay-vs-direct split, per-agent breakdown,
+    member-since, and per-day activity buckets for the heatmap). The bridge is the
+    source of truth; the phone renders one snapshot per PC and sums across PCs.
+  - **`metrics/export`** — `{ passphrase? }` → `{ blob, filename, passphraseProtected }`:
+    the bridge seals its metrics event log into an opaque, **tamper-proof** file
+    that only the SAME bridge can later verify + decrypt (so users can't fabricate
+    or edit their stats). Optional passphrase adds a second confidentiality layer.
+  - **`metrics/import`** — `{ blob, passphrase? }` → `{ imported, snapshot }`: feed a
+    previously exported file back; the bridge rejects a foreign/edited file, then
+    merges its events **by id** (idempotent).
+- **New models** (`src/models/metrics.ts`, exported from the package root):
+  `MetricsSnapshot`, `MetricsAgentUsage`, `MetricsActivityDay`, `MetricsTransport`,
+  and the `metrics/export`|`import` param/result shapes.
+- Provider usage/credits are deliberately **excluded** — those stay live-read via
+  `agent/usageStats`, never persisted.
+
 ### Added — agent commands (`agent/commands`) contract
 - **New JSON-RPC method `agent/commands`** (`src/jsonrpc/methods.ts` +
   `METHOD_NAMES`, now **63 entries**): discover an agent's special ("slash")
