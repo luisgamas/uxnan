@@ -34,6 +34,7 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
+import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/profile_avatar.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
@@ -181,17 +182,154 @@ final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
   (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),
 );
 
-/// Aggregated profile metrics across all paired PCs. `autoDispose` so
-/// re-opening the profile recomputes from the current data.
-final profileMetricsProvider = FutureProvider.autoDispose<ProfileMetrics>(
-  (ref) => ref.watch(metricsRepositoryProvider).loadMetrics(),
+/// Thrown when `metrics/import` is rejected by the bridge, carrying the bridge's
+/// reason (e.g. a foreign/edited file, or a missing/wrong passphrase) so the UI
+/// can show it verbatim.
+class MetricsImportException implements Exception {
+  /// Creates a [MetricsImportException] with the bridge's [message].
+  const MetricsImportException(this.message);
+
+  /// The human-readable reason the import was rejected.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Owns the bridge-reported profile metrics: one [MetricsSnapshot] per PC,
+/// keyed by `deviceId`. The **bridge is the source of truth** (these survive an
+/// app uninstall, unlike the old phone-local aggregation) — so on every
+/// connection the controller re-fetches `metrics/get` and caches it, and the
+/// profile derives from the cache. The on-device cache is a display cache only.
+///
+/// This provider's `build` *is* the async load workflow, so fetching on
+/// (re)connect is intentional, not a hidden side effect.
+class MetricsController extends AsyncNotifier<Map<String, MetricsSnapshot>> {
+  @override
+  Future<Map<String, MetricsSnapshot>> build() async {
+    final store = ref.read(metricsCacheStoreProvider);
+    final cache = await store.readAll();
+    // Re-fetch the connected PC's snapshot on each (re)connection; cache it.
+    final connected = ref.watch(connectedDeviceProvider).value;
+    if (connected != null) {
+      final snapshot = await _fetch();
+      if (snapshot != null && snapshot.deviceId.isNotEmpty) {
+        cache[snapshot.deviceId] = snapshot;
+        await store.writeOne(snapshot);
+      }
+    }
+    return cache;
+  }
+
+  /// Fetches `metrics/get` for the connected PC, or null when offline / against a
+  /// bridge without the handler (degrades to the cached/drift data).
+  Future<MetricsSnapshot?> _fetch() async {
+    try {
+      final response =
+          await ref.read(sessionCoordinatorProvider).sendRequest('metrics/get');
+      if (response.error != null) return null;
+      final result = response.result;
+      return result is Map
+          ? MetricsSnapshot.fromJson(result.cast<String, dynamic>())
+          : null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('metrics/get failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Requests a sealed, tamper-proof backup of the connected PC's metrics
+  /// (`metrics/export`). Returns the blob + a suggested filename, or null when
+  /// offline / unsupported. An optional [passphrase] adds a second lock.
+  Future<({String blob, String filename, bool passphraseProtected})?>
+      exportBackup({
+    String? passphrase,
+  }) async {
+    try {
+      final response = await ref.read(sessionCoordinatorProvider).sendRequest(
+            'metrics/export',
+            passphrase != null && passphrase.isNotEmpty
+                ? {'passphrase': passphrase}
+                : null,
+          );
+      if (response.error != null) return null;
+      final result = response.result;
+      if (result is! Map) return null;
+      final blob = result['blob'];
+      final filename = result['filename'];
+      if (blob is! String || filename is! String) return null;
+      return (
+        blob: blob,
+        filename: filename,
+        passphraseProtected: result['passphraseProtected'] == true,
+      );
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('metrics/export failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Sends a previously exported [blob] back to the bridge (`metrics/import`).
+  /// On success the merged snapshot refreshes the cache (so the profile updates
+  /// immediately) and the number of newly-merged events is returned. Throws
+  /// [MetricsImportException] when the bridge rejects it (foreign/edited file, or
+  /// a missing/wrong [passphrase]).
+  Future<int> importBackup(String blob, {String? passphrase}) async {
+    final response = await ref
+        .read(sessionCoordinatorProvider)
+        .sendRequest('metrics/import', {
+      'blob': blob,
+      if (passphrase != null && passphrase.isNotEmpty) 'passphrase': passphrase,
+    });
+    if (response.error != null) {
+      throw MetricsImportException(response.error!.message);
+    }
+    final result = response.result;
+    if (result is! Map) return 0;
+    final imported = (result['imported'] as num?)?.toInt() ?? 0;
+    final snapshotJson = result['snapshot'];
+    if (snapshotJson is Map) {
+      final snapshot =
+          MetricsSnapshot.fromJson(snapshotJson.cast<String, dynamic>());
+      if (snapshot.deviceId.isNotEmpty) {
+        await ref.read(metricsCacheStoreProvider).writeOne(snapshot);
+        final current = state.value ?? const <String, MetricsSnapshot>{};
+        state = AsyncData({...current, snapshot.deviceId: snapshot});
+      }
+    }
+    return imported;
+  }
+}
+
+/// The bridge-reported metrics snapshots, keyed by PC `deviceId` (source of
+/// truth for the profile; re-fetched on each connection and cached on-device).
+final metricsSnapshotsProvider =
+    AsyncNotifierProvider<MetricsController, Map<String, MetricsSnapshot>>(
+  MetricsController.new,
 );
 
-/// Aggregated metrics scoped to a single PC (its `macDeviceId`).
+/// Aggregated profile metrics across all paired PCs, from the bridge snapshot
+/// cache (source of truth). Falls back to the local drift aggregation only when
+/// the cache is still empty (offline / pre-metrics bridge), so nothing regresses.
+/// `autoDispose` so re-opening the profile recomputes.
+final profileMetricsProvider =
+    FutureProvider.autoDispose<ProfileMetrics>((ref) async {
+  final cache = await ref.watch(metricsSnapshotsProvider.future);
+  if (cache.isEmpty) return ref.watch(metricsRepositoryProvider).loadMetrics();
+  return aggregateSnapshots(cache.values);
+});
+
+/// Metrics scoped to a single PC (its `macDeviceId`), from the bridge snapshot
+/// cache; falls back to the local drift aggregation when that PC has no cached
+/// snapshot yet.
 final pcMetricsProvider =
     FutureProvider.autoDispose.family<ProfileMetrics, String>(
-  (ref, deviceId) =>
-      ref.watch(metricsRepositoryProvider).loadMetrics(deviceId: deviceId),
+  (ref, deviceId) async {
+    final cache = await ref.watch(metricsSnapshotsProvider.future);
+    final snapshot = cache[deviceId];
+    return snapshot?.toProfileMetrics() ??
+        ref.watch(metricsRepositoryProvider).loadMetrics(deviceId: deviceId);
+  },
 );
 
 /// Query for the activity heatmap: which metric, which calendar year, and an
@@ -199,17 +337,25 @@ final pcMetricsProvider =
 typedef HeatmapQuery = ({ActivityMetric metric, int year, String? deviceId});
 
 /// Activity counts bucketed by local day for the heatmap, for a given
-/// [HeatmapQuery]. Empty days are absent from the map.
+/// [HeatmapQuery]. Derived from the bridge snapshot cache; falls back to the
+/// local drift aggregation when the cache is empty. Empty days are absent.
 final activityHeatmapProvider = FutureProvider.autoDispose
-    .family<Map<DateTime, int>, HeatmapQuery>((ref, query) {
+    .family<Map<DateTime, int>, HeatmapQuery>((ref, query) async {
   final from = DateTime(query.year);
   final to = DateTime(query.year + 1).subtract(const Duration(milliseconds: 1));
-  return ref.watch(metricsRepositoryProvider).activityByDay(
-        from: from,
-        to: to,
-        metric: query.metric,
-        deviceId: query.deviceId,
-      );
+  final cache = await ref.watch(metricsSnapshotsProvider.future);
+  final scoped = query.deviceId == null
+      ? cache.values.toList()
+      : [if (cache[query.deviceId] != null) cache[query.deviceId]!];
+  if (scoped.isEmpty) {
+    return ref.watch(metricsRepositoryProvider).activityByDay(
+          from: from,
+          to: to,
+          metric: query.metric,
+          deviceId: query.deviceId,
+        );
+  }
+  return aggregateActivity(scoped, from: from, to: to, metric: query.metric);
 });
 
 /// The user's custom profile display name, or null to use the default label.

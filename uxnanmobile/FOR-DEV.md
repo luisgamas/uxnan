@@ -29,16 +29,21 @@ connected to live bridge data, validated on-device against a real bridge.
   endpoint** (the direct host that won the dial race, or the relay — carried on
   `connectedEndpointStream`), not the first advertised host, and **blurs it by
   default with tap-to-reveal** so the network topology isn't exposed at a glance.
-- **Profile & metrics (phone-local).** A **Profile** screen (Devices app-bar
-  avatar + a Settings header) aggregating activity across every paired PC — a
-  GitHub-style contribution heatmap (Combined / Conversations / Messages / Work,
-  per year, tap-a-day / tap-outside-to-clear), stat tiles (time connected,
+- **Profile & metrics (bridge-owned, survivable).** A **Profile** screen (Devices
+  app-bar avatar + a Settings header) aggregating activity across every paired PC
+  — a GitHub-style contribution heatmap (Combined / Conversations / Messages /
+  Work, per year, tap-a-day / tap-outside-to-clear), stat tiles (time connected,
   longest session, agents used, conversations, messages, sessions, git actions,
   most-used transport, models) and a per-agent breakdown — plus a **per-PC
-  details** screen (device-card ▸ Statistics), a customizable name + avatar
-  (picked image or preset icon), and a phone-only connection-session log +
-  `MetricsRepository`. All derived locally; the per-agent usage/credit view is
-  Phase B (the `agent/usageStats` item below).
+  details** screen (device-card ▸ Statistics) and a customizable name + avatar.
+  The metrics now come from the **bridge** (`metrics/get`), so they **survive an
+  app uninstall** (re-fetched on re-pair); the phone keeps a per-PC snapshot
+  display cache (`MetricsCacheStore`) and falls back to the local drift
+  aggregation only when the cache is empty. The controller also exposes
+  `metrics/export` / `metrics/import` (tamper-proof backup). **Remaining (next
+  commit):** the profile "local data can be lost" note + the export/import UI +
+  EN/ES strings. The per-agent usage/credit view stays Phase B (the
+  `agent/usageStats` item below).
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual

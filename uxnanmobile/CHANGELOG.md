@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Profile metrics now come from the bridge (survive an uninstall)
+- The profile / per-PC metrics (conversations, messages, agents/models used,
+  connection time, sessions, git actions, activity heatmap) are now sourced from
+  the **bridge** (`metrics/get`) instead of the phone's local drift aggregation,
+  so they **survive an app uninstall** — after a reinstall + re-pair the bridge
+  re-supplies the real numbers. Provider usage/credits are unchanged (still
+  live-read via `agent/usageStats`).
+- New `MetricsController` (`metricsSnapshotsProvider`) fetches each connected PC's
+  `MetricsSnapshot` on every (re)connection and persists it per PC in a display
+  cache (`MetricsCacheStore`, SharedPreferences). `profileMetricsProvider` /
+  `pcMetricsProvider` / `activityHeatmapProvider` derive from the cache (summing
+  across PCs), falling back to the local `DriftMetricsRepository` only when the
+  cache is empty (offline / pre-metrics bridge) so nothing regresses.
+- The controller also drives the **tamper-proof backup**: `exportBackup()`
+  (`metrics/export`) and `importBackup()` (`metrics/import`, throwing
+  `MetricsImportException` with the bridge's reason on rejection). The profile
+  "local data can be lost" note + the export/import UI land next.
+- New Dart contract mirror `MetricsSnapshot` (+ `MetricsAgentUsage`,
+  `MetricsActivityDay`, `aggregateSnapshots`, `aggregateActivity`). Tests: model
+  parse/round-trip/mapping/aggregation + cache store round-trip/persistence.
+
 ### Changed — Message rail jump glides in/out and lands precisely
 - Picking a message on the scroll rail now **eases in and out** (a soft start
   and stop, quicker through the middle, the duration scaled to the distance)

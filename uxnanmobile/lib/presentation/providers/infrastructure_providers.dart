@@ -26,6 +26,7 @@ import 'package:uxnan/infrastructure/storage/appearance_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/approval_response_store.dart';
 import 'package:uxnan/infrastructure/storage/conversation_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/local_database.dart';
+import 'package:uxnan/infrastructure/storage/metrics_cache_store.dart';
 import 'package:uxnan/infrastructure/storage/notification_preferences_store.dart';
 import 'package:uxnan/infrastructure/storage/phone_identity_store.dart';
 import 'package:uxnan/infrastructure/storage/profile_preferences_store.dart';
@@ -79,12 +80,21 @@ final connectionSessionRepositoryProvider =
 );
 
 /// Read-only metrics aggregation over the local data (threads, messages, git
-/// actions, connection sessions) for the profile / per-PC screens.
+/// actions, connection sessions) for the profile / per-PC screens. Used as the
+/// **fallback** when the bridge-owned snapshot cache has nothing yet (offline /
+/// pre-metrics-contract bridge); the source of truth is the bridge via
+/// `metrics/get` (see `metricsSnapshotsProvider`).
 final metricsRepositoryProvider = Provider<IMetricsRepository>(
   (ref) => DriftMetricsRepository(
     ref.watch(databaseProvider),
     ref.watch(connectionSessionRepositoryProvider),
   ),
+);
+
+/// Persists the last bridge-reported metrics snapshot per PC (display cache for
+/// the all-PCs profile). Non-sensitive, on-device.
+final metricsCacheStoreProvider = Provider<MetricsCacheStore>(
+  (ref) => MetricsCacheStore(),
 );
 
 /// Encrypted secure storage (Keychain / Keystore).
