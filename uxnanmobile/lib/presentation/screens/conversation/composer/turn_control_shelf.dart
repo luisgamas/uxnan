@@ -5,6 +5,7 @@ import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// Compact, collapsible turn context above the composer.
@@ -115,33 +116,64 @@ class _EnumControl extends ConsumerWidget {
   final AgentModelOption option;
   final Object? selected;
 
+  /// Sentinel value for the "Auto" (cleared) menu entry, so a dismissed menu
+  /// (`showMenu` returns null) is distinguishable from picking "Auto".
+  static const String _autoValue = '__uxnan_run_option_auto__';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(runOptionSelectionsProvider.notifier);
     var currentLabel = l10n.runOptionAuto;
     for (final value in option.values) {
       if (value.value == selected) currentLabel = value.label;
     }
 
-    return PopupMenuButton<String?>(
+    // Opens the value menu from the shared circular control surface — not a
+    // PopupMenuButton, whose internal InkWell renders a square ripple — so the
+    // press feedback matches the round buttons beside it.
+    return _ControlSurface(
+      icon: Icons.psychology_alt_outlined,
       tooltip: '${option.label}: $currentLabel',
-      position: PopupMenuPosition.over,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 200),
-      onSelected: (value) => value == null
-          ? notifier.clear(threadId, option.key)
-          : notifier.set(threadId, option.key, value),
-      itemBuilder: (context) => [
-        PopupMenuItem<String?>(child: Text(l10n.runOptionAuto)),
-        for (final value in option.values)
-          PopupMenuItem<String?>(value: value.value, child: Text(value.label)),
-      ],
-      child: _ControlSurface(
-        icon: Icons.psychology_alt_outlined,
-        tooltip: '${option.label}: $currentLabel',
-      ),
+      onTap: () => _openMenu(context, l10n, ref),
     );
+  }
+
+  Future<void> _openMenu(
+    BuildContext context,
+    AppLocalizations l10n,
+    WidgetRef ref,
+  ) async {
+    final notifier = ref.read(runOptionSelectionsProvider.notifier);
+    final button = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    // Anchor the menu over the button (mirrors PopupMenuPosition.over).
+    final position = RelativeRect.fromRect(
+      button.localToGlobal(Offset.zero, ancestor: overlay) & button.size,
+      Offset.zero & overlay.size,
+    );
+    final value = await showMenu<String?>(
+      context: context,
+      position: position,
+      constraints: const BoxConstraints(minWidth: 200),
+      items: [
+        PopupMenuItem<String?>(
+          value: _autoValue,
+          child: Text(l10n.runOptionAuto),
+        ),
+        for (final choice in option.values)
+          PopupMenuItem<String?>(
+            value: choice.value,
+            child: Text(choice.label),
+          ),
+      ],
+    );
+    if (value == null) return; // dismissed without choosing
+    if (value == _autoValue) {
+      notifier.clear(threadId, option.key);
+    } else {
+      notifier.set(threadId, option.key, value);
+    }
   }
 }
 
@@ -204,7 +236,14 @@ class _ApprovalControl extends StatelessWidget {
   }
 }
 
-class _ControlSurface extends StatelessWidget {
+/// A compact sibling of [IconSurface] for the composer chrome: a 38 dp circular
+/// surface (24 dp glyph) inside a 48 dp touch target. It mirrors [IconSurface]
+/// so the shelf buttons behave exactly like the app-bar actions: the M3E
+/// `spatialFast` press-scale and, crucially, a circular tap ink via a
+/// circle-shaped `Material` plus an `InkWell` with a `CircleBorder` custom
+/// border (a transparent, unshaped Material renders a grey **square** ripple).
+/// Adds an [iconTurns] rotation for the collapse chevron.
+class _ControlSurface extends StatefulWidget {
   const _ControlSurface({
     required this.icon,
     required this.tooltip,
@@ -223,34 +262,55 @@ class _ControlSurface extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
+  State<_ControlSurface> createState() => _ControlSurfaceState();
+}
+
+class _ControlSurfaceState extends State<_ControlSurface>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _scale =
+      AnimationController.unbounded(vsync: this, value: 1);
+
+  @override
+  void dispose() {
+    _scale.dispose();
+    super.dispose();
+  }
+
+  void _press() => _scale.animateWithSpring(0.92, M3ESprings.spatialFast);
+  void _release() => _scale.animateWithSpring(1, M3ESprings.spatialFast);
+
+  @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final foreground = foregroundColor ??
-        (selected ? colors.onSecondaryContainer : colors.onSurfaceVariant);
+    final enabled = widget.onTap != null;
+    final foreground = widget.foregroundColor ??
+        (widget.selected
+            ? colors.onSecondaryContainer
+            : colors.onSurfaceVariant);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final body = SizedBox.square(
-      dimension: UxnanSize.minTouchTarget,
-      child: Center(
-        child: Container(
+
+    final surface = Material(
+      color: widget.selected
+          ? colors.secondaryContainer
+          : colors.surfaceContainerHigh,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: widget.onTap,
+        child: SizedBox.square(
           key: const ValueKey('compact-control-surface'),
-          width: UxnanSize.compactComposerChrome,
-          height: UxnanSize.compactComposerChrome,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected
-                ? colors.secondaryContainer
-                : colors.surfaceContainerHigh,
-            shape: BoxShape.circle,
-          ),
-          child: AnimatedRotation(
-            turns: iconTurns,
-            duration: reduceMotion
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
-            child: Icon(
-              icon,
-              size: UxnanSize.compactComposerIcon,
-              color: foreground,
+          dimension: UxnanSize.compactComposerChrome,
+          child: Center(
+            child: AnimatedRotation(
+              turns: widget.iconTurns,
+              duration: reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 180),
+              child: Icon(
+                widget.icon,
+                size: UxnanSize.compactComposerIcon,
+                color: foreground,
+              ),
             ),
           ),
         ),
@@ -258,16 +318,18 @@ class _ControlSurface extends StatelessWidget {
     );
 
     return Tooltip(
-      message: tooltip,
-      child: Material(
-        type: MaterialType.transparency,
-        child: onTap == null
-            ? body
-            : InkResponse(
-                onTap: onTap,
-                radius: UxnanSpacing.lg,
-                child: body,
-              ),
+      message: widget.tooltip,
+      child: GestureDetector(
+        onTapDown: enabled ? (_) => _press() : null,
+        onTapUp: enabled ? (_) => _release() : null,
+        onTapCancel: enabled ? _release : null,
+        child: ScaleTransition(
+          scale: _scale,
+          child: SizedBox.square(
+            dimension: UxnanSize.minTouchTarget,
+            child: Center(child: surface),
+          ),
+        ),
       ),
     );
   }

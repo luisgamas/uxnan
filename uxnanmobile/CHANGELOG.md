@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — Composer shelf buttons use a circular press ripple
+- The reasoning / approval / collapse buttons on the composer's turn-controls
+  shelf now render a **circular** tap ripple and the same M3E press-scale as the
+  app-bar `IconSurface` actions (a circle-shaped `Material` + an `InkWell` with a
+  `CircleBorder`), instead of a grey **square**. The reasoning control also opens
+  its value menu via `showMenu` rather than a `PopupMenuButton`, whose internal
+  `InkWell` was rectangular.
+
 ### Added — Message scroll rail (conversation minimap)
 - Conversations gain a **message scroll rail** on the right edge — one short,
   faint tick per user message. A slight drag (or hover) reveals it: the nearest
