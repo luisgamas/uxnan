@@ -6,6 +6,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Message rail jump glides in/out and lands precisely
+- Picking a message on the scroll rail now **eases in and out** (a soft start
+  and stop, quicker through the middle, the duration scaled to the distance)
+  instead of a flat, abrupt jump, and adds a short final **settle** so it lands
+  precisely on the user's bubble even as content above finishes laying out.
+
 ### Changed — Message scroll rail hides at the bottom, slides in on scroll-up
 - The conversation's message scroll rail is now **hidden while the timeline is
   at the bottom** and **slides in from the right edge** (with a fade) when the

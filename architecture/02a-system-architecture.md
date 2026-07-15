@@ -1321,7 +1321,8 @@ Reglas de streaming:
 > mientras el scroll está hasta abajo y **entra deslizándose desde la derecha**
 > (con fade) cuando el usuario sube (la misma señal que muestra "jump to latest"
 > y oculta la cinta de contexto). Al arrastrarlo revela un efecto "fisheye" y una
-> vista previa del mensaje, y salta a él al soltar. Los atajos de scroll flotantes van **centrados abajo**
+> vista previa del mensaje, y al soltar se desplaza suavemente (ease-in/out, con
+> un settle final) hasta la burbuja de ese mensaje. Los atajos de scroll flotantes van **centrados abajo**
 > ("jump to latest" en la conversación, que baja; "back to top" en el historial
 > de commits, que sube) y comparten un botón circular neutral de 52 dp. Cuando
 > "jump to latest" aparece, la franja de contexto del turno y el aviso de modo

@@ -684,8 +684,9 @@ A minimal, reusable **message scroll rail** (`lib/presentation/widgets/message_s
 — faint at rest on the right edge, one short tick per user message — is hidden
 while the timeline sits at the bottom and slides in from the right edge (with a
 fade) when the user scrolls up, the same signal that hides the composer ribbon.
-A slight drag then reveals a dock-style fisheye and a message preview, jumping to
-the picked message on release, then it auto-hides; it is a self-contained,
+A slight drag then reveals a dock-style fisheye and a message preview, and on
+release glides smoothly (ease-in/out with a final settle) to the picked message,
+then it auto-hides; it is a self-contained,
 dependency-free widget fed by a memoized `railAnchorsProvider`. Floating scroll
 shortcuts are **bottom-centered** and transient (jump-to-latest in the
 conversation, back-to-top in the git history), keeping them clear of the left

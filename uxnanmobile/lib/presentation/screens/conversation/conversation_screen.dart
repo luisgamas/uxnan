@@ -329,10 +329,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     if (result != _currentRailTick) setState(() => _currentRailTick = result);
   }
 
-  /// Scrolls the timeline so the user message at [messageIndex] rests just
-  /// below the top bar. Detaches auto-follow first (a manual navigation) so a
-  /// streaming update doesn't yank it back. Off-screen targets in the lazy list
-  /// are handled by estimating a jump, then revealing precisely once built.
+  /// Scrolls the timeline so the user message at [messageIndex]'s bubble rests
+  /// just below the top bar, gliding with a soft start/stop (ease-in-out,
+  /// quicker through the middle) and a short final settle for precision.
+  /// Detaches auto-follow first (a manual navigation) so a streaming update
+  /// doesn't yank it back. An off-screen target in the lazy list is first
+  /// brought into layout with an estimated ordinal jump.
   Future<void> _scrollToUserMessage(int messageIndex) async {
     final snapshot = ref.read(activeTimelineProvider).value;
     if (snapshot == null || !_scroll.hasClients) return;
@@ -340,49 +342,71 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     _autoFollow.beginUserScroll();
     final id = snapshot.messages[messageIndex].id;
     final topInset = NeTopBar.preferredHeight(context);
-    if (_revealUserMessage(id, topInset)) return;
-    // Off-screen and not built: estimate a jump by ordinal position, then
-    // reveal precisely once the target is laid out (one extra frame for late,
-    // variable-height content).
-    final max = _scroll.position.maxScrollExtent;
-    final frac = snapshot.messages.length <= 1
-        ? 0.0
-        : messageIndex / (snapshot.messages.length - 1);
-    _scroll.jumpTo((frac * max).clamp(0.0, max));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_revealUserMessage(id, topInset)) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _revealUserMessage(id, topInset);
-      });
-    });
+
+    // Off-screen and not built: estimate a jump by ordinal position, then let a
+    // few frames fill the lazy list in around it before measuring precisely.
+    var target = _messageTargetOffset(id, topInset);
+    if (target == null) {
+      final max = _scroll.position.maxScrollExtent;
+      final frac = snapshot.messages.length <= 1
+          ? 0.0
+          : messageIndex / (snapshot.messages.length - 1);
+      _scroll.jumpTo((frac * max).clamp(0.0, max));
+      for (var frame = 0; frame < 3 && target == null; frame++) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || !_scroll.hasClients) return;
+        target = _messageTargetOffset(id, topInset);
+      }
+    }
+    if (target == null) return;
+
+    if (MediaQuery.of(context).disableAnimations) {
+      _scroll.jumpTo(target);
+      return;
+    }
+
+    // Ease in AND out — soft start and stop, quicker through the middle —
+    // scaling the duration to the distance so short hops stay snappy and long
+    // ones aren't rushed.
+    final distance = (target - _scroll.offset).abs();
+    final ms = (200 + distance * 0.3).clamp(260.0, 560.0).round();
+    await _scroll.animateTo(
+      target,
+      duration: Duration(milliseconds: ms),
+      curve: Curves.easeInOutCubic,
+    );
+    if (!mounted || !_scroll.hasClients) return;
+
+    // Late layout above the target (images / variable heights) can shift its
+    // resting offset — settle onto it with a short glide. Bounded so a big
+    // shift, or the user taking over the scroll, is never yanked back.
+    final settled = _messageTargetOffset(id, topInset);
+    if (settled != null) {
+      final drift = (settled - _scroll.offset).abs();
+      if (drift > 1 && drift < 150) {
+        await _scroll.animateTo(
+          settled,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
   }
 
-  /// Reveals the built bubble for [id] just below the top bar; returns false
-  /// when that bubble isn't currently laid out (off-screen in the lazy list).
-  bool _revealUserMessage(String id, double topInset) {
-    if (!_scroll.hasClients) return false;
+  /// The scroll offset that rests the built bubble for [id] just below the top
+  /// bar, or null when the bubble isn't laid out (off-screen in the lazy list).
+  double? _messageTargetOffset(String id, double topInset) {
+    if (!_scroll.hasClients) return null;
     final render = _userMessageKeys[id]?.currentContext?.findRenderObject();
-    if (render is! RenderBox || !render.hasSize) return false;
+    if (render is! RenderBox || !render.hasSize) return null;
     final RevealedOffset revealed;
     try {
       revealed = RenderAbstractViewport.of(render).getOffsetToReveal(render, 0);
     } on Object {
-      return false;
+      return null;
     }
     final max = _scroll.position.maxScrollExtent;
-    final target =
-        (revealed.offset - topInset - UxnanSpacing.md).clamp(0.0, max);
-    if (MediaQuery.of(context).disableAnimations) {
-      _scroll.jumpTo(target);
-    } else {
-      _scroll.animateTo(
-        target,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
-      );
-    }
-    return true;
+    return (revealed.offset - topInset - UxnanSpacing.md).clamp(0.0, max);
   }
 
   /// Restores the saved scroll position for this thread once its content is
