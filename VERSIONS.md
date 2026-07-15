@@ -115,6 +115,7 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-15 | — | — | — | 0.0.13-nightly.20260715.1 | — | <!-- desktop: terminal reliability — blank-pane launch fix (ConPTY startup query race) + ghost/doubled-text fix (xterm addon/core realign) + renderer hardening (PR #65) — nightly channel -->
 | 2026-07-14 | — | — | — | 0.0.12-nightly.20260714.1 | — | <!-- desktop: precise agent status (done/waiting fix) + Claude & OpenCode sub-agents + configurable terminal keyboard arbitration + interrupt inference + quick commands + left-panel polish (PR #63) — nightly channel -->
 | 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.2 | — | <!-- desktop: richer provider usage — reset time, Codex resets + redeem, account type, Grok $ (PR #62) — nightly channel -->
 | 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.1 | — | <!-- desktop: multi-agent orchestration run engine + broadcast rework (PR #61) — nightly channel -->
