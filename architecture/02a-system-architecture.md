@@ -1867,7 +1867,11 @@ queda como cache. El uso/creditos de proveedores **no** entran aqui (viven en
   `removeWorktree`) con su resultado.
 - **Conteos de conversacion** — se computan en vivo desde el `ThreadStore`
   (`conversationMetrics()`): conversaciones, mensajes (ambos roles), agentes y
-  modelos distintos, por-agente, member-since y buckets de actividad por dia.
+  modelos distintos, por-agente, member-since y buckets de actividad por dia. La
+  clave de dia es **medianoche UTC de la fecha de calendario** (`utcDayKey`),
+  tz-estable: el heatmap del telefono la mapea a la celda correcta en cualquier
+  zona horaria (una medianoche-local absoluta caia en el dia equivocado y no se
+  pintaba nada).
 
 Los eventos se guardan **con id** para que importar sea idempotente (union por id).
 

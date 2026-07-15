@@ -194,46 +194,56 @@ void main() {
   });
 
   group('aggregateActivity', () {
-    final day = DateTime(2026, 7, 15);
-    final dayMs = day.millisecondsSinceEpoch;
-    final from = DateTime(2026);
-    final to = DateTime(2027).subtract(const Duration(milliseconds: 1));
+    // Wire day keys are UTC midnight of a calendar date (timezone-stable).
+    final key = DateTime.utc(2026, 7, 15);
+    final dayMs = key.millisecondsSinceEpoch;
 
-    test('sums a metric across PCs, keyed by day', () {
+    test('sums a metric across PCs, keyed by UTC calendar day', () {
       final a = _snap(activity: [_act(dayMs, c: 1, m: 4, w: 2)]);
       final b = _snap(activity: [_act(dayMs, c: 2, m: 1)]);
       final combined = aggregateActivity(
         [a, b],
-        from: from,
-        to: to,
+        year: 2026,
         metric: ActivityMetric.combined,
       );
-      // (1+4+2) + (2+1+0) = 10 on that day.
-      expect(combined[day], 10);
+      // (1+4+2) + (2+1+0) = 10 on that day, keyed by UTC midnight.
+      expect(combined[key], 10);
+      expect(combined.keys.single.isUtc, isTrue);
 
       final messages = aggregateActivity(
         [a, b],
-        from: from,
-        to: to,
+        year: 2026,
         metric: ActivityMetric.messages,
       );
-      expect(messages[day], 5); // 4 + 1
+      expect(messages[key], 5); // 4 + 1
     });
 
-    test('excludes days outside the range and zero-count days', () {
-      final outside = DateTime(2025).millisecondsSinceEpoch;
+    test('excludes other years and zero-count days', () {
+      final outside = DateTime.utc(2025).millisecondsSinceEpoch;
       final snap = _snap(
         activity: [_act(dayMs), _act(outside, c: 5, m: 5, w: 5)],
       );
       final result = aggregateActivity(
         [snap],
-        from: from,
-        to: to,
+        year: 2026,
         metric: ActivityMetric.combined,
       );
-      // The in-range day has a zero count (omitted); the out-of-range day is
+      // The in-year day has a zero count (omitted); the other-year day is
       // filtered out — so nothing remains.
       expect(result, isEmpty);
+    });
+
+    test('day key is timezone-stable (matches the heatmap cell key)', () {
+      // A bridge in any timezone encodes the date at UTC midnight. The heatmap
+      // keys each cell with DateTime.utc(y, m, d); aggregateActivity must use
+      // the same, so the cell paints regardless of the phone's timezone.
+      final snap = _snap(activity: [_act(dayMs, c: 3)]);
+      final result = aggregateActivity(
+        [snap],
+        year: 2026,
+        metric: ActivityMetric.conversations,
+      );
+      expect(result[DateTime.utc(2026, 7, 15)], 3);
     });
   });
 }

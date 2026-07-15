@@ -127,7 +127,9 @@ class DriftMetricsRepository implements IMetricsRepository {
     final buckets = <DateTime, int>{};
     void bump(int ms) {
       final d = DateTime.fromMillisecondsSinceEpoch(ms);
-      final day = DateTime(d.year, d.month, d.day);
+      // Key by UTC midnight of the local calendar date: timezone-stable, so it
+      // matches the heatmap cells and the bridge-snapshot day keys.
+      final day = DateTime.utc(d.year, d.month, d.day);
       buckets[day] = (buckets[day] ?? 0) + 1;
     }
 

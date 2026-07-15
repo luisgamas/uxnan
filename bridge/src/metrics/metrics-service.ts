@@ -25,7 +25,7 @@ import type { SecretStore } from '../secret-store.js';
 import type { ThreadStore } from '../conversation/thread-store.js';
 import { MetricsStore, type MetricsEvents } from './metrics-store.js';
 import { MetricsSealError, openMetrics, sealMetrics } from './metrics-seal.js';
-import { startOfLocalDay } from './day.js';
+import { utcDayKey } from './day.js';
 
 const SNAPSHOT_VERSION = 1;
 /** Keychain entry holding the 32-byte metrics sealing key (hex). */
@@ -113,7 +113,7 @@ export class MetricsService {
       });
     }
     for (const action of events.gitActions) {
-      const day = startOfLocalDay(action.at);
+      const day = utcDayKey(action.at);
       const entry = activity.get(day) ?? { conversations: 0, messages: 0, work: 0 };
       entry.work += 1;
       activity.set(day, entry);

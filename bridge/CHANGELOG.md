@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — activity day buckets are timezone-stable
+- The `metrics/get` `activity[].day` bucket key is now **UTC midnight of the
+  bridge host's local calendar date** (`utcDayKey`, was the local-midnight
+  *instant*). A local-midnight instant (e.g. `06:00Z` for a UTC-6 host)
+  reconstructed on a phone in another timezone landed on the wrong calendar day,
+  so the profile heatmap painted nothing while the stat tiles still showed the
+  counts. UTC-midnight encoding matches the phone's per-cell key in any timezone.
+
 ### Added — bridge-owned profile metrics + tamper-proof backup (`metrics/*`)
 - The bridge now **serves `metrics/get`, `metrics/export`, `metrics/import`** (66
   JSON-RPC methods now). It becomes the source of truth for the mobile profile

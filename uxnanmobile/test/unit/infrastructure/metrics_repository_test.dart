@@ -86,7 +86,7 @@ void main() {
     expect(m.gitActions, 1);
   });
 
-  test('activityByDay buckets Git work by local calendar day', () async {
+  test('activityByDay buckets Git work by calendar day (UTC-keyed)', () async {
     await git.record(action('g1', at: DateTime(2026, 7, 2, 9)));
     await git.record(
       action('g2', at: DateTime(2026, 7, 2, 18), kind: GitActionKind.push),
@@ -99,9 +99,11 @@ void main() {
       metric: ActivityMetric.work,
     );
 
-    expect(counts[DateTime(2026, 7, 2)], 2);
-    expect(counts[DateTime(2026, 7, 4)], 1);
-    expect(counts.containsKey(DateTime(2026, 7, 3)), isFalse);
+    // Days are keyed by UTC midnight of the local calendar date (timezone-stable,
+    // matching the bridge snapshot keys and the heatmap cells).
+    expect(counts[DateTime.utc(2026, 7, 2)], 2);
+    expect(counts[DateTime.utc(2026, 7, 4)], 1);
+    expect(counts.containsKey(DateTime.utc(2026, 7, 3)), isFalse);
   });
 
   test('empty database yields zeroed metrics', () async {

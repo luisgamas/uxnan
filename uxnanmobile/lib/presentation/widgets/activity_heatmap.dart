@@ -14,7 +14,8 @@ import 'package:uxnan/presentation/theme/typography.dart';
 /// the grid scrolls horizontally inside its own box so the page never does.
 ///
 /// Data-only: the parent owns the metric/year selectors and passes the day
-/// counts for the chosen scope via [countsByDay] (keyed by local midnight).
+/// counts for the chosen scope via [countsByDay] (keyed by UTC midnight of each
+/// calendar date — timezone-stable).
 class ActivityHeatmap extends StatefulWidget {
   /// Creates an [ActivityHeatmap].
   const ActivityHeatmap({
@@ -50,9 +51,10 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
     }
   }
 
-  /// The activity count for [day] (0 when absent).
+  /// The activity count for [day] (0 when absent). Keyed by UTC midnight so it
+  /// matches the timezone-stable keys in [countsByDay].
   int _countFor(DateTime day) =>
-      widget.countsByDay[DateTime(day.year, day.month, day.day)] ?? 0;
+      widget.countsByDay[DateTime.utc(day.year, day.month, day.day)] ?? 0;
 
   /// Quantile thresholds [t1, t2, t3] mapping a positive count to levels 2–4
   /// (level 1 is "≥ 1"). Derived from the positive counts so the ramp adapts to
@@ -91,8 +93,8 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    // Iterate the year in UTC to stay DST-proof; key cells by their plain
-    // (y,m,d) so they match the local-midnight keys in [countsByDay].
+    // Iterate the year in UTC to stay DST-proof; key cells by UTC midnight so
+    // they match the timezone-stable keys in [countsByDay].
     final firstUtc = DateTime.utc(widget.year);
     final lastUtc = DateTime.utc(widget.year, 12, 31);
     final gridStart = firstUtc.subtract(Duration(days: firstUtc.weekday - 1));
@@ -117,7 +119,7 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
         if (!inYear) {
           cells.add(const SizedBox(width: _cell, height: _cell));
         } else {
-          final day = DateTime(utcDay.year, utcDay.month, utcDay.day);
+          final day = DateTime.utc(utcDay.year, utcDay.month, utcDay.day);
           final count = _countFor(day);
           final selected = _selected == day;
           cells.add(

@@ -355,7 +355,7 @@ final activityHeatmapProvider = FutureProvider.autoDispose
           deviceId: query.deviceId,
         );
   }
-  return aggregateActivity(scoped, from: from, to: to, metric: query.metric);
+  return aggregateActivity(scoped, year: query.year, metric: query.metric);
 });
 
 /// The user's custom profile display name, or null to use the default label.

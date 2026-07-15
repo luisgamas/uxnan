@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — Activity heatmap now paints (timezone-stable day keys)
+- The contribution heatmap showed nothing painted (while the stat tiles had data)
+  whenever the phone's timezone differed from the PC's — e.g. a UTC emulator
+  against a UTC-6 bridge. The day buckets were keyed by an absolute
+  local-midnight instant that reconstructed to the wrong calendar day on the
+  phone, so no cell matched. Day keys are now **UTC midnight of the calendar
+  date** end-to-end (bridge snapshot, drift fallback, `aggregateActivity` and the
+  heatmap cells), so cells match in any timezone.
+
 ### Added — Profile "Backup" section (encrypted export / import)
 - The profile now has a **Backup** card: a note that stats live on this phone +
   the PC and **can be lost without a backup**, plus **Export** and **Import**

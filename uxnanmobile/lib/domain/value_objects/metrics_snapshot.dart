@@ -49,7 +49,9 @@ class MetricsActivityDay extends Equatable {
         work: _int(json['work']),
       );
 
-  /// Start of the local calendar day, epoch ms.
+  /// The calendar date this bucket covers, as **UTC-midnight epoch ms** (of the
+  /// bridge host's local date). UTC-midnight encoding is timezone-stable, so
+  /// the heatmap maps it to the right cell in any phone timezone.
   final int day;
 
   /// Conversations started that day.
@@ -297,25 +299,26 @@ ProfileMetrics aggregateSnapshots(Iterable<MetricsSnapshot> snapshots) {
   );
 }
 
-/// Buckets [snapshots]' activity by local day for [metric], within
-/// [from]..[to] (inclusive), summing across PCs. Days with a zero count are
-/// omitted (the heatmap fills them as empty).
+/// Buckets [snapshots]' activity by calendar day for [metric] within [year],
+/// summing across PCs. Days are keyed by **UTC midnight** (timezone-stable, so
+/// the count matches the heatmap cell regardless of the phone's timezone). Days
+/// with a zero count are omitted (the heatmap fills them as empty).
 Map<DateTime, int> aggregateActivity(
   Iterable<MetricsSnapshot> snapshots, {
-  required DateTime from,
-  required DateTime to,
+  required int year,
   required ActivityMetric metric,
 }) {
-  final fromMs = from.millisecondsSinceEpoch;
-  final toMs = to.millisecondsSinceEpoch;
   final buckets = <DateTime, int>{};
   for (final snapshot in snapshots) {
     for (final entry in snapshot.activity) {
-      if (entry.day < fromMs || entry.day > toMs) continue;
+      // The wire `day` is UTC midnight of a calendar date — read it back in UTC
+      // so its (y,m,d) is the same in any timezone (matching the heatmap).
+      final day = DateTime.fromMillisecondsSinceEpoch(entry.day, isUtc: true);
+      if (day.year != year) continue;
       final value = entry.forMetric(metric);
       if (value == 0) continue;
-      final day = DateTime.fromMillisecondsSinceEpoch(entry.day);
-      buckets[day] = (buckets[day] ?? 0) + value;
+      final key = DateTime.utc(day.year, day.month, day.day);
+      buckets[key] = (buckets[key] ?? 0) + value;
     }
   }
   return buckets;

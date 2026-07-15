@@ -209,7 +209,7 @@ export {
   type SealOptions,
   type OpenOptions,
 } from './metrics/metrics-seal.js';
-export { startOfLocalDay } from './metrics/day.js';
+export { utcDayKey } from './metrics/day.js';
 
 // Transport (live E2EE)
 export {

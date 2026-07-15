@@ -23,7 +23,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
     merges its events **by id** (idempotent).
 - **New models** (`src/models/metrics.ts`, exported from the package root):
   `MetricsSnapshot`, `MetricsAgentUsage`, `MetricsActivityDay`, `MetricsTransport`,
-  and the `metrics/export`|`import` param/result shapes.
+  and the `metrics/export`|`import` param/result shapes. `MetricsActivityDay.day`
+  is **UTC midnight of the calendar date** (timezone-stable, so the phone's
+  heatmap maps it to the right cell in any timezone).
 - Provider usage/credits are deliberately **excluded** — those stay live-read via
   `agent/usageStats`, never persisted.
 

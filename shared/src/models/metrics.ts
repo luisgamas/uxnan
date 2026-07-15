@@ -40,7 +40,12 @@ export interface MetricsAgentUsage {
  * work) with no extra round-trip. Days with no activity are omitted.
  */
 export interface MetricsActivityDay {
-  /** Start of the local calendar day on the bridge host, epoch ms. */
+  /**
+   * The calendar date this bucket covers, as **UTC-midnight epoch ms** of the
+   * bridge host's local date. Encoding the local date at UTC midnight (not the
+   * local-midnight instant) makes the key timezone-stable, so a phone in any
+   * timezone maps it to the correct heatmap cell.
+   */
   day: number;
   /** Conversations started that day. */
   conversations: number;

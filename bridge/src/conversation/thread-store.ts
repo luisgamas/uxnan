@@ -22,7 +22,7 @@ import type {
 } from '@uxnan/shared';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
-import { startOfLocalDay } from '../metrics/day.js';
+import { utcDayKey } from '../metrics/day.js';
 
 interface StoredMessage {
   id: string;
@@ -485,11 +485,11 @@ export class ThreadStore {
       if (memberSince === undefined || thread.createdAt < memberSince) {
         memberSince = thread.createdAt;
       }
-      bucket(startOfLocalDay(thread.createdAt)).conversations += 1;
+      bucket(utcDayKey(thread.createdAt)).conversations += 1;
       for (const turn of thread.turns) {
         for (const message of turn.messages) {
           messages += 1;
-          bucket(startOfLocalDay(message.createdAt)).messages += 1;
+          bucket(utcDayKey(message.createdAt)).messages += 1;
         }
       }
     }
