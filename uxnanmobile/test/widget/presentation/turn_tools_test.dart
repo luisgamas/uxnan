@@ -145,4 +145,47 @@ void main() {
       expect(tester.widget<Icon>(find.byIcon(icon)).color, color);
     }
   });
+
+  testWidgets('reasoning menu keeps composer focus and keyboard intent',
+      (tester) async {
+    final focusNode = FocusNode();
+    addTearDown(focusNode.dispose);
+    const option = AgentModelOption(
+      key: 'reasoning',
+      kind: 'enum',
+      label: 'Reasoning effort',
+      values: [
+        AgentModelOptionValue(value: 'high', label: 'High'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _wrap(
+        Column(
+          children: [
+            TextField(focusNode: focusNode),
+            TurnControlShelf(
+              threadId: 'thread-1',
+              options: const [option],
+              showApproval: false,
+              approvalMode: ApprovalMode.fullAccess,
+              expanded: true,
+              onExpandedChanged: (_) {},
+              onApprovalTap: () {},
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.tap(find.byIcon(Icons.psychology_alt_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('High'), findsOneWidget);
+    expect(focusNode.hasFocus, isTrue);
+  });
 }

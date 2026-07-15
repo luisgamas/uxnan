@@ -1321,7 +1321,12 @@ Reglas de streaming:
 > arrastrarlo revela un efecto "fisheye" y una vista previa del mensaje y salta a
 > él al soltar. Los atajos de scroll flotantes van **centrados abajo**
 > ("jump to latest" en la conversación, que baja; "back to top" en el historial
-> de commits, que sube).
+> de commits, que sube) y comparten un botón circular neutral de 52 dp. Cuando
+> "jump to latest" aparece, la franja de contexto del turno y el aviso de modo
+> autónomo (si existe) se deslizan hacia el composer, se desvanecen y colapsan
+> dentro de un clip; así despejan el área de lectura sin quedar visibles bajo el
+> velo translúcido. Los menús de opciones del turno no roban el foco del
+> composer y recalculan su anclaje si cambia la geometría del teclado.
 
 #### 5.6.4 Reconciliacion de historial
 

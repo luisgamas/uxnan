@@ -23,6 +23,7 @@ import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
@@ -97,6 +98,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Whether the "jump to latest" button is shown — true once the user has
   /// scrolled up far enough that the newest messages are off-screen.
   bool _showJumpToBottom = false;
+
+  /// Bottom-chrome height captured when the jump shortcut appears. Collapsing
+  /// the auxiliary chrome also shortens the timeline's bottom spacer; this
+  /// baseline compensates that layout-only extent change so it cannot make the
+  /// shortcut and chrome oscillate around their visibility threshold.
+  double? _jumpChromeBaselineHeight;
 
   /// Measured height of the floating bottom chrome (sign-in/cwd banners, the
   /// diff+context info bar, attachments and the composer pill). The timeline
@@ -212,7 +219,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   bool _isNearBottom() {
     if (!_scroll.hasClients) return true;
-    return _scroll.position.maxScrollExtent - _scroll.offset < 200;
+    return _distanceFromBottom() < 200;
+  }
+
+  double _distanceFromBottom() {
+    if (!_scroll.hasClients) return 0;
+    final raw = _scroll.position.maxScrollExtent - _scroll.offset;
+    final baseline = _jumpChromeBaselineHeight;
+    final collapsedChrome = baseline == null
+        ? 0.0
+        : (baseline - _bottomChromeHeight).clamp(0.0, double.infinity);
+    return raw + collapsedChrome;
   }
 
   /// Shows the "jump to latest" affordance once the user has scrolled more than
@@ -221,7 +238,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// a turn streams.
   void _onScroll() {
     if (!_scroll.hasClients) return;
-    final distance = _scroll.position.maxScrollExtent - _scroll.offset;
+    final distance = _distanceFromBottom();
     // Show after a deliberate detach as soon as the latest content is outside
     // the near-bottom zone. Otherwise retain the wider threshold/hysteresis so
     // streaming layout changes cannot make the affordance flicker.
@@ -245,7 +262,10 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   void _setJumpToBottomVisibility(bool visible) {
     if (visible != _showJumpToBottom) {
-      setState(() => _showJumpToBottom = visible);
+      setState(() {
+        _showJumpToBottom = visible;
+        _jumpChromeBaselineHeight = visible ? _bottomChromeHeight : null;
+      });
     }
   }
 
@@ -872,10 +892,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     if ((caps?.autonomous ?? false) &&
                         showAutonomousBanner &&
                         !_autonomousBannerDismissed)
-                      _Centered(
-                        child: _AutonomousBanner(
-                          onClose: () => setState(
-                            () => _autonomousBannerDismissed = true,
+                      ComposerChromeVisibility(
+                        visible: !_showJumpToBottom,
+                        child: _Centered(
+                          child: _AutonomousBanner(
+                            onClose: () => setState(
+                              () => _autonomousBannerDismissed = true,
+                            ),
                           ),
                         ),
                       ),
@@ -886,31 +909,34 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     if (showTurnControls ||
                         lastEdits != null ||
                         environment.showContext)
-                      _Centered(
-                        child: _ComposerContextBar(
-                          controls: showTurnControls
-                              ? TurnControlShelf(
-                                  threadId: widget.threadId,
-                                  options: runOptions,
-                                  showApproval: showApproval,
-                                  approvalMode: _approvalMode,
-                                  expanded: _turnControlsExpanded,
-                                  onExpandedChanged: (value) => setState(
-                                    () => _turnControlsExpanded = value,
-                                  ),
-                                  onApprovalTap: _pickApprovalMode,
-                                )
-                              : null,
-                          info: lastEdits != null || environment.showContext
-                              ? _ComposerInfoBar(
-                                  edits: lastEdits,
-                                  showContext: environment.showContext,
-                                  hasContext: environment.hasContext,
-                                  percent: environment.contextPercent,
-                                  tokenLabel: environment.contextTokensLabel,
-                                  mode: contextMode,
-                                )
-                              : null,
+                      ComposerChromeVisibility(
+                        visible: !_showJumpToBottom,
+                        child: _Centered(
+                          child: _ComposerContextBar(
+                            controls: showTurnControls
+                                ? TurnControlShelf(
+                                    threadId: widget.threadId,
+                                    options: runOptions,
+                                    showApproval: showApproval,
+                                    approvalMode: _approvalMode,
+                                    expanded: _turnControlsExpanded,
+                                    onExpandedChanged: (value) => setState(
+                                      () => _turnControlsExpanded = value,
+                                    ),
+                                    onApprovalTap: _pickApprovalMode,
+                                  )
+                                : null,
+                            info: lastEdits != null || environment.showContext
+                                ? _ComposerInfoBar(
+                                    edits: lastEdits,
+                                    showContext: environment.showContext,
+                                    hasContext: environment.hasContext,
+                                    percent: environment.contextPercent,
+                                    tokenLabel: environment.contextTokensLabel,
+                                    mode: contextMode,
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
                     if (_attachments.isNotEmpty)

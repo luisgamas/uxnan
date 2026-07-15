@@ -147,14 +147,17 @@ class _EnumControl extends ConsumerWidget {
     final button = context.findRenderObject()! as RenderBox;
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
-    // Anchor the menu over the button (mirrors PopupMenuPosition.over).
-    final position = RelativeRect.fromRect(
-      button.localToGlobal(Offset.zero, ancestor: overlay) & button.size,
-      Offset.zero & overlay.size,
-    );
     final value = await showMenu<String?>(
       context: context,
-      position: position,
+      // Recompute the anchor after every layout change. This keeps the menu on
+      // the reasoning button even if the keyboard changes the usable height.
+      positionBuilder: (_, __) => RelativeRect.fromRect(
+        button.localToGlobal(Offset.zero, ancestor: overlay) & button.size,
+        Offset.zero & overlay.size,
+      ),
+      // A run-option menu should not steal the composer's text focus or close
+      // the software keyboard merely because it opened.
+      requestFocus: false,
       constraints: const BoxConstraints(minWidth: 200),
       items: [
         PopupMenuItem<String?>(

@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Conversation chrome clears the reading area while scrolled up
+- When **Jump to latest** appears, the turn-context strip (reasoning, approval,
+  edits, context and tokens) now slides down toward the composer, fades and
+  collapses out of layout. The autonomous-mode notice used by agents such as pi
+  follows the same transition. Both are clipped while leaving so they never
+  remain visible beneath the composer's translucent veil; the jump shortcut
+  naturally settles directly above the remaining composer chrome.
+- The shared conversation/history scroll shortcut is now a more reachable
+  **52 dp neutral circular surface** with a subtle outline, replacing the
+  smaller and more saturated 44 dp `secondaryContainer` treatment in both
+  **Jump to latest** and git-history **Back to top**.
+
+### Fixed — Reasoning menu stays anchored without dismissing the keyboard
+- Opening the reasoning-effort menu no longer steals focus from the composer or
+  hides the software keyboard. Its popup position is recalculated when layout
+  changes, so it remains attached to the reasoning control if the keyboard
+  geometry changes while the menu is open.
+
 ### Changed — Turn controls start collapsed
 - The turn-controls shelf above the composer (reasoning effort / approval) now
   opens **collapsed to its chevron** by default, for a quieter conversation

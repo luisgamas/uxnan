@@ -407,6 +407,13 @@ edit pills on the right. The shelf starts folded to one chevron by default and
 expands on tap, for a quiet conversation surface. Tooltips carry the
 option/value labels. Approval uses semantic status colors: success for Approve
 for me, warning for Request approval, and error for Full access.
+When the reader scrolls away from the latest message far enough to reveal the
+scroll shortcut, this auxiliary shelf and any autonomous-agent notice slide
+toward the composer, fade, and collapse. The transition must be clipped to its
+shrinking layout region: the composer veil is translucent, so translated chrome
+must never remain painted below the pill. Run-option popup menus retain composer
+focus and use a live position builder so keyboard geometry changes cannot leave
+the menu detached from its control.
 While a turn is active, its response begins with a 14 dp circular progress
 indicator and an italic on-surface-variant "Agent responding…" label.
 
@@ -543,6 +550,11 @@ slightly along the collision axis. This requires coordinated animation with `spa
 - It definitively replaces the Speed Dial pattern.
 - Animation: `bouncySpatial` (k=400, ζ=0.40) — here it is indeed appropriate, since it
   is a small element.
+- Bidirectional scroll shortcuts are a quieter exception: conversation
+  **Jump to latest** and git-history **Back to top** reuse the same 52 dp
+  circular `surfaceContainerHighest` control with `onSurfaceVariant` glyph,
+  subtle `outlineVariant` edge and low elevation. They stay bottom-centered and
+  avoid the more prominent brand/secondary tones reserved for primary actions.
 
 #### Button Hierarchy by Size
 

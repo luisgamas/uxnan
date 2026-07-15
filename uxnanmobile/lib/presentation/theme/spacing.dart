@@ -47,6 +47,9 @@ class UxnanSize {
 
   /// Minimum interactive target required for icon-only controls.
   static const double minTouchTarget = 48;
+
+  /// Diameter of the shared floating conversation/history scroll shortcut.
+  static const double floatingScrollShortcut = 52;
 }
 
 /// Corner-radius scale for the Uxnan design system.
