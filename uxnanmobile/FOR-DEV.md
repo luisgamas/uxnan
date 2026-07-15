@@ -44,6 +44,15 @@ connected to live bridge data, validated on-device against a real bridge.
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual
   scrolling, stays detached while older content is being read, and resumes at
   the bottom or through an explicit jump/send action.
+- **Message scroll rail** — a reusable, dependency-free right-edge minimap
+  (`message_scroll_rail.dart`, one faint tick per user message) that is hidden
+  while the timeline sits at the bottom and slides in from the right edge when
+  the user scrolls up (the same signal that reveals *Jump to latest* and hides
+  the composer ribbon). A slight drag reveals a dock-style fisheye + a message
+  preview and, on release, glides (ease-in/out with a final settle) to that
+  user bubble. Fed by a memoized `railAnchorsProvider`; honors reduced-motion.
+  The centered floating **Jump to latest** (down) and git-history **Back to top**
+  (up) shortcuts pair with it.
 - **Structured agent turns** — assistant replies without a bubble, consecutive
   text merged, borderless tonal **Work log (N)** / **Thinking** process
   disclosures (collapsed by default and exclusively expanded per turn),
