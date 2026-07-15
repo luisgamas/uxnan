@@ -196,12 +196,36 @@ Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiz
 
 ### 1.4 Capa 3: Deteccion de Proceso en Ejecucion
 
-El ADE detecta **que proceso esta corriendo en primer plano** en cada PTY:
+El ADE detecta **que agente corre como el trabajo en primer plano** de cada PTY —
+el que el usuario realmente lanzo en esa terminal, **no** cualquier proceso-agente
+que aparezca en cualquier lugar del arbol. Esa distincion es la que mantiene honesta
+a la terminal: un programa que **no es un agente** (p. ej. un servidor local o el
+daemon `bridge`) puede a su vez lanzar un CLI de agente como **ayudante de fondo**
+(el bridge mantiene un `zero acp` de larga vida), y atribuir ese ayudante a la
+pestana la etiquetaria con un nombre/logo/estado que nunca lanzo.
 
-- Si el proceso coincide con un agente conocido (por nombre del ejecutable, por ejemplo `claude`, `codex`, `aider`, `opencode`), se activa el **tracking automatico**.
-- El matching (`procscan.rs`) puntua por **especificidad** (exacto ▸ variante `cmd-`/`cmd_` ▸ substring; el comando mas largo gana) y recorre el arbol de procesos **en anchura**, quedandose con la coincidencia del proceso **mas cercano al shell**. Asi un agente "envoltorio" (p. ej. `openclaude`, que contiene `claude`) no se confunde con el que envuelve, de forma determinista. Ademas, un tab **lanzado** por el ADE ya conoce su identidad y la deteccion **no la sobrescribe** (solo nombra agentes iniciados a mano).
-- Esta capa no determina el estado especifico del agente, pero confirma que un agente esta activo en un PTY determinado y habilita el monitoreo por las capas superiores.
-- Es la capa mas basica: solo detecta presencia, no estado detallado.
+Dos reglas gobiernan `procscan.rs` (`detect_agent`):
+
+- **Descender solo a traves de shells.** Desde el shell se mira su trabajo en primer
+  plano. Se ve **a traves** de shells anidados (un shim `.cmd`/`.ps1`/shell que corre
+  el agente real como su hijo), pero un proceso **no-shell es un callejon sin salida**:
+  sus hijos son ayudantes que el lanzo, nunca el agente en primer plano de la terminal.
+  Gana el nivel coincidente **mas cercano al shell** (el trabajo lanzado); dentro de un
+  nivel gana la coincidencia mas especifica.
+- **Identificar por tokens de identidad, no por toda la linea de comandos.** Un proceso
+  se identifica por su **nombre de ejecutable** y — para un interprete de lenguaje
+  (`node …\codex\cli.js`) — por la **ruta del script que ejecuta**. El texto del prompt,
+  los flags y el directorio de trabajo se ignoran a proposito, para que
+  `claude "compara con codex"` siga siendo Claude y no Codex. El scoring por
+  **especificidad** se conserva (exacto ▸ variante `cmd-`/`cmd_` ▸ substring de 4+;
+  el comando mas largo gana), asi un agente "envoltorio" (`openclaude`, que contiene
+  `claude`) no se confunde con el que envuelve, de forma determinista.
+
+Ademas, un tab **lanzado** por el ADE ya conoce su identidad y la deteccion **no la
+sobrescribe** (solo nombra agentes iniciados a mano). Esta capa no determina el estado
+especifico del agente, pero confirma que un agente esta activo en un PTY determinado y
+habilita el monitoreo por las capas superiores: es la capa mas basica, solo detecta
+presencia, no estado detallado.
 
 **Identidad por hook (no solo por proceso).** Ademas de `procscan`, **el propio
 reporte de hook (Capa 1) establece la identidad del tab**: como el reporter declara

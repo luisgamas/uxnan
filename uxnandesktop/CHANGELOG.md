@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — agent detection: non-agent processes mislabeled as agents (Layer 3)
+
+- **A non-agent command that spawns an agent CLI as a background helper no longer
+  hijacks the tab.** Layer 3 process detection (`src-tauri/src/procscan.rs`) used to
+  walk the terminal's **entire descendant tree** and attribute the tab to *any*
+  known-agent process found anywhere below the shell. So running a program that
+  itself launches an agent CLI in the background (e.g. `node .\bridge\dist\src\cli.js
+  start`, whose bridge spawns a long-lived `zero acp` child) made the worktree card
+  and tab adopt that agent's name/logo/status a few seconds later — even though the
+  foreground job was never an agent. Detection now identifies only the shell's
+  **foreground job**: it descends **through shells only** (seeing through a
+  `.cmd`/`.ps1`/shell shim that runs the real agent as its child), and treats any
+  non-shell process as a dead end — its background helpers are never attributed to
+  the terminal.
+- **Look-alike misidentification — launching one agent showing another's name/logo —
+  fixed.** Matching used to tokenize the process's **whole command line** and
+  substring-match every segment against the agent catalog, so a prompt or flag that
+  mentioned another agent (`claude "compare with codex"`) or a path segment that
+  collided with an agent name could win the wrong identity. A process is now
+  identified only by its **executable name** and — for a language interpreter — the
+  **path of the script it runs** (`node …\@openai\codex\cli.js` → Codex); prompt
+  text, flags and the working directory are ignored.
+- Both fixes are covered by new unit tests in `procscan.rs` (foreground-job
+  discipline, shell-shim transparency, script-path identity, prompt-text immunity);
+  the backend suite is now **183 tests**. A launched tab still carries its true launch
+  identity, and a hook report still seals identity by the agent's self-declared type —
+  neither path is affected. Spec: `architecture/02d-agent-monitoring.md` §1.4.
+
 ### Fixed — terminal rendering: blank panes on launch & doubled text
 
 - **Intermittent blank terminal on launch (cursor blinks, no prompt) — the primary
