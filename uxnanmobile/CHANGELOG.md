@@ -6,6 +6,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Turn controls start collapsed
+- The turn-controls shelf above the composer (reasoning effort / approval) now
+  opens **collapsed to its chevron** by default, for a quieter conversation
+  surface; tapping the chevron expands the controls (the choice is per-visit).
+
 ### Fixed — Composer shelf buttons use a circular press ripple
 - The reasoning / approval / collapse buttons on the composer's turn-controls
   shelf now render a **circular** tap ripple and the same M3E press-scale as the

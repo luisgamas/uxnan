@@ -403,9 +403,10 @@ Reasoning/run-option and approval controls live as a tightly left-aligned icon
 group in a compact horizontal shelf above the pill. Each keeps a 48 dp touch
 target around a 38 dp neutral circular surface with a 24 dp glyph, matching the
 38 dp visual height and `surfaceContainerHigh` tone of the context, token, and
-edit pills on the right. The shelf is visible by default and folds to one chevron. Tooltips
-carry the option/value labels. Approval uses semantic status colors: success
-for Approve for me, warning for Request approval, and error for Full access.
+edit pills on the right. The shelf starts folded to one chevron by default and
+expands on tap, for a quiet conversation surface. Tooltips carry the
+option/value labels. Approval uses semantic status colors: success for Approve
+for me, warning for Request approval, and error for Full access.
 While a turn is active, its response begins with a 14 dp circular progress
 indicator and an italic on-surface-variant "Agent responding…" label.
 

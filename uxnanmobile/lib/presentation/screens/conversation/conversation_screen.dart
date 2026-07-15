@@ -86,9 +86,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // the State, so it resets every time the conversation is (re)opened — the
   // banner reappears on re-entry unless hidden permanently in settings.
   bool _autonomousBannerDismissed = false;
-  // Persistent turn context is visible by default, but can be folded down to
-  // one chevron when the user wants a completely quiet conversation surface.
-  bool _turnControlsExpanded = true;
+  // Persistent turn context (reasoning / approval) starts folded to one
+  // chevron for a quiet conversation surface; tapping the chevron expands it.
+  bool _turnControlsExpanded = false;
   // Set when the user sends a message and the "scroll to latest on send"
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
