@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — CLI help/comment no longer calls `start` a skeleton
+- The `start` usage line and the `cli.ts` header comment claimed a
+  "skeleton: no live transport yet" — stale wording from an early increment.
+  `start` boots the live LAN (and optional relay) transport with QR +
+  manual-code pairing; the help and comment now say so.
+
 ### Added — `agent/usageStats` provider usage reader (bridge side)
 - The bridge now **serves `agent/usageStats`** — previously a known method with no
   handler (`-32601`). A new TS reader (`src/usage/usage-reader.ts`) ports the

@@ -9,8 +9,9 @@
  *   qr               print the pairing QR in the terminal
  *   install-service  configure autostart on this platform
  *
- * In this skeleton increment `start` boots the daemon core without the live
- * relay/LAN transport; `stop`/`install-service` are deferred (FOR-DEV).
+ * `start` boots the daemon with the live LAN (and optional relay) transport and
+ * prints the pairing QR + manual code; `stop`, `status`, `code`, `qr` and
+ * `install-service`/`uninstall-service` manage the running daemon.
  */
 import { fileURLToPath } from 'node:url';
 import { encodePairingQr } from '@uxnan/shared';
@@ -32,7 +33,7 @@ const USAGE = `uxnan-bridge v${BRIDGE_VERSION}
 Usage: uxnan-bridge <command>
 
 Commands:
-  start            Start the bridge daemon (skeleton: no live transport yet)
+  start            Start the bridge daemon (LAN/relay transport + pairing)
   status           Print the current bridge status
   qr               Print the pairing QR code in the terminal
   code             Print the current manual-pairing code (matches the daemon)
