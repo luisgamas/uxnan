@@ -88,6 +88,41 @@ test('snapshot aggregates conversations, messages, agents, sessions and git acti
   }
 });
 
+test('snapshot tokensByDay sums per-turn usage per agent (usage-reporting only)', async () => {
+  const h = newHarness();
+  try {
+    const t = await h.threadStore.startThread({ projectId: 'p', agentId: 'claude-code' }, 1000);
+    const turn1 = await h.threadStore.startTurn(t.id, 'hi', 1000);
+    await h.threadStore.setUsage(t.id, turn1.turnId, { tokens: 500 }, 1000);
+    await h.threadStore.completeTurn(t.id, turn1.turnId, 'a', 1100);
+    const turn2 = await h.threadStore.startTurn(t.id, 'again', 2000);
+    await h.threadStore.setUsage(t.id, turn2.turnId, { tokens: 800 }, 2000);
+    await h.threadStore.completeTurn(t.id, turn2.turnId, 'b', 2100);
+    // A second agent whose turns report NO usage → excluded from tokensByDay.
+    const t2 = await h.threadStore.startThread({ projectId: 'p', agentId: 'zero' }, 3000);
+    const zt = await h.threadStore.startTurn(t2.id, 'x', 3000);
+    await h.threadStore.completeTurn(t2.id, zt.turnId, 'y', 3100);
+
+    const snap = await h.service.getSnapshot();
+    const claudeTotal = snap.tokensByDay
+      .flatMap((d) => d.byAgent)
+      .filter((a) => a.agentId === 'claude-code')
+      .reduce((acc, a) => acc + a.tokens, 0);
+    // Both turns (epoch ~0, same UTC day) sum: 500 + 800.
+    assert.equal(claudeTotal, 1300);
+    // The usage-less agent never appears.
+    const hasZero = snap.tokensByDay.some((d) => d.byAgent.some((a) => a.agentId === 'zero'));
+    assert.equal(hasZero, false);
+    // Day keys are UTC midnight (a whole-day multiple; `=== 0` treats -0 as 0
+    // for pre-epoch days, which `assert.equal` would not).
+    for (const d of snap.tokensByDay) {
+      assert.ok(d.day % 86_400_000 === 0, 'day key is UTC midnight');
+    }
+  } finally {
+    await rmrf(h.baseDir);
+  }
+});
+
 test('an open (live) session counts up to now', async () => {
   const h = newHarness();
   try {

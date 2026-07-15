@@ -116,6 +116,11 @@ export interface ConversationMetrics {
   memberSince?: number;
   /** Local-day activity buckets (day-start epoch ms → conversation/message counts). */
   activityByDay: { day: number; conversations: number; messages: number }[];
+  /**
+   * Per-day token throughput split per agent (UTC-midnight day → agent →
+   * summed per-turn `usage.tokens`). Only agents whose turns report usage appear.
+   */
+  tokensByDay: { day: number; byAgent: { agentId: string; tokens: number }[] }[];
 }
 
 /** Runtime config the AgentManager needs to drive a thread's turns. */
@@ -456,7 +461,8 @@ export class ThreadStore {
   /**
    * Compute the conversation-derived profile metrics in one read of the store:
    * conversation/message counts, distinct agents/models, per-agent tallies,
-   * member-since and per-day activity buckets. Read-only.
+   * member-since, per-day activity buckets and per-day token throughput.
+   * Read-only.
    */
   async conversationMetrics(): Promise<ConversationMetrics> {
     const threads = await this.#read();
@@ -464,6 +470,8 @@ export class ThreadStore {
     const models = new Set<string>();
     const byAgent = new Map<string, number>();
     const activity = new Map<number, { conversations: number; messages: number }>();
+    // day → (agentId → summed per-turn usage.tokens)
+    const tokens = new Map<number, Map<string, number>>();
     let messages = 0;
     let memberSince: number | undefined;
 
@@ -476,10 +484,20 @@ export class ThreadStore {
       return entry;
     };
 
+    const addTokens = (day: number, agentId: string, count: number): void => {
+      let byDay = tokens.get(day);
+      if (!byDay) {
+        byDay = new Map();
+        tokens.set(day, byDay);
+      }
+      byDay.set(agentId, (byDay.get(agentId) ?? 0) + count);
+    };
+
     for (const thread of threads) {
-      if (thread.agentId !== undefined) {
-        agents.add(thread.agentId);
-        byAgent.set(thread.agentId, (byAgent.get(thread.agentId) ?? 0) + 1);
+      const agentId = thread.agentId;
+      if (agentId !== undefined) {
+        agents.add(agentId);
+        byAgent.set(agentId, (byAgent.get(agentId) ?? 0) + 1);
       }
       if (thread.model !== undefined) models.add(thread.model);
       if (memberSince === undefined || thread.createdAt < memberSince) {
@@ -489,7 +507,20 @@ export class ThreadStore {
       for (const turn of thread.turns) {
         for (const message of turn.messages) {
           messages += 1;
-          bucket(utcDayKey(message.createdAt)).messages += 1;
+          const day = utcDayKey(message.createdAt);
+          bucket(day).messages += 1;
+          // Token throughput: sum each assistant turn's reported usage per
+          // agent + day (only when the agent reports usage and the thread has
+          // an agent id).
+          const used = message.usage?.tokens;
+          if (
+            agentId !== undefined &&
+            message.role === 'assistant' &&
+            typeof used === 'number' &&
+            used > 0
+          ) {
+            addTokens(day, agentId, used);
+          }
         }
       }
     }
@@ -502,6 +533,10 @@ export class ThreadStore {
       byAgent: [...byAgent].map(([agentId, conversations]) => ({ agentId, conversations })),
       ...(memberSince !== undefined ? { memberSince } : {}),
       activityByDay: [...activity].map(([day, counts]) => ({ day, ...counts })),
+      tokensByDay: [...tokens].map(([day, byDay]) => ({
+        day,
+        byAgent: [...byDay].map(([agentId, count]) => ({ agentId, tokens: count })),
+      })),
     };
   }
 

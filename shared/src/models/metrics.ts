@@ -34,6 +34,26 @@ export interface MetricsAgentUsage {
   conversations: number;
 }
 
+/** Tokens processed for one agent (provider) on a given day. */
+export interface MetricsAgentTokens {
+  /** Agent wire id (e.g. `claude-code`, `codex`). */
+  agentId: string;
+  /**
+   * Tokens processed — the sum of each turn's reported usage (input incl. the
+   * re-sent context + output). **Throughput, not billed cost**: caching
+   * discounts and input/output pricing differ (use `agent/usageStats` for money).
+   */
+  tokens: number;
+}
+
+/** One calendar day's token throughput, split per agent. */
+export interface MetricsTokenDay {
+  /** UTC-midnight epoch ms of the calendar date (same encoding as `activity`). */
+  day: number;
+  /** Tokens processed that day, per agent (only agents that report usage). */
+  byAgent: MetricsAgentTokens[];
+}
+
 /**
  * One local calendar-day activity bucket. Counts are split by category so a
  * client can render any metric filter (combined / conversations / messages /
@@ -93,6 +113,12 @@ export interface MetricsSnapshot {
   memberSince?: number;
   /** Per-day activity buckets for the contribution heatmap. */
   activity: MetricsActivityDay[];
+  /**
+   * Per-day token throughput split per agent, for a "tokens per day/week/month"
+   * view. Summed from each turn's reported usage; only agents that report usage
+   * appear. **Tokens processed, not billed cost** — see {@link MetricsAgentTokens}.
+   */
+  tokensByDay: MetricsTokenDay[];
   /** When the bridge produced this snapshot (epoch ms). */
   updatedAt: number;
 }

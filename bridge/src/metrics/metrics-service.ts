@@ -139,6 +139,7 @@ export class MetricsService {
       activity: [...activity]
         .map(([day, counts]) => ({ day, ...counts }))
         .sort((a, b) => a.day - b.day),
+      tokensByDay: [...conv.tokensByDay].sort((a, b) => a.day - b.day),
       updatedAt: now,
     };
   }

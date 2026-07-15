@@ -1872,6 +1872,12 @@ queda como cache. El uso/creditos de proveedores **no** entran aqui (viven en
   tz-estable: el heatmap del telefono la mapea a la celda correcta en cualquier
   zona horaria (una medianoche-local absoluta caia en el dia equivocado y no se
   pintaba nada).
+- **Consumo de tokens por dia** (`tokensByDay`): la `usage.tokens` reportada por
+  cada turno del assistant, sumada por **agente + dia (UTC)**, para una vista de
+  "tokens por dia/semana/mes por proveedor". Solo aparecen los agentes que
+  reportan uso (Zero no reporta). Es **throughput (tokens procesados), no costo
+  facturado** — el caching y el precio input/output difieren; el dinero exacto
+  sigue en `agent/usageStats`.
 
 Los eventos se guardan **con id** para que importar sea idempotente (union por id).
 

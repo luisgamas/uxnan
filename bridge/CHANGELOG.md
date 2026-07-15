@@ -30,6 +30,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   - **Conversation counts** (conversations, messages, distinct agents/models,
     per-agent, member-since, per-day activity) are computed live from the
     `ThreadStore` (`conversationMetrics()`).
+  - **Per-day token throughput** (`tokensByDay`): each assistant turn's reported
+    `usage.tokens` summed per agent + UTC calendar day, for a "tokens per
+    day/week/month per provider" view. Only agents that report usage appear;
+    it's **tokens processed, not billed cost** (`agent/usageStats` stays money).
 - **Tamper-proof export/import** (`metrics/metrics-seal.ts`): the backup file is
   sealed with AES-256-GCM under a **32-byte key held in the OS keychain**
   (`metrics-seal-key`, via the existing `SecretStore`), with the header bound as
