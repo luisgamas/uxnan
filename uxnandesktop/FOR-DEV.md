@@ -204,10 +204,14 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       modifiers. Needs validation against a real Kitty-protocol TUI. The base
       protocol (negotiation + disambiguate / event-types / all-keys) is
       implemented in `src/lib/terminal/keyboardProtocol.ts`.
-- [ ] Dispose hidden xterm renderers and rely solely on the backend ring buffer
-      (today both coexist: the buffer restores recreated panes, but hidden tabs
-      keep their xterm mounted). Would cut memory for many background terminals
-      at the cost of a replay on every show.
+- [ ] Fully unmount hidden xterm instances and rely solely on the backend ring
+      buffer, replaying on show. **Partially done:** hidden panes now release their
+      **WebGL/GPU context** (attached on reveal, `WEBGL_lose_context`-released on
+      hide — `Terminal.svelte`) so background terminals no longer exhaust WebView2's
+      ~16 live-context budget; but the xterm instance itself stays mounted (streaming
+      into its in-memory buffer via the DOM fallback). Tearing the whole xterm down
+      when hidden — relying only on `pty_snapshot` to repaint on show — would further
+      cut memory for many background terminals, at the cost of a replay on every show.
 - [ ] **Workspace lifecycle — active indicator + sleep/hibernate.** Surface which
       projects/worktrees have a *live* space (open terminals) vs an empty one — an
       indicator on the project/worktree cards, so it's obvious where terminals are
