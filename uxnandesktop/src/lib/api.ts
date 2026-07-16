@@ -760,6 +760,32 @@ export function githubPrMerge(
   return invoke("github_pr_merge", { worktreePath, number, options });
 }
 
+/** Bring a PR's branch up to date with its base — the fix for a `BEHIND` state. */
+export function githubPrUpdateBranch(
+  worktreePath: string,
+  number: string,
+  rebase = false,
+): Promise<void> {
+  return invoke("github_pr_update_branch", { worktreePath, number, rebase });
+}
+
+/** Take a PR out of draft, or (with `undo`) put it back. */
+export function githubPrReady(
+  worktreePath: string,
+  number: string,
+  undo = false,
+): Promise<void> {
+  return invoke("github_pr_ready", { worktreePath, number, undo });
+}
+
+/** Turn off a PR's armed auto-merge. */
+export function githubPrDisableAutoMerge(
+  worktreePath: string,
+  number: string,
+): Promise<void> {
+  return invoke("github_pr_disable_auto_merge", { worktreePath, number });
+}
+
 /** What the base branch's rules and the repo's settings allow for merging this
  *  PR, plus its live mergeability. Drives the merge controls. */
 export function githubMergeInfo(

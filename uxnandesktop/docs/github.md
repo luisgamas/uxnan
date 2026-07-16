@@ -144,6 +144,11 @@ than offering a fixed list:
 - Every merge passes **`--match-head-commit`** with the head commit the UI is showing, so
   a push that lands mid-review can't be merged unseen — you get an explicit failure
   instead.
+- Each state the panel reports comes with the action that answers it, rather than telling
+  you to go do it elsewhere: **`BEHIND`** offers **Update branch** (`gh pr update-branch`,
+  plus a *Rebase instead* variant), armed auto-merge offers **Turn off**
+  (`--disable-auto`), and a **draft** PR offers **Mark ready for review**
+  (`gh pr ready`, reversible with *Convert to draft*).
 
 If `gh` can't report the policy (logged out, GHES, an old `gh`), the controls degrade to
 a plain merge and let `gh` itself reject what isn't allowed.
@@ -215,10 +220,11 @@ older state loads unchanged.
 
 ## Backend commands
 
-All 30 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
+All 33 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `commands.rs`, registered in `lib.rs`, typed wrappers in `src/lib/api.ts`):
 `github_status`, `github_repo_context`, `github_branches`, `github_merge_info`,
 `github_pr_list/view/diff/timeline/create/comment/review/close/reopen/merge/checkout`,
+`github_pr_update_branch/ready/disable_auto_merge`,
 `github_issue_list/view/comment/close/reopen/create/develop`,
 `github_run_list/log/rerun/cancel`,
 `github_rate_limit`, `github_notifications_count`, `github_clone`,

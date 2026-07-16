@@ -1259,6 +1259,45 @@ async fn merge_state(worktree_path: &str, number: &str) -> Option<MergeState> {
     })
 }
 
+/// Bring a PR's branch up to date with its base (`gh pr update-branch`), the fix
+/// for a `BEHIND` merge state. `rebase` rebases instead of merging the base in.
+pub async fn pr_update_branch(
+    worktree_path: &str,
+    number: &str,
+    rebase: bool,
+) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    let mut args = vec!["pr", "update-branch", &number];
+    if rebase {
+        args.push("--rebase");
+    }
+    gh(Some(worktree_path), &args).await.map(|_| ())
+}
+
+/// Take a PR out of draft (`gh pr ready`), or put it back with `undo`. Without
+/// this a draft opened from here could only be un-drafted on github.com.
+pub async fn pr_ready(worktree_path: &str, number: &str, undo: bool) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    let mut args = vec!["pr", "ready", &number];
+    if undo {
+        args.push("--undo");
+    }
+    gh(Some(worktree_path), &args).await.map(|_| ())
+}
+
+/// Turn off a PR's armed auto-merge (`gh pr merge --disable-auto`). Its own call
+/// because `--disable-auto` takes no merge method — it's the inverse of `--auto`,
+/// not a variation of a merge.
+pub async fn pr_disable_auto_merge(worktree_path: &str, number: &str) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    gh(
+        Some(worktree_path),
+        &["pr", "merge", &number, "--disable-auto"],
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Options for merging a PR.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

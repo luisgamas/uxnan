@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **The merge panel no longer tells you to do things it can't do.** Three dead ends,
+  each one a message with no action behind it:
+  - "This branch is behind its base — **update it before merging**" had no way to update
+    it. Now offers **Update branch** (`gh pr update-branch`) with a *Rebase instead*
+    variant.
+  - "**Auto-merge is on**" was a one-way door — nothing could disarm it. Now offers
+    **Turn off** (`gh pr merge --disable-auto`).
+  - A **draft** PR could be created here but never taken out of draft, so it could only
+    be readied on github.com. Now offers **Mark ready for review** (`gh pr ready`),
+    reversible with *Convert to draft*.
 - **The merge bypass is reachable on any repository.** It was gated on
   `viewerCanAdminister`, which only knows about **repo admins** — GitHub also grants
   bypass through a ruleset's `bypass_actors` (a team, a custom role, an app), and the

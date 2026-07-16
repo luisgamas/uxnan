@@ -8,6 +8,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import type { GithubSection } from "$lib/state/app.svelte";
   import { i18n } from "$lib/i18n";
+  import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text, divider, panel } from "$lib/design";
   import { toast, toastError } from "$lib/toast";
@@ -19,6 +20,9 @@
     githubPrReview,
     githubPrMerge,
     githubMergeInfo,
+    githubPrUpdateBranch,
+    githubPrReady,
+    githubPrDisableAutoMerge,
     githubPrClose,
     githubPrReopen,
     githubIssueView,
@@ -394,6 +398,26 @@
   /** Whether we can confirm the viewer holds repo-admin bypass. Used to caveat
    *  the control — never to hide it. */
   const bypassConfirmed = $derived(!!mergeInfo?.policy.canAdminister);
+
+  /** Run a PR action that only changes state, then refresh the detail. Shared by
+   *  the actions whose whole job is to answer something the merge panel says —
+   *  "update it before merging", "auto-merge is on", "this is a draft" — so each
+   *  one lands back on a panel that reflects the new state. */
+  async function prAction(fn: (p: string, n: string) => Promise<void>, toastKey: MessageKey) {
+    const p = path();
+    if (!p || !prDetail) return;
+    busy = true;
+    try {
+      await fn(p, String(prDetail.number));
+      toast.success(i18n.t(toastKey));
+      await selectPr(prDetail.number);
+      await github.loadPrs(prState, prSearch.trim() || null);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      busy = false;
+    }
+  }
 
   function requestMerge() {
     if (!prDetail) return;
@@ -1683,6 +1707,17 @@
             <Button variant="outline" size="sm" disabled={busy} onclick={() => requestWorktree("pr", pr.number, pr.title)}>
               <GitBranchIcon class={icon.button} />{i18n.t("github.pr.checkout")}
             </Button>
+            <!-- Draft ⇄ ready. A draft opened from here used to be a one-way door:
+                 nothing in the app could take it out of draft. -->
+            {#if isOpen && pr.isDraft}
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1" onclick={() => prAction((p, n) => githubPrReady(p, n, false), "github.toast.prReady")}>
+                <CheckIcon class="size-3.5" />{i18n.t("github.pr.markReady")}
+              </Button>
+            {:else if isOpen}
+              <Button variant="ghost" size="sm" disabled={busy} class="gap-1" title={i18n.t("github.pr.markDraftTip")} onclick={() => prAction((p, n) => githubPrReady(p, n, true), "github.toast.prDrafted")}>
+                <GitPullRequestDraftIcon class="size-3.5" />{i18n.t("github.pr.markDraft")}
+              </Button>
+            {/if}
             {#if isOpen}
               <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-red-600 dark:text-red-400" onclick={togglePrState}>
                 <CircleSlashIcon class="size-3.5" />{i18n.t("github.pr.close")}
@@ -1717,7 +1752,11 @@
           {#if mergeInfo?.state?.autoMergeEnabled}
             <div class={cn("flex items-start gap-2 rounded-lg border border-sky-500/40 bg-sky-500/5 px-3 py-2", text.meta)}>
               <ClockIcon class="mt-px size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
-              <span>{i18n.t("github.merge.autoArmed")}</span>
+              <span class="flex-1">{i18n.t("github.merge.autoArmed")}</span>
+              <!-- Armed auto-merge was a one-way door: this turns it back off. -->
+              <Button variant="ghost" size="sm" class="-my-1 h-6" disabled={busy} onclick={() => prAction(githubPrDisableAutoMerge, "github.toast.autoMergeOff")}>
+                {i18n.t("github.merge.autoDisable")}
+              </Button>
             </div>
           {:else if mergeBlocked || mergeStatus === "BEHIND" || mergeStatus === "DIRTY"}
             <div class={cn("space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2", text.meta)}>
@@ -1747,6 +1786,18 @@
                     <li>{i18n.t("github.merge.dismissesStale")}</li>
                   {/if}
                 </ul>
+              {/if}
+              <!-- "Update it before merging" needs a way to update it. GitHub's own
+                   Update-branch button; without this the message was a dead end. -->
+              {#if mergeStatus === "BEHIND"}
+                <div class="ml-5 flex gap-2 pt-0.5">
+                  <Button variant="outline" size="sm" class="h-6 gap-1" disabled={busy} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, false), "github.toast.branchUpdated")}>
+                    <RefreshCwIcon class="size-3" />{i18n.t("github.merge.updateBranch")}
+                  </Button>
+                  <Button variant="ghost" size="sm" class="h-6" disabled={busy} title={i18n.t("github.merge.updateRebaseTip")} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, true), "github.toast.branchUpdated")}>
+                    {i18n.t("github.merge.updateRebase")}
+                  </Button>
+                </div>
               {/if}
             </div>
           {/if}

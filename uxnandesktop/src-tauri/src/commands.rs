@@ -1444,6 +1444,41 @@ pub async fn github_pr_merge(
         .map_err(CommandError::from)
 }
 
+/// Bring a PR's branch up to date with its base — the fix for a `BEHIND` state.
+#[tauri::command]
+pub async fn github_pr_update_branch(
+    worktree_path: String,
+    number: String,
+    rebase: bool,
+) -> Result<(), CommandError> {
+    crate::github::pr_update_branch(&worktree_path, &number, rebase)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Take a PR out of draft, or (with `undo`) put it back.
+#[tauri::command]
+pub async fn github_pr_ready(
+    worktree_path: String,
+    number: String,
+    undo: bool,
+) -> Result<(), CommandError> {
+    crate::github::pr_ready(&worktree_path, &number, undo)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Turn off a PR's armed auto-merge.
+#[tauri::command]
+pub async fn github_pr_disable_auto_merge(
+    worktree_path: String,
+    number: String,
+) -> Result<(), CommandError> {
+    crate::github::pr_disable_auto_merge(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// What the base branch's rules and the repo's settings allow for merging PR
 /// `number`, plus the PR's live mergeability. Drives the merge controls.
 #[tauri::command]

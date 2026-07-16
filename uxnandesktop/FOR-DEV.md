@@ -115,10 +115,13 @@ mobile pairing) is NOT started.**
   **admin bypass** (`--admin`, offered on **any** blocked PR rather than gated on
   `viewerCanAdminister` — that flag misses ruleset `bypass_actors` and fails on GHES;
   behind a danger confirm that says when the right is unconfirmed);
-  every merge passes `--match-head-commit`. All via the local **`gh` CLI** (incl.
+  every merge passes `--match-head-commit`. Every state the panel reports carries the
+  action that answers it: `BEHIND` → **Update branch** (`gh pr update-branch`, + rebase
+  variant), armed auto-merge → **Turn off** (`--disable-auto`), draft → **Mark ready**
+  (`gh pr ready`, reversible). All via the local **`gh` CLI** (incl.
   `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
   the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`
-  (30 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
+  (33 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
 
 ## GitHub integration — follow-ups ☐
 
