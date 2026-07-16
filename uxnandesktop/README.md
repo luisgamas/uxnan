@@ -54,7 +54,7 @@ available today are:
   doing (needs you · done · working · idle).
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
   ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
-  Canvas rendering, and scrollback that survives recreating a pane — built on
+  WebGL rendering with DOM fallback, and scrollback that survives recreating a pane — built on
   `portable-pty` and xterm.js.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
@@ -65,10 +65,14 @@ available today are:
   inference, and process-tree detection — drive colored status dots, unread / done
   badges, and native idle notifications, so you always know whether an agent is
   working, blocked, waiting, or done.
-- **Multi-agent orchestration.** With two or more live agents, a console routes a
-  message to all of them, to one agent type (fan-out), or to a coordinator's
-  workers, applying backpressure so no agent receives a new message before it is
-  free.
+- **Multi-agent orchestration.** A console with two surfaces: **Broadcast** routes a
+  message to the agents you tick (individuals, whole types, or all), with
+  backpressure; and a **run engine** (**Runs**) chains agents into a durable graph of
+  steps — one step's output feeds the next, independent steps run in parallel,
+  headless steps capture full output verified by exit code, and a step can pause for
+  your approval. A **context picker** inserts a prior step's output into a prompt, and
+  an **Examples** menu drops in ready-made runs. See
+  [`docs/orchestration.md`](docs/orchestration.md).
 - **AI-provider usage.** A **Providers** settings section shows how much of each
   quota you've consumed — session / weekly / monthly windows (with resets), plan,
   account and credit balance — for **Codex, Claude, Copilot, Gemini and Grok**. It reads
@@ -83,6 +87,13 @@ available today are:
   automatically — and, via an injected **browser-control MCP server**, discover
   `browser_*` tools to preview and test what they build with no setup. See
   [the integrated browser](./docs/browser.md).
+- **Quick commands.** Program shell commands you run often and launch them from a
+  top-bar **⚡** menu in the active worktree — or a project/worktree of your choice.
+  Each command carries a scope (**global · project · worktree**, pruned with its
+  project/worktree), substitution variables (`{worktree}` `{branch}` `{repo}` …),
+  and, under advanced options, where it runs (a new tab or the focused terminal),
+  whether it runs immediately or is only pre-typed, the working directory, and the
+  shell. Opens with `Ctrl/⌘+Shift+P`.
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated
@@ -195,7 +206,7 @@ uxnandesktop/
 │       ├── gitfast.rs     # git2 fast path (status / diff / numstat / log / show)
 │       ├── hooks.rs       # axum HTTP hook server (Layer 1 agent monitoring)
 │       ├── agent_hooks.rs # per-agent hook configs (Claude auto-install + wrappers)
-│       ├── procscan.rs    # process-tree detection (Layer 3)
+│       ├── procscan.rs    # foreground-job agent detection (Layer 3)
 │       ├── power.rs       # keep-awake (Win; macOS/Linux untested)
 │       ├── browse.rs      # in-app directory picker
 │       ├── fs.rs          # file read/write for the center editor

@@ -24,7 +24,11 @@ El área central del ADE es donde ocurre la interacción directa con los agentes
 
 ### Renderizado con xterm.js
 
-xterm.js renderiza la salida del proceso PTY en un **canvas/WebGL** dentro del webview de Tauri. Esto proporciona emulación de terminal completa:
+xterm.js renderiza la salida del proceso PTY con **WebGLAddon** dentro del webview de Tauri, la ruta acelerada recomendada por xterm y usada por VS Code. Se usa para las terminales que activan ligaduras, que se dibujan a través del *character joiner* del propio renderer WebGL (no del renderer DOM), de modo que los glifos siempre quedan alineados a la cuadrícula monoespaciada y la selección de texto con el mouse cae exactamente donde corresponde.
+
+**Orden de carga (importante):** el addon de ligaduras se carga **antes** de activar WebGL. xterm hornea su *atlas de texturas de glifos* al activarse WebGL; si el *character joiner* de ligaduras se registra después, sus glifos ligados nunca llegan al atlas ya horneado y se dibujan **duplicados/fantasma** sobre su forma plana en TUIs con muchas ligaduras (p. ej. Codex CLI) — xterm #3303. Cargando ligaduras primero, el atlas se construye con las ligaduras resueltas desde el primer frame.
+
+**Contexto GPU acotado a los panes visibles:** cada renderer WebGL mantiene su propio contexto GPU y WebView2/Chromium **limita los contextos WebGL vivos (~16)**. Como cada terminal permanece montada en todos los workspaces, uxnan adjunta WebGL **solo mientras el pane está visible**: se adjunta al revelarse y, al ocultarse (o cerrarse) el contexto se **libera explícitamente** (`WEBGL_lose_context.loseContext()` + `canvas.width/height = 0`, porque en Windows/ANGLE un `dispose()` a secas no recupera el contexto de inmediato). Así el número de contextos vivos queda acotado a los pocos panes visibles sin importar cuántas terminales/worktrees haya abiertos; una terminal oculta sigue recibiendo su output en el buffer vía el fallback DOM (no se pierde nada) y repinta al revelarse. Ante una pérdida de contexto GPU en WebView2 el addon se recupera vía `onContextLoss` reinstalando en el siguiente frame, salvo una **re-pérdida rápida** (señal de estar por encima del presupuesto de contextos): en ese caso se queda en DOM en vez de entrar en un bucle. Solo los *reveals* de un pane oculto limpian el atlas de glifos (nunca un resize/refocus ordinario). El *reveal* además **re-sincroniza el viewport** (`syncViewport`: re-mide el tamaño de celda ya visible y llama `viewport.queueSync()` de xterm 6): mientras el pane estuvo oculto (caja `0×0`) el output que llegó creció el buffer pero el viewport quedó con un área de scroll obsoleta, dejando la barra de scroll corta del final real hasta la siguiente tecla; el viewport de xterm 6 no tiene `ResizeObserver`, así que un pane revelado no se re-sincroniza solo — uxnan lo fuerza para alcanzar el inicio/fin verdadero de inmediato **sin mover la posición del usuario**. DOM queda como fallback automático cuando WebGL no está disponible. Esto proporciona emulación de terminal completa:
 
 - **Colores**: Soporte completo de colores ANSI (16 colores, 256 colores, true color 24-bit).
 - **Cursor**: Movimiento, estilos (bloque, barra, underline), parpadeo configurable.
@@ -65,7 +69,7 @@ Usuario teclea en terminal
     emit('pty:output:{id}', bytes)         ← Tauri event (backend → frontend)
         |
         v
-    xterm.js (renderiza output en canvas/WebGL)
+    xterm.js (renderiza output con WebGLAddon)
 ```
 
 **Diferencia clave con Electron**: En Tauri 2, se usan **Tauri commands** (`#[tauri::command]` en Rust, `invoke()` en JS) para request/response, y **Tauri events** (`emit()`/`listen()`) para streaming unidireccional. Los events de Tauri son más eficientes porque evitan el overhead de serializar respuestas completas, lo cual es ideal para streaming de bytes de PTY.
@@ -233,6 +237,17 @@ El frontend Svelte conecta xterm.js al PTY vía Tauri events. La conexión es bi
 - **Input del teclado** se envía al backend con `invoke('pty_write')` (Tauri command).
 - **Output del PTY** se emite al frontend con `emit('pty:output:{id}')` (Tauri event).
 
+> **Orden crítico — la respuesta al query de arranque.** En Windows, ConPTY/PowerShell
+> emiten al arrancar un query de posición de cursor (DSR `ESC[6n`) y **se bloquean
+> hasta que el terminal responde**; xterm genera esa respuesta y la entrega por
+> `onData`. Por eso `onData` (que reenvía la respuesta al PTY con `pty_write`) se
+> registra **antes** de `pty_create`: el query llega *mientras* aún se espera
+> `pty_create`, así que un `onData` tardío perdería la respuesta y el shell quedaría
+> colgado sin imprimir nunca su prompt (panel en blanco intermitente). Un flag
+> `replaying` suprime `onData` mientras se reproduce un snapshot en un xterm
+> remontado, para que las respuestas a queries embebidos en esos bytes no se filtren
+> como input al shell vivo.
+
 ### Paso 4: Lanzamiento del Agente
 
 El usuario escribe el comando del agente (por ejemplo, `claude`) o el ADE lo lanza automáticamente si el worktree fue creado con un agente predefinido. El comando se inyecta directamente al stdin del PTY.
@@ -263,6 +278,47 @@ Se liberan los recursos del PTY en Rust (drop automático del struct, que cierra
 
 ---
 
+## 4.b Arbitraje de teclado (atajo de app vs TUI/agente)
+
+Con una terminal enfocada, xterm entrega cada tecla al handler
+`attachCustomKeyEventHandler` (`Terminal.svelte`), que decide —vía el arbitrador
+**puro** `decideTerminalKey` (`terminalArbiter.ts`)— si la maneja uxnan
+(`preventDefault`, no va al PTY) o se envía al TUI/agente (`return true`).
+Sustituye los dos `switch` hardcodeados previos (uno en `+page.svelte`, otro en
+`Terminal.svelte`) por **una sola política por-atajo**:
+
+- **Política por-atajo** (`DEFAULT_TERMINAL_POLICY` en `terminalArbiter.ts`,
+  override en `AppSettings.terminalKeyPolicy`): cada acción es `app` (uxnan gana en
+  la terminal — el "set reservado") o `terminal` (la tecla va al TUI). El default
+  reserva los atajos de baja colisión (Mod+Shift / Mod+Alt) y cede los que
+  shells/TUIs necesitan (Ctrl+W borrar-palabra, Ctrl+P historial, Ctrl+S XOFF,
+  Ctrl+J newline, Ctrl+B prefijo tmux). **Multiplataforma:** los chords usan el
+  token `Mod` (⌘ en macOS, Ctrl en Win/Linux) y `Alt` (⌥) vía `isMac`.
+- **Modo foco (passthrough)** por-terminal (`terminalKeyboard.svelte.ts`): con él
+  activo, **todas** las teclas van al TUI (excepto el propio toggle, para poder
+  salir); un badge en la terminal lo indica y lo alterna.
+- **Tecla líder** (tmux-style, `AppSettings.leaderKey`, opt-in): en una terminal,
+  tras la tecla líder, el **siguiente** atajo va a uxnan sea cual sea su política —
+  determinismo bajo demanda.
+- **Despachador compartido** (`keyactions.ts` `runAppAction`): las acciones se
+  ejecutan en un solo lugar, consultado tanto por el handler global (`+page`) como
+  por el de la terminal, evitando que los dos caminos deriven.
+
+Se configura en **Settings → Atajos de teclado** (un toggle uxnan/TUI por acción +
+la tecla líder). La decisión pura (`decideTerminalKey`) tiene tests unitarios
+(`terminalArbiter.test.ts`).
+
+### Inferencia de interrupción (fallback de `done`)
+
+El mismo handler **observa sin consumir** `Ctrl+C` (SIGINT, sin selección) y el
+doble-`Esc`: si el agente estaba `working` y tras ~1.5 s no llegó un `Stop` ni
+output nuevo (el `lastUpdate` del hook no cambió), sintetiza `done + interrupted`
+en el display (`agentStatus.synthesizeInterruptedDone`), respetando el done-gate de
+subagentes (`02d`). Un hook real posterior siempre re-sincroniza. Cubre un turno
+abortado por el usuario que el CLI no reporta por hook.
+
+---
+
 ## 5. Lanzamiento y Control de Agentes
 
 ### 5.1 Flujo de Lanzamiento
@@ -275,6 +331,10 @@ El lanzamiento de un agente sigue un flujo de 6 pasos orquestado entre el fronte
 4. **Se crea el PTY** en el directorio del worktree. El backend Rust invoca `portable-pty` especificando el directorio de trabajo y el shell.
 5. **Se inyecta el comando de startup** al PTY. El comando del agente se escribe al stdin del PTY como si el usuario lo hubiera tecleado.
 6. **El agente arranca** y comienza a reportar estado. El ADE empieza a monitorear via hooks HTTP, secuencias OSC, o heurísticas de título.
+
+#### Comandos rápidos del usuario (lanzador ⚡)
+
+El mismo mecanismo de "comando de una sola vez" (paso 5) alimenta los **comandos rápidos** definidos por el usuario. Persistidos en `AppData.quickCommands` (comando `quick_commands_set`, `#[serde(default)]`), cada uno tiene un **scope** (global / project / worktree — podado al eliminar su proyecto/worktree, del lado frontend que conoce las rutas vivas). Se lanzan desde un menú **⚡** en la barra superior (slot fijo junto a min/max/close; atajo `openQuickCommands` → `Mod+Shift+P`) que separa los comandos del *worktree/proyecto activo* de los *globales*. Al ejecutar (`projects.runQuickCommand`) se sustituyen variables `{worktree}`/`{branch}`/`{repo}`/`{repoName}`/`{path}`, se resuelve el shell (un perfil de terminal) y el cwd, y se despacha a una **pestaña nueva** (`terminals.create` con `runCommand`) o a la **terminal enfocada** (`pty_write`), corriendo de inmediato o solo pre-escribiendo el comando — un flag `runCommandExecute` omite el Enter final para el modo "solo escribir".
 
 ### 5.2 Control del Agente
 

@@ -8,6 +8,12 @@
 
 import { app } from "$lib/state/app.svelte";
 import type { MessageKey } from "$lib/i18n/locales/en";
+import { DEFAULT_TERMINAL_POLICY, decideTerminalKey } from "./terminalArbiter";
+import type { TerminalPolicy, KeyDisposition, ArbiterContext } from "./terminalArbiter";
+
+// Re-exported so existing importers can keep pulling these from `keybindings`.
+export { DEFAULT_TERMINAL_POLICY, decideTerminalKey };
+export type { TerminalPolicy, KeyDisposition, ArbiterContext };
 
 export const isMac =
   typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent);
@@ -47,6 +53,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     descKey: "shortcuts.openSettingsDesc",
     category: "general",
     default: "Mod+,",
+  },
+  {
+    id: "openQuickCommands",
+    labelKey: "shortcuts.openQuickCommands",
+    descKey: "shortcuts.openQuickCommandsDesc",
+    category: "general",
+    default: "Mod+Shift+P",
   },
   {
     id: "worktreePalette",
@@ -153,6 +166,17 @@ export const KEY_ACTIONS: KeyAction[] = [
     category: "editor",
     default: "Mod+S",
   },
+  {
+    // Toggles "focus mode" on the active terminal: while on, every key goes to
+    // the TUI/agent (even reserved uxnan shortcuts). No default chord — assign one
+    // or use the on-terminal badge. Must always win in a terminal (below) so it
+    // can turn itself back off.
+    id: "toggleTerminalPassthrough",
+    labelKey: "shortcuts.toggleTerminalPassthrough",
+    descKey: "shortcuts.toggleTerminalPassthroughDesc",
+    category: "terminal",
+    default: "",
+  },
 ];
 
 /** `KEY_ACTIONS` grouped by category, in `SHORTCUT_CATEGORIES` order (empty
@@ -232,4 +256,44 @@ export function toCodeMirrorKey(chord: string): string | null {
     .split("+")
     .map((p) => (p.length === 1 ? p.toLowerCase() : p))
     .join("-");
+}
+
+// --- Terminal keyboard arbitration (app shortcut vs TUI/agent) ---------------
+
+/** The active terminal-focus policy for an action (custom override, else the
+ *  default). */
+export function resolveTerminalPolicy(id: string): TerminalPolicy {
+  const custom = app.settings.terminalKeyPolicy?.[id];
+  if (custom === "app" || custom === "terminal") return custom;
+  return DEFAULT_TERMINAL_POLICY[id] ?? "terminal";
+}
+
+/** Whether an action's chord wins over the TUI/agent while a terminal is focused. */
+export function winsInTerminal(id: string): boolean {
+  return resolveTerminalPolicy(id) === "app";
+}
+
+/** The active leader chord (empty = leader mode off). When set, pressing it in a
+ *  focused terminal routes the *next* matched shortcut to uxnan, whatever its
+ *  per-action policy — a tmux-style escape hatch for full determinism. */
+export function resolveLeaderChord(): string {
+  return app.settings.leaderKey ?? "";
+}
+
+/** Whether this event is the configured leader chord. */
+export function isLeaderChord(e: KeyboardEvent): boolean {
+  const leader = resolveLeaderChord();
+  return leader !== "" && eventToChord(e) === leader;
+}
+
+/** Arbitrate a live keydown while a terminal is focused (reads the user's
+ *  overrides + leader chord, then defers to the pure [`decideTerminalKey`]). */
+export function arbitrateTerminalKey(e: KeyboardEvent, ctx: ArbiterContext): KeyDisposition {
+  const action = matchAction(e);
+  return decideTerminalKey({
+    action,
+    isLeader: isLeaderChord(e),
+    actionWins: action ? winsInTerminal(action) : false,
+    ctx,
+  });
 }

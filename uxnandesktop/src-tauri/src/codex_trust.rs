@@ -278,17 +278,100 @@ pub fn remove_trust(config_path: &Path, hooks_json: &Path) -> Result<(), AppErro
     Ok(())
 }
 
+/// The key(s) Codex uses for `project_dir` in its `[projects]` table. Codex keys
+/// projects by the **absolute path with forward slashes**, even on Windows —
+/// verified against a real `~/.codex/config.toml` Codex itself wrote:
+/// `[projects."C:/Users/.../repo"]`. We emit the forward-slash form of both the
+/// canonicalized path (resolves `..`/symlinks, strips the `\\?\` verbatim prefix)
+/// and the raw input, deduped, so at least one matches Codex's lookup even when the
+/// cwd was passed non-canonical. Empty/relative inputs yield nothing usable.
+fn project_trust_keys(project_dir: &Path) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: String| {
+        let s = s.trim().replace('\\', "/");
+        if !s.is_empty() && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    // Canonicalized form first (the most likely match).
+    if let Ok(c) = std::fs::canonicalize(project_dir) {
+        push(strip_verbatim_prefix(&c.to_string_lossy()));
+    }
+    // Raw form as given (covers a not-yet-existing dir, or a symlink Codex keyed
+    // pre-resolution).
+    push(project_dir.to_string_lossy().to_string());
+    out
+}
+
+/// Pre-seed Codex's per-folder trust so it doesn't prompt to trust `project_dir`
+/// when launched there (the "frictionless" setting). Writes
+/// `[projects."<path>"] trust_level = "trusted"` (forward-slash key, per
+/// [`project_trust_keys`]) into `config.toml`, format-preserving via `toml_edit`.
+/// **Non-destructive:** if any spelling of this folder already carries a
+/// `trust_level` (including an explicit `"untrusted"` the user set), nothing is
+/// touched. Idempotent.
+///
+/// Still best-effort: if Codex's key ever diverges from every variant we emit, the
+/// seed is a silent no-op (Codex just shows its normal prompt) — never an error.
+pub fn ensure_project_trust(config_path: &Path, project_dir: &Path) -> Result<(), AppError> {
+    use toml_edit::{value, DocumentMut, Item, Table};
+
+    let keys = project_trust_keys(project_dir);
+    if keys.is_empty() {
+        return Ok(());
+    }
+
+    let mut doc: DocumentMut = match std::fs::read_to_string(config_path) {
+        Ok(s) => s.parse().unwrap_or_else(|_| DocumentMut::new()),
+        Err(_) => DocumentMut::new(),
+    };
+
+    if !doc.contains_key("projects") || !doc["projects"].is_table() {
+        doc["projects"] = Item::Table(Table::new());
+    }
+    let projects = doc["projects"].as_table_mut().expect("projects is a table");
+
+    // Respect any existing trust decision for this folder — under ANY spelling — so
+    // we never override a user's explicit choice or re-seed what we already wrote.
+    let any_existing = keys.iter().any(|k| {
+        projects
+            .get(k)
+            .and_then(Item::as_table)
+            .and_then(|t| t.get("trust_level"))
+            .is_some()
+    });
+    if any_existing {
+        return Ok(());
+    }
+
+    for key in &keys {
+        let mut tbl = Table::new();
+        tbl["trust_level"] = value("trusted");
+        projects[key] = Item::Table(tbl);
+    }
+
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(config_path, doc.to_string()).map_err(AppError::Io)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Two vectors captured from real Codex approvals — if either fails, Codex's
-    // fingerprint format changed and our trust writes would be silently ignored.
+    // Golden vectors pinning our reproduction of Codex's approval fingerprint. The
+    // JSON *structure* is the part that must match Codex byte-for-byte (proven by
+    // `canonical_identity_matches_known_serialization`); the hash is then just its
+    // SHA-256, so these guard against any accidental change to the serialization or
+    // hashing. If either fails, Codex's fingerprint format changed and our trust
+    // writes would be silently ignored.
     #[test]
     fn canonical_identity_matches_known_serialization() {
         let a = canonical_identity(
             "pre_tool_use",
-            "/bin/sh \"/tmp/orca-case-b-mCmCe6/agent-hooks/codex-hook.sh\"",
+            "/bin/sh \"/tmp/uxnan-agent-hooks/codex-hook.sh\"",
             600,
             false,
             None,
@@ -296,7 +379,7 @@ mod tests {
         );
         assert_eq!(
             a,
-            r#"{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"/bin/sh \"/tmp/orca-case-b-mCmCe6/agent-hooks/codex-hook.sh\"","timeout":600,"type":"command"}]}"#
+            r#"{"event_name":"pre_tool_use","hooks":[{"async":false,"command":"/bin/sh \"/tmp/uxnan-agent-hooks/codex-hook.sh\"","timeout":600,"type":"command"}]}"#
         );
     }
 
@@ -304,7 +387,7 @@ mod tests {
     fn trusted_hash_matches_golden_vectors() {
         let a = compute_hash(
             "pre_tool_use",
-            "/bin/sh \"/tmp/orca-case-b-mCmCe6/agent-hooks/codex-hook.sh\"",
+            "/bin/sh \"/tmp/uxnan-agent-hooks/codex-hook.sh\"",
             600,
             false,
             None,
@@ -312,12 +395,12 @@ mod tests {
         );
         assert_eq!(
             a,
-            "sha256:bc013489dba495431d3790fda62ee5a7d907a7c491e29ad26238c3a5d6d2b163"
+            "sha256:bc59c4d61711c8b91501c31e2dd1514ad9f6302c870c1fca7e1d43592b08a017"
         );
 
         let b = compute_hash(
             "stop",
-            "/home/user/.tma1/hooks/agent-hook.sh",
+            "/home/user/.uxnan/hooks/agent-hook.sh",
             600,
             false,
             None,
@@ -325,7 +408,7 @@ mod tests {
         );
         assert_eq!(
             b,
-            "sha256:f8b48c31eabfba63f117b8570b839a5f6efc1d67867512d661775b5312df946f"
+            "sha256:49242d9686a47c9e60b704683c1e91aeffec09f12d9e691ca5dd840fda55caa9"
         );
     }
 
@@ -375,6 +458,67 @@ mod tests {
         );
         // Second call must not error (idempotent write).
         ensure_trust(&cfg, &hooks, &events).unwrap();
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn project_trust_keys_are_forward_slash() {
+        // Codex keys `[projects]` with forward slashes even on Windows — every
+        // emitted variant must be forward-slash and non-empty.
+        let tmp = std::env::temp_dir().join(format!("uxnan-projkeys-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let keys = project_trust_keys(&tmp);
+        assert!(!keys.is_empty());
+        for k in &keys {
+            assert!(!k.contains('\\'), "key must use forward slashes: {k}");
+            assert!(!k.trim().is_empty());
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn ensure_project_trust_seeds_and_respects_user_choice() {
+        let tmp = std::env::temp_dir().join(format!("uxnan-projtrust-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let cfg = tmp.join("config.toml");
+        std::fs::write(&cfg, "model = \"gpt-5-codex\"\n# keep me\n").unwrap();
+
+        // Seeds `trusted` for a fresh folder (keyed forward-slash, as Codex does),
+        // preserving user content.
+        let proj = tmp.join("repo");
+        std::fs::create_dir_all(&proj).unwrap();
+        ensure_project_trust(&cfg, &proj).unwrap();
+        let out = std::fs::read_to_string(&cfg).unwrap();
+        let doc = out.parse::<toml_edit::DocumentMut>().unwrap();
+        let projects = doc["projects"].as_table().unwrap();
+        assert!(
+            project_trust_keys(&proj)
+                .iter()
+                .any(|k| projects.get(k).and_then(|e| e["trust_level"].as_str()) == Some("trusted")),
+            "a forward-slash key for the folder was marked trusted"
+        );
+        assert!(!out.contains('\\'), "no backslash keys are written");
+        assert!(out.contains("model = \"gpt-5-codex\""));
+        assert!(out.contains("# keep me"));
+
+        // A user's explicit `untrusted` is NOT overridden — keyed the same way Codex
+        // stores it (forward-slash real table).
+        let other = tmp.join("secret");
+        std::fs::create_dir_all(&other).unwrap();
+        let okey = project_trust_keys(&other)[0].clone();
+        let mut doc2 = out.parse::<toml_edit::DocumentMut>().unwrap();
+        let mut t = toml_edit::Table::new();
+        t["trust_level"] = toml_edit::value("untrusted");
+        doc2["projects"][&okey] = toml_edit::Item::Table(t);
+        std::fs::write(&cfg, doc2.to_string()).unwrap();
+        ensure_project_trust(&cfg, &other).unwrap();
+        let out2 = std::fs::read_to_string(&cfg).unwrap();
+        let doc3 = out2.parse::<toml_edit::DocumentMut>().unwrap();
+        assert_eq!(
+            doc3["projects"][&okey]["trust_level"].as_str(),
+            Some("untrusted"),
+            "user's explicit untrusted is respected"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

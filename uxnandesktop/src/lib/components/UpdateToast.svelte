@@ -7,11 +7,13 @@
   // solid background, border, release notes link, and consistent surface layering.
 
   import { updater } from "$lib/state/updater.svelte";
+  import { app } from "$lib/state/app.svelte";
+  import { openExternal } from "$lib/api";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import DownloadIcon from "@lucide/svelte/icons/download";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import LoaderIcon from "@lucide/svelte/icons/loader-circle";
@@ -23,25 +25,40 @@
 
   const version = $derived(updater.update?.version ?? "");
   const pct = $derived(updater.progressFraction);
-  const hasNotes = $derived(
-    updater.update?.notes !== null && updater.update?.notes !== undefined && updater.update?.notes.length > 0
-  );
+  const channel = $derived(app.settings.updater?.channel ?? "stable");
   const releaseUrl = $derived(
-    `https://github.com/luisgamas/uxnan/releases/tag/desktop-v${version}`
+    `https://github.com/luisgamas/uxnan/releases/tag/desktop-${channel}-v${version}`
   );
 </script>
 
-<div class="flex w-full items-start gap-3 rounded-lg border border-border/70 bg-[var(--ux-elevated)] p-3 shadow-md" role="status">
-  <!-- Leading icon reflects the phase. -->
-  {#if updater.status === "downloading" || updater.status === "installing"}
-    <LoaderIcon class={cn(icon.button, "mt-0.5 shrink-0 animate-spin text-primary")} />
-  {:else}
-    <SparklesIcon class={cn(icon.button, "mt-0.5 shrink-0 text-primary")} />
+<div
+  class="relative flex w-full min-w-0 flex-col gap-3 rounded-lg border border-border/70 bg-[var(--ux-elevated)] p-3.5 shadow-md"
+  role="status"
+>
+  {#if updater.status !== "installing"}
+    <TooltipSimple title={i18n.t("updates.dismiss")}>
+      {#snippet children(tp)}
+        <Button
+          {...tp}
+          variant="ghost"
+          size="icon-sm"
+          class={cn(iconButton.sm, "absolute right-2 top-2")}
+          aria-label={i18n.t("updates.dismiss")}
+          onclick={() => updater.dismiss()}
+        >
+          <XIcon class={icon.button} />
+        </Button>
+      {/snippet}
+    </TooltipSimple>
   {/if}
 
-  <!-- Message + progress bar + release notes link -->
-  <div class="flex min-w-0 flex-1 flex-col gap-1">
-    <span class={cn("text-foreground", text.body)}>
+  <div class="flex min-w-0 items-start gap-2 pr-8">
+    {#if updater.status === "downloading" || updater.status === "installing"}
+      <LoaderIcon class={cn(icon.button, "mt-0.5 shrink-0 animate-spin text-primary")} />
+    {:else}
+      <SparklesIcon class={cn(icon.button, "mt-0.5 shrink-0 text-primary")} />
+    {/if}
+    <span class={cn("min-w-0 text-foreground", text.heading)}>
       {#if updater.status === "available"}
         {i18n.t("updates.bannerAvailable", { version })}
       {:else if updater.status === "downloading"}
@@ -57,10 +74,11 @@
         {i18n.t("updates.bannerInstalling")}
       {/if}
     </span>
+  </div>
 
-    <!-- Progress bar (download phase only) -->
+  <div class="flex min-w-0 flex-col gap-2">
     {#if updater.status === "downloading" && pct !== null}
-      <div class="h-1 w-full max-w-48 overflow-hidden rounded-full bg-primary/20">
+      <div class="h-1.5 w-full overflow-hidden rounded-full bg-primary/15" aria-label={`${Math.round(pct * 100)}%`}>
         <div
           class="h-full rounded-full bg-primary transition-[width] duration-150"
           style="width: {Math.round(pct * 100)}%"
@@ -68,72 +86,44 @@
       </div>
     {/if}
 
-    <!-- Agents-busy warning (install phase) -->
     {#if updater.status === "downloaded" && updater.agentsBusy}
       <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
         <TriangleAlertIcon class={icon.decorative} />
-        <span class={text.indicator}>{i18n.t("updates.agentsBusyWarning")}</span>
+        <span class={text.body}>{i18n.t("updates.agentsBusyWarning")}</span>
       </span>
     {/if}
 
-    <!-- Release notes link -->
-    {#if hasNotes || (updater.status !== "idle" && updater.status !== "checking")}
-      <a
-        href={releaseUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+    {#if updater.status === "downloaded"}
+      <button
+        type="button"
+        onclick={() => void openExternal(releaseUrl).catch(() => {})}
         class={cn(
-          "inline-flex items-center gap-1 text-muted-foreground no-underline transition-colors hover:text-foreground",
-          text.indicator,
+          "inline-flex w-fit items-center gap-1 text-left text-muted-foreground transition-colors hover:text-foreground",
+          text.body,
         )}
         title={i18n.t("updates.releaseNotesTitle", { version })}
       >
         <ExternalLinkIcon class={icon.decorative} />
         {i18n.t("updates.releaseNotes")}
-      </a>
+      </button>
     {/if}
   </div>
 
-  <!-- Actions per phase. -->
-  <div class="flex shrink-0 items-center gap-1.5">
-    {#if updater.status === "available"}
-      <Button size="sm" onclick={() => void updater.download()}>
-        <DownloadIcon data-icon="inline-start" />
-        {i18n.t("updates.download")}
-      </Button>
-    {:else if updater.status === "downloaded"}
+  {#if updater.status === "available"}
+    <Button class="w-full" size="sm" onclick={() => void updater.download()}>
+      <DownloadIcon data-icon="inline-start" />
+      {i18n.t("updates.download")}
+    </Button>
+  {:else if updater.status === "downloaded"}
+    <div class="flex w-full flex-col gap-1.5">
       {#if updater.agentsBusy}
-        <Button size="sm" onclick={() => updater.installWhenIdle()}>
+        <Button class="w-full" variant="outline" size="sm" onclick={() => updater.installWhenIdle()}>
           {i18n.t("updates.installWhenIdle")}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => void updater.installNow()}
-        >
-          {i18n.t("updates.installNow")}
-        </Button>
-      {:else}
-        <Button size="sm" onclick={() => void updater.installNow()}>
-          {i18n.t("updates.installNow")}
-        </Button>
       {/if}
-    {/if}
-
-    {#if updater.status !== "installing"}
-      <TooltipSimple title={i18n.t("updates.dismiss")}>
-        {#snippet children(tp)}
-          <Button
-            {...tp}
-            variant="ghost"
-            size="icon-sm"
-            aria-label={i18n.t("updates.dismiss")}
-            onclick={() => updater.dismiss()}
-          >
-            <XIcon class={icon.button} />
-          </Button>
-        {/snippet}
-      </TooltipSimple>
-    {/if}
-  </div>
+      <Button class="w-full" size="sm" onclick={() => void updater.installNow()}>
+        {i18n.t("updates.installNow")}
+      </Button>
+    </div>
+  {/if}
 </div>

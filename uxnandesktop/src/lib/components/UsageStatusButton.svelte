@@ -59,6 +59,14 @@
 
   // Controlled so navigating to settings can close it explicitly.
   let open = $state(false);
+  let statusTooltipOpen = $state(false);
+  let refreshTooltipOpen = $state(false);
+
+  function closeTooltips(): void {
+    statusTooltipOpen = false;
+    refreshTooltipOpen = false;
+  }
+
   function onOpenChange(next: boolean) {
     if (next) void usage.ensureFresh();
   }
@@ -66,7 +74,7 @@
 
 {#if enabled}
   <Popover.Root bind:open {onOpenChange}>
-    <TooltipSimple title={i18n.t("providers.statusBarTooltip")}>
+    <TooltipSimple bind:open={statusTooltipOpen} title={i18n.t("providers.statusBarTooltip")}>
       {#snippet children(tp)}
         <Popover.Trigger
           {...tp}
@@ -77,13 +85,23 @@
         </Popover.Trigger>
       {/snippet}
     </TooltipSimple>
-    <Popover.Content align="end" side="top" class="w-72 p-0">
+    <Popover.Content
+      align="end"
+      side="top"
+      class="w-72 p-0"
+      onOpenAutoFocus={(event) => event.preventDefault()}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        closeTooltips();
+        (document.activeElement as HTMLElement | null)?.blur();
+      }}
+    >
       <div class="flex items-start justify-between gap-2 border-b border-border/60 px-3 py-2">
         <div class="min-w-0 space-y-0.5">
           <div class="text-sm font-medium leading-tight text-foreground">{i18n.t("providers.usageTitle")}</div>
           <div class={text.meta}>{i18n.t("providers.usedCaption")}</div>
         </div>
-        <TooltipSimple title={i18n.t("providers.refreshNow")}>
+        <TooltipSimple bind:open={refreshTooltipOpen} title={i18n.t("providers.refreshNow")}>
           {#snippet children(tp)}
             <Button
               {...tp}
@@ -114,15 +132,24 @@
             </div>
             {#if windows.length > 0}
               {#each windows as w (w.id)}
-                <UsageMeter window={w} compact />
+                <UsageMeter window={w} compact showReset={config.statusBar.showResetTime === true} />
               {/each}
             {:else}
               <span class={text.meta}>{i18n.t("providers.noData")}</span>
             {/if}
             {#if config.statusBar.showCredit && snap?.credit}
               <span class="font-mono text-[11px] text-muted-foreground">
-                {formatCredit(snap.credit.used, snap.credit.currency)}
-                {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatCredit(snap.credit.limit, snap.credit.currency)}{/if}
+                {#if snap.credit.limit == null && snap.credit.available != null}
+                  {formatCredit(snap.credit.available, snap.credit.currency)}&nbsp;{i18n.t("providers.available")}
+                {:else}
+                  {formatCredit(snap.credit.used, snap.credit.currency)}
+                  {#if snap.credit.limit != null}&nbsp;/&nbsp;{formatCredit(snap.credit.limit, snap.credit.currency)}{/if}
+                {/if}
+              </span>
+            {/if}
+            {#if config.statusBar.showResetCredits && snap?.resetCredits}
+              <span class="text-[11px] text-muted-foreground">
+                {i18n.t("providers.resets")}: {i18n.t("providers.resetsCount", { count: snap.resetCredits.available })}
               </span>
             {/if}
           </div>

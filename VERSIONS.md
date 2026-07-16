@@ -115,6 +115,11 @@ release onward the workflow keeps `latest` current automatically.
 
 | Date (YYYY-MM-DD) | shared | bridge | relay | desktop | mobile |
 | ----------------- | ------ | ------ | ----- | ------- | ------ |
+| 2026-07-16 | — | — | — | 0.0.14-nightly.20260716.1 | — | <!-- desktop: terminal render fixes — xterm.js 6.0 upgrade fixes deformed/ghosted text (shared WebGL glyph atlas, #4065/#4480) + reveal viewport re-sync (queueSync) so scroll reaches the true end + slim hover-only scrollbar restored; agent detection stops mislabeling non-agent processes that spawn agent helpers (foreground-job discipline) (PRs #66, #67) — nightly channel -->
+| 2026-07-15 | — | — | — | 0.0.13-nightly.20260715.1 | — | <!-- desktop: terminal reliability — blank-pane launch fix (ConPTY startup query race) + ghost/doubled-text fix (xterm addon/core realign) + renderer hardening (PR #65) — nightly channel -->
+| 2026-07-14 | — | — | — | 0.0.12-nightly.20260714.1 | — | <!-- desktop: precise agent status (done/waiting fix) + Claude & OpenCode sub-agents + configurable terminal keyboard arbitration + interrupt inference + quick commands + left-panel polish (PR #63) — nightly channel -->
+| 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.2 | — | <!-- desktop: richer provider usage — reset time, Codex resets + redeem, account type, Grok $ (PR #62) — nightly channel -->
+| 2026-07-13 | — | — | — | 0.0.11-nightly.20260713.1 | — | <!-- desktop: multi-agent orchestration run engine + broadcast rework (PR #61) — nightly channel -->
 | 2026-07-11 | — | — | — | 0.0.10-nightly.20260711.1 | — | <!-- desktop: Grok provider usage statistics (PR #60) — nightly channel -->
 | 2026-07-11 | 0.0.5-alpha.20260711 | 0.0.5-alpha.20260711 | — | 0.0.9-alpha.20260711 | 0.0.5-alpha.20260711+20260711 | <!-- shared/bridge: interactive ACP question/approval workflows plus Zero and Grok; desktop: file workspace, smart sidebar, agent views and provider usage; mobile: Zero/Grok, question cards and clearer turn errors (PRs #56-#58) -->
 | 2026-07-05 | — | — | — | 0.0.8-alpha.20260705 | — | <!-- desktop: tooltip system, project cards/icons/tabs, batch theme import, bulk add projects, worktree gating (PRs #47-#52) -->

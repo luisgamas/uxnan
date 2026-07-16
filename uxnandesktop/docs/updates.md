@@ -57,10 +57,16 @@ quitting the app), so nothing is killed mid-write.
   - The frontend store `src/lib/state/updater.svelte.ts` orchestrates check →
     (auto?)download → install, applies the install policy, and runs the
     idle-guard. The prompt is a **pinned sonner toast**
-    (`src/lib/components/UpdateToast.svelte`, driven by `src/lib/updateToast.ts`
+    (`src/lib/components/UpdateToast.svelte`, driven by `src/lib/updateToast.svelte.ts`
     with a stable id + `duration: Infinity`), and the same download/install
     actions are also available inline in **Settings → Updates**
     (`src/lib/components/Settings.svelte`).
+    The pinned card is a compact vertical surface: during `downloading` it shows
+    only the progress state, while the release-notes link is reserved for
+    `downloaded`, when the installer is ready to apply. Its title, supporting
+    text, dismissal control, and full-width actions follow the desktop tokens.
+    The link follows the selected `desktop-stable-v…` or `desktop-nightly-v…`
+    tag.
 - **Signature** — verified against `plugins.updater.pubkey` in
   `src-tauri/tauri.conf.json`. This is a **free minisign key**, unrelated to OS
   code-signing (the paid Authenticode/Apple cert that removes "unknown publisher"

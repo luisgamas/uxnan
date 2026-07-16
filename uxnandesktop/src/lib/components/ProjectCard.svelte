@@ -170,7 +170,10 @@
     {#if hasUnread}
       <TooltipSimple title={i18n.t("monitor.unread")}>
         {#snippet children(tp2)}
-          <span {...tp2} class="size-1.5 shrink-0 rounded-full bg-red-500"></span>
+          <span
+            {...tp2}
+            class="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/15"
+          ></span>
         {/snippet}
       </TooltipSimple>
     {/if}

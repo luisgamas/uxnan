@@ -8,6 +8,12 @@ import type {
   TerminalThemePreset,
   ThemeFonts,
 } from "$lib/theme";
+// `SavedRun` is the plain-data shape the orchestration engine persists (see
+// `$lib/orchestration/run`). `import type` is erased at build time, and `run.ts`
+// is self-contained (it never imports this module), so there is no import cycle.
+// Re-exported so consumers can import it from `$lib/types` alongside `AppData`.
+import type { SavedRun } from "$lib/orchestration/run";
+export type { SavedRun } from "$lib/orchestration/run";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -49,6 +55,49 @@ export interface AgentProfile {
   icon?: string | null;
 }
 
+// --- Quick commands (top-bar launcher) --------------------------------------
+// Mirror of the Rust `QuickCommand` model. A flat list persisted in `AppData`;
+// each command carries its own scope + binding.
+
+/** Where a quick command applies. */
+export type QuickCommandScope = "global" | "project" | "worktree";
+
+/** Where a quick command runs: a fresh integrated terminal tab, or the
+ *  currently-focused integrated terminal. */
+export type QuickCommandTarget = "newTab" | "active";
+
+/** Whether the command auto-runs (typed + Enter) or is only pre-typed. */
+export type QuickCommandRunMode = "execute" | "typeOnly";
+
+/** Working directory a quick command runs in (only for the `newTab` target). */
+export type QuickCommandCwd = "activeWorktree" | "projectRoot" | "custom";
+
+/** A user-programmed quick command. `command` may contain `{worktree}` /
+ *  `{branch}` / `{repo}` / `{repoName}` / `{path}` tokens, substituted with the
+ *  active context at run time. */
+export interface QuickCommand {
+  id: string;
+  name: string;
+  command: string;
+  description?: string | null;
+  /** Builtin glyph key or inline `data:` URL; null → default launcher glyph. */
+  icon?: string | null;
+  scope: QuickCommandScope;
+  /** Bound repo id when `scope === "project"`. */
+  projectId?: string | null;
+  /** Bound worktree absolute path when `scope === "worktree"`. */
+  worktreePath?: string | null;
+  runMode: QuickCommandRunMode;
+  target: QuickCommandTarget;
+  cwd: QuickCommandCwd;
+  /** Fixed working directory when `cwd === "custom"`. */
+  customCwd?: string | null;
+  /** Terminal profile (shell) to run in; null → the default terminal shell. */
+  shellProfileId?: string | null;
+  /** Ask the user to confirm before running. */
+  confirm: boolean;
+}
+
 // --- AI-provider usage statistics (Settings → Providers) --------------------
 // Mirror of `shared/src/models/usage.ts` (the bridge serves the same shape to
 // the phone later). Read natively in Rust here via the `usage_read` command.
@@ -61,6 +110,15 @@ export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
 
 /** How the data was obtained, for the provenance label. */
 export type UsageSource = "token";
+
+/** The kind of billing relationship (mirror of Rust `AccountType`). Derived per
+ *  provider so the UI can label the account beyond its plan name. */
+export type AccountType =
+  | "subscription"
+  | "payAsYouGo"
+  | "free"
+  | "team"
+  | "enterprise";
 
 /** A single quota/rate window, expressed as a used-percentage with a reset. */
 export interface UsageWindow {
@@ -78,6 +136,24 @@ export interface CreditBalance {
   currency: string;
   period: string;
   resetsAt?: number;
+  /** Amount still available this period (e.g. Grok on-demand / prepaid). */
+  available?: number;
+}
+
+/** One redeemable reset (which one, when it expires) — per-credit detail. */
+export interface ResetCreditEntry {
+  title?: string;
+  expiresAt?: number;
+}
+
+/** Redeemable rate-limit resets a provider grants (Codex). Distinct from money
+ *  `credit`: these are reset tokens that roll a hit limit back early. */
+export interface ResetCredits {
+  available: number;
+  totalEarned?: number;
+  nextExpiresAt?: number;
+  /** The individual available resets, soonest-expiring first, when detailed. */
+  entries?: ResetCreditEntry[];
 }
 
 /** One provider's usage snapshot (result of `usage_read`). */
@@ -85,9 +161,10 @@ export interface ProviderUsage {
   provider: UsageProvider;
   status: UsageStatus;
   source?: UsageSource;
-  account?: { email?: string; organization?: string; plan?: string };
+  account?: { email?: string; organization?: string; plan?: string; accountType?: AccountType };
   windows: UsageWindow[];
   credit?: CreditBalance;
+  resetCredits?: ResetCredits;
   updatedAt: number;
   message?: string;
 }
@@ -100,6 +177,10 @@ export interface UsageStatusBarPick {
   windows: string[];
   showCredit?: boolean;
   showPlan?: boolean;
+  /** Show the absolute reset time on each window meter. */
+  showResetTime?: boolean;
+  /** Show Codex's redeemable rate-limit resets ("reset credits"). */
+  showResetCredits?: boolean;
 }
 
 /** A provider the user activated in Settings → Providers. Only activated
@@ -141,6 +222,13 @@ export interface AppSettings {
   /** Custom keyboard-shortcut overrides, keyed by action id → chord string
    *  (e.g. `closeCenter` → `Ctrl+W`). Missing = default binding; "" = disabled. */
   keybindings?: Record<string, string>;
+  /** Per-action override for which side wins a chord while a terminal is focused:
+   *  `"app"` (uxnan wins) or `"terminal"` (send it to the TUI/agent). Missing =
+   *  the action's default (`DEFAULT_TERMINAL_POLICY`). */
+  terminalKeyPolicy?: Record<string, "app" | "terminal">;
+  /** Leader chord (tmux-style). When set, pressing it in a focused terminal routes
+   *  the *next* shortcut to uxnan whatever its policy. "" / missing = off. */
+  leaderKey?: string;
   /** Active theme id: a built-in ("system"/"light"/"dark"/…) or a custom id. */
   activeThemeId?: string;
   /** User-created themes (exportable / importable). */
@@ -224,10 +312,14 @@ export type SortMode =
 export type BrowserLinkPolicy = "internal" | "external" | "ask";
 
 /** How the browser-control MCP server is injected into agents (mirror of Rust
- *  `McpInjection`). `workspace` writes a project-scoped config in the terminal's
- *  cwd (default); `global` registers it in each CLI's global user config; `off`
- *  injects nothing (wire it by hand from the copy-paste snippet). */
-export type McpInjection = "off" | "workspace" | "global";
+ *  `McpInjection`). `managed` (default) registers it in each CLI's **user-global**
+ *  config only — never the project folder — so no files land in the user's project
+ *  and there's no "approve this MCP server?" prompt; with `frictionFree` on,
+ *  app-launched agents also skip the CLIs' folder-trust prompt. `global` is the same
+ *  user-global config but leaves native trust prompts intact. `off` injects nothing
+ *  (wire it by hand from the copy-paste snippet). The legacy `workspace` mode
+ *  (project-scoped files) was removed; a persisted `workspace` maps to `managed`. */
+export type McpInjection = "off" | "managed" | "global";
 
 /** Integrated developer-browser preferences (mirror of Rust `BrowserSettings`). */
 export interface BrowserSettings {
@@ -244,8 +336,13 @@ export interface BrowserSettings {
   /** Expose the browser-control MCP server to agents so they discover the
    *  `browser_*` tools automatically. Default on. */
   mcpEnabled: boolean;
-  /** How the MCP server is injected into agents. Default `workspace`. */
+  /** How the MCP server is injected into agents. Default `managed`. */
   mcpInjection: McpInjection;
+  /** Frictionless agent setup. When on (default) and injection is `managed`,
+   *  app-launched agents skip the CLIs' workspace/folder-trust prompt (Gemini via
+   *  `GEMINI_CLI_TRUST_WORKSPACE`, Codex via a per-folder `trust_level` seed).
+   *  Applies only in `managed` mode. Default on. */
+  frictionFree: boolean;
   /** Agent ids (`claude`/`codex`/`gemini`/`opencode`/`pi`) to skip when injecting
    *  the MCP config. Empty = all supported agents. */
   mcpDisabledAgents: string[];
@@ -544,6 +641,18 @@ export interface WorktreeStatus {
   behind: number;
 }
 
+/** A sub-agent (child a parent agent spawned, e.g. a Claude Task-tool subagent),
+ *  tracked within the parent's PTY session (mirror of Rust `SubagentEntry`).
+ *  Children only ever reach `working` / `done`. */
+export interface SubagentEntry {
+  id: string;
+  agentType?: string | null;
+  description?: string | null;
+  status: AgentStatus;
+  startedAt: number;
+  lastUpdate: number;
+}
+
 /** A cached agent state reported via the hook server (mirror of Rust
  *  `AgentStateEntry`). Keyed by `agentId` — the `UXNAN_AGENT_ID` (PTY id) the
  *  ADE injected and the agent's hook echoed back. */
@@ -556,6 +665,8 @@ export interface AgentStateEntry {
   interrupted: boolean;
   /** Short preview of the agent's latest response (sent on `done`), if any. */
   summary?: string | null;
+  /** Sub-agents (children) this session spawned; empty for agents that don't. */
+  subagents?: SubagentEntry[];
   firstSeen: number;
   lastUpdate: number;
 }
@@ -615,6 +726,10 @@ export interface AgentHooksStatus {
  *  startup failed. */
 export interface HookScripts {
   claudeJson: string;
+  geminiJson: string;
+  codexJson: string;
+  opencodePluginJs: string;
+  piExtensionJs: string;
   statusRelayCjs: string;
   wrapperBash: string;
   wrapperPowershell: string;
@@ -675,6 +790,11 @@ export interface AppData {
   settings: AppSettings;
   agentCache: AgentStateEntry[];
   terminalLayout?: SavedTerminalLayout | null;
+  quickCommands?: QuickCommand[];
+  /** Opaque, frontend-owned orchestration runs blob (the `Run[]` graph — spec
+   *  `02d` §3). Persisted as-is; typed as `SavedRun[]` where the engine reads it
+   *  (see `$lib/orchestration/run`). */
+  orchestrationRuns?: SavedRun[] | null;
 }
 
 /** Mirror of the Rust `CommandError` returned across the command boundary. */
@@ -735,7 +855,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     terminalLinks: true,
     homepage: "",
     mcpEnabled: true,
-    mcpInjection: "workspace",
+    mcpInjection: "managed",
+    frictionFree: true,
     mcpDisabledAgents: [],
   },
   browserPanelWidth: 520,

@@ -52,6 +52,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   (`src/agents/agent-adapter.ts`) gains optional `listCommands?(cwd?)` and
   `expandCommand?(name, args?, cwd?)`, and `SendTurnOptions` gains `command?`.
 
+### Added — richer `agent/usageStats` fields (account type, reset credits, $ balance)
+
+- `ProviderUsage.account` gains **`accountType`**
+  (`AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise'`),
+  derived per provider so a client can identify the account beyond its plan name.
+- `ProviderUsage` gains **`resetCredits`** (`{ available, totalEarned?,
+  nextExpiresAt?, entries?: { title?, expiresAt? }[] }`) — a provider's redeemable
+  rate-limit "resets" (Codex), with per-credit detail (which one, when each expires).
+- `CreditBalance` gains **`available`** — a remaining $ balance the provider reports
+  directly (e.g. Grok on-demand / prepaid).
+- All additive: older payloads deserialize unchanged. Contract mirrored in
+  `architecture/02b`; desktop reader implemented, bridge/mobile consume in Phase 6.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Changed — Grok usage provider

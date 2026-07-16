@@ -17,7 +17,7 @@ import { app } from "./app.svelte";
 import { toast } from "$lib/toast";
 import { notify } from "$lib/notify";
 import { i18n } from "$lib/i18n";
-import type { AgentStatus, AgentStatusEvent } from "$lib/types";
+import type { AgentStatus, AgentStatusEvent, SubagentEntry } from "$lib/types";
 
 /** A report grows stale (shown dimmed) after this long with no update (spec §1.5). */
 const STALE_MS = 30 * 60 * 1000;
@@ -31,6 +31,8 @@ export interface LiveAgentState {
   interrupted: boolean;
   /** Short preview of the agent's latest response (sent on `done`), if any. */
   summary?: string | null;
+  /** Sub-agents (children) this session spawned; empty for agents that don't. */
+  subagents: SubagentEntry[];
   /** Last hook update (epoch ms; the backend reports seconds, scaled here). */
   lastUpdate: number;
 }
@@ -43,6 +45,7 @@ function toLive(e: AgentStatusEvent): LiveAgentState {
     tool: e.tool,
     interrupted: e.interrupted,
     summary: e.summary,
+    subagents: e.subagents ?? [],
     lastUpdate: e.lastUpdate * 1000,
   };
 }
@@ -69,6 +72,9 @@ class AgentStatusStore {
         const p = e.payload;
         const prevState = this.byId[p.agentId];
         this.byId = { ...this.byId, [p.agentId]: toLive(p) };
+        // Let the hook establish the tab's agent identity (below), so an agent
+        // started by hand shows up without waiting for process detection.
+        this.sealIdentity(p);
         // Announce meaningful transitions (done / blocked / waiting). Pass the
         // previous state so we can recover the task prompt on `done` (the Stop
         // report's own prompt may be the freshly-read transcript task).
@@ -155,6 +161,38 @@ class AgentStatusStore {
   isStale(id: string): boolean {
     const s = this.byId[id];
     return !!s && Date.now() - s.lastUpdate > STALE_MS;
+  }
+
+  /** Force a working agent to `done + interrupted` — the interrupt-inference
+   *  fallback (Ctrl+C / double-Esc with no closing hook). No-op unless the agent
+   *  is currently `working`, and it stamps a fresh `lastUpdate` so a genuine
+   *  later hook still wins. Display-only (the next real hook re-syncs it). */
+  synthesizeInterruptedDone(id: string): void {
+    const prev = this.byId[id];
+    if (!prev || prev.status !== "working") return;
+    this.byId = {
+      ...this.byId,
+      [id]: { ...prev, status: "done", interrupted: true, lastUpdate: Date.now() },
+    };
+  }
+
+  /** Let the hook itself establish the tab's agent identity. A hook report is
+   *  self-declared (it carries the agent type), which is authoritative — so an
+   *  agent the user typed by hand in a terminal shows up in the agent view (and
+   *  drives the worktree dot) immediately, instead of depending on process-tree
+   *  detection matching its executable name (a wrapper / renamed / node-launched
+   *  agent would otherwise report state but stay invisible). Only seals a tab with
+   *  no identity yet — a launched or already-detected identity always wins. */
+  private sealIdentity(p: AgentStatusEvent): void {
+    const type = (p.agentType ?? "").trim();
+    if (!type) return;
+    const tab = terminals.findTab(p.agentId);
+    if (!tab || tab.kind !== "terminal") return;
+    if (tab.agentName || tab.agentCommand) return;
+    const a = app.resolveAgent(type);
+    tab.agentName = a.name;
+    tab.agentIcon = a.icon;
+    tab.agentCommand = type;
   }
 }
 

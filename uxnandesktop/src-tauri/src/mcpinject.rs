@@ -10,27 +10,35 @@
 //! agent's terminal in `commands.rs`), so the secret stays in the process env.
 //!
 //! ## Modes (see [`crate::model::McpInjection`])
-//! - **Workspace** (default): write a project-scoped config into the terminal's
-//!   working directory (auto-discovered by the CLI there), so both app-launched and
-//!   hand-typed agents in that folder get the tools. Files we *create* are hidden
-//!   from Git (added to the repo's `info/exclude`) and removed on exit.
-//! - **Global**: write into each CLI's global user config, so the tools are
-//!   available in every project (covers agents without a project-scoped config).
+//! - **Managed** (default): write into each CLI's **user-global** config only —
+//!   never the project working directory. User-global config is not
+//!   project-approval-gated, so there's no "approve this MCP server?" prompt and
+//!   nothing lands in the user's project folder. Hand-typed agents in any folder
+//!   still discover the server (every CLI reads its user config). When
+//!   [`crate::model::BrowserSettings::friction_free`] is on, app-launched agents
+//!   also get first-party trust-skip flags/seeds (see [`launch_args`] and the Codex
+//!   per-folder trust seed in [`prepare`]).
+//! - **Global**: identical user-global config write, but the frictionless
+//!   trust-skip is not applied (the CLIs' own trust prompts stay intact).
 //! - **Off**: inject nothing (the user can wire it by hand — the Settings panel
 //!   shows a copy-paste snippet).
+//!
+//! The legacy **Workspace** mode (a project-scoped config in the working directory)
+//! was removed: it was the sole source of both the project-dir files and the
+//! project-approval prompts.
 //!
 //! ## Per-agent config (this is the extension point)
 //! Each supported agent is one [`McpAgent`] row in [`AGENTS`]. To support a **new**
 //! agent (e.g. `agy`/Antigravity, Cursor, Grok, amp), add a row and a match arm in
-//! [`config_path`] + [`write_entry`] describing where its MCP config lives and its
-//! shape — nothing else changes. Current rows:
+//! [`config_path`] + [`write_entry`] describing where its user-global MCP config
+//! lives and its shape — nothing else changes. Current rows:
 //!
-//! | Agent | Project file (workspace) | Global file | Shape |
-//! |-------|--------------------------|-------------|-------|
-//! | Claude Code | `.mcp.json` | `~/.claude.json` | `mcpServers.<n> {type:http,url,headers}` |
-//! | Codex | `.codex/config.toml` | `~/.codex/config.toml` | `[mcp_servers.<n>] url + bearer_token_env_var` |
-//! | Gemini CLI | `.gemini/settings.json` | `~/.gemini/settings.json` | `mcpServers.<n> {httpUrl,headers}` |
-//! | OpenCode | `opencode.json` | `~/.config/opencode/opencode.json` | `mcp.<n> {type:remote,url,headers,enabled}` |
+//! | Agent | User-global file | Shape |
+//! |-------|------------------|-------|
+//! | Claude Code | `~/.claude.json` | `mcpServers.<n> {type:http,url,headers}` |
+//! | Codex | `~/.codex/config.toml` | `[mcp_servers.<n>] url + bearer_token_env_var` |
+//! | Gemini CLI | `~/.gemini/settings.json` | `mcpServers.<n> {httpUrl,trust,headers}` |
+//! | OpenCode | `~/.config/opencode/opencode.json` | `mcp.<n> {type:remote,url,headers,enabled}` |
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -114,31 +122,15 @@ pub fn mcp_endpoint(hook_url: &str) -> String {
     hook_url.replacen("/hook", "/mcp", 1)
 }
 
-/// The config file path for `agent` under `mode`, given the terminal `cwd` and the
-/// user's `home`. `None` for an unknown agent.
-fn config_path(agent: &str, mode: McpInjection, cwd: &Path, home: &Path) -> Option<PathBuf> {
-    let project = matches!(mode, McpInjection::Workspace);
+/// The user-global MCP config file path for `agent`, given the user's `home`.
+/// `None` for an unknown agent. (Project-scoped paths were removed with the
+/// `Workspace` mode — see the module docs.)
+fn config_path(agent: &str, home: &Path) -> Option<PathBuf> {
     match agent {
-        "claude" => Some(if project {
-            cwd.join(".mcp.json")
-        } else {
-            home.join(".claude.json")
-        }),
-        "codex" => Some(if project {
-            cwd.join(".codex").join("config.toml")
-        } else {
-            home.join(".codex").join("config.toml")
-        }),
-        "gemini" => Some(if project {
-            cwd.join(".gemini").join("settings.json")
-        } else {
-            home.join(".gemini").join("settings.json")
-        }),
-        "opencode" => Some(if project {
-            cwd.join("opencode.json")
-        } else {
-            home.join(".config").join("opencode").join("opencode.json")
-        }),
+        "claude" => Some(home.join(".claude.json")),
+        "codex" => Some(home.join(".codex").join("config.toml")),
+        "gemini" => Some(home.join(".gemini").join("settings.json")),
+        "opencode" => Some(home.join(".config").join("opencode").join("opencode.json")),
         _ => None,
     }
 }
@@ -154,9 +146,12 @@ fn json_entry(agent: &str, endpoint: &str) -> Option<(Vec<&'static str>, Value)>
             vec!["mcpServers", SERVER_NAME],
             json!({ "type": "http", "url": endpoint, "headers": { "Authorization": bearer_dollar } }),
         )),
+        // `trust: true` bypasses Gemini's per-tool-call confirmation for this
+        // server (the one prompt our injection would otherwise trigger). Safe here:
+        // it's our own loopback server, gated by the per-launch `UXNAN_MCP_TOKEN`.
         "gemini" => Some((
             vec!["mcpServers", SERVER_NAME],
-            json!({ "httpUrl": endpoint, "headers": { "Authorization": bearer_dollar } }),
+            json!({ "httpUrl": endpoint, "trust": true, "headers": { "Authorization": bearer_dollar } }),
         )),
         "opencode" => Some((
             vec!["mcp", SERVER_NAME],
@@ -275,10 +270,10 @@ fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
 
 // --- Injection + cleanup ---------------------------------------------------
 
-/// Write `agent`'s config so it points at the browser MCP server, recording the
-/// write for later cleanup. Merges into an existing file (never clobbers other
-/// keys) and hides a file we create from Git. Best-effort: I/O errors are ignored
-/// (a failed injection just means that agent won't see the tools).
+/// Write `agent`'s user-global config so it points at the browser MCP server,
+/// recording the write for later cleanup. Merges into an existing file (never
+/// clobbers other keys). Best-effort: I/O errors are ignored (a failed injection
+/// just means that agent won't see the tools).
 fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -303,9 +298,6 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
         .ok()?;
     }
 
-    if !existed {
-        hide_from_git(path);
-    }
     Some(Written {
         path: path.to_path_buf(),
         agent: agent.to_string(),
@@ -341,52 +333,20 @@ fn undo_entry(w: &Written) {
     }
 }
 
-/// Add a created config file to its repo's `info/exclude` so it doesn't show up in
-/// `git status` (works for both normal repos and linked worktrees via the common
-/// git dir). Best-effort; no-op outside a repo.
-fn hide_from_git(path: &Path) {
-    let Some(dir) = path.parent() else { return };
-    let Ok(repo) = git2::Repository::discover(dir) else {
-        return;
-    };
-    let exclude = repo.commondir().join("info").join("exclude");
-    // Store the path relative to the repo workdir when possible, else the file name.
-    let entry = repo
-        .workdir()
-        .and_then(|wd| path.strip_prefix(wd).ok())
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| {
-            path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into()
-        });
-    let existing = std::fs::read_to_string(&exclude).unwrap_or_default();
-    if existing.lines().any(|l| l.trim() == entry) {
-        return;
-    }
-    if let Some(parent) = exclude.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let sep = if existing.is_empty() || existing.ends_with('\n') {
-        ""
-    } else {
-        "\n"
-    };
-    let _ = std::fs::write(&exclude, format!("{existing}{sep}{entry}\n"));
-}
-
-/// Ensure every enabled agent's config points at the browser MCP server for this
-/// `cwd` under the current settings. Deduplicated per (mode, cwd) so it runs once
-/// per workspace per session. Called from `pty_create` before an agent starts.
+/// Ensure every enabled agent's **user-global** config points at the browser MCP
+/// server. The config write is deduplicated on `"global"` so it runs once per
+/// session; the frictionless Codex per-folder trust seed is deduplicated per `cwd`
+/// (it varies by working directory). Called from `pty_create` before an agent
+/// starts.
 pub async fn prepare(app: &AppHandle, cwd: &str) {
-    let (enabled, mode, disabled) = {
+    let (enabled, mode, friction_free, disabled) = {
         let state = app.state::<AppState>();
         let data = state.data.read().await;
         let b = &data.settings.browser;
         (
             b.mcp_enabled,
             b.mcp_injection,
+            b.friction_free,
             b.mcp_disabled_agents.clone(),
         )
     };
@@ -401,37 +361,46 @@ pub async fn prepare(app: &AppHandle, cwd: &str) {
             None => return,
         }
     };
-
-    let cwd_path = PathBuf::from(cwd);
-    // Workspace mode targets the project dir; only inject into an existing dir.
-    if mode == McpInjection::Workspace && !cwd_path.is_dir() {
-        return;
-    }
     let home = match app.path().home_dir() {
         Ok(h) => h,
         Err(_) => return,
     };
+    let disabled: HashSet<&str> = disabled.iter().map(String::as_str).collect();
 
-    // Dedup key: workspace configs vary by cwd; global configs are written once.
-    let dedup_key = match mode {
-        McpInjection::Global => "global".to_string(),
-        _ => format!("ws:{cwd}"),
-    };
+    // Frictionless (managed mode only): pre-seed Codex per-folder trust so Codex
+    // doesn't prompt to trust this working directory when launched here. Per-cwd,
+    // so it's deduped on the cwd — independent of the once-per-session config write
+    // below. Best-effort: a path-format mismatch just leaves Codex's normal prompt.
+    if mode == McpInjection::Managed
+        && friction_free
+        && !disabled.contains("codex")
+        && !cwd.trim().is_empty()
     {
-        let state = app.state::<AppState>();
-        let mut prepared = state.mcp_prepared.lock().unwrap();
-        if !prepared.insert(dedup_key) {
-            return; // already done this session
+        let seed = {
+            let state = app.state::<AppState>();
+            let mut prepared = state.mcp_prepared.lock().unwrap();
+            prepared.insert(format!("codextrust:{cwd}"))
+        };
+        if seed {
+            let cfg = home.join(".codex").join("config.toml");
+            let _ = crate::codex_trust::ensure_project_trust(&cfg, Path::new(cwd));
         }
     }
 
-    let disabled: HashSet<&str> = disabled.iter().map(String::as_str).collect();
+    // User-global MCP config write — once per session.
+    {
+        let state = app.state::<AppState>();
+        let mut prepared = state.mcp_prepared.lock().unwrap();
+        if !prepared.insert("global".to_string()) {
+            return; // already written this session
+        }
+    }
     let mut writes = Vec::new();
     for agent in AGENTS {
         if disabled.contains(agent.id) {
             continue;
         }
-        if let Some(path) = config_path(agent.id, mode, &cwd_path, &home) {
+        if let Some(path) = config_path(agent.id, &home) {
             if let Some(w) = write_entry(agent.id, &path, &endpoint) {
                 writes.push(w);
             }
@@ -502,6 +471,16 @@ mod tests {
     }
 
     #[test]
+    fn gemini_entry_marks_the_server_trusted() {
+        // `trust: true` is what suppresses Gemini's per-tool-call confirmation.
+        let (_, entry) = json_entry("gemini", "http://x/mcp").unwrap();
+        assert_eq!(entry["trust"], json!(true));
+        // Other agents don't carry a `trust` flag (it's Gemini-specific).
+        let (_, claude) = json_entry("claude", "http://x/mcp").unwrap();
+        assert!(claude.get("trust").is_none());
+    }
+
+    #[test]
     fn toml_codex_inserts_and_removes_without_clobbering() {
         let existing = "model = \"o3\"\n\n[some.other]\nk = 1\n";
         let with = toml_codex(existing, Some("http://127.0.0.1:9/mcp"));
@@ -524,22 +503,24 @@ mod tests {
     }
 
     #[test]
-    fn config_path_maps_each_agent() {
-        let cwd = Path::new("/work/repo");
+    fn config_path_maps_each_agent_to_user_global() {
         let home = Path::new("/home/u");
-        // Workspace (project) paths.
         assert_eq!(
-            config_path("claude", McpInjection::Workspace, cwd, home).unwrap(),
-            cwd.join(".mcp.json")
+            config_path("claude", home).unwrap(),
+            home.join(".claude.json")
         );
         assert_eq!(
-            config_path("codex", McpInjection::Workspace, cwd, home).unwrap(),
-            cwd.join(".codex").join("config.toml")
+            config_path("codex", home).unwrap(),
+            home.join(".codex").join("config.toml")
         );
-        // Global paths.
         assert_eq!(
-            config_path("gemini", McpInjection::Global, cwd, home).unwrap(),
+            config_path("gemini", home).unwrap(),
             home.join(".gemini").join("settings.json")
         );
+        assert_eq!(
+            config_path("opencode", home).unwrap(),
+            home.join(".config").join("opencode").join("opencode.json")
+        );
+        assert!(config_path("unknown", home).is_none());
     }
 }
