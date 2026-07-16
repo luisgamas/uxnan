@@ -40,6 +40,34 @@ void main() {
   }
 
   group('FileTreeTile git visuals', () {
+    testWidgets('compact rows preserve the 48 dp minimum touch target', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FileTreeTile(
+              node: const FileTreeNode(
+                name: 'main.dart',
+                path: 'main.dart',
+                type: FileEntryType.file,
+              ),
+              depth: 0,
+              showExtension: true,
+              showDetails: false,
+              compact: true,
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        tester.getSize(find.byType(FileTreeTile)).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
+
     testWidgets('untracked uses the conventional git colour, upright', (
       tester,
     ) async {

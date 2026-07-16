@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
@@ -194,6 +195,32 @@ void main() {
     expect(viewer.clipBehavior, Clip.none);
     expect(viewer.minScale, 1);
     expect(image.fit, BoxFit.contain);
+    await manager.dispose();
+  });
+
+  testWidgets('markdown preview is constrained on a tablet viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final manager = _managerFor(_markdownSamples[1]);
+
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(cwd: '/tmp', path: 'README.md'),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final markdown = find.byType(MarkdownBody);
+    expect(markdown, findsOneWidget);
+    expect(tester.getSize(markdown).width, lessThanOrEqualTo(760));
     await manager.dispose();
   });
 }

@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Workspace files follow the Neural Expressive mobile hierarchy
+- The workspace browser keeps its low-noise flat tree while enforcing 48 dp
+  touch targets and constraining the tree on tablet widths. Its rigid status
+  strip is now a rounded tonal workspace surface with a clearer path, branch,
+  ahead/behind hierarchy and the existing copy action.
+- File loading now uses the shared reduced-motion-aware polygon loader. Markdown,
+  source, editor and empty/error content are width-constrained on larger screens;
+  binary/error states use the same calm card language as Profile and New
+  conversation, while image preview remains a full-surface fit-to-screen canvas.
+  File operations, Git state, search, editing and navigation are unchanged.
+
 ### Changed — Profile provider-usage cards follow the Neural Expressive hierarchy
 - Provider usage cards now form a cohesive dynamic-corner group, use 44 dp
   neutral logo surfaces, responsive plan/status pills and clearer M3 typography.

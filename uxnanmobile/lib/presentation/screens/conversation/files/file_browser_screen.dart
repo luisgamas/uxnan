@@ -12,7 +12,9 @@ import 'package:uxnan/presentation/screens/conversation/files/widgets/file_tree_
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen workspace file browser for the active thread's `cwd`.
@@ -189,12 +191,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           showDetails: showDetails,
                           compact: compact,
                         ),
-                        loading: () => const Center(
-                          child: CircularProgressIndicator(),
+                        loading: () => Center(
+                          child: PolygonLoader(size: UxnanSpacing.xxl),
                         ),
-                        error: (Object error, StackTrace _) => _ErrorBody(
-                          message: '$error',
-                        ),
+                        error: (Object error, StackTrace _) =>
+                            _ErrorBody(message: '$error'),
                       ),
                     ),
                     // Bottom scroll veil mirroring the top bar's: the last
@@ -239,16 +240,12 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 l10n.fileBrowserTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontSize: 20),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontSize: 20),
               ),
               actions: [
-                _FileSearchAnchor(
-                  cwd: widget.cwd,
-                  onSelect: _openSearchResult,
-                ),
+                _FileSearchAnchor(cwd: widget.cwd, onSelect: _openSearchResult),
                 // Collapse-all: only shown when at least one directory is
                 // expanded, so the bar stays clean on a fresh (flat) listing.
                 if (anyExpanded)
@@ -349,7 +346,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     if (root == null) {
       return Padding(
         padding: EdgeInsets.only(top: topInset),
-        child: const Center(child: CircularProgressIndicator()),
+        child: Center(child: PolygonLoader(size: UxnanSpacing.xxl)),
       );
     }
     if (root.error != null) {
@@ -371,6 +368,13 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final tiles = <_TileEntry>[];
     _walk(root, 0, showHidden: showHidden, into: tiles);
 
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final horizontalInset = UxnanSpacing.lg +
+        ((viewportWidth - UxnanSpacing.maxContentWidth) / 2).clamp(
+          0.0,
+          double.infinity,
+        );
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusScope.of(context).unfocus(),
@@ -386,49 +390,50 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
             parent: AlwaysScrollableScrollPhysics(),
           ),
           slivers: [
-            SliverToBoxAdapter(
-              child: SizedBox(height: topInset),
-            ),
+            SliverToBoxAdapter(child: SizedBox(height: topInset)),
             SliverList.builder(
               itemCount: tiles.length,
               itemBuilder: (context, index) {
                 final entry = tiles[index];
-                return FileTreeTile(
-                  key: entry.node.path == _revealedFilePath
-                      ? _revealedFileKey
-                      : null,
-                  node: entry.node,
-                  depth: entry.depth,
-                  showExtension: showExtension,
-                  showDetails: showDetails,
-                  compact: compact,
-                  onTap: () async {
-                    if (entry.node.isDir) {
-                      unawaited(
-                        manager.toggleDirectory(widget.cwd, entry.node.path),
-                      );
-                    } else {
-                      await FileViewerScreen.push(
-                        context,
-                        cwd: widget.cwd,
-                        path: entry.node.path,
-                        node: entry.node,
-                      );
-                      // Returning from the viewer can leave a soft keyboard up
-                      // (e.g. after using its inline editor); drop focus so it
-                      // dismisses and the read-only path bar never reads as a
-                      // composer.
-                      if (context.mounted) {
-                        FocusManager.instance.primaryFocus?.unfocus();
+                return Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalInset - UxnanSpacing.lg,
+                  ),
+                  child: FileTreeTile(
+                    key: entry.node.path == _revealedFilePath
+                        ? _revealedFileKey
+                        : null,
+                    node: entry.node,
+                    depth: entry.depth,
+                    showExtension: showExtension,
+                    showDetails: showDetails,
+                    compact: compact,
+                    onTap: () async {
+                      if (entry.node.isDir) {
+                        unawaited(
+                          manager.toggleDirectory(widget.cwd, entry.node.path),
+                        );
+                      } else {
+                        await FileViewerScreen.push(
+                          context,
+                          cwd: widget.cwd,
+                          path: entry.node.path,
+                          node: entry.node,
+                        );
+                        // Returning from the viewer can leave a soft keyboard
+                        // up (e.g. after using its inline editor); drop focus
+                        // dismisses and the read-only path bar never reads as a
+                        // composer.
+                        if (context.mounted) {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                        }
                       }
-                    }
-                  },
+                    },
+                  ),
                 );
               },
             ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: UxnanSpacing.lg),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: UxnanSpacing.lg)),
           ],
         ),
       ),
@@ -537,9 +542,7 @@ class _FileSearchResultTile extends StatelessWidget {
         match.path,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: textTheme.bodySmall?.copyWith(
-          color: colors.onSurfaceVariant,
-        ),
+        style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
       ),
       onTap: onTap,
     );
@@ -560,9 +563,7 @@ class _FileSearchMessage extends StatelessWidget {
       child: Center(
         child: Text(
           message,
-          style: textTheme.bodyMedium?.copyWith(
-            color: colors.onSurfaceVariant,
-          ),
+          style: textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
         ),
       ),
     );
@@ -593,7 +594,7 @@ bool _anyExpanded(FileTreeNode? node) {
 final _fileTreeStreamProvider =
     StreamProvider.autoDispose.family<FileTreeNode?, String>((ref, String cwd) {
   final manager = ref.watch(fileBrowserManagerProvider);
-  // Eagerly start the load so a screen that opens before any other call still
+  // Eagerly start the load so a screen opened before any other call still
   // receives the root — `loadRoot` is idempotent and cheap to re-issue.
   unawaited(manager.loadRoot(cwd));
   return manager.watchRoot(cwd);
@@ -622,86 +623,110 @@ class _StatusBar extends ConsumerWidget {
     final gitState = ref.watch(gitRepoStateProvider).value;
     return SafeArea(
       top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colors.surfaceContainer,
-          border: Border(
-            top: BorderSide(color: colors.outlineVariant),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
           ),
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: UxnanSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.folder_outlined,
-              size: 16,
-              color: colors.onSurfaceVariant,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.xs,
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
             ),
-            const SizedBox(width: UxnanSpacing.sm),
-            Expanded(
-              child: Text(
-                cwd,
-                style: UxnanTypography.codeSmall.copyWith(
-                  color: colors.onSurface,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+            child: NeCard(
+              color: colors.surfaceContainerHigh,
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                UxnanSpacing.sm,
+                UxnanSpacing.xs,
+                UxnanSpacing.sm,
               ),
-            ),
-            if (gitState != null && gitState.branch.isNotEmpty) ...[
-              const SizedBox(width: UxnanSpacing.sm),
-              const Icon(
-                Icons.account_tree_outlined,
-                size: 14,
-                color: UxnanColors.success,
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              Text(
-                gitState.branch,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (gitState.ahead > 0) ...[
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(
-                  '↑${gitState.ahead}',
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: UxnanColors.success,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.folder_outlined,
+                    size: 20,
+                    color: colors.onSurfaceVariant,
                   ),
-                ),
-              ],
-              if (gitState.behind > 0) ...[
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(
-                  '↓${gitState.behind}',
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: UxnanColors.warning,
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          cwd,
+                          style: UxnanTypography.codeSmall.copyWith(
+                            color: colors.onSurface,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                        if (gitState != null && gitState.branch.isNotEmpty) ...[
+                          const SizedBox(height: UxnanSpacing.xs),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.account_tree_outlined,
+                                size: 14,
+                                color: UxnanColors.success,
+                              ),
+                              const SizedBox(width: UxnanSpacing.xs),
+                              Flexible(
+                                child: Text(
+                                  gitState.branch,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (gitState.ahead > 0) ...[
+                                const SizedBox(width: UxnanSpacing.sm),
+                                Text(
+                                  '↑${gitState.ahead}',
+                                  style: UxnanTypography.codeSmall.copyWith(
+                                    color: UxnanColors.success,
+                                  ),
+                                ),
+                              ],
+                              if (gitState.behind > 0) ...[
+                                const SizedBox(width: UxnanSpacing.xs),
+                                Text(
+                                  '↓${gitState.behind}',
+                                  style: UxnanTypography.codeSmall.copyWith(
+                                    color: UxnanColors.warning,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ],
-            const SizedBox(width: UxnanSpacing.sm),
-            IconSurface(
-              icon: Icons.content_copy_outlined,
-              tooltip: l10n.fileBrowserCopyPath,
-              background: colors.surfaceContainerHigh,
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: cwd));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                    ..clearSnackBars()
-                    ..showSnackBar(
-                      SnackBar(content: Text(l10n.fileBrowserPathCopied)),
-                    );
-                }
-              },
+                  const SizedBox(width: UxnanSpacing.xs),
+                  IconSurface(
+                    icon: Icons.content_copy_outlined,
+                    tooltip: l10n.fileBrowserCopyPath,
+                    background: colors.surfaceContainerHighest,
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: cwd));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            SnackBar(content: Text(l10n.fileBrowserPathCopied)),
+                          );
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -757,11 +782,7 @@ class _ErrorBody extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 40,
-            color: colors.error,
-          ),
+          Icon(Icons.error_outline, size: 40, color: colors.error),
           const SizedBox(height: UxnanSpacing.md),
           Text(
             l10n.fileBrowserLoadFailed,
