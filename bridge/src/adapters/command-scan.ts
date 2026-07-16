@@ -152,9 +152,9 @@ function extractFrontMatter(raw: string): { fields: Record<string, string>; body
 function extractTomlString(raw: string, key: string): string | undefined {
   const triple = new RegExp(`(?:^|\\n)\\s*${key}\\s*=\\s*("""|''')([\\s\\S]*?)\\1`).exec(raw);
   if (triple) return triple[2]!.replace(/^\r?\n/, '');
-  const single = new RegExp(`(?:^|\\n)\\s*${key}\\s*=\\s*"([^"]*)"|(?:^|\\n)\\s*${key}\\s*=\\s*'([^']*)'`).exec(
-    raw,
-  );
+  const single = new RegExp(
+    `(?:^|\\n)\\s*${key}\\s*=\\s*"([^"]*)"|(?:^|\\n)\\s*${key}\\s*=\\s*'([^']*)'`,
+  ).exec(raw);
   if (single) return single[1] ?? single[2];
   return undefined;
 }

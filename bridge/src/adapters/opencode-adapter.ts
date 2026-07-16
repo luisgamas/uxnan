@@ -41,7 +41,11 @@ import type {
   QuestionOption,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { expandCustomCommand, scanCustomCommands, type CustomCommandSource } from './command-scan.js';
+import {
+  expandCustomCommand,
+  scanCustomCommands,
+  type CustomCommandSource,
+} from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
 import { extractPlanSteps, planBlock, type PlanStepBlock } from './content-blocks.js';

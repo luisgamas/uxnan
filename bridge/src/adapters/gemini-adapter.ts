@@ -59,7 +59,11 @@ import type {
   AgentModel,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { expandCustomCommand, scanCustomCommands, type CustomCommandSource } from './command-scan.js';
+import {
+  expandCustomCommand,
+  scanCustomCommands,
+  type CustomCommandSource,
+} from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { geminiToolBlock, isInternalGeminiTool } from './gemini-tools.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';

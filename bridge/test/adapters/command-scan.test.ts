@@ -55,10 +55,17 @@ test('scanCustomCommands parses a TOML command (multiline prompt + description)'
 test('scanCustomCommands de-dupes by name: a project-scoped file shadows the user-level one', async () => {
   const projectDir = await tempDir();
   const userDir = await tempDir();
-  await writeFile(join(projectDir, 'deploy.md'), '---\ndescription: project deploy\n---\nproject body');
+  await writeFile(
+    join(projectDir, 'deploy.md'),
+    '---\ndescription: project deploy\n---\nproject body',
+  );
   await writeFile(join(userDir, 'deploy.md'), '---\ndescription: user deploy\n---\nuser body');
   // Highest priority (project) first.
-  const source: CustomCommandSource = { dirs: [projectDir, userDir], ext: '.md', format: 'markdown' };
+  const source: CustomCommandSource = {
+    dirs: [projectDir, userDir],
+    ext: '.md',
+    format: 'markdown',
+  };
   const commands = await scanCustomCommands(source);
   assert.equal(commands.length, 1);
   assert.equal(commands[0]!.description, 'project deploy');
@@ -78,11 +85,17 @@ test('scanCustomCommands skips a missing directory without throwing', async () =
 
 test('expandCustomCommand substitutes $ARGUMENTS / {{args}} / positional $1', async () => {
   const dir = await tempDir();
-  await writeFile(join(dir, 'fix.md'), '---\ndescription: fix\n---\nFix $1 then review $ARGUMENTS.');
+  await writeFile(
+    join(dir, 'fix.md'),
+    '---\ndescription: fix\n---\nFix $1 then review $ARGUMENTS.',
+  );
   await writeFile(join(dir, 'greet.toml'), 'prompt = "Hi {{args}}"');
   const md: CustomCommandSource = { dirs: [dir], ext: '.md', format: 'markdown' };
   const toml: CustomCommandSource = { dirs: [dir], ext: '.toml', format: 'toml' };
-  assert.equal(await expandCustomCommand(md, 'fix', 'auth.ts high'), 'Fix auth.ts then review auth.ts high.');
+  assert.equal(
+    await expandCustomCommand(md, 'fix', 'auth.ts high'),
+    'Fix auth.ts then review auth.ts high.',
+  );
   assert.equal(await expandCustomCommand(toml, 'greet', 'there'), 'Hi there');
   await rm(dir, { recursive: true, force: true });
 });

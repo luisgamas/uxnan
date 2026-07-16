@@ -105,7 +105,9 @@ test('snapshot byAgentDay splits conversations/messages/tokens per agent', async
     await h.threadStore.completeTurn(t2.id, zt.turnId, 'y', 3100);
 
     const snap = await h.service.getSnapshot();
-    const claude = snap.byAgentDay.flatMap((d) => d.byAgent).filter((a) => a.agentId === 'claude-code');
+    const claude = snap.byAgentDay
+      .flatMap((d) => d.byAgent)
+      .filter((a) => a.agentId === 'claude-code');
     // 500 + 800 across the (same-UTC-day) turns; 1 conversation; 4 messages
     // (2 turns × user+assistant).
     assert.equal(

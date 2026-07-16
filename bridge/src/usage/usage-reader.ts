@@ -127,7 +127,10 @@ async function readCodex(deps: ResolvedDeps): Promise<ProviderUsage> {
   const body = asObj(res.body) ?? {};
 
   const plan = str(body.plan_type);
-  const account = makeAccount({ email: str(body.email), plan: plan ? prettifyPlan(plan) : undefined });
+  const account = makeAccount({
+    email: str(body.email),
+    plan: plan ? prettifyPlan(plan) : undefined,
+  });
 
   const windows: UsageWindow[] = [];
   const rate = asObj(body.rate_limit) ?? asObj(body.rate_limits);
@@ -238,12 +241,21 @@ async function readClaude(deps: ResolvedDeps): Promise<ProviderUsage> {
     const used = num(extra.used_credits) ?? 0;
     const limit = num(extra.monthly_limit);
     const currency = str(extra.currency) ?? 'USD';
-    credit = { used, currency, period: 'Monthly credits', ...(limit !== undefined ? { limit } : {}) };
+    credit = {
+      used,
+      currency,
+      period: 'Monthly credits',
+      ...(limit !== undefined ? { limit } : {}),
+    };
   }
   return finish('claude', now, windows, account, credit);
 }
 
-function claudeLimitLabel(kind: string | undefined, group: string | undefined, model: string | undefined): string {
+function claudeLimitLabel(
+  kind: string | undefined,
+  group: string | undefined,
+  model: string | undefined,
+): string {
   if (model) return `${model} (${group ?? kind ?? 'limit'})`;
   if (group === 'session') return 'Session (5h)';
   if (kind === 'weekly_all') return 'Weekly';
@@ -563,7 +575,10 @@ async function defaultGhAuthToken(): Promise<string | undefined> {
   }
 }
 
-async function readJson(path: string, deps: ResolvedDeps): Promise<Record<string, unknown> | undefined> {
+async function readJson(
+  path: string,
+  deps: ResolvedDeps,
+): Promise<Record<string, unknown> | undefined> {
   try {
     const parsed: unknown = JSON.parse(await deps.readFile(path));
     return asObj(parsed);
@@ -631,7 +646,13 @@ function creditFromValue(v: Record<string, unknown>, period: string): CreditBala
   const limit = num(v.limit ?? v.total);
   const currency = str(v.currency) ?? 'USD';
   const resetsAt = epochMs(v.resets_at ?? v.resetAt);
-  return { used, currency, period, ...(limit !== undefined ? { limit } : {}), ...spreadResets(resetsAt) };
+  return {
+    used,
+    currency,
+    period,
+    ...(limit !== undefined ? { limit } : {}),
+    ...spreadResets(resetsAt),
+  };
 }
 
 function windowFromValue(

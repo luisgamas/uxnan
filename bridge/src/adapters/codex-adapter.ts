@@ -69,7 +69,11 @@ import type {
   ApprovalDecision,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { expandCustomCommand, scanCustomCommands, type CustomCommandSource } from './command-scan.js';
+import {
+  expandCustomCommand,
+  scanCustomCommands,
+  type CustomCommandSource,
+} from './command-scan.js';
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {

@@ -4,7 +4,11 @@ import { readUsage, type UsageReaderDeps } from '../../src/usage/usage-reader.js
 
 /** A minimal fetch Response the reader can consume (status / ok / json). */
 function res(status: number, body: unknown): Response {
-  return { status, ok: status >= 200 && status < 300, json: async () => body } as unknown as Response;
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    json: async () => body,
+  } as unknown as Response;
 }
 
 /** A readFile that returns canned JSON by path suffix, else throws ENOENT. */
@@ -50,7 +54,11 @@ test('codex maps rate windows, credit and plan', async () => {
           plan_type: 'chatgpt_pro',
           email: 'a@b.com',
           rate_limit: {
-            primary_window: { used_percent: 0.4, limit_window_seconds: 18_000, reset_at: 1_700_000_600 },
+            primary_window: {
+              used_percent: 0.4,
+              limit_window_seconds: 18_000,
+              reset_at: 1_700_000_600,
+            },
           },
           credits: { balance: 12.5, currency: 'USD' },
         });
@@ -89,7 +97,9 @@ test('a 401 from the usage API maps to authRequired (keeping the account)', asyn
     ['claude'],
     deps({
       readFile: fileMap({
-        '/.claude/.credentials.json': { claudeAiOauth: { accessToken: 'tok', subscriptionType: 'max' } },
+        '/.claude/.credentials.json': {
+          claudeAiOauth: { accessToken: 'tok', subscriptionType: 'max' },
+        },
       }),
       fetchImpl: async () => res(401, {}),
     }),
@@ -129,7 +139,9 @@ test('one failing provider does not abort the others', async () => {
   const usage = await readUsage(
     ['codex', 'claude'],
     deps({
-      readFile: fileMap({ '/.claude/.credentials.json': { claudeAiOauth: { accessToken: 'tok' } } }),
+      readFile: fileMap({
+        '/.claude/.credentials.json': { claudeAiOauth: { accessToken: 'tok' } },
+      }),
       fetchImpl: async () => res(200, { limits: [] }),
     }),
   );
