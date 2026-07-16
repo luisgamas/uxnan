@@ -7,6 +7,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **PR/issue list & detail polish.** The PR and issue **lists** now show a colored
+  **status icon** per row (open / merged / closed / draft; open vs closed issues), a
+  **search bar** (`gh …list --search`), legible **relative dates** ("2 days ago" /
+  "hace 2 días" via `Intl.RelativeTimeFormat`), and roomier rows. The PR-list CI icon's
+  popover now lists the **full checks** (GitHub-style), and the list query carries them.
+  **Issue detail** gains a **Close / Reopen** button and legible "opened … / edited …"
+  metadata; **Start work → worktree** got a tooltip and a **robustness fix** (it
+  surfaces `gh issue develop` errors and materializes the linked branch with an explicit
+  refspec instead of failing cryptically). **PR detail** was restructured GitHub-style:
+  the reply box + **review / merge / Close-PR / checkout** tools moved to a **bottom
+  action bar**; CI moved from a popover to an **expandable checks section** (plus a CI
+  popover on the head commit in the timeline); **commits show a "Verified" badge** when
+  their signature is verified; and the header shows the **last-edit time**. New backend
+  commands: `github_issue_close/reopen`, `github_pr_close/reopen` (28 commands total).
 - A brand-new **GitHub section** — a full-screen overlay (like Settings, entered from
   the left sidebar or the status bar) with its own left nav: **Overview**, **Pull
   Requests**, **Issues**, **Actions** and **Settings** (Account/Session folded into
@@ -89,7 +103,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   — `gh` owns it in the OS keychain; the app only reads sanitized status
   (login/scopes/host). Every agent-automatable action has an identical manual path, so
   GitHub features keep working with zero agent quota. Backend: `src-tauri/src/github.rs`
-  (24 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
+  (28 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
   [`docs/github.md`](docs/github.md).
 
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags

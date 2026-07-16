@@ -126,15 +126,17 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       diff `branch`, `02c` §4.6; y el diff completo de un PR vía `gh pr diff`).
 - [~] Integracion con PRs de GitHub/GitLab. — **GitHub: hecho** (integración
       `gh`-backed: seccion GitHub full-screen + tab contextual del panel derecho +
-      review/merge de PRs con **CI en popover** (caja del head-commit en el detalle +
-      icono por fila en la lista de PRs), **diff separado por archivo** (colapsado por
-      defecto + expandir/contraer todo), un **timeline estilo GitHub** (riel vertical
-      cronológico que intercala descripción + comentarios + veredictos de review +
-      commits + eventos — labeled/assigned/closed/merged/… vía la Timeline Events API;
-      bodies/comentarios/reviews como **Markdown** con imágenes inline)
-      con **campos para comentar** en PRs e issues, **reviewers** y **pills de estado**
-      con color, y merge/approve/request-changes **restringidos a PRs abiertos**;
-      issues, Actions logs, PR/issue↔worktree,
+      review/merge/**close/reopen** de PRs, con **CI en sección expandible** en el detalle
+      + **popover** en el head-commit del timeline y por fila en la lista, **diff separado
+      por archivo** (colapsado por defecto + expandir/contraer todo), un **timeline estilo
+      GitHub** (riel vertical cronológico: descripción + comentarios + veredictos de review
+      + commits (con badge **Verificado**) + eventos — labeled/assigned/closed/merged/… vía
+      la Timeline Events API; bodies/comentarios/reviews como **Markdown** con imágenes
+      inline) con **campos para comentar**, **reviewers**, **iconos de estado** con color,
+      **barras de búsqueda**, **fechas relativas** localizadas, y las herramientas
+      review/merge/close en una **barra inferior** (merge/approve/request-changes
+      **restringidos a PRs abiertos**); issues (list/view/create/**close/reopen**),
+      Actions logs, PR/issue↔worktree,
       badges y boton de status bar; `src-tauri/src/github.rs`, `docs/github.md`).
       **GitLab: pendiente** (el enfoque `gh`-centrico es
       GitHub-only; ver `FOR-DEV.md → "GitHub integration — follow-ups"`).

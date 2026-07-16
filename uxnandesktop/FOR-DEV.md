@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 168 Rust backend tests + 117 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 168 Rust backend tests + 120 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -83,18 +83,21 @@ mobile pairing) is NOT started.**
   GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR badges**, a
   **status-bar button** (rate-limit gauge + optional notifications), and a post-push
   **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
-  the unified **diff** (**split per file**, collapsed by default + expand/collapse-all);
-  a **GitHub-style timeline** (a chronological vertical rail interleaving description +
-  comments + review verdicts + commits + events — labeled/assigned/closed/merged/…, via
-  the Timeline Events API; bodies/comments/reviews rendered as **Markdown** incl. inline
-  images) with **comment fields** on both PRs and issues; **reviewers**,
-  colored **state pills**, and a **CI status popover** (head-commit box in the detail +
-  a per-row icon in the PR list), with merge/approve/request-changes
-  **gated to open PRs**; **issue** triage/create; **Actions** logs + re-run/cancel;
-  **worktree-native** `gh pr checkout` / `gh issue develop`; optional **AI PR-body
-  drafting** (the `aicommit` one-shot runner). All via the local **`gh` CLI** (incl.
+  **close/reopen** + the unified **diff** (**split per file**, collapsed by default +
+  expand/collapse-all); a **GitHub-style timeline** (a chronological vertical rail
+  interleaving description + comments + review verdicts + commits + events —
+  labeled/assigned/closed/merged/…, via the Timeline Events API; bodies/comments/reviews
+  rendered as **Markdown** incl. inline images; a **Verified** badge on signed commits)
+  with **comment fields** on both PRs and issues; **reviewers**, colored **state/status
+  icons**, **search bars**, legible localized **relative dates** (`Intl.RelativeTimeFormat`),
+  an **expandable CI checks section** + a **CI popover** on the head commit and each
+  PR-list row, and the review/merge/close **tools in a bottom action bar**, with
+  merge/approve/request-changes **gated to open PRs**; **issue** triage/create +
+  **close/reopen**; **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
+  / `gh issue develop`; optional **AI PR-body drafting** (the `aicommit` one-shot runner).
+  All via the local **`gh` CLI** (incl.
   `gh api` for rate-limit/notifications/timeline) — **no token stored/read by the app**;
-  every agent action has a manual twin. Backend `src-tauri/src/github.rs` (24 commands) +
+  every agent action has a manual twin. Backend `src-tauri/src/github.rs` (28 commands) +
   `AppSettings.github`. See [`docs/github.md`](docs/github.md).
 
 ## GitHub integration — follow-ups ☐
@@ -122,9 +125,13 @@ The `gh`-backed integration above is complete for the standalone desktop app. De
 - [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
       worktrees (context cache), not eagerly for every worktree (that would poll a PR
       per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.
-- [ ] **Inline diff comments.** CI ships as a popover on the head commit (PR detail)
-      and a per-row icon+popover in the PR list; **line-level review comments** on the
-      per-file diff are still deferred.
+- [ ] **Inline diff comments.** CI ships as an expandable section + a popover on the head
+      commit (PR detail) and a per-row icon+popover in the PR list; **line-level review
+      comments** on the per-file diff are still deferred.
+- [ ] **List hovercards + label editing.** The issue/PR rows show a status icon, labels
+      and counts, but not GitHub's **hover preview card** for a linked/cross-referenced
+      item (would fetch the referenced issue/PR on hover). Also deferred: **editing labels**
+      (add/remove) from the detail — needs a label list + `gh … edit --add/remove-label`.
 - [ ] **P2/P3 niceties:** mark-files-as-viewed during review, `#`/`@` autocomplete +
       hover cards, a unified **notifications inbox**, **releases** (list/create), a
       write-only **Actions secrets/variables** setter, and native **conditional-request
@@ -343,7 +350,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 168 Rust + 117 Vitest tests.
+  deferred with Apple). 168 Rust + 120 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

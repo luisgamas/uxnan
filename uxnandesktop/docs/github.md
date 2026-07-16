@@ -27,29 +27,27 @@ chooses which of your registered projects the section acts on — it does
 registered git repo). Panes:
 
 - **Overview** — the active repo, its branch, and that branch's PR at a glance.
-- **Pull Requests** — filter by `open / closed / merged / all` (defaults to **open**;
-  when a repo has no open PRs the empty state offers a **View all** shortcut). Each row
-  shows a colored **CI status icon** with a popover breaking down passed / failing /
-  pending. Open a PR for a full **review view**: a colored **state pill** (open / merged / closed /
-  draft) and summary pills (review decision, checks roll-up, `+/−`, commit & file
-  counts, labels), a **reviewers** row, a **GitHub-style timeline** (a single
-  chronological vertical rail interleaving the description, comments, review verdicts,
-  commits, and smaller events — labeled / assigned / closed / merged / renamed /
-  review-requested / force-pushed / cross-referenced / …) with a **comment field**, a
-  compact **CI status box** for the head commit (a colored icon + "All checks passed" /
-  "N failing", with the full check list in a **popover**), and the **diff split per
-  file** — one collapsible row per changed file, **collapsed by default** (each file's
-  diff loads only when expanded), with **Expand all / Collapse all**. Descriptions,
-  comments and reviews render as **Markdown** (incl. inline images/screenshots).
-  From there: **approve / request changes / comment**, **merge** (squash / rebase /
-  merge, optionally deleting the branch), **check out into a new worktree**, and
-  **create a PR** (with an optional AI-drafted body). **Merge / approve /
-  request-changes are only enabled on open PRs** — a closed or merged PR is read-only
-  (checkout still works).
-- **Issues** — list / view / create; the detail view shows a colored open/closed pill
-  and the same **timeline** (description + comments + events) with a **comment field**.
-  **Start work → worktree** creates and links a branch (`gh issue develop`) as a new
-  worktree.
+- **Pull Requests** — a **search bar** (`gh pr list --search`) + a `open / closed /
+  merged / all` filter (defaults to **open**; an empty open list offers a **View all**
+  shortcut). Each row shows a colored **status icon** (open / merged / closed / draft),
+  a relative date, and a **CI status icon** whose popover lists the **full checks**.
+  Open a PR for a full **review view**: a colored **state pill** + summary pills (review
+  decision, checks roll-up, `+/−`, commit & file counts, labels), the **opened / edited**
+  times, a **reviewers** row, a **GitHub-style timeline** (a vertical rail interleaving
+  the description, comments, review verdicts, commits — with a **Verified** badge on
+  signed commits and a **CI popover on the head commit** — and smaller events), an
+  **expandable CI checks section**, and the **diff split per file** (collapsible,
+  collapsed by default, with **Expand all / Collapse all**). Descriptions, comments and
+  reviews render as **Markdown** (incl. inline images/screenshots). The **reply box +
+  review / merge / Close-PR / checkout** tools live in a **bottom action bar**;
+  **merge / approve / request-changes are only enabled on open PRs**, and a closed PR
+  offers **Reopen**.
+- **Issues** — a **search bar** + `open / closed / all` filter; each row shows a colored
+  **open/closed status icon**, a relative date, labels and a comment count. The detail
+  view shows a colored pill + **opened / edited** times, the same **timeline**
+  (description + comments + events) and a bottom bar with the **comment field**, a
+  **Close / Reopen** button, and **Start work → worktree** (creates + links a branch via
+  `gh issue develop` and opens it as a new worktree).
 - **Actions** — recent workflow runs; open a run's **log**, and **re-run**,
   **re-run failed**, or **cancel**.
 - **Settings** — an **Account / Session** block (signed-in user, host, token scopes,
@@ -99,11 +97,12 @@ older state loads unchanged.
 
 ## Backend commands
 
-All 24 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
+All 28 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `commands.rs`, registered in `lib.rs`, typed wrappers in `src/lib/api.ts`):
 `github_status`, `github_repo_context`,
-`github_pr_list/view/diff/timeline/create/comment/review/merge/checkout`,
-`github_issue_list/view/comment/create/develop`, `github_run_list/log/rerun/cancel`,
+`github_pr_list/view/diff/timeline/create/comment/review/close/reopen/merge/checkout`,
+`github_issue_list/view/comment/close/reopen/create/develop`,
+`github_run_list/log/rerun/cancel`,
 `github_rate_limit`, `github_notifications_count`, `github_clone`,
 `github_ai_draft_pr`. (`github_pr_timeline` serves both PRs and issues — a PR *is* an
 issue in the REST API.)
