@@ -159,7 +159,7 @@ The `gh`-backed integration above is complete for the standalone desktop app. De
 - [ ] **Cross-component (mobile):** surface PR/CI/issue status on the paired phone via
       new `shared` `github/*` JSON-RPC methods served by the embedded bridge (Phase 6).
 - [ ] **Svelte component tests** for the GitHub UI (part of the standing component-test
-      TODO below); the pure backend logic is unit-tested in `github.rs` (14 tests).
+      TODO below); the pure backend logic is unit-tested in `github.rs` (19 tests).
 
 ## Integrated developer browser ☐
 
@@ -370,7 +370,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 168 Rust + 120 Vitest tests.
+  deferred with Apple). 184 Rust + 138 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

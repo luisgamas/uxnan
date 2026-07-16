@@ -139,7 +139,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   action bar**; CI moved from a popover to an **expandable checks section** (plus a CI
   popover on the head commit in the timeline); **commits show a "Verified" badge** when
   their signature is verified; and the header shows the **last-edit time**. New backend
-  commands: `github_issue_close/reopen`, `github_pr_close/reopen` (28 commands total).
+  commands: `github_issue_close/reopen`, `github_pr_close/reopen`.
 - A brand-new **GitHub section** — a full-screen overlay (like Settings, entered from
   the left sidebar or the status bar) with its own left nav: **Overview**, **Pull
   Requests**, **Issues**, **Actions** and **Settings** (Account/Session folded into
@@ -222,7 +222,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   — `gh` owns it in the OS keychain; the app only reads sanitized status
   (login/scopes/host). Every agent-automatable action has an identical manual path, so
   GitHub features keep working with zero agent quota. Backend: `src-tauri/src/github.rs`
-  (28 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
+  (30 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
   [`docs/github.md`](docs/github.md).
 
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
