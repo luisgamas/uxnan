@@ -36,6 +36,7 @@ class AppUpdateStatus extends Equatable {
     this.releaseNotes,
     this.appStoreId,
     this.flexibleAllowed = false,
+    this.installStage = AppInstallStage.idle,
   });
 
   /// A "no update / not applicable" result for [channel]. Used as the guarded
@@ -48,7 +49,8 @@ class AppUpdateStatus extends Equatable {
         storeUrl = null,
         releaseNotes = null,
         appStoreId = null,
-        flexibleAllowed = false;
+        flexibleAllowed = false,
+        installStage = AppInstallStage.idle;
 
   /// The mechanism this result came from.
   final UpdateChannel channel;
@@ -78,6 +80,21 @@ class AppUpdateStatus extends Equatable {
   /// Android only: Play reports a *flexible* update flow is allowed.
   final bool flexibleAllowed;
 
+  /// Android only: the stage of an update this app has **already started**, as
+  /// Play itself reports it (`AppUpdateInfo.installStatus`).
+  ///
+  /// This is what makes a flexible update survivable. Play owns the download,
+  /// not us: it keeps running while the app is backgrounded or killed, so the
+  /// live install-state stream can miss the transition that matters. Reading
+  /// the stage back from Play on every check is the documented way to recover
+  /// an update that is [AppInstallStage.downloaded] and waiting for the user's
+  /// explicit install — otherwise the downloaded APK just occupies the user's
+  /// storage forever, uninstallable from inside the app.
+  ///
+  /// [AppInstallStage.idle] whenever no update is in progress, and always off
+  /// Android (the App Store applies its own updates).
+  final AppInstallStage installStage;
+
   @override
   List<Object?> get props => [
         channel,
@@ -88,6 +105,7 @@ class AppUpdateStatus extends Equatable {
         releaseNotes,
         appStoreId,
         flexibleAllowed,
+        installStage,
       ];
 }
 

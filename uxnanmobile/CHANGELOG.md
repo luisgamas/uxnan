@@ -6,6 +6,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — A started Play update could never be finished, and then read as "up to date"
+- Accepting an Android update and failing to install it left the app **stuck for
+  good**: it kept reporting "you're up to date" while a fully downloaded APK sat
+  on the device, and neither *Check now* nor a relaunch could surface the install
+  again — the only way out was updating manually from Play.
+- Root cause: the app only ever trusted Play's **live** install-state stream and
+  an availability of `updateAvailable`. But Play stops reporting `updateAvailable`
+  the moment *we* start the flexible flow — from then on it reports
+  `developerTriggeredUpdateInProgress`, while the APK downloads and while it
+  waits, downloaded, for an install, **across app restarts**. That was read as
+  "no update", so every check after the first one hid the very banner that offers
+  the install. The download also outlives the app that starts it, so the live
+  stream — the app's only other source of truth — could simply miss the moment it
+  finished. Play's own contract gives this away: `installStatus` is *"defined only
+  if `updateAvailability` returns `DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS`"*.
+- `AppUpdateService` now reads an update **already in progress** as available and
+  surfaces the stage Play itself reports (`AppUpdateInfo.installStatus`) on the
+  new `AppUpdateStatus.installStage` — the field the app was discarding.
+- `AppUpdateController` derives its phase from that stage, so a check **resumes**
+  the flow where it actually is: an update left downloaded comes back as
+  *Install now* (banner + Settings → Updates) instead of collapsing to
+  "available" — which would restart Play's flow — or "up to date". An install
+  that never restarted the app is no longer a dead end: a re-check returns it to
+  an installable state rather than a permanent spinner.
+- A pending update now **bypasses the check interval** on every foreground, per
+  Play's guidance that a downloaded update be surfaced whenever the user brings
+  the app forward — otherwise its data silently occupies their storage. The
+  interval still governs looking for a *new* version. A self-clearing
+  `updateStarted` flag (`UpdatePreferencesStore`) carries this across restarts.
+- Regression tests in `app_update_service_test.dart` +
+  `update_controller_test.dart` (six of them fail against the previous logic):
+  in-progress availability, stage surfacing, resuming a downloaded/downloading
+  update, recovering a stalled install, the interval bypass and the flag's
+  self-clearing.
+
 ### Changed — Profile provider-usage cards follow the Neural Expressive hierarchy
 - Provider usage cards now form a cohesive dynamic-corner group, use 44 dp
   neutral logo surfaces, responsive plan/status pills and clearer M3 typography.
