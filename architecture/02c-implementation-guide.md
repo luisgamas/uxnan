@@ -1673,6 +1673,7 @@ dependencies:
   # UI
   flutter_markdown: ^0.7.3
   flutter_highlight: ^0.7.0
+  material_loading_indicator: ^1.0.0
   flutter_inappwebview: ^6.0.0
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0

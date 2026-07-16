@@ -191,7 +191,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           showDetails: showDetails,
                           compact: compact,
                         ),
-                        loading: () => Center(
+                        loading: () => const Center(
                           child: PolygonLoader(size: UxnanSpacing.xxl),
                         ),
                         error: (Object error, StackTrace _) =>
@@ -346,7 +346,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     if (root == null) {
       return Padding(
         padding: EdgeInsets.only(top: topInset),
-        child: Center(child: PolygonLoader(size: UxnanSpacing.xxl)),
+        child: const Center(
+          child: PolygonLoader(size: UxnanSpacing.xxl),
+        ),
       );
     }
     if (root.error != null) {

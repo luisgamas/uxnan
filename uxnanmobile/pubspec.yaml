@@ -44,6 +44,7 @@ dependencies:
   in_app_update_flutter: ^3.0.0 # in-app update: Play flexible (Android) + StoreKit (iOS)
   intl: any # i18n + date formatting (pinned by flutter_localizations)
   logger: ^2.4.0 # structured logging
+  material_loading_indicator: ^1.0.0 # M3 Expressive rounded-shape morph loader
   mobile_scanner: ^6.0.11 # QR scanner (CameraX/MLKit, AVFoundation)
   nsd: ^5.0.1 # mDNS/Bonjour browse of _uxnan._tcp bridges (NsdManager / DNSSD)
   package_info_plus: ^9.0.1 # installed app name/version/build (About + Updates)

@@ -367,7 +367,9 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     // the bar. Binary/error placeholders are nudged below it with [_belowBar],
     // while an image intentionally owns the full surface behind the top bar.
     if (_loading && payload == null) {
-      return Center(child: PolygonLoader(size: UxnanSpacing.xxl));
+      return const Center(
+        child: PolygonLoader(size: UxnanSpacing.xxl),
+      );
     }
     if (payload == null) {
       return const SizedBox.shrink();

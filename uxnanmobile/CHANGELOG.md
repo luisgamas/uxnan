@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Shared loader uses the real Material 3 Expressive morph
+- Replaced `PolygonLoader`'s vertex-by-index painter with the Material 3
+  `LoadingIndicator` geometry used by AndroidX and the Bunpod reference: seven
+  normalized rounded shapes, feature-aware cubic morph matching, rotation and
+  the canonical scale pulse. The shared wrapper preserves every existing
+  `size` / semantic-color call site, so workspace, model, Git, pairing and
+  conversation loaders adopt the corrected animation together.
+- The wrapper keeps exact requested dimensions through a fitted canonical
+  48 dp canvas, isolates repaints, supports an accessibility label and freezes
+  the decorative ticker on its first expressive shape under reduced motion.
+  Added widget coverage for sizing, color, semantics and reduced motion.
+
 ### Changed — Workspace files follow the Neural Expressive mobile hierarchy
 - The workspace browser keeps its low-noise flat tree while enforcing 48 dp
   touch targets and constraining the tree on tablet widths. Its rigid status
