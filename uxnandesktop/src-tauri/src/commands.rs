@@ -1432,15 +1432,27 @@ pub async fn github_pr_reopen(worktree_path: String, number: String) -> Result<(
         .map_err(CommandError::from)
 }
 
-/// Merge a PR (`method` = `merge|squash|rebase`), optionally deleting the branch.
+/// Merge a PR, or arm auto-merge for it. See [`crate::github::PrMergeOptions`].
 #[tauri::command]
 pub async fn github_pr_merge(
     worktree_path: String,
     number: String,
-    method: String,
-    delete_branch: bool,
+    options: crate::github::PrMergeOptions,
 ) -> Result<(), CommandError> {
-    crate::github::pr_merge(&worktree_path, &number, &method, delete_branch)
+    crate::github::pr_merge(&worktree_path, &number, options)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// What the base branch's rules and the repo's settings allow for merging PR
+/// `number`, plus the PR's live mergeability. Drives the merge controls.
+#[tauri::command]
+pub async fn github_merge_info(
+    worktree_path: String,
+    number: String,
+    base: String,
+) -> Result<crate::github::MergeInfo, CommandError> {
+    crate::github::merge_info(&worktree_path, &number, &base)
         .await
         .map_err(CommandError::from)
 }

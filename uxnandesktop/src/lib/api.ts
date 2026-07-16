@@ -25,10 +25,12 @@ import type {
   McpInfo,
   HookServerInfo,
   ImageDiff,
+  MergeInfo,
   PrBranches,
   PrCreateOptions,
   PrDetail,
   PrListItem,
+  PrMergeOptions,
   RateLimit,
   RemoteOwner,
   RemoveOutcome,
@@ -749,14 +751,23 @@ export function githubPrReview(
   return invoke("github_pr_review", { worktreePath, number, verb, body });
 }
 
-/** Merge a PR (`method` = `merge|squash|rebase`). */
+/** Merge a PR, or arm auto-merge for it. */
 export function githubPrMerge(
   worktreePath: string,
   number: string,
-  method: "merge" | "squash" | "rebase",
-  deleteBranch: boolean,
+  options: PrMergeOptions,
 ): Promise<void> {
-  return invoke("github_pr_merge", { worktreePath, number, method, deleteBranch });
+  return invoke("github_pr_merge", { worktreePath, number, options });
+}
+
+/** What the base branch's rules and the repo's settings allow for merging this
+ *  PR, plus its live mergeability. Drives the merge controls. */
+export function githubMergeInfo(
+  worktreePath: string,
+  number: string,
+  base: string,
+): Promise<MergeInfo> {
+  return invoke<MergeInfo>("github_merge_info", { worktreePath, number, base });
 }
 
 /** Close a PR without merging. */

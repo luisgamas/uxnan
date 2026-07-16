@@ -1004,23 +1004,319 @@ pub async fn pr_reopen(worktree_path: &str, number: &str) -> Result<(), AppError
         .map(|_| ())
 }
 
-/// Merge a PR. `method` is `merge|squash|rebase`.
+/// How a PR may be merged: what the repo and the base branch's rules allow, and
+/// what the signed-in user is permitted to do about it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePolicy {
+    /// Methods allowed for this base — the repo's settings **intersected with**
+    /// the base branch's rules. A branch rule is the stricter of the two: a repo
+    /// can allow rebase while a ruleset on `main` forbids it.
+    pub allowed_methods: Vec<String>,
+    /// The repo's own preferred method, when it survives the intersection.
+    pub default_method: Option<String>,
+    /// Whether the repo has auto-merge turned on (`--auto` only works then).
+    pub auto_merge_allowed: bool,
+    /// Whether the repo deletes the head branch on merge (the toggle's default).
+    pub delete_branch_on_merge: bool,
+    /// Whether the viewer can administer the repo — the precondition for the
+    /// `--admin` bypass. False means never offering it: it would just fail.
+    pub can_administer: bool,
+    /// Whether any rule applies to the base branch.
+    pub protected: bool,
+    /// Approving reviews the base's rules require (0 = none).
+    pub required_approvals: u64,
+    /// The base's rules require every review thread resolved.
+    pub requires_thread_resolution: bool,
+    /// The base's rules dismiss stale approvals when new commits land.
+    pub dismisses_stale_reviews: bool,
+    /// Status checks the base's rules require to pass.
+    pub required_checks: Vec<String>,
+}
+
+impl Default for MergePolicy {
+    /// What we assume when GitHub can't tell us: everything allowed, nothing
+    /// protected, no bypass. Degrading to "offer the normal thing and let gh
+    /// reject it" beats hiding merge behind a failed probe.
+    fn default() -> Self {
+        Self {
+            allowed_methods: vec!["squash".into(), "merge".into(), "rebase".into()],
+            default_method: None,
+            auto_merge_allowed: false,
+            delete_branch_on_merge: false,
+            can_administer: false,
+            protected: false,
+            required_approvals: 0,
+            requires_thread_resolution: false,
+            dismisses_stale_reviews: false,
+            required_checks: Vec::new(),
+        }
+    }
+}
+
+/// The live mergeability of one PR, as GitHub sees it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeState {
+    /// `BLOCKED | BEHIND | CLEAN | DIRTY | DRAFT | UNSTABLE | UNKNOWN` — why a
+    /// merge would be refused (or `CLEAN`).
+    pub status: String,
+    /// `MERGEABLE | CONFLICTING | UNKNOWN`.
+    pub mergeable: Option<String>,
+    /// Whether auto-merge is already armed on this PR.
+    pub auto_merge_enabled: bool,
+    /// The head commit the UI is showing, for `--match-head-commit`.
+    pub head_oid: Option<String>,
+}
+
+/// Everything the merge UI needs: the policy plus the PR's live state.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeInfo {
+    pub policy: MergePolicy,
+    /// `None` when gh couldn't report it (old gh / GHES / no access) — the UI
+    /// then falls back to offering a plain merge.
+    pub state: Option<MergeState>,
+}
+
+/// Resolve the merge policy for `base` and the live state of PR `number`.
+///
+/// Every probe is best-effort and degrades on its own: a logged-out gh, a GHES
+/// without the rules API, or a repo we can't read settings for each collapse to
+/// the permissive default rather than blocking the merge UI.
+pub async fn merge_info(
+    worktree_path: &str,
+    number: &str,
+    base: &str,
+) -> Result<MergeInfo, AppError> {
+    let number = validate_number(number)?;
+    Ok(MergeInfo {
+        policy: merge_policy(worktree_path, base).await,
+        state: merge_state(worktree_path, &number).await,
+    })
+}
+
+/// The merge policy for a base branch: repo settings ∩ the branch's rules.
+async fn merge_policy(worktree_path: &str, base: &str) -> MergePolicy {
+    let mut policy = MergePolicy::default();
+
+    // 1. Repo-level settings: which methods exist at all, and who the viewer is.
+    if let Ok(v) = gh_json(
+        Some(worktree_path),
+        &[
+            "repo",
+            "view",
+            "--json",
+            "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,\
+             deleteBranchOnMerge,viewerCanAdminister,viewerDefaultMergeMethod",
+        ],
+    )
+    .await
+    {
+        let flag = |key: &str| v.get(key).and_then(|b| b.as_bool()).unwrap_or(true);
+        let mut methods = Vec::new();
+        if flag("squashMergeAllowed") {
+            methods.push("squash".to_string());
+        }
+        if flag("mergeCommitAllowed") {
+            methods.push("merge".to_string());
+        }
+        if flag("rebaseMergeAllowed") {
+            methods.push("rebase".to_string());
+        }
+        if !methods.is_empty() {
+            policy.allowed_methods = methods;
+        }
+        policy.delete_branch_on_merge = v
+            .get("deleteBranchOnMerge")
+            .and_then(|b| b.as_bool())
+            .unwrap_or(false);
+        policy.can_administer = v
+            .get("viewerCanAdminister")
+            .and_then(|b| b.as_bool())
+            .unwrap_or(false);
+        // `MERGE` / `SQUASH` / `REBASE` → our lowercase method ids.
+        policy.default_method = v
+            .get("viewerDefaultMergeMethod")
+            .and_then(|m| m.as_str())
+            .map(|m| m.to_ascii_lowercase())
+            .filter(|m| matches!(m.as_str(), "merge" | "squash" | "rebase"));
+    }
+
+    // 2. Auto-merge is a REST-only field (`gh repo view --json` doesn't expose it).
+    if let Ok(v) = gh_json(Some(worktree_path), &["api", "repos/{owner}/{repo}"]).await {
+        policy.auto_merge_allowed = v
+            .get("allow_auto_merge")
+            .and_then(|b| b.as_bool())
+            .unwrap_or(false);
+    }
+
+    // 3. The base branch's own rules. This — not the classic
+    //    `/branches/{b}/protection` endpoint — is the source of truth: a branch
+    //    protected by a *ruleset* makes that endpoint answer 404 "Branch not
+    //    protected", which would have us report an actually-protected branch as
+    //    free. Rulesets are also stricter than the repo: `allowed_merge_methods`
+    //    here can forbid a method the repo allows.
+    if !base.is_empty() {
+        if let Ok(v) = gh_json(
+            Some(worktree_path),
+            &[
+                "api",
+                &format!("repos/{{owner}}/{{repo}}/rules/branches/{base}"),
+            ],
+        )
+        .await
+        {
+            apply_branch_rules(&mut policy, &v);
+        }
+    }
+
+    // The repo's preference only counts if the base's rules still permit it.
+    if let Some(def) = policy.default_method.clone() {
+        if !policy.allowed_methods.contains(&def) {
+            policy.default_method = None;
+        }
+    }
+    policy
+}
+
+/// Fold a `/rules/branches/{branch}` response into the policy. Pure so the
+/// ruleset shapes we care about are unit-tested without a network.
+fn apply_branch_rules(policy: &mut MergePolicy, rules: &serde_json::Value) {
+    let Some(rules) = rules.as_array() else {
+        return;
+    };
+    policy.protected = !rules.is_empty();
+    for rule in rules {
+        let params = rule.get("parameters");
+        match rule.get("type").and_then(|t| t.as_str()).unwrap_or("") {
+            "pull_request" => {
+                let Some(p) = params else { continue };
+                policy.required_approvals = p
+                    .get("required_approving_review_count")
+                    .and_then(|n| n.as_u64())
+                    .unwrap_or(0);
+                policy.requires_thread_resolution = p
+                    .get("required_review_thread_resolution")
+                    .and_then(|b| b.as_bool())
+                    .unwrap_or(false);
+                policy.dismisses_stale_reviews = p
+                    .get("dismiss_stale_reviews_on_push")
+                    .and_then(|b| b.as_bool())
+                    .unwrap_or(false);
+                // Absent = the rule doesn't restrict methods; an explicit empty
+                // list would mean "none", so only intersect when it's present.
+                if let Some(allowed) = p.get("allowed_merge_methods").and_then(|a| a.as_array()) {
+                    let allowed: Vec<String> = allowed
+                        .iter()
+                        .filter_map(|m| m.as_str())
+                        .map(|m| m.to_ascii_lowercase())
+                        .collect();
+                    policy.allowed_methods.retain(|m| allowed.contains(m));
+                }
+            }
+            "required_status_checks" => {
+                let Some(p) = params else { continue };
+                if let Some(checks) = p.get("required_status_checks").and_then(|a| a.as_array()) {
+                    policy.required_checks = checks
+                        .iter()
+                        .filter_map(|c| c.get("context").and_then(|s| s.as_str()))
+                        .map(str::to_string)
+                        .collect();
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The PR's live mergeability. Deliberately a **separate, best-effort** call
+/// rather than extra fields on `PR_DETAIL_FIELDS`: `mergeStateStatus` isn't
+/// available on every gh/GHES, and one unknown field makes gh reject the whole
+/// request — which is what once left the PR detail stuck loading. Isolated here,
+/// a failure costs only the merge hints.
+async fn merge_state(worktree_path: &str, number: &str) -> Option<MergeState> {
+    let v = gh_json(
+        Some(worktree_path),
+        &[
+            "pr",
+            "view",
+            number,
+            "--json",
+            "mergeStateStatus,mergeable,autoMergeRequest,headRefOid",
+        ],
+    )
+    .await
+    .ok()?;
+    Some(MergeState {
+        status: opt_str_field(&v, "mergeStateStatus").unwrap_or_else(|| "UNKNOWN".to_string()),
+        mergeable: opt_str_field(&v, "mergeable"),
+        auto_merge_enabled: v
+            .get("autoMergeRequest")
+            .map(|a| !a.is_null())
+            .unwrap_or(false),
+        head_oid: opt_str_field(&v, "headRefOid"),
+    })
+}
+
+/// Options for merging a PR.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrMergeOptions {
+    /// `merge | squash | rebase`.
+    pub method: String,
+    #[serde(default)]
+    pub delete_branch: bool,
+    /// Arm auto-merge instead of merging now (`--auto`): GitHub merges once the
+    /// branch's requirements are met. The recommended answer to a blocked PR.
+    #[serde(default)]
+    pub auto: bool,
+    /// Merge despite unmet requirements using admin privileges (`--admin`).
+    #[serde(default)]
+    pub admin: bool,
+    /// Refuse the merge unless the head is still this commit — so what merges is
+    /// what was reviewed, even if someone pushed meanwhile.
+    #[serde(default)]
+    pub match_head_commit: Option<String>,
+}
+
+/// Merge a PR (or arm auto-merge for it).
 pub async fn pr_merge(
     worktree_path: &str,
     number: &str,
-    method: &str,
-    delete_branch: bool,
+    opts: PrMergeOptions,
 ) -> Result<(), AppError> {
     let number = validate_number(number)?;
-    let flag = match method {
+    let flag = match opts.method.as_str() {
         "merge" => "--merge",
         "squash" => "--squash",
         "rebase" => "--rebase",
         other => return Err(AppError::Invalid(format!("unknown merge method: {other}"))),
     };
+    // gh rejects the combination outright; catching it here names the conflict.
+    if opts.auto && opts.admin {
+        return Err(AppError::Invalid(
+            "auto-merge and administrator bypass can't be combined".to_string(),
+        ));
+    }
     let mut args = vec!["pr", "merge", &number, flag];
-    if delete_branch {
+    if opts.delete_branch {
         args.push("--delete-branch");
+    }
+    if opts.auto {
+        args.push("--auto");
+    }
+    if opts.admin {
+        args.push("--admin");
+    }
+    let head = opts
+        .match_head_commit
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if let Some(head) = head {
+        args.push("--match-head-commit");
+        args.push(head);
     }
     gh(Some(worktree_path), &args).await.map(|_| ())
 }
@@ -1567,6 +1863,91 @@ fn normalize_state(state: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A ruleset shaped like the one really guarding `main` on this repo: a
+    /// `pull_request` rule that requires a review, demands resolved threads, and
+    /// allows only merge+squash (so rebase must disappear even though the repo
+    /// itself allows it).
+    fn pull_request_ruleset() -> serde_json::Value {
+        serde_json::json!([
+            { "type": "deletion" },
+            { "type": "non_fast_forward" },
+            {
+                "type": "pull_request",
+                "parameters": {
+                    "required_approving_review_count": 1,
+                    "dismiss_stale_reviews_on_push": true,
+                    "required_review_thread_resolution": true,
+                    "allowed_merge_methods": ["merge", "squash"]
+                }
+            }
+        ])
+    }
+
+    #[test]
+    fn branch_rules_intersect_merge_methods() {
+        let mut policy = MergePolicy {
+            allowed_methods: vec!["squash".into(), "merge".into(), "rebase".into()],
+            ..MergePolicy::default()
+        };
+        apply_branch_rules(&mut policy, &pull_request_ruleset());
+        // The repo allows rebase; the branch's ruleset does not — the stricter wins.
+        assert_eq!(policy.allowed_methods, vec!["squash", "merge"]);
+        assert!(policy.protected);
+        assert_eq!(policy.required_approvals, 1);
+        assert!(policy.requires_thread_resolution);
+        assert!(policy.dismisses_stale_reviews);
+    }
+
+    #[test]
+    fn branch_rules_without_method_restriction_leave_methods_alone() {
+        // A pull_request rule that doesn't mention allowed_merge_methods restricts
+        // reviews only — it must not be read as "no method is allowed".
+        let rules = serde_json::json!([
+            { "type": "pull_request", "parameters": { "required_approving_review_count": 2 } }
+        ]);
+        let mut policy = MergePolicy::default();
+        let before = policy.allowed_methods.clone();
+        apply_branch_rules(&mut policy, &rules);
+        assert_eq!(policy.allowed_methods, before);
+        assert_eq!(policy.required_approvals, 2);
+        assert!(policy.protected);
+    }
+
+    #[test]
+    fn empty_rules_means_unprotected() {
+        let mut policy = MergePolicy::default();
+        apply_branch_rules(&mut policy, &serde_json::json!([]));
+        assert!(!policy.protected);
+        assert_eq!(policy.required_approvals, 0);
+    }
+
+    #[test]
+    fn branch_rules_collect_required_checks() {
+        let rules = serde_json::json!([
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "required_status_checks": [
+                        { "context": "build" },
+                        { "context": "test" }
+                    ]
+                }
+            }
+        ]);
+        let mut policy = MergePolicy::default();
+        apply_branch_rules(&mut policy, &rules);
+        assert_eq!(policy.required_checks, vec!["build", "test"]);
+    }
+
+    #[test]
+    fn strip_remote_prefix_only_strips_origin() {
+        assert_eq!(strip_remote_prefix("origin/main"), "main");
+        assert_eq!(strip_remote_prefix("main"), "main");
+        assert_eq!(strip_remote_prefix("HEAD"), "HEAD");
+        // A branch whose own name contains a slash must survive intact.
+        assert_eq!(strip_remote_prefix("feat/github"), "feat/github");
+    }
 
     #[test]
     fn validate_number_accepts_digits_only() {

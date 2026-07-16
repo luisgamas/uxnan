@@ -7,6 +7,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **Merging now respects branch protection, and can bypass it properly.** The merge
+  controls previously offered a fixed squash/merge/rebase list and defaulted to
+  **squash + delete-branch** regardless of the repo — so on a repo whose `main` forbids
+  rebase (as this one's does) the app happily offered a merge GitHub would reject, and
+  its defaults contradicted the repo's own (`viewerDefaultMergeMethod`,
+  `deleteBranchOnMerge`). The new `github_merge_info` command resolves, per PR:
+  the repo's allowed methods **intersected with the base branch's rules**
+  (`gh api repos/{owner}/{repo}/rules/branches/{base}` — the **rulesets** API, which is
+  the source of truth: a branch protected by a ruleset makes the classic
+  `/branches/{b}/protection` endpoint answer **404 "Branch not protected"**, which would
+  have us report a protected branch as free), plus `allow_auto_merge`,
+  `viewerCanAdminister`, and the PR's live `mergeStateStatus`. The UI now: offers only
+  the methods the base actually allows, seeds the method + delete-branch toggle from the
+  repo's own preferences, **explains why a blocked PR is blocked** (required approvals,
+  unresolved threads, required checks, stale-review dismissal), and gives GitHub's
+  recommended escape hatches in order — **Enable auto-merge** (`--auto`, only when the
+  repo has auto-merge on) before **Merge as administrator** (`--admin`, only when you
+  actually can administer the repo, behind a danger confirm naming the branch). Every
+  merge also passes **`--match-head-commit`** with the head the UI is showing, so a push
+  landing mid-review can't be merged unseen. `mergeStateStatus` is fetched in a
+  **separate best-effort call** rather than added to `PR_DETAIL_FIELDS` — one unknown
+  field makes gh reject the whole request, which is what once left PR detail stuck
+  loading. `github_pr_merge` now takes a `PrMergeOptions` object.
 - **Pick the PR's branches (base ← head).** The create-PR form now shows, and lets you
   choose, **which branch the PR targets and which it comes from** — previously neither
   was selectable: `gh` silently used the repo's default branch as the base and whatever

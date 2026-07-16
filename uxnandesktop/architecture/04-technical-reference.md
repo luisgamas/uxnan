@@ -135,8 +135,16 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       inline) con **campos para comentar**, **reviewers**, **iconos de estado** con color,
       **barras de búsqueda**, **fechas relativas** localizadas, y las herramientas
       review/merge/close en una **barra inferior** (merge/approve/request-changes
-      **restringidos a PRs abiertos**); issues (list/view/create/**close/reopen**),
-      Actions logs, PR/issue↔worktree,
+      **restringidos a PRs abiertos**); al crear un PR se **eligen sus ramas
+      `base ← head`** (base = ramas de `origin`, por defecto la rama por defecto del
+      repo; head = ramas locales, fijada a la del worktree en el tab del panel derecho);
+      el **merge respeta la protección de ramas**: los métodos son los del repo ∩ los de
+      las **rulesets** de la rama base (`gh api …/rules/branches/{base}`; el endpoint
+      clásico `/branches/{b}/protection` devuelve 404 en ramas protegidas por ruleset),
+      un PR bloqueado **explica por qué**, y las salidas son **auto-merge** (`--auto`,
+      solo si el repo lo permite) y **bypass de administrador** (`--admin`, solo si el
+      usuario puede administrar, tras confirmación); issues
+      (list/view/create/**close/reopen**), Actions logs, PR/issue↔worktree,
       badges y boton de status bar; `src-tauri/src/github.rs`, `docs/github.md`).
       **GitLab: pendiente** (el enfoque `gh`-centrico es
       GitHub-only; ver `FOR-DEV.md → "GitHub integration — follow-ups"`).

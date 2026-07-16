@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 170 Rust backend tests + 120 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 175 Rust backend tests + 120 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -98,10 +98,16 @@ mobile pairing) is NOT started.**
   Creating a PR **picks its `base ← head`** (base = `origin` branches, defaulting to the
   repo's default branch; head = local branches, pinned to the worktree's branch in the
   right-panel tab), refuses base == head, warns on an unpushed head, and drafts the AI
-  body against the **chosen** base. All via the local **`gh` CLI** (incl.
-  `gh api` for rate-limit/notifications/timeline) — **no token stored/read by the app**;
-  every agent action has a manual twin. Backend `src-tauri/src/github.rs` (29 commands) +
-  `AppSettings.github`. See [`docs/github.md`](docs/github.md).
+  body against the **chosen** base. **Merging is protection-aware**: methods are the
+  repo's settings ∩ the base branch's **rulesets** (`gh api …/rules/branches/{base}` —
+  the classic protection endpoint 404s on ruleset-protected branches), defaults follow
+  `viewerDefaultMergeMethod`/`deleteBranchOnMerge`, a blocked PR **says why**, and the
+  escape hatches are **auto-merge** (`--auto`, gated on `allow_auto_merge`) then
+  **admin bypass** (`--admin`, gated on `viewerCanAdminister`, behind a danger confirm);
+  every merge passes `--match-head-commit`. All via the local **`gh` CLI** (incl.
+  `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
+  the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`
+  (30 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
 
 ## GitHub integration — follow-ups ☐
 

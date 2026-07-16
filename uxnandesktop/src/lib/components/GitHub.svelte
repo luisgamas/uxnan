@@ -18,6 +18,7 @@
     githubPrComment,
     githubPrReview,
     githubPrMerge,
+    githubMergeInfo,
     githubPrClose,
     githubPrReopen,
     githubPrCheckout,
@@ -34,7 +35,14 @@
     aiCommitModels,
     openExternal,
   } from "$lib/api";
-  import type { PrDetail, IssueDetail, TimelineEvent, CheckItem, CheckSummary } from "$lib/types";
+  import type {
+    PrDetail,
+    IssueDetail,
+    TimelineEvent,
+    CheckItem,
+    CheckSummary,
+    MergeInfo,
+  } from "$lib/types";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTimeLong } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
@@ -67,6 +75,8 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import ShieldIcon from "@lucide/svelte/icons/shield-alert";
+  import ClockIcon from "@lucide/svelte/icons/clock";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
   import GitMergeIcon from "@lucide/svelte/icons/git-merge";
   import MessageSquareIcon from "@lucide/svelte/icons/message-square";
@@ -198,6 +208,11 @@
   let mergeMethod = $state<"merge" | "squash" | "rebase">("squash");
   let deleteBranch = $state(true);
   let mergeConfirmOpen = $state(false);
+  let adminConfirmOpen = $state(false);
+  // What the repo + the base branch's rules allow, and the PR's live mergeability.
+  // Null until loaded (or when gh couldn't tell us) — the UI then falls back to
+  // offering a plain merge rather than blocking on a failed probe.
+  let mergeInfo = $state<MergeInfo | null>(null);
   let selectedPrNumber = $state<number | null>(null);
   let commentBody = $state("");
   let ciOpen = $state(false);
@@ -264,9 +279,9 @@
       return;
     }
     prLoading = false;
-    // 2) The timeline + diff, each loaded separately so a slow one never blocks the
-    //    view. The timeline drives the conversation rail (falls back to the reviews
-    //    already in prDetail if the Timeline API call fails).
+    // 2) The timeline + diff + merge policy, each loaded separately so a slow one
+    //    never blocks the view. The timeline drives the conversation rail (falls
+    //    back to the reviews already in prDetail if the Timeline API call fails).
     void (async () => {
       try {
         prTimeline = await githubPrTimeline(p, String(n));
@@ -276,6 +291,7 @@
         prTimelineLoading = false;
       }
     })();
+    void loadMergeInfo(n, prDetail.baseRefName ?? "");
     try {
       prDiff = await githubPrDiff(p, String(n));
     } catch {
@@ -301,20 +317,90 @@
     }
   }
 
+  /** Load the merge policy for a PR and seed the controls from it, so the
+   *  defaults match what the repo and the base branch actually permit rather
+   *  than our own guesses. */
+  async function loadMergeInfo(n: number, base: string) {
+    const p = path();
+    if (!p) return;
+    mergeInfo = null;
+    let info: MergeInfo;
+    try {
+      info = await githubMergeInfo(p, String(n), base);
+    } catch {
+      return; // best-effort: the merge controls fall back to a plain merge
+    }
+    if (selectedPrNumber !== n) return; // the user moved on while we loaded
+    mergeInfo = info;
+    // Follow the repo's own preference, then the first method the base allows —
+    // never leave a method selected that the branch's rules forbid.
+    const allowed = info.policy.allowedMethods;
+    const preferred = info.policy.defaultMethod;
+    if (preferred && allowed.includes(preferred)) {
+      mergeMethod = preferred as typeof mergeMethod;
+    } else if (allowed.length > 0 && !allowed.includes(mergeMethod)) {
+      mergeMethod = allowed[0] as typeof mergeMethod;
+    }
+    deleteBranch = info.policy.deleteBranchOnMerge;
+  }
+
+  // Merge methods offered: what the base branch's rules allow, in a stable order.
+  const mergeMethodItems = $derived(
+    (["squash", "merge", "rebase"] as const)
+      .filter((m) => (mergeInfo?.policy.allowedMethods ?? ["squash", "merge", "rebase"]).includes(m))
+      .map((m) => ({
+        value: m,
+        label: i18n.t(
+          m === "squash"
+            ? "github.pr.methodSquash"
+            : m === "merge"
+              ? "github.pr.methodMerge"
+              : "github.pr.methodRebase",
+        ),
+      })),
+  );
+
+  const mergeStatus = $derived(mergeInfo?.state?.status ?? "");
+  /** GitHub refuses the merge until the branch's requirements are met. */
+  const mergeBlocked = $derived(mergeStatus === "BLOCKED");
+  /** Auto-merge: the recommended answer to a blocked PR — but only when the repo
+   *  has it enabled, otherwise `--auto` just errors. */
+  const canAutoMerge = $derived(
+    !!mergeInfo?.policy.autoMergeAllowed &&
+      !mergeInfo?.state?.autoMergeEnabled &&
+      ["BLOCKED", "BEHIND", "UNSTABLE"].includes(mergeStatus),
+  );
+  /** The admin bypass is only ever offered to someone who actually has it. */
+  const canBypass = $derived(!!mergeInfo?.policy.canAdminister && mergeBlocked);
+
   function requestMerge() {
     if (!prDetail) return;
     if (app.settings.github?.confirmPr ?? true) mergeConfirmOpen = true;
     else void mergePr();
   }
 
-  async function mergePr(): Promise<boolean> {
+  /** Merge now, arm auto-merge, or bypass — one path, so the confirm dialogs and
+   *  the policy checks can't drift apart. */
+  async function mergePr(opts: { auto?: boolean; admin?: boolean } = {}): Promise<boolean> {
     const p = path();
     if (!p || !prDetail) return false;
     busy = true;
     try {
-      await githubPrMerge(p, String(prDetail.number), mergeMethod, deleteBranch);
-      toast.success(i18n.t("github.toast.prMerged"));
-      clearDetail();
+      await githubPrMerge(p, String(prDetail.number), {
+        method: mergeMethod,
+        deleteBranch,
+        auto: opts.auto ?? false,
+        admin: opts.admin ?? false,
+        // Merge exactly the commit under review: if someone pushed while this was
+        // open, fail loudly instead of silently merging unreviewed work.
+        matchHeadCommit: mergeInfo?.state?.headOid ?? null,
+      });
+      toast.success(i18n.t(opts.auto ? "github.toast.autoMergeArmed" : "github.toast.prMerged"));
+      if (opts.auto) {
+        await selectPr(prDetail.number); // stays open until GitHub merges it
+      } else {
+        clearDetail();
+      }
       await github.loadPrs(prState);
       return true;
     } catch (e) {
@@ -1505,14 +1591,49 @@
             </div>
           </div>
 
+          <!-- Why GitHub won't merge this yet, and what can be done about it.
+               Shown before the controls so the state is read before the click. -->
+          {#if mergeInfo?.state?.autoMergeEnabled}
+            <div class={cn("flex items-start gap-2 rounded-lg border border-sky-500/40 bg-sky-500/5 px-3 py-2", text.meta)}>
+              <ClockIcon class="mt-px size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+              <span>{i18n.t("github.merge.autoArmed")}</span>
+            </div>
+          {:else if mergeBlocked || mergeStatus === "BEHIND" || mergeStatus === "DIRTY"}
+            <div class={cn("space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2", text.meta)}>
+              <div class="flex items-start gap-2">
+                <ShieldIcon class="mt-px size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                <span class="font-medium">
+                  {mergeStatus === "DIRTY"
+                    ? i18n.t("github.merge.dirty")
+                    : mergeStatus === "BEHIND"
+                      ? i18n.t("github.merge.behind")
+                      : i18n.t("github.merge.blocked")}
+                </span>
+              </div>
+              <!-- The base branch's actual rules, so "blocked" isn't a dead end. -->
+              {#if mergeBlocked}
+                <ul class="ml-5 list-disc space-y-0.5 text-muted-foreground">
+                  {#if (mergeInfo?.policy.requiredApprovals ?? 0) > 0}
+                    <li>{i18n.t("github.merge.needsApprovals", { n: mergeInfo?.policy.requiredApprovals ?? 0 })}</li>
+                  {/if}
+                  {#if mergeInfo?.policy.requiresThreadResolution}
+                    <li>{i18n.t("github.merge.needsThreads")}</li>
+                  {/if}
+                  {#if (mergeInfo?.policy.requiredChecks.length ?? 0) > 0}
+                    <li>{i18n.t("github.merge.needsChecks", { checks: (mergeInfo?.policy.requiredChecks ?? []).join(", ") })}</li>
+                  {/if}
+                  {#if mergeInfo?.policy.dismissesStaleReviews}
+                    <li>{i18n.t("github.merge.dismissesStale")}</li>
+                  {/if}
+                </ul>
+              {/if}
+            </div>
+          {/if}
+
           <div class="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
             <Combobox
               value={mergeMethod}
-              groups={[{ items: [
-                { value: "squash", label: i18n.t("github.pr.methodSquash") },
-                { value: "merge", label: i18n.t("github.pr.methodMerge") },
-                { value: "rebase", label: i18n.t("github.pr.methodRebase") },
-              ] }]}
+              groups={[{ items: mergeMethodItems }]}
               triggerClass="w-52"
               onChange={(v) => (mergeMethod = v as typeof mergeMethod)}
             />
@@ -1521,7 +1642,21 @@
               {i18n.t("github.pr.deleteBranch")}
             </label>
             <div class="flex-1"></div>
-            <Button size="sm" disabled={busy} onclick={requestMerge}>{i18n.t("github.pr.merge")}</Button>
+            <!-- Escape hatches, in GitHub's recommended order: wait for the rules
+                 (auto-merge) before overriding them (admin bypass). -->
+            {#if canAutoMerge}
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1" title={i18n.t("github.merge.autoTip")} onclick={() => mergePr({ auto: true })}>
+                <ClockIcon class="size-3.5" />{i18n.t("github.merge.auto")}
+              </Button>
+            {/if}
+            {#if canBypass}
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-amber-600 dark:text-amber-500" title={i18n.t("github.merge.bypassTip")} onclick={() => (adminConfirmOpen = true)}>
+                <ShieldIcon class="size-3.5" />{i18n.t("github.merge.bypass")}
+              </Button>
+            {/if}
+            <Button size="sm" disabled={busy || mergeMethodItems.length === 0} onclick={requestMerge}>
+              {i18n.t("github.pr.merge")}
+            </Button>
           </div>
         {/if}
 
@@ -1530,7 +1665,15 @@
           title={i18n.t("github.confirm.mergeTitle")}
           description={i18n.t("github.confirm.mergeDesc", { n: pr.number })}
           confirmLabel={i18n.t("github.pr.merge")}
-          onconfirm={mergePr}
+          onconfirm={() => mergePr()}
+        />
+        <ConfirmDialog
+          bind:open={adminConfirmOpen}
+          title={i18n.t("github.confirm.bypassTitle")}
+          description={i18n.t("github.confirm.bypassDesc", { branch: pr.baseRefName ?? "" })}
+          confirmLabel={i18n.t("github.merge.bypass")}
+          danger
+          onconfirm={() => mergePr({ admin: true })}
         />
       </div>
     {/if}

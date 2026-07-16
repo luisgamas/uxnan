@@ -87,6 +87,36 @@ branch happened to be checked out is exactly the mistake this row prevents.
   that ref exists), so the body describes the PR's own changes rather than a stale
   local branch's.
 
+## Merging (and protected branches)
+
+The merge controls adapt to what the repo **and the base branch's rules** allow, rather
+than offering a fixed list:
+
+- **Methods** are the repo's settings (`mergeCommitAllowed` / `squashMergeAllowed` /
+  `rebaseMergeAllowed`) **intersected with** the base branch's rules — a ruleset on
+  `main` can forbid a method the repo allows, and the stricter one wins. The selected
+  method and the delete-branch toggle default to the repo's own
+  (`viewerDefaultMergeMethod`, `deleteBranchOnMerge`).
+- **Protection is read from the rulesets API**
+  (`gh api repos/{owner}/{repo}/rules/branches/{base}`), *not* the classic
+  `/branches/{b}/protection` endpoint — a branch protected by a **ruleset** makes the
+  classic one answer `404 Branch not protected`, so trusting it would report a protected
+  branch as free.
+- When GitHub reports the PR **blocked**, the panel says **why** (required approvals,
+  unresolved review threads, required checks, stale-review dismissal) and offers, in
+  GitHub's recommended order:
+  1. **Enable auto-merge** (`gh pr merge --auto`) — merges once the requirements are
+     met. Only shown when the repo has auto-merge enabled (`allow_auto_merge`).
+  2. **Merge as administrator** (`gh pr merge --admin`) — bypasses the rules. Only shown
+     when `viewerCanAdminister` is true (offering it otherwise would just fail), and
+     always behind a danger confirm that names the branch being overridden.
+- Every merge passes **`--match-head-commit`** with the head commit the UI is showing, so
+  a push that lands mid-review can't be merged unseen — you get an explicit failure
+  instead.
+
+If `gh` can't report the policy (logged out, GHES, an old `gh`), the controls degrade to
+a plain merge and let `gh` itself reject what isn't allowed.
+
 ## Worktree-native flows (the differentiator)
 
 - **PR → worktree:** *Check out to worktree* fetches `pull/<n>/head` and adds a
@@ -117,9 +147,9 @@ older state loads unchanged.
 
 ## Backend commands
 
-All 29 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
+All 30 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `commands.rs`, registered in `lib.rs`, typed wrappers in `src/lib/api.ts`):
-`github_status`, `github_repo_context`, `github_branches`,
+`github_status`, `github_repo_context`, `github_branches`, `github_merge_info`,
 `github_pr_list/view/diff/timeline/create/comment/review/close/reopen/merge/checkout`,
 `github_issue_list/view/comment/close/reopen/create/develop`,
 `github_run_list/log/rerun/cancel`,

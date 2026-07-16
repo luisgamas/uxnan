@@ -947,6 +947,53 @@ export interface PrCreateOptions {
   draft?: boolean;
 }
 
+/** What the repo + the base branch's rules allow when merging (`github_merge_info`). */
+export interface MergePolicy {
+  /** Methods allowed for this base: repo settings ∩ the branch's rules. */
+  allowedMethods: string[];
+  /** The repo's preferred method, when the base's rules still allow it. */
+  defaultMethod: string | null;
+  /** The repo has auto-merge enabled — the precondition for `--auto`. */
+  autoMergeAllowed: boolean;
+  /** The repo deletes the head branch on merge (the toggle's default). */
+  deleteBranchOnMerge: boolean;
+  /** The viewer can administer the repo — the precondition for `--admin`. */
+  canAdminister: boolean;
+  /** Some rule applies to the base branch. */
+  protected: boolean;
+  requiredApprovals: number;
+  requiresThreadResolution: boolean;
+  dismissesStaleReviews: boolean;
+  requiredChecks: string[];
+}
+
+/** A PR's live mergeability as GitHub reports it. */
+export interface MergeState {
+  /** `BLOCKED | BEHIND | CLEAN | DIRTY | DRAFT | UNSTABLE | UNKNOWN`. */
+  status: string;
+  mergeable: string | null;
+  autoMergeEnabled: boolean;
+  headOid: string | null;
+}
+
+/** Everything the merge controls need. `state` is null when gh couldn't report it. */
+export interface MergeInfo {
+  policy: MergePolicy;
+  state: MergeState | null;
+}
+
+/** Options for merging a PR (`github_pr_merge`). */
+export interface PrMergeOptions {
+  method: string;
+  deleteBranch?: boolean;
+  /** Arm auto-merge rather than merging now. */
+  auto?: boolean;
+  /** Merge despite unmet requirements, using admin privileges. */
+  admin?: boolean;
+  /** Refuse unless the head is still this commit. */
+  matchHeadCommit?: string | null;
+}
+
 /** Branch candidates for the create-PR form (`github_branches`). */
 export interface PrBranches {
   /** Local branches — the head candidates. */
