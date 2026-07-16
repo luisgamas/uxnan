@@ -124,10 +124,17 @@ than offering a fixed list:
   unresolved review threads, required checks, stale-review dismissal) and offers, in
   GitHub's recommended order:
   1. **Enable auto-merge** (`gh pr merge --auto`) — merges once the requirements are
-     met. Only shown when the repo has auto-merge enabled (`allow_auto_merge`).
-  2. **Merge as administrator** (`gh pr merge --admin`) — bypasses the rules. Only shown
-     when `viewerCanAdminister` is true (offering it otherwise would just fail), and
-     always behind a danger confirm that names the branch being overridden.
+     met. Only shown when the repo has auto-merge enabled (`allow_auto_merge`), which is
+     a definite repo setting.
+  2. **Merge as administrator** (`gh pr merge --admin`) — bypasses the rules. **Offered
+     on any repo whenever GitHub is holding the merge back** (`BLOCKED`, `BEHIND` or
+     `UNSTABLE`), like GitHub's own UI. It is *not* hidden behind a permission probe:
+     `viewerCanAdminister` only knows about repo admins, while GitHub also grants bypass
+     via a ruleset's `bypass_actors` (a team, a custom role, an app), and the probe fails
+     outright on GHES or a logged-out `gh` — hiding the control there would leave a
+     blocked PR with no visible way forward. When the right can't be confirmed the
+     confirm dialog says so, and `gh`'s own error is the authority. Always behind a
+     danger confirm naming the branch being overridden.
 - Every merge passes **`--match-head-commit`** with the head commit the UI is showing, so
   a push that lands mid-review can't be merged unseen — you get an explicit failure
   instead.

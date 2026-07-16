@@ -110,7 +110,9 @@ mobile pairing) is NOT started.**
   the classic protection endpoint 404s on ruleset-protected branches), defaults follow
   `viewerDefaultMergeMethod`/`deleteBranchOnMerge`, a blocked PR **says why**, and the
   escape hatches are **auto-merge** (`--auto`, gated on `allow_auto_merge`) then
-  **admin bypass** (`--admin`, gated on `viewerCanAdminister`, behind a danger confirm);
+  **admin bypass** (`--admin`, offered on **any** blocked PR rather than gated on
+  `viewerCanAdminister` — that flag misses ruleset `bypass_actors` and fails on GHES;
+  behind a danger confirm that says when the right is unconfirmed);
   every merge passes `--match-head-commit`. All via the local **`gh` CLI** (incl.
   `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
   the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`

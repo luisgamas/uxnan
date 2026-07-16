@@ -1069,6 +1069,8 @@ export const en = {
   "github.merge.autoArmed": "Auto-merge is on: GitHub will merge this once the requirements are met.",
   "github.merge.bypass": "Merge as administrator",
   "github.merge.bypassTip": "Bypass the branch's rules using your administrator privileges",
+  "github.merge.bypassMaybeTip":
+    "Bypass the branch's rules. Needs administrator or bypass permission on this repository.",
   "github.pr.approve": "Approve",
   "github.pr.requestChanges": "Request changes",
   "github.pr.comment": "Comment",
@@ -1205,6 +1207,8 @@ export const en = {
   "github.confirm.bypassTitle": "Merge as administrator?",
   "github.confirm.bypassDesc":
     "This overrides the rules protecting {branch} — required reviews and checks will be skipped. It's recorded in the audit log, and it can't be undone from here.",
+  "github.confirm.bypassNeedsRight":
+    "This repository hasn't confirmed you can bypass its rules. If you can't, GitHub will refuse the merge and nothing will change.",
   "github.settings.ai": "AI PR authoring",
   "github.settings.aiDesc": "Optionally draft PR bodies from the branch diff, using an installed CLI agent. It runs the same local CLI you already use — no API keys.",
   "github.settings.aiEnabled": "Enable AI PR authoring",

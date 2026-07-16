@@ -366,15 +366,29 @@
   const mergeStatus = $derived(mergeInfo?.state?.status ?? "");
   /** GitHub refuses the merge until the branch's requirements are met. */
   const mergeBlocked = $derived(mergeStatus === "BLOCKED");
+  /** Everything `--admin` can override: unmet reviews (BLOCKED), a base that moved
+   *  on (BEHIND), failing or pending required checks (UNSTABLE). */
+  const mergeRestricted = $derived(["BLOCKED", "BEHIND", "UNSTABLE"].includes(mergeStatus));
   /** Auto-merge: the recommended answer to a blocked PR — but only when the repo
-   *  has it enabled, otherwise `--auto` just errors. */
+   *  has it enabled, otherwise `--auto` just errors. `allow_auto_merge` is a
+   *  definite repo setting, so gating on it can't hide a usable option. */
   const canAutoMerge = $derived(
-    !!mergeInfo?.policy.autoMergeAllowed &&
-      !mergeInfo?.state?.autoMergeEnabled &&
-      ["BLOCKED", "BEHIND", "UNSTABLE"].includes(mergeStatus),
+    !!mergeInfo?.policy.autoMergeAllowed && !mergeInfo?.state?.autoMergeEnabled && mergeRestricted,
   );
-  /** The admin bypass is only ever offered to someone who actually has it. */
-  const canBypass = $derived(!!mergeInfo?.policy.canAdminister && mergeBlocked);
+  /** Offer the bypass whenever GitHub is holding the merge back — like GitHub
+   *  itself, which surfaces the option on any blocked PR.
+   *
+   *  Deliberately NOT gated on `canAdminister`: that only knows about repo
+   *  admins, while GitHub also grants bypass through a ruleset's `bypass_actors`
+   *  (a team, a custom role, an app), and the probe fails outright on GHES or a
+   *  logged-out gh. Hiding the control in those cases leaves a blocked PR with no
+   *  visible way forward on someone else's repo — the dead end this exists to
+   *  remove. Where we can't confirm the right we caveat the control instead of
+   *  hiding it, and let gh's own error be the authority. */
+  const canBypass = $derived(mergeRestricted);
+  /** Whether we can confirm the viewer holds repo-admin bypass. Used to caveat
+   *  the control — never to hide it. */
+  const bypassConfirmed = $derived(!!mergeInfo?.policy.canAdminister);
 
   function requestMerge() {
     if (!prDetail) return;
@@ -1723,7 +1737,16 @@
               </Button>
             {/if}
             {#if canBypass}
-              <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-amber-600 dark:text-amber-500" title={i18n.t("github.merge.bypassTip")} onclick={() => (adminConfirmOpen = true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                class="gap-1 text-amber-600 dark:text-amber-500"
+                title={bypassConfirmed
+                  ? i18n.t("github.merge.bypassTip")
+                  : i18n.t("github.merge.bypassMaybeTip")}
+                onclick={() => (adminConfirmOpen = true)}
+              >
                 <ShieldIcon class="size-3.5" />{i18n.t("github.merge.bypass")}
               </Button>
             {/if}
@@ -1743,7 +1766,9 @@
         <ConfirmDialog
           bind:open={adminConfirmOpen}
           title={i18n.t("github.confirm.bypassTitle")}
-          description={i18n.t("github.confirm.bypassDesc", { branch: pr.baseRefName ?? "" })}
+          description={`${i18n.t("github.confirm.bypassDesc", { branch: pr.baseRefName ?? "" })}${
+            bypassConfirmed ? "" : `\n\n${i18n.t("github.confirm.bypassNeedsRight")}`
+          }`}
           confirmLabel={i18n.t("github.merge.bypass")}
           danger
           onconfirm={() => mergePr({ admin: true })}

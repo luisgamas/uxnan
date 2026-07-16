@@ -1066,6 +1066,8 @@ export const es: Record<MessageKey, string> = {
   "github.merge.autoArmed": "Auto-merge activo: GitHub mergeará en cuanto se cumplan los requisitos.",
   "github.merge.bypass": "Mergear como administrador",
   "github.merge.bypassTip": "Salta las reglas de la rama usando tus privilegios de administrador",
+  "github.merge.bypassMaybeTip":
+    "Salta las reglas de la rama. Requiere permiso de administrador o de bypass en este repositorio.",
   "github.pr.approve": "Aprobar",
   "github.pr.requestChanges": "Pedir cambios",
   "github.pr.comment": "Comentar",
@@ -1198,6 +1200,8 @@ export const es: Record<MessageKey, string> = {
   "github.confirm.bypassTitle": "¿Mergear como administrador?",
   "github.confirm.bypassDesc":
     "Esto salta las reglas que protegen {branch}: se omitirán las revisiones y los checks requeridos. Queda registrado en el log de auditoría y no se puede deshacer desde aquí.",
+  "github.confirm.bypassNeedsRight":
+    "Este repositorio no ha confirmado que puedas saltarte sus reglas. Si no puedes, GitHub rechazará el merge y no cambiará nada.",
   "github.settings.ai": "Redacción de PR con IA",
   "github.settings.aiDesc": "Redacta opcionalmente el cuerpo del PR a partir del diff de la rama, con un agente CLI instalado. Usa el mismo CLI local que ya utilizas: sin claves de API.",
   "github.settings.aiEnabled": "Activar la redacción de PR con IA",

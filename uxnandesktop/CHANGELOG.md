@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **The merge bypass is reachable on any repository.** It was gated on
+  `viewerCanAdminister`, which only knows about **repo admins** — GitHub also grants
+  bypass through a ruleset's `bypass_actors` (a team, a custom role, an app), and the
+  probe fails outright on GHES or a logged-out `gh`. On any repo where that flag was
+  false, a blocked PR had **no visible way forward**. The option is now offered whenever
+  GitHub is holding the merge back (`BLOCKED`, `BEHIND` or `UNSTABLE`), like GitHub's own
+  UI; when the right can't be confirmed the confirm dialog says so and lets `gh`'s error
+  be the authority, rather than us guessing and hiding the control.
 - **Bot comments render properly.** The Markdown renderer now covers the GitHub-flavored
   constructs bot comments are built from; a CodeRabbit comment used to render as a wall
   of noise (also improves the file viewer's Markdown Preview):
