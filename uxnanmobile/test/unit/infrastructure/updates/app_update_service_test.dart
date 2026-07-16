@@ -21,6 +21,7 @@ void main() {
     required UpdateAvailabilityAndroid availability,
     int? versionCode,
     bool flexible = true,
+    InstallStatusAndroid installStatus = InstallStatusAndroid.unknown,
   }) =>
       AppUpdateInfoAndroid(
         updateAvailability: availability,
@@ -28,7 +29,7 @@ void main() {
         updatePriority: 0,
         isImmediateUpdateAllowed: true,
         isFlexibleUpdateAllowed: flexible,
-        installStatus: InstallStatusAndroid.unknown,
+        installStatus: installStatus,
       );
 
   group('Android — Play In-App Update', () {
@@ -50,6 +51,61 @@ void main() {
       expect(status.storeVersion, '42');
       expect(status.flexibleAllowed, isTrue);
       expect(status.localVersion, '1.0.0');
+    });
+
+    // Play stops saying `updateAvailable` the moment *we* start the flexible
+    // flow: it reports `developerTriggeredUpdateInProgress` while the APK
+    // downloads and while it waits, downloaded, for an install — across
+    // restarts. Reading that as "no update" stranded the download: the app
+    // claimed to be up to date while an installable APK sat on the device.
+    test('an update we already started still reads as available', () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+        packageInfoLoader: () async => pkg(),
+        androidCheck: () async => androidInfo(
+          availability:
+              UpdateAvailabilityAndroid.developerTriggeredUpdateInProgress,
+          installStatus: InstallStatusAndroid.downloaded,
+        ),
+      );
+
+      final status = await service.check();
+
+      expect(status.updateAvailable, isTrue);
+      expect(status.installStage, AppInstallStage.downloaded);
+    });
+
+    test('surfaces the stage of an in-progress download', () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+        packageInfoLoader: () async => pkg(),
+        androidCheck: () async => androidInfo(
+          availability:
+              UpdateAvailabilityAndroid.developerTriggeredUpdateInProgress,
+          installStatus: InstallStatusAndroid.downloading,
+        ),
+      );
+
+      final status = await service.check();
+
+      expect(status.updateAvailable, isTrue);
+      expect(status.installStage, AppInstallStage.downloading);
+    });
+
+    test('a fresh update carries no install stage', () async {
+      final service = AppUpdateService(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+        packageInfoLoader: () async => pkg(),
+        androidCheck: () async => androidInfo(
+          availability: UpdateAvailabilityAndroid.updateAvailable,
+          versionCode: 42,
+        ),
+      );
+
+      expect((await service.check()).installStage, AppInstallStage.idle);
     });
 
     test('reports no update when Play has none', () async {

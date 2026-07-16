@@ -21,7 +21,9 @@ class _FakeUpdateService extends AppUpdateService {
           isWebOverride: false,
         );
 
-  final AppUpdateStatus result;
+  /// Mutable so a test can script what a *second* check finds — that is how
+  /// the store reports an update whose stage moved on without us.
+  AppUpdateStatus result;
   final StreamController<AppInstallProgress> progress =
       StreamController<AppInstallProgress>.broadcast();
   int checks = 0;
@@ -65,6 +67,16 @@ void main() {
     channel: UpdateChannel.playStore,
     updateAvailable: false,
     localVersion: '1.0.0',
+  );
+
+  /// What Play reports for an update this app already started and left
+  /// downloaded: no version code, and a stage of "waiting to be installed".
+  const pendingInstall = AppUpdateStatus(
+    channel: UpdateChannel.playStore,
+    updateAvailable: true,
+    localVersion: '1.0.0',
+    flexibleAllowed: true,
+    installStage: AppInstallStage.downloaded,
   );
 
   ProviderContainer containerWith(
@@ -246,5 +258,120 @@ void main() {
     await notifier.check();
     await notifier.startUpdate();
     expect(service.downloads, 1);
+  });
+
+  group('resuming an update the store already holds', () {
+    // The download outlives the app that started it, so the install-state
+    // stream can never be the only source of truth: a check has to pick the
+    // flow back up from the store's own stage. Without this, an update that
+    // finished downloading out of sight was unreachable — the app reported
+    // "up to date" while an installable APK sat on the device.
+    test('a check offers the install for an update left downloaded', () async {
+      final service = _FakeUpdateService(result: pendingInstall);
+      final container = containerWith(service);
+      final notifier = container.read(appUpdateControllerProvider.notifier);
+
+      await notifier.check();
+      final state = container.read(appUpdateControllerProvider);
+
+      expect(state.phase, AppUpdatePhase.downloaded);
+      expect(state.hasUpdate, isTrue);
+      expect(state.bannerVisible, isTrue);
+
+      await notifier.install();
+      expect(service.installs, 1);
+    });
+
+    test('a check resumes a download still in flight', () async {
+      const downloading = AppUpdateStatus(
+        channel: UpdateChannel.playStore,
+        updateAvailable: true,
+        localVersion: '1.0.0',
+        flexibleAllowed: true,
+        installStage: AppInstallStage.downloading,
+      );
+      final service = _FakeUpdateService(result: downloading);
+      final container = containerWith(service);
+
+      await container.read(appUpdateControllerProvider.notifier).check();
+
+      expect(
+        container.read(appUpdateControllerProvider).phase,
+        AppUpdatePhase.downloading,
+      );
+    });
+
+    // An install that never restarted the app used to strand the flow: the
+    // phase stayed `installing` with no way back to the install button.
+    test('a re-check recovers an install that never completed', () async {
+      final service = _FakeUpdateService(result: available());
+      final container = containerWith(service);
+      final notifier = container.read(appUpdateControllerProvider.notifier);
+      AppUpdateState read() => container.read(appUpdateControllerProvider);
+
+      await notifier.check();
+      await notifier.download();
+      service.progress
+          .add(const AppInstallProgress(stage: AppInstallStage.downloaded));
+      await Future<void>.delayed(Duration.zero);
+      await notifier.install();
+      expect(read().phase, AppUpdatePhase.installing);
+
+      // Play never restarted us — the APK is still there, still downloaded.
+      service.result = pendingInstall;
+      await notifier.check();
+
+      expect(read().phase, AppUpdatePhase.downloaded);
+    });
+
+    test('download records the update as started', () async {
+      final service = _FakeUpdateService(result: available());
+      final container = containerWith(service);
+      final notifier = container.read(appUpdateControllerProvider.notifier);
+
+      await notifier.check();
+      await notifier.download();
+
+      final store = container.read(updatePreferencesStoreProvider);
+      expect(await store.readUpdateStarted(), isTrue);
+    });
+
+    // Play's contract: a downloaded update is surfaced for install whenever the
+    // user brings the app forward, or its data just occupies their storage. The
+    // interval governs looking for a *new* version, not finishing this one.
+    test('maybeCheck ignores the interval when an update was started',
+        () async {
+      final service = _FakeUpdateService(result: pendingInstall);
+      final container = containerWith(
+        service,
+        prefs: {
+          'uxnan.updates.checkInterval': UpdateCheckInterval.monthly.name,
+          'uxnan.updates.lastCheckMs': DateTime.now().millisecondsSinceEpoch,
+          'uxnan.updates.updateStarted': true,
+        },
+      );
+
+      await container.read(appUpdateControllerProvider.notifier).maybeCheck();
+
+      expect(service.checks, 1);
+      expect(
+        container.read(appUpdateControllerProvider).phase,
+        AppUpdatePhase.downloaded,
+      );
+    });
+
+    test('the started flag clears once the store has nothing in progress',
+        () async {
+      final service = _FakeUpdateService(result: upToDate);
+      final container = containerWith(
+        service,
+        prefs: {'uxnan.updates.updateStarted': true},
+      );
+
+      await container.read(appUpdateControllerProvider.notifier).check();
+
+      final store = container.read(updatePreferencesStoreProvider);
+      expect(await store.readUpdateStarted(), isFalse);
+    });
   });
 }
