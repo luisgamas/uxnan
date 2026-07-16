@@ -898,17 +898,12 @@ export function githubClone(repo: string, dest: string): Promise<string> {
 }
 
 /** Draft a PR description via a local CLI agent, from the diff against `base` —
- *  the branch the PR targets, so the body describes the PR's own changes. */
+ *  the branch the PR targets, so the body describes the PR's own changes. The
+ *  agent/model/language/instructions come from `AppSettings.github`, read on the
+ *  backend (like `generateCommitMessage`), so the settings are the only source. */
 export function githubAiDraftPr(
   worktreePath: string,
-  agentId: string,
-  model: string,
   base?: string | null,
 ): Promise<string> {
-  return invoke<string>("github_ai_draft_pr", {
-    worktreePath,
-    agentId,
-    model,
-    base: base ?? null,
-  });
+  return invoke<string>("github_ai_draft_pr", { worktreePath, base: base ?? null });
 }

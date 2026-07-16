@@ -154,7 +154,30 @@ left-panel Projects tree identically.
 | **Refresh interval** | How often (seconds) the active worktree's PR/CI status refreshes while focused. `0` = manual only. |
 | **Notifications badge** | Poll your unread notifications count for the status bar (an extra request). |
 | **Confirm PR actions** | Ask before creating or merging a PR (both the section and the right-panel tab). On by default. |
-| **AI PR authoring** | Pick an installed CLI agent + model to draft PR bodies from the branch diff. Off by default. |
+
+### AI PR authoring
+
+Its own section in **GitHub → Settings**, built like **Settings → AI commit messages**
+(same agent catalog, same model picker, same install-awareness) — it drafts the PR body
+from the branch diff by running an **installed local CLI agent**, so there are no API
+keys and no provider SDK.
+
+| Setting | What it does |
+|---|---|
+| **Enable AI PR authoring** | Master switch; adds the "Generate" button to the description field. **Off by default** — nothing runs unasked. |
+| **Agent** | Claude Code / Codex / Gemini CLI / OpenCode / Pi, with logos. Agents that aren't installed stay listed but **disabled**, labeled "not found", rather than silently missing. |
+| **Model** | The agent's own models, discovered from its CLI. A **discovery failure shows the CLI's own message** — "this CLI is broken / not signed in" and "this agent has no models" are different problems. |
+| **Language** | `auto`, or a language stated verbatim in the prompt. |
+| **Instructions** | Free-form text appended to every draft's prompt. |
+
+The agent/model/language/instructions are read from settings **on the backend** (like AI
+commit), so what runs is always what's configured.
+
+Model discovery notes, by agent: **Claude** and **Gemini** use a built-in list; **Codex**
+is queried live via `codex app-server` (`model/list`); **OpenCode** via `opencode models`;
+**Pi** via `pi --list-models`. Pi only lists models whose **provider is authenticated** —
+if it reports none, sign in to a provider (`/login`) or check that the app inherits the
+same API-key environment as your shell.
 
 Settings persist in `AppSettings.github` (`GithubSettings`); all fields default, so
 older state loads unchanged.

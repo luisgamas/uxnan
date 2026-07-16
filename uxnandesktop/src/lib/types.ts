@@ -222,6 +222,14 @@ export interface GithubSettings {
   aiAgentId?: string;
   /** Model for the AI-authoring agent (undefined = the CLI's default). */
   aiModel?: string;
+  /** Master switch for AI PR authoring (mirrors `AiCommitSettings.enabled`).
+   *  Default false — nothing ever runs unasked. */
+  aiEnabled?: boolean;
+  /** Language for the drafted body: `auto`, or a language name stated verbatim in
+   *  the prompt (e.g. `English`). Default `auto`. */
+  aiLanguage?: string;
+  /** Extra free-form instructions appended to the PR-body prompt. */
+  aiInstructions?: string;
 }
 
 /** Left-sidebar grouping mode.

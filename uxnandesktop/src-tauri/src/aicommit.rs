@@ -18,7 +18,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::agentcli::{self, AgentModel};
 use crate::error::AppError;
-use crate::model::AiCommitSettings;
+use crate::model::{AiCommitSettings, GithubSettings};
 
 /// Maximum diff size (bytes) fed to the agent — keeps the prompt within CLI/arg
 /// limits and avoids paying for a huge context on a sprawling changeset.
@@ -41,8 +41,13 @@ pub fn available_agents() -> Vec<String> {
 
 /// The models offered by `agent_id`: a static set for Claude/Gemini, or a live
 /// query for OpenCode (`opencode models`), Pi (`pi --list-models`) and Codex
-/// (`codex app-server` `model/list`). Best-effort — discovery failures yield an
-/// empty list (the frontend still offers the CLI's "Default" model).
+/// (`codex app-server` `model/list`).
+///
+/// A discovery **failure is surfaced**, not flattened to an empty list: the two
+/// mean different things to the user ("this CLI is broken / not signed in" vs
+/// "this agent offers no models"), and collapsing them is what made a broken
+/// OpenCode look like an agent with nothing to pick. An empty-but-successful
+/// list still just means no models — the UI offers the CLI's "Default" anyway.
 pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
     let Some(resolved) = agentcli::resolve(agent_id) else {
         return Err(AppError::Agent(format!(
@@ -52,16 +57,14 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
     let models = match agent_id {
         "claude" | "gemini" => agentcli::static_models(agent_id),
         "opencode" => {
-            let out = run_list(&resolved, &["models"], false)
-                .await
-                .unwrap_or_default();
+            // stderr included so a broken install's own complaint reaches the user.
+            let out = run_list(&resolved, &["models"], false).await?;
             agentcli::parse_opencode_models(&out)
         }
         "pi" => {
-            // pi prints the model table to stderr, so include it.
-            let out = run_list(&resolved, &["--list-models"], true)
-                .await
-                .unwrap_or_default();
+            // pi prints its table to stdout; stderr is captured too so a warning
+            // that precedes it isn't lost.
+            let out = run_list(&resolved, &["--list-models"], true).await?;
             agentcli::parse_pi_models(&out)
         }
         "codex" => codex_models(&resolved).await,
@@ -108,16 +111,18 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
 }
 
 /// Draft a GitHub pull-request description (Markdown) from a branch `diff`, using
-/// `agent_id` + `model` (the GitHub-settings AI agent). Reuses the same one-shot,
-/// non-interactive agent runner as commit generation — no provider API/keys. The
-/// caller supplies the diff (branch-vs-base). Returns the sanitized body.
+/// the GitHub-settings AI agent. Reuses the same one-shot, non-interactive agent
+/// runner as commit generation — no provider API/keys. The caller supplies the
+/// diff (branch-vs-base). Returns the sanitized body.
 pub async fn draft_pr(
     worktree_path: &str,
-    agent_id: &str,
-    model: &str,
+    cfg: &GithubSettings,
     diff: &str,
 ) -> Result<String, AppError> {
-    let agent = agent_id.trim();
+    if !cfg.ai_enabled {
+        return Err(AppError::Invalid("AI PR authoring is disabled".to_string()));
+    }
+    let agent = cfg.ai_agent_id.as_deref().unwrap_or("").trim();
     if agent.is_empty() {
         return Err(AppError::Invalid("no AI agent configured".to_string()));
     }
@@ -131,13 +136,8 @@ pub async fn draft_pr(
             "no changes to summarize for the PR".to_string(),
         ));
     }
-    let capped: String = diff.chars().take(24_000).collect();
-    let prompt = format!(
-        "Write a GitHub pull request description in Markdown for the following \
-         changes. Start with a one-sentence summary, then a short bullet list of \
-         what changed and why. Do not include a title line or a code fence around \
-         the whole thing. Output only the description.\n\n{capped}"
-    );
+    let prompt = build_pr_prompt(cfg, diff);
+    let model = cfg.ai_model.as_deref().unwrap_or("");
     let args = agentcli::build_args(agent, model, &prompt)
         .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
     let raw = run_generate(&resolved, &args, worktree_path).await?;
@@ -148,6 +148,31 @@ pub async fn draft_pr(
         ));
     }
     Ok(body)
+}
+
+/// Build the PR-body prompt. Pure, so the knobs are unit-tested without spawning
+/// a CLI (mirrors [`build_prompt`] for commit messages).
+fn build_pr_prompt(cfg: &GithubSettings, diff: &str) -> String {
+    let mut p = String::from(
+        "Write a GitHub pull request description in Markdown for the following \
+         changes. Start with a one-sentence summary, then a short bullet list of \
+         what changed and why. Do not include a title line or a code fence around \
+         the whole thing.\n",
+    );
+    let lang = cfg.ai_language.trim();
+    if !lang.is_empty() && !lang.eq_ignore_ascii_case("auto") {
+        p.push_str(&format!("Write the description in {lang}.\n"));
+    }
+    let extra = cfg.ai_instructions.trim();
+    if !extra.is_empty() {
+        p.push_str(&format!("Additional instructions: {extra}\n"));
+    }
+    p.push_str(
+        "Output ONLY the description text — no code fences, no preamble, \
+         no explanation.\n\nBranch diff:\n",
+    );
+    p.push_str(&truncate_diff(diff, MAX_DIFF_BYTES));
+    p
 }
 
 /// Run the resolved agent for a generation turn (stdin closed, hard timeout,
@@ -194,14 +219,18 @@ async fn run_generate(
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Run a one-shot model-list command and return its captured output (stdout,
-/// optionally with stderr appended for CLIs that print the table there). `None`
-/// on spawn failure / timeout (caller treats it as "no models discovered").
+/// Run a one-shot model-list command and return its stdout.
+///
+/// A **non-zero exit is an error**, carrying the CLI's own stderr. That matters:
+/// a broken install (e.g. an `opencode.exe` whose postinstall never ran, which
+/// prints its complaint to stderr and exits 1 with empty stdout) used to be
+/// swallowed here and reach the UI as an empty model list — indistinguishable
+/// from "this agent has no models". The message is what tells the two apart.
 async fn run_list(
     resolved: &agentcli::Resolved,
     extra: &[&str],
     include_stderr: bool,
-) -> Option<String> {
+) -> Result<String, AppError> {
     let mut cmd = crate::winproc::command(&resolved.program);
     cmd.args(&resolved.prepend)
         .args(extra)
@@ -209,17 +238,33 @@ async fn run_list(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let child = cmd.spawn().ok()?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| AppError::Agent(format!("{} could not be started: {e}", resolved.program)))?;
     let output = tokio::time::timeout(LIST_TIMEOUT, child.wait_with_output())
         .await
-        .ok()?
-        .ok()?;
+        .map_err(|_| {
+            AppError::Agent(format!(
+                "listing models timed out after {}s",
+                LIST_TIMEOUT.as_secs()
+            ))
+        })?
+        .map_err(|e| AppError::Agent(e.to_string()))?;
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !output.status.success() {
+        let detail = if stderr.is_empty() {
+            format!("exited with status {}", output.status)
+        } else {
+            stderr
+        };
+        return Err(AppError::Agent(detail));
+    }
     let mut s = String::from_utf8_lossy(&output.stdout).to_string();
     if include_stderr {
         s.push('\n');
-        s.push_str(&String::from_utf8_lossy(&output.stderr));
+        s.push_str(&stderr);
     }
-    Some(s)
+    Ok(s)
 }
 
 /// Query Codex's models via a minimal `codex app-server` JSON-RPC handshake
@@ -362,6 +407,45 @@ mod tests {
             include_body: true,
             instructions: String::new(),
         }
+    }
+
+    fn gh_cfg() -> GithubSettings {
+        GithubSettings {
+            ai_enabled: true,
+            ai_agent_id: Some("claude".into()),
+            ..GithubSettings::default()
+        }
+    }
+
+    #[test]
+    fn pr_prompt_includes_diff_and_no_language_line_on_auto() {
+        let p = build_pr_prompt(&gh_cfg(), "diff --git a b\n+x");
+        assert!(p.contains("pull request description in Markdown"));
+        assert!(p.contains("diff --git a b"));
+        // The default language is "auto" — it must not leak in as a literal.
+        assert!(!p.to_lowercase().contains("write the description in auto"));
+    }
+
+    #[test]
+    fn pr_prompt_honors_language_and_instructions() {
+        let c = GithubSettings {
+            ai_language: "Spanish".into(),
+            ai_instructions: "link the issue".into(),
+            ..gh_cfg()
+        };
+        let p = build_pr_prompt(&c, "diff");
+        assert!(p.contains("Write the description in Spanish."));
+        assert!(p.contains("Additional instructions: link the issue"));
+    }
+
+    #[tokio::test]
+    async fn draft_pr_refuses_when_disabled() {
+        // The master switch gates the backend too, not just the button's visibility.
+        let c = GithubSettings {
+            ai_enabled: false,
+            ..gh_cfg()
+        };
+        assert!(draft_pr(".", &c, "diff").await.is_err());
     }
 
     #[test]

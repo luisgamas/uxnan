@@ -62,7 +62,11 @@
   let base = $state("");
   let head = $state("");
 
-  const aiAgent = $derived(app.settings.github?.aiAgentId);
+  // The AI button appears only when the feature is switched on AND an agent is
+  // picked — the switch is what lets a configured agent be kept while off.
+  const aiAgent = $derived(
+    (app.settings.github?.aiEnabled ?? false) ? app.settings.github?.aiAgentId : undefined,
+  );
 
   const baseGroups = $derived<ComboGroup[]>([
     { items: (branches?.remote ?? []).map((b) => ({ value: b, label: b })) },
@@ -143,12 +147,7 @@
     try {
       // Draft against the base actually selected, so the body describes the diff
       // this PR carries rather than the one against the repo's default branch.
-      body = await githubAiDraftPr(
-        worktreePath,
-        aiAgent,
-        app.settings.github?.aiModel ?? "",
-        base || null,
-      );
+      body = await githubAiDraftPr(worktreePath, base || null);
     } catch (e) {
       toastError(e);
     } finally {

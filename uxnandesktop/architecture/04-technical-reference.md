@@ -144,7 +144,11 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       un PR bloqueado **explica por qué**, y las salidas son **auto-merge** (`--auto`,
       solo si el repo lo permite) y **bypass de administrador** (`--admin`, solo si el
       usuario puede administrar, tras confirmación); issues
-      (list/view/create/**close/reopen**), Actions logs, PR/issue↔worktree,
+      (list/view/create/**close/reopen**), Actions logs, PR/issue↔worktree (tras un
+      diálogo de ajustes: nombre de rama, agente a lanzar, previsualización de carpeta),
+      **redacción de PR con IA** configurada en una sección propia calcada de
+      Settings → AI commit (interruptor, agente con logos + estado de instalación,
+      `AiModelPicker`, idioma, instrucciones),
       badges y boton de status bar; `src-tauri/src/github.rs`, `docs/github.md`).
       **GitLab: pendiente** (el enfoque `gh`-centrico es
       GitHub-only; ver `FOR-DEV.md → "GitHub integration — follow-ups"`).

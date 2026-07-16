@@ -7,6 +7,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **A real "AI PR authoring" settings section — and the model pickers now tell the
+  truth.** GitHub's AI settings were two bare comboboxes listing the **raw agent id**,
+  with no logos, no install state, no enable switch and no way to tell a broken CLI from
+  an agent with no models. It's now built like **Settings → AI commit messages**: an
+  enable switch (off by default), an agent picker with **logos** that shows uninstalled
+  agents **disabled + "not found"** rather than omitting them, the shared
+  `AiModelPicker`, plus **language** and **instructions** knobs the PR body needs more
+  than a commit subject does. `GithubSettings` gains `aiEnabled` / `aiLanguage` /
+  `aiInstructions` (all defaulted, so older state loads unchanged), and
+  `github_ai_draft_pr` reads them from settings on the backend — matching
+  `git_generate_commit_message`, so a caller can't run an agent other than the
+  configured one.
+- **Fixed: model discovery silently swallowed failures** (this also fixes AI commit).
+  `run_list` never checked the child's **exit status**, so a CLI that failed reached the
+  UI as an empty list — indistinguishable from "no models". Three concrete bugs:
+  - **OpenCode**: when `opencode-ai`'s postinstall doesn't run (`--ignore-scripts`, or
+    pnpm), the installed `opencode.exe` is a **shell stub, not a PE**. `exe_runnable`
+    did `.unwrap_or(true)` when it couldn't read a PE header, so the stub passed as
+    *installed* and appeared **enabled** in the picker while being unable to run at all.
+    A non-PE `.exe` is now correctly treated as not runnable (Windows can't execute
+    one), and OpenCode's stderr is captured so its own complaint reaches the user.
+  - **Pi**: `parse_pi_models` accepted any line with ≥6 whitespace-separated columns.
+    Pi answers with **prose** when no provider is authenticated ("No models available.
+    Use /login…") — 16 words — so it minted a **phantom model literally named
+    `No/models`**. Rows are now recognized by their `yes`/`no` flag columns, and ANSI is
+    stripped like OpenCode's.
+  - The doc-comment claiming pi prints its table to **stderr** was wrong (it's stdout).
+  A failed discovery now surfaces **the CLI's own message** in the settings pane.
 - **PR/issue → worktree is now a real dialog, and finally launches an agent.**
   *Check out to worktree* and *Start work* were a single click with a hard-coded branch
   name (`pr-<n>` / `issue-<n>`) and no options. They also **skipped

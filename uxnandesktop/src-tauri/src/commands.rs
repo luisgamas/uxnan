@@ -1688,15 +1688,18 @@ pub async fn github_clone(repo: String, dest: String) -> Result<String, CommandE
         .map_err(CommandError::from)
 }
 
-/// Draft a PR description (Markdown) from the branch diff using a local CLI agent
-/// (the GitHub-settings AI agent/model). One-shot, non-interactive — no API/keys.
+/// Draft a PR description (Markdown) from the branch diff using a local CLI agent.
+/// One-shot, non-interactive — no API/keys. The agent/model/language/instructions
+/// come from `AppSettings.github` (GitHub → Settings), read here rather than passed
+/// in, matching `git_generate_commit_message` — the settings are the source of
+/// truth, so a caller can't run a different agent than the one configured.
 #[tauri::command]
 pub async fn github_ai_draft_pr(
+    state: State<'_, AppState>,
     worktree_path: String,
-    agent_id: String,
-    model: String,
     base: Option<String>,
 ) -> Result<String, CommandError> {
+    let cfg = state.data.read().await.settings.github.clone();
     // Draft from the diff against the base the PR will actually target, so the body
     // describes the PR's own changes. Only when the caller has no base to offer do
     // we fall back to the repo's resolved default.
@@ -1707,7 +1710,7 @@ pub async fn github_ai_draft_pr(
     let diff = git::branch_diff(&worktree_path, &base)
         .await
         .map_err(CommandError::from)?;
-    crate::aicommit::draft_pr(&worktree_path, &agent_id, &model, &diff)
+    crate::aicommit::draft_pr(&worktree_path, &cfg, &diff)
         .await
         .map_err(CommandError::from)
 }

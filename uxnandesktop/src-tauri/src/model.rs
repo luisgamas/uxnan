@@ -394,6 +394,19 @@ pub struct GithubSettings {
     /// Model for the AI-authoring agent (`None` = the CLI's default).
     #[serde(default)]
     pub ai_model: Option<String>,
+    /// Master switch for AI PR authoring, mirroring [`AiCommitSettings::enabled`]:
+    /// keeping a configured agent while the feature is off is a state the
+    /// agent-only `ai_agent_id` couldn't express. Off by default, so nothing ever
+    /// runs unasked.
+    #[serde(default)]
+    pub ai_enabled: bool,
+    /// Preferred language for the drafted body: `auto` (let the agent decide) or a
+    /// language **name** stated verbatim in the prompt (e.g. `English`).
+    #[serde(default = "default_ai_commit_language")]
+    pub ai_language: String,
+    /// Extra free-form instructions appended to the PR-body prompt.
+    #[serde(default)]
+    pub ai_instructions: String,
 }
 
 impl Default for GithubSettings {
@@ -406,6 +419,9 @@ impl Default for GithubSettings {
             confirm_pr: true,
             ai_agent_id: None,
             ai_model: None,
+            ai_enabled: false,
+            ai_language: default_ai_commit_language(),
+            ai_instructions: String::new(),
         }
     }
 }
@@ -946,6 +962,25 @@ mod tests {
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.browser.enabled);
         assert_eq!(settings.browser.link_policy, BrowserLinkPolicy::Internal);
+    }
+
+    #[test]
+    fn github_ai_defaults_off_and_back_compat() {
+        let cfg = GithubSettings::default();
+        assert!(!cfg.ai_enabled);
+        assert!(cfg.ai_agent_id.is_none());
+        assert_eq!(cfg.ai_language, "auto");
+        assert!(cfg.ai_instructions.is_empty());
+        // Settings persisted before the AI-PR knobs existed still load: the new
+        // fields default rather than failing the whole settings read.
+        let cfg: GithubSettings = serde_json::from_str(
+            r#"{"rightPanelTab":true,"statusBarEnabled":true,"pollSeconds":45,
+                "confirmPr":true,"aiAgentId":"claude"}"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.ai_agent_id.as_deref(), Some("claude"));
+        assert!(!cfg.ai_enabled);
+        assert_eq!(cfg.ai_language, "auto");
     }
 
     #[test]

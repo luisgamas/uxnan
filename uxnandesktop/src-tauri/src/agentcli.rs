@@ -174,16 +174,27 @@ fn host_runs_machine(machine: u16) -> bool {
     runnable.contains(&machine)
 }
 
-/// Best-effort guard against handing a **wrong-architecture** `.exe` to `spawn()`
-/// (which fails with Windows' "not compatible with the version of Windows you're
-/// running" — e.g. an x64 `opencode.exe` installed by npm on an ARM64 host). An
-/// unreadable or non-PE file returns `true` — never over-reject; let the OS report
-/// the real error in that case.
+/// Whether this `.exe` is something Windows can actually execute. Guards against
+/// two npm-install failure modes, both of which otherwise surface as an agent that
+/// looks installed but can never run:
+///
+/// - a **wrong-architecture** binary (an x64 `opencode.exe` on an ARM64 host),
+///   which fails with "not compatible with the version of Windows you're running";
+/// - a **placeholder that isn't a PE at all** — when `opencode-ai`'s postinstall
+///   doesn't run (`--ignore-scripts`, or pnpm's default), the `.exe` left behind is
+///   a tiny shell stub that `CreateProcessW` cannot start. Windows requires a valid
+///   PE image to execute an `.exe`, so a non-PE one is definitively not runnable;
+///   treating it as runnable (the old `unwrap_or(true)`) is what let a broken
+///   OpenCode reach the model picker enabled.
+///
+/// Only ever called on `.exe`/`.com` candidates. An **unreadable** file still
+/// returns `true` — that's a permissions question, not a "wrong binary" one, so
+/// let the OS report the real error.
 fn exe_runnable(path: &std::path::Path) -> bool {
     match std::fs::File::open(path) {
         Ok(mut f) => read_pe_machine(&mut f)
             .map(host_runs_machine)
-            .unwrap_or(true),
+            .unwrap_or(false),
         Err(_) => true,
     }
 }
@@ -399,13 +410,21 @@ pub fn parse_opencode_models(stdout: &str) -> Vec<AgentModel> {
     out
 }
 
-/// Parse `pi --list-models` output (a whitespace-separated table; the model
-/// table is printed to **stderr**) into `provider/model` ids.
+/// Parse `pi --list-models` output into `provider/model` ids.
+///
+/// The output is a whitespace-separated table printed to **stdout**:
+/// `provider  model  context  max-out  thinking  images`. A row only counts when
+/// its last two columns are the `yes`/`no` flags — a column *count* alone is not
+/// enough, because pi answers with **prose** when no provider is authenticated
+/// ("No models available. Use /login to log into a provider…"), and that sentence
+/// has well over six whitespace-separated words. Taking its first two would mint
+/// a phantom model literally called `No/models`.
 pub fn parse_pi_models(output: &str) -> Vec<AgentModel> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for raw in output.lines() {
-        let line = raw.trim();
+        let line = strip_ansi(raw);
+        let line = line.trim();
         if line.is_empty() {
             continue;
         }
@@ -413,10 +432,13 @@ pub fn parse_pi_models(output: &str) -> Vec<AgentModel> {
         if cols.len() < 6 {
             continue;
         }
-        let (provider, model) = (cols[0], cols[1]);
-        if provider == "provider" {
-            continue; // header row
+        // The `thinking` / `images` flags: present on every data row, and on
+        // neither the header (`thinking  images`) nor any prose line.
+        let is_flag = |s: &str| s.eq_ignore_ascii_case("yes") || s.eq_ignore_ascii_case("no");
+        if !is_flag(cols[cols.len() - 1]) || !is_flag(cols[cols.len() - 2]) {
+            continue;
         }
+        let (provider, model) = (cols[0], cols[1]);
         let id = format!("{provider}/{model}");
         if seen.insert(id.clone()) {
             out.push(AgentModel::new(&id, model));
@@ -538,6 +560,40 @@ mod tests {
         assert_eq!(models[0].display_name, "claude-3.5-sonnet");
     }
 
+    /// The real `pi --list-models` layout (column-aligned, from the shipped CLI).
+    #[test]
+    fn parses_pi_models_real_aligned_table() {
+        let out = "provider      model                               context  max-out  thinking  images\n\
+                   aihubmix      coding-glm-4.7-free                 128K     16.4K    yes       no    \n\
+                   google        gemini-2.5-pro                      1M       65.5K    yes       yes   \n";
+        let models = parse_pi_models(out);
+        assert_eq!(
+            models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["aihubmix/coding-glm-4.7-free", "google/gemini-2.5-pro"]
+        );
+    }
+
+    /// pi prints prose — not a table — when no provider is authenticated. It has
+    /// well over six whitespace-separated words, so a column-count check alone let
+    /// it through and minted a model literally called `No/models`.
+    #[test]
+    fn pi_no_auth_prose_yields_no_models() {
+        let out =
+            "No models available. Use /login to log into a provider via OAuth or API key. See:\n\
+                   https://example.com/docs\n";
+        assert!(parse_pi_models(out).is_empty());
+    }
+
+    #[test]
+    fn parses_pi_models_strips_ansi() {
+        let out = "\x1b[1mopenai\x1b[0m gpt-5 400k 16k yes no\n";
+        let models = parse_pi_models(out);
+        assert_eq!(
+            models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["openai/gpt-5"]
+        );
+    }
+
     #[test]
     fn parses_codex_models_skips_hidden_and_uses_display_name() {
         let data = serde_json::json!([
@@ -572,9 +628,19 @@ mod tests {
             read_pe_machine(&mut std::io::Cursor::new(buf)),
             Some(IMAGE_FILE_MACHINE_AMD64)
         );
-        // A non-PE blob → None (exe_runnable treats that as runnable, not a reject).
+        // A non-PE blob → None. `exe_runnable` treats that as NOT runnable: an
+        // `.exe` Windows can't execute, e.g. the shell stub `opencode-ai` leaves
+        // behind when its postinstall never ran.
         assert_eq!(
             read_pe_machine(&mut std::io::Cursor::new(b"not an exe".to_vec())),
+            None
+        );
+        // The exact stub shape that shipped this bug: an `.exe` whose bytes are a
+        // shell `echo`, which read as anything but MZ.
+        assert_eq!(
+            read_pe_machine(&mut std::io::Cursor::new(
+                b"echo \"Error: opencode-ai's postinstall script was not run.\" >&2".to_vec()
+            )),
             None
         );
         // x86 runs on every current Windows arch; the rest depends on the test host.

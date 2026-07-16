@@ -34,6 +34,7 @@
     openExternal,
   } from "$lib/api";
   import type {
+    AgentModel,
     PrDetail,
     IssueDetail,
     TimelineEvent,
@@ -41,13 +42,16 @@
     CheckSummary,
     MergeInfo,
   } from "$lib/types";
+  import { AI_COMMIT_AGENTS } from "$lib/aiCommitPresets";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTimeLong } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
-  import Combobox from "$lib/components/Combobox.svelte";
+  import Combobox, { type ComboGroup } from "$lib/components/Combobox.svelte";
+  import AiModelPicker from "$lib/components/AiModelPicker.svelte";
+  import AgentLogo from "$lib/components/AgentLogo.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import DiffView from "$lib/components/DiffView.svelte";
@@ -610,29 +614,97 @@
       !!runError,
   );
 
-  // --- Settings pane: AI agent/model pickers --------------------------------
-  let aiAgents = $state<string[]>([]);
-  let aiModels = $state<{ value: string; label: string }[]>([]);
+  // --- Settings pane: AI PR authoring ---------------------------------------
+  // Mirrors Settings → AI commit messages (same agent catalog, same AiModelPicker,
+  // same install-awareness), so the two AI features are configured the same way.
 
-  async function loadAiAgents() {
+  /** Installed agents (null = not detected yet), so uninstalled ones can be shown
+   *  disabled rather than silently missing. */
+  let aiAgentsInstalled = $state<Set<string> | null>(null);
+  let aiModels = $state<AgentModel[]>([]);
+  let aiModelsFor = $state(""); // which agent aiModels belongs to
+  let aiModelsLoading = $state(false);
+  /** Why discovery failed, if it did. Distinct from an empty list: a broken or
+   *  logged-out CLI is not the same as an agent with no models, and showing both
+   *  as "no matches" is what made a broken OpenCode impossible to diagnose. */
+  let aiModelsError = $state<string | null>(null);
+
+  const aiAgentInstalled = (id: string) => aiAgentsInstalled?.has(id) ?? false;
+
+  const aiAgentGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: "", label: i18n.t("github.settings.aiNone") },
+        ...AI_COMMIT_AGENTS.map((a) => ({
+          value: a.id,
+          label: a.name,
+          // Uninstalled agents stay visible but unselectable, so the list explains
+          // itself instead of silently omitting an agent the user expects.
+          disabled: aiAgentsInstalled !== null && !aiAgentInstalled(a.id),
+          meta:
+            aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
+              ? i18n.t("settings.agentNotFound")
+              : undefined,
+        })),
+      ],
+    },
+  ]);
+
+  async function detectAiAgents() {
     try {
-      aiAgents = await aiCommitAgents();
+      aiAgentsInstalled = new Set(await aiCommitAgents());
     } catch {
-      aiAgents = [];
+      aiAgentsInstalled = new Set();
     }
-    const agent = app.settings.github?.aiAgentId;
-    if (agent) void loadAiModels(agent);
   }
+
   async function loadAiModels(agent: string) {
-    try {
-      const models = await aiCommitModels(agent);
-      aiModels = models.map((m) => ({ value: m.id, label: m.displayName ?? m.id }));
-    } catch {
+    if (!agent) {
       aiModels = [];
+      aiModelsFor = "";
+      aiModelsError = null;
+      return;
+    }
+    aiModelsLoading = true;
+    aiModelsError = null;
+    try {
+      aiModels = await aiCommitModels(agent);
+    } catch (e) {
+      aiModels = [];
+      aiModelsError = errText(e);
+    } finally {
+      aiModelsFor = agent;
+      aiModelsLoading = false;
     }
   }
+
+  function selectAiAgent(id: string) {
+    ensureGithub().aiAgentId = id || undefined;
+    ensureGithub().aiModel = undefined; // model ids are agent-specific
+    persist();
+    void loadAiModels(id);
+  }
+
+  // Language: "auto" + each app locale. Stored as the English language NAME, since
+  // the backend prompt states it verbatim ("Write the description in Spanish").
+  // Same values as AI commit, so the two features can't disagree.
+  const aiLanguageGroups = $derived<ComboGroup[]>([
+    {
+      items: [
+        { value: "auto", label: i18n.t("settings.aiCommitLanguageAuto") },
+        { value: "English", label: i18n.t("settings.aiCommitLanguageEn") },
+        { value: "Spanish", label: i18n.t("settings.aiCommitLanguageEs") },
+      ],
+    },
+  ]);
+
+  // On opening the pane: detect installed agents, then load the current agent's
+  // models once (the load stamps aiModelsFor, so this doesn't loop).
   $effect(() => {
-    if (app.githubOpen && app.githubSection === "settings") void loadAiAgents();
+    if (!(app.githubOpen && app.githubSection === "settings")) return;
+    if (aiAgentsInstalled === null) void detectAiAgents();
+    const agent = app.settings.github?.aiAgentId ?? "";
+    if (agent && aiModelsFor !== agent && !aiModelsLoading) void loadAiModels(agent);
   });
 
   function ensureGithub() {
@@ -1049,6 +1121,15 @@
 {/if}
 
 <!-- ============================ reusable bits ============================ -->
+
+<!-- The AI-agent picker's logo, matched back from the row's value (same catalog
+     and logo keys as Settings → AI commit messages). -->
+{#snippet aiAgentPrefix(item: { value: string })}
+  {@const a = AI_COMMIT_AGENTS.find((x) => x.id === item.value)}
+  {#if a}
+    <AgentLogo logo={a.logo} class="size-4 shrink-0" />
+  {/if}
+{/snippet}
 
 {#snippet pill(label: string, tone: "ok" | "warn" | "info" | "muted" | "merged")}
   <span
@@ -1984,35 +2065,86 @@
         />
       {/snippet}
     </SettingsRow>
-    <SettingsRow label={i18n.t("github.settings.aiAgent")} description={i18n.t("github.settings.aiDesc")}>
-      {#snippet control()}
-        <Combobox
-          value={app.settings.github?.aiAgentId ?? ""}
-          groups={[{ items: [
-            { value: "", label: i18n.t("github.settings.aiNone") },
-            ...aiAgents.map((a) => ({ value: a, label: a })),
-          ] }]}
-          triggerClass="w-48"
-          onChange={(v) => { ensureGithub().aiAgentId = v || undefined; ensureGithub().aiModel = undefined; persist(); if (v) void loadAiModels(v); }}
-        />
-      {/snippet}
-    </SettingsRow>
-    {#if app.settings.github?.aiAgentId}
-      <SettingsRow label={i18n.t("github.settings.aiModel")}>
-        {#snippet control()}
-          <Combobox
-            value={app.settings.github?.aiModel ?? ""}
-            groups={[{ items: [
-              { value: "", label: i18n.t("github.settings.aiNone") },
-              ...aiModels,
-            ] }]}
-            triggerClass="w-56"
-            searchPlaceholder={i18n.t("common.search")}
-            onChange={(v) => { ensureGithub().aiModel = v || undefined; persist(); }}
-          />
-        {/snippet}
-      </SettingsRow>
-    {/if}
+    </SettingsSection>
+
+    <!-- AI PR authoring — the sibling of Settings → AI commit messages. -->
+    <SettingsSection title={i18n.t("github.settings.ai")} description={i18n.t("github.settings.aiDesc")}>
+      <div class="divide-y divide-border/60">
+        <SettingsRow label={i18n.t("github.settings.aiEnabled")} description={i18n.t("github.settings.aiEnabledDesc")}>
+          {#snippet control()}
+            <Switch
+              checked={app.settings.github?.aiEnabled ?? false}
+              onCheckedChange={(v) => { ensureGithub().aiEnabled = v; persist(); }}
+            />
+          {/snippet}
+        </SettingsRow>
+
+        <SettingsRow
+          label={i18n.t("github.settings.aiAgent")}
+          description={aiAgentsInstalled !== null && aiAgentsInstalled.size === 0
+            ? i18n.t("settings.aiCommitNoAgents")
+            : i18n.t("github.settings.aiAgentDesc")}
+        >
+          {#snippet control()}
+            <Combobox
+              value={app.settings.github?.aiAgentId ?? ""}
+              groups={aiAgentGroups}
+              placeholder={i18n.t("github.settings.aiNone")}
+              searchPlaceholder={i18n.t("common.search")}
+              triggerClass="w-56"
+              itemPrefix={aiAgentPrefix}
+              onChange={selectAiAgent}
+            />
+          {/snippet}
+        </SettingsRow>
+
+        {#if app.settings.github?.aiAgentId && aiAgentInstalled(app.settings.github.aiAgentId)}
+          <SettingsRow label={i18n.t("github.settings.aiModel")} description={i18n.t("settings.aiCommitModelDesc")}>
+            {#snippet control()}
+              <AiModelPicker
+                models={aiModels}
+                value={app.settings.github?.aiModel ?? ""}
+                loading={aiModelsLoading}
+                onSelect={(id) => { ensureGithub().aiModel = id || undefined; persist(); }}
+              />
+            {/snippet}
+          </SettingsRow>
+          <!-- A failed discovery is reported with the CLI's own message: "this CLI
+               is broken / not signed in" and "this agent has no models" are
+               different problems, and they used to look identical. -->
+          {#if aiModelsError}
+            <SettingsRow label={i18n.t("github.settings.aiModelsFailed")}>
+              {#snippet children()}
+                <p class={cn("mt-1 whitespace-pre-wrap text-destructive", text.meta)}>{aiModelsError}</p>
+              {/snippet}
+            </SettingsRow>
+          {/if}
+        {/if}
+
+        <SettingsRow label={i18n.t("settings.aiCommitLanguage")} description={i18n.t("github.settings.aiLanguageDesc")}>
+          {#snippet control()}
+            <Combobox
+              value={app.settings.github?.aiLanguage ?? "auto"}
+              groups={aiLanguageGroups}
+              triggerClass="w-56"
+              searchPlaceholder={i18n.t("common.search")}
+              onChange={(v) => { ensureGithub().aiLanguage = v; persist(); }}
+            />
+          {/snippet}
+        </SettingsRow>
+
+        <SettingsRow label={i18n.t("settings.aiCommitInstructions")} description={i18n.t("github.settings.aiInstructionsDesc")}>
+          {#snippet children()}
+            <Textarea
+              class="mt-1 min-h-0 resize-none text-xs"
+              rows={2}
+              placeholder={i18n.t("github.settings.aiInstructionsPlaceholder")}
+              value={app.settings.github?.aiInstructions ?? ""}
+              onchange={(e) => { ensureGithub().aiInstructions = (e.currentTarget as HTMLTextAreaElement).value; persist(); }}
+            />
+          {/snippet}
+        </SettingsRow>
+      </div>
     </SettingsSection>
   </div>
 {/snippet}
