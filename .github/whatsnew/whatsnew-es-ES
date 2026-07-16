@@ -1,7 +1,8 @@
 Novedades de esta actualización:
 
-• Elige Zero y Grok al iniciar una nueva conversación con IA.
-• Los agentes ya pueden hacerte preguntas, mostrar planes y pedir autorización directamente en el chat.
-• Mensajes de error más claros cuando un agente no termina una tarea y mejor lectura de Markdown y tablas.
+• Tu perfil ahora muestra tus estadísticas: actividad, agentes usados y tokens, con una vista Actividad/Tokens. Se guardan en tu PC, así sobreviven a reinstalar la app, y puedes respaldarlas cifradas.
+• Consulta cuánto has usado de cada plan de IA, con crédito y reinicios.
+• Escribe "/" en el chat para usar los comandos del agente.
+• Busca archivos de tu proyecto y previsualiza imágenes y Markdown.
 
 ¡Gracias por probar esta alfa!
