@@ -47,13 +47,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `replaying` guard suppresses `onData` while a snapshot is replayed into a remounted
   xterm, so replies to queries embedded in the replayed bytes don't leak into the live
   shell. (`src/lib/components/Terminal.svelte`.)
-- **Doubled/ghosted glyphs on ligature-heavy TUIs (e.g. Codex).** `package.json`
-  pinned the xterm core to `^5.5.0` but the renderer addons to `^0.19.0`
-  (`addon-webgl`) and `^0.10.0` (`addon-ligatures`) — those addon versions belong to
-  xterm core **6.0.0**, not 5.5.0 (xterm.js publishes core + addons in lockstep), so a
-  6.0.0 WebGL renderer was reading a 5.5.0 core's internals. Realigned to the matched
-  5.5.0 set — `addon-webgl@^0.18.0`, `addon-ligatures@^0.9.0` (fit/web-links were
-  already correct) — and re-synced the lockfile.
+- **Deformed / doubled / ghosted text after a terminal or panel resize — root-cause
+  fix by upgrading xterm.js to the 6.x line.** With the WebGL renderer, resizing a
+  pane (or a uxnan panel) could reflow the text on top of a **stale copy of the old
+  content** at the left edge, and it stayed corrupted through further resizes
+  (sometimes leaving ghost fragments). The cause is xterm 5.x's **shared WebGL glyph
+  texture atlas** — one atlas is cached per font config and shared across *every*
+  terminal with that config (confirmed in xterm's `CharAtlasCache`), so multi-tab /
+  multi-resize churn corrupts it (glyphs at wrong coordinates); a known xterm issue
+  (xtermjs/xterm.js #4065, #4480) that also blocked clearing it on resize, since
+  clearing a *shared* atlas garbles the co-visible panes. xterm **6.0.0 reworks the
+  texture atlas** (and lands many WebGL/ligature render fixes: #5253, #5276, #5277,
+  #5305, #5335), so we upgraded the whole xterm set **in lockstep** —
+  `@xterm/xterm@^6.0.0`, `addon-webgl@^0.19.0`, `addon-ligatures@^0.10.0`,
+  `addon-fit@^0.11.0`, `addon-web-links@^0.12.0` — and re-synced the lockfile. This
+  also resolves a prior lockstep mismatch (core was pinned to `^5.5.0` while
+  `addon-webgl@^0.19.0` belongs to core 6.0). **No `Terminal.svelte` source change was
+  needed:** every public + internal xterm API uxnan relies on
+  (`_renderService`/`_isPaused` render-pause release, `clearTextureAtlas`,
+  `onContextLoss`, `scrollToLine`, `registerCsiHandler`, `proposeDimensions`, buffer
+  scroll offsets, …) is still present in 6.0; `svelte-check` and the production build
+  pass clean.
 - **Renderer hardening (secondary, in `Terminal.svelte`).** Ligatures are loaded
   **before** WebGL so the glyph atlas is baked with ligatures resolved from the first
   frame; the shared texture atlas is cleared only on a genuine hidden→reveal (not on
