@@ -1,8 +1,5 @@
 What's new in this update:
 
-• Your profile now shows your stats: activity, agents used and tokens, with an Activity/Tokens view. They live on your PC, so they survive reinstalling the app — and you can back them up to an encrypted file.
-• See how much of each AI plan you have used, with credit and reset times.
-• Type "/" in the chat to run an agent's built-in commands.
-• Search files across your project and preview images and Markdown.
+• Fixed app updates. If an update downloaded but didn't install, the app would then tell you that you were up to date and never offer it again — the only way out was updating by hand from the Play Store. Now a downloaded update always comes back as "Install now", and one that is still downloading picks up where it left off.
 
 Thanks for testing this alpha!

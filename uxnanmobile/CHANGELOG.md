@@ -4,7 +4,7 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.0.7-alpha.20260716] - 2026-07-16
 
 ### Fixed — A started Play update could never be finished, and then read as "up to date"
 - Accepting an Android update and failing to install it left the app **stuck for
