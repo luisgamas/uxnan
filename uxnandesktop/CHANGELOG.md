@@ -33,6 +33,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   identity, and a hook report still seals identity by the agent's self-declared type —
   neither path is affected. Spec: `architecture/02d-agent-monitoring.md` §1.4.
 
+### Changed — terminal scrollbar restyled after the xterm 6 upgrade
+
+- **Restored uxnan's slim, hover-only terminal scrollbar.** xterm 6 replaced the
+  native viewport scrollbar with VS Code's `ScrollableElement`, so uxnan's old
+  `::-webkit-scrollbar` styling no longer targeted it and the terminal picked up the
+  wider default bar. Re-styled the new `.xterm-scrollable-element` scrollbar in
+  `src/app.css` to the previous slim light pill and made it **hover-only** (hidden
+  until the pointer is over the terminal, then it fades in). Presentation only — the
+  slider stays a real interactive element (faded with `opacity`, never `display`), so
+  mouse-wheel / keyboard / drag scrolling is unchanged.
+
 ### Fixed — terminal scroll: scrollbar stuck short of the end after switching tabs
 
 - **Returning to a terminal that produced output while it was hidden no longer
