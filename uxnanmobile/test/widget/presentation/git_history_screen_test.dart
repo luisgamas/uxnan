@@ -319,8 +319,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
     expect(find.byIcon(Icons.density_small_rounded), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.density_small_rounded));
+    await tester.tap(find.text('Compact view'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.density_medium_rounded), findsOneWidget);
   });
@@ -338,7 +342,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.alt_route_rounded));
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View branch or ref'));
     await tester.pumpAndSettle();
 
     // The picker lists HEAD + the branches.

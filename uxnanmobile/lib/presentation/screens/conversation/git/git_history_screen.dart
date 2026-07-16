@@ -16,7 +16,8 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen commit history for the workspace's git repo — a single, clean,
 /// flat list (no card chrome — matches the file browser's surface). The app
-/// bar carries two `IconSurface` toggles:
+/// bar keeps search and graph as direct `IconSurface` actions; branch/ref and
+/// density live in the low-frequency overflow menu:
 ///
 ///   - **Graph** — overlays a continuous, colored VS Code-style swimlane graph
 ///     on the left of each row. Fixed-height rows keep the dots aligned in
@@ -303,13 +304,6 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       actions: [
         if (hasContent)
           _CommitSearchAnchor(commits: _commits, onSelect: _openDetails),
-        if (widget.cwd != null && !_initialLoading)
-          IconSurface(
-            icon: Icons.alt_route_rounded,
-            tooltip: l10n.gitHistoryViewBranch,
-            selected: _viewingRef != null,
-            onPressed: _pickBranch,
-          ),
         if (hasContent)
           IconSurface(
             icon: _showGraph
@@ -321,15 +315,14 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
             selected: _showGraph,
             onPressed: () => setState(() => _showGraph = !_showGraph),
           ),
-        if (hasContent)
-          IconSurface(
-            icon: _compact
-                ? Icons.density_medium_rounded
-                : Icons.density_small_rounded,
-            tooltip:
-                _compact ? l10n.gitHistoryComfortable : l10n.gitHistoryCompact,
-            selected: _compact,
-            onPressed: () => setState(() => _compact = !_compact),
+        if ((widget.cwd != null && !_initialLoading) || hasContent)
+          _HistoryOverflowMenu(
+            compact: _compact,
+            viewingRef: _viewingRef != null,
+            onPickBranch:
+                widget.cwd != null && !_initialLoading ? _pickBranch : null,
+            onToggleDensity:
+                hasContent ? () => setState(() => _compact = !_compact) : null,
           ),
       ],
       slivers: [
@@ -384,6 +377,81 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
           onTap: () => _openDetails(_commits[index]),
         );
       },
+    );
+  }
+}
+
+/// Low-frequency history actions, using the same vertical Icon Surface menu as
+/// the main Git screen so the app bar preserves room for search and graph.
+class _HistoryOverflowMenu extends StatelessWidget {
+  const _HistoryOverflowMenu({
+    required this.compact,
+    required this.viewingRef,
+    required this.onPickBranch,
+    required this.onToggleDensity,
+  });
+
+  final bool compact;
+  final bool viewingRef;
+  final VoidCallback? onPickBranch;
+  final VoidCallback? onToggleDensity;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return IconSurfaceMenu<void>(
+      tooltip: l10n.threadsMore,
+      icon: Icons.more_vert_rounded,
+      constraints: const BoxConstraints(minWidth: 220),
+      itemBuilder: (_) => [
+        if (onPickBranch != null)
+          PopupMenuItem(
+            onTap: onPickBranch,
+            child: _HistoryMenuRow(
+              icon: Icons.alt_route_rounded,
+              label: l10n.gitHistoryViewBranch,
+              selected: viewingRef,
+            ),
+          ),
+        if (onToggleDensity != null)
+          PopupMenuItem(
+            onTap: onToggleDensity,
+            child: _HistoryMenuRow(
+              icon: compact
+                  ? Icons.density_medium_rounded
+                  : Icons.density_small_rounded,
+              label:
+                  compact ? l10n.gitHistoryComfortable : l10n.gitHistoryCompact,
+              selected: compact,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _HistoryMenuRow extends StatelessWidget {
+  const _HistoryMenuRow({
+    required this.icon,
+    required this.label,
+    required this.selected,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: colors.onSurfaceVariant),
+        const SizedBox(width: UxnanSpacing.md),
+        Expanded(child: Text(label)),
+        if (selected)
+          Icon(Icons.check_rounded, size: 18, color: colors.primary),
+      ],
     );
   }
 }
@@ -513,14 +581,25 @@ class _CommitRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: compact ? UxnanSpacing.sm : UxnanSpacing.md,
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 840),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: UxnanSpacing.lg,
+                vertical: compact ? UxnanSpacing.sm : UxnanSpacing.md,
+              ),
+              child: _CommitSummary(commit: commit, compact: compact),
+            ),
+          ),
         ),
-        child: _CommitSummary(commit: commit, compact: compact),
       ),
     );
   }
@@ -558,86 +637,91 @@ class _CommitGraphRow extends StatelessWidget {
     final lanes = maxLanes.clamp(1, _maxLanes);
     final gutterWidth = UxnanSpacing.sm + lanes * _laneWidth;
     final rowHeight = compact ? 36.0 : 46.0;
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        height: rowHeight,
-        child: Row(
-          children: [
-            SizedBox(
-              width: gutterWidth,
-              height: rowHeight,
-              child: CustomPaint(
-                painter: _GraphPainter(
-                  row: row,
-                  laneWidth: _laneWidth,
-                  leftPad: UxnanSpacing.sm,
-                  dotSize: compact ? 7 : 9,
-                  palette: _lanePalette(colors),
-                  haloColor: colors.surface,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 840),
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            height: rowHeight,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: gutterWidth,
+                  height: rowHeight,
+                  child: CustomPaint(
+                    painter: _GraphPainter(
+                      row: row,
+                      laneWidth: _laneWidth,
+                      leftPad: UxnanSpacing.sm,
+                      dotSize: compact ? 7 : 9,
+                      palette: _lanePalette(colors),
+                      haloColor: colors.surface,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: UxnanSpacing.lg),
-                child: Row(
-                  children: [
-                    if (row.commit.isMerge) ...[
-                      Icon(
-                        Icons.merge_rounded,
-                        size: 14,
-                        color: colors.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                    ],
-                    // A single, width-capped primary ref chip (+ "+N" when
-                    // there are more) so a tip with several refs can't overflow
-                    // the row. The full set shows in the list view and detail.
-                    if (row.commit.refs.isNotEmpty) ...[
-                      Flexible(
-                        flex: 0,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: compact ? 100 : 130,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: UxnanSpacing.lg),
+                    child: Row(
+                      children: [
+                        if (row.commit.isMerge) ...[
+                          Icon(
+                            Icons.merge_rounded,
+                            size: 14,
+                            color: colors.onSurfaceVariant,
                           ),
-                          child: CommitRefChip(
-                            refData: _primaryRef(row.commit.refs),
-                            dense: true,
+                          const SizedBox(width: UxnanSpacing.xs),
+                        ],
+                        // A single, width-capped primary ref chip (+ "+N" when
+                        // there are more) avoids overflow on multi-ref tips.
+                        // The full set appears in list view and commit detail.
+                        if (row.commit.refs.isNotEmpty) ...[
+                          Flexible(
+                            flex: 0,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: compact ? 100 : 130,
+                              ),
+                              child: CommitRefChip(
+                                refData: _primaryRef(row.commit.refs),
+                                dense: true,
+                              ),
+                            ),
+                          ),
+                          if (row.commit.refs.length > 1) ...[
+                            const SizedBox(width: UxnanSpacing.xs),
+                            Text(
+                              '+${row.commit.refs.length - 1}',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(width: UxnanSpacing.xs),
+                        ],
+                        Expanded(
+                          child: Text(
+                            row.commit.messageTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.bodyMedium,
                           ),
                         ),
-                      ),
-                      if (row.commit.refs.length > 1) ...[
-                        const SizedBox(width: UxnanSpacing.xs),
+                        const SizedBox(width: UxnanSpacing.sm),
                         Text(
-                          '+${row.commit.refs.length - 1}',
-                          style: textTheme.labelSmall?.copyWith(
+                          _relativeDate(row.commit.authorDate),
+                          style: textTheme.bodySmall?.copyWith(
                             color: colors.onSurfaceVariant,
                           ),
                         ),
                       ],
-                      const SizedBox(width: UxnanSpacing.xs),
-                    ],
-                    Expanded(
-                      child: Text(
-                        row.commit.messageTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodyMedium,
-                      ),
                     ),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Text(
-                      _relativeDate(row.commit.authorDate),
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

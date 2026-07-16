@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Git history and commit details use a cleaner review hierarchy
+- Preserved commit history as a flat list so its functional branch graph stays
+  continuous and readable; commits were not converted into cards. Rows now use
+  quiet separators and a responsive 840 dp reading bound on wider screens.
+- Kept Search and Graph as the two direct app-bar actions. Branch/ref selection
+  and density now live in the same vertical `IconSurfaceMenu` treatment as the
+  main Git screen, reducing toolbar noise without removing either control.
+- Commit details now use a 760 dp editorial column, an open message body and
+  flat expandable file rows instead of one outlined card per changed file.
+  Expanded diffs retain tonal containment. Git data, graph layout, pagination,
+  search, branch selection and file expansion behavior are unchanged.
+
 ### Changed — Onboarding and manual pairing share the Neural Expressive language
 - Removed the onboarding's persistent square-grid and fade wallpaper in favor
   of the same calm semantic `surface` used across Profile, conversations and

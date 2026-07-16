@@ -613,6 +613,16 @@ When swipe-to-dismissing an item:
 - Auto-collapse of other cards in the same group: `effectsDefault` for the fade of
   the internal content + `spatialDefault` for the geometric collapse.
 
+#### When Not to Use Cards
+
+Cards are not the default treatment for every repeated item. Use a flat list
+with quiet `outlineVariant` separators when continuity between rows carries
+meaning or when card chrome would compete with the primary visualization. Git
+history is the canonical example: its branch graph must read as one continuous
+lane system, so commits stay flat and width-constrained. Commit-detail files
+also use expandable flat rows; only an opened diff receives tonal containment
+to separate code from surrounding metadata.
+
 ---
 
 ### 4.7 Progress Indicators
