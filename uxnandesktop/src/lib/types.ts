@@ -940,8 +940,24 @@ export interface PrDetail {
 export interface PrCreateOptions {
   title: string;
   body?: string;
+  /** Branch the PR targets. Omitted = the repo's default branch. */
   base?: string | null;
+  /** Branch the PR comes from. Omitted = the checked-out branch. */
+  head?: string | null;
   draft?: boolean;
+}
+
+/** Branch candidates for the create-PR form (`github_branches`). */
+export interface PrBranches {
+  /** Local branches — the head candidates. */
+  local: string[];
+  /** Branches on `origin` — the base candidates (GitHub can only target a
+   *  branch that exists on the remote). */
+  remote: string[];
+  /** The repo's default branch, preselected as the base. */
+  defaultBase: string;
+  /** The worktree's checked-out branch, preselected as the head. */
+  current: string | null;
 }
 
 /** One row in the issue list. */

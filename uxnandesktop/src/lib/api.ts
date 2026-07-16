@@ -25,6 +25,7 @@ import type {
   McpInfo,
   HookServerInfo,
   ImageDiff,
+  PrBranches,
   PrCreateOptions,
   PrDetail,
   PrListItem,
@@ -714,12 +715,19 @@ export function githubPrTimeline(
   return invoke<TimelineEvent[]>("github_pr_timeline", { worktreePath, number });
 }
 
-/** Create a PR from the worktree's current branch; resolves to its URL. */
+/** Create a PR; resolves to its URL. `options.base`/`options.head` pick the
+ *  target/source branches (omitted = gh's default branch / checked-out branch). */
 export function githubPrCreate(
   worktreePath: string,
   options: PrCreateOptions,
 ): Promise<string> {
   return invoke<string>("github_pr_create", { worktreePath, options });
+}
+
+/** Branch candidates for the create-PR form: local (head), `origin` (base), the
+ *  default base and the checked-out branch. */
+export function githubBranches(worktreePath: string): Promise<PrBranches> {
+  return invoke<PrBranches>("github_branches", { worktreePath });
 }
 
 /** Post a conversation comment on a PR (not a review verdict). */
@@ -861,11 +869,18 @@ export function githubClone(repo: string, dest: string): Promise<string> {
   return invoke<string>("github_clone", { repo, dest });
 }
 
-/** Draft a PR description from the branch diff via a local CLI agent. */
+/** Draft a PR description via a local CLI agent, from the diff against `base` —
+ *  the branch the PR targets, so the body describes the PR's own changes. */
 export function githubAiDraftPr(
   worktreePath: string,
   agentId: string,
   model: string,
+  base?: string | null,
 ): Promise<string> {
-  return invoke<string>("github_ai_draft_pr", { worktreePath, agentId, model });
+  return invoke<string>("github_ai_draft_pr", {
+    worktreePath,
+    agentId,
+    model,
+    base: base ?? null,
+  });
 }

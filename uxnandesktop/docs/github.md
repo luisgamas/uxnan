@@ -58,7 +58,8 @@ registered git repo). Panes:
 
 A 4th tab in the right panel (next to Files / Changes / History), scoped to the
 **active worktree**: its PR (with a colored checks roll-up + quick actions), this
-branch's CI runs, and a full **create-PR form** (title + body, manual or AI-drafted).
+branch's CI runs, and a full **create-PR form** (base ← head, title + body, manual or
+AI-drafted; the head is pinned to this worktree's branch — see *Creating a PR* below).
 Unlike the section (which has its own repo selector), this tab **is** bound to the
 **active worktree** — when no worktree is selected it shows an empty state (like the
 Files / Changes / History tabs). It stays visible whenever enabled (toggle in **GitHub →
@@ -66,6 +67,25 @@ Settings → Right-panel GitHub tab**), showing a "connect" / "no active worktre
 "not a GitHub repo" state rather than appearing and disappearing. The right-panel **tab
 strip scrolls horizontally** when it's narrow, and the panel has a minimum width that
 keeps all four tabs visible. Big views (review, diff, logs) open in the GitHub section.
+
+## Creating a PR
+
+The create-PR form (in the section's **Pull Requests** pane and in the right-panel tab)
+opens with a **`base ← head`** row: where the PR goes, and where it comes from. Both are
+always visible, even when they can't be changed — a PR silently opened from whatever
+branch happened to be checked out is exactly the mistake this row prevents.
+
+- **Base** lists the repo's **`origin` branches** (GitHub can only target a branch that
+  exists on the remote) and defaults to the repo's **default branch**.
+- **Head** lists **local branches** and defaults to the checked-out one. In the
+  **right-panel tab** it's fixed to the active worktree's branch and shown read-only —
+  that tab *is* that worktree. In the **section** (which is scoped to a *repo*) it's a
+  real choice.
+- The form blocks a `base == head` PR, and warns when the head hasn't been pushed to
+  `origin` yet — `gh` runs with prompts disabled, so it can't offer to push for you.
+- **AI drafting** diffs against the **selected base** (resolved to `origin/<base>` when
+  that ref exists), so the body describes the PR's own changes rather than a stale
+  local branch's.
 
 ## Worktree-native flows (the differentiator)
 
@@ -97,9 +117,9 @@ older state loads unchanged.
 
 ## Backend commands
 
-All 28 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
+All 29 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `commands.rs`, registered in `lib.rs`, typed wrappers in `src/lib/api.ts`):
-`github_status`, `github_repo_context`,
+`github_status`, `github_repo_context`, `github_branches`,
 `github_pr_list/view/diff/timeline/create/comment/review/close/reopen/merge/checkout`,
 `github_issue_list/view/comment/close/reopen/create/develop`,
 `github_run_list/log/rerun/cancel`,

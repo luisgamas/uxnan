@@ -351,6 +351,69 @@ pub async fn repo_context(worktree_path: &str) -> Option<RepoContext> {
     })
 }
 
+/// The branch candidates for a new PR: what it can come **from** and go **to**.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrBranches {
+    /// Local branches — the candidates for the PR **head**.
+    pub local: Vec<String>,
+    /// Branches on `origin` — the candidates for the PR **base** (GitHub can only
+    /// target a branch that exists on the remote).
+    pub remote: Vec<String>,
+    /// The repo's default branch, preselected as the base.
+    pub default_base: String,
+    /// The worktree's checked-out branch, preselected as the head.
+    pub current: Option<String>,
+}
+
+/// The branch pickers' data for the create-PR form. Local branches come from git
+/// (offline-safe); the default base prefers GitHub's own answer and falls back to
+/// git's remote-HEAD probe, so the form still works when `gh` is logged out.
+pub async fn pr_branches(worktree_path: &str) -> Result<PrBranches, AppError> {
+    let local = crate::git::list_branches(worktree_path).await?;
+    let remote = crate::git::list_remote_branches(worktree_path).await?;
+    let current = crate::git::current_branch(worktree_path)
+        .await
+        .ok()
+        .filter(|b| !b.is_empty() && b != "HEAD");
+    Ok(PrBranches {
+        default_base: default_branch(worktree_path).await,
+        local,
+        remote,
+        current,
+    })
+}
+
+/// The repo's default branch (e.g. `main`). Asks GitHub first; on any failure
+/// (logged out, offline, not a GitHub repo) falls back to git's own resolution,
+/// stripped of its remote prefix so it names a branch rather than a tracking ref.
+pub async fn default_branch(worktree_path: &str) -> String {
+    if let Ok(v) = gh_json(
+        Some(worktree_path),
+        &["repo", "view", "--json", "defaultBranchRef"],
+    )
+    .await
+    {
+        let name = v
+            .get("defaultBranchRef")
+            .and_then(|r| r.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if !name.is_empty() {
+            return name;
+        }
+    }
+    let base = crate::git::default_base(worktree_path).await;
+    strip_remote_prefix(&base)
+}
+
+/// `origin/main` → `main`; anything else is returned unchanged. Pure.
+fn strip_remote_prefix(base: &str) -> String {
+    base.strip_prefix("origin/").unwrap_or(base).to_string()
+}
+
 /// The repo name (second path segment) from `origin`, e.g. `uxnan` from
 /// `git@github.com:luisgamas/uxnan.git`.
 async fn repo_name_from_remote(worktree_path: &str) -> Option<String> {
@@ -820,13 +883,20 @@ pub struct PrCreateOptions {
     pub title: String,
     #[serde(default)]
     pub body: String,
+    /// Branch the PR targets. `None` lets gh pick the repo's default branch.
     #[serde(default)]
     pub base: Option<String>,
+    /// Branch the PR comes from. `None` lets gh infer it from the checked-out
+    /// branch at `worktree_path`.
+    #[serde(default)]
+    pub head: Option<String>,
     #[serde(default)]
     pub draft: bool,
 }
 
-/// Create a PR from the worktree's current branch. Returns the new PR's URL.
+/// Create a PR. `base`/`head` are passed through when set; otherwise gh falls back
+/// to the repo's default branch and the worktree's checked-out branch. Returns the
+/// new PR's URL.
 pub async fn pr_create(worktree_path: &str, opts: PrCreateOptions) -> Result<String, AppError> {
     let title = opts.title.trim();
     if title.is_empty() {
@@ -841,14 +911,32 @@ pub async fn pr_create(worktree_path: &str, opts: PrCreateOptions) -> Result<Str
         "--body".into(),
         body,
     ];
-    if let Some(base) = opts
+    let base = opts
         .base
         .as_deref()
         .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+        .filter(|s| !s.is_empty());
+    let head = opts
+        .head
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    // A PR into itself is rejected by GitHub with a vague message; catch it here
+    // while we still know which field the user picked.
+    if let (Some(base), Some(head)) = (base, head) {
+        if base == head {
+            return Err(AppError::Invalid(format!(
+                "a pull request can't merge {head} into itself — pick a different base branch"
+            )));
+        }
+    }
+    if let Some(base) = base {
         args.push("--base".into());
         args.push(base.into());
+    }
+    if let Some(head) = head {
+        args.push("--head".into());
+        args.push(head.into());
     }
     if opts.draft {
         args.push("--draft".into());

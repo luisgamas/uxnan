@@ -1366,13 +1366,27 @@ pub async fn github_pr_timeline(
         .map_err(CommandError::from)
 }
 
-/// Create a PR from the worktree's current branch. Returns the new PR URL.
+/// Create a PR. `options.base`/`options.head` select the target/source branches;
+/// when omitted gh falls back to the default branch / the checked-out branch.
+/// Returns the new PR URL.
 #[tauri::command]
 pub async fn github_pr_create(
     worktree_path: String,
     options: crate::github::PrCreateOptions,
 ) -> Result<String, CommandError> {
     crate::github::pr_create(&worktree_path, options)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The branch pickers' data for the create-PR form: local branches (head
+/// candidates), `origin` branches (base candidates), the default base and the
+/// checked-out branch.
+#[tauri::command]
+pub async fn github_branches(
+    worktree_path: String,
+) -> Result<crate::github::PrBranches, CommandError> {
+    crate::github::pr_branches(&worktree_path)
         .await
         .map_err(CommandError::from)
 }
@@ -1647,8 +1661,15 @@ pub async fn github_ai_draft_pr(
     worktree_path: String,
     agent_id: String,
     model: String,
+    base: Option<String>,
 ) -> Result<String, CommandError> {
-    let base = git::default_base(&worktree_path).await;
+    // Draft from the diff against the base the PR will actually target, so the body
+    // describes the PR's own changes. Only when the caller has no base to offer do
+    // we fall back to the repo's resolved default.
+    let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
+        Some(base) => base,
+        None => git::default_base(&worktree_path).await,
+    };
     let diff = git::branch_diff(&worktree_path, &base)
         .await
         .map_err(CommandError::from)?;

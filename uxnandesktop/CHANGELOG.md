@@ -7,6 +7,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **Pick the PR's branches (base ← head).** The create-PR form now shows, and lets you
+  choose, **which branch the PR targets and which it comes from** — previously neither
+  was selectable: `gh` silently used the repo's default branch as the base and whatever
+  branch happened to be checked out as the head, which in the **section** (scoped to a
+  *repo*, not a worktree) meant opening a PR from a branch you never picked. The base
+  offers the repo's **`origin` branches** (GitHub can only target a branch that exists
+  on the remote) defaulting to the repo's default branch; the head offers **local
+  branches**, defaulting to the checked-out one. In the **right-panel tab** the head is
+  pinned to the active worktree's branch and shown read-only — that tab *is* that
+  worktree. The form refuses a base == head PR up front, warns when the head isn't
+  pushed to `origin` yet (`gh` runs with prompts disabled, so it would otherwise fail
+  opaquely), and the confirm dialog names both branches. **AI-drafted PR bodies now
+  diff against the chosen base** rather than the repo's default, and against
+  `origin/<base>` when it exists, so the body describes the changes the PR actually
+  carries instead of a stale local branch's. New backend command `github_branches`;
+  `PrCreateOptions` gains `head` (its `base` was already plumbed but never sent).
 - **PR/issue list & detail polish.** The PR and issue **lists** now show a colored
   **status icon** per row (open / merged / closed / draft; open vs closed issues), a
   **search bar** (`gh …list --search`), legible **relative dates** ("2 days ago" /

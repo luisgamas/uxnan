@@ -138,6 +138,7 @@
           worktreePath={projects.activeWorktreePath}
           defaultTitle={ctx.branch ?? ""}
           compact
+          lockHead
           onCreated={() => (showCreate = false)}
           onCancel={() => (showCreate = false)}
         />
