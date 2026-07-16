@@ -8,7 +8,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
-import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_card.dart';
 
 /// The "Usage & credit" block on the profile: per-provider quota windows, plan
 /// and credit read live from the connected PC (`agent/usageStats`). While
@@ -57,7 +57,7 @@ class UsageSection extends ConsumerWidget {
                 ),
               )
             else
-              IconButton(
+              IconButton.filledTonal(
                 icon: const Icon(Icons.refresh_rounded),
                 tooltip: l10n.usageRefreshAction,
                 onPressed: () =>
@@ -67,10 +67,14 @@ class UsageSection extends ConsumerWidget {
         ),
         const SizedBox(height: UxnanSpacing.sm),
         if (shown.isNotEmpty)
-          for (var i = 0; i < shown.length; i++) ...[
-            if (i > 0) const SizedBox(height: UxnanSpacing.sm),
-            _ProviderUsageCard(usage: shown[i], use24h: use24h),
-          ]
+          ExpressiveCardGroup(
+            count: shown.length,
+            itemBuilder: (context, index, position) => _ProviderUsageCard(
+              usage: shown[index],
+              use24h: use24h,
+              position: position,
+            ),
+          )
         else if (loading)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: UxnanSpacing.lg),
@@ -88,10 +92,15 @@ class UsageSection extends ConsumerWidget {
 }
 
 class _ProviderUsageCard extends StatelessWidget {
-  const _ProviderUsageCard({required this.usage, required this.use24h});
+  const _ProviderUsageCard({
+    required this.usage,
+    required this.use24h,
+    required this.position,
+  });
 
   final ProviderUsage usage;
   final bool use24h;
+  final CardGroupPosition position;
 
   @override
   Widget build(BuildContext context) {
@@ -100,45 +109,63 @@ class _ProviderUsageCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final visuals = _visualsFor(usage.provider);
 
-    return NeCard(
+    return ExpressiveCard(
+      position: position,
+      color: colors.surfaceContainer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: visuals.logo != null
-                    ? SvgPicture.asset(visuals.logo!)
-                    : Icon(
-                        visuals.icon,
-                        size: 20,
-                        color: colors.onSurfaceVariant,
-                      ),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHigh,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colors.outlineVariant),
+                ),
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: visuals.logo != null
+                      ? SvgPicture.asset(visuals.logo!)
+                      : Icon(
+                          visuals.icon,
+                          size: 24,
+                          color: colors.onSurfaceVariant,
+                        ),
+                ),
               ),
-              const SizedBox(width: UxnanSpacing.sm),
+              const SizedBox(width: UxnanSpacing.md),
               Expanded(
-                child: Text(
-                  visuals.label,
-                  style: textTheme.titleSmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      visuals.label,
+                      style: textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (usage.account?.plan != null ||
+                        usage.status != UsageStatus.ok) ...[
+                      const SizedBox(height: UxnanSpacing.xs),
+                      Wrap(
+                        spacing: UxnanSpacing.xs,
+                        runSpacing: UxnanSpacing.xs,
+                        children: [
+                          if (usage.account?.plan != null)
+                            _PlanPill(label: usage.account!.plan!),
+                          if (usage.status != UsageStatus.ok)
+                            _StatusPill(status: usage.status),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (usage.account?.plan != null) ...[
-                const SizedBox(width: UxnanSpacing.sm),
-                Text(
-                  usage.account!.plan!,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              if (usage.status != UsageStatus.ok) ...[
-                const SizedBox(width: UxnanSpacing.sm),
-                _StatusPill(status: usage.status),
-              ],
             ],
           ),
           if (usage.status == UsageStatus.ok) ...[
@@ -148,10 +175,32 @@ class _ProviderUsageCard extends StatelessWidget {
             ],
             if (usage.credit != null) ...[
               const SizedBox(height: UxnanSpacing.md),
-              Text(
-                _creditLine(l10n, usage.credit!),
-                style: textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHigh,
+                  borderRadius: const BorderRadius.all(UxnanRadius.lg),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        _creditLine(l10n, usage.credit!),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -192,25 +241,32 @@ class _WindowBar extends StatelessWidget {
             Expanded(
               child: Text(
                 window.label,
-                style: textTheme.bodySmall,
+                style: textTheme.labelLarge,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Text(
               '${window.usedPercent.round()}%',
-              style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+              style: textTheme.titleSmall?.copyWith(
+                color: colors.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
         const SizedBox(height: UxnanSpacing.xs),
-        ClipRRect(
-          borderRadius: const BorderRadius.all(UxnanRadius.full),
-          child: LinearProgressIndicator(
-            value: fraction,
-            minHeight: 6,
-            backgroundColor: colors.surfaceContainerHigh,
-            color: colors.primary,
+        Semantics(
+          label: window.label,
+          value: '${window.usedPercent.round()}%',
+          child: ClipRRect(
+            borderRadius: const BorderRadius.all(UxnanRadius.full),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: UxnanSpacing.sm,
+              backgroundColor: colors.surfaceContainerHighest,
+              color: colors.primary,
+            ),
           ),
         ),
         if (reset != null && reset.isAfter(DateTime.now())) ...[
@@ -222,6 +278,32 @@ class _WindowBar extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _PlanPill extends StatelessWidget {
+  const _PlanPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.sm,
+        vertical: UxnanSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: const BorderRadius.all(UxnanRadius.full),
+      ),
+      child: Text(
+        label,
+        style: textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
+      ),
     );
   }
 }
@@ -240,16 +322,19 @@ class _StatusPill extends StatelessWidget {
     final bg = isError ? colors.errorContainer : colors.secondaryContainer;
     final fg = isError ? colors.onErrorContainer : colors.onSecondaryContainer;
 
+    final textTheme = Theme.of(context).textTheme;
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UxnanSpacing.sm,
+        vertical: UxnanSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: const BorderRadius.all(UxnanRadius.full),
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg),
+        style: textTheme.labelSmall?.copyWith(color: fg),
       ),
     );
   }

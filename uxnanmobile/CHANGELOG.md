@@ -6,6 +6,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Profile provider-usage cards follow the Neural Expressive hierarchy
+- Provider usage cards now form a cohesive dynamic-corner group, use 44 dp
+  neutral logo surfaces, responsive plan/status pills and clearer M3 typography.
+  Quota percentages retain their meaningful progress bars with a more legible
+  8 dp track and accessibility semantics; credit is separated into a quiet tonal
+  row. Data loading, refresh and provider behavior are unchanged.
+
 ### Fixed — Activity heatmap opens on the current week (recent squares were off-screen)
 - Even with correct day keys, the contribution heatmap still looked empty for the
   **in-progress year**: the grid rendered all of Jan–Dec and, scrolled to its most
