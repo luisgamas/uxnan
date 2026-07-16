@@ -1402,6 +1402,22 @@ pub async fn github_pr_review(
         .map_err(CommandError::from)
 }
 
+/// Close a PR without merging.
+#[tauri::command]
+pub async fn github_pr_close(worktree_path: String, number: String) -> Result<(), CommandError> {
+    crate::github::pr_close(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Reopen a closed PR.
+#[tauri::command]
+pub async fn github_pr_reopen(worktree_path: String, number: String) -> Result<(), CommandError> {
+    crate::github::pr_reopen(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Merge a PR (`method` = `merge|squash|rebase`), optionally deleting the branch.
 #[tauri::command]
 pub async fn github_pr_merge(
@@ -1478,6 +1494,25 @@ pub async fn github_issue_comment(
         .map_err(CommandError::from)
 }
 
+/// Close an issue.
+#[tauri::command]
+pub async fn github_issue_close(worktree_path: String, number: String) -> Result<(), CommandError> {
+    crate::github::issue_close(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Reopen a closed issue.
+#[tauri::command]
+pub async fn github_issue_reopen(
+    worktree_path: String,
+    number: String,
+) -> Result<(), CommandError> {
+    crate::github::issue_reopen(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Create an issue in the worktree's repo. Returns the new issue URL.
 #[tauri::command]
 pub async fn github_issue_create(
@@ -1501,13 +1536,31 @@ pub async fn github_issue_develop(
     let number = crate::github::validate_number(&number).map_err(CommandError::from)?;
     let repo_path = repo_path_of(&state, &repo_id).await?;
     let branch = format!("issue-{number}");
-    // Create + link the branch (best-effort: an "already exists" is fine — we then
-    // just materialize the worktree from it).
-    let _ = crate::github::issue_develop(&repo_path, &number, &branch).await;
-    // Make sure the branch is present locally (it may have been created on the
-    // remote), then add the worktree checking it out.
-    let _ = git::fetch(&repo_path, &branch).await;
+    // If a worktree for this branch already exists (a re-run), just return it.
     let worktree_path = git::worktree_path_for(&repo_path, &branch);
+    if std::path::Path::new(&worktree_path).exists() {
+        return Ok(WorktreeEntry {
+            path: worktree_path,
+            branch: Some(branch),
+            head: None,
+            is_main: false,
+        });
+    }
+    // Create the linked branch on the remote. Tolerate an "already exists"/"already
+    // linked" (a re-run) — the branch is materialized below regardless — but surface
+    // any other failure (e.g. no write access) with gh's own message.
+    if let Err(e) = crate::github::issue_develop(&repo_path, &number, &branch).await {
+        let msg = e.to_string().to_lowercase();
+        if !msg.contains("already") {
+            return Err(CommandError::from(e));
+        }
+    }
+    // Materialize the branch locally from origin (an explicit `branch:branch`
+    // refspec creates the local branch), then add the worktree. A fetch failure here
+    // means the linked branch wasn't created on the remote.
+    git::fetch(&repo_path, &format!("{branch}:{branch}"))
+        .await
+        .map_err(CommandError::from)?;
     git::add_worktree_existing(&repo_path, &branch, &worktree_path)
         .await
         .map_err(CommandError::from)?;

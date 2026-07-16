@@ -509,8 +509,11 @@ pub struct PrListItem {
     pub base_ref_name: Option<String>,
     pub review_decision: Option<String>,
     pub updated_at: Option<String>,
-    /// CI roll-up for the row's status icon + popover.
+    /// CI roll-up for the row's status icon.
     pub checks_summary: CheckSummary,
+    /// The individual checks (already in the `statusCheckRollup` payload), so the
+    /// row's popover can list them without a per-row extra call.
+    pub checks: Vec<CheckItem>,
 }
 
 /// List PRs for a repo (resolved from `worktree_path`'s origin). `search` is an
@@ -556,6 +559,7 @@ fn pr_list_item_from_json(v: &serde_json::Value) -> PrListItem {
         review_decision: opt_str_field(v, "reviewDecision"),
         updated_at: opt_str_field(v, "updatedAt"),
         checks_summary: check_summary_from_rollup(v.get("statusCheckRollup")),
+        checks: check_items_from_rollup(v.get("statusCheckRollup")),
     }
 }
 
@@ -581,6 +585,8 @@ pub struct PrDetail {
     pub review_decision: Option<String>,
     /// When the PR was opened — the timestamp on the timeline's opening bubble.
     pub created_at: Option<String>,
+    /// When the PR was last updated (for the "edited N ago" hint).
+    pub updated_at: Option<String>,
     pub labels: Vec<String>,
     pub files: Vec<PrFile>,
     pub checks: Vec<CheckItem>,
@@ -668,6 +674,8 @@ pub struct TimelineEvent {
     pub subject: Option<String>,
     /// A cross-referenced issue/PR number (for `cross-referenced`).
     pub ref_number: Option<i64>,
+    /// Whether a `committed` event's commit signature is verified.
+    pub verified: Option<bool>,
 }
 
 /// Fetch full detail for one PR.
@@ -695,6 +703,7 @@ pub async fn pr_view(worktree_path: &str, number: &str) -> Result<PrDetail, AppE
         merge_state_status: opt_str_field(&v, "mergeStateStatus"),
         review_decision: opt_str_field(&v, "reviewDecision"),
         created_at: opt_str_field(&v, "createdAt"),
+        updated_at: opt_str_field(&v, "updatedAt"),
         labels: name_list(&v, "labels"),
         files: files_from_json(v.get("files")),
         checks: check_items_from_rollup(v.get("statusCheckRollup")),
@@ -891,6 +900,22 @@ pub async fn pr_comment(worktree_path: &str, number: &str, body: &str) -> Result
     .map(|_| ())
 }
 
+/// Close a PR without merging (`gh pr close <n>`).
+pub async fn pr_close(worktree_path: &str, number: &str) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    gh(Some(worktree_path), &["pr", "close", &number])
+        .await
+        .map(|_| ())
+}
+
+/// Reopen a closed PR (`gh pr reopen <n>`).
+pub async fn pr_reopen(worktree_path: &str, number: &str) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    gh(Some(worktree_path), &["pr", "reopen", &number])
+        .await
+        .map(|_| ())
+}
+
 /// Merge a PR. `method` is `merge|squash|rebase`.
 pub async fn pr_merge(
     worktree_path: &str,
@@ -1083,6 +1108,7 @@ fn map_timeline_event(e: &serde_json::Value) -> Option<TimelineEvent> {
         commit_message: None,
         subject: None,
         ref_number: None,
+        verified: None,
     };
 
     match event.as_str() {
@@ -1107,6 +1133,10 @@ fn map_timeline_event(e: &serde_json::Value) -> Option<TimelineEvent> {
                 .get("message")
                 .and_then(|s| s.as_str())
                 .map(|m| m.lines().next().unwrap_or("").to_string());
+            ev.verified = e
+                .get("verification")
+                .and_then(|v| v.get("verified"))
+                .and_then(|b| b.as_bool());
         }
         "labeled" | "unlabeled" => {
             ev.label = e
@@ -1173,6 +1203,22 @@ fn map_timeline_event(e: &serde_json::Value) -> Option<TimelineEvent> {
         _ => return None,
     }
     Some(ev)
+}
+
+/// Close an issue (`gh issue close <n>`).
+pub async fn issue_close(worktree_path: &str, number: &str) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    gh(Some(worktree_path), &["issue", "close", &number])
+        .await
+        .map(|_| ())
+}
+
+/// Reopen a closed issue (`gh issue reopen <n>`).
+pub async fn issue_reopen(worktree_path: &str, number: &str) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    gh(Some(worktree_path), &["issue", "reopen", &number])
+        .await
+        .map(|_| ())
 }
 
 /// Post a comment on an issue (`gh issue comment <n> --body`).
@@ -1594,7 +1640,7 @@ mod tests {
             { "event": "commented", "user": {"login": "alice"}, "body": "hi", "created_at": "2026-01-01T00:00:00Z" },
             { "event": "reviewed", "user": {"login": "bob"}, "state": "approved", "body": "", "submitted_at": "2026-01-02T00:00:00Z" },
             { "event": "reviewed", "user": {"login": "carol"}, "state": "commented", "body": "", "submitted_at": "2026-01-03T00:00:00Z" },
-            { "event": "committed", "sha": "abc1234567", "message": "feat: thing\n\nbody", "author": {"name": "Dev", "date": "2026-01-04T00:00:00Z"} },
+            { "event": "committed", "sha": "abc1234567", "message": "feat: thing\n\nbody", "author": {"name": "Dev", "date": "2026-01-04T00:00:00Z"}, "verification": {"verified": true} },
             { "event": "labeled", "actor": {"login": "alice"}, "label": {"name": "bug", "color": "d73a4a"}, "created_at": "2026-01-05T00:00:00Z" },
             { "event": "cross-referenced", "actor": {"login": "eve"}, "created_at": "2026-01-06T00:00:00Z", "source": {"issue": {"number": 42, "title": "Related"}} },
             { "event": "subscribed", "actor": {"login": "noise"}, "created_at": "2026-01-07T00:00:00Z" },
@@ -1615,6 +1661,7 @@ mod tests {
         assert_eq!(t[2].commit_sha.as_deref(), Some("abc1234")); // 7-char short
         assert_eq!(t[2].commit_message.as_deref(), Some("feat: thing")); // first line
         assert_eq!(t[2].created_at.as_deref(), Some("2026-01-04T00:00:00Z"));
+        assert_eq!(t[2].verified, Some(true)); // from verification.verified
 
         assert_eq!(t[3].event, "labeled");
         assert_eq!(t[3].label.as_deref(), Some("bug"));
