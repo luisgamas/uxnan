@@ -1621,14 +1621,47 @@ pub async fn github_issue_reopen(
         .map_err(CommandError::from)
 }
 
-/// Create an issue in the worktree's repo. Returns the new issue URL.
+/// Create an issue in the worktree's repo, optionally labeled and assigned.
+/// Returns the new issue URL.
 #[tauri::command]
 pub async fn github_issue_create(
     worktree_path: String,
     title: String,
     body: String,
+    labels: Vec<String>,
+    assignees: Vec<String>,
 ) -> Result<String, CommandError> {
-    crate::github::issue_create(&worktree_path, &title, &body)
+    crate::github::issue_create(&worktree_path, &title, &body, &labels, &assignees)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The repo's labels, for the issue-create picker.
+#[tauri::command]
+pub async fn github_labels(
+    worktree_path: String,
+) -> Result<Vec<crate::github::Label>, CommandError> {
+    crate::github::labels(&worktree_path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Logins assignable in the worktree's repo.
+#[tauri::command]
+pub async fn github_assignees(worktree_path: String) -> Result<Vec<String>, CommandError> {
+    crate::github::assignees(&worktree_path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Request reviews on a PR from the given logins.
+#[tauri::command]
+pub async fn github_pr_add_reviewers(
+    worktree_path: String,
+    number: String,
+    logins: Vec<String>,
+) -> Result<(), CommandError> {
+    crate::github::pr_add_reviewers(&worktree_path, &number, &logins)
         .await
         .map_err(CommandError::from)
 }

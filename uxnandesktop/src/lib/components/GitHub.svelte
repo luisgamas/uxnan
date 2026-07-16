@@ -32,6 +32,9 @@
     githubIssueClose,
     githubIssueReopen,
     githubIssueCreate,
+    githubLabels,
+    githubAssignees,
+    githubPrAddReviewers,
     githubRunLog,
     githubRunRerun,
     githubRunCancel,
@@ -43,6 +46,7 @@
     AgentModel,
     PrDetail,
     IssueDetail,
+    Label,
     TimelineEvent,
     CheckItem,
     CheckSummary,
@@ -551,6 +555,35 @@
   let newIssueTitle = $state("");
   let newIssueBody = $state("");
   let issueCommentBody = $state("");
+  // Labels + assignees for the new issue. Both lists come from the repo, loaded
+  // once the create form opens — an issue filed here should be as triaged as one
+  // filed on github.com, not a bare title that someone has to label later.
+  let repoLabels = $state<Label[]>([]);
+  let repoAssignees = $state<string[]>([]);
+  let newIssueLabels = $state<string[]>([]);
+  let newIssueAssignees = $state<string[]>([]);
+
+  function toggleIn(list: string[], value: string): string[] {
+    return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+  }
+
+  /** Open the create-issue form, pulling the repo's labels + assignable logins
+   *  once — they're only needed to file one, so this doesn't run on every visit
+   *  to the Issues pane. Best-effort: a repo with none, or a gh that can't list
+   *  them, just shows no chips. */
+  function openCreateIssue() {
+    showCreateIssue = !showCreateIssue;
+    if (!showCreateIssue) return;
+    const p = path();
+    if (!p) return;
+    void Promise.all([
+      githubLabels(p).catch(() => [] as Label[]),
+      githubAssignees(p).catch(() => [] as string[]),
+    ]).then(([labels, people]) => {
+      repoLabels = labels;
+      repoAssignees = people;
+    });
+  }
   // The issue timeline (comments + events). Same fallback posture as the PR one.
   let issueTimeline = $state<TimelineEvent[]>([]);
   let issueTimelineLoading = $state(false);
@@ -630,13 +663,46 @@
     if (!p || !newIssueTitle.trim()) return;
     busy = true;
     try {
-      const url = await githubIssueCreate(p, newIssueTitle.trim(), newIssueBody);
+      const url = await githubIssueCreate(
+        p,
+        newIssueTitle.trim(),
+        newIssueBody,
+        newIssueLabels,
+        newIssueAssignees,
+      );
       toast.success(i18n.t("github.toast.issueCreated"));
       showCreateIssue = false;
       newIssueTitle = "";
       newIssueBody = "";
+      newIssueLabels = [];
+      newIssueAssignees = [];
       await github.loadIssues(issueState);
       if (url) void openExternal(url);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  // --- Reviewers ------------------------------------------------------------
+  /** Logins typed into the PR's "request a review" field (comma-separated). */
+  let reviewerInput = $state("");
+
+  async function requestReviewers() {
+    const p = path();
+    if (!p || !prDetail || !reviewerInput.trim()) return;
+    const logins = reviewerInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (logins.length === 0) return;
+    busy = true;
+    try {
+      await githubPrAddReviewers(p, String(prDetail.number), logins);
+      reviewerInput = "";
+      toast.success(i18n.t("github.toast.reviewersRequested"));
+      await selectPr(prDetail.number);
     } catch (e) {
       toastError(e);
     } finally {
@@ -1641,11 +1707,28 @@
         {#each pr.labels.slice(0, 6) as label, li (li)}{@render pill(label, "muted")}{/each}
       </div>
 
-      <!-- Reviewers -->
-      {#if pr.reviewers.length > 0}
+      <!-- Reviewers — shown AND requestable. They used to be display-only, so
+           asking for a review meant leaving for github.com. -->
+      {#if pr.reviewers.length > 0 || isOpen}
         <div class="flex flex-wrap items-center gap-2">
           <span class={cn("inline-flex items-center gap-1.5", text.section)}><UsersIcon class="size-3.5" />{i18n.t("github.pr.reviewers")}</span>
           {#each pr.reviewers as r, ri (ri)}{@render pill(r, "muted")}{/each}
+          {#if pr.reviewers.length === 0}
+            <span class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.pr.noReviewers")}</span>
+          {/if}
+          {#if isOpen}
+            <div class="flex items-center gap-1">
+              <Input
+                class="h-7 w-52"
+                placeholder={i18n.t("github.pr.addReviewerPlaceholder")}
+                bind:value={reviewerInput}
+                onkeydown={(e) => e.key === "Enter" && requestReviewers()}
+              />
+              <Button variant="outline" size="sm" class="h-7" disabled={busy || !reviewerInput.trim()} onclick={requestReviewers}>
+                {i18n.t("github.pr.addReviewer")}
+              </Button>
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -1947,7 +2030,7 @@
             triggerClass="w-36"
             onChange={(v) => { issueState = v; void github.loadIssues(v); }}
           />
-          <Button size="sm" onclick={() => (showCreateIssue = !showCreateIssue)}>
+          <Button size="sm" onclick={openCreateIssue}>
             <PlusIcon class={icon.button} />
             {i18n.t("github.issue.create")}
           </Button>
@@ -1955,9 +2038,60 @@
       {/snippet}
       <div class="space-y-4">
         {#if showCreateIssue}
-          <div class={cn("space-y-2 p-4", panel.card)}>
+          <div class={cn("space-y-3 p-4", panel.card)}>
             <Input placeholder={i18n.t("github.pr.titleLabel")} bind:value={newIssueTitle} />
             <Textarea placeholder={i18n.t("github.pr.bodyLabel")} bind:value={newIssueBody} rows={4} />
+
+            <!-- Labels + assignees as toggle chips: the repo's real sets, so an
+                 issue filed here lands as triaged as one filed on github.com
+                 instead of a bare title someone has to label later. -->
+            {#if repoLabels.length > 0}
+              <div class="space-y-1.5">
+                <span class={cn(text.section)}>{i18n.t("github.issue.labels")}</span>
+                <div class="flex flex-wrap gap-1.5">
+                  {#each repoLabels as l (l.name)}
+                    {@const on = newIssueLabels.includes(l.name)}
+                    <button
+                      type="button"
+                      class={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                        on ? "border-transparent text-foreground" : "border-border/60 text-muted-foreground hover:text-foreground",
+                      )}
+                      style:background-color={on ? `#${l.color}33` : undefined}
+                      style:border-color={on ? `#${l.color}` : undefined}
+                      onclick={() => (newIssueLabels = toggleIn(newIssueLabels, l.name))}
+                    >
+                      <span class="size-2 rounded-full" style:background-color={`#${l.color}`}></span>
+                      {l.name}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            {#if repoAssignees.length > 0}
+              <div class="space-y-1.5">
+                <span class={cn(text.section)}>{i18n.t("github.issue.assignees")}</span>
+                <div class="flex flex-wrap gap-1.5">
+                  {#each repoAssignees as who (who)}
+                    {@const on = newIssueAssignees.includes(who)}
+                    <button
+                      type="button"
+                      class={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                        on
+                          ? "border-primary/50 bg-primary/10 text-foreground"
+                          : "border-border/60 text-muted-foreground hover:text-foreground",
+                      )}
+                      onclick={() => (newIssueAssignees = toggleIn(newIssueAssignees, who))}
+                    >
+                      <UserIcon class="size-3" />{who}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
             <div class="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onclick={() => (showCreateIssue = false)}>{i18n.t("common.cancel")}</Button>
               <Button size="sm" disabled={busy || !newIssueTitle.trim()} onclick={createIssue}>{i18n.t("github.issue.create")}</Button>

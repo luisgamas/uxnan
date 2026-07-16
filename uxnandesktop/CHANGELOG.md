@@ -44,6 +44,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **Request reviewers; label and assign new issues.** The reviewers row *displayed*
+  reviewers but couldn't request any — now it takes comma-separated logins
+  (`gh pr edit --add-reviewer`, new `github_pr_add_reviewers`). Creating an issue offers
+  the repo's real **labels** (colored chips via the new `github_labels` → `gh label list`)
+  and **assignees** (new `github_assignees` → the assignees API), so one filed here lands
+  as triaged as one filed on github.com instead of a bare title someone has to label
+  later. Logins and label names are validated against a leading `-` before being passed
+  as args — not an injection risk (args are a vector, never a shell), but a leading dash
+  would silently turn `--add-reviewer -x` into a different command.
 - **Edit a PR or issue after opening it.** The pencil in the detail header edits the
   **title and description** in place (`gh pr edit` / `gh issue edit`, new
   `github_pr_edit` / `github_issue_edit`). Until now you could create a PR or issue from

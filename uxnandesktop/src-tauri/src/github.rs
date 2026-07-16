@@ -1259,6 +1259,84 @@ async fn merge_state(worktree_path: &str, number: &str) -> Option<MergeState> {
     })
 }
 
+/// A repo label, for the issue-create picker.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Label {
+    pub name: String,
+    /// Hex color without the `#`, as GitHub stores it (e.g. `d73a4a`).
+    pub color: String,
+}
+
+/// The repo's labels (`gh label list`). Best-effort: a repo with none, or a gh
+/// that can't list them, yields an empty picker rather than an error.
+pub async fn labels(worktree_path: &str) -> Result<Vec<Label>, AppError> {
+    let v = gh_json(
+        Some(worktree_path),
+        &["label", "list", "--json", "name,color", "--limit", "100"],
+    )
+    .await?;
+    Ok(v.as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|r| Label {
+                    name: str_field(r, "name"),
+                    color: str_field(r, "color"),
+                })
+                .filter(|l| !l.name.is_empty())
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// Logins that can be assigned to an issue/PR in this repo.
+pub async fn assignees(worktree_path: &str) -> Result<Vec<String>, AppError> {
+    let v = gh_json(
+        Some(worktree_path),
+        &["api", "repos/{owner}/{repo}/assignees"],
+    )
+    .await?;
+    Ok(v.as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| r.get("login").and_then(|l| l.as_str()))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+/// Reject a value that gh would read as a **flag** rather than a value. Logins and
+/// label names are user-chosen and interpolated as args; args are a vector (never a
+/// shell), so this isn't about injection — it's that a leading `-` silently turns
+/// `--add-reviewer -x` into a different command.
+fn validate_arg_value(kind: &str, value: &str) -> Result<String, AppError> {
+    let v = value.trim();
+    if v.is_empty() || v.starts_with('-') {
+        return Err(AppError::Invalid(format!("invalid {kind}: {value:?}")));
+    }
+    Ok(v.to_string())
+}
+
+/// Request reviews from `logins` (`gh pr edit --add-reviewer`).
+pub async fn pr_add_reviewers(
+    worktree_path: &str,
+    number: &str,
+    logins: &[String],
+) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    if logins.is_empty() {
+        return Err(AppError::Invalid("no reviewers given".to_string()));
+    }
+    let mut args: Vec<String> = vec!["pr".into(), "edit".into(), number];
+    for login in logins {
+        args.push("--add-reviewer".into());
+        args.push(validate_arg_value("reviewer", login)?);
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    gh(Some(worktree_path), &arg_refs).await.map(|_| ())
+}
+
 /// Edit a PR's title and/or body (`gh pr edit`). Empty fields are left untouched,
 /// so this can't blank a body by accident.
 pub async fn pr_edit(
@@ -1724,21 +1802,36 @@ pub async fn issue_develop(
     .map(|_| ())
 }
 
-/// Create an issue. Returns the new issue's URL.
+/// Create an issue, optionally labeled and assigned. Returns the new issue's URL.
 pub async fn issue_create(
     worktree_path: &str,
     title: &str,
     body: &str,
+    labels: &[String],
+    assignees: &[String],
 ) -> Result<String, AppError> {
     let title = title.trim();
     if title.is_empty() {
         return Err(AppError::Invalid("an issue title is required".to_string()));
     }
-    gh(
-        Some(worktree_path),
-        &["issue", "create", "--title", title, "--body", body],
-    )
-    .await
+    let mut args: Vec<String> = vec![
+        "issue".into(),
+        "create".into(),
+        "--title".into(),
+        title.into(),
+        "--body".into(),
+        body.into(),
+    ];
+    for label in labels {
+        args.push("--label".into());
+        args.push(validate_arg_value("label", label)?);
+    }
+    for who in assignees {
+        args.push("--assignee".into());
+        args.push(validate_arg_value("assignee", who)?);
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    gh(Some(worktree_path), &arg_refs).await
 }
 
 // ---------------------------------------------------------------------------
@@ -2026,6 +2119,22 @@ mod tests {
         let mut policy = MergePolicy::default();
         apply_branch_rules(&mut policy, &rules);
         assert_eq!(policy.required_checks, vec!["build", "test"]);
+    }
+
+    #[test]
+    fn arg_values_reject_anything_gh_would_read_as_a_flag() {
+        assert_eq!(validate_arg_value("label", " bug ").unwrap(), "bug");
+        assert_eq!(
+            validate_arg_value("reviewer", "luisgamas").unwrap(),
+            "luisgamas"
+        );
+        // `@me` / `@copilot` are gh's own shorthands and must stay usable.
+        assert_eq!(validate_arg_value("assignee", "@me").unwrap(), "@me");
+        // A leading dash would turn `--add-reviewer -x` into a different command.
+        assert!(validate_arg_value("reviewer", "-x").is_err());
+        assert!(validate_arg_value("label", "--force").is_err());
+        assert!(validate_arg_value("label", "   ").is_err());
+        assert!(validate_arg_value("label", "").is_err());
     }
 
     #[test]

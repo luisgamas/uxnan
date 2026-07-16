@@ -955,6 +955,13 @@ export interface PrCreateOptions {
   draft?: boolean;
 }
 
+/** A repo label (`github_labels`), for the issue-create picker. */
+export interface Label {
+  name: string;
+  /** Hex color without the `#`, as GitHub stores it (e.g. `d73a4a`). */
+  color: string;
+}
+
 /** What the repo + the base branch's rules allow when merging (`github_merge_info`). */
 export interface MergePolicy {
   /** Methods allowed for this base: repo settings ∩ the branch's rules. */

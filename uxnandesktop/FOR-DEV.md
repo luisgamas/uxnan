@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 184 Rust backend tests + 138 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 185 Rust backend tests + 138 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -93,7 +93,9 @@ mobile pairing) is NOT started.**
   an **expandable CI checks section** + a **CI popover** on the head commit and each
   PR-list row, and the review/merge/close **tools in a bottom action bar**, with
   merge/approve/request-changes **gated to open PRs**; **issue** triage/create +
-  **close/reopen**; PR/issue **title+description editing** in place (`gh pr/issue edit`);
+  **close/reopen** (+ **labels/assignees** from the repo's real sets when filing);
+  PR/issue **title+description editing** in place (`gh pr/issue edit`) and **reviewer
+  requests** (`--add-reviewer`);
   **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
   / `gh issue develop` — both behind a **settings + confirmation dialog** (editable branch
   name pre-filled with the generic default, GitHub-slug suggestion for issues, launch-agent
@@ -122,7 +124,7 @@ mobile pairing) is NOT started.**
   (`gh pr ready`, reversible). All via the local **`gh` CLI** (incl.
   `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
   the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`
-  (35 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
+  (38 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
 
 ## GitHub integration — follow-ups ☐
 
@@ -163,7 +165,7 @@ The `gh`-backed integration above is complete for the standalone desktop app. De
 - [ ] **Cross-component (mobile):** surface PR/CI/issue status on the paired phone via
       new `shared` `github/*` JSON-RPC methods served by the embedded bridge (Phase 6).
 - [ ] **Svelte component tests** for the GitHub UI (part of the standing component-test
-      TODO below); the pure backend logic is unit-tested in `github.rs` (19 tests).
+      TODO below); the pure backend logic is unit-tested in `github.rs` (20 tests).
 
 ## Integrated developer browser ☐
 
@@ -374,7 +376,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 184 Rust + 138 Vitest tests.
+  deferred with Apple). 185 Rust + 138 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

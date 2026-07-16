@@ -45,7 +45,8 @@ registered git repo). Panes:
 
   The **pencil** in the header edits the **title and description** in place
   (`gh pr edit` / `gh issue edit`) — a PR/issue opened from here no longer has to go to
-  github.com to fix a typo. Descriptions, comments and reviews render as **Markdown** —
+  github.com to fix a typo. The **reviewers** row also *requests* reviews (comma-separated
+  logins → `gh pr edit --add-reviewer`), not just displays them. Descriptions, comments and reviews render as **Markdown** —
   see *Markdown in comments* below. The **reply box + review / merge / Close-PR / checkout** tools live in a
   **bottom action bar** that stays available from **both tabs** (reviewing the diff is
   exactly when you want to approve); **merge / approve / request-changes are only
@@ -55,7 +56,9 @@ registered git repo). Panes:
   view shows a colored pill + **opened / edited** times, the same **timeline**
   (description + comments + events) and a bottom bar with the **comment field**, a
   **Close / Reopen** button, and **Start work → worktree** (creates + links a branch via
-  `gh issue develop` and opens it as a new worktree).
+  `gh issue develop` and opens it as a new worktree). **Creating** an issue offers the
+  repo's real **labels** (colored chips, from `gh label list`) and **assignees** (from
+  the assignees API), so one filed here lands as triaged as one filed on github.com.
 - **Actions** — recent workflow runs; open a run's **log**, and **re-run**,
   **re-run failed**, or **cancel**.
 - **Settings** — an **Account / Session** block (signed-in user, host, token scopes,
@@ -222,11 +225,12 @@ older state loads unchanged.
 
 ## Backend commands
 
-All 35 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
+All 38 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `commands.rs`, registered in `lib.rs`, typed wrappers in `src/lib/api.ts`):
 `github_status`, `github_repo_context`, `github_branches`, `github_merge_info`,
+`github_labels`, `github_assignees`,
 `github_pr_list/view/diff/timeline/create/comment/review/close/reopen/merge/checkout`,
-`github_pr_update_branch/ready/disable_auto_merge/edit`,
+`github_pr_update_branch/ready/disable_auto_merge/edit/add_reviewers`,
 `github_issue_list/view/comment/close/reopen/create/develop/edit`,
 `github_run_list/log/rerun/cancel`,
 `github_rate_limit`, `github_notifications_count`, `github_clone`,

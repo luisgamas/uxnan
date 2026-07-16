@@ -25,6 +25,7 @@ import type {
   McpInfo,
   HookServerInfo,
   ImageDiff,
+  Label,
   MergeInfo,
   PrBranches,
   PrCreateOptions,
@@ -889,8 +890,35 @@ export function githubIssueCreate(
   worktreePath: string,
   title: string,
   body: string,
+  labels: string[] = [],
+  assignees: string[] = [],
 ): Promise<string> {
-  return invoke<string>("github_issue_create", { worktreePath, title, body });
+  return invoke<string>("github_issue_create", {
+    worktreePath,
+    title,
+    body,
+    labels,
+    assignees,
+  });
+}
+
+/** The repo's labels, for the issue-create picker. */
+export function githubLabels(worktreePath: string): Promise<Label[]> {
+  return invoke<Label[]>("github_labels", { worktreePath });
+}
+
+/** Logins assignable in the worktree's repo. */
+export function githubAssignees(worktreePath: string): Promise<string[]> {
+  return invoke<string[]>("github_assignees", { worktreePath });
+}
+
+/** Request reviews on a PR from the given logins. */
+export function githubPrAddReviewers(
+  worktreePath: string,
+  number: string,
+  logins: string[],
+): Promise<void> {
+  return invoke("github_pr_add_reviewers", { worktreePath, number, logins });
 }
 
 /** Start work on an issue: create + link a branch and add it as a new worktree. */
