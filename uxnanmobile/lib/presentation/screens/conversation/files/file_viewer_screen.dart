@@ -448,7 +448,6 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
         padding: EdgeInsets.only(top: topInset),
         child: child,
       );
-
 }
 
 Future<_ViewerPayload> _loadViewer(

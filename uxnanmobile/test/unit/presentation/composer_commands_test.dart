@@ -18,7 +18,8 @@ void main() {
     });
 
     test('splits /name args into name + trimmed args', () {
-      final parsed = parseAgentCommand('/refactor  lib/auth.dart high ', commands);
+      final parsed =
+          parseAgentCommand('/refactor  lib/auth.dart high ', commands);
       expect(parsed, isNotNull);
       expect(parsed!.name, 'refactor');
       expect(parsed.args, 'lib/auth.dart high');

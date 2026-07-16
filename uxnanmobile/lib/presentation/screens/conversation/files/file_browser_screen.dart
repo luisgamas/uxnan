@@ -106,19 +106,16 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
           estimatedOffset.clamp(
             position.minScrollExtent,
             position.maxScrollExtent,
-          ).toDouble(),
+          ),
         );
         await WidgetsBinding.instance.endOfFrame;
       }
     }
 
+    if (!mounted) return;
     final revealedContext = _revealedFileKey.currentContext;
-    if (revealedContext != null) {
-      await Scrollable.ensureVisible(
-        revealedContext,
-        alignment: 0.45,
-        duration: Duration.zero,
-      );
+    if (revealedContext != null && revealedContext.mounted) {
+      await Scrollable.ensureVisible(revealedContext, alignment: 0.45);
     }
     if (!mounted) return;
 
@@ -494,8 +491,9 @@ class _FileSearchAnchor extends ConsumerWidget {
               .read(fileBrowserManagerProvider)
               .searchFiles(cwd, query, limit: 40);
           if (controller.text.trim() != query) return const <Widget>[];
-          final matches = result.matches.where((match) =>
-              match.type == FileEntryType.file);
+          final matches = result.matches.where(
+            (match) => match.type == FileEntryType.file,
+          );
           if (matches.isEmpty) {
             return [_FileSearchMessage(message: l10n.fileBrowserSearchEmpty)];
           }
@@ -572,7 +570,7 @@ class _FileSearchMessage extends StatelessWidget {
 }
 
 String _basename(String path) {
-  final normalized = path.replaceAll('\\', '/');
+  final normalized = path.replaceAll(r'\', '/');
   final index = normalized.lastIndexOf('/');
   return index < 0 ? normalized : normalized.substring(index + 1);
 }

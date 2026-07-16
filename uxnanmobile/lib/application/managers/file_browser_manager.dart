@@ -217,7 +217,7 @@ class FileBrowserManager {
   /// untouched. Merely opening or closing search never calls this method.
   Future<void> revealFile(String cwd, String path) async {
     final segments = path
-        .replaceAll('\\', '/')
+        .replaceAll(r'\', '/')
         .split('/')
         .where((segment) => segment.isNotEmpty && segment != '.')
         .toList();
@@ -226,9 +226,8 @@ class FileBrowserManager {
     await loadRoot(cwd);
     var directoryPath = '';
     for (final segment in segments.take(segments.length - 1)) {
-      directoryPath = directoryPath.isEmpty
-          ? segment
-          : '$directoryPath/$segment';
+      directoryPath =
+          directoryPath.isEmpty ? segment : '$directoryPath/$segment';
       final node = _findNode(_rootFor(cwd), directoryPath);
       if (node == null || !node.isDir) return;
       if (!node.expanded) await toggleDirectory(cwd, directoryPath);

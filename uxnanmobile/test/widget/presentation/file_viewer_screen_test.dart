@@ -93,7 +93,8 @@ FileBrowserManager _imageManager() => FileBrowserManager(
         result: const <String, dynamic>{
           'path': 'pixel.png',
           'base64Data':
-              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+                  '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
           'mimeType': 'image/png',
         },
       ),
