@@ -28,8 +28,11 @@
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
@@ -38,6 +41,11 @@ import type {
   QuestionOption,
   SendTurnOptions,
 } from '@uxnan/shared';
+import {
+  expandCustomCommand,
+  scanCustomCommands,
+  type CustomCommandSource,
+} from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
 import { extractPlanSteps, planBlock, type PlanStepBlock } from './content-blocks.js';
@@ -65,6 +73,7 @@ const OPENCODE_CAPABILITIES: AgentCapabilities = {
   // OpenCode reports per-step token counts (`step-finish.tokens` / the assistant
   // message `tokens`), surfaced as `usage.tokens` so the phone shows context use.
   reportsContextUsage: true,
+  commands: true,
 };
 
 /**
@@ -809,6 +818,34 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         ),
       );
     });
+  }
+
+  /**
+   * OpenCode's custom commands are markdown files under `.opencode/command`
+   * (project) and `~/.config/opencode/command` (user). Both singular/plural
+   * directory spellings are scanned for robustness. The server API doesn't run
+   * them, so the bridge scans + expands them itself.
+   */
+  #commandSource(cwd?: string): CustomCommandSource {
+    const dir = cwd ?? this.#defaultCwd;
+    return {
+      dirs: [
+        join(dir, '.opencode', 'command'),
+        join(dir, '.opencode', 'commands'),
+        join(homedir(), '.config', 'opencode', 'command'),
+        join(homedir(), '.config', 'opencode', 'commands'),
+      ],
+      ext: '.md',
+      format: 'markdown',
+    };
+  }
+
+  listCommands(cwd?: string): Promise<AgentCommand[]> {
+    return scanCustomCommands(this.#commandSource(cwd));
+  }
+
+  expandCommand(name: string, args?: string, cwd?: string): Promise<string> {
+    return expandCustomCommand(this.#commandSource(cwd), name, args);
   }
 }
 

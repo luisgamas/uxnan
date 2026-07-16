@@ -3,7 +3,13 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (adapters/base-adapter).
  */
-import type { AgentCapabilities, AgentId, AgentModel } from './agent-capabilities.js';
+import type {
+  AgentCapabilities,
+  AgentCommand,
+  AgentCommandInvocation,
+  AgentId,
+  AgentModel,
+} from './agent-capabilities.js';
 import type { AgentConfig } from './agent-config.js';
 import type { TurnAttachment } from '../models/workspace.js';
 import type { ApprovalDecision } from '../models/approval.js';
@@ -59,6 +65,15 @@ export interface SendTurnOptions {
    * configured default posture (no behaviour change).
    */
   accessMode?: AccessMode;
+  /**
+   * Invoke an advertised agent command (from `agent/commands`) instead of
+   * free-form {@link text}. The {@link AgentManager} resolves it before the
+   * adapter runs — expanding a custom prompt-template via {@link
+   * IAgentAdapter.expandCommand}, or composing the CLI's native `/name args`
+   * form — and sets {@link text} to the result, so most adapters need no
+   * per-command handling. Absent for an ordinary text turn.
+   */
+  command?: AgentCommandInvocation;
 }
 
 export interface IAgentAdapter {
@@ -90,4 +105,25 @@ export interface IAgentAdapter {
 
   /** List the models this agent's CLI reports as available (optional). */
   listModels?(): Promise<AgentModel[]>;
+
+  /**
+   * List the special ("slash") commands this agent exposes — control commands
+   * reachable headless plus user-defined prompt-template commands scanned from
+   * disk (optional; adapters with none simply don't implement it). `cwd` is the
+   * thread/project directory so project-scoped custom commands (`<cwd>/.claude/
+   * commands`, `<cwd>/.gemini/commands`, …) are discovered alongside user-level
+   * ones. Discovery only; invocation flows through {@link sendTurn} with {@link
+   * SendTurnOptions.command}.
+   */
+  listCommands?(cwd?: string): Promise<AgentCommand[]>;
+
+  /**
+   * Resolve a custom prompt-template command to the final prompt text (reads the
+   * template file from `cwd`/user config, substitutes arguments). Implemented
+   * only by adapters whose commands are prompt templates the bridge expands
+   * itself (Codex/Gemini/OpenCode); adapters whose commands run natively (Claude
+   * Code, ACP agents) leave it unset and receive the composed `/name args` form
+   * as {@link SendTurnOptions.text}. Throw if `name` is not a known custom command.
+   */
+  expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;
 }

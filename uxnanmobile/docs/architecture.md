@@ -99,8 +99,9 @@ and composed in `application_providers.dart`. The important ones:
 - **Graceful degradation.** Thread `rename`/`delete`/`archive`/`unarchive` apply
   locally first, then call the bridge best-effort and swallow "method not found"
   so the app stays usable before the bridge implements a handler.
-- **Capability-aware UI.** Conversation controls (approval row, attach button)
-  are gated by the active agent's `AgentCapabilities`, permissive when unknown.
+- **Capability-aware UI.** The compact turn-context shelf (approval and model
+  run options) and the "+" media menu are gated by the active agent's
+  capabilities; unknown capabilities remain permissive.
 - **drift migrations** are additive with explicit version bumps; see
   `local_database.dart`.
 

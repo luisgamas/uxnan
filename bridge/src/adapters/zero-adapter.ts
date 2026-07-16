@@ -41,6 +41,7 @@ import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
@@ -62,6 +63,8 @@ const ZERO_CAPABILITIES: AgentCapabilities = {
   images: true,
   // ACP carries no per-turn token usage (FOR-DEV: read from `zero usage`).
   reportsContextUsage: false,
+  // ACP advertises slash commands via `available_commands_update` (captured below).
+  commands: true,
 };
 
 /** Zero's ACP session modes (from `session/new`'s `availableModes`). */
@@ -147,6 +150,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   /** sessionId → last mode we set (avoid redundant set_mode). */
+  /** Slash commands from the latest ACP `available_commands_update` (see listCommands). */
+  #commands: AgentCommand[] = [];
   readonly #modeBySession = new Map<string, ZeroMode>();
   /** sessionId → last model we set. */
   readonly #modelBySession = new Map<string, string>();
@@ -451,9 +456,15 @@ export class ZeroAdapter extends BaseAgentAdapter {
   #onNotification(method: string, params: unknown): void {
     if (method !== 'session/update') return;
     const p = isRecord(params) ? params : {};
+    const update = isRecord(p['update']) ? p['update'] : {};
+    // Slash-command availability is session-scoped and can arrive before any
+    // turn — capture it regardless of an active run (see listCommands).
+    if (str(update['sessionUpdate']) === 'available_commands_update') {
+      this.#captureCommands(update['availableCommands'] ?? update['available_commands']);
+      return;
+    }
     const run = this.#runBySession.get(str(p['sessionId']));
     if (!run || run.finished) return;
-    const update = isRecord(p['update']) ? p['update'] : {};
     switch (str(update['sessionUpdate'])) {
       case 'agent_message_chunk': {
         const text = contentText(update['content']);
@@ -489,9 +500,37 @@ export class ZeroAdapter extends BaseAgentAdapter {
         return;
       }
       default:
-        // current_mode_update / available_commands_update / user_message_chunk: ignore.
+        // current_mode_update / user_message_chunk: ignore.
         return;
     }
+  }
+
+  /** Record an ACP `available_commands_update` payload for `agent/commands`. */
+  #captureCommands(raw: unknown): void {
+    if (!Array.isArray(raw)) return;
+    const commands: AgentCommand[] = [];
+    for (const item of raw) {
+      if (!isRecord(item)) continue;
+      const name = str(item['name']);
+      if (!name) continue;
+      const description = str(item['description']);
+      commands.push({
+        name,
+        source: 'acp',
+        headlessSupported: true,
+        ...(description ? { description } : {}),
+      });
+    }
+    this.#commands = commands;
+  }
+
+  /**
+   * Slash commands Zero advertised over ACP (`available_commands_update`),
+   * invoked natively through `session/prompt`. Empty until a session is
+   * established and the agent has advertised its commands.
+   */
+  listCommands(): Promise<AgentCommand[]> {
+    return Promise.resolve(this.#commands.map((c) => ({ ...c })));
   }
 
   /** Merge a tool_call / tool_call_update; emit a block once it terminates. */

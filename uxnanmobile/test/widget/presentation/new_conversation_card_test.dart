@@ -21,6 +21,21 @@ Widget _wrap({required bool requiresLogin}) {
             agentId: 'codex',
             displayName: 'Codex',
             available: true,
+            capabilities: AgentCapabilities(
+              planMode: true,
+              streaming: true,
+              approvals: true,
+              images: true,
+            ),
+          ),
+          AgentDescriptor(
+            agentId: 'claude-code',
+            displayName: 'Claude Code',
+            available: true,
+            capabilities: AgentCapabilities(
+              planMode: true,
+              forking: true,
+            ),
           ),
         ],
       ),
@@ -28,7 +43,7 @@ Widget _wrap({required bool requiresLogin}) {
       authStatusProvider.overrideWith(
         (ref, agentId) async => AuthStatus(
           agentId: agentId,
-          requiresLogin: requiresLogin,
+          requiresLogin: requiresLogin && agentId == 'codex',
           loginInProgress: false,
         ),
       ),
@@ -41,17 +56,74 @@ Widget _wrap({required bool requiresLogin}) {
   );
 }
 
-/// The redesigned agent selector is a combobox that starts unselected: open the
-/// searchable [AgentPickerSheet] (tap the "Select an agent" field) and pick
-/// Codex, so its capability chips + sign-in status render inline below.
+/// Agent cards are visible directly in the full-screen dialog; tapping one
+/// selects it without opening a second modal surface.
 Future<void> _selectCodex(WidgetTester tester) async {
-  await tester.tap(find.text('Select an agent'));
-  await tester.pumpAndSettle();
   await tester.tap(find.text('Codex'));
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets('agent cards are visible directly in the full-screen dialog', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(requiresLogin: false));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New conversation'), findsOneWidget);
+    expect(find.text('Codex'), findsOneWidget);
+    expect(find.text('Claude Code'), findsOneWidget);
+    expect(find.text('Streaming'), findsNothing);
+    expect(find.text('Approvals'), findsNothing);
+    expect(find.text('Select an agent'), findsNothing);
+  });
+
+  testWidgets('selecting an agent expands only its capability chips', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(requiresLogin: false));
+    await tester.pumpAndSettle();
+
+    await _selectCodex(tester);
+    expect(find.text('Streaming'), findsOneWidget);
+    expect(find.text('Approvals'), findsOneWidget);
+    expect(find.text('Forking'), findsNothing);
+
+    await tester.tap(find.text('Claude Code'));
+    await tester.pumpAndSettle();
+    expect(find.text('Streaming'), findsNothing);
+    expect(find.text('Approvals'), findsNothing);
+    expect(find.text('Plan mode'), findsOneWidget);
+    expect(find.text('Forking'), findsOneWidget);
+  });
+
+  testWidgets('agent cards remain overflow-free on a compact phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(requiresLogin: false));
+    await tester.pumpAndSettle();
+    await _selectCodex(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Codex'), findsOneWidget);
+    expect(find.text('Images'), findsOneWidget);
+  });
+
   testWidgets('a not-signed-in agent shows the Check sign-in action', (
     tester,
   ) async {

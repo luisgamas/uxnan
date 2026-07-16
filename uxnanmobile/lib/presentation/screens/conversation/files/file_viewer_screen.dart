@@ -3,11 +3,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:highlight/highlight.dart' as syntax;
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
@@ -338,11 +338,6 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                             tooltip: l10n.fileViewerEdit,
                             onPressed: _startEditing,
                           ),
-                        IconSurface(
-                          icon: Icons.content_copy_outlined,
-                          tooltip: l10n.fileViewerCopy,
-                          onPressed: _copyContent,
-                        ),
                         // Refreshing moved to pull-to-refresh on the content
                         // body (see [_buildBody]) — matching FileBrowserScreen
                         // and GitScreen — so the appbar stays lean.
@@ -371,8 +366,8 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
 
     // Scrollable bodies pad their own top by [topInset] so they scroll under
-    // the bar; the centered placeholder states ([_ImageBody], [_BinaryState],
-    // [_ErrorState]) are nudged below the bar with [_belowBar].
+    // the bar. Binary/error placeholders are nudged below it with [_belowBar],
+    // while an image intentionally owns the full surface behind the top bar.
     if (_loading && payload == null) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -386,12 +381,9 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
       );
     }
     if (isImage && payload.image != null) {
-      return _belowBar(
-        topInset,
-        _ImageBody(
-          base64: payload.image!.base64Data,
-          mimeType: payload.image!.mimeType,
-        ),
+      return _ImageBody(
+        base64: payload.image!.base64Data,
+        mimeType: payload.image!.mimeType,
       );
     }
     if (isImage) {
@@ -422,10 +414,12 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
     if (showDiffOverlay && payload.diff != null && payload.diff!.isNotEmpty) {
       return _refreshable(
-        FileDiffViewer(
-          diff: payload.diff!,
-          path: widget.path,
-          topInset: topInset,
+        SelectionArea(
+          child: FileDiffViewer(
+            diff: payload.diff!,
+            path: widget.path,
+            topInset: topInset,
+          ),
         ),
       );
     }
@@ -454,25 +448,6 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
         padding: EdgeInsets.only(top: topInset),
         child: child,
       );
-
-  Future<void> _copyContent() async {
-    final payload = _payload;
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    if (payload?.content == null) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(l10n.fileViewerCopyFailed)));
-      return;
-    }
-    await Clipboard.setData(
-      ClipboardData(text: payload!.content!.content),
-    );
-    if (!mounted) return;
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(l10n.fileViewerCopied)));
-  }
 }
 
 Future<_ViewerPayload> _loadViewer(
@@ -528,9 +503,9 @@ class _ViewerPayload {
   final String? error;
 }
 
-/// Image body — base64 → `Image.memory` with an `InteractiveViewer` so the
-/// user can pinch-zoom and pan. Padded with `UxnanSpacing.lg` so the image
-/// doesn't sit against the screen edges on small viewports.
+/// Full-surface image preview. The image starts fully visible with
+/// [BoxFit.contain]; pinch zoom and pan then use the complete screen viewport
+/// instead of a smaller padded rectangle.
 class _ImageBody extends StatelessWidget {
   const _ImageBody({required this.base64, required this.mimeType});
   final String base64;
@@ -539,30 +514,30 @@ class _ImageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-      child: Center(
-        child: InteractiveViewer(
-          maxScale: 6,
-          minScale: 1,
-          child: Image.memory(
-            base64Decode(base64),
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stack) => Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.xl),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.broken_image_outlined,
-                    size: 40,
-                    color: colors.error,
-                  ),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  Text(mimeType, style: UxnanTypography.codeSmall),
-                ],
-              ),
+    return SizedBox.expand(
+      child: InteractiveViewer(
+        maxScale: 6,
+        minScale: 1,
+        clipBehavior: Clip.none,
+        child: Image.memory(
+          base64Decode(base64),
+          width: double.infinity,
+          height: double.infinity,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stack) => Padding(
+            padding: const EdgeInsets.all(UxnanSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.broken_image_outlined,
+                  size: 40,
+                  color: colors.error,
+                ),
+                const SizedBox(height: UxnanSpacing.sm),
+                Text(mimeType, style: UxnanTypography.codeSmall),
+              ],
             ),
           ),
         ),
@@ -656,7 +631,7 @@ class _CodeBody extends StatelessWidget {
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: HighlightView(
+        child: _SelectableHighlightView(
           text,
           language: language,
           theme: theme,
@@ -669,6 +644,62 @@ class _CodeBody extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Syntax-highlighted source rendered through [SelectableText.rich]. The
+/// `flutter_highlight` widget uses a plain `RichText`, which cannot expose the
+/// platform selection/copy menu; this keeps the same parser and themes while
+/// making every source range genuinely selectable.
+class _SelectableHighlightView extends StatelessWidget {
+  const _SelectableHighlightView(
+    this.source, {
+    required this.language,
+    required this.theme,
+    required this.textStyle,
+    required this.padding,
+  });
+
+  final String source;
+  final String language;
+  final Map<String, TextStyle> theme;
+  final TextStyle textStyle;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final rootStyle = TextStyle(
+      color: theme['root']?.color,
+    ).merge(textStyle);
+    final nodes = syntax.highlight
+        .parse(source.replaceAll('\t', '        '), language: language)
+        .nodes;
+    return Container(
+      color: theme['root']?.backgroundColor,
+      padding: padding,
+      child: SelectableText.rich(
+        TextSpan(
+          style: rootStyle,
+          children: _highlightSpans(nodes ?? const <syntax.Node>[]),
+        ),
+      ),
+    );
+  }
+
+  List<TextSpan> _highlightSpans(List<syntax.Node> nodes) => [
+        for (final node in nodes)
+          if (node.value != null)
+            TextSpan(
+              text: node.value,
+              style: node.className == null ? null : theme[node.className],
+            )
+          else
+            TextSpan(
+              style: node.className == null ? null : theme[node.className],
+              children: _highlightSpans(
+                node.children ?? const <syntax.Node>[],
+              ),
+            ),
+      ];
 }
 
 /// Inline editor: a full-height monospace [TextField] over the raw file

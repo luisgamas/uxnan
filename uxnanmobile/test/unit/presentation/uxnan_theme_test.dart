@@ -23,33 +23,32 @@ CustomTheme _testCustomTheme() {
 
 void main() {
   group('buildUxnanTheme — brand source (default baseline)', () {
-    test('returns the hand-tuned brand light scheme', () {
+    test('returns a complete, seed-derived brand light scheme', () {
       final theme = buildUxnanTheme(
         brightness: Brightness.light,
         themeSource: ThemeSource.brand,
       );
       expect(theme.brightness, Brightness.light);
-      expect(theme.colorScheme.surface, UxnanColors.lightSurface);
-      expect(theme.colorScheme.onSurface, UxnanColors.lightOnSurface);
-      expect(theme.colorScheme.primary, UxnanColors.lightPrimary);
-      expect(theme.colorScheme.secondary, UxnanColors.lightSecondary);
+      _expectCompleteSurfaceHierarchy(theme.colorScheme);
+      expect(theme.colorScheme.secondary, isNot(theme.colorScheme.primary));
       expect(
-        theme.colorScheme.onSurfaceVariant,
-        UxnanColors.lightOnSurfaceMuted,
+        theme.colorScheme.errorContainer,
+        isNot(theme.colorScheme.surface),
       );
     });
 
-    test('returns the hand-tuned brand dark scheme', () {
+    test('returns a complete, seed-derived brand dark scheme', () {
       final theme = buildUxnanTheme(
         brightness: Brightness.dark,
         themeSource: ThemeSource.brand,
       );
       expect(theme.brightness, Brightness.dark);
-      expect(theme.colorScheme.surface, UxnanColors.surface);
-      expect(theme.colorScheme.onSurface, UxnanColors.onSurface);
-      expect(theme.colorScheme.primary, UxnanColors.primary);
-      expect(theme.colorScheme.secondary, UxnanColors.secondary);
-      expect(theme.colorScheme.onSurfaceVariant, UxnanColors.onSurfaceMuted);
+      _expectCompleteSurfaceHierarchy(theme.colorScheme);
+      expect(theme.colorScheme.secondary, isNot(theme.colorScheme.primary));
+      expect(
+        theme.colorScheme.errorContainer,
+        isNot(theme.colorScheme.surface),
+      );
     });
 
     test(
@@ -81,7 +80,7 @@ void main() {
       );
       // Primary is the seed-derived role — must NOT be the brand blue
       // anymore, otherwise the custom theme is being silently dropped.
-      expect(theme.colorScheme.primary, isNot(UxnanColors.lightPrimary));
+      expect(theme.colorScheme.primary, isNot(UxnanColors.brandPrimary));
       expect(theme.colorScheme.brightness, Brightness.light);
     });
 
@@ -92,7 +91,7 @@ void main() {
         themeSource: ThemeSource.custom,
         customTheme: custom,
       );
-      expect(theme.colorScheme.primary, isNot(UxnanColors.primary));
+      expect(theme.colorScheme.primary, isNot(UxnanColors.brandPrimary));
       expect(theme.colorScheme.brightness, Brightness.dark);
     });
 
@@ -140,7 +139,26 @@ void main() {
         brightness: Brightness.light,
         themeSource: ThemeSource.custom,
       );
-      expect(theme.colorScheme.primary, UxnanColors.lightPrimary);
+      expect(
+        theme.colorScheme.primary,
+        buildUxnanTheme(
+          brightness: Brightness.light,
+          themeSource: ThemeSource.brand,
+        ).colorScheme.primary,
+      );
     });
   });
+}
+
+void _expectCompleteSurfaceHierarchy(ColorScheme colors) {
+  // These roles used to inherit constructor fallbacks. A generated Material 3
+  // scheme gives every layer its own tone, which is what cards, sheets, and
+  // expressive neutral surfaces rely on for visible depth.
+  expect(colors.surfaceContainerLowest, isNot(colors.surface));
+  expect(colors.surfaceContainerLow, isNot(colors.surface));
+  expect(colors.surfaceContainer, isNot(colors.surface));
+  expect(colors.surfaceContainerHigh, isNot(colors.surface));
+  expect(colors.surfaceContainerHighest, isNot(colors.surface));
+  expect(colors.surfaceDim, isNot(colors.surfaceBright));
+  expect(colors.inverseSurface, isNot(colors.surface));
 }

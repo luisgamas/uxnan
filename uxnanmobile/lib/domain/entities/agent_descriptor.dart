@@ -11,6 +11,7 @@ class AgentCapabilities extends Equatable {
     this.images = false,
     this.reportsContextUsage = false,
     this.autonomous = false,
+    this.commands = false,
   });
 
   /// All-permissive capabilities: a safe default for capability-gated UI when
@@ -23,7 +24,8 @@ class AgentCapabilities extends Equatable {
         forking = true,
         images = true,
         reportsContextUsage = true,
-        autonomous = true;
+        autonomous = true,
+        commands = true;
 
   /// Reconstructs capabilities from a JSON map (tolerant).
   factory AgentCapabilities.fromJson(Map<String, dynamic> json) =>
@@ -35,6 +37,7 @@ class AgentCapabilities extends Equatable {
         images: json['images'] == true,
         reportsContextUsage: json['reportsContextUsage'] == true,
         autonomous: json['autonomous'] == true,
+        commands: json['commands'] == true,
       );
 
   /// Whether the agent supports a planning mode.
@@ -62,6 +65,10 @@ class AgentCapabilities extends Equatable {
   /// agent won't ask before running tools.
   final bool autonomous;
 
+  /// Whether the agent exposes special ("slash") commands the app can discover
+  /// via `agent/commands` and offer in the composer's `/` palette.
+  final bool commands;
+
   @override
   List<Object?> get props => [
         planMode,
@@ -71,6 +78,7 @@ class AgentCapabilities extends Equatable {
         images,
         reportsContextUsage,
         autonomous,
+        commands,
       ];
 }
 

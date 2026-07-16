@@ -40,8 +40,21 @@ import type { ApprovalResponse } from '../models/approval.js';
 import type { QuestionResponse } from '../models/question.js';
 import type { BridgeStatus, ConnectedPhone, TrustedDevice } from '../models/session.js';
 import type { PairingPayload } from '../e2ee/pairing-payload.js';
-import type { AgentDescriptor, AgentId, AgentModel } from '../agents/agent-capabilities.js';
+import type {
+  AgentCommand,
+  AgentCommandInvocation,
+  AgentDescriptor,
+  AgentId,
+  AgentModel,
+} from '../agents/agent-capabilities.js';
 import type { UsageStatsParams, UsageStatsResult } from '../models/usage.js';
+import type {
+  MetricsExportParams,
+  MetricsExportResult,
+  MetricsImportParams,
+  MetricsImportResult,
+  MetricsSnapshot,
+} from '../models/metrics.js';
 import type { PushPlatform } from '../notifications/push-payload.js';
 
 // --- Param shapes -----------------------------------------------------------
@@ -112,6 +125,14 @@ export interface TurnSendParams {
    * is not required.
    */
   questionResponse?: QuestionResponse;
+  /**
+   * Invoke an advertised agent command (from `agent/commands`) instead of
+   * free-form `text`. The bridge resolves `{ name, args }` to the final prompt —
+   * expanding a custom prompt-template file, or composing the CLI's native
+   * `/name args` form — then runs a normal turn. When present, `text` is not
+   * required.
+   */
+  command?: AgentCommandInvocation;
 }
 export interface ThreadSetModelParams {
   threadId: string;
@@ -260,6 +281,20 @@ export interface AgentModelsResult {
   models: AgentModel[];
 }
 
+export interface AgentCommandsParams {
+  agentId: AgentId;
+  /**
+   * Thread/project directory, so project-scoped custom commands (e.g.
+   * `<cwd>/.claude/commands`, `<cwd>/.gemini/commands`) are discovered alongside
+   * the user-level ones. Omitted → only user-level commands are returned.
+   */
+  cwd?: string;
+}
+export interface AgentCommandsResult {
+  /** Special ("slash") commands the agent exposes, discovered from its CLI/disk. */
+  commands: AgentCommand[];
+}
+
 /** What the phone wants to be notified about (background push). */
 export interface NotificationPreferences {
   /** Push when an agent turn completes. */
@@ -345,8 +380,15 @@ export interface JsonRpcMethodRegistry {
   // Agents
   'agent/list': { params: void; result: AgentListResult };
   'agent/models': { params: AgentModelsParams; result: AgentModelsResult };
+  // Special ("slash") commands the agent exposes (discovery; invoked via turn/send)
+  'agent/commands': { params: AgentCommandsParams; result: AgentCommandsResult };
   // Usage statistics (per-provider quota / credit / local token tally)
   'agent/usageStats': { params: UsageStatsParams; result: UsageStatsResult };
+
+  // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
+  'metrics/get': { params: void; result: MetricsSnapshot };
+  'metrics/export': { params: MetricsExportParams; result: MetricsExportResult };
+  'metrics/import': { params: MetricsImportParams; result: MetricsImportResult };
 
   // Auth (sanitized — never carries tokens/keys; see AuthStatus)
   'auth/status': { params: { agentId: AgentId }; result: AuthStatus };

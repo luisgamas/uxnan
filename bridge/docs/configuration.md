@@ -101,5 +101,6 @@ only write-bounded by its `permissionMode` — see
 ## State files in `~/.uxnan/`
 
 `daemon-config.json`, `pairing-session.json`, `trusted-phones.json`,
-`threads.json`, `checkpoints.json`, `bridge.lock`, `logs/bridge-YYYY-MM-DD.log`.
-The Ed25519 identity lives in the OS keychain, not on disk.
+`threads.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
+`logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and the metrics sealing key
+live in the OS keychain, not on disk.

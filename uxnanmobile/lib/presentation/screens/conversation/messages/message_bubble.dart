@@ -50,6 +50,7 @@ class _UserBubble extends StatefulWidget {
 
 class _UserBubbleState extends State<_UserBubble> {
   bool _showCopy = false;
+  bool _expanded = false;
 
   String get _text => widget.message.contents
       .whereType<TextContent>()
@@ -69,6 +70,7 @@ class _UserBubbleState extends State<_UserBubble> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -93,14 +95,160 @@ class _UserBubbleState extends State<_UserBubble> {
                   bottomRight: Radius.circular(4),
                 ),
               ),
-              // Non-selectable so the tap toggles the copy action (the button
-              // replaces the need to hand-select the text).
-              child: _Blocks(message: widget.message, selectable: false),
+              child: AnimatedSize(
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topRight,
+                child: _UserMessageBody(
+                  message: widget.message,
+                  text: _text,
+                  expanded: _expanded,
+                  onExpandedChanged: (value) =>
+                      setState(() => _expanded = value),
+                ),
+              ),
             ),
           ),
         ),
         if (_showCopy && _text.isNotEmpty) _CopyMessageAction(onCopy: _copy),
       ],
+    );
+  }
+}
+
+/// User-message content with a responsive text preview. Only textual content
+/// is clipped; image attachments and other blocks remain fully visible. The
+/// full source stays mounted and is always used by the copy action.
+class _UserMessageBody extends StatelessWidget {
+  const _UserMessageBody({
+    required this.message,
+    required this.text,
+    required this.expanded,
+    required this.onExpandedChanged,
+  });
+
+  static const int _collapsedLines = 10;
+
+  final Message message;
+  final String text;
+  final bool expanded;
+  final ValueChanged<bool> onExpandedChanged;
+
+  bool _textExceedsPreview(BuildContext context, double width) {
+    if (text.isEmpty || width <= 0) return false;
+    final textTheme = Theme.of(context).textTheme;
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: textTheme.bodyMedium),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: _collapsedLines,
+    )..layout(maxWidth: width);
+    return painter.didExceedMaxLines;
+  }
+
+  double _previewHeight(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final linePainter = TextPainter(
+      text: TextSpan(text: 'Ag', style: textTheme.bodyMedium),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return linePainter.preferredLineHeight * _collapsedLines;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final nonText = message.contents.where((c) => c is! TextContent).toList();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isLong = _textExceedsPreview(context, constraints.maxWidth);
+        final collapse = isLong && !expanded;
+        final textBlock = MessageContentView(
+          content: TextContent(text),
+          selectableText: false,
+        );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (text.isNotEmpty)
+              if (collapse)
+                SizedBox(
+                  height: _previewHeight(context),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRect(
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: textBlock,
+                        ),
+                      ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: UxnanSpacing.xl,
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  colors.primaryContainer.withValues(alpha: 0),
+                                  colors.primaryContainer,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                textBlock,
+            for (var index = 0; index < nonText.length; index++) ...[
+              if (text.isNotEmpty || index > 0)
+                const SizedBox(height: UxnanSpacing.sm),
+              MessageContentView(
+                content: nonText[index],
+                selectableText: false,
+              ),
+            ],
+            if (isLong) ...[
+              const SizedBox(height: UxnanSpacing.xs),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => onExpandedChanged(!expanded),
+                  icon: Icon(
+                    expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    expanded
+                        ? l10n.conversationShowLess
+                        : l10n.conversationShowMore,
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: colors.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -151,11 +299,8 @@ class _FullWidthBlocks extends StatelessWidget {
 
 /// The ordered content blocks of a [message], stacked with consistent spacing.
 class _Blocks extends StatelessWidget {
-  const _Blocks({required this.message, this.selectable = true});
+  const _Blocks({required this.message});
   final Message message;
-
-  /// Whether text blocks are selectable (false for the user's own bubble).
-  final bool selectable;
 
   @override
   Widget build(BuildContext context) {
@@ -167,7 +312,6 @@ class _Blocks extends StatelessWidget {
           if (i > 0) const SizedBox(height: UxnanSpacing.sm),
           MessageContentView(
             content: message.contents[i],
-            selectableText: selectable,
           ),
         ],
       ],

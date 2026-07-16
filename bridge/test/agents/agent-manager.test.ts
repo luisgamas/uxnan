@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
-import type { AgentCapabilities, AgentId, SendTurnOptions } from '@uxnan/shared';
+import type { AgentCapabilities, AgentCommand, AgentId, SendTurnOptions } from '@uxnan/shared';
 import { StreamNotification } from '@uxnan/shared';
 import {
   AgentManager,
@@ -531,5 +531,142 @@ test('cancelTurn routes to the THREAD’s agent, not the default (global stop-tu
 
   assert.deepEqual(other.canceled, [{ threadId: thread.id, turnId }]);
   assert.deepEqual(def.canceled, []);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+/**
+ * Records the text/command a turn is driven with, and advertises one command.
+ * `withExpand` toggles whether it expands commands itself (custom prompt-template
+ * agents) or leaves the manager to compose the native `/name args` form.
+ */
+class CustomCommandAdapter extends BaseAgentAdapter {
+  readonly agentId: AgentId = 'echo';
+  readonly capabilities: AgentCapabilities = { ...CONTROLLED_CAPS, commands: true };
+  lastText: string | undefined;
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    this.lastText = options.text;
+    this.emit({ type: 'turn_started', threadId: options.threadId, turnId: options.turnId });
+    this.emit({
+      type: 'turn_completed',
+      threadId: options.threadId,
+      turnId: options.turnId,
+      data: { text: 'ok' },
+    });
+    return Promise.resolve();
+  }
+  start(): Promise<void> {
+    return Promise.resolve();
+  }
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+  cancelTurn(): Promise<void> {
+    return Promise.resolve();
+  }
+  listCommands(): Promise<AgentCommand[]> {
+    return Promise.resolve([{ name: 'refactor', source: 'custom', headlessSupported: true }]);
+  }
+  expandCommand(name: string, args?: string): Promise<string> {
+    return Promise.resolve(`EXPANDED ${name} :: ${args ?? ''}`);
+  }
+}
+
+/** A native-command agent (Claude/ACP): advertises commands but has no expander. */
+class NativeCommandAdapter extends BaseAgentAdapter {
+  readonly agentId: AgentId = 'echo';
+  readonly capabilities: AgentCapabilities = { ...CONTROLLED_CAPS, commands: true };
+  lastText: string | undefined;
+  sendTurn(options: SendTurnOptions): Promise<void> {
+    this.lastText = options.text;
+    this.emit({ type: 'turn_started', threadId: options.threadId, turnId: options.turnId });
+    this.emit({
+      type: 'turn_completed',
+      threadId: options.threadId,
+      turnId: options.turnId,
+      data: { text: 'ok' },
+    });
+    return Promise.resolve();
+  }
+  start(): Promise<void> {
+    return Promise.resolve();
+  }
+  stop(): Promise<void> {
+    return Promise.resolve();
+  }
+  cancelTurn(): Promise<void> {
+    return Promise.resolve();
+  }
+  listCommands(): Promise<AgentCommand[]> {
+    return Promise.resolve([{ name: 'compact', source: 'builtin', headlessSupported: true }]);
+  }
+}
+
+test('getCommands returns the adapter’s advertised commands (empty for one without listCommands)', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-cmds-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new CustomCommandAdapter());
+  const commands = await manager.getCommands('echo');
+  assert.deepEqual(commands, [{ name: 'refactor', source: 'custom', headlessSupported: true }]);
+  // The Echo agent has no listCommands → empty, never throws.
+  const none = await manager.getCommands('codex');
+  assert.deepEqual(none, []);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('command invocation with an expander: the agent runs the EXPANDED text; history shows /name', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-cmdx-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new CustomCommandAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, '', {
+    command: { name: 'refactor', args: 'auth.ts' },
+  });
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+
+  // The adapter received the expanded prompt, not `/refactor`.
+  assert.equal(adapter.lastText, 'EXPANDED refactor :: auth.ts');
+  // History persists the command form, not the (potentially huge) expansion.
+  const turn = await store.getTurn(turnId);
+  assert.equal(turn.messages.find((m) => m.role === 'user')?.content, '/refactor auth.ts');
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('command invocation without an expander: the agent runs the native /name args form', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-cmdn-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new NativeCommandAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, '', {
+    command: { name: 'compact' },
+  });
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+
+  // No expander → the CLI's native slash form is sent (Claude/ACP interpret it).
+  assert.equal(adapter.lastText, '/compact');
   await rm(baseDir, { recursive: true, force: true });
 });

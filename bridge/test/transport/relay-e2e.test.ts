@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { rmrf } from '../helpers/fs.js';
 import { WebSocket } from 'ws';
 import { RelayServer } from 'uxnan-relay';
 import {
@@ -46,5 +46,5 @@ test('phone ↔ relay ↔ bridge: full handshake and encrypted RPC end-to-end', 
   phone.close();
   await bridge.stop();
   await closeRelay();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

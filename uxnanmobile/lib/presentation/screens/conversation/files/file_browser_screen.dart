@@ -57,6 +57,10 @@ class FileBrowserScreen extends ConsumerStatefulWidget {
 }
 
 class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _revealedFileKey = GlobalKey();
+  String? _revealedFilePath;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +69,68 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(fileBrowserManagerProvider).loadRoot(widget.cwd);
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openSearchResult(
+    FileSearchMatch match,
+    SearchController searchController,
+  ) async {
+    final manager = ref.read(fileBrowserManagerProvider);
+    await manager.revealFile(widget.cwd, match.path);
+    if (!mounted) return;
+
+    setState(() => _revealedFilePath = match.path);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final root = manager.rootFor(widget.cwd);
+    if (root != null && _scrollController.hasClients) {
+      final showHidden = ref.read(showHiddenFilesProvider);
+      final tiles = <_TileEntry>[];
+      _walk(root, 0, showHidden: showHidden, into: tiles);
+      final index = tiles.indexWhere((entry) => entry.node.path == match.path);
+      if (index >= 0 && tiles.length > 1) {
+        // SliverList builds lazily, so first jump near the result to mount it.
+        // Search still covers the tree at this point, making the repositioning
+        // imperceptible. ensureVisible below then performs the exact alignment.
+        final position = _scrollController.position;
+        final estimatedOffset =
+            position.maxScrollExtent * index / (tiles.length - 1);
+        position.jumpTo(
+          estimatedOffset.clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    }
+
+    if (!mounted) return;
+    final revealedContext = _revealedFileKey.currentContext;
+    if (revealedContext != null && revealedContext.mounted) {
+      await Scrollable.ensureVisible(revealedContext, alignment: 0.45);
+    }
+    if (!mounted) return;
+
+    searchController.closeView(_basename(match.path));
+    await FileViewerScreen.push(
+      context,
+      cwd: widget.cwd,
+      path: match.path,
+      node: FileTreeNode(
+        name: _basename(match.path),
+        path: match.path,
+        type: match.type,
+      ),
+    );
+    if (mounted) FocusManager.instance.primaryFocus?.unfocus();
   }
 
   /// Pull-to-refresh handler: re-issues the root load so the tree rebuilds
@@ -179,6 +245,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                     ?.copyWith(fontSize: 20),
               ),
               actions: [
+                _FileSearchAnchor(
+                  cwd: widget.cwd,
+                  onSelect: _openSearchResult,
+                ),
                 // Collapse-all: only shown when at least one directory is
                 // expanded, so the bar stays clean on a fresh (flat) listing.
                 if (anyExpanded)
@@ -307,6 +377,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       child: RefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(
+          controller: _scrollController,
           // BouncingScrollPhysics + AlwaysScrollable is the same combo
           // `NeScaffold` and `ConversationScreen` use, so the list feels
           // native on both iOS and Android and the user can always
@@ -323,6 +394,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               itemBuilder: (context, index) {
                 final entry = tiles[index];
                 return FileTreeTile(
+                  key: entry.node.path == _revealedFilePath
+                      ? _revealedFileKey
+                      : null,
                   node: entry.node,
                   depth: entry.depth,
                   showExtension: showExtension,
@@ -384,6 +458,121 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   }
 
   bool _isHidden(String name) => name.startsWith('.');
+}
+
+/// Repo-wide file search using the same full-screen M3 pattern as thread and
+/// commit-history search. Results keep the filename prominent and show only
+/// the workspace-relative path beneath it.
+class _FileSearchAnchor extends ConsumerWidget {
+  const _FileSearchAnchor({required this.cwd, required this.onSelect});
+
+  final String cwd;
+  final Future<void> Function(
+    FileSearchMatch match,
+    SearchController controller,
+  ) onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    return SearchAnchor(
+      isFullScreen: true,
+      viewHintText: l10n.fileBrowserSearchHint,
+      builder: (context, controller) => IconSurface(
+        icon: Icons.search_rounded,
+        tooltip: l10n.fileBrowserSearch,
+        onPressed: controller.openView,
+      ),
+      suggestionsBuilder: (context, controller) async {
+        final query = controller.text.trim();
+        if (query.isEmpty) return const <Widget>[];
+        try {
+          final result = await ref
+              .read(fileBrowserManagerProvider)
+              .searchFiles(cwd, query, limit: 40);
+          if (controller.text.trim() != query) return const <Widget>[];
+          final matches = result.matches.where(
+            (match) => match.type == FileEntryType.file,
+          );
+          if (matches.isEmpty) {
+            return [_FileSearchMessage(message: l10n.fileBrowserSearchEmpty)];
+          }
+          return [
+            for (final match in matches)
+              _FileSearchResultTile(
+                match: match,
+                onTap: () => unawaited(onSelect(match, controller)),
+              ),
+          ];
+        } on Object {
+          return [_FileSearchMessage(message: l10n.fileBrowserSearchFailed)];
+        }
+      },
+    );
+  }
+}
+
+class _FileSearchResultTile extends StatelessWidget {
+  const _FileSearchResultTile({required this.match, required this.onTap});
+
+  final FileSearchMatch match;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final visuals = fileTypeVisuals(
+      name: _basename(match.path),
+      type: match.type,
+    );
+    return ListTile(
+      leading: Icon(visuals.icon, color: colors.onSurfaceVariant),
+      title: Text(
+        _basename(match.path),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        match.path,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+        ),
+      ),
+      onTap: onTap,
+    );
+  }
+}
+
+class _FileSearchMessage extends StatelessWidget {
+  const _FileSearchMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.all(UxnanSpacing.xl),
+      child: Center(
+        child: Text(
+          message,
+          style: textTheme.bodyMedium?.copyWith(
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _basename(String path) {
+  final normalized = path.replaceAll(r'\', '/');
+  final index = normalized.lastIndexOf('/');
+  return index < 0 ? normalized : normalized.substring(index + 1);
 }
 
 /// Whether any directory in [node]'s subtree is currently expanded. Drives

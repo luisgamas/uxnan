@@ -174,6 +174,271 @@ class AppLocalizationsEs extends AppLocalizations {
   String get devicesTitle => 'Mis PCs';
 
   @override
+  String get profileTitle => 'Perfil';
+
+  @override
+  String get profileDisplayName => 'Usuario de Uxnan';
+
+  @override
+  String profileMemberSince(String date) {
+    return 'Miembro desde $date';
+  }
+
+  @override
+  String profilePairedPcs(int count) {
+    return '$count PCs';
+  }
+
+  @override
+  String profileActiveSessions(int count) {
+    return '$count en línea';
+  }
+
+  @override
+  String get statConversations => 'Chats';
+
+  @override
+  String get statAgentsUsed => 'Agentes usados';
+
+  @override
+  String get statMessages => 'Mensajes';
+
+  @override
+  String get statGitActions => 'Acciones Git';
+
+  @override
+  String get statSessions => 'Conexiones';
+
+  @override
+  String get statTimeConnected => 'Tiempo conectado';
+
+  @override
+  String get statLongestSession => 'Sesión más larga';
+
+  @override
+  String get statMostUsedTransport => 'Más usado';
+
+  @override
+  String get statModelsUsed => 'Modelos';
+
+  @override
+  String get profileActivity => 'Actividad';
+
+  @override
+  String get profileByAgent => 'Conversaciones por agente';
+
+  @override
+  String get profileNoData => 'Aún no hay actividad';
+
+  @override
+  String get profileActivityLess => 'Menos';
+
+  @override
+  String get profileActivityMore => 'Más';
+
+  @override
+  String profileHeatmapSummary(int count, int activeDays) {
+    return '$count acciones · $activeDays días activos';
+  }
+
+  @override
+  String profileHeatmapDay(String date, int count) {
+    return '$date · $count acciones';
+  }
+
+  @override
+  String get metricCombined => 'Combinado';
+
+  @override
+  String get metricConversations => 'Conversaciones';
+
+  @override
+  String get metricMessages => 'Mensajes';
+
+  @override
+  String get metricWork => 'Trabajo';
+
+  @override
+  String get profileEditTitle => 'Editar perfil';
+
+  @override
+  String get profileChoosePhoto => 'Elegir foto';
+
+  @override
+  String get profilePickIcon => 'O elige un icono';
+
+  @override
+  String get profileNameLabel => 'Nombre';
+
+  @override
+  String get profileNameHint => 'Tu nombre';
+
+  @override
+  String get profileAgentConversationsLabel => 'conversaciones';
+
+  @override
+  String get profileBackupTitle => 'Respaldo';
+
+  @override
+  String get profileBackupNote =>
+      'Tus estadísticas se guardan en este teléfono y en tu PC. Sin un respaldo pueden perderse si desinstalas la app o cambias de teléfono.';
+
+  @override
+  String get profileBackupExport => 'Exportar';
+
+  @override
+  String get profileBackupImport => 'Importar';
+
+  @override
+  String get profileBackupOfflineHint =>
+      'Conéctate a una PC para respaldar o restaurar tus estadísticas.';
+
+  @override
+  String get profileBackupPassphraseOptionalTitle => '¿Proteger este respaldo?';
+
+  @override
+  String get profileBackupPassphraseOptionalHint =>
+      'Agrega una frase de contraseña (opcional). La necesitarás para importar el archivo.';
+
+  @override
+  String get profileBackupPassphraseRequiredTitle =>
+      'Frase de contraseña requerida';
+
+  @override
+  String get profileBackupPassphraseRequiredHint =>
+      'Este respaldo está protegido. Ingresa su frase de contraseña.';
+
+  @override
+  String get profileBackupPassphraseField => 'Frase de contraseña';
+
+  @override
+  String get profileBackupCancel => 'Cancelar';
+
+  @override
+  String get profileBackupShareSubject => 'Respaldo de estadísticas de Uxnan';
+
+  @override
+  String get profileBackupExportFailed =>
+      'No se pudo crear el respaldo. Asegúrate de estar conectado a una PC.';
+
+  @override
+  String profileBackupImportedNew(int count) {
+    return 'Respaldo restaurado — $count entradas nuevas.';
+  }
+
+  @override
+  String get profileBackupImportedNone => 'Tus estadísticas ya están al día.';
+
+  @override
+  String get profileBackupImportBadPassphrase =>
+      'Frase de contraseña incorrecta para este respaldo.';
+
+  @override
+  String get profileBackupImportFailed =>
+      'No se pudo importar este archivo. Puede ser de otra PC o haber sido modificado.';
+
+  @override
+  String get statTotalTokens => 'Tokens totales';
+
+  @override
+  String get profileAgentScopeAll => 'Histórico';
+
+  @override
+  String get profileLensActivity => 'Actividad';
+
+  @override
+  String get profileLensTokens => 'Tokens';
+
+  @override
+  String get profileTokensImprecise =>
+      'Algunos CLI no informan todo su uso de tokens, así que estas cifras de tokens pueden ser imprecisas.';
+
+  @override
+  String profileHeatmapTokensSummary(String tokens, int activeDays) {
+    return '$tokens tokens · $activeDays días activos';
+  }
+
+  @override
+  String profileHeatmapTokensDay(String date, String tokens) {
+    return '$date · $tokens tokens';
+  }
+
+  @override
+  String get profileAgentConvLabel => 'Conversaciones';
+
+  @override
+  String get profileAgentMsgLabel => 'Mensajes';
+
+  @override
+  String get profileAgentTokLabel => 'Tokens';
+
+  @override
+  String get profileUsageTitle => 'Uso y crédito';
+
+  @override
+  String get usageNotSignedIn => 'Sin sesión';
+
+  @override
+  String get usageLoadError => 'No se pudo cargar';
+
+  @override
+  String get usageCreditLabel => 'Crédito';
+
+  @override
+  String usageResetsIn(String duration) {
+    return 'Se reinicia en $duration';
+  }
+
+  @override
+  String usageResetsInDays(int days, String time) {
+    return 'Se reinicia en ${days}d a las $time';
+  }
+
+  @override
+  String get usageRefreshAction => 'Actualizar uso';
+
+  @override
+  String get usageNoData => 'Sin datos de uso';
+
+  @override
+  String get settingsUsageSection => 'Uso';
+
+  @override
+  String get settingsUsageNavSubtitle => 'Cada cuánto se actualiza el uso';
+
+  @override
+  String get usageRefreshTitle => 'Actualización automática';
+
+  @override
+  String get usageRefreshHint =>
+      'Cada cuánto actualizar el uso de proveedores mientras haya un PC conectado.';
+
+  @override
+  String get usageIntervalManual => 'Solo manual';
+
+  @override
+  String get usageInterval5m => 'Cada 5 minutos';
+
+  @override
+  String get usageInterval10m => 'Cada 10 minutos';
+
+  @override
+  String get usageInterval20m => 'Cada 20 minutos';
+
+  @override
+  String get usageInterval1h => 'Cada hora';
+
+  @override
+  String get settingsUsageClockGroup => 'Formato de hora';
+
+  @override
+  String get usageClock24hTitle => 'Formato de 24 horas';
+
+  @override
+  String get usageClock24hSubtitle =>
+      'Mostrar las horas de reinicio como 14:30 en vez de 2:30 p. m.';
+
+  @override
   String get deviceActive => 'Activa';
 
   @override
@@ -188,6 +453,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceLastSeenLabel => 'Última conexión';
 
   @override
+  String get deviceAddressReveal => 'Mostrar dirección';
+
+  @override
+  String get deviceAddressHide => 'Ocultar dirección';
+
+  @override
   String get deviceNeverConnected => 'Nunca conectado';
 
   @override
@@ -195,6 +466,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get deviceRename => 'Renombrar';
+
+  @override
+  String get deviceStatistics => 'Estadísticas';
 
   @override
   String get deviceVerifyConnection => 'Verificar conexión';
@@ -404,6 +678,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get conversationCopyMessage => 'Copiar mensaje';
 
   @override
+  String get conversationShowMore => 'Mostrar más';
+
+  @override
+  String get conversationShowLess => 'Mostrar menos';
+
+  @override
   String get conversationMessageCopied => 'Mensaje copiado';
 
   @override
@@ -458,7 +738,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerOptionsHide => 'Ocultar opciones';
 
   @override
-  String get composerTools => 'Opciones del turno';
+  String get composerTools => 'Añadir a la conversación';
 
   @override
   String get composerMentionFilesTitle => 'Archivos y carpetas';
@@ -828,6 +1108,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get turnFailed => 'El turno del agente falló';
+
+  @override
+  String get conversationAgentResponding => 'Agente respondiendo…';
 
   @override
   String get runOptionAuto => 'Automático';
@@ -1388,6 +1671,17 @@ class AppLocalizationsEs extends AppLocalizations {
       'Los alias «(latest)» siempre usan la versión más reciente de cada nivel que tu cuenta puede utilizar, así no tienes que elegir una exacta. Desactívalo para ocultarlos y elegir solo versiones fijas y exactas. Las conversaciones que ya usan un alias siguen funcionando.';
 
   @override
+  String get settingsAutonomousBannerTitle => 'Banner de modo autónomo';
+
+  @override
+  String get settingsAutonomousBannerSubtitle =>
+      'Muéstralo cada vez que abras una conversación con un agente autónomo.';
+
+  @override
+  String get settingsAutonomousBannerHint =>
+      'Cuando está activado, un botón de cerrar descarta el banner solo por esta visita y reaparece la próxima vez que abras la conversación. Desactívalo para ocultar el banner permanentemente.';
+
+  @override
   String get settingsAppearanceSection => 'Apariencia';
 
   @override
@@ -1897,7 +2191,22 @@ class AppLocalizationsEs extends AppLocalizations {
       'Este agente corre en modo autónomo: actúa y edita sin pedir aprobación primero.';
 
   @override
+  String get conversationAutonomousModeDismiss => 'Descartar';
+
+  @override
   String get fileBrowserTitle => 'Archivos';
+
+  @override
+  String get fileBrowserSearch => 'Buscar archivos';
+
+  @override
+  String get fileBrowserSearchHint => 'Buscar archivos en este proyecto';
+
+  @override
+  String get fileBrowserSearchEmpty => 'No hay archivos coincidentes';
+
+  @override
+  String get fileBrowserSearchFailed => 'No se pudieron buscar archivos';
 
   @override
   String get fileBrowserShowExtensions => 'Mostrar extensiones de archivo';
@@ -1943,15 +2252,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get fileViewerHideDiff => 'Ocultar diff';
-
-  @override
-  String get fileViewerCopy => 'Copiar archivo';
-
-  @override
-  String get fileViewerCopied => 'Archivo copiado';
-
-  @override
-  String get fileViewerCopyFailed => 'No se pudo copiar este archivo';
 
   @override
   String fileViewerLinkCopied(String href) {
@@ -2198,6 +2498,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationPiGroup => 'Pi Agent';
 
   @override
   String get settingsConversationChatGroup => 'Conversación';

@@ -24,6 +24,7 @@ export const DAEMON_FILES = {
   checkpoints: 'checkpoints.json',
   threads: 'threads.json',
   updateCheck: 'update-check.json',
+  metrics: 'metrics.json',
 } as const;
 
 export class DaemonState {

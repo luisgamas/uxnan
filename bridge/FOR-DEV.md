@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 408, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 436, shared 36, relay
 27). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -49,6 +49,13 @@ push validation (FOR-HUMAN).
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
+- **Agent commands** — `agent/commands` discovery + `turn/send` `command`
+  invocation. Custom prompt-template commands (Codex/Gemini/OpenCode) are scanned
+  and expanded by the bridge (`command-scan.ts`); native control commands run via
+  the CLI's own mechanism — Claude Code (`slash_commands` from `system/init` ∪
+  curated built-ins ∪ `.claude/commands`, sent as `/name args` with `--resume`)
+  and the ACP agents Zero/Grok (`available_commands_update` → `session/prompt`).
+  `capabilities.commands` flags the five command-capable adapters; `pi` has none.
 - **Full thread lifecycle** — `thread/rename|archive|unarchive|delete`.
 - **Plug-and-play folder browsing** — `workspace/browseDirs` with a
   `browseRoots` config.
@@ -131,14 +138,6 @@ push validation (FOR-HUMAN).
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
       instead of the heuristic (slower, per-CLI).
-- [ ] **`agent/usageStats` handler** — the contract exists in `shared`
-      (`ProviderUsage`; see `architecture/02a` §5.8.10 / `02b`) and the desktop
-      already reads AI-provider usage natively in Rust (`uxnandesktop/src-tauri/src/usage.rs`).
-      The bridge must implement the **same reader in TS** (Codex/Claude/Copilot/Gemini/Grok:
-      each CLI's stored token → its official usage API, never cookies / pasted keys)
-      and serve `agent/usageStats`, so a paired phone — which can't see the PC's disk —
-      gets the same data (dual-reader, one contract). Mobile UI is owed in
-      `uxnanmobile/FOR-DEV.md`. Natural pilot for the Phase 6 embedded bridge.
 - [ ] **Desktop embedded-mode IPC** — `src/handlers/desktop-handler.ts` is an empty
       stub; no `desktop/*` contracts exist in `shared/`. This is the bridge half of
       the desktop's **Phase 6** (embedded sidecar + mobile pairing); see

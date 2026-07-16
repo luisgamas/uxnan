@@ -3200,6 +3200,426 @@ class GitActionLogTableCompanion extends UpdateCompanion<GitActionLogRow> {
   }
 }
 
+class $ConnectionSessionsTableTable extends ConnectionSessionsTable
+    with TableInfo<$ConnectionSessionsTableTable, ConnectionSessionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ConnectionSessionsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _deviceIdMeta =
+      const VerificationMeta('deviceId');
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+      'device_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _transportMeta =
+      const VerificationMeta('transport');
+  @override
+  late final GeneratedColumn<String> transport = GeneratedColumn<String>(
+      'transport', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _endpointMeta =
+      const VerificationMeta('endpoint');
+  @override
+  late final GeneratedColumn<String> endpoint = GeneratedColumn<String>(
+      'endpoint', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _startedAtMsMeta =
+      const VerificationMeta('startedAtMs');
+  @override
+  late final GeneratedColumn<int> startedAtMs = GeneratedColumn<int>(
+      'started_at_ms', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _lastActiveAtMsMeta =
+      const VerificationMeta('lastActiveAtMs');
+  @override
+  late final GeneratedColumn<int> lastActiveAtMs = GeneratedColumn<int>(
+      'last_active_at_ms', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _endedAtMsMeta =
+      const VerificationMeta('endedAtMs');
+  @override
+  late final GeneratedColumn<int> endedAtMs = GeneratedColumn<int>(
+      'ended_at_ms', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        deviceId,
+        transport,
+        endpoint,
+        startedAtMs,
+        lastActiveAtMs,
+        endedAtMs
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'connection_sessions_table';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<ConnectionSessionRow> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(_deviceIdMeta,
+          deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta));
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    if (data.containsKey('transport')) {
+      context.handle(_transportMeta,
+          transport.isAcceptableOrUnknown(data['transport']!, _transportMeta));
+    } else if (isInserting) {
+      context.missing(_transportMeta);
+    }
+    if (data.containsKey('endpoint')) {
+      context.handle(_endpointMeta,
+          endpoint.isAcceptableOrUnknown(data['endpoint']!, _endpointMeta));
+    }
+    if (data.containsKey('started_at_ms')) {
+      context.handle(
+          _startedAtMsMeta,
+          startedAtMs.isAcceptableOrUnknown(
+              data['started_at_ms']!, _startedAtMsMeta));
+    } else if (isInserting) {
+      context.missing(_startedAtMsMeta);
+    }
+    if (data.containsKey('last_active_at_ms')) {
+      context.handle(
+          _lastActiveAtMsMeta,
+          lastActiveAtMs.isAcceptableOrUnknown(
+              data['last_active_at_ms']!, _lastActiveAtMsMeta));
+    } else if (isInserting) {
+      context.missing(_lastActiveAtMsMeta);
+    }
+    if (data.containsKey('ended_at_ms')) {
+      context.handle(
+          _endedAtMsMeta,
+          endedAtMs.isAcceptableOrUnknown(
+              data['ended_at_ms']!, _endedAtMsMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ConnectionSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ConnectionSessionRow(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      deviceId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
+      transport: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}transport'])!,
+      endpoint: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}endpoint']),
+      startedAtMs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}started_at_ms'])!,
+      lastActiveAtMs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}last_active_at_ms'])!,
+      endedAtMs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}ended_at_ms']),
+    );
+  }
+
+  @override
+  $ConnectionSessionsTableTable createAlias(String alias) {
+    return $ConnectionSessionsTableTable(attachedDatabase, alias);
+  }
+}
+
+class ConnectionSessionRow extends DataClass
+    implements Insertable<ConnectionSessionRow> {
+  /// Unique session id (primary key).
+  final String id;
+
+  /// The `macDeviceId` of the PC this session connected to.
+  final String deviceId;
+
+  /// `ConnectionTransport` serialized as its enum name (`direct` / `relay`).
+  final String transport;
+
+  /// The real URL the channel used (winning direct host, or the relay), if
+  /// known.
+  final String? endpoint;
+
+  /// When the live channel was committed, in epoch milliseconds.
+  final int startedAtMs;
+
+  /// Last moment the channel was confirmed alive (heartbeat), in epoch ms.
+  final int lastActiveAtMs;
+
+  /// When the session was torn down, in epoch ms, or null while still open.
+  final int? endedAtMs;
+  const ConnectionSessionRow(
+      {required this.id,
+      required this.deviceId,
+      required this.transport,
+      this.endpoint,
+      required this.startedAtMs,
+      required this.lastActiveAtMs,
+      this.endedAtMs});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['device_id'] = Variable<String>(deviceId);
+    map['transport'] = Variable<String>(transport);
+    if (!nullToAbsent || endpoint != null) {
+      map['endpoint'] = Variable<String>(endpoint);
+    }
+    map['started_at_ms'] = Variable<int>(startedAtMs);
+    map['last_active_at_ms'] = Variable<int>(lastActiveAtMs);
+    if (!nullToAbsent || endedAtMs != null) {
+      map['ended_at_ms'] = Variable<int>(endedAtMs);
+    }
+    return map;
+  }
+
+  ConnectionSessionsTableCompanion toCompanion(bool nullToAbsent) {
+    return ConnectionSessionsTableCompanion(
+      id: Value(id),
+      deviceId: Value(deviceId),
+      transport: Value(transport),
+      endpoint: endpoint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endpoint),
+      startedAtMs: Value(startedAtMs),
+      lastActiveAtMs: Value(lastActiveAtMs),
+      endedAtMs: endedAtMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endedAtMs),
+    );
+  }
+
+  factory ConnectionSessionRow.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ConnectionSessionRow(
+      id: serializer.fromJson<String>(json['id']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+      transport: serializer.fromJson<String>(json['transport']),
+      endpoint: serializer.fromJson<String?>(json['endpoint']),
+      startedAtMs: serializer.fromJson<int>(json['startedAtMs']),
+      lastActiveAtMs: serializer.fromJson<int>(json['lastActiveAtMs']),
+      endedAtMs: serializer.fromJson<int?>(json['endedAtMs']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'deviceId': serializer.toJson<String>(deviceId),
+      'transport': serializer.toJson<String>(transport),
+      'endpoint': serializer.toJson<String?>(endpoint),
+      'startedAtMs': serializer.toJson<int>(startedAtMs),
+      'lastActiveAtMs': serializer.toJson<int>(lastActiveAtMs),
+      'endedAtMs': serializer.toJson<int?>(endedAtMs),
+    };
+  }
+
+  ConnectionSessionRow copyWith(
+          {String? id,
+          String? deviceId,
+          String? transport,
+          Value<String?> endpoint = const Value.absent(),
+          int? startedAtMs,
+          int? lastActiveAtMs,
+          Value<int?> endedAtMs = const Value.absent()}) =>
+      ConnectionSessionRow(
+        id: id ?? this.id,
+        deviceId: deviceId ?? this.deviceId,
+        transport: transport ?? this.transport,
+        endpoint: endpoint.present ? endpoint.value : this.endpoint,
+        startedAtMs: startedAtMs ?? this.startedAtMs,
+        lastActiveAtMs: lastActiveAtMs ?? this.lastActiveAtMs,
+        endedAtMs: endedAtMs.present ? endedAtMs.value : this.endedAtMs,
+      );
+  ConnectionSessionRow copyWithCompanion(
+      ConnectionSessionsTableCompanion data) {
+    return ConnectionSessionRow(
+      id: data.id.present ? data.id.value : this.id,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      transport: data.transport.present ? data.transport.value : this.transport,
+      endpoint: data.endpoint.present ? data.endpoint.value : this.endpoint,
+      startedAtMs:
+          data.startedAtMs.present ? data.startedAtMs.value : this.startedAtMs,
+      lastActiveAtMs: data.lastActiveAtMs.present
+          ? data.lastActiveAtMs.value
+          : this.lastActiveAtMs,
+      endedAtMs: data.endedAtMs.present ? data.endedAtMs.value : this.endedAtMs,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConnectionSessionRow(')
+          ..write('id: $id, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('transport: $transport, ')
+          ..write('endpoint: $endpoint, ')
+          ..write('startedAtMs: $startedAtMs, ')
+          ..write('lastActiveAtMs: $lastActiveAtMs, ')
+          ..write('endedAtMs: $endedAtMs')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, deviceId, transport, endpoint,
+      startedAtMs, lastActiveAtMs, endedAtMs);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ConnectionSessionRow &&
+          other.id == this.id &&
+          other.deviceId == this.deviceId &&
+          other.transport == this.transport &&
+          other.endpoint == this.endpoint &&
+          other.startedAtMs == this.startedAtMs &&
+          other.lastActiveAtMs == this.lastActiveAtMs &&
+          other.endedAtMs == this.endedAtMs);
+}
+
+class ConnectionSessionsTableCompanion
+    extends UpdateCompanion<ConnectionSessionRow> {
+  final Value<String> id;
+  final Value<String> deviceId;
+  final Value<String> transport;
+  final Value<String?> endpoint;
+  final Value<int> startedAtMs;
+  final Value<int> lastActiveAtMs;
+  final Value<int?> endedAtMs;
+  final Value<int> rowid;
+  const ConnectionSessionsTableCompanion({
+    this.id = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.transport = const Value.absent(),
+    this.endpoint = const Value.absent(),
+    this.startedAtMs = const Value.absent(),
+    this.lastActiveAtMs = const Value.absent(),
+    this.endedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ConnectionSessionsTableCompanion.insert({
+    required String id,
+    required String deviceId,
+    required String transport,
+    this.endpoint = const Value.absent(),
+    required int startedAtMs,
+    required int lastActiveAtMs,
+    this.endedAtMs = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        deviceId = Value(deviceId),
+        transport = Value(transport),
+        startedAtMs = Value(startedAtMs),
+        lastActiveAtMs = Value(lastActiveAtMs);
+  static Insertable<ConnectionSessionRow> custom({
+    Expression<String>? id,
+    Expression<String>? deviceId,
+    Expression<String>? transport,
+    Expression<String>? endpoint,
+    Expression<int>? startedAtMs,
+    Expression<int>? lastActiveAtMs,
+    Expression<int>? endedAtMs,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (deviceId != null) 'device_id': deviceId,
+      if (transport != null) 'transport': transport,
+      if (endpoint != null) 'endpoint': endpoint,
+      if (startedAtMs != null) 'started_at_ms': startedAtMs,
+      if (lastActiveAtMs != null) 'last_active_at_ms': lastActiveAtMs,
+      if (endedAtMs != null) 'ended_at_ms': endedAtMs,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ConnectionSessionsTableCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? deviceId,
+      Value<String>? transport,
+      Value<String?>? endpoint,
+      Value<int>? startedAtMs,
+      Value<int>? lastActiveAtMs,
+      Value<int?>? endedAtMs,
+      Value<int>? rowid}) {
+    return ConnectionSessionsTableCompanion(
+      id: id ?? this.id,
+      deviceId: deviceId ?? this.deviceId,
+      transport: transport ?? this.transport,
+      endpoint: endpoint ?? this.endpoint,
+      startedAtMs: startedAtMs ?? this.startedAtMs,
+      lastActiveAtMs: lastActiveAtMs ?? this.lastActiveAtMs,
+      endedAtMs: endedAtMs ?? this.endedAtMs,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (transport.present) {
+      map['transport'] = Variable<String>(transport.value);
+    }
+    if (endpoint.present) {
+      map['endpoint'] = Variable<String>(endpoint.value);
+    }
+    if (startedAtMs.present) {
+      map['started_at_ms'] = Variable<int>(startedAtMs.value);
+    }
+    if (lastActiveAtMs.present) {
+      map['last_active_at_ms'] = Variable<int>(lastActiveAtMs.value);
+    }
+    if (endedAtMs.present) {
+      map['ended_at_ms'] = Variable<int>(endedAtMs.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConnectionSessionsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('transport: $transport, ')
+          ..write('endpoint: $endpoint, ')
+          ..write('startedAtMs: $startedAtMs, ')
+          ..write('lastActiveAtMs: $lastActiveAtMs, ')
+          ..write('endedAtMs: $endedAtMs, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$UxnanDatabase extends GeneratedDatabase {
   _$UxnanDatabase(QueryExecutor e) : super(e);
   $UxnanDatabaseManager get managers => $UxnanDatabaseManager(this);
@@ -3213,6 +3633,8 @@ abstract class _$UxnanDatabase extends GeneratedDatabase {
       $ComposerDraftsTableTable(this);
   late final $GitActionLogTableTable gitActionLogTable =
       $GitActionLogTableTable(this);
+  late final $ConnectionSessionsTableTable connectionSessionsTable =
+      $ConnectionSessionsTableTable(this);
   late final Index idxMessagesThreadId = Index('idx_messages_thread_id',
       'CREATE INDEX idx_messages_thread_id ON messages_table (thread_id, order_index)');
   late final Index idxTurnsThreadId = Index('idx_turns_thread_id',
@@ -3229,6 +3651,7 @@ abstract class _$UxnanDatabase extends GeneratedDatabase {
         trustedDevicesTable,
         composerDraftsTable,
         gitActionLogTable,
+        connectionSessionsTable,
         idxMessagesThreadId,
         idxTurnsThreadId
       ];
@@ -4763,6 +5186,218 @@ typedef $$GitActionLogTableTableProcessedTableManager = ProcessedTableManager<
     ),
     GitActionLogRow,
     PrefetchHooks Function()>;
+typedef $$ConnectionSessionsTableTableCreateCompanionBuilder
+    = ConnectionSessionsTableCompanion Function({
+  required String id,
+  required String deviceId,
+  required String transport,
+  Value<String?> endpoint,
+  required int startedAtMs,
+  required int lastActiveAtMs,
+  Value<int?> endedAtMs,
+  Value<int> rowid,
+});
+typedef $$ConnectionSessionsTableTableUpdateCompanionBuilder
+    = ConnectionSessionsTableCompanion Function({
+  Value<String> id,
+  Value<String> deviceId,
+  Value<String> transport,
+  Value<String?> endpoint,
+  Value<int> startedAtMs,
+  Value<int> lastActiveAtMs,
+  Value<int?> endedAtMs,
+  Value<int> rowid,
+});
+
+class $$ConnectionSessionsTableTableFilterComposer
+    extends Composer<_$UxnanDatabase, $ConnectionSessionsTableTable> {
+  $$ConnectionSessionsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get transport => $composableBuilder(
+      column: $table.transport, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get endpoint => $composableBuilder(
+      column: $table.endpoint, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get startedAtMs => $composableBuilder(
+      column: $table.startedAtMs, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get lastActiveAtMs => $composableBuilder(
+      column: $table.lastActiveAtMs,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get endedAtMs => $composableBuilder(
+      column: $table.endedAtMs, builder: (column) => ColumnFilters(column));
+}
+
+class $$ConnectionSessionsTableTableOrderingComposer
+    extends Composer<_$UxnanDatabase, $ConnectionSessionsTableTable> {
+  $$ConnectionSessionsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+      column: $table.deviceId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get transport => $composableBuilder(
+      column: $table.transport, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get endpoint => $composableBuilder(
+      column: $table.endpoint, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get startedAtMs => $composableBuilder(
+      column: $table.startedAtMs, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get lastActiveAtMs => $composableBuilder(
+      column: $table.lastActiveAtMs,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get endedAtMs => $composableBuilder(
+      column: $table.endedAtMs, builder: (column) => ColumnOrderings(column));
+}
+
+class $$ConnectionSessionsTableTableAnnotationComposer
+    extends Composer<_$UxnanDatabase, $ConnectionSessionsTableTable> {
+  $$ConnectionSessionsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<String> get transport =>
+      $composableBuilder(column: $table.transport, builder: (column) => column);
+
+  GeneratedColumn<String> get endpoint =>
+      $composableBuilder(column: $table.endpoint, builder: (column) => column);
+
+  GeneratedColumn<int> get startedAtMs => $composableBuilder(
+      column: $table.startedAtMs, builder: (column) => column);
+
+  GeneratedColumn<int> get lastActiveAtMs => $composableBuilder(
+      column: $table.lastActiveAtMs, builder: (column) => column);
+
+  GeneratedColumn<int> get endedAtMs =>
+      $composableBuilder(column: $table.endedAtMs, builder: (column) => column);
+}
+
+class $$ConnectionSessionsTableTableTableManager extends RootTableManager<
+    _$UxnanDatabase,
+    $ConnectionSessionsTableTable,
+    ConnectionSessionRow,
+    $$ConnectionSessionsTableTableFilterComposer,
+    $$ConnectionSessionsTableTableOrderingComposer,
+    $$ConnectionSessionsTableTableAnnotationComposer,
+    $$ConnectionSessionsTableTableCreateCompanionBuilder,
+    $$ConnectionSessionsTableTableUpdateCompanionBuilder,
+    (
+      ConnectionSessionRow,
+      BaseReferences<_$UxnanDatabase, $ConnectionSessionsTableTable,
+          ConnectionSessionRow>
+    ),
+    ConnectionSessionRow,
+    PrefetchHooks Function()> {
+  $$ConnectionSessionsTableTableTableManager(
+      _$UxnanDatabase db, $ConnectionSessionsTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ConnectionSessionsTableTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ConnectionSessionsTableTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ConnectionSessionsTableTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> deviceId = const Value.absent(),
+            Value<String> transport = const Value.absent(),
+            Value<String?> endpoint = const Value.absent(),
+            Value<int> startedAtMs = const Value.absent(),
+            Value<int> lastActiveAtMs = const Value.absent(),
+            Value<int?> endedAtMs = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ConnectionSessionsTableCompanion(
+            id: id,
+            deviceId: deviceId,
+            transport: transport,
+            endpoint: endpoint,
+            startedAtMs: startedAtMs,
+            lastActiveAtMs: lastActiveAtMs,
+            endedAtMs: endedAtMs,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String deviceId,
+            required String transport,
+            Value<String?> endpoint = const Value.absent(),
+            required int startedAtMs,
+            required int lastActiveAtMs,
+            Value<int?> endedAtMs = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ConnectionSessionsTableCompanion.insert(
+            id: id,
+            deviceId: deviceId,
+            transport: transport,
+            endpoint: endpoint,
+            startedAtMs: startedAtMs,
+            lastActiveAtMs: lastActiveAtMs,
+            endedAtMs: endedAtMs,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$ConnectionSessionsTableTableProcessedTableManager
+    = ProcessedTableManager<
+        _$UxnanDatabase,
+        $ConnectionSessionsTableTable,
+        ConnectionSessionRow,
+        $$ConnectionSessionsTableTableFilterComposer,
+        $$ConnectionSessionsTableTableOrderingComposer,
+        $$ConnectionSessionsTableTableAnnotationComposer,
+        $$ConnectionSessionsTableTableCreateCompanionBuilder,
+        $$ConnectionSessionsTableTableUpdateCompanionBuilder,
+        (
+          ConnectionSessionRow,
+          BaseReferences<_$UxnanDatabase, $ConnectionSessionsTableTable,
+              ConnectionSessionRow>
+        ),
+        ConnectionSessionRow,
+        PrefetchHooks Function()>;
 
 class $UxnanDatabaseManager {
   final _$UxnanDatabase _db;
@@ -4781,4 +5416,7 @@ class $UxnanDatabaseManager {
       $$ComposerDraftsTableTableTableManager(_db, _db.composerDraftsTable);
   $$GitActionLogTableTableTableManager get gitActionLogTable =>
       $$GitActionLogTableTableTableManager(_db, _db.gitActionLogTable);
+  $$ConnectionSessionsTableTableTableManager get connectionSessionsTable =>
+      $$ConnectionSessionsTableTableTableManager(
+          _db, _db.connectionSessionsTable);
 }

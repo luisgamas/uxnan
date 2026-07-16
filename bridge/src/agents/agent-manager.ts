@@ -15,6 +15,8 @@ import {
   StreamNotification,
   makeNotification,
   type AccessMode,
+  type AgentCommand,
+  type AgentCommandInvocation,
   type AgentDescriptor,
   type AgentId,
   type AgentModel,
@@ -113,6 +115,13 @@ export interface SendTurnOptions {
   cwd?: string;
   /** The thread's persisted access (approval) mode, applied to this turn. */
   accessMode?: AccessMode;
+  /**
+   * Invoke an advertised agent command instead of free-form text. Resolved here
+   * to the final prompt (expanded custom template, or the CLI's native
+   * `/name args` form) before the adapter runs; the command form is what's
+   * persisted to history. See {@link AgentCommandInvocation}.
+   */
+  command?: AgentCommandInvocation;
 }
 
 export class AgentManager {
@@ -215,6 +224,53 @@ export class AgentManager {
     }
   }
 
+  /**
+   * Special ("slash") commands the given agent exposes — control commands it can
+   * run headless plus custom prompt-template commands scanned from `cwd`/user
+   * config (empty when the agent advertises none). Never throws: discovery is
+   * best-effort so a failing scan degrades to no commands, not a broken palette.
+   */
+  async getCommands(agentId: AgentId, cwd?: string): Promise<AgentCommand[]> {
+    const adapter = this.#adapters.get(agentId);
+    if (!adapter?.listCommands) return [];
+    try {
+      return await adapter.listCommands(cwd);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Resolve an {@link AgentCommandInvocation} to the prompt text the agent runs:
+   * a custom prompt-template command is expanded by the adapter; a native
+   * control command becomes the CLI's `/name args` form (Claude Code / ACP
+   * agents interpret it directly). Falls back to the native form when expansion
+   * is unavailable or fails, so a command never hard-fails a turn.
+   */
+  async #resolveCommandText(
+    adapter: IAgentAdapter,
+    command: AgentCommandInvocation,
+    cwd?: string,
+  ): Promise<string> {
+    const args = command.args?.trim();
+    if (adapter.expandCommand) {
+      try {
+        return await adapter.expandCommand(command.name, args || undefined, cwd);
+      } catch (err) {
+        this.#options.logger.warn(
+          `command expansion failed for '${command.name}': ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return args && args.length > 0 ? `/${command.name} ${args}` : `/${command.name}`;
+  }
+
+  /** The `/name args` form of a command, shown in history instead of its expansion. */
+  #commandDisplay(command: AgentCommandInvocation): string {
+    const args = command.args?.trim();
+    return args && args.length > 0 ? `/${command.name} ${args}` : `/${command.name}`;
+  }
+
   /** Start a turn: persist the user message, drive the adapter, return the turn id. */
   async sendTurn(
     threadId: string,
@@ -231,14 +287,19 @@ export class AgentManager {
     }
 
     const attachments = options.attachments ?? [];
-    // Persist a faithful user message (no temp paths): the original text, or a
-    // short placeholder for an image-only turn so history isn't a blank bubble.
+    // A command invocation carries no free-form text: show the command (`/name
+    // args`), not its expansion, in history — the expanded prompt can be large.
+    const commandDisplay = options.command ? this.#commandDisplay(options.command) : undefined;
+    // Persist a faithful user message (no temp paths): the command form, the
+    // original text, or a short placeholder for an image-only turn so history
+    // isn't a blank bubble.
+    const persistBase = commandDisplay ?? userText;
     const persistText =
-      userText.length > 0
-        ? userText
+      persistBase.length > 0
+        ? persistBase
         : attachments.length > 0
           ? `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`
-          : userText;
+          : persistBase;
     const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
     this.#assistantByTurn.set(started.turnId, started.assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
@@ -249,10 +310,16 @@ export class AgentManager {
       this.#started.add(agentId);
     }
 
+    // Resolve a command invocation to the prompt the agent actually runs (an
+    // expanded custom template, or the CLI's native `/name args` form). A plain
+    // turn keeps its text verbatim.
+    let agentText = options.command
+      ? await this.#resolveCommandText(adapter, options.command, options.cwd)
+      : userText;
+
     // Materialize image attachments to temp files and reference them in the
     // prompt so any file/vision-capable agent CLI can open them. Best-effort:
     // a failure to write degrades to a text-only turn, never aborts it.
-    let agentText = userText;
     if (attachments.length > 0) {
       try {
         const materialized = await materializeAttachments(attachments, started.turnId, {
@@ -260,7 +327,7 @@ export class AgentManager {
         });
         if (materialized.note) {
           agentText =
-            userText.length > 0 ? `${userText}\n\n${materialized.note}` : materialized.note;
+            agentText.length > 0 ? `${agentText}\n\n${materialized.note}` : materialized.note;
         }
         if (materialized.dir) this.#attachmentDirByTurn.set(started.turnId, materialized.dir);
       } catch (err) {
@@ -278,6 +345,7 @@ export class AgentManager {
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
+      ...(options.command !== undefined ? { command: options.command } : {}),
     });
     return { turnId: started.turnId };
   }

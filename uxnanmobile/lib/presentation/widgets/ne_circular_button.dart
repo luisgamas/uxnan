@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
 
-/// Neural Expressive **circular action button** — a filled
-/// `secondaryContainer` circle with a single glyph, used for the floating
+/// Neural Expressive **circular action button** — a neutral floating surface
+/// with a single glyph, used for the floating
 /// scroll shortcuts (scroll-to-bottom in the conversation, back-to-top in the
 /// git history). NE's action language is circular (like `IconSurface`), so this
 /// replaces M3's default rounded-square `FloatingActionButton.small` to keep
-/// every floating action consistent across the app.
+/// every floating action consistent across the app. Its 52 dp footprint is
+/// deliberately easier to acquire than the old 44 dp control without becoming
+/// as visually dominant as a primary 56 dp FAB.
 class NeCircularButton extends StatelessWidget {
   /// Creates a [NeCircularButton].
   const NeCircularButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
-    this.size = 44,
+    this.size = UxnanSize.floatingScrollShortcut,
     this.iconSize = 26,
     super.key,
   });
@@ -38,9 +41,9 @@ class NeCircularButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: colors.secondaryContainer,
-        shape: const CircleBorder(),
-        elevation: 3,
+        color: colors.surfaceContainerHighest,
+        shape: CircleBorder(side: BorderSide(color: colors.outlineVariant)),
+        elevation: 2,
         shadowColor: colors.shadow,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -50,7 +53,7 @@ class NeCircularButton extends StatelessWidget {
             height: size,
             child: Icon(
               icon,
-              color: colors.onSecondaryContainer,
+              color: colors.onSurfaceVariant,
               size: iconSize,
             ),
           ),

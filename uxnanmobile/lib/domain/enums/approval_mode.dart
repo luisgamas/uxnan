@@ -16,5 +16,5 @@ enum ApprovalMode {
 /// the intended experience for this personal tool. It is the single source of
 /// truth for the pre-seed UI default and the value persisted to the bridge when
 /// a thread has no mode yet; the user can still change it per-thread from the
-/// composer's turn-tools sheet.
+/// compact turn-context shelf above the composer.
 const ApprovalMode kDefaultApprovalMode = ApprovalMode.fullAccess;

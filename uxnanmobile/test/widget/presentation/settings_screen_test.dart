@@ -47,6 +47,12 @@ void main() {
   testWidgets('landing lists the sections and shows no inline toggles', (
     tester,
   ) async {
+    // A tall surface so the whole (lazily-built) landing lays out on screen.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(_wrap());
     await tester.pumpAndSettle();
 
@@ -57,6 +63,7 @@ void main() {
     // …and the section entries under them.
     expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Usage'), findsOneWidget);
     expect(find.text('Conversation'), findsOneWidget);
     expect(find.text('Source control'), findsOneWidget);
     expect(find.text('Updates'), findsOneWidget);

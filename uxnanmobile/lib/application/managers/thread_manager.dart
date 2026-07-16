@@ -5,6 +5,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/core/utils/logger.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
@@ -471,6 +472,24 @@ class ThreadManager {
     ];
   }
 
+  /// Loads the special ("slash") commands the bridge reports for [agentId]
+  /// (`agent/commands`). [cwd] scopes discovery so a project's own custom
+  /// commands are included. Tolerant: an older bridge that lacks the method
+  /// simply yields an empty list (the palette then shows only client rows).
+  Future<List<AgentCommand>> loadCommands(String agentId, {String? cwd}) async {
+    final response = await _sendRequest('agent/commands', {
+      'agentId': agentId,
+      if (cwd != null && cwd.isNotEmpty) 'cwd': cwd,
+    });
+    final result = response.result;
+    final commands = result is Map ? result['commands'] : null;
+    if (commands is! List) return const [];
+    return [
+      for (final raw in commands)
+        if (AgentCommand.fromAny(raw) case final command?) command,
+    ];
+  }
+
   /// Loads the sanitized auth status the bridge reports for [agentId]
   /// (`auth/status`), or null when the bridge does not answer with a status
   /// (e.g. an older bridge that left the method unimplemented). The result
@@ -878,6 +897,7 @@ class ThreadManager {
     String text, {
     Map<String, Object>? options,
     List<ImageContent>? attachments,
+    ({String name, String? args})? command,
   }) async {
     final images = attachments ?? const <ImageContent>[];
     final contents = <MessageContent>[
@@ -910,7 +930,16 @@ class ThreadManager {
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
-        'text': text,
+        // A command invocation carries no free-form text: the bridge resolves
+        // `{ name, args }` to the prompt the agent runs (expanded custom
+        // template or the CLI's native `/name args` form).
+        if (command == null) 'text': text,
+        if (command != null)
+          'command': {
+            'name': command.name,
+            if (command.args != null && command.args!.isNotEmpty)
+              'args': command.args,
+          },
         if (options != null && options.isNotEmpty) 'options': options,
         if (images.isNotEmpty)
           'attachments': [for (final image in images) image.toJson()],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 
@@ -9,12 +10,16 @@ enum ComposerCommandKind {
 
   /// Replaces the `/command` with `@`, handing off to the file/dir picker.
   startFileMention,
+
+  /// Inserts `/<name> ` so the user can add arguments; on send it is routed to
+  /// the agent as a real slash command (`turn/send` `command`), not plain text.
+  invokeAgentCommand,
 }
 
-/// One entry in uxnan's own `/` command palette. These are **client-side**
-/// actions (the `@`-file hand-off + user prompt templates), not the CLI agent's
-/// own slash commands — those are interactive-mode features the bridge does not
-/// drive.
+/// One entry in the composer's `/` palette — either a **client-side** action
+/// (the `@`-file hand-off + user prompt templates) or a real **agent command**
+/// the bridge advertises via `agent/commands` (kind
+/// [ComposerCommandKind.invokeAgentCommand]) that the bridge resolves and runs.
 class ComposerCommand {
   /// Creates a [ComposerCommand].
   const ComposerCommand({
@@ -95,6 +100,43 @@ List<PromptTemplate> defaultPromptTemplates(AppLocalizations l10n) => [
         body: l10n.composerCmdTestsTemplate,
       ),
     ];
+
+/// The agent's own slash commands (`agent/commands`) as palette entries. Only
+/// headless-supported commands are shown; picking one inserts `/<name> ` so the
+/// user can append arguments before sending.
+List<ComposerCommand> agentComposerCommands(List<AgentCommand> commands) => [
+      for (final c in commands)
+        if (c.headlessSupported)
+          ComposerCommand(
+            id: c.name,
+            icon: Icons.terminal_rounded,
+            label: '/${c.name}',
+            description: c.description ??
+                (c.argumentHint != null ? 'args: ${c.argumentHint}' : ''),
+            kind: ComposerCommandKind.invokeAgentCommand,
+            template: '/${c.name} ',
+          ),
+    ];
+
+/// If [text] is a `/name [args]` invocation of an advertised, headless-supported
+/// agent command in [commands], returns its `{ name, args }` so the caller can
+/// route it via `turn/send` `command`. Returns null otherwise (send as text) —
+/// so an unknown `/foo` is delivered verbatim, exactly as before.
+({String name, String? args})? parseAgentCommand(
+  String text,
+  List<AgentCommand> commands,
+) {
+  final trimmed = text.trimLeft();
+  if (!trimmed.startsWith('/')) return null;
+  final body = trimmed.substring(1);
+  final match = RegExp(r'\s').firstMatch(body);
+  final name = match == null ? body : body.substring(0, match.start);
+  if (name.isEmpty) return null;
+  final known = commands.any((c) => c.headlessSupported && c.name == name);
+  if (!known) return null;
+  final rest = match == null ? '' : body.substring(match.start).trim();
+  return (name: name, args: rest.isEmpty ? null : rest);
+}
 
 /// Filters [commands] by a `/`-palette [rawQuery] (the text after the `/`),
 /// matching the [ComposerCommand.id] or the label (case-insensitive). An empty

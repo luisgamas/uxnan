@@ -297,6 +297,9 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
               onTap: _backToTop,
             )
           : null,
+      // Bottom-centered, consistent with the conversation's jump-to-latest
+      // button (this one scrolls the history up; that one scrolls down).
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       actions: [
         if (hasContent)
           _CommitSearchAnchor(commits: _commits, onSelect: _openDetails),

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { rmrf } from '../helpers/fs.js';
 import {
   InMemorySecretStore,
   createInMemoryIoPair,
@@ -33,6 +33,7 @@ test('a reconnecting phone is caught up on outbound it missed (seq > resumeState
       deviceState: bridge.context.deviceState,
       trustStore: bridge.trustStore,
       displayName: 'Test PC',
+      transport: 'direct',
       expectedSessionId: sessionId,
     });
   };
@@ -81,7 +82,7 @@ test('a reconnecting phone is caught up on outbound it missed (seq > resumeState
     phone2.close();
   } finally {
     await bridge.stop();
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   }
 });
 
@@ -102,6 +103,7 @@ test('a first-time phone (no resumeState) is not sent any backlog', async () => 
       deviceState: bridge.context.deviceState,
       trustStore: bridge.trustStore,
       displayName: 'Test PC',
+      transport: 'direct',
       expectedSessionId: sessionId,
     });
     const phone = await FakePhone.connect(phoneIo, { sessionId });
@@ -115,6 +117,6 @@ test('a first-time phone (no resumeState) is not sent any backlog', async () => 
     phone.close();
   } finally {
     await bridge.stop();
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   }
 });

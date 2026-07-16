@@ -637,7 +637,7 @@ class BaseAgentAdapter {
 
 ### 3.1 Sistema de diseno
 
-> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` adaptativo para claro/oscuro. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono ya están incluidas en `assets/fonts/` y declaradas en `pubspec.yaml` (verificado en dispositivo).
+> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` adaptativo para claro/oscuro. El tema de marca genera primero un `ColorScheme` Material 3 completo desde sus semillas oficial azul/verde/error, por lo que toda la jerarquía de superficies y los roles fijos/inversos tienen tonos explícitos; nunca se construye un esquema parcial. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono ya están incluidas en `assets/fonts/` y declaradas en `pubspec.yaml` (verificado en dispositivo).
 
 Uxnan usa un sistema de diseno propio basado en Material Design 3 con personalizacion especifica para el contexto de terminal/codigo.
 
@@ -771,24 +771,33 @@ class UxnanRadius {
 ```dart
 // lib/presentation/theme/uxnan_theme.dart
 ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
-  final colorScheme = ColorScheme(
+  // Never instantiate a partial ColorScheme. `fromSeed` materializes all M3
+  // roles, including surfaceContainerLowest…Highest, inverse and fixed roles.
+  final primary = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandPrimary,
     brightness: brightness,
-    primary: UxnanColors.primary,
-    onPrimary: UxnanColors.onPrimary,
-    primaryContainer: UxnanColors.primaryContainer,
-    onPrimaryContainer: UxnanColors.onSurface,
-    secondary: UxnanColors.secondary,
-    onSecondary: UxnanColors.onSecondary,
-    secondaryContainer: UxnanColors.secondaryContainer,
-    onSecondaryContainer: UxnanColors.onSurface,
-    error: UxnanColors.error,
-    onError: Colors.white,
-    surface: UxnanColors.surface,
-    onSurface: UxnanColors.onSurface,
-    surfaceContainerHighest: UxnanColors.surfaceVariant,
-    surfaceContainerHigh: UxnanColors.surfaceElevated,
-    outline: UxnanColors.outline,
-    outlineVariant: UxnanColors.outline.withOpacity(0.5),
+  );
+  final secondary = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandSecondary,
+    brightness: brightness,
+  );
+  final error = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandError,
+    brightness: brightness,
+  );
+  final colorScheme = primary.copyWith(
+    secondary: secondary.primary,
+    onSecondary: secondary.onPrimary,
+    secondaryContainer: secondary.primaryContainer,
+    onSecondaryContainer: secondary.onPrimaryContainer,
+    secondaryFixed: secondary.primaryFixed,
+    secondaryFixedDim: secondary.primaryFixedDim,
+    onSecondaryFixed: secondary.onPrimaryFixed,
+    onSecondaryFixedVariant: secondary.onPrimaryFixedVariant,
+    error: error.primary,
+    onError: error.onPrimary,
+    errorContainer: error.primaryContainer,
+    onErrorContainer: error.onPrimaryContainer,
   );
   return ThemeData(
     useMaterial3: true,

@@ -14,7 +14,7 @@ takes priority where the two differ.
 | [architecture.md](architecture.md) | The real code map: Clean-Architecture layers, directory layout, the Riverpod provider/DI graph, and how data flows from the bridge to the UI. |
 | [testing.md](testing.md) | How to run analyze/test/build, the test layout, the testing patterns used here, and what still needs a real device/bridge. |
 | [conventions.md](conventions.md) | The working agreement: Riverpod-manual style, Material 3 tokens + skills, l10n workflow, `FOR-DEV`/`FOR-HUMAN`, commit scopes, the UI review rule, and the security non-negotiables. |
-| [neural-expressive-design.md](neural-expressive-design.md) | The UI design language (Material 3 Expressive / Neural Expressive): spring-motion tokens, transparent app bars + scroll veil, Icon Surfaces, pill input + "+" turn-tools sheet, dynamic-corner card lists, breakpoints. Follow it for new/redesigned screens. |
+| [neural-expressive-design.md](neural-expressive-design.md) | The UI design language (Material 3 Expressive / Neural Expressive): spring-motion tokens, transparent app bars + scroll veil, Icon Surfaces, focus-responsive pill input + compact turn-context shelf + "+" media menu, dynamic-corner card lists, breakpoints. Follow it for new/redesigned screens. |
 
 Related files (not in `docs/`):
 

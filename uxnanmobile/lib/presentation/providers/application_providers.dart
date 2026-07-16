@@ -12,6 +12,7 @@ import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
 import 'package:uxnan/core/utils/logger.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/entities/auth_status.dart';
@@ -22,23 +23,30 @@ import 'package:uxnan/domain/entities/git/git_repo_state.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/activity_metric.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
+import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
+import 'package:uxnan/domain/value_objects/profile_avatar.dart';
+import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
+import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/providers/rail_anchors.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
     show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
@@ -72,6 +80,7 @@ final sessionCoordinatorProvider = Provider<SessionCoordinator>((ref) {
     transportSelector: ref.watch(transportSelectorProvider),
     identityResolver: () => ref.read(phoneIdentityStoreProvider).loadOrCreate(),
     trustedDeviceRepository: ref.watch(trustedDeviceRepositoryProvider),
+    connectionSessionRepository: ref.watch(connectionSessionRepositoryProvider),
     pairingValidator: ref.watch(pairingValidatorProvider),
   );
   ref.onDispose(coordinator.dispose);
@@ -103,6 +112,15 @@ final connectedDeviceProvider = StreamProvider<TrustedDevice?>(
 /// per-device "connecting" indicator without flipping the others.
 final connectingDeviceProvider = StreamProvider<TrustedDevice?>(
   (ref) => ref.watch(sessionCoordinatorProvider).connectingDeviceStream,
+);
+
+/// The URL the live channel is actually served through (the winning direct
+/// LAN/Tailscale host, or the relay), or null when not connected. Lets the PC
+/// card show the REAL address in use instead of the first advertised host
+/// (which is just a lexicographic guess and often the Tailscale `100.x` IP even
+/// on LAN).
+final connectedEndpointProvider = StreamProvider<String?>(
+  (ref) => ref.watch(sessionCoordinatorProvider).connectedEndpointStream,
 );
 
 /// The connected bridge's status (`bridge/status`), refreshed whenever the
@@ -162,6 +180,365 @@ final bridgeUpdateProvider =
 /// Reactive list of paired trusted devices (PCs), for the UI.
 final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
   (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),
+);
+
+/// Thrown when `metrics/import` is rejected by the bridge, carrying the bridge's
+/// reason (e.g. a foreign/edited file, or a missing/wrong passphrase) so the UI
+/// can show it verbatim.
+class MetricsImportException implements Exception {
+  /// Creates a [MetricsImportException] with the bridge's [message].
+  const MetricsImportException(this.message);
+
+  /// The human-readable reason the import was rejected.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Owns the bridge-reported profile metrics: one [MetricsSnapshot] per PC,
+/// keyed by `deviceId`. The **bridge is the source of truth** (these survive an
+/// app uninstall, unlike the old phone-local aggregation) — so on every
+/// connection the controller re-fetches `metrics/get` and caches it, and the
+/// profile derives from the cache. The on-device cache is a display cache only.
+///
+/// This provider's `build` *is* the async load workflow, so fetching on
+/// (re)connect is intentional, not a hidden side effect.
+class MetricsController extends AsyncNotifier<Map<String, MetricsSnapshot>> {
+  @override
+  Future<Map<String, MetricsSnapshot>> build() async {
+    final store = ref.read(metricsCacheStoreProvider);
+    final cache = await store.readAll();
+    // Re-fetch the connected PC's snapshot on each (re)connection; cache it.
+    final connected = ref.watch(connectedDeviceProvider).value;
+    if (connected != null) {
+      final snapshot = await _fetch();
+      if (snapshot != null && snapshot.deviceId.isNotEmpty) {
+        cache[snapshot.deviceId] = snapshot;
+        await store.writeOne(snapshot);
+      }
+    }
+    return cache;
+  }
+
+  /// Fetches `metrics/get` for the connected PC, or null when offline / against a
+  /// bridge without the handler (degrades to the cached/drift data).
+  Future<MetricsSnapshot?> _fetch() async {
+    try {
+      final response =
+          await ref.read(sessionCoordinatorProvider).sendRequest('metrics/get');
+      if (response.error != null) return null;
+      final result = response.result;
+      return result is Map
+          ? MetricsSnapshot.fromJson(result.cast<String, dynamic>())
+          : null;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('metrics/get failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Requests a sealed, tamper-proof backup of the connected PC's metrics
+  /// (`metrics/export`). Returns the blob + a suggested filename, or null when
+  /// offline / unsupported. An optional [passphrase] adds a second lock.
+  Future<({String blob, String filename, bool passphraseProtected})?>
+      exportBackup({
+    String? passphrase,
+  }) async {
+    try {
+      final response = await ref.read(sessionCoordinatorProvider).sendRequest(
+            'metrics/export',
+            passphrase != null && passphrase.isNotEmpty
+                ? {'passphrase': passphrase}
+                : null,
+          );
+      if (response.error != null) return null;
+      final result = response.result;
+      if (result is! Map) return null;
+      final blob = result['blob'];
+      final filename = result['filename'];
+      if (blob is! String || filename is! String) return null;
+      return (
+        blob: blob,
+        filename: filename,
+        passphraseProtected: result['passphraseProtected'] == true,
+      );
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('metrics/export failed', error, stackTrace);
+      return null;
+    }
+  }
+
+  /// Sends a previously exported [blob] back to the bridge (`metrics/import`).
+  /// On success the merged snapshot refreshes the cache (so the profile updates
+  /// immediately) and the number of newly-merged events is returned. Throws
+  /// [MetricsImportException] when the bridge rejects it (foreign/edited file, or
+  /// a missing/wrong [passphrase]).
+  Future<int> importBackup(String blob, {String? passphrase}) async {
+    final response = await ref
+        .read(sessionCoordinatorProvider)
+        .sendRequest('metrics/import', {
+      'blob': blob,
+      if (passphrase != null && passphrase.isNotEmpty) 'passphrase': passphrase,
+    });
+    if (response.error != null) {
+      throw MetricsImportException(response.error!.message);
+    }
+    final result = response.result;
+    if (result is! Map) return 0;
+    final imported = (result['imported'] as num?)?.toInt() ?? 0;
+    final snapshotJson = result['snapshot'];
+    if (snapshotJson is Map) {
+      final snapshot =
+          MetricsSnapshot.fromJson(snapshotJson.cast<String, dynamic>());
+      if (snapshot.deviceId.isNotEmpty) {
+        await ref.read(metricsCacheStoreProvider).writeOne(snapshot);
+        final current = state.value ?? const <String, MetricsSnapshot>{};
+        state = AsyncData({...current, snapshot.deviceId: snapshot});
+      }
+    }
+    return imported;
+  }
+}
+
+/// The bridge-reported metrics snapshots, keyed by PC `deviceId` (source of
+/// truth for the profile; re-fetched on each connection and cached on-device).
+final metricsSnapshotsProvider =
+    AsyncNotifierProvider<MetricsController, Map<String, MetricsSnapshot>>(
+  MetricsController.new,
+);
+
+/// Aggregated profile metrics across all paired PCs, from the bridge snapshot
+/// cache (source of truth). Falls back to the local drift aggregation only when
+/// the cache is still empty (offline / pre-metrics bridge), so nothing regresses.
+/// `autoDispose` so re-opening the profile recomputes.
+final profileMetricsProvider =
+    FutureProvider.autoDispose<ProfileMetrics>((ref) async {
+  final cache = await ref.watch(metricsSnapshotsProvider.future);
+  if (cache.isEmpty) return ref.watch(metricsRepositoryProvider).loadMetrics();
+  return aggregateSnapshots(cache.values);
+});
+
+/// Metrics scoped to a single PC (its `macDeviceId`), from the bridge snapshot
+/// cache; falls back to the local drift aggregation when that PC has no cached
+/// snapshot yet.
+final pcMetricsProvider =
+    FutureProvider.autoDispose.family<ProfileMetrics, String>(
+  (ref, deviceId) async {
+    final cache = await ref.watch(metricsSnapshotsProvider.future);
+    final snapshot = cache[deviceId];
+    return snapshot?.toProfileMetrics() ??
+        ref.watch(metricsRepositoryProvider).loadMetrics(deviceId: deviceId);
+  },
+);
+
+/// Query for the activity heatmap: which metric, which calendar year, and an
+/// optional PC scope (null = all PCs).
+typedef HeatmapQuery = ({ActivityMetric metric, int year, String? deviceId});
+
+/// Activity counts bucketed by local day for the heatmap, for a given
+/// [HeatmapQuery]. Derived from the bridge snapshot cache; falls back to the
+/// local drift aggregation when the cache is empty. Empty days are absent.
+final activityHeatmapProvider = FutureProvider.autoDispose
+    .family<Map<DateTime, int>, HeatmapQuery>((ref, query) async {
+  final from = DateTime(query.year);
+  final to = DateTime(query.year + 1).subtract(const Duration(milliseconds: 1));
+  final cache = await ref.watch(metricsSnapshotsProvider.future);
+  final scoped = query.deviceId == null
+      ? cache.values.toList()
+      : [if (cache[query.deviceId] != null) cache[query.deviceId]!];
+  if (scoped.isEmpty) {
+    return ref.watch(metricsRepositoryProvider).activityByDay(
+          from: from,
+          to: to,
+          metric: query.metric,
+          deviceId: query.deviceId,
+        );
+  }
+  return aggregateActivity(scoped, year: query.year, metric: query.metric);
+});
+
+/// The user's custom profile display name, or null to use the default label.
+/// Persisted on-device; hydrates after returning null synchronously.
+class ProfileName extends Notifier<String?> {
+  @override
+  String? build() {
+    unawaited(_hydrate());
+    return null;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref.read(profilePreferencesStoreProvider).readName();
+    if (stored != state) state = stored;
+  }
+
+  /// Persists and applies the display name; a null/empty value clears it.
+  Future<void> set(String? name) async {
+    final value = (name == null || name.trim().isEmpty) ? null : name.trim();
+    if (value == state) return;
+    state = value;
+    await ref.read(profilePreferencesStoreProvider).writeName(value);
+  }
+}
+
+/// The user's custom profile display name (persisted; null = default label).
+final profileNameProvider =
+    NotifierProvider<ProfileName, String?>(ProfileName.new);
+
+/// The user's chosen profile avatar (default person / preset icon / picked
+/// image). Persisted; defaults to the fallback glyph, then hydrates.
+class ProfileAvatarSetting extends Notifier<ProfileAvatar> {
+  @override
+  ProfileAvatar build() {
+    unawaited(_hydrate());
+    return const ProfileAvatar.fallback();
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref.read(profilePreferencesStoreProvider).readAvatar();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the avatar.
+  Future<void> set(ProfileAvatar avatar) async {
+    if (avatar == state) return;
+    state = avatar;
+    await ref.read(profilePreferencesStoreProvider).writeAvatar(avatar);
+  }
+}
+
+/// The user's chosen profile avatar (persisted).
+final profileAvatarProvider =
+    NotifierProvider<ProfileAvatarSetting, ProfileAvatar>(
+  ProfileAvatarSetting.new,
+);
+
+/// The providers the profile requests usage for. The bridge returns
+/// `notInstalled` for any not set up on the PC (a fast, network-free path), so
+/// listing all is cheap; the UI hides the not-installed ones.
+const List<String> _usageProviderIds = [
+  'codex',
+  'claude',
+  'copilot',
+  'gemini',
+  'grok',
+];
+
+/// The usage auto-refresh interval (persisted; default every 5 min). Only
+/// controls background polling — the data itself is kept in memory.
+class UsageRefreshIntervalSetting extends Notifier<UsageRefreshInterval> {
+  @override
+  UsageRefreshInterval build() {
+    unawaited(_hydrate());
+    return UsageRefreshInterval.manual;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(profilePreferencesStoreProvider)
+        .readUsageRefreshInterval();
+    final value = UsageRefreshIntervalX.fromName(stored);
+    if (value != state) state = value;
+  }
+
+  /// Persists and applies the auto-refresh interval.
+  Future<void> set(UsageRefreshInterval interval) async {
+    if (interval == state) return;
+    state = interval;
+    await ref
+        .read(profilePreferencesStoreProvider)
+        .writeUsageRefreshInterval(interval.name);
+  }
+}
+
+/// The persisted usage auto-refresh interval.
+final usageRefreshIntervalProvider =
+    NotifierProvider<UsageRefreshIntervalSetting, UsageRefreshInterval>(
+  UsageRefreshIntervalSetting.new,
+);
+
+/// Whether usage reset times use a 24-hour clock (true) or 12-hour (false).
+/// Persisted; defaults to 24-hour.
+class UsageClock24h extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored =
+        await ref.read(profilePreferencesStoreProvider).readUsageClock24h();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the clock format.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(profilePreferencesStoreProvider)
+        .writeUsageClock24h(value: value);
+  }
+}
+
+/// Whether usage reset times use a 24-hour clock (persisted; default 24h).
+final usageClock24hProvider =
+    NotifierProvider<UsageClock24h, bool>(UsageClock24h.new);
+
+/// Per-provider usage/quota (`agent/usageStats`) for the connected PC. Kept
+/// alive (NOT autoDispose) so scrolling the profile never reloads it;
+/// auto-polls on the configured interval while connected, and exposes a manual
+/// [refresh]. Degrades to an empty list when offline or against a bridge
+/// without the handler.
+class UsageStatsController extends AsyncNotifier<List<ProviderUsage>> {
+  @override
+  Future<List<ProviderUsage>> build() async {
+    final connected = ref.watch(connectedDeviceProvider).value;
+    final interval = ref.watch(usageRefreshIntervalProvider).duration;
+    if (connected == null) return const [];
+    if (interval != null) {
+      // Fires once per period, then re-schedules via the rebuild refresh()
+      // triggers — a self-renewing poll that resets on any manual refresh.
+      final timer = Timer.periodic(interval, (_) => refresh());
+      ref.onDispose(timer.cancel);
+    }
+    return _fetch();
+  }
+
+  Future<List<ProviderUsage>> _fetch() async {
+    final connected = ref.read(connectedDeviceProvider).value;
+    if (connected == null) return const [];
+    try {
+      final response = await ref.read(sessionCoordinatorProvider).sendRequest(
+        'agent/usageStats',
+        {'providers': _usageProviderIds},
+      );
+      final result = response.result;
+      if (result is! Map) return const [];
+      final list = result['usage'];
+      if (list is! List) return const [];
+      return list
+          .whereType<Map<dynamic, dynamic>>()
+          .map((m) => ProviderUsage.fromJson(m.cast<String, dynamic>()))
+          .whereType<ProviderUsage>()
+          .toList();
+    } on Object {
+      // Old bridge (no handler → error) or a transient failure: show nothing.
+      return const [];
+    }
+  }
+
+  /// Re-fetches now. Rebuilds via `ref.invalidateSelf`, so Riverpod keeps the
+  /// previous data in `state.value` while `state.isLoading` is true — the cards
+  /// stay put and the header shows a spinner during the refresh.
+  void refresh() => ref.invalidateSelf();
+}
+
+/// Per-provider usage/quota for the connected PC (kept alive; auto-polls).
+final usageStatsProvider =
+    AsyncNotifierProvider<UsageStatsController, List<ProviderUsage>>(
+  UsageStatsController.new,
 );
 
 /// Classifies inbound bridge notifications into domain events.
@@ -247,6 +624,14 @@ final activeTimelineProvider = StreamProvider<TurnTimelineSnapshot>(
   (ref) => ref.watch(threadManagerProvider).timelineStream,
 );
 
+/// The active thread's scroll-rail anchors (one per user message), derived and
+/// memoized off [activeTimelineProvider] so the mapping runs once per timeline
+/// change rather than on every conversation rebuild, and stays unit-testable.
+final railAnchorsProvider = Provider<RailAnchors>((ref) {
+  final messages = ref.watch(activeTimelineProvider).value?.messages;
+  return messages == null ? RailAnchors.empty : deriveRailAnchors(messages);
+});
+
 /// The thread with the given id (from the reactive thread list), for the UI.
 final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
   final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
@@ -289,6 +674,21 @@ final agentModelsProvider = FutureProvider.family<List<AgentModel>, String>(
   (ref, agentId) {
     ref.watch(connectedDeviceProvider);
     return ref.watch(threadManagerProvider).loadModels(agentId);
+  },
+);
+
+/// The special ("slash") commands a given agent reports (`agent/commands`), for
+/// the composer's `/` palette. Keyed by agent + the thread/project `cwd` so a
+/// project's own custom commands are discovered alongside user-level ones.
+/// Re-fetched whenever the connected device changes so commands added on the
+/// bridge appear after a reconnect — mirroring [agentModelsProvider].
+final agentCommandsProvider =
+    FutureProvider.family<List<AgentCommand>, ({String agentId, String? cwd})>(
+  (ref, arg) {
+    ref.watch(connectedDeviceProvider);
+    return ref
+        .watch(threadManagerProvider)
+        .loadCommands(arg.agentId, cwd: arg.cwd);
   },
 );
 
@@ -553,6 +953,38 @@ class ScrollToBottomOnSend extends Notifier<bool> {
 /// Whether sending a message scrolls to the latest (persisted toggle).
 final scrollToBottomOnSendProvider =
     NotifierProvider<ScrollToBottomOnSend, bool>(ScrollToBottomOnSend.new);
+
+/// Whether the autonomous ("YOLO") mode banner (shown for agents like pi that
+/// act without per-action approval) appears each time a conversation opens.
+/// Persisted; defaults to on — a close button then dismisses it for the current
+/// visit and it reappears next time. Off hides it permanently.
+class ShowAutonomousBanner extends Notifier<bool> {
+  @override
+  bool build() {
+    unawaited(_hydrate());
+    return true;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(conversationPreferencesStoreProvider)
+        .readShowAutonomousBanner();
+    if (stored != null && stored != state) state = stored;
+  }
+
+  /// Persists and applies the show-autonomous-banner preference.
+  Future<void> set({required bool value}) async {
+    if (value == state) return;
+    state = value;
+    await ref
+        .read(conversationPreferencesStoreProvider)
+        .writeShowAutonomousBanner(value: value);
+  }
+}
+
+/// Whether the autonomous-mode banner is shown per conversation (persisted).
+final showAutonomousBannerProvider =
+    NotifierProvider<ShowAutonomousBanner, bool>(ShowAutonomousBanner.new);
 
 /// What the conversation's context indicator shows: the context-window
 /// percentage, the raw token count, or both. Persisted; defaults to

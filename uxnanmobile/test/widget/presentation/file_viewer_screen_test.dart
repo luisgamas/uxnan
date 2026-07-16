@@ -87,6 +87,19 @@ FileBrowserManager _managerFor(String markdown) => FileBrowserManager(
       },
     );
 
+FileBrowserManager _imageManager() => FileBrowserManager(
+      sendRequest: (method, [params]) async => RpcMessage.response(
+        id: '1',
+        result: const <String, dynamic>{
+          'path': 'pixel.png',
+          'base64Data':
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+                  '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          'mimeType': 'image/png',
+        },
+      ),
+    );
+
 void main() {
   testWidgets(
     'file viewer renders markdown samples without overflowing the app bar',
@@ -144,4 +157,43 @@ void main() {
       }
     },
   );
+
+  testWidgets('text preview is selectable and has no copy app-bar action',
+      (tester) async {
+    final manager = _managerFor('void main() {}');
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(cwd: '/tmp', path: 'main.dart'),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(SelectableText), findsOneWidget);
+    expect(find.byIcon(Icons.content_copy_outlined), findsNothing);
+    await manager.dispose();
+  });
+
+  testWidgets('image preview fills the viewport and starts contained',
+      (tester) async {
+    final manager = _imageManager();
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(cwd: '/tmp', path: 'pixel.png'),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final viewer = tester.widget<InteractiveViewer>(
+      find.byType(InteractiveViewer),
+    );
+    final image = tester.widget<Image>(find.byType(Image));
+    expect(viewer.clipBehavior, Clip.none);
+    expect(viewer.minScale, 1);
+    expect(image.fit, BoxFit.contain);
+    await manager.dispose();
+  });
 }

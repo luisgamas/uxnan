@@ -6,12 +6,15 @@ import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
+import 'package:uxnan/domain/entities/connection_session.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
 import 'package:uxnan/domain/entities/secure_session.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
+import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
+import 'package:uxnan/domain/repositories/i_connection_session_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
@@ -27,13 +30,18 @@ class _InMemoryTransport implements WebSocketTransport {
   late _InMemoryTransport peer;
 
   @override
+  String? connectedUrl;
+
+  @override
   Stream<Uint8List> get incoming => incomingController.stream;
 
   @override
   Stream<TransportState> get stateChanges => const Stream.empty();
 
   @override
-  Future<void> connect(String url, {Map<String, String>? headers}) async {}
+  Future<void> connect(String url, {Map<String, String>? headers}) async {
+    connectedUrl = url;
+  }
 
   @override
   Future<void> disconnect() async => forceClose();
@@ -191,6 +199,12 @@ class _FakeSelector implements TransportSelector {
     final bridge = _InMemoryTransport();
     phone.peer = bridge;
     bridge.peer = phone;
+    // Mirror the real selector: the winning transport records the endpoint it
+    // connected through (the relay here, or a direct ws:// host), so the
+    // coordinator can surface the real address in use.
+    phone.connectedUrl = device.relayUrl.isNotEmpty
+        ? device.relayUrl
+        : (device.hosts.isNotEmpty ? 'ws://${device.hosts.first}' : null);
     phoneSides.add(phone);
     final fakeBridge = _FakeBridge(bridge, identity, handler);
     currentBridge = fakeBridge;
@@ -201,6 +215,48 @@ class _FakeSelector implements TransportSelector {
   Future<void> dropCurrent() async {
     await phoneSides.last.forceClose();
     await phoneSides.last.peer.forceClose();
+  }
+}
+
+class _FakeConnectionSessionRepo implements IConnectionSessionRepository {
+  final List<ConnectionSession> sessions = [];
+  int danglingClosedCalls = 0;
+
+  @override
+  Future<void> startSession(ConnectionSession session) async =>
+      sessions.add(session);
+
+  @override
+  Future<void> touchSession(String id, DateTime at) async =>
+      _replace(id, (s) => s.isOpen ? s.copyWith(lastActiveAt: at) : s);
+
+  @override
+  Future<void> endSession(String id, DateTime endedAt) async =>
+      _replace(id, (s) => s.isOpen ? s.copyWith(endedAt: endedAt) : s);
+
+  @override
+  Future<void> closeDanglingSessions() async {
+    danglingClosedCalls++;
+    for (var i = 0; i < sessions.length; i++) {
+      if (sessions[i].isOpen) {
+        sessions[i] = sessions[i].copyWith(endedAt: sessions[i].lastActiveAt);
+      }
+    }
+  }
+
+  @override
+  Future<List<ConnectionSession>> getAll() async => List.of(sessions);
+
+  @override
+  Stream<List<ConnectionSession>> watchAll() => Stream.value(List.of(sessions));
+
+  void _replace(String id, ConnectionSession Function(ConnectionSession) f) {
+    for (var i = 0; i < sessions.length; i++) {
+      if (sessions[i].id == id) {
+        sessions[i] = f(sessions[i]);
+        return;
+      }
+    }
   }
 }
 
@@ -240,6 +296,7 @@ void main() {
         SessionCoordinator coordinator,
         _FakeSelector selector,
         _FakeTrustedDeviceRepo repo,
+        _FakeConnectionSessionRepo connectionRepo,
       })> build(
     RpcMessage Function(RpcMessage) handler, {
     bool setActive = true,
@@ -249,10 +306,12 @@ void main() {
     final phoneId = await keygen.generateIdentityKeyPair();
     final selector = _FakeSelector(bridgeId, handler);
     final repo = _FakeTrustedDeviceRepo();
+    final connectionRepo = _FakeConnectionSessionRepo();
     final coordinator = SessionCoordinator(
       secureTransport: SecureTransportLayer(),
       transportSelector: selector,
       trustedDeviceRepository: repo,
+      connectionSessionRepository: connectionRepo,
       identityResolver: () async => PhoneIdentity(
         phoneDeviceId: 'phone-1',
         publicKey: phoneId.publicKey,
@@ -272,7 +331,12 @@ void main() {
         ),
       );
     }
-    return (coordinator: coordinator, selector: selector, repo: repo);
+    return (
+      coordinator: coordinator,
+      selector: selector,
+      repo: repo,
+      connectionRepo: connectionRepo,
+    );
   }
 
   RpcMessage echo(RpcMessage request) =>
@@ -287,6 +351,40 @@ void main() {
     expect(harness.coordinator.connectionPhase, ConnectionPhase.connected);
     expect(harness.coordinator.activeMac?.macDeviceId, 'mac-1');
     expect(harness.coordinator.connectedDevice?.macDeviceId, 'mac-1');
+  });
+
+  test('logs a connection session on connect and closes it on disconnect',
+      () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+    // Dangling sessions from a prior run are closed once at construction.
+    expect(harness.connectionRepo.danglingClosedCalls, 1);
+
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    var sessions = await harness.connectionRepo.getAll();
+    expect(sessions, hasLength(1));
+    expect(sessions.first.deviceId, 'mac-1');
+    expect(sessions.first.isOpen, isTrue);
+    // The active device is relay-only, so the transport is recorded as relay.
+    expect(sessions.first.transport, ConnectionTransport.relay);
+
+    await harness.coordinator.disconnect();
+    sessions = await harness.connectionRepo.getAll();
+    expect(sessions.first.isOpen, isFalse);
+  });
+
+  test('exposes the connected endpoint while live, clears it on disconnect',
+      () async {
+    final harness = await build(echo);
+    addTearDown(harness.coordinator.dispose);
+
+    await harness.coordinator.connect(forceQrBootstrap: true);
+    // The winning transport's endpoint is surfaced so the UI can show the real
+    // address in use (the relay here, per the active device).
+    expect(harness.coordinator.connectedEndpoint, 'wss://relay.test');
+
+    await harness.coordinator.disconnect();
+    expect(harness.coordinator.connectedEndpoint, isNull);
   });
 
   test('switchMac keeps the current session when the target is unreachable',

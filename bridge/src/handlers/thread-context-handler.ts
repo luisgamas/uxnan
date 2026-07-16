@@ -8,6 +8,7 @@
 import { RpcError } from '@uxnan/shared';
 import type {
   AccessMode,
+  AgentCommandInvocation,
   AgentId,
   ApprovalDecision,
   ApprovalResponse,
@@ -137,8 +138,11 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     // there is neither text nor an attachment to act on.
     const text = optionalString(p, 'text') ?? '';
     const attachments = optionalAttachments(p);
-    if (text.length === 0 && attachments.length === 0) {
-      throw RpcError.invalidParams('turn/send requires non-empty text or attachments');
+    // A turn may instead be a command invocation (no free-form text): the bridge
+    // resolves it to the prompt the agent runs.
+    const command = optionalCommand(p);
+    if (text.length === 0 && attachments.length === 0 && !command) {
+      throw RpcError.invalidParams('turn/send requires non-empty text, attachments, or a command');
     }
     const runtime = await ctx.threadStore.getThreadRuntime(threadId);
     // A turn runs with the thread's agent/model/cwd; explicit params override.
@@ -153,6 +157,7 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       // Apply the thread's persisted access mode to this turn (adapters map it
       // to their permission flag; absent → the adapter's configured posture).
       ...(runtime.accessMode !== undefined ? { accessMode: runtime.accessMode } : {}),
+      ...(command !== undefined ? { command } : {}),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });
@@ -277,6 +282,31 @@ function optionalAttachments(params: unknown): TurnAttachment[] {
     out.push(att);
   }
   return out;
+}
+
+/**
+ * Extracts the `command` invocation (`{ name, args? }`) from `turn/send` params,
+ * or `undefined` when absent. Validates `name` is a non-empty string and `args`
+ * (optional) is a string. Throws `invalidParams` on a malformed one — a command
+ * is an explicit user action, so a garbled one should surface rather than run.
+ */
+function optionalCommand(params: unknown): AgentCommandInvocation | undefined {
+  if (!params || typeof params !== 'object') return undefined;
+  const raw = (params as Record<string, unknown>)['command'];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object') {
+    throw RpcError.invalidParams('command must be an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  const name = obj['name'];
+  if (typeof name !== 'string' || name.length === 0) {
+    throw RpcError.invalidParams('command.name must be a non-empty string');
+  }
+  const args = obj['args'];
+  if (args !== undefined && typeof args !== 'string') {
+    throw RpcError.invalidParams('command.args must be a string when present');
+  }
+  return { name, ...(typeof args === 'string' ? { args } : {}) };
 }
 
 /**

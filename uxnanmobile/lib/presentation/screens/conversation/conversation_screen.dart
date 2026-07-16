@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uxnan/domain/entities/agent_model.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
@@ -17,15 +18,19 @@ import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/conversation_auto_follow_policy.dart';
 import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
-import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
+import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -33,6 +38,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
+import 'package:uxnan/presentation/widgets/message_scroll_rail.dart';
 import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -59,12 +65,31 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // access) is the pre-load fallback for a thread the bridge has no mode for.
   ApprovalMode _approvalMode = kDefaultApprovalMode;
   final ScrollController _scroll = ScrollController();
+  final ConversationAutoFollowPolicy _autoFollow =
+      ConversationAutoFollowPolicy();
+  bool _followFrameScheduled = false;
+
+  /// Stable keys for the user-message bubbles — the scroll rail's anchors — so
+  /// it can jump precisely to a chosen message. Only user messages are keyed.
+  final Map<String, GlobalKey> _userMessageKeys = {};
+
+  /// The rail anchor (user message) nearest the top of the reading area, or
+  /// null. Recomputed only when scrolling settles, so it never adds per-frame
+  /// work to the timeline's streaming/scroll path.
+  int? _currentRailTick;
   String? _gitCwd;
   // Vanished-cwd detection: the thread's folder/worktree can be removed outside
   // the app. We probe `workspace/exists` once per cwd; a confirmed-gone cwd
   // disables the composer (sending into a dead cwd errors on every action).
   String? _checkedCwd;
   bool _cwdMissing = false;
+  // Whether the user closed the autonomous-mode banner on THIS visit. Local to
+  // the State, so it resets every time the conversation is (re)opened — the
+  // banner reappears on re-entry unless hidden permanently in settings.
+  bool _autonomousBannerDismissed = false;
+  // Persistent turn context (reasoning / approval) starts folded to one
+  // chevron for a quiet conversation surface; tapping the chevron expands it.
+  bool _turnControlsExpanded = false;
   // Set when the user sends a message and the "scroll to latest on send"
   // setting is on: forces the next timeline update to jump to the bottom if the
   // user had scrolled up. Cleared once that scroll happens.
@@ -73,6 +98,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Whether the "jump to latest" button is shown — true once the user has
   /// scrolled up far enough that the newest messages are off-screen.
   bool _showJumpToBottom = false;
+
+  /// Bottom-chrome height captured when the jump shortcut appears. Collapsing
+  /// the auxiliary chrome also shortens the timeline's bottom spacer; this
+  /// baseline compensates that layout-only extent change so it cannot make the
+  /// shortcut and chrome oscillate around their visibility threshold.
+  double? _jumpChromeBaselineHeight;
 
   /// Measured height of the floating bottom chrome (sign-in/cwd banners, the
   /// diff+context info bar, attachments and the composer pill). The timeline
@@ -188,7 +219,17 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   bool _isNearBottom() {
     if (!_scroll.hasClients) return true;
-    return _scroll.position.maxScrollExtent - _scroll.offset < 200;
+    return _distanceFromBottom() < 200;
+  }
+
+  double _distanceFromBottom() {
+    if (!_scroll.hasClients) return 0;
+    final raw = _scroll.position.maxScrollExtent - _scroll.offset;
+    final baseline = _jumpChromeBaselineHeight;
+    final collapsedChrome = baseline == null
+        ? 0.0
+        : (baseline - _bottomChromeHeight).clamp(0.0, double.infinity);
+    return raw + collapsedChrome;
   }
 
   /// Shows the "jump to latest" affordance once the user has scrolled more than
@@ -197,11 +238,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// a turn streams.
   void _onScroll() {
     if (!_scroll.hasClients) return;
-    final distance = _scroll.position.maxScrollExtent - _scroll.offset;
-    final show = distance > 320;
-    if (show != _showJumpToBottom) {
-      setState(() => _showJumpToBottom = show);
-    }
+    final distance = _distanceFromBottom();
+    // Show after a deliberate detach as soon as the latest content is outside
+    // the near-bottom zone. Otherwise retain the wider threshold/hysteresis so
+    // streaming layout changes cannot make the affordance flicker.
+    final show = _autoFollow.isDetached
+        ? distance >= 200
+        : (_showJumpToBottom ? distance > 200 : distance > 320);
+    _setJumpToBottomVisibility(show);
     // Persist the position per thread so reopening restores it (never the
     // top). `atBottom` follows the newest message on the next open instead of
     // pinning a now-stale offset. Only record once the initial restore has
@@ -216,6 +260,155 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
   }
 
+  void _setJumpToBottomVisibility(bool visible) {
+    if (visible != _showJumpToBottom) {
+      setState(() {
+        _showJumpToBottom = visible;
+        _jumpChromeBaselineHeight = visible ? _bottomChromeHeight : null;
+      });
+    }
+  }
+
+  /// Gives pointer-driven scrolling authority over streaming updates. A drag
+  /// suspends auto-follow immediately; settling near the latest content arms it
+  /// again. Returning false lets the notification continue bubbling normally.
+  bool _onScrollNotification(ScrollNotification notification) {
+    switch (notification) {
+      case ScrollStartNotification(:final dragDetails) when dragDetails != null:
+        _autoFollow.beginUserScroll();
+      case ScrollUpdateNotification(:final dragDetails)
+          when dragDetails != null:
+        // ScrollUpdate can be the first pointer notification delivered after a
+        // rebuild, so make the pause idempotent instead of relying on Start.
+        _autoFollow.beginUserScroll();
+      case ScrollEndNotification():
+        if (_autoFollow.isDetached) {
+          final nearBottom = _isNearBottom();
+          _autoFollow.endUserScroll(nearBottom: nearBottom);
+          _setJumpToBottomVisibility(!nearBottom);
+        }
+        // Refresh the rail's "you are here" only once motion settles — never
+        // per frame — so it can't affect streaming/scroll smoothness.
+        _updateCurrentRailTick();
+      default:
+        break;
+    }
+    return false;
+  }
+
+  /// Finds the rail anchor (user message) the reader is currently within — the
+  /// last one at/above the reading line among on-screen bubbles — and updates
+  /// [_currentRailTick] when it changes. Cheap: it only measures built bubbles.
+  void _updateCurrentRailTick() {
+    if (!mounted) return;
+    final tickForId = ref.read(railAnchorsProvider).tickForId;
+    if (tickForId.isEmpty || !_scroll.hasClients) {
+      if (_currentRailTick != null) setState(() => _currentRailTick = null);
+      return;
+    }
+    final reference = NeTopBar.preferredHeight(context) + 72;
+    int? above;
+    var aboveTop = double.negativeInfinity;
+    int? nearest;
+    var nearestDist = double.infinity;
+    tickForId.forEach((id, tick) {
+      final render = _userMessageKeys[id]?.currentContext?.findRenderObject();
+      if (render is! RenderBox || !render.hasSize) return;
+      final top = render.localToGlobal(Offset.zero).dy;
+      if (top <= reference && top > aboveTop) {
+        aboveTop = top;
+        above = tick;
+      }
+      final dist = (top - reference).abs();
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = tick;
+      }
+    });
+    final result = above ?? nearest;
+    if (result != _currentRailTick) setState(() => _currentRailTick = result);
+  }
+
+  /// Scrolls the timeline so the user message at [messageIndex]'s bubble rests
+  /// just below the top bar, gliding with a soft start/stop (ease-in-out,
+  /// quicker through the middle) and a short final settle for precision.
+  /// Detaches auto-follow first (a manual navigation) so a streaming update
+  /// doesn't yank it back. An off-screen target in the lazy list is first
+  /// brought into layout with an estimated ordinal jump.
+  Future<void> _scrollToUserMessage(int messageIndex) async {
+    final snapshot = ref.read(activeTimelineProvider).value;
+    if (snapshot == null || !_scroll.hasClients) return;
+    if (messageIndex < 0 || messageIndex >= snapshot.messages.length) return;
+    _autoFollow.beginUserScroll();
+    final id = snapshot.messages[messageIndex].id;
+    final topInset = NeTopBar.preferredHeight(context);
+
+    // Off-screen and not built: estimate a jump by ordinal position, then let a
+    // few frames fill the lazy list in around it before measuring precisely.
+    var target = _messageTargetOffset(id, topInset);
+    if (target == null) {
+      final max = _scroll.position.maxScrollExtent;
+      final frac = snapshot.messages.length <= 1
+          ? 0.0
+          : messageIndex / (snapshot.messages.length - 1);
+      _scroll.jumpTo((frac * max).clamp(0.0, max));
+      for (var frame = 0; frame < 3 && target == null; frame++) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || !_scroll.hasClients) return;
+        target = _messageTargetOffset(id, topInset);
+      }
+    }
+    if (target == null) return;
+
+    if (MediaQuery.of(context).disableAnimations) {
+      _scroll.jumpTo(target);
+      return;
+    }
+
+    // Ease in AND out — soft start and stop, quicker through the middle —
+    // scaling the duration to the distance so short hops stay snappy and long
+    // ones aren't rushed.
+    final distance = (target - _scroll.offset).abs();
+    final ms = (200 + distance * 0.3).clamp(260.0, 560.0).round();
+    await _scroll.animateTo(
+      target,
+      duration: Duration(milliseconds: ms),
+      curve: Curves.easeInOutCubic,
+    );
+    if (!mounted || !_scroll.hasClients) return;
+
+    // Late layout above the target (images / variable heights) can shift its
+    // resting offset — settle onto it with a short glide. Bounded so a big
+    // shift, or the user taking over the scroll, is never yanked back.
+    final settled = _messageTargetOffset(id, topInset);
+    if (settled != null) {
+      final drift = (settled - _scroll.offset).abs();
+      if (drift > 1 && drift < 150) {
+        await _scroll.animateTo(
+          settled,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
+  }
+
+  /// The scroll offset that rests the built bubble for [id] just below the top
+  /// bar, or null when the bubble isn't laid out (off-screen in the lazy list).
+  double? _messageTargetOffset(String id, double topInset) {
+    if (!_scroll.hasClients) return null;
+    final render = _userMessageKeys[id]?.currentContext?.findRenderObject();
+    if (render is! RenderBox || !render.hasSize) return null;
+    final RevealedOffset revealed;
+    try {
+      revealed = RenderAbstractViewport.of(render).getOffsetToReveal(render, 0);
+    } on Object {
+      return null;
+    }
+    final max = _scroll.position.maxScrollExtent;
+    return (revealed.offset - topInset - UxnanSpacing.md).clamp(0.0, max);
+  }
+
   /// Restores the saved scroll position for this thread once its content is
   /// first laid out: jumps to where the user left off, or to the newest
   /// message when there's no saved position (or the user was at the bottom).
@@ -226,6 +419,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final saved = ref.read(conversationScrollStoreProvider).positionFor(
           widget.threadId,
         );
+    _autoFollow.restore(atBottom: saved == null || saved.atBottom);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
       if (saved == null || saved.atBottom) {
@@ -245,7 +439,25 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   void _scrollToBottom() {
-    if (!_scroll.hasClients) return;
+    _autoFollow.resume();
+    _scheduleFollowLatest();
+  }
+
+  /// Coalesces streaming updates to one post-layout correction per frame. The
+  /// policy is checked again inside every delayed callback, so a drag that
+  /// starts after scheduling still cancels the programmatic jump.
+  void _scheduleFollowLatest() {
+    if (_followFrameScheduled) return;
+    _followFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _followFrameScheduled = false;
+      if (!mounted || !_scroll.hasClients || !_autoFollow.shouldFollow) return;
+      _jumpToLiveBottom();
+    });
+  }
+
+  void _jumpToLiveBottom() {
+    if (!_scroll.hasClients || !_autoFollow.shouldFollow) return;
     // Jump (don't animate) to the bottom: an animation captures a target at one
     // moment, but streaming tokens / variable-height messages / images keep
     // growing the content, so the animation lands short and the next emission
@@ -256,7 +468,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // measurement), growing the extent; re-jump next frame so we reach the real
     // bottom instead of stopping a little short.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scroll.hasClients) return;
+      if (!mounted || !_scroll.hasClients || !_autoFollow.shouldFollow) {
+        return;
+      }
       final max = _scroll.position.maxScrollExtent;
       if (max - _scroll.offset > 1) _scroll.jumpTo(max);
     });
@@ -295,27 +509,13 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
   }
 
-  /// Opens the unified turn-tools sheet (attach + run-option knobs + approval).
-  void _openTurnTools(
-    List<AgentModelOption> runOptions, {
-    required bool showAttach,
-    required bool showApproval,
-  }) {
-    TurnToolsSheet.show(
-      context,
-      threadId: widget.threadId,
-      showAttach: showAttach,
-      runOptions: runOptions,
-      showApproval: showApproval,
-      approvalMode: _approvalMode,
-      onApprovalChanged: (mode) {
-        setState(() => _approvalMode = mode);
-        // Persist to the bridge (source of truth); best-effort offline.
-        unawaited(
-          ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
-        );
-      },
-      onAttach: _pickAttachment,
+  Future<void> _pickApprovalMode() async {
+    final mode = await ApprovalModeSheet.show(context, _approvalMode);
+    if (mode == null || !mounted || mode == _approvalMode) return;
+    setState(() => _approvalMode = mode);
+    // Persist to the bridge (source of truth); best-effort offline.
+    unawaited(
+      ref.read(threadManagerProvider).setAccessMode(widget.threadId, mode),
     );
   }
 
@@ -468,6 +668,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final caps = thread != null
         ? ref.watch(agentCapabilitiesProvider(thread.agentId))
         : null;
+    // The autonomous-mode banner shows for YOLO agents (e.g. pi) unless hidden
+    // permanently in settings or closed for this visit.
+    final showAutonomousBanner = ref.watch(showAutonomousBannerProvider);
     // The active agent's sign-in status on the PC (only meaningful while we
     // hold this thread's channel). `.value` is null while offline or on an
     // older bridge, so a missing status simply shows no banner.
@@ -492,6 +695,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       showContext: caps?.reportsContextUsage ?? false,
     );
     final cwd = thread?.cwd;
+    // The agent's slash commands (agent/commands): drives the `/` palette rows
+    // and routes a matching `/name args` send as a real command.
+    final agentId = thread?.agentId;
+    final agentCommands = agentId == null
+        ? const <AgentCommand>[]
+        : ref
+                .watch(agentCommandsProvider((agentId: agentId, cwd: cwd)))
+                .value ??
+            const <AgentCommand>[];
     final snapshot = timelineAsync.value;
     // If the timeline already has content at first build (no later emission to
     // drive the listener below), restore the saved scroll position now. Guarded
@@ -502,16 +714,22 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     // Aggregated edits of the most recent assistant turn that changed files,
     // for the green/red strip just above the composer.
     final lastEdits = _lastTurnEdits(snapshot);
+    // Scroll-rail anchors: one tick per user message (the minimap on the right
+    // edge), derived + memoized in [railAnchorsProvider] off the timeline.
+    // Prune stale bubble keys so the map tracks the current anchors.
+    final railAnchors = ref.watch(railAnchorsProvider);
+    _userMessageKeys.removeWhere(
+      (id, _) => !railAnchors.tickForId.containsKey(id),
+    );
     final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
     final running = connectedHere && activity == ThreadActivity.running;
 
-    // The unified "+" turn-tools sheet holds: attach (images-capable agents),
-    // the data-driven run-option knobs, and the approval mode (tool-gating
-    // agents). The "+" is shown only when there's at least one of them.
+    // The "+" is reserved for immediate media actions. Persistent turn
+    // context (reasoning and approval) lives in the collapsible shelf.
     final showAttach = caps?.images ?? false;
     final showRunOptions = connectedHere && runOptions.isNotEmpty;
     final showApproval = caps?.approvals ?? false;
-    final hasTurnTools = showAttach || showRunOptions || showApproval;
+    final showTurnControls = showRunOptions || showApproval;
 
     // Resolve git state for the real workspace once the thread's cwd is known,
     // and probe whether that cwd still exists (folders/worktrees can vanish).
@@ -534,9 +752,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       }
       // After the initial restore, keep following the bottom on new content
       // when the user is already near it (or just sent a message).
-      if (_forceScrollOnSend || _isNearBottom()) {
+      if (_forceScrollOnSend) {
         _forceScrollOnSend = false;
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+        _autoFollow.resume();
+      }
+      if (_autoFollow.shouldFollow) {
+        _scheduleFollowLatest();
       }
     });
 
@@ -555,75 +776,127 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
           GestureDetector(
             behavior: HitTestBehavior.translucent,
             onTap: () => FocusScope.of(context).unfocus(),
-            child: CustomScrollView(
-              controller: _scroll,
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                // Spacer so the first content sits below the transparent top
-                // bar (it overlays the scroll).
-                SliverToBoxAdapter(child: SizedBox(height: topInset)),
-                // "Load earlier" header when the rendered window does not yet
-                // cover the whole local history.
-                if (snapshot != null &&
-                    snapshot.messages.isNotEmpty &&
-                    snapshot.hasMore)
-                  SliverToBoxAdapter(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: UxnanSpacing.sm,
-                        ),
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              ref.read(threadManagerProvider).loadMoreHistory(),
-                          icon: const Icon(Icons.history_rounded, size: 18),
-                          label: Text(l10n.conversationLoadEarlier),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (snapshot == null)
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (snapshot.messages.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: _EmptyState(),
-                  )
-                else
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      contentInset,
-                      UxnanSpacing.sm,
-                      contentInset,
-                      UxnanSpacing.lg,
-                    ),
-                    sliver: SliverList.builder(
-                      itemCount: snapshot.messages.length,
-                      itemBuilder: (context, index) => MessageBubble(
-                        message: snapshot.messages[index],
-                      ),
-                    ),
-                  ),
-                // Reserve room for the floating composer + its banners so the
-                // last message rests just above the pill instead of behind it.
-                SliverToBoxAdapter(
-                  child: SizedBox(height: _bottomChromeHeight),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScrollNotification,
+              child: CustomScrollView(
+                controller: _scroll,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
                 ),
-              ],
+                slivers: [
+                  // Spacer so the first content sits below the transparent top
+                  // bar (it overlays the scroll).
+                  SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                  // "Load earlier" header when the rendered window does not yet
+                  // cover the whole local history.
+                  if (snapshot != null &&
+                      snapshot.messages.isNotEmpty &&
+                      snapshot.hasMore)
+                    SliverToBoxAdapter(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: UxnanSpacing.sm,
+                          ),
+                          child: TextButton.icon(
+                            onPressed: () => ref
+                                .read(threadManagerProvider)
+                                .loadMoreHistory(),
+                            icon: const Icon(Icons.history_rounded, size: 18),
+                            label: Text(l10n.conversationLoadEarlier),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (snapshot == null)
+                    const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (snapshot.messages.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _EmptyState(),
+                    )
+                  else
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        contentInset,
+                        UxnanSpacing.sm,
+                        contentInset,
+                        UxnanSpacing.lg,
+                      ),
+                      sliver: SliverList.builder(
+                        itemCount: snapshot.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = snapshot.messages[index];
+                          // User bubbles carry a stable GlobalKey so the scroll
+                          // rail can jump precisely to them; other roles keep a
+                          // lightweight ValueKey.
+                          final key = message.role == MessageRole.user
+                              ? _userMessageKeys.putIfAbsent(
+                                  message.id,
+                                  GlobalKey.new,
+                                )
+                              : ValueKey(message.id);
+                          return MessageBubble(key: key, message: message);
+                        },
+                      ),
+                    ),
+                  // Reserve room for the floating composer + its banners so
+                  // the last message rests above the pill, not behind it.
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: _bottomChromeHeight),
+                  ),
+                ],
+              ),
             ),
           ),
+          // Message scroll rail (minimap): a subtle right-edge strip of ticks,
+          // one per user message. A slight drag or hover reveals it and jumps
+          // to the picked message. Overlaid on the timeline band between the
+          // top bar and composer, below both so it never covers them — only its
+          // thin edge strip is interactive; the rest passes touches through to
+          // the timeline, so it never interferes with normal scrolling.
+          if (railAnchors.items.length >= 2)
+            Positioned(
+              top: topInset + UxnanSpacing.sm,
+              left: 0,
+              right: 0,
+              bottom: _bottomChromeHeight + UxnanSpacing.xxl,
+              child: MessageScrollRail(
+                items: railAnchors.items,
+                currentIndex: _currentRailTick,
+                // Hidden at the bottom of the conversation; slides in from the
+                // right edge when the user scrolls up — the same signal that
+                // reveals the jump-to-latest button and hides the composer
+                // ribbon, so the scroll-up chrome moves as one.
+                visible: _showJumpToBottom,
+                onSelected: (tick) {
+                  if (tick >= 0 && tick < railAnchors.messageIndices.length) {
+                    unawaited(
+                      _scrollToUserMessage(railAnchors.messageIndices[tick]),
+                    );
+                  }
+                },
+              ),
+            ),
           // Jump-to-latest button: appears (with a small spring) when the user
-          // has scrolled up, sitting just above the floating composer chrome.
+          // has scrolled up, floating horizontally centered just above the
+          // composer chrome — over the content, on its own layer, so it is
+          // always available (independent of the context bar) and never
+          // collides with the left controls or right indicators below it.
           Positioned(
-            right: UxnanSpacing.lg,
+            left: 0,
+            right: 0,
             bottom: _bottomChromeHeight + UxnanSpacing.md,
-            child: _JumpToBottomButton(
-              visible: _showJumpToBottom,
-              onTap: _scrollToBottom,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _JumpToBottomButton(
+                  visible: _showJumpToBottom,
+                  onTap: _scrollToBottom,
+                ),
+              ],
             ),
           ),
           // The floating bottom chrome — sign-in / cwd banners, the diff+context
@@ -645,21 +918,54 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     // (not in the scrolling list) so they remain visible.
                     if (_cwdMissing)
                       const _Centered(child: _CwdMissingBanner()),
-                    if (caps?.autonomous ?? false)
-                      const _Centered(child: _AutonomousBanner()),
+                    if ((caps?.autonomous ?? false) &&
+                        showAutonomousBanner &&
+                        !_autonomousBannerDismissed)
+                      ComposerChromeVisibility(
+                        visible: !_showJumpToBottom,
+                        child: _Centered(
+                          child: _AutonomousBanner(
+                            onClose: () => setState(
+                              () => _autonomousBannerDismissed = true,
+                            ),
+                          ),
+                        ),
+                      ),
                     if (requiresLogin && thread != null)
                       _Centered(
                         child: _LoginRequiredBanner(agentId: thread.agentId),
                       ),
-                    if (lastEdits != null || environment.showContext)
-                      _Centered(
-                        child: _ComposerInfoBar(
-                          edits: lastEdits,
-                          showContext: environment.showContext,
-                          hasContext: environment.hasContext,
-                          percent: environment.contextPercent,
-                          tokenLabel: environment.contextTokensLabel,
-                          mode: contextMode,
+                    if (showTurnControls ||
+                        lastEdits != null ||
+                        environment.showContext)
+                      ComposerChromeVisibility(
+                        visible: !_showJumpToBottom,
+                        child: _Centered(
+                          child: _ComposerContextBar(
+                            controls: showTurnControls
+                                ? TurnControlShelf(
+                                    threadId: widget.threadId,
+                                    options: runOptions,
+                                    showApproval: showApproval,
+                                    approvalMode: _approvalMode,
+                                    expanded: _turnControlsExpanded,
+                                    onExpandedChanged: (value) => setState(
+                                      () => _turnControlsExpanded = value,
+                                    ),
+                                    onApprovalTap: _pickApprovalMode,
+                                  )
+                                : null,
+                            info: lastEdits != null || environment.showContext
+                                ? _ComposerInfoBar(
+                                    edits: lastEdits,
+                                    showContext: environment.showContext,
+                                    hasContext: environment.hasContext,
+                                    percent: environment.contextPercent,
+                                    tokenLabel: environment.contextTokensLabel,
+                                    mode: contextMode,
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
                     if (_attachments.isNotEmpty)
@@ -674,19 +980,15 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       hasAttachments: _attachments.isNotEmpty,
                       // Backs the inline `@` file/folder mention picker.
                       cwd: cwd,
+                      // The agent's slash commands, rendered in the `/` palette.
+                      agentCommands: agentCommands,
                       // While the agent is producing a turn, Send becomes
                       // Stop — cancels the turn (without closing the thread).
                       running: running,
                       onStop: () => ref
                           .read(threadManagerProvider)
                           .cancelTurn(widget.threadId),
-                      onPlus: hasTurnTools
-                          ? () => _openTurnTools(
-                                runOptions,
-                                showAttach: showAttach,
-                                showApproval: showApproval,
-                              )
-                          : null,
+                      onAttach: showAttach ? _pickAttachment : null,
                       onSend: (text) {
                         // Honor the scroll-to-latest-on-send setting: arm a
                         // forced scroll so the user sees their message even if
@@ -697,11 +999,16 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         final options =
                             ref.read(threadRunOptionsProvider(widget.threadId));
                         final attachments = List<ImageContent>.of(_attachments);
+                        // Route `/name args` for an advertised agent command as a
+                        // real command (turn/send `command`); anything else is
+                        // sent verbatim as text.
+                        final command = parseAgentCommand(text, agentCommands);
                         ref.read(threadManagerProvider).sendUserMessage(
                               widget.threadId,
                               text,
                               options: options,
                               attachments: attachments,
+                              command: command,
                             );
                         if (_attachments.isNotEmpty) {
                           setState(_attachments.clear);
@@ -834,8 +1141,8 @@ class _ContextBadge extends StatelessWidget {
     return Tooltip(
       message: 'Context $percent%',
       child: Container(
-        width: 34,
-        height: 34,
+        width: UxnanSize.compactComposerChrome,
+        height: UxnanSize.compactComposerChrome,
         decoration: BoxDecoration(
           color: colors.surfaceContainerHigh,
           shape: BoxShape.circle,
@@ -872,31 +1179,33 @@ class _TokenChip extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Tooltip(
       message: 'Context: $label tokens',
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.sm,
-          vertical: 4,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: UxnanSize.compactComposerChrome,
         ),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          borderRadius: const BorderRadius.all(UxnanRadius.full),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.donut_large_outlined,
-              size: 13,
-              color: colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: UxnanSpacing.xs),
-            Text(
-              label,
-              style: UxnanTypography.codeSmall.copyWith(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHigh,
+            borderRadius: const BorderRadius.all(UxnanRadius.full),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.donut_large_outlined,
+                size: 13,
                 color: colors.onSurfaceVariant,
               ),
-            ),
-          ],
+              const SizedBox(width: UxnanSpacing.xs),
+              Text(
+                label,
+                style: UxnanTypography.codeSmall.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1022,6 +1331,36 @@ _TurnEdits? _lastTurnEdits(TurnTimelineSnapshot? snapshot) {
   return null;
 }
 
+/// Shared line above the composer: persistent turn controls stay left while
+/// diff/context indicators remain anchored right. The controls can scroll
+/// horizontally without displacing the token indicator on compact screens.
+class _ComposerContextBar extends StatelessWidget {
+  const _ComposerContextBar({this.controls, this.info});
+
+  final Widget? controls;
+  final Widget? info;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.xs,
+        UxnanSpacing.lg,
+        0,
+      ),
+      child: Row(
+        children: [
+          if (controls != null) Expanded(child: controls!),
+          if (controls != null && info != null)
+            const SizedBox(width: UxnanSpacing.sm),
+          if (info != null) info!,
+        ],
+      ),
+    );
+  }
+}
+
 /// A compact, right-aligned info row just above the composer: the latest turn's
 /// numeric diff (`+a −d`) on the left and the context-usage indicator on the
 /// right, both on the same neutral surface as the top-bar Icon Surfaces. Purely
@@ -1063,26 +1402,19 @@ class _ComposerInfoBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final edits = this.edits;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        0,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (edits != null)
-            _DiffNumericPill(
-              additions: edits.additions,
-              deletions: edits.deletions,
-            ),
-          if (edits != null && showContext)
-            const SizedBox(width: UxnanSpacing.xs),
-          if (showContext) ..._contextWidgets(),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        if (edits != null)
+          _DiffNumericPill(
+            additions: edits.additions,
+            deletions: edits.deletions,
+          ),
+        if (edits != null && showContext)
+          const SizedBox(width: UxnanSpacing.xs),
+        if (showContext) ..._contextWidgets(),
+      ],
     );
   }
 }
@@ -1096,31 +1428,34 @@ class _DiffNumericPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: 4,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minHeight: UxnanSize.compactComposerChrome,
       ),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        borderRadius: const BorderRadius.all(UxnanRadius.full),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '+$additions',
-            style:
-                UxnanTypography.codeSmall.copyWith(color: UxnanColors.gitAdded),
-          ),
-          const SizedBox(width: UxnanSpacing.xs),
-          Text(
-            '−$deletions',
-            style: UxnanTypography.codeSmall.copyWith(
-              color: UxnanColors.gitDeleted,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.sm),
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          borderRadius: const BorderRadius.all(UxnanRadius.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '+$additions',
+              style: UxnanTypography.codeSmall.copyWith(
+                color: UxnanColors.gitAdded,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: UxnanSpacing.xs),
+            Text(
+              '−$deletions',
+              style: UxnanTypography.codeSmall.copyWith(
+                color: UxnanColors.gitDeleted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1458,7 +1793,10 @@ class _CwdMissingBanner extends StatelessWidget {
 /// autonomous ("YOLO") mode — they act and edit without a per-action approval
 /// prompt, because their headless CLI exposes no pre-tool approval channel.
 class _AutonomousBanner extends StatelessWidget {
-  const _AutonomousBanner();
+  const _AutonomousBanner({required this.onClose});
+
+  /// Dismisses the banner for the current visit (it reappears on re-entry).
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -1476,7 +1814,12 @@ class _AutonomousBanner extends StatelessWidget {
         color: colors.secondaryContainer,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.sm),
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.sm,
+            UxnanSpacing.sm,
+            UxnanSpacing.xs,
+            UxnanSpacing.sm,
+          ),
           child: Row(
             children: [
               Icon(
@@ -1492,6 +1835,14 @@ class _AutonomousBanner extends StatelessWidget {
                     color: colors.onSecondaryContainer,
                   ),
                 ),
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                color: colors.onSecondaryContainer,
+                visualDensity: VisualDensity.compact,
+                tooltip: l10n.conversationAutonomousModeDismiss,
+                onPressed: onClose,
               ),
             ],
           ),
