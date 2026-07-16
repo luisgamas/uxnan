@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Onboarding and manual pairing share the Neural Expressive language
+- Removed the onboarding's persistent square-grid and fade wallpaper in favor
+  of the same calm semantic `surface` used across Profile, conversations and
+  Settings. Floating agent logos remain open on that canvas, while the hero
+  uses the app's established rounded-rectangle geometry.
+- Grouped page progress and navigation into a floating rounded surface, widened
+  the responsive content bound, and made floating-agent motion respect the
+  platform's reduced-motion preference.
+- Constrained manual-code pairing on wide screens and aligned its rounded hero
+  with the onboarding and semantic primary-container treatment. Pairing,
+  discovery, validation and navigation behavior are unchanged.
+
 ### Changed — Shared loader uses the real Material 3 Expressive morph
 - Replaced `PolygonLoader`'s vertex-by-index painter with the Material 3
   `LoadingIndicator` geometry used by AndroidX and the Bunpod reference: seven

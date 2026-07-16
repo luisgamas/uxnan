@@ -3051,40 +3051,39 @@ El onboarding esta disenado para llevar a un desarrollador desde cero hasta la p
 ```
 OnboardingScreen
 +-- PageController con 4 paginas
-+-- Indicadores de pagina (dots)
-+-- Boton "Siguiente" / "Comenzar" en el ultimo paso
++-- Fondo `surface` solido; la expresion se concentra en el contenido
++-- Logos de agentes flotan directamente sobre el fondo (respeta reduced motion)
++-- Superficie flotante unificada: indicadores + Atras/Siguiente/Escanear
 
 Pagina 1: WelcomePage
-+-- Animacion Lottie de agente en accion (loop)
++-- Escenario tonal con agentes compatibles
 +-- Titulo: "Controla tus agentes desde cualquier lugar"
 +-- Subtitulo: descripcion del producto en 2 lineas
-+-- Boton: "Comenzar" -> avanza a pagina 2
++-- Boton: "Siguiente" -> avanza a pagina 2
 
 Pagina 2: FeaturesPage
-+-- Lista de 4 caracteristicas clave:
-|   +-- Cifrado E2EE — "Tu codigo nunca toca nuestros servidores"
-|   +-- Multi-agente — "Compatible con Codex, OpenCode, Gemini CLI y mas"
-|   +-- Local-first — "Funciona en tu red local sin internet"
-|   +-- Notificaciones — "Te avisamos cuando el agente termina"
++-- Lista de 3 caracteristicas clave:
+|   +-- Multi-agente
+|   +-- Cifrado E2EE
+|   +-- Local-first
 +-- Boton: "Siguiente" -> pagina 3
 
 Pagina 3: InstallStepPage
 +-- Titulo: "Instala el bridge en tu PC"
-+-- Tabs: macOS | Windows | Linux
 +-- CommandCardWidget con el comando de instalacion
 |   +-- npm install -g uxnan-bridge
 |       (boton de copia automatica)
 +-- CommandCardWidget con el comando de inicio
 |   +-- uxnan-bridge start
-+-- CommandCardWidget para mostrar el QR
-|   +-- uxnan-bridge qr
-+-- Boton: "Ya lo instale, escanear QR" -> pagina 4
++-- Nota sobre la carpeta raiz atendida por el bridge
++-- Boton "Siguiente" -> pagina 4
 
 Pagina 4: PairingStep
 +-- Titulo: "Escanea el QR de tu PC"
-+-- Subtitulo: "El QR aparece en tu terminal al ejecutar uxnan-bridge qr"
 +-- Boton primario: "Escanear QR" -> QrScannerScreen
 +-- Boton secundario: "Ingresar codigo manual" -> ManualCodeScreen
++-- ManualCodeScreen: contenido limitado a 560 dp, hero semantico compartido,
+    descubrimiento LAN y formulario manual en superficies NE
 ```
 
 ### 13.2 CommandCardWidget

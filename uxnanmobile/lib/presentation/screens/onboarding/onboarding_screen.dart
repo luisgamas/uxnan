@@ -56,7 +56,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
+                constraints: const BoxConstraints(maxWidth: 560),
                 child: Column(
                   children: [
                     Align(
@@ -84,27 +84,48 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.all(UxnanSpacing.xl),
-                      child: Column(
-                        children: [
-                          _PageDots(count: _pageCount, index: _index),
-                          const SizedBox(height: UxnanSpacing.xl),
-                          _BottomControls(
-                            isFirst: _index == 0,
-                            isLast: _isLast,
-                            onBack: () => _animateTo(_index - 1),
-                            onNext: () => _animateTo(_index + 1),
-                            onScan: _scanQr,
+                      padding: const EdgeInsets.fromLTRB(
+                        UxnanSpacing.lg,
+                        UxnanSpacing.sm,
+                        UxnanSpacing.lg,
+                        UxnanSpacing.lg,
+                      ),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).colorScheme.surfaceContainerLow,
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(32)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UxnanSpacing.lg,
+                            UxnanSpacing.md,
+                            UxnanSpacing.lg,
+                            UxnanSpacing.sm,
                           ),
-                          AnimatedOpacity(
-                            opacity: _isLast ? 1 : 0,
-                            duration: const Duration(milliseconds: 200),
-                            child: TextButton(
-                              onPressed: _isLast ? _enterCode : null,
-                              child: Text(l10n.actionEnterCode),
-                            ),
+                          child: Column(
+                            children: [
+                              _PageDots(count: _pageCount, index: _index),
+                              const SizedBox(height: UxnanSpacing.xl),
+                              _BottomControls(
+                                isFirst: _index == 0,
+                                isLast: _isLast,
+                                onBack: () => _animateTo(_index - 1),
+                                onNext: () => _animateTo(_index + 1),
+                                onScan: _scanQr,
+                              ),
+                              AnimatedOpacity(
+                                opacity: _isLast ? 1 : 0,
+                                duration: const Duration(milliseconds: 200),
+                                child: TextButton(
+                                  onPressed: _isLast ? _enterCode : null,
+                                  child: Text(l10n.actionEnterCode),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ],

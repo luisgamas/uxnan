@@ -77,6 +77,7 @@ class _FloatingAgentsState extends State<FloatingAgents>
   @override
   Widget build(BuildContext context) {
     final count = math.min(widget.assets.length, widget.placements.length);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return SizedBox(
       height: 150,
       width: double.infinity,
@@ -93,8 +94,12 @@ class _FloatingAgentsState extends State<FloatingAgents>
                     size: widget.placements[i].size,
                   ),
                   builder: (context, child) {
-                    final dy = _amplitude *
-                        math.sin(_controller.value * 2 * math.pi + i * 2.1);
+                    final dy = reduceMotion
+                        ? 0.0
+                        : _amplitude *
+                            math.sin(
+                              _controller.value * 2 * math.pi + i * 2.1,
+                            );
                     return Transform.translate(
                       offset: Offset(0, dy),
                       child: child,

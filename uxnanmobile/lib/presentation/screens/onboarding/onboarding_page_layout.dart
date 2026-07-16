@@ -60,13 +60,17 @@ class OnboardingPageLayout extends StatelessWidget {
                 if (top != null) top!,
                 Center(
                   child: Container(
-                    width: 96,
-                    height: 96,
+                    width: 88,
+                    height: 80,
                     decoration: BoxDecoration(
                       color: colors.primaryContainer,
-                      shape: BoxShape.circle,
+                      borderRadius: const BorderRadius.all(UxnanRadius.xl),
                     ),
-                    child: Icon(icon, size: 44, color: colors.primary),
+                    child: Icon(
+                      icon,
+                      size: 38,
+                      color: colors.onPrimaryContainer,
+                    ),
                   ),
                 ),
                 const SizedBox(height: UxnanSpacing.xl),

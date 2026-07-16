@@ -118,185 +118,191 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
           Positioned.fill(
             child: SafeArea(
               top: false,
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  UxnanSpacing.xl,
-                  NeTopBar.preferredHeight(context),
-                  UxnanSpacing.xl,
-                  UxnanSpacing.xl,
-                ),
-                children: [
-                  // Icon Surface hero (neutral surface tone, not primary).
-                  Center(
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: colors.secondaryContainer,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.vpn_key_rounded,
-                        size: 34,
-                        color: colors.onSecondaryContainer,
-                        semanticLabel: l10n.manualCodeTitle,
-                      ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      UxnanSpacing.xl,
+                      NeTopBar.preferredHeight(context),
+                      UxnanSpacing.xl,
+                      UxnanSpacing.xl,
                     ),
-                  ),
-                  const SizedBox(height: UxnanSpacing.lg),
-                  Text(
-                    l10n.manualCodeTitle,
-                    style: textTheme.headlineMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  Text(
-                    l10n.manualCodeIntro,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: UxnanSpacing.xl),
-
-                  // Discovery shortcut as a dynamic-corner card (single).
-                  ExpressiveCard(
-                    onTap: _connecting ? null : _browse,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UxnanSpacing.lg,
-                      vertical: UxnanSpacing.md,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.wifi_find_rounded,
-                          color: colors.primary,
-                          semanticLabel: l10n.manualCodeBrowse,
-                        ),
-                        const SizedBox(width: UxnanSpacing.lg),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                l10n.manualCodeBrowse,
-                                style: textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                l10n.manualCodeBrowseHint,
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                    children: [
+                      // Icon Surface hero (neutral surface tone, not primary).
+                      Center(
+                        child: Container(
+                          width: 88,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: colors.primaryContainer,
+                            borderRadius:
+                                const BorderRadius.all(UxnanRadius.xl),
+                          ),
+                          child: Icon(
+                            Icons.vpn_key_rounded,
+                            size: 38,
+                            color: colors.onPrimaryContainer,
+                            semanticLabel: l10n.manualCodeTitle,
                           ),
                         ),
-                        Icon(
-                          Icons.chevron_right_rounded,
+                      ),
+                      const SizedBox(height: UxnanSpacing.lg),
+                      Text(
+                        l10n.manualCodeTitle,
+                        style: textTheme.headlineMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: UxnanSpacing.sm),
+                      Text(
+                        l10n.manualCodeIntro,
+                        style: textTheme.bodyMedium?.copyWith(
                           color: colors.onSurfaceVariant,
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: UxnanSpacing.xl),
-
-                  // Manual entry grouped on one surface with filled inputs.
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: UxnanSpacing.xs,
-                      bottom: UxnanSpacing.sm,
-                    ),
-                    child: Text(
-                      l10n.manualCodeFormTitle,
-                      style: textTheme.labelMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+                        textAlign: TextAlign.center,
                       ),
-                    ),
-                  ),
-                  NeSurface(
-                    padding: const EdgeInsets.all(UxnanSpacing.lg),
-                    child: Column(
-                      children: [
-                        _FilledField(
-                          controller: _host,
-                          enabled: !_connecting,
-                          icon: Icons.dns_rounded,
-                          label: l10n.manualCodeHostLabel,
-                          hint: l10n.manualCodeHostHint,
-                          keyboardType: TextInputType.url,
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: UxnanSpacing.md),
-                        _FilledField(
-                          controller: _code,
-                          enabled: !_connecting,
-                          icon: Icons.key_rounded,
-                          label: l10n.manualCodeCodeLabel,
-                          hint: l10n.manualCodeCodeHint,
-                          textCapitalization: TextCapitalization.characters,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) {
-                            if (!_connecting) _connect();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
+                      const SizedBox(height: UxnanSpacing.xl),
 
-                  if (_error != null) ...[
-                    const SizedBox(height: UxnanSpacing.lg),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.error_outline_rounded,
-                          color: colors.error,
-                          size: 20,
-                          semanticLabel: 'Error',
+                      // Discovery shortcut as a dynamic-corner card (single).
+                      ExpressiveCard(
+                        onTap: _connecting ? null : _browse,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: UxnanSpacing.lg,
+                          vertical: UxnanSpacing.md,
                         ),
-                        const SizedBox(width: UxnanSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: textTheme.bodySmall
-                                ?.copyWith(color: colors.error),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.wifi_find_rounded,
+                              color: colors.primary,
+                              semanticLabel: l10n.manualCodeBrowse,
+                            ),
+                            const SizedBox(width: UxnanSpacing.lg),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    l10n.manualCodeBrowse,
+                                    style: textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    l10n.manualCodeBrowseHint,
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: UxnanSpacing.xl),
+
+                      // Manual entry grouped on one surface with filled inputs.
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: UxnanSpacing.xs,
+                          bottom: UxnanSpacing.sm,
+                        ),
+                        child: Text(
+                          l10n.manualCodeFormTitle,
+                          style: textTheme.labelMedium?.copyWith(
+                            color: colors.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-
-                  const SizedBox(height: UxnanSpacing.xl),
-
-                  // Canonical NE pill CTA (same shape/size as NeButton); keeps a
-                  // custom child to show the PolygonLoader while resolving.
-                  SizedBox(
-                    height: NeButton.height,
-                    child: FilledButton(
-                      onPressed: _connecting ? null : _connect,
-                      style: FilledButton.styleFrom(
-                        shape: const StadiumBorder(),
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        minimumSize: const Size(0, NeButton.height),
                       ),
-                      child: _connecting
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                PolygonLoader(
-                                  size: 20,
-                                  color: colors.onPrimary,
-                                ),
-                                const SizedBox(width: UxnanSpacing.md),
-                                Text(l10n.manualCodeConnecting),
-                              ],
-                            )
-                          : Text(l10n.manualCodeConnect),
-                    ),
+                      NeSurface(
+                        padding: const EdgeInsets.all(UxnanSpacing.lg),
+                        child: Column(
+                          children: [
+                            _FilledField(
+                              controller: _host,
+                              enabled: !_connecting,
+                              icon: Icons.dns_rounded,
+                              label: l10n.manualCodeHostLabel,
+                              hint: l10n.manualCodeHostHint,
+                              keyboardType: TextInputType.url,
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: UxnanSpacing.md),
+                            _FilledField(
+                              controller: _code,
+                              enabled: !_connecting,
+                              icon: Icons.key_rounded,
+                              label: l10n.manualCodeCodeLabel,
+                              hint: l10n.manualCodeCodeHint,
+                              textCapitalization: TextCapitalization.characters,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) {
+                                if (!_connecting) _connect();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      if (_error != null) ...[
+                        const SizedBox(height: UxnanSpacing.lg),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              color: colors.error,
+                              size: 20,
+                              semanticLabel: 'Error',
+                            ),
+                            const SizedBox(width: UxnanSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: textTheme.bodySmall
+                                    ?.copyWith(color: colors.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      const SizedBox(height: UxnanSpacing.xl),
+
+                      // Canonical NE pill CTA (same shape/size as NeButton); keeps a
+                      // custom child to show the PolygonLoader while resolving.
+                      SizedBox(
+                        height: NeButton.height,
+                        child: FilledButton(
+                          onPressed: _connecting ? null : _connect,
+                          style: FilledButton.styleFrom(
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            minimumSize: const Size(0, NeButton.height),
+                          ),
+                          child: _connecting
+                              ? Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    PolygonLoader(
+                                      size: 20,
+                                      color: colors.onPrimary,
+                                    ),
+                                    const SizedBox(width: UxnanSpacing.md),
+                                    Text(l10n.manualCodeConnecting),
+                                  ],
+                                )
+                              : Text(l10n.manualCodeConnect),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

@@ -1638,6 +1638,20 @@ Before marking a widget as "complete" in your design system:
 - [ ] Do the icon-only button texts have a `semanticLabel`?
 - [ ] Does the color contrast meet WCAG AA (4.5:1 text, 3:1 icons)?
 
+### 7.5 Onboarding and Connection Entry Points
+
+Onboarding uses a calm, solid `surface` backdrop. Do not place a persistent
+grid, glow, or full-screen decorative gradient behind the entire flow: those
+patterns compete with changing page content and make setup feel disconnected
+from the product. Let decorative agent logos breathe directly on the canvas;
+do not trap them inside another card. Use the app's established rounded-
+rectangle hero geometry and a cohesive floating navigation surface. Connection
+alternatives use the same hero geometry and constrained content width so QR and
+manual-code entry feel like one journey.
+
+Ambient logo motion is decorative and must freeze when
+`MediaQuery.disableAnimationsOf(context)` is true.
+
 ---
 
 *Guide produced based on verified sources: Google I/O 2025 (M3E announcement),
