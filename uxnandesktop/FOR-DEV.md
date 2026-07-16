@@ -15,7 +15,7 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 175 Rust backend tests + 120 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 177 Rust backend tests + 129 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -94,7 +94,11 @@ mobile pairing) is NOT started.**
   PR-list row, and the review/merge/close **tools in a bottom action bar**, with
   merge/approve/request-changes **gated to open PRs**; **issue** triage/create +
   **close/reopen**; **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
-  / `gh issue develop`; optional **AI PR-body drafting** (the `aicommit` one-shot runner).
+  / `gh issue develop` — both behind a **settings + confirmation dialog** (editable branch
+  name pre-filled with the generic default, GitHub-slug suggestion for issues, launch-agent
+  picker, folder preview, existing-worktree warning) that adopts the result through the
+  same path as a hand-made worktree, so it gets its agent like any other; optional
+  **AI PR-body drafting** (the `aicommit` one-shot runner).
   Creating a PR **picks its `base ← head`** (base = `origin` branches, defaulting to the
   repo's default branch; head = local branches, pinned to the worktree's branch in the
   right-panel tab), refuses base == head, warns on an unpushed head, and drafts the AI

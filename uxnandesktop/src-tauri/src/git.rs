@@ -368,6 +368,39 @@ fn parse_branch_lines(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether `name` is a branch name git would accept (a subset of
+/// `git check-ref-format --branch`, covering the rules a user can trip over in a
+/// name field). Checked up front so a bad name fails naming the field, instead of
+/// surfacing a raw git error from three calls deeper — and so a name can never be
+/// smuggled into a `git`/`gh` invocation as a flag. Pure, so it's unit-tested.
+pub fn is_valid_branch_name(name: &str) -> bool {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.starts_with('/')
+        || name.starts_with('.')
+        || name.ends_with('/')
+        || name.ends_with('.')
+        || name.ends_with(".lock")
+        || name == "@"
+    {
+        return false;
+    }
+    if name.contains("..")
+        || name.contains("//")
+        || name.contains("@{")
+        || name.contains("\\")
+        || name.contains("//")
+    {
+        return false;
+    }
+    // git forbids these outright, plus any control character or space.
+    !name.chars().any(|c| {
+        c.is_control()
+            || c.is_whitespace()
+            || matches!(c, '~' | '^' | ':' | '?' | '*' | '[' | '\x7f')
+    })
+}
+
 /// List the branches that exist on `origin`, short-named with the remote prefix
 /// stripped (`origin/main` → `main`). This — not [`list_branches`] — is the right
 /// set for a PR **base**: GitHub can only target a branch that exists on the
@@ -1437,6 +1470,46 @@ mod tests {
         git(dir, args)
             .await
             .unwrap_or_else(|e| panic!("git {args:?} in {dir} failed: {e:?}"));
+    }
+
+    #[test]
+    fn valid_branch_names_accepted() {
+        for name in [
+            "pr-42",
+            "issue-17",
+            "feat/github-integration",
+            "17-fix-the-login",
+            "release_1.2",
+        ] {
+            assert!(is_valid_branch_name(name), "{name} should be valid");
+        }
+    }
+
+    #[test]
+    fn invalid_branch_names_rejected() {
+        for name in [
+            "",            // empty
+            "-force",      // could be read as a flag
+            "/leading",    // leading slash
+            "trailing/",   // trailing slash
+            ".hidden",     // leading dot
+            "trailing.",   // trailing dot
+            "feat..bug",   // double dot
+            "feat//bug",   // double slash
+            "a b",         // space
+            "wip.lock",    // .lock suffix
+            "@",           // the reflog shorthand
+            "head@{0}",    // @{ sequence
+            "back\\slash", // backslash
+            "star*",       // glob
+            "tilde~1",     // ancestry
+            "caret^",      // ancestry
+            "colon:name",  // refspec separator
+            "question?",   // glob
+            "brack[et",    // glob
+        ] {
+            assert!(!is_valid_branch_name(name), "{name:?} should be rejected");
+        }
     }
 
     #[test]

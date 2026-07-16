@@ -1030,6 +1030,14 @@ export const es: Record<MessageKey, string> = {
   "github.pr.branchesError": "No se pudieron cargar las ramas de este repositorio.",
   "github.pr.draftLabel": "Crear como borrador",
   "github.pr.checkout": "Checkout a worktree",
+  "github.worktree.prTitle": "Abrir este PR en un worktree",
+  "github.worktree.prDesc":
+    "Trae el head del PR #{n} a una rama nueva y la abre como su propio worktree.",
+  "github.worktree.issueTitle": "Empezar a trabajar en este issue",
+  "github.worktree.issueDesc":
+    "Crea una rama ligada al issue #{n} en GitHub y la abre como su propio worktree.",
+  "github.worktree.useSuggested": "Usar «{name}» en su lugar",
+  "github.worktree.exists": "Ya existe un worktree en esa carpeta: se reutilizará.",
   "github.pr.review": "Review",
   "github.pr.merge": "Merge",
   "github.pr.mergeMethod": "Método de merge",

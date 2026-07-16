@@ -780,9 +780,18 @@ export function githubPrReopen(worktreePath: string, number: string): Promise<vo
   return invoke("github_pr_reopen", { worktreePath, number });
 }
 
-/** Check out a PR into a new worktree; resolves to the new entry. */
-export function githubPrCheckout(repoId: string, number: string): Promise<WorktreeEntry> {
-  return invoke<WorktreeEntry>("github_pr_checkout", { repoId, number });
+/** Check out a PR into a new worktree; resolves to the new entry. `branch` names
+ *  it (omitted = `pr-<n>`). */
+export function githubPrCheckout(
+  repoId: string,
+  number: string,
+  branch?: string | null,
+): Promise<WorktreeEntry> {
+  return invoke<WorktreeEntry>("github_pr_checkout", {
+    repoId,
+    number,
+    branch: branch ?? null,
+  });
 }
 
 /** List issues for the worktree's repo. */
@@ -829,8 +838,16 @@ export function githubIssueCreate(
 }
 
 /** Start work on an issue: create + link a branch and add it as a new worktree. */
-export function githubIssueDevelop(repoId: string, number: string): Promise<WorktreeEntry> {
-  return invoke<WorktreeEntry>("github_issue_develop", { repoId, number });
+export function githubIssueDevelop(
+  repoId: string,
+  number: string,
+  branch?: string | null,
+): Promise<WorktreeEntry> {
+  return invoke<WorktreeEntry>("github_issue_develop", {
+    repoId,
+    number,
+    branch: branch ?? null,
+  });
 }
 
 /** List recent workflow runs (optionally for a branch). */

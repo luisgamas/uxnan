@@ -64,6 +64,14 @@ El flujo de creación es el más complejo y tiene varias garantías:
 
 7. **Lanzar agente** (opcional): Si el worktree fue creado con un agente predefinido, se lanza automáticamente en un terminal nuevo.
 
+Los flujos **worktree-native de GitHub** (*checkout* de un PR e *iniciar trabajo* sobre
+un issue; ver `docs/github.md`) construyen su worktree en el backend — `git worktree add`
+sobre `pull/<n>/head` y sobre la rama ligada de `gh issue develop`, respectivamente — pero
+**terminan por este mismo camino**: el usuario confirma en un diálogo hermano del de
+*Nuevo worktree* (nombre de rama editable, agente a lanzar, previsualización de la carpeta)
+y el resultado se adopta con los pasos 6–7 compartidos, de modo que un worktree nacido de
+GitHub queda registrado, activo y **con su agente lanzado** igual que cualquier otro.
+
 ### 2.2 Cambio de Worktree
 
 1. El usuario hace click en una tarjeta de worktree.

@@ -21,13 +21,11 @@
     githubMergeInfo,
     githubPrClose,
     githubPrReopen,
-    githubPrCheckout,
     githubIssueView,
     githubIssueComment,
     githubIssueClose,
     githubIssueReopen,
     githubIssueCreate,
-    githubIssueDevelop,
     githubRunLog,
     githubRunRerun,
     githubRunCancel,
@@ -54,6 +52,7 @@
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import DiffView from "$lib/components/DiffView.svelte";
   import CreatePrForm from "$lib/components/CreatePrForm.svelte";
+  import GithubWorktreeDialog from "$lib/components/GithubWorktreeDialog.svelte";
   import MarkdownView from "$lib/components/MarkdownView.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -430,21 +429,19 @@
     }
   }
 
-  async function checkoutPr(n: number) {
-    const repoId = selectedRepoId();
-    if (!repoId) return;
-    busy = true;
-    try {
-      const entry = await githubPrCheckout(repoId, String(n));
-      await projects.loadWorktrees(repoId);
-      projects.setActiveWorktree(entry.path);
-      toast.success(i18n.t("github.toast.checkedOut"));
-      close();
-    } catch (e) {
-      toastError(e);
-    } finally {
-      busy = false;
-    }
+  // PR/issue → worktree. Both open GithubWorktreeDialog (branch name, agent,
+  // folder preview) rather than acting on one click, and it owns the call.
+  let worktreeDialogOpen = $state(false);
+  let worktreeDialogKind = $state<"pr" | "issue">("pr");
+  let worktreeDialogNumber = $state<number | null>(null);
+  let worktreeDialogTitle = $state("");
+
+  function requestWorktree(kind: "pr" | "issue", n: number, title: string) {
+    if (!selectedRepoId()) return;
+    worktreeDialogKind = kind;
+    worktreeDialogNumber = n;
+    worktreeDialogTitle = title;
+    worktreeDialogOpen = true;
   }
 
   // Create PR — the form itself lives in the reusable CreatePrForm component
@@ -552,22 +549,6 @@
     }
   }
 
-  async function developIssue(n: number) {
-    const repoId = selectedRepoId();
-    if (!repoId) return;
-    busy = true;
-    try {
-      const entry = await githubIssueDevelop(repoId, String(n));
-      await projects.loadWorktrees(repoId);
-      projects.setActiveWorktree(entry.path);
-      toast.success(i18n.t("github.toast.branchCreated"));
-      close();
-    } catch (e) {
-      toastError(e);
-    } finally {
-      busy = false;
-    }
-  }
 
   // --- Actions --------------------------------------------------------------
   let runLog = $state<string | null>(null);
@@ -1054,6 +1035,17 @@
       </div>
     </div>
   </div>
+
+  <!-- PR/issue → worktree. Mounted once at the section root (not per row) so the
+       PR and issue panes share one instance, and it survives a pane switch. -->
+  <GithubWorktreeDialog
+    bind:open={worktreeDialogOpen}
+    repoId={selectedRepoId()}
+    kind={worktreeDialogKind}
+    number={worktreeDialogNumber}
+    title={worktreeDialogTitle}
+    onDone={close}
+  />
 {/if}
 
 <!-- ============================ reusable bits ============================ -->
@@ -1559,7 +1551,7 @@
           <div class="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>{i18n.t("github.pr.postComment")}</Button>
             <div class="flex-1"></div>
-            <Button variant="outline" size="sm" disabled={busy} onclick={() => checkoutPr(pr.number)}>
+            <Button variant="outline" size="sm" disabled={busy} onclick={() => requestWorktree("pr", pr.number, pr.title)}>
               <GitBranchIcon class={icon.button} />{i18n.t("github.pr.checkout")}
             </Button>
             {#if isOpen}
@@ -1813,7 +1805,7 @@
           <div class="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={busy || !issueCommentBody.trim()} onclick={postIssueComment}>{i18n.t("github.pr.postComment")}</Button>
             <div class="flex-1"></div>
-            <Button variant="outline" size="sm" disabled={busy} title={i18n.t("github.issue.startWorkTip")} onclick={() => developIssue(issue.number)}>
+            <Button variant="outline" size="sm" disabled={busy} title={i18n.t("github.issue.startWorkTip")} onclick={() => requestWorktree("issue", issue.number, issue.title)}>
               <GitBranchIcon class={icon.button} />{i18n.t("github.issue.startWork")}
             </Button>
             {#if issueOpen}

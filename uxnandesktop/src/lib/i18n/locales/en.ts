@@ -1033,6 +1033,14 @@ export const en = {
   "github.pr.branchesError": "Couldn't load this repository's branches.",
   "github.pr.draftLabel": "Create as draft",
   "github.pr.checkout": "Check out to worktree",
+  "github.worktree.prTitle": "Check out this PR to a worktree",
+  "github.worktree.prDesc":
+    "Fetches PR #{n}'s head into a new branch and opens it as its own worktree.",
+  "github.worktree.issueTitle": "Start work on this issue",
+  "github.worktree.issueDesc":
+    "Creates a branch linked to issue #{n} on GitHub and opens it as its own worktree.",
+  "github.worktree.useSuggested": "Use “{name}” instead",
+  "github.worktree.exists": "A worktree already exists at that folder — it'll be reused.",
   "github.pr.review": "Review",
   "github.pr.merge": "Merge",
   "github.pr.mergeMethod": "Merge method",

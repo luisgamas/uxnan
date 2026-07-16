@@ -7,6 +7,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **PR/issue → worktree is now a real dialog, and finally launches an agent.**
+  *Check out to worktree* and *Start work* were a single click with a hard-coded branch
+  name (`pr-<n>` / `issue-<n>`) and no options. They also **skipped
+  `projects.createWorktree`**, so a GitHub-born worktree arrived with **no agent
+  launched** — unlike every other worktree in the app. Both now open a settings +
+  confirmation dialog modeled on the New-worktree dialog: an **editable branch name**
+  (pre-filled with the old generic default, so Enter reproduces the previous behavior;
+  issues also offer the GitHub-style slug `17-fix-the-login` in one click), a **launch-agent
+  picker** (same global default as everywhere else), a live **worktree-folder preview**,
+  and a warning when a worktree already exists at that folder. The created worktree is
+  adopted through the same path as a hand-made one (the new shared
+  `projects.adoptWorktree`), so it lands in the left-panel Projects tree identically.
+  `github_pr_checkout` / `github_issue_develop` take an optional `branch`, validated
+  against git's ref rules up front (new `git::is_valid_branch_name`) so a bad name names
+  the field instead of surfacing a raw git error — and can't be smuggled in as a flag.
 - **Merging now respects branch protection, and can bypass it properly.** The merge
   controls previously offered a fixed squash/merge/rebase list and defaulted to
   **squash + delete-branch** regardless of the repo — so on a repo whose `main` forbids

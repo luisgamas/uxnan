@@ -1465,13 +1465,14 @@ pub async fn github_pr_checkout(
     state: State<'_, AppState>,
     repo_id: String,
     number: String,
+    branch: Option<String>,
 ) -> Result<WorktreeEntry, CommandError> {
     let number = crate::github::validate_number(&number).map_err(CommandError::from)?;
     let repo_path = repo_path_of(&state, &repo_id).await?;
+    let branch = branch_or_default(branch, || format!("pr-{number}"))?;
     git::fetch(&repo_path, &format!("pull/{number}/head"))
         .await
         .map_err(CommandError::from)?;
-    let branch = format!("pr-{number}");
     let worktree_path = git::worktree_path_for(&repo_path, &branch);
     git::add_worktree(&repo_path, &branch, &worktree_path, Some("FETCH_HEAD"))
         .await
@@ -1482,6 +1483,26 @@ pub async fn github_pr_checkout(
         head: None,
         is_main: false,
     })
+}
+
+/// Resolve a caller-supplied branch name, falling back to the generic default
+/// (`pr-<n>` / `issue-<n>`) when it's absent or blank. Rejects a name git itself
+/// would refuse, so the failure names the field rather than surfacing a raw git
+/// error from three calls deeper.
+fn branch_or_default(
+    branch: Option<String>,
+    default: impl FnOnce() -> String,
+) -> Result<String, CommandError> {
+    let branch = branch
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(default);
+    if !crate::git::is_valid_branch_name(&branch) {
+        return Err(CommandError::from(AppError::Invalid(format!(
+            "invalid branch name: {branch:?}"
+        ))));
+    }
+    Ok(branch)
 }
 
 /// List issues for the worktree's repo.
@@ -1558,10 +1579,11 @@ pub async fn github_issue_develop(
     state: State<'_, AppState>,
     repo_id: String,
     number: String,
+    branch: Option<String>,
 ) -> Result<WorktreeEntry, CommandError> {
     let number = crate::github::validate_number(&number).map_err(CommandError::from)?;
     let repo_path = repo_path_of(&state, &repo_id).await?;
-    let branch = format!("issue-{number}");
+    let branch = branch_or_default(branch, || format!("issue-{number}"))?;
     // If a worktree for this branch already exists (a re-run), just return it.
     let worktree_path = git::worktree_path_for(&repo_path, &branch);
     if std::path::Path::new(&worktree_path).exists() {

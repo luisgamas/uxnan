@@ -120,9 +120,23 @@ a plain merge and let `gh` itself reject what isn't allowed.
 ## Worktree-native flows (the differentiator)
 
 - **PR → worktree:** *Check out to worktree* fetches `pull/<n>/head` and adds a
-  `pr-<n>` worktree, so reviewing/running a PR is just another isolated worktree.
-- **Issue → worktree:** *Start work* runs `gh issue develop` and adds an `issue-<n>`
-  worktree with the linked branch.
+  worktree, so reviewing/running a PR is just another isolated worktree.
+- **Issue → worktree:** *Start work* runs `gh issue develop` and adds a worktree with
+  the linked branch.
+
+Both open a **settings + confirmation dialog** (the sibling of the New-worktree dialog),
+so a GitHub-born worktree is set up like any other:
+
+| Field | Behavior |
+|---|---|
+| **Branch name** | Pre-filled with the generic default (`pr-42` / `issue-17`), so Enter reproduces the old one-click behavior. Editable; validated before git sees it. For issues, a one-click **suggestion** offers the GitHub-style slug (`17-fix-the-login`, what `gh issue develop` would pick). |
+| **Launch agent** | Same picker (and same global default) as the New-worktree dialog. **This closed a real gap:** these flows used to bypass `createWorktree`, so a PR/issue worktree arrived with **no agent** — unlike every other worktree. |
+| **Worktree folder** | A live preview of the sibling folder (`<repo>--<branch>`) that will be created. |
+| **Already exists** | Warns when a worktree already sits at that folder (the issue flow reuses it). |
+
+The new worktree is then registered, made the active context and given its agent through
+the same path as a hand-made one (`projects.adoptWorktree`), so it appears in the
+left-panel Projects tree identically.
 
 ## Elsewhere in the UI
 
