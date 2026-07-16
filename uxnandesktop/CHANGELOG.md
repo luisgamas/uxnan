@@ -33,6 +33,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   identity, and a hook report still seals identity by the agent's self-declared type —
   neither path is affected. Spec: `architecture/02d-agent-monitoring.md` §1.4.
 
+### Fixed — terminal scroll: scrollbar stuck short of the end after switching tabs
+
+- **Returning to a terminal that produced output while it was hidden no longer
+  traps the scroll.** Switching to another tab/workspace hides a terminal (its pane
+  reports a `0×0` box); output that streams in meanwhile — e.g. a bridge run printing
+  a second QR — grows xterm's buffer, but its viewport is left with a **stale scroll
+  area** computed against the hidden pane. On return the scrollbar topped out before
+  the real end of the buffer, so the last lines were unreachable until a keypress
+  nudged it (pressing Home/End "fixed" it because any key triggers xterm's own
+  scroll-area sync). `Terminal.svelte` now recomputes the viewport on reveal
+  (`syncViewport()` re-measures the now-visible cell size, then calls xterm 6's
+  `viewport.queueSync()` — the replacement for the removed `syncScrollArea()`), so
+  scrolling reaches the true top/bottom immediately **without moving the user's
+  position**. xterm 6's viewport has no `ResizeObserver`, so a revealed pane never
+  re-syncs on its own — this drives it. Runs only while the pane is genuinely visible
+  (a rapid tab-flick that re-hides it before the frame is a no-op; a later reveal
+  re-runs it) and is guarded with optional chaining (a future xterm rename degrades to
+  a no-op, same posture as `forceRenderResume`).
+
 ### Fixed — terminal rendering: blank panes on launch & doubled text
 
 - **Intermittent blank terminal on launch (cursor blinks, no prompt) — the primary

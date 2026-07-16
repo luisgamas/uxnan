@@ -207,7 +207,40 @@
       } catch {
         // Terminal may have been disposed; ignore.
       }
+      // Recompute the scrollbar/scroll-area after the reveal (below).
+      syncViewport();
     });
+  }
+
+  // Force xterm to recompute its viewport scroll area + scrollbar. While a pane is
+  // hidden (a background tab/workspace reports a 0×0 box) any output that streams
+  // in grows the buffer, but xterm's viewport is left with a stale scroll area — so
+  // on reveal the scrollbar tops out before the true end of the buffer and the user
+  // can't scroll to the real top/bottom until the next keypress nudges it (a keypress
+  // triggers this same sync via xterm's scroll handler). xterm 6's viewport has NO
+  // ResizeObserver, so a revealed pane never re-syncs on its own — we drive it here
+  // so scrolling reaches the true extent immediately, without moving the user's
+  // position. Mirrors xterm's own recompute: re-measure the now-visible cell size,
+  // then queue a scroll-area sync (`_viewport.queueSync`, xterm 6's replacement for
+  // the old `syncScrollArea`). Internal fields, guarded with optional chaining: a
+  // future xterm rename becomes a no-op instead of throwing (same posture as
+  // `forceRenderResume`), and a keypress would still re-sync as a last resort.
+  function syncViewport() {
+    // Only while genuinely visible: measuring/syncing against a 0×0 hidden pane
+    // would re-cache the stale (zero) scroll area we're trying to fix. A later
+    // reveal re-runs this.
+    if (!term || !hasVisibleGeometry()) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const core = (term as any)._core;
+      // Re-measure the (now visible) cell size so the scroll-area math below uses
+      // real dimensions rather than the zero a hidden pane may have cached.
+      core?._charSizeService?.measure?.();
+      // Recompute the scroll area + scrollbar against the current buffer length.
+      core?._viewport?.queueSync?.();
+    } catch {
+      // xterm internals renamed / terminal disposed — no-op (a keypress re-syncs).
+    }
   }
 
   // Attach the WebGL renderer — but ONLY while this pane is actually visible. Each
