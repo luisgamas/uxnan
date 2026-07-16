@@ -88,7 +88,7 @@ test('snapshot aggregates conversations, messages, agents, sessions and git acti
   }
 });
 
-test('snapshot tokensByDay sums per-turn usage per agent (usage-reporting only)', async () => {
+test('snapshot byAgentDay splits conversations/messages/tokens per agent', async () => {
   const h = newHarness();
   try {
     const t = await h.threadStore.startThread({ projectId: 'p', agentId: 'claude-code' }, 1000);
@@ -98,24 +98,39 @@ test('snapshot tokensByDay sums per-turn usage per agent (usage-reporting only)'
     const turn2 = await h.threadStore.startTurn(t.id, 'again', 2000);
     await h.threadStore.setUsage(t.id, turn2.turnId, { tokens: 800 }, 2000);
     await h.threadStore.completeTurn(t.id, turn2.turnId, 'b', 2100);
-    // A second agent whose turns report NO usage → excluded from tokensByDay.
+    // A second agent whose turns report NO usage → appears with tokens 0 but
+    // real conversation/message counts.
     const t2 = await h.threadStore.startThread({ projectId: 'p', agentId: 'zero' }, 3000);
     const zt = await h.threadStore.startTurn(t2.id, 'x', 3000);
     await h.threadStore.completeTurn(t2.id, zt.turnId, 'y', 3100);
 
     const snap = await h.service.getSnapshot();
-    const claudeTotal = snap.tokensByDay
-      .flatMap((d) => d.byAgent)
-      .filter((a) => a.agentId === 'claude-code')
-      .reduce((acc, a) => acc + a.tokens, 0);
-    // Both turns (epoch ~0, same UTC day) sum: 500 + 800.
-    assert.equal(claudeTotal, 1300);
-    // The usage-less agent never appears.
-    const hasZero = snap.tokensByDay.some((d) => d.byAgent.some((a) => a.agentId === 'zero'));
-    assert.equal(hasZero, false);
+    const claude = snap.byAgentDay.flatMap((d) => d.byAgent).filter((a) => a.agentId === 'claude-code');
+    // 500 + 800 across the (same-UTC-day) turns; 1 conversation; 4 messages
+    // (2 turns × user+assistant).
+    assert.equal(
+      claude.reduce((acc, a) => acc + a.tokens, 0),
+      1300,
+    );
+    assert.equal(
+      claude.reduce((acc, a) => acc + a.conversations, 0),
+      1,
+    );
+    assert.equal(
+      claude.reduce((acc, a) => acc + a.messages, 0),
+      4,
+    );
+    // Zero appears (a conversation + messages) with 0 tokens.
+    const zero = snap.byAgentDay.flatMap((d) => d.byAgent).filter((a) => a.agentId === 'zero');
+    assert.ok(zero.length > 0);
+    assert.equal(
+      zero.reduce((acc, a) => acc + a.tokens, 0),
+      0,
+    );
+    assert.ok(zero.reduce((acc, a) => acc + a.conversations, 0) >= 1);
     // Day keys are UTC midnight (a whole-day multiple; `=== 0` treats -0 as 0
     // for pre-epoch days, which `assert.equal` would not).
-    for (const d of snap.tokensByDay) {
+    for (const d of snap.byAgentDay) {
       assert.ok(d.day % 86_400_000 === 0, 'day key is UTC midnight');
     }
   } finally {

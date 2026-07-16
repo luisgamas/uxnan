@@ -117,10 +117,14 @@ export interface ConversationMetrics {
   /** Local-day activity buckets (day-start epoch ms → conversation/message counts). */
   activityByDay: { day: number; conversations: number; messages: number }[];
   /**
-   * Per-day token throughput split per agent (UTC-midnight day → agent →
-   * summed per-turn `usage.tokens`). Only agents whose turns report usage appear.
+   * Per-day activity split per agent (UTC-midnight day → agent →
+   * {conversations, messages, tokens}). Drives the per-agent bars; agents whose
+   * turns don't report usage contribute conversations/messages with tokens 0.
    */
-  tokensByDay: { day: number; byAgent: { agentId: string; tokens: number }[] }[];
+  byAgentDay: {
+    day: number;
+    byAgent: { agentId: string; conversations: number; messages: number; tokens: number }[];
+  }[];
 }
 
 /** Runtime config the AgentManager needs to drive a thread's turns. */
@@ -461,8 +465,8 @@ export class ThreadStore {
   /**
    * Compute the conversation-derived profile metrics in one read of the store:
    * conversation/message counts, distinct agents/models, per-agent tallies,
-   * member-since, per-day activity buckets and per-day token throughput.
-   * Read-only.
+   * member-since, per-day activity buckets and the per-day per-agent breakdown
+   * (conversations/messages/tokens). Read-only.
    */
   async conversationMetrics(): Promise<ConversationMetrics> {
     const threads = await this.#read();
@@ -470,8 +474,9 @@ export class ThreadStore {
     const models = new Set<string>();
     const byAgent = new Map<string, number>();
     const activity = new Map<number, { conversations: number; messages: number }>();
-    // day → (agentId → summed per-turn usage.tokens)
-    const tokens = new Map<number, Map<string, number>>();
+    // day → (agentId → { conversations, messages, tokens }) for the per-agent bars.
+    type AgentDay = { conversations: number; messages: number; tokens: number };
+    const byAgentDay = new Map<number, Map<string, AgentDay>>();
     let messages = 0;
     let memberSince: number | undefined;
 
@@ -484,13 +489,18 @@ export class ThreadStore {
       return entry;
     };
 
-    const addTokens = (day: number, agentId: string, count: number): void => {
-      let byDay = tokens.get(day);
-      if (!byDay) {
-        byDay = new Map();
-        tokens.set(day, byDay);
+    const agentDay = (day: number, agentId: string): AgentDay => {
+      let m = byAgentDay.get(day);
+      if (!m) {
+        m = new Map();
+        byAgentDay.set(day, m);
       }
-      byDay.set(agentId, (byDay.get(agentId) ?? 0) + count);
+      let entry = m.get(agentId);
+      if (!entry) {
+        entry = { conversations: 0, messages: 0, tokens: 0 };
+        m.set(agentId, entry);
+      }
+      return entry;
     };
 
     for (const thread of threads) {
@@ -503,23 +513,21 @@ export class ThreadStore {
       if (memberSince === undefined || thread.createdAt < memberSince) {
         memberSince = thread.createdAt;
       }
-      bucket(utcDayKey(thread.createdAt)).conversations += 1;
+      const threadDay = utcDayKey(thread.createdAt);
+      bucket(threadDay).conversations += 1;
+      if (agentId !== undefined) agentDay(threadDay, agentId).conversations += 1;
       for (const turn of thread.turns) {
         for (const message of turn.messages) {
           messages += 1;
           const day = utcDayKey(message.createdAt);
           bucket(day).messages += 1;
-          // Token throughput: sum each assistant turn's reported usage per
-          // agent + day (only when the agent reports usage and the thread has
-          // an agent id).
-          const used = message.usage?.tokens;
-          if (
-            agentId !== undefined &&
-            message.role === 'assistant' &&
-            typeof used === 'number' &&
-            used > 0
-          ) {
-            addTokens(day, agentId, used);
+          if (agentId !== undefined) {
+            const entry = agentDay(day, agentId);
+            entry.messages += 1;
+            const used = message.usage?.tokens;
+            if (message.role === 'assistant' && typeof used === 'number' && used > 0) {
+              entry.tokens += used;
+            }
           }
         }
       }
@@ -533,9 +541,9 @@ export class ThreadStore {
       byAgent: [...byAgent].map(([agentId, conversations]) => ({ agentId, conversations })),
       ...(memberSince !== undefined ? { memberSince } : {}),
       activityByDay: [...activity].map(([day, counts]) => ({ day, ...counts })),
-      tokensByDay: [...tokens].map(([day, byDay]) => ({
+      byAgentDay: [...byAgentDay].map(([day, m]) => ({
         day,
-        byAgent: [...byDay].map(([agentId, count]) => ({ agentId, tokens: count })),
+        byAgent: [...m].map(([agentId, entry]) => ({ agentId, ...entry })),
       })),
     };
   }
