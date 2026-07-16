@@ -1,7 +1,8 @@
 What's new in this update:
 
-• Choose Zero and Grok when starting a new AI conversation.
-• Agents can now ask you questions, show plans, and request approval directly in the chat.
-• Clearer error messages when an agent cannot finish a task, plus smoother Markdown and table reading.
+• Your profile now shows your stats: activity, agents used and tokens, with an Activity/Tokens view. They live on your PC, so they survive reinstalling the app — and you can back them up to an encrypted file.
+• See how much of each AI plan you have used, with credit and reset times.
+• Type "/" in the chat to run an agent's built-in commands.
+• Search files across your project and preview images and Markdown.
 
 Thanks for testing this alpha!
