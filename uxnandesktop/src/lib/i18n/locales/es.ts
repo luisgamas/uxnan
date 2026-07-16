@@ -1036,6 +1036,7 @@ export const es: Record<MessageKey, string> = {
   "github.pr.headUnpushed":
     "{branch} todavía no está en origin. Haz push primero o GitHub no la encontrará.",
   "github.pr.branchesError": "No se pudieron cargar las ramas de este repositorio.",
+  "github.pr.branchLocalOnly": "solo local",
   "github.pr.draftLabel": "Crear como borrador",
   "github.pr.checkout": "Checkout a worktree",
   "github.worktree.prTitle": "Abrir este PR en un worktree",

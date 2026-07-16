@@ -102,10 +102,10 @@ mobile pairing) is NOT started.**
   **AI-PR-authoring settings section** built like Settings → AI commit (enable switch,
   agent picker with logos + install state, shared `AiModelPicker`, language,
   instructions).
-  Creating a PR **picks its `base ← head`** (base = `origin` branches, defaulting to the
-  repo's default branch; head = local branches, pinned to the worktree's branch in the
-  right-panel tab), refuses base == head, warns on an unpushed head, and drafts the AI
-  body against the **chosen** base. **Merging is protection-aware**: methods are the
+  Creating a PR **picks its `base ← head`** — **either side can be any branch** (local ∪
+  `origin`, marked *local only* where relevant), defaulting to the repo's default branch
+  / the checked-out one (head pinned in the right-panel tab); it refuses base == head,
+  warns on an unpushed branch, and drafts the AI body against the **chosen** base. **Merging is protection-aware**: methods are the
   repo's settings ∩ the base branch's **rulesets** (`gh api …/rules/branches/{base}` —
   the classic protection endpoint 404s on ruleset-protected branches), defaults follow
   `viewerDefaultMergeMethod`/`deleteBranchOnMerge`, a blocked PR **says why**, and the

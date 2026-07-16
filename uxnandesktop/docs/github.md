@@ -75,13 +75,14 @@ opens with a **`base ← head`** row: where the PR goes, and where it comes from
 always visible, even when they can't be changed — a PR silently opened from whatever
 branch happened to be checked out is exactly the mistake this row prevents.
 
-- **Base** lists the repo's **`origin` branches** (GitHub can only target a branch that
-  exists on the remote) and defaults to the repo's **default branch**.
-- **Head** lists **local branches** and defaults to the checked-out one. In the
-  **right-panel tab** it's fixed to the active worktree's branch and shown read-only —
-  that tab *is* that worktree. In the **section** (which is scoped to a *repo*) it's a
-  real choice.
-- The form blocks a `base == head` PR, and warns when the head hasn't been pushed to
+- **Both sides list every branch** — local and `origin` — because a PR isn't always
+  "my branch → main": it may target a colleague's branch, a release branch, or another
+  feature branch it stacks on. Branches that exist only locally are marked *local only*.
+- **Base** defaults to the repo's **default branch**; **head** defaults to the
+  checked-out one. In the **right-panel tab** the head is fixed to the active worktree's
+  branch and shown read-only — that tab *is* that worktree. In the **section** (which is
+  scoped to a *repo*) it's a real choice.
+- The form blocks a `base == head` PR, and warns when either branch hasn't been pushed to
   `origin` yet — `gh` runs with prompts disabled, so it can't offer to push for you.
 - **AI drafting** diffs against the **selected base** (resolved to `origin/<base>` when
   that ref exists), so the body describes the PR's own changes rather than a stale

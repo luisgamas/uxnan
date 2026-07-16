@@ -68,11 +68,25 @@
     (app.settings.github?.aiEnabled ?? false) ? app.settings.github?.aiAgentId : undefined,
   );
 
-  const baseGroups = $derived<ComboGroup[]>([
-    { items: (branches?.remote ?? []).map((b) => ({ value: b, label: b })) },
-  ]);
-  const headGroups = $derived<ComboGroup[]>([
-    { items: (branches?.local ?? []).map((b) => ({ value: b, label: b })) },
+  // Both sides offer EVERY branch: a PR isn't always "my branch → main", and
+  // restricting the base to `origin` (or the head to local) hid perfectly valid
+  // targets — a stacked PR onto a colleague's remote branch, or a base that only
+  // exists locally and is about to be pushed. Remote-only branches are marked so
+  // the distinction stays visible without being enforced; anything not on the
+  // remote is flagged by `headUnpushed` / `baseUnpushed` below.
+  const allBranches = $derived(
+    branches ? [...new Set([...branches.local, ...branches.remote])].sort() : [],
+  );
+  const branchGroups = $derived<ComboGroup[]>([
+    {
+      items: allBranches.map((b) => ({
+        value: b,
+        label: b,
+        meta: branches?.remote.includes(b)
+          ? undefined
+          : i18n.t("github.pr.branchLocalOnly"),
+      })),
+    },
   ]);
 
   // A PR into itself is rejected by GitHub; say so before the round trip.
@@ -81,11 +95,10 @@
     !!worktreePath && !!title.trim() && !!base && !!head && !sameBranch && !busy,
   );
 
-  // The head may be a local branch that was never pushed. gh runs with prompts
+  // Either side may be a local branch that was never pushed. gh runs with prompts
   // disabled, so rather than let it fail with gh's own opaque error, warn first.
-  const headUnpushed = $derived(
-    !!head && !!branches && !branches.remote.includes(head),
-  );
+  const headUnpushed = $derived(!!head && !!branches && !branches.remote.includes(head));
+  const baseUnpushed = $derived(!!base && !!branches && !branches.remote.includes(base));
 
   $effect(() => {
     const path = worktreePath;
@@ -98,8 +111,10 @@
         base = info.defaultBase;
         head = info.current ?? "";
         // Preselect a base that isn't the head, so the form doesn't open in an
-        // invalid state on a worktree that branches off the default branch.
-        if (base === head) base = info.remote.find((b) => b !== head) ?? base;
+        // invalid state when the worktree IS the default branch.
+        if (base === head) {
+          base = [...info.remote, ...info.local].find((b) => b !== head) ?? base;
+        }
       })
       .catch((e) => {
         branches = null;
@@ -162,7 +177,7 @@
     <GitBranchIcon class="size-3.5 shrink-0 text-muted-foreground" />
     <Combobox
       value={base}
-      groups={baseGroups}
+      groups={branchGroups}
       triggerClass="h-7 min-w-0 flex-1"
       placeholder={branchesLoading ? i18n.t("github.loading") : i18n.t("github.pr.baseLabel")}
       searchPlaceholder={i18n.t("common.search")}
@@ -185,7 +200,7 @@
     {:else}
       <Combobox
         value={head}
-        groups={headGroups}
+        groups={branchGroups}
         triggerClass="h-7 min-w-0 flex-1"
         placeholder={branchesLoading ? i18n.t("github.loading") : i18n.t("github.pr.headLabel")}
         searchPlaceholder={i18n.t("common.search")}
@@ -199,9 +214,9 @@
     <p class={cn("text-destructive", text.meta)}>{i18n.t("github.pr.branchesError")}</p>
   {:else if sameBranch}
     <p class={cn("text-destructive", text.meta)}>{i18n.t("github.pr.sameBranch")}</p>
-  {:else if headUnpushed}
+  {:else if headUnpushed || baseUnpushed}
     <p class={cn("text-amber-600 dark:text-amber-500", text.meta)}>
-      {i18n.t("github.pr.headUnpushed", { branch: head })}
+      {i18n.t("github.pr.headUnpushed", { branch: headUnpushed ? head : base })}
     </p>
   {/if}
 

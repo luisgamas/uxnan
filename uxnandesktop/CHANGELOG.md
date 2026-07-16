@@ -26,6 +26,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **Either side of a PR can be any branch.** The base offered only `origin` branches and
+  the head only local ones; both now list **every** branch (marked *local only* where
+  relevant), because a PR isn't always "my branch → main" — it may target a colleague's
+  branch, a release branch, or another feature branch it stacks on. The unpushed-branch
+  warning now covers the base too.
 - **A real "AI PR authoring" settings section — and the model pickers now tell the
   truth.** GitHub's AI settings were two bare comboboxes listing the **raw agent id**,
   with no logos, no install state, no enable switch and no way to tell a broken CLI from

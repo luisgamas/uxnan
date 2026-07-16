@@ -1039,6 +1039,7 @@ export const en = {
   "github.pr.headUnpushed":
     "{branch} hasn't been pushed to origin yet. Push it first, or GitHub won't find it.",
   "github.pr.branchesError": "Couldn't load this repository's branches.",
+  "github.pr.branchLocalOnly": "local only",
   "github.pr.draftLabel": "Create as draft",
   "github.pr.checkout": "Check out to worktree",
   "github.worktree.prTitle": "Check out this PR to a worktree",
