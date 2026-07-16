@@ -41,6 +41,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   update, recovering a stalled install, the interval bypass and the flag's
   self-clearing.
 
+## [0.0.6-alpha.20260716] - 2026-07-16
+
 ### Changed — Profile provider-usage cards follow the Neural Expressive hierarchy
 - Provider usage cards now form a cohesive dynamic-corner group, use 44 dp
   neutral logo surfaces, responsive plan/status pills and clearer M3 typography.

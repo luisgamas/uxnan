@@ -3,7 +3,7 @@
 All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.0.6-alpha.20260716] - 2026-07-16
 
 ### Fixed — activity day buckets are timezone-stable
 - The `metrics/get` `activity[].day` bucket key is now **UTC midnight of the
