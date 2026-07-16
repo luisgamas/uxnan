@@ -29,6 +29,79 @@ class MetricsAgentUsage extends Equatable {
   List<Object?> get props => [agentId, conversations];
 }
 
+/// One agent's activity on a given day (conversations, messages, tokens),
+/// driving the per-agent bars. Tokens are throughput, not billed cost; 0 for
+/// agents that don't report usage.
+class MetricsAgentDay extends Equatable {
+  /// Creates a [MetricsAgentDay].
+  const MetricsAgentDay({
+    required this.agentId,
+    required this.conversations,
+    required this.messages,
+    required this.tokens,
+  });
+
+  /// Parses one entry from a `byAgentDay[].byAgent` array.
+  factory MetricsAgentDay.fromJson(Map<String, dynamic> json) =>
+      MetricsAgentDay(
+        agentId: json['agentId'] as String? ?? '',
+        conversations: _int(json['conversations']),
+        messages: _int(json['messages']),
+        tokens: _int(json['tokens']),
+      );
+
+  /// The agent's wire id (e.g. `claude-code`).
+  final String agentId;
+
+  /// Conversations this agent started that day.
+  final int conversations;
+
+  /// Messages exchanged that day in this agent's threads.
+  final int messages;
+
+  /// Tokens processed that day for this agent (0 when it reports no usage).
+  final int tokens;
+
+  /// Serializes for the on-device snapshot cache.
+  Map<String, dynamic> toJson() => {
+        'agentId': agentId,
+        'conversations': conversations,
+        'messages': messages,
+        'tokens': tokens,
+      };
+
+  @override
+  List<Object?> get props => [agentId, conversations, messages, tokens];
+}
+
+/// One calendar day's activity, split per agent.
+class MetricsDayBreakdown extends Equatable {
+  /// Creates a [MetricsDayBreakdown].
+  const MetricsDayBreakdown({required this.day, required this.byAgent});
+
+  /// Parses one entry from the `metrics/get` `byAgentDay` array.
+  factory MetricsDayBreakdown.fromJson(Map<String, dynamic> json) =>
+      MetricsDayBreakdown(
+        day: _int(json['day']),
+        byAgent: _parseList(json['byAgent'], MetricsAgentDay.fromJson),
+      );
+
+  /// UTC-midnight epoch ms of the calendar date (same encoding as activity).
+  final int day;
+
+  /// Per-agent activity that day.
+  final List<MetricsAgentDay> byAgent;
+
+  /// Serializes for the on-device snapshot cache.
+  Map<String, dynamic> toJson() => {
+        'day': day,
+        'byAgent': [for (final a in byAgent) a.toJson()],
+      };
+
+  @override
+  List<Object?> get props => [day, byAgent];
+}
+
 /// One local-day activity bucket from a bridge snapshot. Counts are split by
 /// category so any [ActivityMetric] renders without another round-trip.
 class MetricsActivityDay extends Equatable {
@@ -104,6 +177,7 @@ class MetricsSnapshot extends Equatable {
     required this.directSessions,
     required this.byAgent,
     required this.activity,
+    required this.byAgentDay,
     this.memberSince,
   });
 
@@ -123,6 +197,10 @@ class MetricsSnapshot extends Equatable {
         directSessions: _int(json['directSessions']),
         byAgent: _parseList(json['byAgent'], MetricsAgentUsage.fromJson),
         activity: _parseList(json['activity'], MetricsActivityDay.fromJson),
+        byAgentDay: _parseList(
+          json['byAgentDay'],
+          MetricsDayBreakdown.fromJson,
+        ),
         memberSince:
             json['memberSince'] == null ? null : _int(json['memberSince']),
       );
@@ -166,6 +244,10 @@ class MetricsSnapshot extends Equatable {
   /// Per-day activity buckets for the heatmap.
   final List<MetricsActivityDay> activity;
 
+  /// Per-day activity split per agent (conversations, messages, tokens), for
+  /// the unified agent-activity bars.
+  final List<MetricsDayBreakdown> byAgentDay;
+
   /// Earliest conversation creation (epoch ms), or null when there are none.
   final int? memberSince;
 
@@ -184,6 +266,7 @@ class MetricsSnapshot extends Equatable {
         'directSessions': directSessions,
         'byAgent': [for (final a in byAgent) a.toJson()],
         'activity': [for (final a in activity) a.toJson()],
+        'byAgentDay': [for (final d in byAgentDay) d.toJson()],
         if (memberSince != null) 'memberSince': memberSince,
       };
 
@@ -203,6 +286,7 @@ class MetricsSnapshot extends Equatable {
           for (final a in byAgent)
             AgentUsage(agentId: a.agentId, conversations: a.conversations),
         ],
+        totalTokens: totalTokensOf([this]),
         memberSince: memberSince == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(memberSince!),
@@ -225,8 +309,70 @@ class MetricsSnapshot extends Equatable {
         directSessions,
         byAgent,
         activity,
+        byAgentDay,
         memberSince,
       ];
+}
+
+/// Per-agent activity (conversations, messages, tokens) across [snapshots],
+/// scoped to a single UTC calendar day when [dayMs] is given (the UTC-midnight
+/// day key of the selected heatmap cell), or all-time when null. Summed across
+/// PCs by agent id. [includeAgents] seeds the result so **available** agents
+/// always appear (even with zero activity); agents with data are unioned in.
+/// Sorted by conversations, then tokens, then messages (most active first).
+List<MetricsAgentDay> agentBreakdown(
+  Iterable<MetricsSnapshot> snapshots, {
+  int? dayMs,
+  Iterable<String> includeAgents = const [],
+}) {
+  final conv = <String, int>{};
+  final msg = <String, int>{};
+  final tok = <String, int>{};
+  final ids = <String>{...includeAgents};
+
+  for (final snapshot in snapshots) {
+    for (final day in snapshot.byAgentDay) {
+      if (dayMs != null && day.day != dayMs) continue;
+      for (final e in day.byAgent) {
+        ids.add(e.agentId);
+        conv[e.agentId] = (conv[e.agentId] ?? 0) + e.conversations;
+        msg[e.agentId] = (msg[e.agentId] ?? 0) + e.messages;
+        tok[e.agentId] = (tok[e.agentId] ?? 0) + e.tokens;
+      }
+    }
+  }
+
+  final result = ids
+      .map(
+        (id) => MetricsAgentDay(
+          agentId: id,
+          conversations: conv[id] ?? 0,
+          messages: msg[id] ?? 0,
+          tokens: tok[id] ?? 0,
+        ),
+      )
+      .toList()
+    ..sort((a, b) {
+      final byConv = b.conversations.compareTo(a.conversations);
+      if (byConv != 0) return byConv;
+      final byTok = b.tokens.compareTo(a.tokens);
+      if (byTok != 0) return byTok;
+      return b.messages.compareTo(a.messages);
+    });
+  return result;
+}
+
+/// Total tokens processed across [snapshots] (all agents, all days).
+int totalTokensOf(Iterable<MetricsSnapshot> snapshots) {
+  var total = 0;
+  for (final snapshot in snapshots) {
+    for (final day in snapshot.byAgentDay) {
+      for (final e in day.byAgent) {
+        total += e.tokens;
+      }
+    }
+  }
+  return total;
 }
 
 /// Combines several PC snapshots into one all-PCs [ProfileMetrics].
@@ -292,6 +438,7 @@ ProfileMetrics aggregateSnapshots(Iterable<MetricsSnapshot> snapshots) {
     relaySessions: relaySessions,
     directSessions: directSessions,
     byAgent: byAgentSorted,
+    totalTokens: totalTokensOf(list),
     memberSince: memberSince == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(memberSince),
@@ -319,6 +466,35 @@ Map<DateTime, int> aggregateActivity(
       if (value == 0) continue;
       final key = DateTime.utc(day.year, day.month, day.day);
       buckets[key] = (buckets[key] ?? 0) + value;
+    }
+  }
+  return buckets;
+}
+
+/// Tokens processed per day across all agents (from a snapshot's
+/// [MetricsSnapshot.byAgentDay]), bucketed for the tokens heatmap. Keyed by UTC
+/// midnight — the same timezone-stable key the heatmap cells use — so a day
+/// maps to the right cell in any timezone. Days with zero tokens are absent.
+///
+/// Tokens are throughput processed per turn (context + output), not billed
+/// cost; some CLIs don't report usage, so a day with real work can still show
+/// zero tokens (the tokens view surfaces this caveat).
+Map<DateTime, int> aggregateTokensByDay(
+  Iterable<MetricsSnapshot> snapshots, {
+  required int year,
+}) {
+  final buckets = <DateTime, int>{};
+  for (final snapshot in snapshots) {
+    for (final day in snapshot.byAgentDay) {
+      final date = DateTime.fromMillisecondsSinceEpoch(day.day, isUtc: true);
+      if (date.year != year) continue;
+      var tokens = 0;
+      for (final e in day.byAgent) {
+        tokens += e.tokens;
+      }
+      if (tokens == 0) continue;
+      final key = DateTime.utc(date.year, date.month, date.day);
+      buckets[key] = (buckets[key] ?? 0) + tokens;
     }
   }
   return buckets;

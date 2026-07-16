@@ -4,12 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
 import 'package:uxnan/presentation/screens/profile/profile_backup_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/activity_section.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
@@ -62,7 +62,7 @@ class ProfileScreen extends ConsumerWidget {
     required int online,
   }) {
     final firstYear = m.memberSince?.year ?? DateTime.now().year;
-    final titleStyle = Theme.of(context).textTheme.titleMedium;
+    final titleStyle = Theme.of(context).textTheme.titleLarge;
     return [
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(
@@ -71,32 +71,36 @@ class ProfileScreen extends ConsumerWidget {
           UxnanSpacing.lg,
           UxnanSpacing.xxl,
         ),
-        sliver: SliverList.list(
-          children: [
-            _IdentityHeader(
-              metrics: m,
-              pcsPaired: pcsPaired,
-              online: online,
+        sliver: SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: UxnanSpacing.maxContentWidth,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _IdentityHeader(
+                    metrics: m,
+                    pcsPaired: pcsPaired,
+                    online: online,
+                  ),
+                  const SizedBox(height: UxnanSpacing.lg),
+                  MetricsStatGrid(metrics: m),
+                  const SizedBox(height: UxnanSpacing.xl),
+                  Text(l10n.profileActivity, style: titleStyle),
+                  const SizedBox(height: UxnanSpacing.sm),
+                  AgentActivitySection(firstYear: firstYear),
+                  const SizedBox(height: UxnanSpacing.xl),
+                  Text(l10n.profileBackupTitle, style: titleStyle),
+                  const SizedBox(height: UxnanSpacing.sm),
+                  const ProfileBackupSection(),
+                  const SizedBox(height: UxnanSpacing.xl),
+                  const UsageSection(),
+                ],
+              ),
             ),
-            const SizedBox(height: UxnanSpacing.lg),
-            MetricsStatGrid(metrics: m),
-            const SizedBox(height: UxnanSpacing.xl),
-            Text(l10n.profileActivity, style: titleStyle),
-            const SizedBox(height: UxnanSpacing.sm),
-            ActivitySection(firstYear: firstYear),
-            const SizedBox(height: UxnanSpacing.xl),
-            if (m.byAgent.isNotEmpty) ...[
-              Text(l10n.profileByAgent, style: titleStyle),
-              const SizedBox(height: UxnanSpacing.sm),
-              MetricsAgentBreakdown(byAgent: m.byAgent),
-            ],
-            const SizedBox(height: UxnanSpacing.xl),
-            Text(l10n.profileBackupTitle, style: titleStyle),
-            const SizedBox(height: UxnanSpacing.sm),
-            const ProfileBackupSection(),
-            const SizedBox(height: UxnanSpacing.xl),
-            const UsageSection(),
-          ],
+          ),
         ),
       ),
     ];
@@ -129,11 +133,13 @@ class _IdentityHeader extends ConsumerWidget {
     ].join(' · ');
 
     return NeCard(
+      color: colors.surfaceContainerHigh,
+      padding: const EdgeInsets.all(UxnanSpacing.lg),
       // Tapping anywhere on the header (or the pencil) opens the editor.
       onTap: () => EditProfileSheet.show(context),
       child: Row(
         children: [
-          ProfileAvatarView(avatar: avatar),
+          ProfileAvatarView(avatar: avatar, size: 64),
           const SizedBox(width: UxnanSpacing.md),
           Expanded(
             child: Column(
@@ -141,7 +147,7 @@ class _IdentityHeader extends ConsumerWidget {
               children: [
                 Text(
                   name,
-                  style: textTheme.titleMedium,
+                  style: textTheme.titleLarge,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

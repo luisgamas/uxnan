@@ -6,10 +6,10 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/activity_section.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -95,13 +95,7 @@ class PcDetailsScreen extends ConsumerWidget {
             const SizedBox(height: UxnanSpacing.xl),
             Text(l10n.profileActivity, style: titleStyle),
             const SizedBox(height: UxnanSpacing.sm),
-            ActivitySection(firstYear: firstYear, deviceId: deviceId),
-            const SizedBox(height: UxnanSpacing.xl),
-            if (m.byAgent.isNotEmpty) ...[
-              Text(l10n.profileByAgent, style: titleStyle),
-              const SizedBox(height: UxnanSpacing.sm),
-              MetricsAgentBreakdown(byAgent: m.byAgent),
-            ],
+            AgentActivitySection(firstYear: firstYear, deviceId: deviceId),
           ],
         ),
       ),

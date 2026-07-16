@@ -99,7 +99,7 @@ void main() {
       metric: ActivityMetric.work,
     );
 
-    // Days are keyed by UTC midnight of the local calendar date (timezone-stable,
+    // Days are keyed by UTC midnight of the local calendar date (tz-stable,
     // matching the bridge snapshot keys and the heatmap cells).
     expect(counts[DateTime.utc(2026, 7, 2)], 2);
     expect(counts[DateTime.utc(2026, 7, 4)], 1);

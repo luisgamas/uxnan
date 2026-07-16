@@ -13,14 +13,24 @@ import 'package:uxnan/presentation/theme/typography.dart';
 /// don't wash out the rest. Tapping a cell reveals that day in the caption;
 /// the grid scrolls horizontally inside its own box so the page never does.
 ///
+/// For the **in-progress** year the grid stops at today (not Dec 31), so —
+/// scrolled to its trailing edge — it opens on the current week with the most
+/// recent activity in view instead of empty future months. Past years render
+/// in full.
+///
 /// Data-only: the parent owns the metric/year selectors and passes the day
 /// counts for the chosen scope via [countsByDay] (keyed by UTC midnight of each
-/// calendar date — timezone-stable).
+/// calendar date — timezone-stable). Pass [summaryLabel]/[dayLabel] to caption a
+/// non-default unit (e.g. tokens instead of actions).
 class ActivityHeatmap extends StatefulWidget {
   /// Creates an [ActivityHeatmap].
   const ActivityHeatmap({
     required this.year,
     required this.countsByDay,
+    this.onSelectedDayChanged,
+    this.summaryLabel,
+    this.dayLabel,
+    this.today,
     super.key,
   });
 
@@ -29,6 +39,22 @@ class ActivityHeatmap extends StatefulWidget {
 
   /// Activity count per local day (days with no activity may be absent).
   final Map<DateTime, int> countsByDay;
+
+  /// Called whenever the selected day changes (the tapped UTC-midnight day, or
+  /// null when cleared) so a parent can drive linked views (the agent bars).
+  final ValueChanged<DateTime?>? onSelectedDayChanged;
+
+  /// Builds the whole-year caption from `(total, activeDays)`. When null, the
+  /// default "{count} actions · {activeDays} active days" is used.
+  final String Function(int total, int activeDays)? summaryLabel;
+
+  /// Builds the single-day caption from `(day, count)`. When null, the default
+  /// "{date} · {count} actions" is used.
+  final String Function(DateTime day, int count)? dayLabel;
+
+  /// "Now" for deciding where the in-progress year stops (injectable for
+  /// tests); defaults to [DateTime.now].
+  final DateTime? today;
 
   @override
   State<ActivityHeatmap> createState() => _ActivityHeatmapState();
@@ -49,6 +75,13 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
         oldWidget.countsByDay != widget.countsByDay) {
       _selected = null;
     }
+  }
+
+  /// Selects [day] (or clears when null), and notifies the parent so linked
+  /// views (the per-agent bars) follow the same day.
+  void _select(DateTime? day) {
+    setState(() => _selected = day);
+    widget.onSelectedDayChanged?.call(day);
   }
 
   /// The activity count for [day] (0 when absent). Keyed by UTC midnight so it
@@ -96,7 +129,15 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
     // Iterate the year in UTC to stay DST-proof; key cells by UTC midnight so
     // they match the timezone-stable keys in [countsByDay].
     final firstUtc = DateTime.utc(widget.year);
-    final lastUtc = DateTime.utc(widget.year, 12, 31);
+    final yearEndUtc = DateTime.utc(widget.year, 12, 31);
+    // Stop the in-progress year at today so the grid opens (scrolled to its
+    // end) on the current week — otherwise `reverse: true` pins it to Dec 31,
+    // hiding the recent activity off-screen left. Past years render in full.
+    final now = widget.today ?? DateTime.now();
+    final todayUtc = DateTime.utc(now.year, now.month, now.day);
+    final lastUtc = todayUtc.isBefore(firstUtc)
+        ? yearEndUtc // the whole year is still in the future — show it all
+        : (yearEndUtc.isBefore(todayUtc) ? yearEndUtc : todayUtc);
     final gridStart = firstUtc.subtract(Duration(days: firstUtc.weekday - 1));
     final weekCount = lastUtc.difference(gridStart).inDays ~/ 7 + 1;
     final thresholds = _thresholds();
@@ -127,7 +168,7 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
               color: _colorForLevel(_level(count, thresholds), colors),
               selected: selected,
               ringColor: colors.primary,
-              onTap: () => setState(() => _selected = selected ? null : day),
+              onTap: () => _select(selected ? null : day),
             ),
           );
         }
@@ -143,7 +184,7 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
       // never has to switch views to reset it.
       behavior: HitTestBehavior.translucent,
       onTap: () {
-        if (_selected != null) setState(() => _selected = null);
+        if (_selected != null) _select(null);
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,11 +206,13 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
           const SizedBox(height: UxnanSpacing.xs),
           Text(
             _selected != null
-                ? l10n.profileHeatmapDay(
-                    DateFormat.MMMMd().format(_selected!),
-                    _countFor(_selected!),
-                  )
-                : l10n.profileHeatmapSummary(total, activeDays),
+                ? (widget.dayLabel?.call(_selected!, _countFor(_selected!)) ??
+                    l10n.profileHeatmapDay(
+                      DateFormat.MMMMd().format(_selected!),
+                      _countFor(_selected!),
+                    ))
+                : (widget.summaryLabel?.call(total, activeDays) ??
+                    l10n.profileHeatmapSummary(total, activeDays)),
             style:
                 textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
           ),

@@ -17,6 +17,7 @@ MetricsSnapshot _snap({
   int directSessions = 0,
   List<MetricsAgentUsage> byAgent = const [],
   List<MetricsActivityDay> activity = const [],
+  List<MetricsDayBreakdown> byAgentDay = const [],
   int? memberSince,
 }) {
   return MetricsSnapshot(
@@ -33,6 +34,7 @@ MetricsSnapshot _snap({
     directSessions: directSessions,
     byAgent: byAgent,
     activity: activity,
+    byAgentDay: byAgentDay,
     memberSince: memberSince,
   );
 }
@@ -244,6 +246,113 @@ void main() {
         metric: ActivityMetric.conversations,
       );
       expect(result[DateTime.utc(2026, 7, 15)], 3);
+    });
+  });
+
+  group('agentBreakdown / totalTokensOf', () {
+    int dayMs(int y, int m, int d) =>
+        DateTime.utc(y, m, d).millisecondsSinceEpoch;
+    MetricsDayBreakdown db(int ms, List<MetricsAgentDay> byAgent) =>
+        MetricsDayBreakdown(day: ms, byAgent: byAgent);
+
+    final snapA = _snap(
+      byAgentDay: [
+        db(dayMs(2026, 7, 14), const [
+          MetricsAgentDay(
+            agentId: 'opencode',
+            conversations: 2,
+            messages: 2,
+            tokens: 9004,
+          ),
+          MetricsAgentDay(
+            agentId: 'zero',
+            conversations: 2,
+            messages: 10,
+            tokens: 0,
+          ),
+        ]),
+        db(dayMs(2026, 7, 15), const [
+          MetricsAgentDay(
+            agentId: 'opencode',
+            conversations: 1,
+            messages: 2,
+            tokens: 1000,
+          ),
+        ]),
+      ],
+    );
+    final snapB = _snap(
+      byAgentDay: [
+        db(dayMs(2026, 7, 15), const [
+          MetricsAgentDay(
+            agentId: 'opencode',
+            conversations: 1,
+            messages: 1,
+            tokens: 500,
+          ),
+        ]),
+      ],
+    );
+
+    test('all-time sums per agent across days + PCs, most active first', () {
+      final all = agentBreakdown([snapA, snapB]);
+      final opencode = all.firstWhere((a) => a.agentId == 'opencode');
+      expect(opencode.conversations, 4); // 2 + 1 + 1
+      expect(opencode.messages, 5); // 2 + 2 + 1
+      expect(opencode.tokens, 10504); // 9004 + 1000 + 500
+      // opencode (4 conv) sorts before zero (2 conv).
+      expect(all.first.agentId, 'opencode');
+    });
+
+    test('scoping to one day filters to that day', () {
+      final day14 = agentBreakdown([snapA], dayMs: dayMs(2026, 7, 14));
+      final opencode = day14.firstWhere((a) => a.agentId == 'opencode');
+      expect(opencode.conversations, 2);
+      expect(opencode.tokens, 9004);
+    });
+
+    test('includeAgents seeds available agents with zeros', () {
+      final all = agentBreakdown([snapA], includeAgents: const ['grok']);
+      final grok = all.firstWhere((a) => a.agentId == 'grok');
+      expect(grok.conversations, 0);
+      expect(grok.tokens, 0);
+    });
+
+    test('totalTokensOf sums every agent + day + PC', () {
+      expect(totalTokensOf([snapA, snapB]), 10504);
+    });
+
+    test('aggregateTokensByDay buckets tokens per UTC day across PCs', () {
+      final byDay = aggregateTokensByDay([snapA, snapB], year: 2026);
+      // Jul 14: opencode 9004 + zero 0. Jul 15: 1000 (A) + 500 (B).
+      expect(byDay[DateTime.utc(2026, 7, 14)], 9004);
+      expect(byDay[DateTime.utc(2026, 7, 15)], 1500);
+      expect(byDay.keys.every((k) => k.isUtc), isTrue);
+    });
+
+    test('aggregateTokensByDay excludes other years and zero-token days', () {
+      final zeroDay = _snap(
+        byAgentDay: [
+          db(dayMs(2026, 7, 20), const [
+            MetricsAgentDay(
+              agentId: 'zero',
+              conversations: 3,
+              messages: 9,
+              tokens: 0,
+            ),
+          ]),
+          db(dayMs(2025, 7, 15), const [
+            MetricsAgentDay(
+              agentId: 'opencode',
+              conversations: 1,
+              messages: 1,
+              tokens: 999,
+            ),
+          ]),
+        ],
+      );
+      // In-year day has zero tokens (omitted); the 2025 day is filtered out.
+      expect(aggregateTokensByDay([zeroDay], year: 2026), isEmpty);
     });
   });
 }

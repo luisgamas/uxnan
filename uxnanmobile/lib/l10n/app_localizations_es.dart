@@ -338,6 +338,41 @@ class AppLocalizationsEs extends AppLocalizations {
       'No se pudo importar este archivo. Puede ser de otra PC o haber sido modificado.';
 
   @override
+  String get statTotalTokens => 'Tokens totales';
+
+  @override
+  String get profileAgentScopeAll => 'Histórico';
+
+  @override
+  String get profileLensActivity => 'Actividad';
+
+  @override
+  String get profileLensTokens => 'Tokens';
+
+  @override
+  String get profileTokensImprecise =>
+      'Algunos CLI no informan todo su uso de tokens, así que estas cifras de tokens pueden ser imprecisas.';
+
+  @override
+  String profileHeatmapTokensSummary(String tokens, int activeDays) {
+    return '$tokens tokens · $activeDays días activos';
+  }
+
+  @override
+  String profileHeatmapTokensDay(String date, String tokens) {
+    return '$date · $tokens tokens';
+  }
+
+  @override
+  String get profileAgentConvLabel => 'Conversaciones';
+
+  @override
+  String get profileAgentMsgLabel => 'Mensajes';
+
+  @override
+  String get profileAgentTokLabel => 'Tokens';
+
+  @override
   String get profileUsageTitle => 'Uso y crédito';
 
   @override

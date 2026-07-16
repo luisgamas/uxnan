@@ -686,6 +686,66 @@ abstract class AppLocalizations {
   /// **'Couldn\'t import this file. It may be from another PC or have been modified.'**
   String get profileBackupImportFailed;
 
+  /// No description provided for @statTotalTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Total tokens'**
+  String get statTotalTokens;
+
+  /// No description provided for @profileAgentScopeAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All time'**
+  String get profileAgentScopeAll;
+
+  /// No description provided for @profileLensActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity'**
+  String get profileLensActivity;
+
+  /// No description provided for @profileLensTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get profileLensTokens;
+
+  /// No description provided for @profileTokensImprecise.
+  ///
+  /// In en, this message translates to:
+  /// **'Some CLIs don\'t report their full token usage, so these token figures can be imprecise.'**
+  String get profileTokensImprecise;
+
+  /// Tokens-lens heatmap caption for the whole year (tokens pre-formatted).
+  ///
+  /// In en, this message translates to:
+  /// **'{tokens} tokens · {activeDays} active days'**
+  String profileHeatmapTokensSummary(String tokens, int activeDays);
+
+  /// Tokens-lens heatmap caption for a single tapped day (tokens pre-formatted).
+  ///
+  /// In en, this message translates to:
+  /// **'{date} · {tokens} tokens'**
+  String profileHeatmapTokensDay(String date, String tokens);
+
+  /// No description provided for @profileAgentConvLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get profileAgentConvLabel;
+
+  /// No description provided for @profileAgentMsgLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get profileAgentMsgLabel;
+
+  /// No description provided for @profileAgentTokLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get profileAgentTokLabel;
+
   /// No description provided for @profileUsageTitle.
   ///
   /// In en, this message translates to:

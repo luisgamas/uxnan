@@ -20,6 +20,19 @@ MetricsSnapshot _snap(String deviceId, {int conversations = 1}) {
     activity: const [
       MetricsActivityDay(day: 1000, conversations: 1, messages: 2, work: 0),
     ],
+    byAgentDay: const [
+      MetricsDayBreakdown(
+        day: 1000,
+        byAgent: [
+          MetricsAgentDay(
+            agentId: 'codex',
+            conversations: 1,
+            messages: 2,
+            tokens: 1200,
+          ),
+        ],
+      ),
+    ],
     memberSince: 500,
   );
 }

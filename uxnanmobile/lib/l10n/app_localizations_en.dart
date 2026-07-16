@@ -336,6 +336,41 @@ class AppLocalizationsEn extends AppLocalizations {
       'Couldn\'t import this file. It may be from another PC or have been modified.';
 
   @override
+  String get statTotalTokens => 'Total tokens';
+
+  @override
+  String get profileAgentScopeAll => 'All time';
+
+  @override
+  String get profileLensActivity => 'Activity';
+
+  @override
+  String get profileLensTokens => 'Tokens';
+
+  @override
+  String get profileTokensImprecise =>
+      'Some CLIs don\'t report their full token usage, so these token figures can be imprecise.';
+
+  @override
+  String profileHeatmapTokensSummary(String tokens, int activeDays) {
+    return '$tokens tokens · $activeDays active days';
+  }
+
+  @override
+  String profileHeatmapTokensDay(String date, String tokens) {
+    return '$date · $tokens tokens';
+  }
+
+  @override
+  String get profileAgentConvLabel => 'Conversations';
+
+  @override
+  String get profileAgentMsgLabel => 'Messages';
+
+  @override
+  String get profileAgentTokLabel => 'Tokens';
+
+  @override
   String get profileUsageTitle => 'Usage & credit';
 
   @override

@@ -147,6 +147,24 @@
   "profileBackupImportedNone": "Your stats are already up to date.",
   "profileBackupImportBadPassphrase": "Wrong passphrase for this backup.",
   "profileBackupImportFailed": "Couldn't import this file. It may be from another PC or have been modified.",
+  "statTotalTokens": "Total tokens",
+  "profileAgentScopeAll": "All time",
+  "profileLensActivity": "Activity",
+  "profileLensTokens": "Tokens",
+  "profileTokensImprecise": "Some CLIs don't report their full token usage, so these token figures can be imprecise.",
+  "profileHeatmapTokensSummary": "{tokens} tokens · {activeDays} active days",
+  "@profileHeatmapTokensSummary": {
+    "description": "Tokens-lens heatmap caption for the whole year (tokens pre-formatted).",
+    "placeholders": { "tokens": { "type": "String" }, "activeDays": { "type": "int" } }
+  },
+  "profileHeatmapTokensDay": "{date} · {tokens} tokens",
+  "@profileHeatmapTokensDay": {
+    "description": "Tokens-lens heatmap caption for a single tapped day (tokens pre-formatted).",
+    "placeholders": { "date": { "type": "String" }, "tokens": { "type": "String" } }
+  },
+  "profileAgentConvLabel": "Conversations",
+  "profileAgentMsgLabel": "Messages",
+  "profileAgentTokLabel": "Tokens",
   "profileUsageTitle": "Usage & credit",
   "usageNotSignedIn": "Not signed in",
   "usageLoadError": "Couldn't load",

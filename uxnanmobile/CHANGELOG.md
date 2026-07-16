@@ -6,6 +6,48 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — Activity heatmap opens on the current week (recent squares were off-screen)
+- Even with correct day keys, the contribution heatmap still looked empty for the
+  **in-progress year**: the grid rendered all of Jan–Dec and, scrolled to its most
+  recent edge (`reverse: true`), opened on the **empty future months** — so the
+  recent activity sat off-screen to the left and no painted square was ever in
+  view (the caption's "N actions · M active days" was right the whole time). The
+  in-progress year now **stops at today**, so the grid opens on the current week
+  with the latest activity visible; past years still render in full. Regression
+  test in `activity_heatmap_test.dart`.
+
+### Added — Profile "Tokens" lens + redesigned per-agent cards
+- The unified activity block gains an **Activity / Tokens** toggle. **Tokens**
+  colors the heatmap by **tokens processed per day** (from the bridge's per-day,
+  per-agent breakdown), re-ranks the agents by tokens and captions in tokens,
+  with a note that **some CLIs don't report their full token usage, so the
+  figures can be imprecise**. **Activity** is the everyday conversations +
+  messages view. The token-reporting caveat remains visible in both lenses so
+  the limitation is clear before interpreting any per-agent total.
+- The lens selector now reuses the app's Neural Expressive **Connected Button
+  Group** instead of a standalone segmented button, matching Personalization.
+  The agent history is presented as one dynamic-corner card group, while the
+  profile header, year control, stat grid and tablet width constraint follow the
+  same semantic-surface and responsive hierarchy as the rest of the app.
+- Each agent card is redesigned to read clearly: an Icon-Surface logo + name, a
+  set of three **labeled** stats — the value (e.g. "174K") over a caption naming
+  it ("Tokens") — instead of one cramped "9 conv · 16 msg · 174K tokens" line.
+  The ambiguous single progress bar is removed: the active lens now uses quiet
+  tonal stat surfaces (conversations + messages for Activity, tokens for Tokens),
+  avoiding false comparisons between unlike units. Follows the M3 / Neural
+  Expressive card hierarchy.
+
+### Changed — Unified "Activity" section (one block, linked selection)
+- "Conversations by agent" and the separate token widget merge into a single
+  **agent-activity** block: the year selector, the contribution heatmap and the
+  per-agent cards, linked by the heatmap selection (no cell = all-time; tap a day
+  to scope the cards to it). Lists the **available** agents (`agent/list`) plus any
+  with history. New `MetricsSnapshot.byAgentDay` (per-day, per-agent conversations
+  / messages / **tokens**) supersedes the coarser `tokensByDay`; `agentBreakdown`,
+  `aggregateTokensByDay` and `totalTokensOf` derive from it, and a **Total tokens**
+  stat tile joins the grid. Tests: `aggregateTokensByDay` bucketing + agent
+  breakdown.
+
 ### Fixed — Activity heatmap now paints (timezone-stable day keys)
 - The contribution heatmap showed nothing painted (while the stat tiles had data)
   whenever the phone's timezone differed from the PC's — e.g. a UTC emulator
@@ -131,9 +173,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   **"Resets in 5d at 14:30"** for weekly/monthly windows (the clock honors the
   24/12-hour setting).
 - Clearer metric labels: the connection-count tile is now **Connections** (was
-  "Sessions"), the per-agent section is **Conversations by agent** (each number
-  labelled "conversations"), and the conversations tile is shortened to **Chats**
-  so it no longer clips.
+  "Sessions"), the per-agent breakdown labels each figure, and the conversations
+  tile is shortened to **Chats** so it no longer clips. (The per-agent breakdown
+  is later folded into the unified agent-activity section above.)
 
 ### Added — Usage & credit on the profile (`agent/usageStats`)
 - The Profile screen now has a **"Usage & credit"** section (shown only when a PC
