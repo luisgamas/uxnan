@@ -34,6 +34,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **PR detail split into Conversation / Files tabs.** The changed-files diff used to sit
+  stacked under the whole conversation, so neither was scannable. It's now its own tab
+  (with a file count), leaving Conversation to the timeline + the collapsed CI checks.
+  The **bottom action bar stays available from both tabs** — reviewing the diff is
+  exactly when you want to approve or comment.
 - **Either side of a PR can be any branch.** The base offered only `origin` branches and
   the head only local ones; both now list **every** branch (marked *local only* where
   relevant), because a PR isn't always "my branch → main" — it may target a colleague's

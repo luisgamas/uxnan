@@ -133,17 +133,20 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       + commits (con badge **Verificado**) + eventos — labeled/assigned/closed/merged/… vía
       la Timeline Events API; bodies/comentarios/reviews como **Markdown** con imágenes
       inline) con **campos para comentar**, **reviewers**, **iconos de estado** con color,
-      **barras de búsqueda**, **fechas relativas** localizadas, y las herramientas
-      review/merge/close en una **barra inferior** (merge/approve/request-changes
-      **restringidos a PRs abiertos**); al crear un PR se **eligen sus ramas
-      `base ← head`** (base = ramas de `origin`, por defecto la rama por defecto del
-      repo; head = ramas locales, fijada a la del worktree en el tab del panel derecho);
+      **barras de búsqueda**, **fechas relativas** localizadas, el detalle del PR
+      separado en pestañas **Conversación / Archivos cambiados**, y las herramientas
+      review/merge/close en una **barra inferior** disponible desde ambas pestañas
+      (merge/approve/request-changes **restringidos a PRs abiertos**); al crear un PR se
+      **eligen sus ramas `base ← head`** (cualquiera de los dos lados puede ser
+      cualquier rama, local o de `origin`; por defecto la rama por defecto del repo y la
+      rama activa, fijada a la del worktree en el tab del panel derecho);
       el **merge respeta la protección de ramas**: los métodos son los del repo ∩ los de
       las **rulesets** de la rama base (`gh api …/rules/branches/{base}`; el endpoint
       clásico `/branches/{b}/protection` devuelve 404 en ramas protegidas por ruleset),
       un PR bloqueado **explica por qué**, y las salidas son **auto-merge** (`--auto`,
-      solo si el repo lo permite) y **bypass de administrador** (`--admin`, solo si el
-      usuario puede administrar, tras confirmación); issues
+      solo si el repo lo permite) y **bypass de administrador** (`--admin`, ofrecido en
+      **cualquier** PR bloqueado —`viewerCanAdminister` no ve los `bypass_actors` de una
+      ruleset y falla en GHES—, tras confirmación); issues
       (list/view/create/**close/reopen**), Actions logs, PR/issue↔worktree (tras un
       diálogo de ajustes: nombre de rama, agente a lanzar, previsualización de carpeta),
       **redacción de PR con IA** configurada en una sección propia calcada de

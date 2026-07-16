@@ -219,6 +219,10 @@
   let selectedPrNumber = $state<number | null>(null);
   let commentBody = $state("");
   let ciOpen = $state(false);
+  /** Which PR-detail tab is showing. The diff is a whole reading mode of its own —
+   *  stacking it under the conversation made both hard to scan — so it gets its own
+   *  tab, GitHub-style, while the bottom action bar stays available in both. */
+  let prTab = $state<"conversation" | "files">("conversation");
   // The PR timeline (comments + reviews + commits + events). Loaded separately from
   // the detail so the overview paints first. `prTimelineFailed` falls back to the
   // reviews/comments already in `prDetail` so the conversation is never lost.
@@ -268,6 +272,7 @@
     expandedFiles = {};
     commentBody = "";
     ciOpen = false;
+    prTab = "conversation";
     prTimeline = [];
     prTimelineFailed = false;
     prTimelineLoading = true;
@@ -1549,6 +1554,31 @@
         </div>
       {/if}
 
+      <!-- Conversation / Files tabs. The diff is its own reading mode, so it gets
+           its own tab instead of being stacked under the whole conversation; the
+           bottom action bar below stays available from both. -->
+      <div class="flex items-center gap-1 border-b border-border/60">
+        {#each [{ id: "conversation", label: i18n.t("github.pr.conversation"), icon: MessageSquareIcon, n: null }, { id: "files", label: i18n.t("github.pr.filesChanged"), icon: FileDiffIcon, n: pr.changedFiles }] as t (t.id)}
+          <button
+            class={cn(
+              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors",
+              text.body,
+              prTab === t.id
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+            onclick={() => (prTab = t.id as typeof prTab)}
+          >
+            <t.icon class="size-3.5" />
+            {t.label}
+            {#if t.n !== null}
+              <span class={cn("rounded-full bg-muted px-1.5 py-px", text.indicator)}>{t.n}</span>
+            {/if}
+          </button>
+        {/each}
+      </div>
+
+      {#if prTab === "conversation"}
       <!-- Timeline: description + comments + reviews + commits + events, GitHub-style
            vertical rail (the reply box + merge/review tools live at the bottom). -->
       <div class={cn("overflow-hidden", panel.card)}>
@@ -1583,7 +1613,9 @@
           {/if}
         </div>
       {/if}
+      {/if}
 
+      {#if prTab === "files"}
       <!-- Files changed: one collapsible diff per file (collapsed by default; each
            DiffView renders only while expanded, so a huge PR stays cheap). -->
       <div class={cn("overflow-hidden", panel.card)}>
@@ -1637,9 +1669,11 @@
           </div>
         {/if}
       </div>
+      {/if}
 
       <!-- Bottom action bar: reply + review/merge tools (open) or reopen (closed).
-           The reply box stays for every state so you can always comment. -->
+           Outside the tabs on purpose — reviewing the diff is exactly when you want
+           to approve or comment, so the tools follow you across both. -->
       <div class={cn("space-y-3 p-4", panel.card)}>
         <div class="space-y-2">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={commentBody} rows={2} />

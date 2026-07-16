@@ -33,15 +33,21 @@ registered git repo). Panes:
   a relative date, and a **CI status icon** whose popover lists the **full checks**.
   Open a PR for a full **review view**: a colored **state pill** + summary pills (review
   decision, checks roll-up, `+/−`, commit & file counts, labels), the **opened / edited**
-  times, a **reviewers** row, a **GitHub-style timeline** (a vertical rail interleaving
-  the description, comments, review verdicts, commits — with a **Verified** badge on
-  signed commits and a **CI popover on the head commit** — and smaller events), an
-  **expandable CI checks section**, and the **diff split per file** (collapsible,
-  collapsed by default, with **Expand all / Collapse all**). Descriptions, comments and
-  reviews render as **Markdown** (incl. inline images/screenshots). The **reply box +
-  review / merge / Close-PR / checkout** tools live in a **bottom action bar**;
-  **merge / approve / request-changes are only enabled on open PRs**, and a closed PR
-  offers **Reopen**.
+  times and a **reviewers** row, then two **tabs**:
+  - **Conversation** — a **GitHub-style timeline** (a vertical rail interleaving the
+    description, comments, review verdicts, commits — with a **Verified** badge on
+    signed commits and a **CI popover on the head commit** — and smaller events), plus an
+    **expandable CI checks section** (collapsed by default).
+  - **Files changed** (with a count badge) — the **diff split per file** (collapsible,
+    collapsed by default, with **Expand all / Collapse all**). Reviewing a diff is its
+    own reading mode, so it gets its own tab rather than sitting under the whole
+    conversation.
+
+  Descriptions, comments and reviews render as **Markdown** — see *Markdown in comments*
+  below. The **reply box + review / merge / Close-PR / checkout** tools live in a
+  **bottom action bar** that stays available from **both tabs** (reviewing the diff is
+  exactly when you want to approve); **merge / approve / request-changes are only
+  enabled on open PRs**, and a closed PR offers **Reopen**.
 - **Issues** — a **search bar** + `open / closed / all` filter; each row shows a colored
   **open/closed status icon**, a relative date, labels and a comment count. The detail
   view shows a colored pill + **opened / edited** times, the same **timeline**
