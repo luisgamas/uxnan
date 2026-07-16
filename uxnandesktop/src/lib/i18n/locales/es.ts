@@ -584,6 +584,14 @@ export const es: Record<MessageKey, string> = {
   "preview.fit": "Ajustar a la vista",
   "preview.actualSize": "Tamaño real",
   "preview.markdownEmpty": "Nada que previsualizar.",
+
+  // Renderizado de Markdown (alertas de GitHub + bloques <details>)
+  "markdown.alert.note": "Nota",
+  "markdown.alert.tip": "Consejo",
+  "markdown.alert.important": "Importante",
+  "markdown.alert.warning": "Advertencia",
+  "markdown.alert.caution": "Precaución",
+  "markdown.detailsFallback": "Detalles",
   "changes.none": "No hay cambios que mostrar.",
 
   // Appearance — temas

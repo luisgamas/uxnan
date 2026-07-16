@@ -587,6 +587,14 @@ export const en = {
   "preview.fit": "Fit to view",
   "preview.actualSize": "Actual size",
   "preview.markdownEmpty": "Nothing to preview.",
+
+  // Markdown rendering (GitHub alerts + <details> disclosures)
+  "markdown.alert.note": "Note",
+  "markdown.alert.tip": "Tip",
+  "markdown.alert.important": "Important",
+  "markdown.alert.warning": "Warning",
+  "markdown.alert.caution": "Caution",
+  "markdown.detailsFallback": "Details",
   "changes.none": "No changes to show.",
 
   // Appearance — themes

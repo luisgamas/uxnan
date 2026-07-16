@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bot comments render properly.** The Markdown renderer now covers the GitHub-flavored
+  constructs bot comments are built from; a CodeRabbit comment used to render as a wall
+  of noise (also improves the file viewer's Markdown Preview):
+  - **HTML comments are hidden**, as GitHub does — bots use them as machine markers
+    (`<!-- review_stack_entry_start -->`) and we drew each one as a code box.
+  - **Alerts** (`> [!WARNING]` …) render as colored, iconed callouts, instead of the
+    literal link `!WARNING` that Lezer parses the marker into.
+  - **`<details>`/`<summary>`** render as real collapsibles. Three bugs: the `>`
+    blockquote markers Lezer leaves on a nested HTML block's source were dumped on
+    screen verbatim; a disclosure split across blocks by a blank line (which ends an
+    HTML block in CommonMark) rendered as two bare tags; and a **greedy match ran from
+    the first `<details>` to the *last* `</details>`, swallowing sibling disclosures
+    into the first one's body** — the shape every bot comment has. Folding is now
+    depth-aware, and an unclosed disclosure is left raw rather than eating the comment.
+  - Long raw-HTML lines **scroll** instead of being clipped (`.md-html` was missing the
+    `overflow-x` its `.md-pre` sibling had).
+
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
 - **A real "AI PR authoring" settings section — and the model pickers now tell the

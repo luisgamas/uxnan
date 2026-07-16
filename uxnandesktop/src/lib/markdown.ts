@@ -116,6 +116,21 @@ export interface MdHtml {
   type: "html";
   value: string;
 }
+/** GitHub's alert callout (`> [!WARNING]` …) — a blockquote with a known marker. */
+export type MdAlertKind = "note" | "tip" | "important" | "warning" | "caution";
+export interface MdAlert {
+  type: "alert";
+  kind: MdAlertKind;
+  children: MdBlock[];
+}
+/** A `<details>`/`<summary>` disclosure. The summary is plain text (GitHub allows
+ *  inline markup there, but bots overwhelmingly use plain text) and the body is a
+ *  fully-parsed sub-document. */
+export interface MdDetails {
+  type: "details";
+  summary: string;
+  children: MdBlock[];
+}
 export type MdBlock =
   | MdHeading
   | MdParagraph
@@ -124,7 +139,9 @@ export type MdBlock =
   | MdCodeBlock
   | MdRule
   | MdTable
-  | MdHtml;
+  | MdHtml
+  | MdAlert
+  | MdDetails;
 
 /** Parse Markdown source into a typed block AST for the Preview renderer. */
 export function renderMarkdown(src: string): MdBlock[] {
@@ -152,7 +169,9 @@ function blocks(parent: SyntaxNode, src: string): MdBlock[] {
     const b = block(c, src);
     if (b) out.push(...b);
   }
-  return out;
+  // Runs here rather than only at the top level, so a disclosure nested in a
+  // blockquote (where bots put them) is folded too.
+  return foldDetails(out);
 }
 
 /** Map one Lezer block node to AST block(s), or null for a structural token
@@ -166,7 +185,7 @@ function block(n: SyntaxNode, src: string): MdBlock[] | null {
     case "Paragraph":
       return [{ type: "paragraph", children: inline(n, src) }];
     case "Blockquote":
-      return [{ type: "blockquote", children: blocks(n, src) }];
+      return [blockquoteBlock(blocks(n, src))];
     case "BulletList":
       return [listBlock(n, src, false)];
     case "OrderedList":
@@ -181,10 +200,178 @@ function block(n: SyntaxNode, src: string): MdBlock[] | null {
     case "HTMLBlock":
     case "CommentBlock":
     case "ProcessingInstructionBlock":
-      return [{ type: "html", value: slice(src, n) }];
+      return htmlBlock(slice(src, n));
     default:
       return null; // ListMark / QuoteMark / other structural tokens
   }
+}
+
+/** Map a raw-HTML block to AST block(s).
+ *
+ *  Two things happen here that the raw slice can't express:
+ *
+ *  1. **HTML comments are dropped.** GitHub hides them, and bots lean on them as
+ *     machine markers (`<!-- review_stack_entry_start -->`) — rendering them as
+ *     visible boxes buried the actual comment in noise.
+ *  2. **Blockquote continuation markers are stripped.** Lezer reports the node's
+ *     source range verbatim, so an HTML block nested in a `>` quote arrives with a
+ *     literal `> ` on every line after the first.
+ *
+ *  A complete `<details>` becomes a real disclosure; anything else stays raw text
+ *  (escaped by the renderer — we never execute it). */
+function htmlBlock(raw: string): MdBlock[] {
+  const value = stripQuoteMarkers(raw).trim();
+  if (!value || isOnlyComments(value)) return [];
+  // Strip any marker comments wrapped around real content.
+  const stripped = value.replace(/<!--[\s\S]*?-->/g, "").trim();
+  if (!stripped) return [];
+  if (/<details[^>]*>/i.test(stripped)) return splitDetails(stripped);
+  return [{ type: "html", value: stripped }];
+}
+
+/** Remove the `>` blockquote prefix Lezer leaves on an HTML block's 2nd+ lines. */
+function stripQuoteMarkers(raw: string): string {
+  return raw
+    .split("\n")
+    .map((line) => line.replace(/^\s*>\s?/, ""))
+    .join("\n");
+}
+
+/** Whether the block is nothing but HTML comments (and whitespace). */
+function isOnlyComments(value: string): boolean {
+  return value.replace(/<!--[\s\S]*?-->/g, "").trim() === "";
+}
+
+/** The plain text of a `<summary>`, or "" when there isn't one. */
+function summaryText(value: string): string {
+  const m = /<summary[^>]*>([\s\S]*?)<\/summary>/i.exec(value);
+  return m ? m[1].replace(/<[^>]+>/g, "").trim() : "";
+}
+
+/** Split an HTML block into its `<details>` disclosures plus the raw HTML around
+ *  them.
+ *
+ *  Depth-aware on purpose. Inside a blockquote no line is blank (they all carry
+ *  `>`), so *every* disclosure in a bot's comment lands in a single HTML block —
+ *  and a greedy `<details>…</details>` match would run from the first opener to
+ *  the **last** closer, swallowing every sibling into the first one's body. An
+ *  unclosed opener leaves the remainder raw for [`foldDetails`] to stitch. */
+function splitDetails(value: string): MdBlock[] {
+  const out: MdBlock[] = [];
+  let pos = 0;
+  for (;;) {
+    const opener = /<details[^>]*>/i.exec(value.slice(pos));
+    if (!opener) break;
+    const openAt = pos + opener.index;
+    const bodyStart = openAt + opener[0].length;
+    // Walk tags forward, counting depth, to find *this* opener's closer.
+    const tagRe = /<(\/?)details[^>]*>/gi;
+    tagRe.lastIndex = bodyStart;
+    let depth = 1;
+    let closeAt = -1;
+    let after = -1;
+    for (let m = tagRe.exec(value); m; m = tagRe.exec(value)) {
+      depth += m[1] ? -1 : 1;
+      if (depth === 0) {
+        closeAt = m.index;
+        after = tagRe.lastIndex;
+        break;
+      }
+    }
+    if (closeAt === -1) break; // unclosed — leave the rest raw
+    const before = value.slice(pos, openAt).trim();
+    if (before) out.push({ type: "html", value: before });
+    const body = value.slice(bodyStart, closeAt);
+    const summaryTag = /^\s*<summary[^>]*>[\s\S]*?<\/summary>/i.exec(body);
+    out.push({
+      type: "details",
+      summary: summaryText(body),
+      // The body is Markdown in its own right — GitHub renders it as such.
+      children: renderMarkdown((summaryTag ? body.slice(summaryTag[0].length) : body).trim()),
+    });
+    pos = after;
+  }
+  const rest = value.slice(pos).trim();
+  if (rest) out.push({ type: "html", value: rest });
+  return out;
+}
+
+/** Fold `<details>` disclosures out of a block list.
+ *
+ *  A blank line **ends** an HTML block in CommonMark, so the very common
+ *  `<details>` + blank line + Markdown body + `</details>` arrives as three
+ *  separate blocks — opener, content, closer — and would otherwise render as two
+ *  bare tags with the body loose between them. This stitches those back together;
+ *  a `<details>` that never closes is left raw rather than swallowing the rest of
+ *  the document. Nested disclosures aren't folded (the first `</details>` closes
+ *  the outer one) — bots don't nest them, and a wrong guess is worse than raw. */
+function foldDetails(list: MdBlock[]): MdBlock[] {
+  const out: MdBlock[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const b = list[i];
+    if (b.type !== "html" || !/^<details[^>]*>/i.test(b.value)) {
+      out.push(b);
+      continue;
+    }
+    // Multi-block form: collect until the block that closes it. (A disclosure
+    // wholly inside one HTML block was already folded by `splitDetails`.)
+    let close = -1;
+    for (let j = i + 1; j < list.length; j++) {
+      const c = list[j];
+      if (c.type === "html" && /<\/details>/i.test(c.value)) {
+        close = j;
+        break;
+      }
+    }
+    if (close === -1) {
+      out.push(b); // unclosed — leave it raw
+      continue;
+    }
+    out.push({
+      type: "details",
+      summary: summaryText(b.value),
+      children: list.slice(i + 1, close),
+    });
+    i = close;
+  }
+  return out;
+}
+
+/** GitHub alert markers, as they appear once Lezer has parsed `[!WARNING]` into a
+ *  shortcut link with an empty href. */
+const ALERT_KINDS: MdAlertKind[] = ["note", "tip", "important", "warning", "caution"];
+
+/** Turn a blockquote that opens with `[!WARNING]` (or any GitHub alert marker)
+ *  into an alert, dropping the marker line. Anything else stays a blockquote. */
+function blockquoteBlock(children: MdBlock[]): MdBlock {
+  const first = children[0];
+  if (!first || first.type !== "paragraph") return { type: "blockquote", children };
+  const lead = first.children[0];
+  // `[!WARNING]` parses as a link with no destination whose text is `!WARNING`.
+  if (!lead || lead.type !== "link" || lead.href !== "") {
+    return { type: "blockquote", children };
+  }
+  const label = lead.children[0];
+  if (!label || label.type !== "text") return { type: "blockquote", children };
+  const kind = ALERT_KINDS.find((k) => label.value.toLowerCase() === `!${k}`);
+  if (!kind) return { type: "blockquote", children };
+  // Drop the marker and whatever separated it from the body — a `break` node, or
+  // (when the body continued the same paragraph) the newline that opens the next
+  // text run, which would otherwise render as a stray blank first line.
+  let restInline = first.children.slice(1);
+  if (restInline[0]?.type === "break") restInline = restInline.slice(1);
+  const bodyStart = restInline[0];
+  if (bodyStart?.type === "text") {
+    const trimmed = bodyStart.value.replace(/^\s+/, "");
+    restInline = trimmed
+      ? [{ ...bodyStart, value: trimmed }, ...restInline.slice(1)]
+      : restInline.slice(1);
+  }
+  const isBlank = restInline.length === 0;
+  const rest = isBlank
+    ? children.slice(1)
+    : [{ type: "paragraph" as const, children: restInline }, ...children.slice(1)];
+  return { type: "alert", kind, children: rest };
 }
 
 function listBlock(n: SyntaxNode, src: string, ordered: boolean): MdList {

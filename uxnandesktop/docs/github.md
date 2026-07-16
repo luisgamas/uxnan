@@ -87,6 +87,23 @@ branch happened to be checked out is exactly the mistake this row prevents.
   that ref exists), so the body describes the PR's own changes rather than a stale
   local branch's.
 
+## Markdown in comments
+
+PR/issue bodies, comments and reviews render through the app's own Markdown renderer
+(`$lib/markdown` + `MarkdownView`), which covers the GitHub-flavored bits that bot
+comments lean on heavily:
+
+- **HTML comments are hidden**, as on GitHub. Bots use them as machine markers
+  (`<!-- review_stack_entry_start -->`); rendering them buried the real comment.
+- **Alerts** (`> [!NOTE]` / `TIP` / `IMPORTANT` / `WARNING` / `CAUTION`) render as
+  colored, iconed callouts instead of a literal "!WARNING" link.
+- **`<details>`/`<summary>`** render as real collapsibles, including several siblings in
+  one comment and disclosures nested inside a blockquote (where bots put them). An
+  unclosed one is left as raw text rather than swallowing the rest of the comment.
+- Raw HTML is still **escaped text, never executed** — no `{@html}`, so a comment from
+  an untrusted repo can't script the webview. Long raw-HTML/code lines scroll instead of
+  being clipped.
+
 ## Merging (and protected branches)
 
 The merge controls adapt to what the repo **and the base branch's rules** allow, rather
