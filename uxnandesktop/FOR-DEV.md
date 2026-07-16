@@ -125,10 +125,46 @@ mobile pairing) is NOT started.**
   `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
   the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`
   (38 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
+  **Caveat: the write side is implemented but not yet exercised against real GitHub
+  data** (this repo has no PRs/issues/collaborators) — see *Validation status* under
+  "GitHub integration — follow-ups" before trusting any of it in anger.
 
 ## GitHub integration — follow-ups ☐
 
-The `gh`-backed integration above is complete for the standalone desktop app. Deferred:
+**Validation status — read this first.** The surface above is **implemented and
+type/unit-tested, but the write side is essentially unexercised against real GitHub
+data.** What *has* been verified: the pure logic (rulesets → allowed methods, branch/
+Markdown/model parsers) by unit tests, and the **read** calls (`gh repo view`,
+`gh api …/rules/branches`, `gh pr view --json mergeStateStatus`, `gh label list`,
+assignees) probed live against `luisgamas/uxnan`. What has **not** been run even once:
+**creating a PR, merging one, an admin bypass, arming/disarming auto-merge,
+update-branch, mark-ready, editing a PR/issue, requesting a reviewer, filing a labeled
+issue, and the PR/issue → worktree dialog end-to-end.** This repo has no open PRs, no
+issues and no collaborators, so those paths get exercised as real work appears — expect
+first-run bugs there, and treat each as unproven until it's actually been done once.
+The gaps below are known and deliberate, not discoveries waiting to happen.
+
+The `gh`-backed integration above is otherwise complete for the standalone desktop app.
+Deferred:
+- [ ] **Cross-fork PRs.** The head picker offers this repo's branches (local ∪ `origin`)
+      only; GitHub's `owner:branch` form — a PR from someone's fork — isn't expressible.
+      `gh pr create --head owner:branch` supports it; the picker and `PrBranches` would
+      need to carry the fork's remotes.
+- [ ] **Pagination.** Lists are capped (50 PRs / 50 issues / 30 runs) with no "load
+      more", so a busy repo silently shows a window of its work. `gh` paginates with
+      `--limit`; the UI needs an explicit control rather than a bigger constant.
+- [ ] **Resolve review threads.** A blocked PR can say "every review thread must be
+      resolved" and offers no way to resolve one — `gh pr` has no verb for it, so this
+      needs the GraphQL `resolveReviewThread` mutation via `gh api graphql`. Pairs with
+      the inline-diff-comments item below.
+- [ ] **Cache the merge policy per repo.** Opening a PR fires ~6 `gh` calls
+      (view + diff + timeline + `merge_info`'s repo-view + REST repo + rules). The
+      repo-level and ruleset answers are near-static per repo/base, so a session cache
+      would cut half of them. Fine for one developer against a 5000/h limit; worth doing
+      before the notifications/poll surface grows. Pairs with the ETag item below.
+- [ ] **`gh pr` verbs still unwired:** `revert`, `lock`/`unlock` (and their `gh issue`
+      twins: `delete`, `pin`/`unpin`, `transfer`). None are review-flow blockers; add on
+      demand.
 - [ ] **Native (no-`gh`) sign-in.** An OAuth **device-flow** login (public `client_id`,
       no secret) + **OS-keychain** token storage (the `keyring` crate), so GitHub works
       without `gh` installed. Closes the T2.4 / keyring item below. Needs a registered
