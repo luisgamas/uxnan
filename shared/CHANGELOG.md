@@ -26,11 +26,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   and the `metrics/export`|`import` param/result shapes. `MetricsActivityDay.day`
   is **UTC midnight of the calendar date** (timezone-stable, so the phone's
   heatmap maps it to the right cell in any timezone).
-- **`MetricsSnapshot.tokensByDay`** (`MetricsTokenDay` + `MetricsAgentTokens`):
-  per-day token throughput split per agent (UTC-midnight day keys), for a "tokens
-  per day/week/month" view. Tokens **processed** (sum of each turn's reported
-  usage), not billed cost — caching/pricing differ; `agent/usageStats` stays the
-  source for money. Only agents that report per-turn usage appear.
+- **`MetricsSnapshot.byAgentDay`** (`MetricsDayBreakdown` + `MetricsAgentDay`):
+  per-day activity split per agent (UTC-midnight day keys) — conversations,
+  messages and **tokens processed** each day — for the unified agent-activity
+  view (per-agent totals all-time, or a single day when a heatmap cell is
+  picked). Tokens are throughput (sum of each turn's reported usage), not billed
+  cost — caching/pricing differ; `agent/usageStats` stays the source for money;
+  0 for agents that don't report usage (e.g. Zero).
 - Provider usage/credits are deliberately **excluded** — those stay live-read via
   `agent/usageStats`, never persisted.
 

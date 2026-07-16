@@ -34,24 +34,29 @@ export interface MetricsAgentUsage {
   conversations: number;
 }
 
-/** Tokens processed for one agent (provider) on a given day. */
-export interface MetricsAgentTokens {
+/** One agent's activity on a given day (drives the per-agent bars). */
+export interface MetricsAgentDay {
   /** Agent wire id (e.g. `claude-code`, `codex`). */
   agentId: string;
+  /** Conversations (threads) this agent started that day. */
+  conversations: number;
+  /** Messages exchanged that day in this agent's threads. */
+  messages: number;
   /**
-   * Tokens processed — the sum of each turn's reported usage (input incl. the
-   * re-sent context + output). **Throughput, not billed cost**: caching
-   * discounts and input/output pricing differ (use `agent/usageStats` for money).
+   * Tokens processed that day — the sum of each turn's reported usage (input
+   * incl. the re-sent context + output). **Throughput, not billed cost**: caching
+   * and input/output pricing differ (use `agent/usageStats` for money). 0 for
+   * agents that don't report usage (e.g. Zero).
    */
   tokens: number;
 }
 
-/** One calendar day's token throughput, split per agent. */
-export interface MetricsTokenDay {
+/** One calendar day's activity split per agent. */
+export interface MetricsDayBreakdown {
   /** UTC-midnight epoch ms of the calendar date (same encoding as `activity`). */
   day: number;
-  /** Tokens processed that day, per agent (only agents that report usage). */
-  byAgent: MetricsAgentTokens[];
+  /** Per-agent activity that day (agents with any conversation/message/token). */
+  byAgent: MetricsAgentDay[];
 }
 
 /**
@@ -114,11 +119,12 @@ export interface MetricsSnapshot {
   /** Per-day activity buckets for the contribution heatmap. */
   activity: MetricsActivityDay[];
   /**
-   * Per-day token throughput split per agent, for a "tokens per day/week/month"
-   * view. Summed from each turn's reported usage; only agents that report usage
-   * appear. **Tokens processed, not billed cost** — see {@link MetricsAgentTokens}.
+   * Per-day activity split per agent (conversations, messages, tokens), for the
+   * unified agent-activity view: the per-agent bars show all-time totals, or a
+   * single day's totals when a heatmap cell is selected. See
+   * {@link MetricsAgentDay}.
    */
-  tokensByDay: MetricsTokenDay[];
+  byAgentDay: MetricsDayBreakdown[];
   /** When the bridge produced this snapshot (epoch ms). */
   updatedAt: number;
 }
