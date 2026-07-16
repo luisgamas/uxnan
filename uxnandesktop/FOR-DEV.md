@@ -93,7 +93,8 @@ mobile pairing) is NOT started.**
   an **expandable CI checks section** + a **CI popover** on the head commit and each
   PR-list row, and the review/merge/close **tools in a bottom action bar**, with
   merge/approve/request-changes **gated to open PRs**; **issue** triage/create +
-  **close/reopen**; **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
+  **close/reopen**; PR/issue **title+description editing** in place (`gh pr/issue edit`);
+  **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
   / `gh issue develop` — both behind a **settings + confirmation dialog** (editable branch
   name pre-filled with the generic default, GitHub-slug suggestion for issues, launch-agent
   picker, folder preview, existing-worktree warning) that adopts the result through the
@@ -121,7 +122,7 @@ mobile pairing) is NOT started.**
   (`gh pr ready`, reversible). All via the local **`gh` CLI** (incl.
   `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
   the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`
-  (33 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
+  (35 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
 
 ## GitHub integration — follow-ups ☐
 

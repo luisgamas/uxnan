@@ -1444,6 +1444,32 @@ pub async fn github_pr_merge(
         .map_err(CommandError::from)
 }
 
+/// Edit a PR's title and/or body. `None` leaves a field untouched.
+#[tauri::command]
+pub async fn github_pr_edit(
+    worktree_path: String,
+    number: String,
+    title: Option<String>,
+    body: Option<String>,
+) -> Result<(), CommandError> {
+    crate::github::pr_edit(&worktree_path, &number, title.as_deref(), body.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Edit an issue's title and/or body. `None` leaves a field untouched.
+#[tauri::command]
+pub async fn github_issue_edit(
+    worktree_path: String,
+    number: String,
+    title: Option<String>,
+    body: Option<String>,
+) -> Result<(), CommandError> {
+    crate::github::issue_edit(&worktree_path, &number, title.as_deref(), body.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Bring a PR's branch up to date with its base — the fix for a `BEHIND` state.
 #[tauri::command]
 pub async fn github_pr_update_branch(

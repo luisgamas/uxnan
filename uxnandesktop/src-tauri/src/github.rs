@@ -1259,6 +1259,55 @@ async fn merge_state(worktree_path: &str, number: &str) -> Option<MergeState> {
     })
 }
 
+/// Edit a PR's title and/or body (`gh pr edit`). Empty fields are left untouched,
+/// so this can't blank a body by accident.
+pub async fn pr_edit(
+    worktree_path: &str,
+    number: &str,
+    title: Option<&str>,
+    body: Option<&str>,
+) -> Result<(), AppError> {
+    edit_item(worktree_path, "pr", number, title, body).await
+}
+
+/// Edit an issue's title and/or body (`gh issue edit`).
+pub async fn issue_edit(
+    worktree_path: &str,
+    number: &str,
+    title: Option<&str>,
+    body: Option<&str>,
+) -> Result<(), AppError> {
+    edit_item(worktree_path, "issue", number, title, body).await
+}
+
+/// Shared `gh <pr|issue> edit` runner — the two differ only in the noun.
+async fn edit_item(
+    worktree_path: &str,
+    kind: &str,
+    number: &str,
+    title: Option<&str>,
+    body: Option<&str>,
+) -> Result<(), AppError> {
+    let number = validate_number(number)?;
+    let title = title.map(str::trim).filter(|s| !s.is_empty());
+    // A body may legitimately be cleared, so — unlike the title — only `None`
+    // means "leave it alone"; an empty string is an explicit blank.
+    let mut args: Vec<String> = vec![kind.into(), "edit".into(), number];
+    if let Some(t) = title {
+        args.push("--title".into());
+        args.push(t.into());
+    }
+    if let Some(b) = body {
+        args.push("--body".into());
+        args.push(b.into());
+    }
+    if args.len() == 3 {
+        return Err(AppError::Invalid("nothing to edit".to_string()));
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    gh(Some(worktree_path), &arg_refs).await.map(|_| ())
+}
+
 /// Bring a PR's branch up to date with its base (`gh pr update-branch`), the fix
 /// for a `BEHIND` merge state. `rebase` rebases instead of merging the base in.
 pub async fn pr_update_branch(

@@ -44,6 +44,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
 
+- **Edit a PR or issue after opening it.** The pencil in the detail header edits the
+  **title and description** in place (`gh pr edit` / `gh issue edit`, new
+  `github_pr_edit` / `github_issue_edit`). Until now you could create a PR or issue from
+  here but never fix a typo in it without leaving for github.com. The editor replaces the
+  header while open (so you edit where you were reading), never survives switching to
+  another item, and reloads the detail on save so the view shows what GitHub stored.
 - **PR detail split into Conversation / Files tabs.** The changed-files diff used to sit
   stacked under the whole conversation, so neither was scannable. It's now its own tab
   (with a file count), leaving Conversation to the timeline + the collapsed CI checks.

@@ -43,8 +43,10 @@ registered git repo). Panes:
     own reading mode, so it gets its own tab rather than sitting under the whole
     conversation.
 
-  Descriptions, comments and reviews render as **Markdown** — see *Markdown in comments*
-  below. The **reply box + review / merge / Close-PR / checkout** tools live in a
+  The **pencil** in the header edits the **title and description** in place
+  (`gh pr edit` / `gh issue edit`) — a PR/issue opened from here no longer has to go to
+  github.com to fix a typo. Descriptions, comments and reviews render as **Markdown** —
+  see *Markdown in comments* below. The **reply box + review / merge / Close-PR / checkout** tools live in a
   **bottom action bar** that stays available from **both tabs** (reviewing the diff is
   exactly when you want to approve); **merge / approve / request-changes are only
   enabled on open PRs**, and a closed PR offers **Reopen**.
@@ -220,12 +222,12 @@ older state loads unchanged.
 
 ## Backend commands
 
-All 33 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
+All 35 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `commands.rs`, registered in `lib.rs`, typed wrappers in `src/lib/api.ts`):
 `github_status`, `github_repo_context`, `github_branches`, `github_merge_info`,
 `github_pr_list/view/diff/timeline/create/comment/review/close/reopen/merge/checkout`,
-`github_pr_update_branch/ready/disable_auto_merge`,
-`github_issue_list/view/comment/close/reopen/create/develop`,
+`github_pr_update_branch/ready/disable_auto_merge/edit`,
+`github_issue_list/view/comment/close/reopen/create/develop/edit`,
 `github_run_list/log/rerun/cancel`,
 `github_rate_limit`, `github_notifications_count`, `github_clone`,
 `github_ai_draft_pr`. (`github_pr_timeline` serves both PRs and issues — a PR *is* an

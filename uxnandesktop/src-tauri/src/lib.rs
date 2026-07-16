@@ -323,6 +323,8 @@ pub fn run() {
             commands::github_pr_update_branch,
             commands::github_pr_ready,
             commands::github_pr_disable_auto_merge,
+            commands::github_pr_edit,
+            commands::github_issue_edit,
             commands::github_pr_comment,
             commands::github_pr_review,
             commands::github_pr_close,

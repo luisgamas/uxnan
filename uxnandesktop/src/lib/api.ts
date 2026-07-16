@@ -760,6 +760,36 @@ export function githubPrMerge(
   return invoke("github_pr_merge", { worktreePath, number, options });
 }
 
+/** Edit a PR's title and/or body. Omitted fields are left untouched. */
+export function githubPrEdit(
+  worktreePath: string,
+  number: string,
+  title?: string | null,
+  body?: string | null,
+): Promise<void> {
+  return invoke("github_pr_edit", {
+    worktreePath,
+    number,
+    title: title ?? null,
+    body: body ?? null,
+  });
+}
+
+/** Edit an issue's title and/or body. Omitted fields are left untouched. */
+export function githubIssueEdit(
+  worktreePath: string,
+  number: string,
+  title?: string | null,
+  body?: string | null,
+): Promise<void> {
+  return invoke("github_issue_edit", {
+    worktreePath,
+    number,
+    title: title ?? null,
+    body: body ?? null,
+  });
+}
+
 /** Bring a PR's branch up to date with its base — the fix for a `BEHIND` state. */
 export function githubPrUpdateBranch(
   worktreePath: string,

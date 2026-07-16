@@ -23,6 +23,8 @@
     githubPrUpdateBranch,
     githubPrReady,
     githubPrDisableAutoMerge,
+    githubPrEdit,
+    githubIssueEdit,
     githubPrClose,
     githubPrReopen,
     githubIssueView,
@@ -163,6 +165,9 @@
     issueError = null;
     runLog = null;
     runError = null;
+    // An open editor must never outlive the item it was editing, or it would
+    // reappear over the next one holding the previous one's text.
+    editOpen = false;
   }
 
   /** Navigate to a pane: clear any open detail first, then switch. */
@@ -227,6 +232,44 @@
    *  stacking it under the conversation made both hard to scan — so it gets its own
    *  tab, GitHub-style, while the bottom action bar stays available in both. */
   let prTab = $state<"conversation" | "files">("conversation");
+
+  // Inline title/body editing for the open PR or issue. Both details share this
+  // state because only one is ever open at a time.
+  let editOpen = $state(false);
+  let editTitle = $state("");
+  let editBody = $state("");
+
+  function startEdit(title: string, body: string) {
+    editTitle = title;
+    editBody = body;
+    editOpen = true;
+  }
+
+  /** Save the edit for whichever detail is open, then reload it so the view shows
+   *  what GitHub actually stored rather than what we typed. */
+  async function saveEdit(kind: "pr" | "issue") {
+    const p = path();
+    const n = kind === "pr" ? prDetail?.number : issueDetail?.number;
+    if (!p || n === undefined || !editTitle.trim()) return;
+    busy = true;
+    try {
+      const edit = kind === "pr" ? githubPrEdit : githubIssueEdit;
+      await edit(p, String(n), editTitle.trim(), editBody);
+      editOpen = false;
+      toast.success(i18n.t("github.toast.edited"));
+      if (kind === "pr") {
+        await selectPr(n);
+        await github.loadPrs(prState, prSearch.trim() || null);
+      } else {
+        await selectIssue(n);
+        await github.loadIssues(issueState, issueSearch.trim() || null);
+      }
+    } catch (e) {
+      toastError(e);
+    } finally {
+      busy = false;
+    }
+  }
   // The PR timeline (comments + reviews + commits + events). Loaded separately from
   // the detail so the overview paints first. `prTimelineFailed` falls back to the
   // reviews/comments already in `prDetail` so the conversation is never lost.
@@ -277,6 +320,10 @@
     commentBody = "";
     ciOpen = false;
     prTab = "conversation";
+    // Selecting another PR from the list doesn't go through clearDetail, so the
+    // editor is closed here too — otherwise it would open over the new PR still
+    // holding the previous one's text.
+    editOpen = false;
     prTimeline = [];
     prTimelineFailed = false;
     prTimelineLoading = true;
@@ -559,6 +606,7 @@
     issueTimeline = [];
     issueTimelineFailed = false;
     issueTimelineLoading = true;
+    editOpen = false; // same reason as selectPr: never carry an editor across items
     try {
       issueDetail = await githubIssueView(p, String(n));
     } catch (e) {
@@ -1165,6 +1213,22 @@
 
 <!-- ============================ reusable bits ============================ -->
 
+<!-- Inline title/body editor, shared by the PR and issue details. Replaces the
+     header + description while open, so editing happens where you're reading
+     rather than in a dialog that hides the thing being edited. -->
+{#snippet editForm(kind: "pr" | "issue")}
+  <div class={cn("space-y-2 p-3", panel.card)}>
+    <Input placeholder={i18n.t("github.pr.titleLabel")} bind:value={editTitle} />
+    <Textarea placeholder={i18n.t("github.pr.bodyLabel")} bind:value={editBody} rows={8} />
+    <div class="flex justify-end gap-2">
+      <Button variant="ghost" size="sm" onclick={() => (editOpen = false)}>{i18n.t("common.cancel")}</Button>
+      <Button size="sm" disabled={busy || !editTitle.trim()} onclick={() => saveEdit(kind)}>
+        {i18n.t("common.save")}
+      </Button>
+    </div>
+  </div>
+{/snippet}
+
 <!-- The AI-agent picker's logo, matched back from the row's value (same catalog
      and logo keys as Settings → AI commit messages). -->
 {#snippet aiAgentPrefix(item: { value: string })}
@@ -1540,6 +1604,9 @@
       {@const isOpen = pr.state.toUpperCase() === "OPEN"}
       {@const isClosed = pr.state.toUpperCase() === "CLOSED"}
       {@const HeadIcon = prStateIcon(pr.state, pr.isDraft)}
+      {#if editOpen}
+        {@render editForm("pr")}
+      {:else}
       <!-- Title + state -->
       <div class="flex items-start gap-2.5">
         <HeadIcon class={cn("mt-0.5 size-5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
@@ -1555,10 +1622,14 @@
             {#if pr.baseRefName && pr.headRefName}<span class="font-mono">· {pr.headRefName} → {pr.baseRefName}</span>{/if}
           </div>
         </div>
+        <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => startEdit(pr.title, pr.body)} aria-label={i18n.t("github.pr.edit")} title={i18n.t("github.pr.edit")}>
+          <PencilIcon class={icon.button} />
+        </Button>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(pr.url)} aria-label={i18n.t("github.openOnGitHub")}>
           <ExternalLinkIcon class={icon.button} />
         </Button>
       </div>
+      {/if}
 
       <!-- Summary pills -->
       <div class="flex flex-wrap items-center gap-1.5">
@@ -1947,6 +2018,9 @@
       {@const issue = issueDetail}
       {@const issueOpen = issue.state.toUpperCase() === "OPEN"}
       {@const IssueIcon = issueStateIcon(issue.state)}
+      {#if editOpen}
+        {@render editForm("issue")}
+      {:else}
       <div class="flex items-start gap-2.5">
         <IssueIcon class={cn("mt-0.5 size-5 shrink-0", issueStateIconClass(issue.state))} />
         <div class="min-w-0 flex-1">
@@ -1961,10 +2035,14 @@
             </span>
           </div>
         </div>
+        <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => startEdit(issue.title, issue.body)} aria-label={i18n.t("github.pr.edit")} title={i18n.t("github.pr.edit")}>
+          <PencilIcon class={icon.button} />
+        </Button>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(issue.url)} aria-label={i18n.t("github.openOnGitHub")}>
           <ExternalLinkIcon class={icon.button} />
         </Button>
       </div>
+      {/if}
       {#if issue.labels.length > 0}
         <div class="flex flex-wrap gap-1.5">
           {#each issue.labels as label (label)}{@render pill(label, "muted")}{/each}
