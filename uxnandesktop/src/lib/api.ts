@@ -751,6 +751,16 @@ export function githubPrMerge(
   return invoke("github_pr_merge", { worktreePath, number, method, deleteBranch });
 }
 
+/** Close a PR without merging. */
+export function githubPrClose(worktreePath: string, number: string): Promise<void> {
+  return invoke("github_pr_close", { worktreePath, number });
+}
+
+/** Reopen a closed PR. */
+export function githubPrReopen(worktreePath: string, number: string): Promise<void> {
+  return invoke("github_pr_reopen", { worktreePath, number });
+}
+
 /** Check out a PR into a new worktree; resolves to the new entry. */
 export function githubPrCheckout(repoId: string, number: string): Promise<WorktreeEntry> {
   return invoke<WorktreeEntry>("github_pr_checkout", { repoId, number });
@@ -778,6 +788,16 @@ export function githubIssueComment(
   body: string,
 ): Promise<void> {
   return invoke("github_issue_comment", { worktreePath, number, body });
+}
+
+/** Close an issue. */
+export function githubIssueClose(worktreePath: string, number: string): Promise<void> {
+  return invoke("github_issue_close", { worktreePath, number });
+}
+
+/** Reopen a closed issue. */
+export function githubIssueReopen(worktreePath: string, number: string): Promise<void> {
+  return invoke("github_issue_reopen", { worktreePath, number });
 }
 
 /** Create an issue; resolves to its URL. */

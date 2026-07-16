@@ -18,9 +18,13 @@
     githubPrComment,
     githubPrReview,
     githubPrMerge,
+    githubPrClose,
+    githubPrReopen,
     githubPrCheckout,
     githubIssueView,
     githubIssueComment,
+    githubIssueClose,
+    githubIssueReopen,
     githubIssueCreate,
     githubIssueDevelop,
     githubRunLog,
@@ -32,7 +36,7 @@
   } from "$lib/api";
   import type { PrDetail, IssueDetail, TimelineEvent, CheckItem, CheckSummary } from "$lib/types";
   import { splitCommitDiff } from "$lib/diffParse";
-  import { relTime } from "$lib/relTime";
+  import { relTimeLong } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -74,6 +78,10 @@
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import LinkIcon from "@lucide/svelte/icons/link";
   import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
+  import GitPullRequestDraftIcon from "@lucide/svelte/icons/git-pull-request-draft";
+  import GitPullRequestClosedIcon from "@lucide/svelte/icons/git-pull-request-closed";
+  import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
+  import SearchIcon from "@lucide/svelte/icons/search";
 
   // The section acts on the explicitly-SELECTED repo (not the active worktree).
   const path = () => github.sectionRepoPath;
@@ -116,6 +124,17 @@
   // --- data loading per pane ------------------------------------------------
   let prState = $state("open");
   let issueState = $state("open");
+  let prSearch = $state("");
+  let issueSearch = $state("");
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+  function debouncedLoadPrs() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void github.loadPrs(prState, prSearch.trim() || null), 350);
+  }
+  function debouncedLoadIssues() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void github.loadIssues(issueState, issueSearch.trim() || null), 350);
+  }
   let runsBranchOnly = $state(false);
   let busy = $state(false);
 
@@ -181,6 +200,7 @@
   let mergeConfirmOpen = $state(false);
   let selectedPrNumber = $state<number | null>(null);
   let commentBody = $state("");
+  let ciOpen = $state(false);
   // The PR timeline (comments + reviews + commits + events). Loaded separately from
   // the detail so the overview paints first. `prTimelineFailed` falls back to the
   // reviews/comments already in `prDetail` so the conversation is never lost.
@@ -229,6 +249,7 @@
     prDiffLoading = true;
     expandedFiles = {};
     commentBody = "";
+    ciOpen = false;
     prTimeline = [];
     prTimelineFailed = false;
     prTimelineLoading = true;
@@ -304,6 +325,25 @@
     }
   }
 
+  /** Close an open PR, or reopen a closed one. */
+  async function togglePrState() {
+    const p = path();
+    if (!p || !prDetail) return;
+    busy = true;
+    const open = prDetail.state.toUpperCase() === "OPEN";
+    try {
+      if (open) await githubPrClose(p, String(prDetail.number));
+      else await githubPrReopen(p, String(prDetail.number));
+      toast.success(i18n.t(open ? "github.toast.prClosed" : "github.toast.prReopened"));
+      await selectPr(prDetail.number);
+      await github.loadPrs(prState, prSearch.trim() || null);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function checkoutPr(n: number) {
     const repoId = selectedRepoId();
     if (!repoId) return;
@@ -352,6 +392,25 @@
       issueCommentBody = "";
       toast.success(i18n.t("github.toast.commented"));
       await selectIssue(issueDetail.number);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** Close an open issue, or reopen a closed one. */
+  async function toggleIssueState() {
+    const p = path();
+    if (!p || !issueDetail) return;
+    busy = true;
+    const open = issueDetail.state.toUpperCase() === "OPEN";
+    try {
+      if (open) await githubIssueClose(p, String(issueDetail.number));
+      else await githubIssueReopen(p, String(issueDetail.number));
+      toast.success(i18n.t(open ? "github.toast.issueClosed" : "github.toast.issueReopened"));
+      await selectIssue(issueDetail.number);
+      await github.loadIssues(issueState, issueSearch.trim() || null);
     } catch (e) {
       toastError(e);
     } finally {
@@ -621,12 +680,33 @@
     if (status === "renamed") return "text-sky-600 dark:text-sky-400";
     return "text-amber-600 dark:text-amber-400";
   }
-  /** Relative time from an ISO date (best-effort). */
-  function ago(iso: string | null): string {
+  /** Human-readable, localized relative time ("hace 1 día" / "1 day ago"). */
+  function agoLong(iso: string | null): string {
     if (!iso) return "";
     const ms = Date.parse(iso);
     if (Number.isNaN(ms)) return "";
-    return relTime(ms, Date.now());
+    return relTimeLong(ms, Date.now(), i18n.locale);
+  }
+  // --- status icons (list rows + detail headers) ----------------------------
+  function prStateIcon(state: string, isDraft: boolean) {
+    const s = state.toUpperCase();
+    if (s === "MERGED") return GitMergeIcon;
+    if (s === "CLOSED") return GitPullRequestClosedIcon;
+    if (isDraft) return GitPullRequestDraftIcon;
+    return GitPullRequestIcon;
+  }
+  function prStateIconClass(state: string, isDraft: boolean): string {
+    const s = state.toUpperCase();
+    if (s === "MERGED") return "text-purple-500";
+    if (s === "CLOSED") return "text-red-500";
+    if (isDraft) return "text-muted-foreground";
+    return "text-emerald-500";
+  }
+  function issueStateIcon(state: string) {
+    return state.toUpperCase() === "OPEN" ? CircleDotIcon : CheckCircle2Icon;
+  }
+  function issueStateIconClass(state: string): string {
+    return state.toUpperCase() === "OPEN" ? "text-emerald-500" : "text-purple-500";
   }
   // --- Timeline rendering ---------------------------------------------------
   /** Fill a full TimelineEvent from a partial (all optional fields default null). */
@@ -642,6 +722,7 @@
       commitMessage: null,
       subject: null,
       refNumber: null,
+      verified: null,
       ...e,
     };
   }
@@ -906,7 +987,7 @@
   </span>
 {/snippet}
 
-{#snippet timelineNode(ev: TimelineEvent)}
+{#snippet timelineNode(ev: TimelineEvent, ciSummary: CheckSummary | null, ciChecks: CheckItem[] | null)}
   {@const Icon = eventIcon(ev)}
   {#if eventIsBig(ev)}
     <div class="relative flex gap-3.5">
@@ -917,7 +998,7 @@
         <div class={cn("flex flex-wrap items-center gap-2 border-b border-border/50 bg-muted/40 px-4 py-2.5", text.meta)}>
           <span class="font-medium text-foreground">{ev.actor ?? "—"}</span>
           {#if ev.event === "reviewed" && ev.state}{@render pill(reviewLabel(ev.state), reviewTone(ev.state))}{/if}
-          {#if ev.createdAt}<span>{ago(ev.createdAt)}</span>{/if}
+          {#if ev.createdAt}<span>{agoLong(ev.createdAt)}</span>{/if}
         </div>
         {#if ev.body?.trim()}
           <div class={cn("px-4 py-3.5", text.body)}>
@@ -940,8 +1021,16 @@
         {#if ev.subject}<span class="min-w-0 truncate font-medium text-foreground">{ev.subject}</span>{/if}
         {#if ev.refNumber}<span class="font-mono text-muted-foreground">#{ev.refNumber}</span>{/if}
         {#if ev.commitMessage}<span class="min-w-0 truncate text-foreground">{ev.commitMessage}</span>{/if}
+        {#if ev.verified}
+          <span class="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:text-emerald-400" title={i18n.t("github.commit.verifiedTip")}>
+            <ShieldCheckIcon class="size-3" />{i18n.t("github.commit.verified")}
+          </span>
+        {/if}
         {#if ev.commitSha}<span class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{ev.commitSha}</span>{/if}
-        {#if ev.createdAt}<span class="whitespace-nowrap text-muted-foreground">· {ago(ev.createdAt)}</span>{/if}
+        {#if ciChecks && ciSummary && ciChecks.length > 0}
+          {@render checksBadgeFull(ciSummary, ciChecks)}
+        {/if}
+        {#if ev.createdAt}<span class="whitespace-nowrap text-muted-foreground">· {agoLong(ev.createdAt)}</span>{/if}
       </div>
     </div>
   {/if}
@@ -950,17 +1039,19 @@
 <!-- The vertical-rail timeline: a chronological node list (comments/reviews as
      cards, everything else as compact one-line events). The rail line is inset so
      its ends tuck behind the first/last node icons. -->
-{#snippet timelineRail(nodes: TimelineEvent[], loading: boolean)}
+{#snippet timelineRail(nodes: TimelineEvent[], loading: boolean, ciSummary: CheckSummary | null, ciChecks: CheckItem[] | null)}
   {#if loading}
     {@render loadingRow()}
   {:else if nodes.length === 0}
     <p class={cn("px-4 py-6 text-muted-foreground", text.meta)}>{i18n.t("github.pr.noComments")}</p>
   {:else}
+    <!-- The last `committed` node is the PR head commit; it carries the CI badge. -->
+    {@const lastCommitIdx = nodes.reduce((acc, n, i) => (n.event === "committed" ? i : acc), -1)}
     <div class="relative px-4 py-5">
       <div class="absolute inset-y-8 left-[31px] w-px bg-border/60"></div>
       <div class="space-y-5">
         {#each nodes as ev, ni (ni)}
-          {@render timelineNode(ev)}
+          {@render timelineNode(ev, ni === lastCommitIdx ? ciSummary : null, ni === lastCommitIdx ? ciChecks : null)}
         {/each}
       </div>
     </div>
@@ -985,9 +1076,9 @@
   </div>
 {/snippet}
 
-<!-- A compact CI badge for a PR-list row: a status icon that opens a popover with
-     the checks roll-up breakdown (the list query only carries the summary). -->
-{#snippet checksBadge(summary: CheckSummary)}
+<!-- A CI badge for a PR-list row / commit: a status icon that opens a popover with
+     the "All checks passed / N failing" headline + the full check list (GitHub-style). -->
+{#snippet checksBadgeFull(summary: CheckSummary, checks: CheckItem[])}
   {@const Ci = ciIcon(summary.state)}
   <Popover.Root>
     <Popover.Trigger
@@ -996,18 +1087,33 @@
     >
       <Ci class="size-4" />
     </Popover.Trigger>
-    <Popover.Content align="end" side="bottom" class="w-64 p-3.5">
-      <div class="flex items-center gap-2">
-        <Ci class={cn("size-4", ciToneClass(summary.state))} />
-        <span class={cn(text.body, "font-medium")}>{checksHeadline(summary)}</span>
+    <Popover.Content align="end" side="bottom" class="w-[24rem] max-w-[calc(100vw-3rem)] overflow-hidden p-0">
+      <div class={cn("flex items-center gap-2 border-b border-border/50 px-3.5 py-2.5", text.section)}>
+        <Ci class={cn("size-4", ciToneClass(summary.state))} />{checksHeadline(summary)}
       </div>
-      <div class="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
-        <span class="text-emerald-600 dark:text-emerald-400">{summary.passed} {i18n.t("github.checks.passed")}</span>
-        {#if summary.failed > 0}<span class="text-red-600 dark:text-red-400">{summary.failed} {i18n.t("github.checks.failing")}</span>{/if}
-        {#if summary.pending > 0}<span class="text-amber-600 dark:text-amber-400">{summary.pending} {i18n.t("github.checks.pending")}</span>{/if}
-      </div>
+      {#if checks.length > 0}
+        {@render checksRows(checks)}
+      {:else}
+        <div class="flex flex-wrap gap-x-3 gap-y-1 px-3.5 py-3 text-[12px]">
+          <span class="text-emerald-600 dark:text-emerald-400">{summary.passed} {i18n.t("github.checks.passed")}</span>
+          {#if summary.failed > 0}<span class="text-red-600 dark:text-red-400">{summary.failed} {i18n.t("github.checks.failing")}</span>{/if}
+          {#if summary.pending > 0}<span class="text-amber-600 dark:text-amber-400">{summary.pending} {i18n.t("github.checks.pending")}</span>{/if}
+        </div>
+      {/if}
     </Popover.Content>
   </Popover.Root>
+{/snippet}
+
+{#snippet searchField(value: string, onInput: (v: string) => void, placeholder: string)}
+  <div class="relative">
+    <SearchIcon class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+    <Input
+      {value}
+      {placeholder}
+      class="h-9 pl-9"
+      oninput={(e) => onInput((e.currentTarget as HTMLInputElement).value)}
+    />
+  </div>
 {/snippet}
 
 {#snippet emptyState(Icon: typeof PlusIcon, title: string, desc: string)}
@@ -1161,7 +1267,7 @@
           </Button>
         </div>
       {/snippet}
-      <div class="space-y-3">
+      <div class="space-y-4">
         {#if showCreatePr}
           <CreatePrForm
             worktreePath={path()}
@@ -1170,14 +1276,15 @@
             onCancel={() => (showCreatePr = false)}
           />
         {/if}
+        {@render searchField(prSearch, (v) => { prSearch = v; debouncedLoadPrs(); }, i18n.t("github.pr.searchPlaceholder"))}
         {#if github.prsLoading}
           {@render loadingRow()}
         {:else if github.prs.length === 0}
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 px-6 py-12 text-center">
+          <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 px-6 py-14 text-center">
             <GitPullRequestIcon class={cn(icon.empty, "text-muted-foreground/60")} />
             <p class={cn(text.subheading)}>{prState === "open" ? i18n.t("github.pr.emptyOpen") : i18n.t("github.pr.empty")}</p>
             {#if prState !== "all"}
-              <Button variant="outline" size="sm" onclick={() => { prState = "all"; void github.loadPrs("all"); }}>
+              <Button variant="outline" size="sm" onclick={() => { prState = "all"; void github.loadPrs("all", prSearch.trim() || null); }}>
                 {i18n.t("github.viewAll")}
               </Button>
             {/if}
@@ -1185,14 +1292,15 @@
         {:else}
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.prs as pr (pr.number)}
+              {@const PrIcon = prStateIcon(pr.state, pr.isDraft)}
               <!-- Row is a div (not a button) so the CI popover trigger can be a real
                    sibling button — the title area handles opening the PR. -->
-              <div class="group flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
-                <GitPullRequestIcon class={cn("size-4 shrink-0", pr.isDraft ? "text-muted-foreground" : "text-emerald-500")} />
-                <button class="min-w-0 flex-1 text-left" onclick={() => selectPr(pr.number)}>
+              <div class="group flex w-full items-center gap-3 px-4 py-3.5 transition-colors hover:bg-accent/50">
+                <PrIcon class={cn("size-4 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
+                <button class="min-w-0 flex-1 space-y-0.5 text-left" onclick={() => selectPr(pr.number)}>
                   <div class={cn("truncate", text.bodyStrong)}>{pr.title}</div>
                   <div class={cn("truncate text-muted-foreground", text.meta)}>
-                    #{pr.number}{pr.author ? ` · ${pr.author}` : ""}{pr.headRefName ? ` · ${pr.headRefName}` : ""}
+                    #{pr.number}{pr.author ? ` · ${pr.author}` : ""}{pr.headRefName ? ` · ${pr.headRefName}` : ""}{pr.updatedAt ? ` · ${agoLong(pr.updatedAt)}` : ""}
                   </div>
                 </button>
                 {#if pr.isDraft}
@@ -1202,7 +1310,7 @@
                   {@render pill(prettyDecision(pr.reviewDecision), reviewTone(pr.reviewDecision) === "ok" ? "ok" : reviewTone(pr.reviewDecision) === "warn" ? "warn" : "info")}
                 {/if}
                 {#if pr.checksSummary.total > 0}
-                  {@render checksBadge(pr.checksSummary)}
+                  {@render checksBadgeFull(pr.checksSummary, pr.checks)}
                 {/if}
                 <button class="shrink-0" onclick={() => selectPr(pr.number)} aria-label={pr.title} tabindex="-1">
                   <ChevronRightIcon class="size-4 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
@@ -1228,19 +1336,21 @@
     {:else if prDetail}
       {@const pr = prDetail}
       {@const isOpen = pr.state.toUpperCase() === "OPEN"}
+      {@const isClosed = pr.state.toUpperCase() === "CLOSED"}
+      {@const HeadIcon = prStateIcon(pr.state, pr.isDraft)}
       <!-- Title + state -->
       <div class="flex items-start gap-2.5">
-        <GitPullRequestIcon class={cn("mt-0.5 size-5 shrink-0", pr.state.toUpperCase() === "MERGED" ? "text-purple-500" : isOpen && !pr.isDraft ? "text-emerald-500" : "text-muted-foreground")} />
+        <HeadIcon class={cn("mt-0.5 size-5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <h2 class={cn(text.heading, "min-w-0 break-words")}>{pr.title}</h2>
             {@render pill(stateLabel(pr.state, pr.isDraft), stateTone(pr.state, pr.isDraft))}
           </div>
-          <div class={cn("mt-1 text-muted-foreground", text.meta)}>
-            #{pr.number}{pr.author ? ` · ${pr.author}` : ""}
-            {#if pr.baseRefName && pr.headRefName}
-              · <span class="font-mono">{pr.headRefName} → {pr.baseRefName}</span>
-            {/if}
+          <div class={cn("mt-1 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", text.meta)}>
+            <span>#{pr.number}{pr.author ? ` · ${pr.author}` : ""}</span>
+            {#if pr.createdAt}<span>· {i18n.t("github.openedAgo", { rel: agoLong(pr.createdAt) })}</span>{/if}
+            {#if pr.updatedAt && pr.updatedAt !== pr.createdAt}<span>· {i18n.t("github.editedAgo", { rel: agoLong(pr.updatedAt) })}</span>{/if}
+            {#if pr.baseRefName && pr.headRefName}<span class="font-mono">· {pr.headRefName} → {pr.baseRefName}</span>{/if}
           </div>
         </div>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(pr.url)} aria-label={i18n.t("github.openOnGitHub")}>
@@ -1266,89 +1376,25 @@
         </div>
       {/if}
 
-      <!-- Actions (only for an open PR; closed/merged shows a notice instead) -->
-      {#if isOpen}
-        <div class={cn("flex flex-wrap items-center gap-2 p-3", panel.card)}>
-          <Combobox
-            value={mergeMethod}
-            groups={[{ items: [
-              { value: "squash", label: i18n.t("github.pr.methodSquash") },
-              { value: "merge", label: i18n.t("github.pr.methodMerge") },
-              { value: "rebase", label: i18n.t("github.pr.methodRebase") },
-            ] }]}
-            triggerClass="w-52"
-            onChange={(v) => (mergeMethod = v as typeof mergeMethod)}
-          />
-          <label class="flex items-center gap-1.5 text-[13px]">
-            <Switch checked={deleteBranch} onCheckedChange={(v) => (deleteBranch = v)} />
-            {i18n.t("github.pr.deleteBranch")}
-          </label>
-          <Button size="sm" disabled={busy} onclick={requestMerge}>{i18n.t("github.pr.merge")}</Button>
-          <div class="flex-1"></div>
-          <Button variant="outline" size="sm" disabled={busy} onclick={() => checkoutPr(pr.number)}>
-            <GitBranchIcon class={icon.button} />
-            {i18n.t("github.pr.checkout")}
-          </Button>
-        </div>
-
-        <!-- Review composer -->
-        <div class={cn("space-y-2 p-3", panel.card)}>
-          <span class={cn(text.section)}>{i18n.t("github.pr.review")}</span>
-          <Textarea placeholder={i18n.t("github.pr.reviewBody")} bind:value={reviewBody} rows={2} />
-          <div class="flex gap-2">
-            <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-emerald-600 dark:text-emerald-400" onclick={() => submitReview("approve")}>
-              <CheckIcon class="size-3.5" /> {i18n.t("github.pr.approve")}
-            </Button>
-            <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-red-600 dark:text-red-400" onclick={() => submitReview("request-changes")}>
-              <XIcon class="size-3.5" /> {i18n.t("github.pr.requestChanges")}
-            </Button>
-            <Button variant="outline" size="sm" disabled={busy || !reviewBody.trim()} onclick={() => submitReview("comment")}>
-              {i18n.t("github.pr.comment")}
-            </Button>
-          </div>
-        </div>
-      {:else}
-        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/50 bg-muted/40 px-3.5 py-2.5">
-          <span class={cn("text-muted-foreground", text.body)}>{i18n.t("github.pr.closedNotice", { state: stateLabel(pr.state, false) })}</span>
-          <Button variant="outline" size="sm" disabled={busy} onclick={() => checkoutPr(pr.number)}>
-            <GitBranchIcon class={icon.button} />
-            {i18n.t("github.pr.checkout")}
-          </Button>
-        </div>
-      {/if}
-
-      <ConfirmDialog
-        bind:open={mergeConfirmOpen}
-        title={i18n.t("github.confirm.mergeTitle")}
-        description={i18n.t("github.confirm.mergeDesc", { n: pr.number })}
-        confirmLabel={i18n.t("github.pr.merge")}
-        onconfirm={mergePr}
-      />
-
       <!-- Timeline: description + comments + reviews + commits + events, GitHub-style
-           vertical rail, oldest-first, then a comment field. -->
+           vertical rail (the reply box + merge/review tools live at the bottom). -->
       <div class={cn("overflow-hidden", panel.card)}>
-        <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-3.5 py-2", text.section)}>
+        <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-4 py-2.5", text.section)}>
           <MessageSquareIcon class="size-3.5" />{i18n.t("github.pr.conversation")}
         </div>
         {@render timelineRail(
           timelineNodes(pr.body, pr.author, pr.createdAt, prTimeline, prTimelineFailed, fallbackNodes(pr)),
           prTimelineLoading,
+          pr.checksSummary,
+          pr.checks,
         )}
-        <div class="space-y-2.5 border-t border-border/50 p-4">
-          <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={commentBody} rows={2} />
-          <div class="flex justify-end">
-            <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>{i18n.t("github.pr.postComment")}</Button>
-          </div>
-        </div>
       </div>
 
-      <!-- CI status for the head (last) commit — a compact GitHub-style status box
-           that opens the full checks list in a popover, instead of a long card. -->
+      <!-- CI checks — an expandable inline section for the head (last) commit. -->
       {#if pr.checks.length > 0}
         {@const Ci = ciIcon(pr.checksSummary.state)}
-        <Popover.Root>
-          <Popover.Trigger class={cn("flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30", panel.card)}>
+        <div class={cn("overflow-hidden", panel.card)}>
+          <button class="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30" onclick={() => (ciOpen = !ciOpen)}>
             <span class={cn("flex size-9 shrink-0 items-center justify-center rounded-full border border-border", ciToneClass(pr.checksSummary.state))}>
               <Ci class="size-5" />
             </span>
@@ -1356,13 +1402,13 @@
               <div class={cn(text.body, "font-medium")}>{checksHeadline(pr.checksSummary)}</div>
               <div class={text.meta}>{i18n.t("github.checks.summaryLine", { passed: pr.checksSummary.passed, total: pr.checksSummary.total })}</div>
             </div>
-            <span class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.checks.viewAll")}</span>
-            <ChevronDownIcon class="size-4 shrink-0 text-muted-foreground/60" />
-          </Popover.Trigger>
-          <Popover.Content align="start" side="bottom" class="w-[26rem] max-w-[calc(100vw-3rem)] overflow-hidden p-0">
-            {@render checksRows(pr.checks)}
-          </Popover.Content>
-        </Popover.Root>
+            <span class={cn("text-muted-foreground", text.meta)}>{ciOpen ? i18n.t("github.checks.hide") : i18n.t("github.checks.viewAll")}</span>
+            {#if ciOpen}<ChevronDownIcon class="size-4 shrink-0 text-muted-foreground/60" />{:else}<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/60" />{/if}
+          </button>
+          {#if ciOpen}
+            <div class="border-t border-border/50">{@render checksRows(pr.checks)}</div>
+          {/if}
+        </div>
       {/if}
 
       <!-- Files changed: one collapsible diff per file (collapsed by default; each
@@ -1418,6 +1464,75 @@
           </div>
         {/if}
       </div>
+
+      <!-- Bottom action bar: reply + review/merge tools (open) or reopen (closed).
+           The reply box stays for every state so you can always comment. -->
+      <div class={cn("space-y-3 p-4", panel.card)}>
+        <div class="space-y-2">
+          <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={commentBody} rows={2} />
+          <div class="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>{i18n.t("github.pr.postComment")}</Button>
+            <div class="flex-1"></div>
+            <Button variant="outline" size="sm" disabled={busy} onclick={() => checkoutPr(pr.number)}>
+              <GitBranchIcon class={icon.button} />{i18n.t("github.pr.checkout")}
+            </Button>
+            {#if isOpen}
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-red-600 dark:text-red-400" onclick={togglePrState}>
+                <CircleSlashIcon class="size-3.5" />{i18n.t("github.pr.close")}
+              </Button>
+            {:else if isClosed}
+              <Button variant="outline" size="sm" disabled={busy} onclick={togglePrState}>
+                <CircleDotIcon class="size-3.5" />{i18n.t("github.pr.reopen")}
+              </Button>
+            {/if}
+          </div>
+        </div>
+
+        {#if isOpen}
+          <div class="space-y-2 border-t border-border/50 pt-3">
+            <span class={cn(text.section)}>{i18n.t("github.pr.review")}</span>
+            <Textarea placeholder={i18n.t("github.pr.reviewBody")} bind:value={reviewBody} rows={2} />
+            <div class="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-emerald-600 dark:text-emerald-400" onclick={() => submitReview("approve")}>
+                <CheckIcon class="size-3.5" /> {i18n.t("github.pr.approve")}
+              </Button>
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-red-600 dark:text-red-400" onclick={() => submitReview("request-changes")}>
+                <XIcon class="size-3.5" /> {i18n.t("github.pr.requestChanges")}
+              </Button>
+              <Button variant="outline" size="sm" disabled={busy || !reviewBody.trim()} onclick={() => submitReview("comment")}>
+                {i18n.t("github.pr.comment")}
+              </Button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
+            <Combobox
+              value={mergeMethod}
+              groups={[{ items: [
+                { value: "squash", label: i18n.t("github.pr.methodSquash") },
+                { value: "merge", label: i18n.t("github.pr.methodMerge") },
+                { value: "rebase", label: i18n.t("github.pr.methodRebase") },
+              ] }]}
+              triggerClass="w-52"
+              onChange={(v) => (mergeMethod = v as typeof mergeMethod)}
+            />
+            <label class="flex items-center gap-1.5 text-[13px]">
+              <Switch checked={deleteBranch} onCheckedChange={(v) => (deleteBranch = v)} />
+              {i18n.t("github.pr.deleteBranch")}
+            </label>
+            <div class="flex-1"></div>
+            <Button size="sm" disabled={busy} onclick={requestMerge}>{i18n.t("github.pr.merge")}</Button>
+          </div>
+        {/if}
+
+        <ConfirmDialog
+          bind:open={mergeConfirmOpen}
+          title={i18n.t("github.confirm.mergeTitle")}
+          description={i18n.t("github.confirm.mergeDesc", { n: pr.number })}
+          confirmLabel={i18n.t("github.pr.merge")}
+          onconfirm={mergePr}
+        />
+      </div>
     {/if}
   </div>
 {/snippet}
@@ -1441,9 +1556,9 @@
           </Button>
         </div>
       {/snippet}
-      <div class="space-y-3">
+      <div class="space-y-4">
         {#if showCreateIssue}
-          <div class={cn("space-y-2 p-3", panel.card)}>
+          <div class={cn("space-y-2 p-4", panel.card)}>
             <Input placeholder={i18n.t("github.pr.titleLabel")} bind:value={newIssueTitle} />
             <Textarea placeholder={i18n.t("github.pr.bodyLabel")} bind:value={newIssueBody} rows={4} />
             <div class="flex justify-end gap-2">
@@ -1452,14 +1567,15 @@
             </div>
           </div>
         {/if}
+        {@render searchField(issueSearch, (v) => { issueSearch = v; debouncedLoadIssues(); }, i18n.t("github.issue.searchPlaceholder"))}
         {#if github.issuesLoading}
           {@render loadingRow()}
         {:else if github.issues.length === 0}
-          <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 px-6 py-12 text-center">
+          <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 px-6 py-14 text-center">
             <CircleDotIcon class={cn(icon.empty, "text-muted-foreground/60")} />
             <p class={cn(text.subheading)}>{issueState === "open" ? i18n.t("github.issue.emptyOpen") : i18n.t("github.issue.empty")}</p>
             {#if issueState !== "all"}
-              <Button variant="outline" size="sm" onclick={() => { issueState = "all"; void github.loadIssues("all"); }}>
+              <Button variant="outline" size="sm" onclick={() => { issueState = "all"; void github.loadIssues("all", issueSearch.trim() || null); }}>
                 {i18n.t("github.viewAll")}
               </Button>
             {/if}
@@ -1467,16 +1583,22 @@
         {:else}
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.issues as issue (issue.number)}
-              <button class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50" onclick={() => selectIssue(issue.number)}>
-                <CircleDotIcon class="size-4 shrink-0 text-emerald-500" />
-                <div class="min-w-0 flex-1">
+              {@const IssueIcon = issueStateIcon(issue.state)}
+              <button class="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-accent/50" onclick={() => selectIssue(issue.number)}>
+                <IssueIcon class={cn("size-4 shrink-0", issueStateIconClass(issue.state))} />
+                <div class="min-w-0 flex-1 space-y-0.5">
                   <div class={cn("truncate", text.bodyStrong)}>{issue.title}</div>
                   <div class={cn("truncate text-muted-foreground", text.meta)}>
-                    #{issue.number}{issue.author ? ` · ${issue.author}` : ""}{issue.comments ? ` · ${i18n.t("github.issue.comments", { n: issue.comments })}` : ""}
+                    #{issue.number}{issue.author ? ` · ${issue.author}` : ""}{issue.updatedAt ? ` · ${agoLong(issue.updatedAt)}` : ""}
                   </div>
                 </div>
                 {#each issue.labels.slice(0, 3) as label (label)}{@render pill(label, "muted")}{/each}
-                <ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/50" />
+                {#if issue.comments > 0}
+                  <span class={cn("inline-flex shrink-0 items-center gap-1 text-muted-foreground", text.indicator)}>
+                    <MessageSquareIcon class="size-3.5" />{issue.comments}
+                  </span>
+                {/if}
+                <ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
               </button>
             {/each}
           </div>
@@ -1498,26 +1620,21 @@
     {:else if issueDetail}
       {@const issue = issueDetail}
       {@const issueOpen = issue.state.toUpperCase() === "OPEN"}
+      {@const IssueIcon = issueStateIcon(issue.state)}
       <div class="flex items-start gap-2.5">
-        {#if issueOpen}
-          <CircleDotIcon class="mt-0.5 size-5 shrink-0 text-emerald-500" />
-        {:else}
-          <CheckCircle2Icon class="mt-0.5 size-5 shrink-0 text-purple-500" />
-        {/if}
+        <IssueIcon class={cn("mt-0.5 size-5 shrink-0", issueStateIconClass(issue.state))} />
         <div class="min-w-0 flex-1">
           <h2 class={cn(text.heading, "break-words")}>{issue.title}</h2>
-          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div class="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
             {@render pill(
               issueOpen ? i18n.t("github.issue.stateOpen") : i18n.t("github.issue.stateClosed"),
               issueOpen ? "ok" : "merged",
             )}
-            <span class={cn("text-muted-foreground", text.meta)}>#{issue.number}{issue.author ? ` · ${issue.author}` : ""}</span>
+            <span class={cn("text-muted-foreground", text.meta)}>
+              #{issue.number}{issue.author ? ` · ${issue.author}` : ""}{issue.createdAt ? ` · ${i18n.t("github.openedAgo", { rel: agoLong(issue.createdAt) })}` : ""}{issue.updatedAt && issue.updatedAt !== issue.createdAt ? ` · ${i18n.t("github.editedAgo", { rel: agoLong(issue.updatedAt) })}` : ""}
+            </span>
           </div>
         </div>
-        <Button variant="outline" size="sm" disabled={busy} onclick={() => developIssue(issue.number)}>
-          <GitBranchIcon class={icon.button} />
-          {i18n.t("github.issue.startWork")}
-        </Button>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(issue.url)} aria-label={i18n.t("github.openOnGitHub")}>
           <ExternalLinkIcon class={icon.button} />
         </Button>
@@ -1531,7 +1648,7 @@
       <!-- Timeline: description + comments + events (labeled/assigned/closed/…),
            GitHub-style vertical rail, then a comment field. -->
       <div class={cn("overflow-hidden", panel.card)}>
-        <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-3.5 py-2", text.section)}>
+        <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-4 py-2.5", text.section)}>
           <MessageSquareIcon class="size-3.5" />{i18n.t("github.pr.conversation")}
         </div>
         {@render timelineRail(
@@ -1544,11 +1661,27 @@
             issue.comments.map((c) => mkEvent({ event: "commented", actor: c.author, createdAt: c.createdAt, body: c.body })),
           ),
           issueTimelineLoading,
+          null,
+          null,
         )}
+        <!-- Reply + issue tools (close/reopen, start-work) at the bottom. -->
         <div class="space-y-2.5 border-t border-border/50 p-4">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={issueCommentBody} rows={2} />
-          <div class="flex justify-end">
+          <div class="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={busy || !issueCommentBody.trim()} onclick={postIssueComment}>{i18n.t("github.pr.postComment")}</Button>
+            <div class="flex-1"></div>
+            <Button variant="outline" size="sm" disabled={busy} title={i18n.t("github.issue.startWorkTip")} onclick={() => developIssue(issue.number)}>
+              <GitBranchIcon class={icon.button} />{i18n.t("github.issue.startWork")}
+            </Button>
+            {#if issueOpen}
+              <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-purple-600 dark:text-purple-400" onclick={toggleIssueState}>
+                <CheckCircle2Icon class="size-3.5" />{i18n.t("github.issue.close")}
+              </Button>
+            {:else}
+              <Button variant="outline" size="sm" disabled={busy} onclick={toggleIssueState}>
+                <CircleDotIcon class="size-3.5" />{i18n.t("github.issue.reopen")}
+              </Button>
+            {/if}
           </div>
         </div>
       </div>

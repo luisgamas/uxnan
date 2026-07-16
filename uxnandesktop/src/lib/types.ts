@@ -844,6 +844,7 @@ export interface PrListItem {
   reviewDecision: string | null;
   updatedAt: string | null;
   checksSummary: CheckSummary;
+  checks: CheckItem[];
 }
 
 /** A changed file within a PR. */
@@ -902,6 +903,8 @@ export interface TimelineEvent {
   subject: string | null;
   /** A cross-referenced issue/PR number. */
   refNumber: number | null;
+  /** Whether a `committed` event's commit signature is verified. */
+  verified: boolean | null;
 }
 
 /** Full PR detail for the review center tab. */
@@ -922,6 +925,7 @@ export interface PrDetail {
   mergeStateStatus: string | null;
   reviewDecision: string | null;
   createdAt: string | null;
+  updatedAt: string | null;
   labels: string[];
   files: PrFile[];
   checks: CheckItem[];

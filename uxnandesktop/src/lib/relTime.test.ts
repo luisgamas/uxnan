@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { relTime } from "./relTime";
+import { relTime, relTimeLong } from "./relTime";
 
 describe("relTime", () => {
   const now = 1_700_000_000_000;
@@ -25,5 +25,26 @@ describe("relTime", () => {
 
   it("clamps a future timestamp to 'now'", () => {
     expect(relTime(now + 10_000, now)).toBe("now");
+  });
+});
+
+describe("relTimeLong", () => {
+  const now = 1_700_000_000_000;
+
+  it("formats English 'N unit ago' by largest unit", () => {
+    expect(relTimeLong(now - 86_400_000, now, "en")).toBe("1 day ago");
+    expect(relTimeLong(now - 3 * 86_400_000, now, "en")).toBe("3 days ago");
+    expect(relTimeLong(now - 2 * 3_600_000, now, "en")).toBe("2 hours ago");
+    expect(relTimeLong(now - 5 * 60_000, now, "en")).toBe("5 minutes ago");
+  });
+
+  it("localizes to Spanish", () => {
+    expect(relTimeLong(now - 86_400_000, now, "es")).toBe("hace 1 día");
+    expect(relTimeLong(now - 2 * 86_400_000, now, "es")).toBe("hace 2 días");
+  });
+
+  it("switches to months/years past 30/365 days", () => {
+    expect(relTimeLong(now - 45 * 86_400_000, now, "en")).toBe("1 month ago");
+    expect(relTimeLong(now - 400 * 86_400_000, now, "en")).toBe("1 year ago");
   });
 });
