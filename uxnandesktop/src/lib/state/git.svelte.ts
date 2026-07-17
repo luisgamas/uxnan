@@ -132,19 +132,23 @@ class GitStore {
     }
     this.loading = true;
     try {
-      this.files = (await gitStatus(path)).map(classify);
+      const files = (await gitStatus(path)).map(classify);
+      if (this.path !== path) return;
+      this.files = files;
       void this.loadNumstat(path);
       const st = await worktreeStatus(path);
+      if (this.path !== path) return;
       this.ahead = st.ahead;
       this.behind = st.behind;
       // Keep the project card badge in sync (e.g. after a commit clears it).
       projects.setStatus(path, st);
     } catch (e) {
+      if (this.path !== path) return;
       this.error = msg(e);
       toastError(e);
       this.files = [];
     } finally {
-      this.loading = false;
+      if (this.path === path) this.loading = false;
     }
   }
 
