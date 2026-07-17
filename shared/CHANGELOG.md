@@ -3,7 +3,7 @@
 All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.0.6-alpha.20260716] - 2026-07-16
 
 ### Added — profile metrics (`metrics/*`) contract
 - **Three new JSON-RPC methods** (`src/jsonrpc/methods.ts` + `METHOD_NAMES`, now

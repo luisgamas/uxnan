@@ -129,18 +129,22 @@ connected to live bridge data, validated on-device against a real bridge.
   dedicated Theme Manager (single/dual-brightness themes, live-preview grid,
   multi-select bulk delete/export, JSON import/export); language (EN/ES, follows
   device or picker); notification preferences.
-- **In-app update checker** (code-complete; *no silent install*) — check on
-  launch/resume throttled by a **configurable interval** (every launch / 6h / 12h
-  / 24h default / 48h / weekly / monthly), the installed **current version**, a
-  *Check now* action, and an **in-section download → install** flow in
-  **Settings → Updates** (plus the dismissible *Update available* banner on
-  Threads, in sync). Android = Play In-App Update **flexible** flow (background
-  download with real % + in-app install); iOS = App Store version lookup (`dio`
-  iTunes) + StoreKit `SKStoreProductViewController` overlay. Single package
-  `in_app_update_flutter` behind a guarded `AppUpdateService`. **Not yet
-  device-verified** (Android needs a Play open-testing (beta) track build — Play
-  only reports updates for Play-distributed builds; iOS needs an App Store
-  listing) — see below.
+- **In-app update checker** (*no silent install*) — check on launch/resume
+  throttled by a **configurable interval** (every launch / 6h / 12h / 24h default
+  / 48h / weekly / monthly), the installed **current version**, a *Check now*
+  action, and an **in-section download → install** flow in **Settings → Updates**
+  (plus the dismissible *Update available* banner on Threads, in sync). Android =
+  Play In-App Update **flexible** flow (background download with real % + in-app
+  install); iOS = App Store version lookup (`dio` iTunes) + StoreKit
+  `SKStoreProductViewController` overlay. Single package `in_app_update_flutter`
+  behind a guarded `AppUpdateService`. A flexible update is **resumable**: the
+  download outlives the app that starts it, so a check re-reads the stage Play
+  reports (`AppUpdateStatus.installStage`) and picks the flow back up — an update
+  left downloaded returns as *Install now*, and a pending one bypasses the check
+  interval on every foreground. **Partially device-verified** (Android: the first
+  real Play test exposed the stuck-flow bug now fixed — see `CHANGELOG.md`; the
+  fixed flow still needs a full re-run on a Play build. iOS is inert until the
+  App Store listing exists) — see below.
 - **i18n** — full app translated (EN + ES) via `flutter gen-l10n`.
 
 iOS is **not yet built** (the Podfile is generated on the first macOS build) and is
@@ -229,7 +233,7 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       `GOOGLE_SERVICES_JSON`, `PLAY_SERVICE_ACCOUNT_JSON_BASE64`). What remains is
       executing the first tagged release and confirming the Play upload.
 - [ ] **In-app version checker — on-device verification.** The checker is
-      **code-complete** (`infrastructure/updates/app_update_service.dart` +
+      implemented (`infrastructure/updates/app_update_service.dart` +
       `presentation/providers/update_providers.dart`, wrapping
       `in_app_update_flutter`): an interval-throttled check on launch/resume
       (configurable: every launch / 6h / 12h / 24h default / 48h / weekly /
@@ -238,11 +242,16 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       dismissible *Update available* banner on the threads list, in sync). Android
       drives the **Play In-App Update** API (**flexible** flow: background download
       with real % + in-app install); iOS looks up the **App Store** version
-      (`dio`) and presents the store page via StoreKit. **Still pending:** Android
-      In-App Updates only report a real update from a build installed via **Google
-      Play** — verify against a **Play open-testing (beta) track** build (a
-      sideloaded APK always reports "no update"). The iOS path is inert until the
-      App Store listing exists (`FOR-HUMAN.md`).
+      (`dio`) and presents the store page via StoreKit. The first real Play run
+      surfaced the **stuck-flow bug** (a started update could never be finished and
+      then read as "up to date"), fixed with the resume path — see `CHANGELOG.md`.
+      **Still pending:** re-run the **whole** Android flow on a **Play
+      open-testing (beta) track** build (a sideloaded APK always reports "no
+      update"), covering what unit tests can't: that a real *Install now*
+      **restarts into the new version**; that an update left downloaded comes back
+      as installable after force-stopping the app; and that killing the app
+      mid-download still resumes. The iOS path is inert until the App Store
+      listing exists (`FOR-HUMAN.md`).
 - [ ] **APK / GitHub-Releases update channel** (not built) — for users on a
       sideloaded `.apk` (no Play), poll the GitHub Releases API and show the same
       banner with a download/install action. `in_app_update_flutter` does **not**

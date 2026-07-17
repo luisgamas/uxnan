@@ -146,15 +146,37 @@ class AppUpdateService {
 
   Future<AppUpdateStatus> _checkAndroid() async {
     final info = await _androidCheck();
+    // Play reports `updateAvailable` only for an update we have *not* started
+    // yet. The moment the flexible flow is triggered it flips to
+    // `developerTriggeredUpdateInProgress` and stays there while the APK
+    // downloads and while it sits downloaded-but-not-installed — across app
+    // restarts, until the install actually completes. (Play's own contract
+    // gives this away: `installStatus` is "defined only if updateAvailability
+    // returns DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS".)
+    //
+    // Both values mean the same thing to a user: the newer version is not
+    // installed yet. Counting only the first as available made a half-applied
+    // update report "up to date" forever, hiding the very banner that offers
+    // the install and stranding the downloaded APK on the device.
+    final availability = info.updateAvailability;
     final available =
-        info.updateAvailability == UpdateAvailabilityAndroid.updateAvailable;
+        availability == UpdateAvailabilityAndroid.updateAvailable ||
+            availability ==
+                UpdateAvailabilityAndroid.developerTriggeredUpdateInProgress;
     final local = await _localVersion();
     return AppUpdateStatus(
       channel: UpdateChannel.playStore,
       updateAvailable: available,
       localVersion: local,
+      // Play defines the version code while an update is available or in
+      // progress, and returns "an arbitrary value" when none is — so it is
+      // only read when an update is really in play. The plugin narrows this
+      // further and only forwards it for `updateAvailable`, so a resumed
+      // in-progress update legitimately has no version to show; the UI already
+      // falls back to a version-less message.
       storeVersion: available ? info.availableVersionCode?.toString() : null,
       flexibleAllowed: info.isFlexibleUpdateAllowed,
+      installStage: _mapInstallStatus(info.installStatus),
     );
   }
 
@@ -236,21 +258,31 @@ class AppUpdateService {
   AppInstallProgress _mapInstallState(InstallStateAndroid state) {
     final total = state.totalBytesToDownload;
     final fraction = total > 0 ? state.bytesDownloaded / total : null;
-    final stage = switch (state.status) {
-      InstallStatusAndroid.pending => AppInstallStage.downloading,
-      InstallStatusAndroid.downloading => AppInstallStage.downloading,
-      InstallStatusAndroid.downloaded => AppInstallStage.downloaded,
-      InstallStatusAndroid.installing => AppInstallStage.installing,
-      InstallStatusAndroid.installed => AppInstallStage.installed,
-      InstallStatusAndroid.failed => AppInstallStage.failed,
-      InstallStatusAndroid.canceled => AppInstallStage.canceled,
-      InstallStatusAndroid.unknown => AppInstallStage.idle,
-    };
+    final stage = _mapInstallStatus(state.status);
     return AppInstallProgress(
       stage: stage,
       fraction: stage == AppInstallStage.downloading ? fraction : null,
     );
   }
+
+  /// Maps a Play install status onto the platform-agnostic [AppInstallStage].
+  ///
+  /// Shared by the live install-state stream and the `appUpdateInfo` snapshot
+  /// read on every check, so a resumed update and a streamed one describe
+  /// themselves identically. `pending` folds into [AppInstallStage.downloading]
+  /// (Play has accepted the update and will fetch it shortly — to the user it
+  /// is the same wait).
+  static AppInstallStage _mapInstallStatus(InstallStatusAndroid status) =>
+      switch (status) {
+        InstallStatusAndroid.pending => AppInstallStage.downloading,
+        InstallStatusAndroid.downloading => AppInstallStage.downloading,
+        InstallStatusAndroid.downloaded => AppInstallStage.downloaded,
+        InstallStatusAndroid.installing => AppInstallStage.installing,
+        InstallStatusAndroid.installed => AppInstallStage.installed,
+        InstallStatusAndroid.failed => AppInstallStage.failed,
+        InstallStatusAndroid.canceled => AppInstallStage.canceled,
+        InstallStatusAndroid.unknown => AppInstallStage.idle,
+      };
 
   /// Starts the Play flexible (background-download) update flow (Android).
   /// Returns null on success or a human-readable error string on failure.

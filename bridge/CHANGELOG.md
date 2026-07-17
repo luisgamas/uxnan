@@ -27,6 +27,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - Covered by `test/handlers/params.test.ts` (8 tests, dispatched through the real
   router with `params` omitted exactly as the phone sends it).
 
+## [0.0.6-alpha.20260716] - 2026-07-16
+
 ### Fixed — activity day buckets are timezone-stable
 - The `metrics/get` `activity[].day` bucket key is now **UTC midnight of the
   bridge host's local calendar date** (`utcDayKey`, was the local-midnight
