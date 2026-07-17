@@ -1666,8 +1666,8 @@ dependencies:
   path_provider: ^2.1.3
 
   # Criptografia
-  cryptography: ^2.7.0
-  cryptography_flutter: ^2.3.2
+  cryptography: ^2.9.0
+  cryptography_flutter: ^2.3.4 # Auto-registered by Flutter
   pointycastle: ^3.9.1
 
   # UI

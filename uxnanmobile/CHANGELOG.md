@@ -4,6 +4,14 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Performance
+
+- Updated `cryptography` to `2.9.0` and `cryptography_flutter` to `2.3.4`, whose
+  auto-registered Flutter plugin enables native E2EE acceleration without the
+  deprecated manual bootstrap call.
+
 ## [0.0.8-alpha.20260716] - 2026-07-16
 
 ### Changed — one loading language across the whole app

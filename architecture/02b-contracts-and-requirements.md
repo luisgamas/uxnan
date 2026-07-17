@@ -581,12 +581,15 @@ Todos los paquetes listados son compatibles con Android e iOS. Se priorizan los 
 | Paquete | Version min. | Rol |
 |---|---|---|
 | `pointycastle` | ^3.9.0 | AES-256-GCM, HKDF, SHA-256 — puro Dart |
-| `cryptography` | ^2.7.0 | X25519, Ed25519, HKDF — con fallback nativo |
-| `cryptography_flutter` | ^2.3.0 | Aceleracion nativa de cryptography en iOS y Android |
+| `cryptography` | ^2.9.0 | X25519, Ed25519, HKDF — con fallback nativo |
+| `cryptography_flutter` | ^2.3.4 | Aceleracion nativa auto-registrada en iOS y Android |
 
 La combinacion `cryptography` + `cryptography_flutter` usa:
 - iOS: CryptoKit (Swift) para X25519 y Ed25519
 - Android: Android Keystore / JCE
+
+Flutter registra automaticamente `cryptography_flutter`; la app no debe agregar
+inicializacion criptografica manual durante el arranque.
 
 ### 2.6 UI y componentes visuales
 
