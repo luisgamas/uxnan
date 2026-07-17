@@ -16,7 +16,7 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**, **user quick commands**). 183 Rust backend tests + 166 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+engine**, **user quick commands**). 179 Rust backend tests + 166 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -26,8 +26,9 @@ mobile pairing) is NOT started.**
   backups + sequential schema migrations).
 - **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
-  regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
-  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
+  regions (each terminal's xterm instance stays alive and is **re-parented** on a
+  move — registry in `src/lib/terminal/instances.ts`; nothing is replayed),
+  `Ctrl+Tab` MRU cycling, and the Kitty/CSI-u keyboard protocol. Tabs can be
   **renamed** (free-form label for terminals/diffs, persisted; on-disk rename for
   file tabs via `fs_rename`, with an extension-change warning) and **closed all at
   once** per active workspace.
@@ -204,25 +205,21 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       modifiers. Needs validation against a real Kitty-protocol TUI. The base
       protocol (negotiation + disambiguate / event-types / all-keys) is
       implemented in `src/lib/terminal/keyboardProtocol.ts`.
-- [ ] Fully unmount hidden xterm instances and rely solely on the backend ring
-      buffer, replaying on show. **Partially done:** hidden panes now release their
-      **WebGL/GPU context** (attached on reveal, `WEBGL_lose_context`-released on
-      hide — `Terminal.svelte`) so background terminals no longer exhaust WebView2's
-      ~16 live-context budget; but the xterm instance itself stays mounted (streaming
-      into its in-memory buffer via the DOM fallback). Tearing the whole xterm down
-      when hidden — relying only on `pty_snapshot` to repaint on show — would further
-      cut memory for many background terminals, at the cost of a replay on every show.
 - [ ] **Workspace lifecycle — active indicator + sleep/hibernate.** Surface which
       projects/worktrees have a *live* space (open terminals) vs an empty one — an
       indicator on the project/worktree cards, so it's obvious where terminals are
       running and which space is completely empty. Add a **"Sleep workspace"**
       action (+ shortcut) that closes every tab of a workspace and frees its
-      resources (kill the PTYs + drop the xterm renderers) to reclaim memory on a
-      machine with many active projects. Complements the hidden-renderer disposal
-      above (that trims per-tab memory; this drops a whole workspace at once). Wire
-      into the card context menu (`RowActionsMenu`) and the keyboard-shortcut set;
-      the workspace store already keys terminals per worktree path, so "which
-      workspaces have tabs" is derivable from `terminals.workspaces`.
+      resources (kill the PTYs + drop the xterm instances) to reclaim memory on a
+      machine with many active projects. Complements the built-in per-pane trims
+      (hidden panes already release their WebGL/GPU context, and each terminal's
+      scrollback is capped at 5 000 lines; this drops a whole workspace at once).
+      Wire into the card context menu (`RowActionsMenu`) and the keyboard-shortcut
+      set; the workspace store already keys terminals per worktree path, so "which
+      workspaces have tabs" is derivable from `terminals.workspaces`. (Note: the
+      old idea of unmounting hidden xterms and replaying a backend ring buffer on
+      show is off the table — raw-byte replay of a TUI stream proved unsound and
+      the ring buffer was removed; terminals keep one live xterm per tab.)
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
@@ -338,7 +335,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 183 Rust + 166 Vitest tests.
+  deferred with Apple). 179 Rust + 166 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

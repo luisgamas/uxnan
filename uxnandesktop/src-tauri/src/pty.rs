@@ -8,14 +8,16 @@
 //! events; tests wire them to channels, so the manager needs no `AppHandle` and
 //! is unit-testable.
 //!
-//! Hidden-tab back-pressure (the spec's ring buffer + snapshot/restore): every
-//! session keeps a bounded [`OutputBuffer`] of its most recent raw output. The
-//! webview still keeps each xterm mounted so live output is retained
-//! client-side, but when a pane's xterm *is* recreated — e.g. a tab dragged to
-//! another region remounts its Svelte component — the frontend replays
-//! [`snapshot`](PtyManager::snapshot) so no scrollback is lost. See `FOR-DEV.md`.
+//! The backend retains no output history. The frontend keeps every terminal's
+//! xterm instance alive for the tab's whole life and re-parents its DOM element
+//! on pane moves (`src/lib/terminal/instances.ts`), so scrollback lives — once,
+//! authoritatively — in xterm's buffer and there is nothing to snapshot or
+//! replay. (The previous raw-output ring buffer existed to repaint recreated
+//! xterms; replaying a TUI's raw byte stream was unsound — it could start
+//! mid-escape-sequence and raced live output — and was removed with the
+//! recreate-on-move model itself.)
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -27,59 +29,6 @@ use crate::error::AppError;
 /// Shared child handle: the reader/waiter threads, `close`/`close_all` and the
 /// pid scan all need it, so it lives behind an `Arc<Mutex<…>>`.
 type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
-
-/// Cap on each session's retained output (256 KiB). Enough to repaint a
-/// remounted xterm with its visible screen plus a few thousand lines of recent
-/// scrollback, while bounding per-terminal memory regardless of how much a
-/// runaway agent prints. Oldest bytes are dropped first (the buffer is marked
-/// *stale* once that happens).
-const OUTPUT_BUFFER_CAPACITY: usize = 256 * 1024;
-
-/// A bounded ring of a session's most recent raw output bytes. Trimming from the
-/// front can cut mid-escape-sequence; xterm re-syncs on the next full repaint,
-/// so a snapshot is best-effort, not byte-perfect, once `stale` is set.
-struct OutputBuffer {
-    bytes: VecDeque<u8>,
-    capacity: usize,
-    /// True once the cap forced us to drop the oldest bytes — the snapshot then
-    /// no longer holds the session's full history.
-    stale: bool,
-}
-
-impl OutputBuffer {
-    fn new(capacity: usize) -> Self {
-        Self {
-            bytes: VecDeque::new(),
-            capacity,
-            stale: false,
-        }
-    }
-
-    /// Append a chunk, evicting the oldest bytes to stay within `capacity`.
-    fn push(&mut self, chunk: &[u8]) {
-        // A single chunk larger than the cap: keep only its tail.
-        let chunk = if chunk.len() > self.capacity {
-            self.stale = true;
-            &chunk[chunk.len() - self.capacity..]
-        } else {
-            chunk
-        };
-        let overflow = (self.bytes.len() + chunk.len()).saturating_sub(self.capacity);
-        if overflow > 0 {
-            self.stale = true;
-            self.bytes.drain(..overflow);
-        }
-        self.bytes.extend(chunk.iter().copied());
-    }
-
-    /// Contiguous copy of the retained bytes plus whether history was dropped.
-    fn snapshot(&self) -> (Vec<u8>, bool) {
-        (self.bytes.iter().copied().collect(), self.stale)
-    }
-}
-
-/// Shared output ring: the reader thread appends to it and `snapshot` reads it.
-type SharedBuffer = Arc<Mutex<OutputBuffer>>;
 
 /// Parameters to spawn a new PTY. `id` is chosen by the frontend so it can
 /// subscribe to the output event before any bytes are produced.
@@ -97,14 +46,12 @@ pub struct PtySpec {
     pub rows: u16,
 }
 
-/// One live pseudoterminal: the master handle (for resize), its writer (stdin),
-/// the child process (for kill), and a bounded ring of recent output (for
-/// snapshot/restore when a pane's xterm is recreated).
+/// One live pseudoterminal: the master handle (for resize), its writer (stdin)
+/// and the child process (for kill).
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: SharedChild,
-    buffer: SharedBuffer,
 }
 
 /// Owns all live PTY sessions for the app, keyed by frontend-chosen id.
@@ -119,9 +66,10 @@ impl PtyManager {
     /// ends or the PTY closes. The frontend chooses `id` *before* calling so it
     /// can subscribe to the output event with no risk of missing early bytes.
     /// Returns `true` when a fresh session was spawned, `false` when one with
-    /// this id already existed (the call is then a no-op). The frontend uses
-    /// that to tell a first mount (fresh shell) from a remount onto a live PTY
-    /// (where it replays [`snapshot`](Self::snapshot) to restore scrollback).
+    /// this id already existed (the call is then a no-op). Since the frontend
+    /// keeps xterm instances alive across pane moves, `false` only happens when
+    /// the webview reloaded over a live backend (dev/HMR); the frontend then
+    /// nudges the PTY with a row-bounce resize to make the running app repaint.
     pub fn create<FOut, FExit>(
         &self,
         spec: PtySpec,
@@ -175,24 +123,20 @@ impl PtyManager {
             .take_writer()
             .map_err(|e| AppError::Pty(e.to_string()))?;
         let child: SharedChild = Arc::new(Mutex::new(child));
-        let buffer: SharedBuffer = Arc::new(Mutex::new(OutputBuffer::new(OUTPUT_BUFFER_CAPACITY)));
 
         // Blocking reads run on a dedicated OS thread (portable-pty's reader is
-        // not async). It appends each chunk to the bounded ring (for snapshot)
-        // and streams it on; it ends when the PTY closes. It no longer signals
-        // exit, because on Windows ConPTY read-EOF is unreliable (it can fire
-        // during a full-screen agent's teardown, or *not* fire when the shell
-        // exits). Exit is detected by waiting on the child instead.
-        let buffer_for_reader = buffer.clone();
+        // not async). Each chunk streams straight to the sink (the frontend's
+        // live xterm buffer is the only retained copy); it ends when the PTY
+        // closes. It does not signal exit, because on Windows ConPTY read-EOF
+        // is unreliable (it can fire during a full-screen agent's teardown, or
+        // *not* fire when the shell exits). Exit is detected by waiting on the
+        // child instead.
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(n) => {
-                        buffer_for_reader.lock().unwrap().push(&buf[..n]);
-                        on_output(&buf[..n]);
-                    }
+                    Ok(n) => on_output(&buf[..n]),
                     Err(_) => break,
                 }
             }
@@ -220,22 +164,9 @@ impl PtyManager {
                 master: pair.master,
                 writer,
                 child,
-                buffer,
             },
         );
         Ok(true)
-    }
-
-    /// Snapshot of a session's retained output: the most recent bytes (capped at
-    /// [`OUTPUT_BUFFER_CAPACITY`]) plus whether older history was dropped
-    /// (`stale`). `None` for an unknown id. The frontend replays this to repaint
-    /// a recreated xterm (e.g. after a tab is dragged to another region).
-    pub fn snapshot(&self, id: &str) -> Option<(Vec<u8>, bool)> {
-        self.sessions
-            .lock()
-            .unwrap()
-            .get(id)
-            .map(|s| s.buffer.lock().unwrap().snapshot())
     }
 
     /// Write user input to the PTY's stdin.
@@ -342,41 +273,6 @@ mod tests {
     }
 
     #[test]
-    fn output_buffer_retains_within_capacity() {
-        let mut buf = OutputBuffer::new(8);
-        buf.push(b"abc");
-        buf.push(b"de");
-        let (bytes, stale) = buf.snapshot();
-        assert_eq!(bytes, b"abcde");
-        assert!(!stale, "no eviction yet");
-    }
-
-    #[test]
-    fn output_buffer_evicts_oldest_and_marks_stale() {
-        let mut buf = OutputBuffer::new(4);
-        buf.push(b"abcd");
-        buf.push(b"ef"); // pushes out "ab"
-        let (bytes, stale) = buf.snapshot();
-        assert_eq!(bytes, b"cdef");
-        assert!(stale, "eviction must mark the buffer stale");
-    }
-
-    #[test]
-    fn output_buffer_keeps_tail_of_oversized_chunk() {
-        let mut buf = OutputBuffer::new(4);
-        buf.push(b"abcdefgh");
-        let (bytes, stale) = buf.snapshot();
-        assert_eq!(bytes, b"efgh");
-        assert!(stale);
-    }
-
-    #[test]
-    fn snapshot_unknown_pty_is_none() {
-        let mgr = PtyManager::default();
-        assert!(mgr.snapshot("missing").is_none());
-    }
-
-    #[test]
     fn create_write_read_close_lifecycle() {
         let mgr = PtyManager::default();
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
@@ -409,10 +305,6 @@ mod tests {
         .expect("pty should spawn");
 
         assert_eq!(mgr.len(), 1);
-        assert!(
-            mgr.snapshot("t1").is_some(),
-            "a live session has a snapshot"
-        );
 
         // Type a command whose echo contains a unique marker (interactive shells
         // echo input, so the marker appears regardless of the shell).
@@ -444,13 +336,6 @@ mod tests {
         assert!(
             seen.contains("uxnan_pty_marker"),
             "expected the echoed marker in PTY output, got: {seen:?}"
-        );
-
-        // The same output is retained in the ring buffer for snapshot/restore.
-        let (snap, _stale) = mgr.snapshot("t1").expect("snapshot");
-        assert!(
-            String::from_utf8_lossy(&snap).contains("uxnan_pty_marker"),
-            "snapshot should hold the recent output"
         );
 
         mgr.write("t1", "exit\r\n").ok();

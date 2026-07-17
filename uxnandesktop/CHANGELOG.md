@@ -24,6 +24,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   attach) or a full-viewport `refresh`. The atlas is now managed exclusively by
   xterm. (`src/lib/components/Terminal.svelte`.)
 
+### Changed — terminal panes re-parent one live xterm; raw-output snapshot/replay removed
+
+- **A terminal's xterm now lives as long as its tab.** Instances (buffer, parser
+  state, scrollback, addons, Kitty/CSI-u keyboard state, PTY event wiring) are kept
+  in a registry keyed by terminal id (`src/lib/terminal/instances.ts`) — the VS Code
+  model. `Terminal.svelte` is now purely the *view*: on mount it **adopts** the
+  instance (re-parents its DOM element into the pane) and on unmount it **parks** it;
+  the instance is disposed only when the tab no longer exists in any workspace.
+  Dragging a tab to another region — which remounts the Svelte component — no longer
+  recreates the terminal: the same element moves, nothing is restored, and PTY events
+  keep streaming into the live buffer even during the move (subscriptions live on the
+  instance), so no output is ever missed.
+- **Removed: the backend raw-output ring buffer and `pty_snapshot` (91 → 90
+  registered commands).** Replaying a full-screen TUI's raw byte stream into a fresh xterm was
+  unsound by construction — the ring could start mid-escape-sequence (parser desync →
+  dropped/garbled cells), the replay raced live `pty:output` events (`reset()` could
+  wipe bytes that arrived between snapshot and replay), xterm's auto-replies to
+  queries embedded in the replayed bytes had to be suppressed (`replaying` flag), and
+  ConPTY drops a same-size resize so the TUI never repainted over the damage. With
+  live instances the mechanism has no reason to exist, so it was deleted rather than
+  patched: `OutputBuffer` + `PtyManager::snapshot` + the `pty_snapshot` command and
+  its per-chunk buffering (a mutex lock on every PTY read) are gone. The backend
+  suite drops its 4 buffer/snapshot tests (**179 tests**).
+- `pty_create` returning `false` now has exactly one meaning: the webview reloaded
+  over a live backend (dev/HMR) — in-app remounts never respawn. For that case the
+  frontend sends a **row-bounce resize nudge** (ConPTY has no reattach protocol and
+  drops a same-size resize), so the running app repaints its screen instead of the
+  pane sitting empty until the next byte.
+
 ### Fixed — agent detection: non-agent processes mislabeled as agents (Layer 3)
 
 - **A non-agent command that spawns an agent CLI as a background helper no longer
