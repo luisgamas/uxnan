@@ -3,7 +3,7 @@
 All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.0.7-alpha.20260716] - 2026-07-16
 
 ### Fixed — an omitted `params` no longer fails methods whose fields are all optional
 - **`metrics/export` with no passphrase now works.** JSON-RPC 2.0 makes the
