@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — smooth thread-delete animation
+- Deleting a conversation now animates the tile out instead of making it vanish
+  abruptly. On confirm, the card dims and floats the app's shape-morphing
+  `PolygonLoader` over it, then fades and collapses its height (≈320 ms, Material
+  3 Expressive easing) so the rows below slide up smoothly. The database delete
+  is committed only **after** the card has animated away, so the list mutates
+  while the slot is already invisible (no jarring pop). Honours the platform
+  "reduce motion" setting — the row is dropped without the animation. Applies to
+  both the active and archived thread lists.
+
 ### Changed — crypto libraries bumped to latest; native-backend activation documented
 - Bumped the crypto dependencies to their latest published versions:
   `cryptography` `^2.7.0` → `^2.9.0` and `cryptography_flutter` `^2.3.0` →

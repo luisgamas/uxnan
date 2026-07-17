@@ -617,6 +617,26 @@ When swipe-to-dismissing an item:
 - Maximum neighbor displacement: 8–12 dp
 - Neighbor animation: `spatialDefault` (k=700, ζ=0.90)
 
+#### Deleting a List Item (fade → collapse → commit)
+
+When a row is deleted from a data-driven list (the thread list is the canonical
+case, `presentation/screens/threads/thread_tile.dart`), animate the row out
+**before** the underlying source drops it, so the list never pops:
+
+- On confirm, put the row in a *deleting* state: dim the card to ~0.4 opacity,
+  ignore pointer input, and float the shared `PolygonLoader` over it (the app's
+  one loading language — never a bare `CircularProgressIndicator`).
+- Play a single controller (~320 ms): **fade** the card over the first half
+  (`Interval(0, 0.5, easeOut)`), then **collapse** its height over the second
+  half (`Interval(0.3, 1, easeInOut)`, `SizeTransition` anchored
+  `Alignment.topCenter`) so the rows below slide up under it.
+- Commit the data mutation (e.g. the cascading repository delete) **only after**
+  the animation completes — the source list then rebuilds while this slot is
+  already invisible, so no neighbour jumps.
+- Give each row a stable `ValueKey(id)` so its animation state follows the item
+  rather than the list index, and honour `MediaQuery.disableAnimations` by
+  dropping the row without the transition.
+
 #### Expandable Cards
 
 - Expansion with `spatialSlow` (k=300, ζ=0.90) to maximize the sense of inertia
