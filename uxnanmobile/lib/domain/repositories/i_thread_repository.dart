@@ -15,11 +15,13 @@ abstract class IThreadRepository {
   /// Inserts or updates [thread].
   Future<void> saveThread(Thread thread);
 
-  /// Deletes the thread with the given [id].
+  /// Deletes the thread with the given [id] and all of its dependent rows
+  /// (messages, turns, composer draft, git action log) in one transaction.
   Future<void> deleteThread(String id);
 
-  /// Deletes every thread belonging to [deviceId] (a paired PC), along with
-  /// their messages and turns. Used when removing a device.
+  /// Deletes every thread belonging to [deviceId] (a paired PC), along with all
+  /// of their dependent rows (messages, turns, composer drafts, git action
+  /// logs). Used when removing a device.
   Future<void> deleteThreadsByDeviceId(String deviceId);
 
   /// Emits the thread list whenever it changes, optionally filtered by

@@ -26,6 +26,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   format (12-byte nonce + 16-byte GCM tag) is unchanged, so the native backend
   interoperates byte-for-byte with the bridge.
 
+### Fixed — deleting a thread now removes its dependent rows
+- Deleting a single thread (tile long-press / conversation menu) previously
+  removed only the thread row and left every dependent row behind forever. The
+  `messages`, `turns`, `composer_drafts` and `git_action_log` tables all key off
+  `threadId` with no database cascade, so those orphans were never re-synced or
+  garbage-collected — the local SQLite DB grew unbounded with dead data and the
+  message / git-action counts were inflated by rows with no thread. `deleteThread`
+  now clears all four child tables and the thread in a single transaction, so a
+  delete leaves nothing behind (mirrors the device-wide `deleteThreadsByDeviceId`
+  path).
+- Extended `deleteThreadsByDeviceId` (the "remove device" path) to also clear
+  `composer_drafts` and `git_action_log`; it previously wiped only `messages` and
+  `turns`, leaking the same two tables when a whole PC was unpaired.
+
 ## [0.0.8-alpha.20260716] - 2026-07-16
 
 ### Changed — one loading language across the whole app
