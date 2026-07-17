@@ -399,6 +399,17 @@ anchored M3 popup menu with two icon-and-label rows. A bottom sheet is reserved
 for a future larger action set; persistent turn context is not mixed into this
 menu.
 
+**Slash-command palette:**
+Typing `/` or `@` opens an auxiliary surface 8 dp above the composer. Both use
+the same elevated `surfaceContainerHigh`, conventional rounded rectangle and
+header structure: a 36 dp primary-container trigger (`/` or `@`) followed by
+the palette title. This shared hierarchy makes them sibling extensions while
+their rows remain task-specific. Slash commands form a continuous list with
+56 dp minimum targets, 40 dp neutral icon surfaces, names and one-line
+descriptions; workspace rows retain their navigation and loading states.
+Neither palette turns every entry into a card, and both follow the composer's
+reduced-motion setting.
+
 Reasoning/run-option and approval controls live as a tightly left-aligned icon
 group in a compact horizontal shelf above the pill. Each keeps a 48 dp touch
 target around a 38 dp neutral circular surface with a 24 dp glyph, matching the

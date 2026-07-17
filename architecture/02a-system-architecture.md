@@ -1275,6 +1275,13 @@ ConversationScreen
     └── ApprovalRequestOverlay
 ```
 
+El `AutocompleteOverlay` presenta `/` y `@` como superficies auxiliares
+hermanas 8 dp por encima del composer. Comparten superficie tonal elevada,
+geometria, ancho y una cabecera con el trigger y el titulo. `/` usa filas
+continuas de al menos 56 dp con icono contenido, nombre y descripcion; `@`
+conserva sus filas y estados de navegacion, busqueda, carga y error. Ambos
+respetan reduced motion.
+
 #### 5.6.2 Composer avanzado
 
 ```dart

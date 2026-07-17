@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Composer palettes share a clear auxiliary hierarchy
+- Gave the `/` command and `@` workspace palettes the same M3 container,
+  8 dp separation from the prompt pill and explicit trigger header. They read
+  as sibling extensions above the composer without appearing fused into it.
+- Command rows now provide a minimum 56 dp target, contained 40 dp neutral icon
+  surfaces and clearer name/description hierarchy. Appearance follows the
+  composer's reduced-motion setting. Filtering, workspace navigation, agent
+  commands, prompt templates and insertion behavior are unchanged.
+
 ### Changed — Git history and commit details use a cleaner review hierarchy
 - Preserved commit history as a flat list so its functional branch graph stays
   continuous and readable; commits were not converted into cards. Rows now use
