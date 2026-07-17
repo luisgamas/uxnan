@@ -4,6 +4,7 @@
   // work. The status bar is hidden in settings mode to give the content more
   // room. Close with the back button, the gear in the title bar, or Escape.
 
+  import { onDestroy, onMount } from "svelte";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as HoverCard from "$lib/components/ui/hover-card";
   import { Button } from "$lib/components/ui/button";
@@ -11,6 +12,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
+  import { registerFlush, unregisterFlush } from "$lib/state/flushRegistry";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { AI_COMMIT_AGENTS } from "$lib/aiCommitPresets";
@@ -87,14 +89,37 @@
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  // Whether a debounced (typed) write is still waiting to hit disk — so a window
+  // close can flush it, and the flush stays a no-op when nothing is pending.
+  let persistPending = false;
   function schedulePersist() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => void app.persistSettings(), 400);
+    persistPending = true;
+    saveTimer = setTimeout(() => {
+      persistPending = false;
+      void app.persistSettings();
+    }, 400);
   }
   function persistNow() {
     clearTimeout(saveTimer);
+    persistPending = false;
     void app.persistSettings();
   }
+
+  /** Force the pending (debounced) settings write immediately — called on window
+   *  close so an edit typed within the debounce window isn't dropped. A no-op when
+   *  nothing is pending. (The panel closing on its own is safe: the timer still
+   *  fires after unmount, so only a full quit needs this.) */
+  async function flushSettings(): Promise<void> {
+    clearTimeout(saveTimer);
+    if (!persistPending) return;
+    persistPending = false;
+    await app.persistSettings();
+  }
+  // Only registered while the panel is mounted (the sole time a pending debounce
+  // can exist). Not clearing the timer on destroy is deliberate — see above.
+  onMount(() => registerFlush("settings", flushSettings));
+  onDestroy(() => unregisterFlush("settings"));
 
   function close() {
     app.settingsOpen = false;

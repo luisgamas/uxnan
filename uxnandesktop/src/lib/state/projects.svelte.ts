@@ -31,6 +31,7 @@ import type {
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
+import { registerFlush } from "$lib/state/flushRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import {
   resolveCommandCwd,
@@ -427,10 +428,22 @@ class ProjectsStore {
     }, 1500);
   }
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Force the pending (debounced) workspace-recency stamp immediately — called
+   *  on window close so a just-switched workspace's last-active time isn't lost.
+   *  A no-op when no stamp is pending. */
+  private async flushLastActive(): Promise<void> {
+    if (this.persistTimer === null) return;
+    clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    await app.persistSettings();
+  }
   private worktreeRefreshInFlight = false;
 
   /** Load every repo's worktrees (called once after the app hydrates). */
   async init(): Promise<void> {
+    // Force the pending workspace-recency stamp on window close (idempotent id).
+    registerFlush("workspace-last-active", () => this.flushLastActive());
     await Promise.all(app.repos.map((r) => this.loadWorktrees(r.id)));
   }
 

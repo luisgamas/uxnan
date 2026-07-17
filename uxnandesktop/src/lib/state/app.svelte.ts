@@ -5,6 +5,7 @@
 // worktrees and settings on disk; here we hold the live copy the UI binds to.
 
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getAppState,
   getClaudeHooksStatus,
@@ -29,6 +30,7 @@ import {
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
 import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
+import { flushAll } from "$lib/state/flushRegistry";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
 import { currentOS } from "$lib/platform";
@@ -263,6 +265,9 @@ class AppStore {
   /** Hydrate from the backend: confirm liveness, then load persisted state. */
   async init(): Promise<void> {
     this.watchSystemTheme();
+    // Track whether the terminal layout was already restored, so a throw *after*
+    // the successful restore can't wipe it back to the default (see the catch).
+    let restored = false;
     try {
       await ping();
       const data = await getAppState();
@@ -272,6 +277,7 @@ class AppStore {
       this.backend = "ready";
       this.errorMessage = null;
       terminals.restore(data.terminalLayout ?? null);
+      restored = true;
       // Re-attach the orchestration engine to its durable runs (spec 02d §3).
       orchestrationRun.hydrate(data.orchestrationRuns ?? null);
       this.syncAgentCommands();
@@ -280,13 +286,17 @@ class AppStore {
     } catch (err) {
       this.backend = "error";
       this.errorMessage = err instanceof Error ? err.message : String(err);
-      // Still hydrate (with the default layout) so terminals render even when
-      // the backend is unreachable (e.g. the web preview).
-      terminals.restore(null);
+      // Still hydrate (with the default layout) so terminals render even when the
+      // backend is unreachable (e.g. the web preview) — but never overwrite an
+      // already-restored layout: a post-restore throw would otherwise replace it
+      // with the default, which the debounced persist then writes to disk for good.
+      if (!restored) terminals.restore(null);
     }
     // Route URLs the backend decides to open internally to the browser tab
     // (independent of backend health above; a no-op without the Tauri event bus).
     void this.listenOpenUrl();
+    // Flush pending debounced writes when the window is asked to close.
+    void this.listenCloseRequested();
   }
 
   /** Route backend `browser:open-url` events to the integrated browser tab. Fired
@@ -304,6 +314,33 @@ class AppStore {
       });
     } catch {
       // No Tauri event bus (web preview) — nothing to route.
+    }
+  }
+
+  /** Flush pending debounced writes (terminal layout, orchestration runs,
+   *  workspace-recency stamps) before the window actually closes, so a change
+   *  made inside a debounce window at quit time isn't dropped. `preventDefault`
+   *  holds the close, then `destroy()` closes for real (it does not re-fire this
+   *  handler). Wrapped in try/catch so the web preview (no Tauri window) — where
+   *  debounced writes are best-effort — keeps working. */
+  private async listenCloseRequested(): Promise<void> {
+    try {
+      const win = getCurrentWindow();
+      let closing = false;
+      await win.onCloseRequested(async (event) => {
+        if (closing) return; // re-entry guard
+        closing = true;
+        event.preventDefault(); // hold the close while we flush
+        try {
+          await flushAll();
+        } finally {
+          // Always close, even if a flush threw — never trap the user in an
+          // unclosable window; the cost is a lost write in that rare case.
+          await win.destroy();
+        }
+      });
+    } catch {
+      // No Tauri window (web preview) — debounced writes are best-effort there.
     }
   }
 

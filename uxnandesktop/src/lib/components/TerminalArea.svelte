@@ -5,6 +5,7 @@
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { setTerminalLayout } from "$lib/api";
+  import { registerFlush, unregisterFlush } from "$lib/state/flushRegistry";
   import { dropPayload } from "$lib/terminal/terminalDrop";
   import {
     terminals,
@@ -78,8 +79,22 @@
 
   let unlistenDrop: (() => void) | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  // Latest layout awaiting the debounced write, or null when nothing is pending.
+  // Held so a window close can flush it before the webview is torn down.
+  let pendingLayout: ReturnType<typeof terminals.serialize> | null = null;
+
+  /** Force the pending layout write immediately (called on window close). A no-op
+   *  when nothing is pending. */
+  async function flushLayout(): Promise<void> {
+    clearTimeout(saveTimer);
+    if (!pendingLayout) return;
+    const snapshot = pendingLayout;
+    pendingLayout = null;
+    await setTerminalLayout(snapshot);
+  }
 
   onMount(async () => {
+    registerFlush("terminal-layout", flushLayout);
     // Native file drag-and-drop: insert the dropped paths into the terminal the
     // cursor is over (falls back to the active terminal).
     try {
@@ -93,6 +108,7 @@
     }
   });
   onDestroy(() => {
+    unregisterFlush("terminal-layout");
     unlistenDrop?.();
     clearTimeout(saveTimer);
   });
@@ -103,7 +119,9 @@
     const snapshot = terminals.serialize();
     if (!terminals.hydrated) return;
     clearTimeout(saveTimer);
+    pendingLayout = snapshot;
     saveTimer = setTimeout(() => {
+      pendingLayout = null;
       void setTerminalLayout(snapshot);
     }, 500);
   });

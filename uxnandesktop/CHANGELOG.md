@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
+
+- **Pending (debounced) saves of the terminal layout, orchestration runs,
+  workspace-recency stamps and typed Settings edits are now flushed when the
+  window closes**, so a split, a tab move, a run edit, a workspace switch or a
+  Settings field typed within the debounce window right before quitting is no
+  longer silently lost. A small flush registry
+  (`src/lib/state/flushRegistry.ts`) lets every debounced-persist site force its
+  pending write, and the main window's `onCloseRequested` handler holds the close
+  (`preventDefault`), runs every registered flush, then closes for real
+  (`destroy`). The web preview (no Tauri window) is unaffected — its debounced
+  writes stay best-effort. Previously nothing listened for the window close and
+  `TerminalArea`'s `onDestroy` merely *cleared* the pending timer, dropping the
+  write.
+- **A startup error can no longer replace an already-restored terminal layout
+  with the default.** `app.init()` now tracks whether the layout was restored and
+  only falls back to the default when the restore itself failed; a throw *after* a
+  successful restore previously wiped the layout, which the debounced persist then
+  wrote to disk permanently.
+
 ### Fixed — stale Git status responses cannot overwrite the active worktree
 
 - **Changes panel: a slow status response from a previously selected worktree
