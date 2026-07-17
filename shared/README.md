@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/validation-Ajv-000000?style=for-the-badge&logo=json&logoColor=white)
-![Contracts](https://img.shields.io/badge/60_methods_%7C_8_notifications-blue?style=for-the-badge)
+![Contracts](https://img.shields.io/badge/66_methods_%7C_8_notifications-blue?style=for-the-badge)
 
 Shared JSON-RPC and E2EE contracts for the [Uxnan](../README.md) ecosystem — the
 single source of truth every component agrees on. Consumed as a local workspace
@@ -90,8 +90,9 @@ and [`src/jsonrpc/notifications.ts`](src/jsonrpc/notifications.ts)
 §1.2 / §1.4. Per `AGENTS.md` → *Spec drift control*, any change here MUST be
 reflected in the spec in the same change set.
 
-## Publish (planned)
+## Published
 
-`@uxnan/shared` is published to npm **first**; `uxnan-bridge` and `uxnan-relay`
-then pin `"@uxnan/shared": "^0.x"` instead of the `"*"` workspace spec they
-use today. See `bridge/FOR-DEV.md` → *Packaging*.
+`@uxnan/shared` is published to npm; `uxnan-bridge` and `uxnan-relay`
+then pin `"@uxnan/shared": "^0.x"` — the release workflow replaces the
+`"*"` workspace spec with the exact published version at build time.
+See `bridge/FOR-DEV.md` → *Packaging*.

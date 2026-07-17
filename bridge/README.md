@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-60_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-66_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -106,7 +106,7 @@ prerequisites, and [`docs/agents.md`](docs/agents.md) for the details.
 ## Install
 
 ```bash
-npm install -g uxnan-bridge   # (planned — published as a global package)
+npm install -g uxnan-bridge
 ```
 
 ## CLI

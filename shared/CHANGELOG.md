@@ -3,6 +3,11 @@
 All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Docs
+- Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
+
 ## [0.0.6-alpha.20260716] - 2026-07-16
 
 ### Added — profile metrics (`metrics/*`) contract
