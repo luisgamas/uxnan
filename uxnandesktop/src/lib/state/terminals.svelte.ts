@@ -1104,9 +1104,10 @@ class TerminalStore {
   /** Move a tab to a position in a (possibly different) region — the tab-strip
    *  drag & drop. `toIndex` is the insertion slot in the target region (clamped;
    *  omitted = append). Within a region this just reorders (no remount). Across
-   *  regions the tab's component remounts, transparently restoring from the
-   *  backend snapshot (terminals) or reopening by path (files); a region left
-   *  empty by the move collapses. */
+   *  regions the tab's Svelte component remounts, but a terminal's live xterm
+   *  instance survives and is re-parented into the new pane (see
+   *  `$lib/terminal/instances`) — nothing is restored or replayed; files reopen
+   *  by path. A region left empty by the move collapses. */
   moveTab(tabId: string, toGroupId: string, toIndex?: number): void {
     if (!this.root) return;
     const fromGroup = groupOfTab(this.root, tabId);

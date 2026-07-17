@@ -1,39 +1,36 @@
-<script lang="ts" module>
-  // Terminal ids that have already been sent their agent launch command. Module
-  // scope (shared across mounts) so a remount never re-types the command into an
-  // already-running agent.
-  const launchedIds = new Set<string>();
-
-  /** Read CSI parameter `i` as a non-negative integer, or `def` when absent.
-   *  (xterm hands sub-parameters as `number[]`; the keyboard sequences here
-   *  never use them, so those are treated as absent.) */
-  function numParam(params: (number | number[])[], i: number, def: number): number {
-    const v = params[i];
-    return typeof v === "number" && v >= 0 ? v : def;
-  }
-</script>
-
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { Terminal } from "@xterm/xterm";
-  import { FitAddon } from "@xterm/addon-fit";
+  import type { Terminal } from "@xterm/xterm";
+  import type { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
-  import { LigaturesAddon } from "@xterm/addon-ligatures";
-  import { WebLinksAddon } from "@xterm/addon-web-links";
   import "@xterm/xterm/css/xterm.css";
-  import { openUrl } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { clipboardRead, clipboardWrite } from "$lib/clipboard";
   import { terminals } from "$lib/state/terminals.svelte";
-  import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { app } from "$lib/state/app.svelte";
-  import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
+  import {
+    acquireInstance,
+    adoptInstance,
+    releaseInstance,
+    disposeInstance,
+    requestPtyResize,
+    spawnPty,
+    type TerminalInstance,
+  } from "$lib/terminal/instances";
   import { arbitrateTerminalKey, isMac, type ArbiterContext } from "$lib/keybindings";
   import { runAppAction } from "$lib/keyactions";
   import { terminalKeyboard } from "$lib/state/terminalKeyboard.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
+
+  // This component is the VIEW of a terminal: it adopts the persistent xterm
+  // instance for `id` (see `$lib/terminal/instances`), parents its element into
+  // this pane, and drives everything visibility-shaped — fit/resize, the GPU
+  // renderer's lifecycle, repaints, focus, theme. The xterm itself (buffer,
+  // parser, PTY event wiring) lives on the instance and SURVIVES this component:
+  // dragging a tab to another region remounts the component but only re-parents
+  // the same DOM element, so nothing is replayed and no output is ever missed.
+  // The instance is disposed here only when its tab no longer exists.
 
   // Effective terminal appearance (general theme base + per-terminal overrides:
   // font, size, line height, spacing, weight, ligatures, cursor, ANSI colors).
@@ -62,21 +59,15 @@
     onexit?: () => void;
   } = $props();
 
-  // Shell output is debounced before typing an agent command so profile scripts
-  // can finish drawing their prompt. Quiet shells still launch via the fallback.
-  const RUN_COMMAND_QUIET_MS = 160;
-  const RUN_COMMAND_FALLBACK_MS = 1800;
-
   let el: HTMLDivElement;
+  let inst: TerminalInstance | undefined;
   let term: Terminal | undefined;
   let fit: FitAddon | undefined;
-  // Kept when the WebGL renderer is active so a resize/reveal can force a clean
-  // repaint (clearing the glyph atlas) and drop any stale frame.
-  let renderer: WebglAddon | undefined;
-  // Kitty/CSI-u keyboard protocol state for this terminal. Dormant until an app
-  // running in the PTY negotiates it; see `keyboardProtocol.ts`.
-  const kbd = new KeyboardProtocol();
-  let unlisteners: UnlistenFn[] = [];
+  // Identifies THIS mount as the instance's adopter. During a drag remount
+  // Svelte may run the new mount before the old unmount, so every teardown
+  // effect is gated on still being the current adopter.
+  const mountToken = Symbol("terminal-mount");
+  let destroyed = false;
   let resizeObserver: ResizeObserver | undefined;
   // Pending animation frames: the settled-grid fit loop, and the post-fit repaint.
   let stableFitRaf: number | null = null;
@@ -84,25 +75,11 @@
   // Tracks display:none → shown transitions so a revealed pane repaints even when
   // its grid size is unchanged (a hidden canvas can keep its pre-hide pixels).
   let wasVisible = false;
-  // Last size sent to the PTY — we only resize on a real change, so a redundant
-  // resize doesn't fire SIGWINCH and make a full-screen agent TUI repaint/jump.
-  let lastCols = 0;
-  let lastRows = 0;
-  let launchTimer: ReturnType<typeof setTimeout> | undefined;
-  let ptyReady = false;
-  // True only while replaying a snapshot into a remounted xterm. xterm auto-replies
-  // to any DSR/DA1/color queries embedded in the replayed bytes via `onData`; those
-  // replies must NOT reach the live shell (they'd land as stray input), so `onData`
-  // is suppressed while this is set.
-  let replaying = false;
   // Debounced release of a hidden pane's GPU context (see `releaseRenderer`): a
   // hidden terminal drops its scarce WebGL context so many background terminals
   // never exhaust WebView2's live-context budget. Debounced so a rapid tab flick
   // doesn't thrash attach/release.
   let releaseTimer: ReturnType<typeof setTimeout> | undefined;
-  // Timestamp of the last WebGL context loss, to tell a one-off loss (recover) from
-  // a rapid re-loss (we're over the context budget — stay on DOM, don't thrash).
-  let webglLossAt = 0;
 
   // --- Copy / paste --------------------------------------------------------
   function copySelection() {
@@ -148,6 +125,8 @@
   // is preserved. Reaching into `_core._renderService` is guarded: if a future xterm
   // renames it, the optional chaining makes this a no-op instead of throwing. This is
   // the same workaround VS Code and other xterm embedders use for this exact gate.
+  // (Verified against the installed xterm 6.0.0: `RenderService._isPaused` and
+  // `_pausedResizeTask` are still the fields driving the gate.)
   // Returns true when it actually un-paused (so callers can repaint).
   function forceRenderResume(): boolean {
     if (!term) return false;
@@ -170,10 +149,10 @@
   }
 
   // One clean full-viewport redraw on the next frame, used after an ordinary grid
-  // resize. It does NOT clear the glyph texture atlas: a resize doesn't invalidate
-  // glyph bitmaps, and xterm shares one atlas between same-config terminals, so
-  // clearing here would garble other panes mid-stream (xterm #4480). The plain
-  // `refresh` also drives the DOM fallback.
+  // resize. It does NOT touch the glyph texture atlas: the atlas is shared across
+  // same-config terminals and clearing it desyncs every other pane's render model
+  // (xterm #4480) — it is managed exclusively by xterm. The plain `refresh` also
+  // drives the DOM fallback.
   function forceRepaint() {
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     repaintRaf = requestAnimationFrame(() => {
@@ -188,20 +167,25 @@
   }
 
   // Repaint on a genuine hidden→visible reveal. A hidden canvas can keep its
-  // pre-hide pixels and the atlas can be stale, so here — and ONLY here — we clear
-  // the texture atlas before the full redraw. Atlas clearing is confined to real
-  // reveals precisely because the atlas is shared across same-config terminals;
-  // doing it on every resize/refocus would wipe glyphs other panes are mid-drawing.
+  // pre-hide pixels, so the whole viewport is redrawn through them.
+  //
+  // The texture atlas is NEVER cleared here (or anywhere else). xterm shares ONE
+  // glyph atlas per font config across every terminal with that config — still
+  // true in xterm 6 (`CharAtlasCache`) — and `clearTextureAtlas()` wipes those
+  // shared pages while resyncing only the CALLING terminal's render model
+  // (`WebglRenderer.clearTextureAtlas` clears `_model` + redraws just its own
+  // viewport; `TextureAtlas.clearTexture` never sets `_requestClearModel`, unlike
+  // the page-merge path). Every OTHER live terminal keeps per-cell references into
+  // the recycled pages and permanently draws the WRONG glyphs in any row it doesn't
+  // repaint — a full-screen agent's scrolled-off transcript, exactly the reported
+  // corruption ("memoria" → "mamoria"). A reveal needs no atlas clear anyway: glyph
+  // bitmaps don't go stale while a pane is hidden, and a reveal either attaches a
+  // fresh renderer (fresh model) or full-refreshes the existing one below.
   function revealRepaint() {
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     repaintRaf = requestAnimationFrame(() => {
       repaintRaf = null;
       if (!term) return;
-      try {
-        renderer?.clearTextureAtlas();
-      } catch {
-        // Renderer swapped or disposed — the refresh below still repaints.
-      }
       try {
         term.refresh(0, Math.max(0, term.rows - 1));
       } catch {
@@ -221,10 +205,14 @@
   // ResizeObserver, so a revealed pane never re-syncs on its own — we drive it here
   // so scrolling reaches the true extent immediately, without moving the user's
   // position. Mirrors xterm's own recompute: re-measure the now-visible cell size,
-  // then queue a scroll-area sync (`_viewport.queueSync`, xterm 6's replacement for
-  // the old `syncScrollArea`). Internal fields, guarded with optional chaining: a
-  // future xterm rename becomes a no-op instead of throwing (same posture as
-  // `forceRenderResume`), and a keypress would still re-sync as a last resort.
+  // then sync the scroll area via `viewport.syncScrollArea()` — verified against
+  // the installed xterm 6.0.0: the Viewport lives at `core.viewport`
+  // (browser/Terminal.ts) and `syncScrollArea` is its sync method, the same one
+  // xterm calls on dimension changes; a previously-used `_viewport.queueSync`
+  // never existed in 6.0 and silently no-opped. Internal fields, guarded with
+  // optional chaining: a future xterm rename becomes a no-op instead of throwing
+  // (same posture as `forceRenderResume`), and a keypress still re-syncs as a
+  // last resort.
   function syncViewport() {
     // Only while genuinely visible: measuring/syncing against a 0×0 hidden pane
     // would re-cache the stale (zero) scroll area we're trying to fix. A later
@@ -237,7 +225,7 @@
       // real dimensions rather than the zero a hidden pane may have cached.
       core?._charSizeService?.measure?.();
       // Recompute the scroll area + scrollbar against the current buffer length.
-      core?._viewport?.queueSync?.();
+      core?.viewport?.syncScrollArea?.();
     } catch {
       // xterm internals renamed / terminal disposed — no-op (a keypress re-syncs).
     }
@@ -250,41 +238,44 @@
   // browser starts evicting them — new terminals then get an immediately-lost
   // context (a blank pane) and the loss/recover cycle thrashes the compositor. So
   // WebGL is bound to the visible pane and released on hide (`releaseRenderer`).
+  // The addon handle lives on the INSTANCE (it survives a drag remount along with
+  // its canvas — a GPU context is not lost by re-parenting the DOM).
   //
   // On context loss we recover from a genuine one-off (WebView2 dropping the context
   // while a divider is dragged) by reattaching next frame, but NOT from a rapid
   // re-loss — that means we're over the context budget, so we stay on the DOM
   // fallback and let the next reveal reattach once contexts have been freed.
   function attachRenderer() {
-    if (!term || renderer || !hasVisibleGeometry()) return;
+    if (!inst || !term || inst.renderer || !hasVisibleGeometry()) return;
+    const owner = inst;
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => {
         const now = Date.now();
-        const rapid = now - webglLossAt < 2000;
-        webglLossAt = now;
+        const rapid = now - owner.webglLossAt < 2000;
+        owner.webglLossAt = now;
         disposeRenderer(webgl);
         if (!rapid) {
           requestAnimationFrame(() => {
-            if (term && !renderer) attachRenderer();
+            if (term && inst && !inst.renderer) attachRenderer();
             forceRepaint();
           });
         }
       });
       term.loadAddon(webgl);
-      renderer = webgl;
+      owner.renderer = webgl;
     } catch {
       // WebGL unavailable — xterm falls back to the DOM renderer.
-      renderer = undefined;
+      owner.renderer = undefined;
     }
   }
 
   // Dispose the accelerated addon defensively. xterm's WebGL disposer reaches into
   // the terminal core (to swap back to the DOM renderer), which throws if the core
   // is mid-teardown (unmount / HMR races); an uncaught throw there would leave xterm
-  // with no renderer at all — a blank pane. Swallow it and clear our handle.
-  function disposeRenderer(target: WebglAddon | undefined = renderer) {
-    if (renderer === target) renderer = undefined;
+  // with no renderer at all — a blank pane. Swallow it and clear the handle.
+  function disposeRenderer(target: WebglAddon | undefined = inst?.renderer) {
+    if (inst && inst.renderer === target) inst.renderer = undefined;
     try {
       target?.dispose();
     } catch {
@@ -300,10 +291,12 @@
   // zero the canvas, freeing the slot now. xterm keeps streaming into the buffer via
   // the DOM fallback while hidden, so no output is lost; the next reveal reattaches.
   function releaseRenderer() {
-    if (!renderer) return;
-    // Capture the WebGL canvas BEFORE dispose detaches it from the DOM.
-    const canvases = el ? Array.from(el.querySelectorAll("canvas")) : [];
-    disposeRenderer(renderer);
+    if (!inst?.renderer) return;
+    // Capture the WebGL canvas BEFORE dispose detaches it. Queried on the
+    // instance's wrapper (not `el`): the wrapper is where xterm's DOM lives, and
+    // it may already be re-parented away from this mount's `el`.
+    const canvases = Array.from(inst.wrapper.querySelectorAll("canvas"));
+    disposeRenderer(inst.renderer);
     if (releaseTimer) {
       clearTimeout(releaseTimer);
       releaseTimer = undefined;
@@ -326,10 +319,12 @@
     }
   }
 
-  // Fit the xterm grid to the pane, resize the PTY only on a real grid change,
-  // and repaint whenever the canvas dimensions actually changed.
+  // Fit the xterm grid to the pane, sync the PTY grid through the race-free
+  // path (`requestPtyResize` — pre-spawn requests are stashed and flushed after
+  // spawn, so the shell can never be left believing a stale grid), and repaint
+  // whenever the canvas dimensions actually changed.
   function applyFit() {
-    if (!term || !fit || !hasVisibleGeometry()) return;
+    if (!inst || !term || !fit || !hasVisibleGeometry()) return;
     const beforeCols = term.cols;
     const beforeRows = term.rows;
     const distanceFromBottom = term.buffer.active.baseY - term.buffer.active.viewportY;
@@ -339,13 +334,7 @@
       // Container not measurable yet; a later resize will retry.
       return;
     }
-    if (term.cols !== lastCols || term.rows !== lastRows) {
-      lastCols = term.cols;
-      lastRows = term.rows;
-      invoke("pty_resize", { id, cols: term.cols, rows: term.rows }).catch(
-        () => {},
-      );
-    }
+    requestPtyResize(inst, term.cols, term.rows);
     if (term.cols !== beforeCols || term.rows !== beforeRows) forceRepaint();
     if (distanceFromBottom > 0) {
       term.scrollToLine(Math.max(0, term.buffer.active.baseY - distanceFromBottom));
@@ -353,24 +342,6 @@
     // A settled fit means the pane is laid out and visible — a good moment to clear
     // any lingering paused-render latch that would otherwise leave it blank.
     forceRenderResume();
-  }
-
-  function scheduleAgentLaunch(delay = RUN_COMMAND_QUIET_MS) {
-    if (!runCommand || !ptyReady || launchedIds.has(id)) return;
-    if (launchTimer) clearTimeout(launchTimer);
-    launchTimer = setTimeout(async () => {
-      launchTimer = undefined;
-      try {
-        // Auto-run appends Enter; "type only" leaves the line for the user to run.
-        await invoke("pty_write", {
-          id,
-          data: runCommandExecute ? `${runCommand}\r` : runCommand,
-        });
-        launchedIds.add(id);
-      } catch {
-        // Leave the id retryable if the backend was not ready for this write.
-      }
-    }, delay);
   }
 
   // Re-fit only once the proposed grid stops changing between animation frames.
@@ -409,68 +380,58 @@
     stableFitRaf = requestAnimationFrame(tick);
   }
 
+  // Undo a mount that lost the setup race: the component was destroyed while an
+  // await in `onMount` was pending. Release ownership if we still hold it, and
+  // dispose the instance when its tab is gone from every workspace.
+  function abortMount() {
+    if (inst && inst.adopter === mountToken) {
+      releaseRenderer();
+      releaseInstance(id, mountToken);
+    }
+    if (terminals.workspaceOfTab(id) === undefined) disposeInstance(id);
+  }
+
   onMount(async () => {
     const t = app.resolveTerminal();
-    term = new Terminal({
-      cursorBlink: t.cursorBlink,
-      cursorStyle: t.cursorStyle,
-      fontSize: t.fontSize,
-      lineHeight: t.lineHeight,
-      letterSpacing: t.letterSpacing,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      fontWeight: t.fontWeight as never,
-      // Bounded scrollback caps per-terminal memory (hidden terminals stay
-      // mounted, so this is the effective limit on their retained output).
-      scrollback: 5000,
-      fontFamily: t.fontFamily,
-      theme: { ...t.theme },
+    const { inst: acquired, created } = await acquireInstance(id, el, () => ({
+      options: {
+        cursorBlink: t.cursorBlink,
+        cursorStyle: t.cursorStyle,
+        fontSize: t.fontSize,
+        lineHeight: t.lineHeight,
+        letterSpacing: t.letterSpacing,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        fontWeight: t.fontWeight as never,
+        fontFamily: t.fontFamily,
+        theme: { ...t.theme },
+      },
+      ligatures: t.ligatures,
+      webLinks: app.settings.browser?.terminalLinks ?? true,
+      spec: { cwd, shell, args, runCommand, runCommandExecute, env },
+    }));
+    if (destroyed) {
+      // The pane died while the instance was being built (rapid open/close or a
+      // drag racing creation). Nothing was spawned yet; drop what we made if the
+      // tab is gone. (If another mount adopted meanwhile, this is a no-op.)
+      abortMount();
+      return;
+    }
+    inst = acquired;
+    term = inst.term;
+    fit = inst.fit;
+    adoptInstance(inst, el, mountToken, {
+      // The write callback runs once bytes are parsed into the buffer: if xterm's
+      // render service latched this (visible) pane as paused, un-pause it so the
+      // output actually paints instead of leaving a blank pane with a cursor.
+      onOutput: () => forceRenderResume(),
+      onExit: () => onexit?.(),
     });
-    fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(el);
-    // Ligatures are loaded BEFORE the WebGL renderer, on purpose. xterm bakes its
-    // glyph texture atlas when WebGL activates; a ligatures addon loaded afterwards
-    // registers its character joiner too late to reach the already-baked atlas, so
-    // ligated glyphs render doubled/ghosted over their plain forms on ligature-heavy
-    // TUIs (Codex) — xterm #3303. Registering the character joiner first means the
-    // atlas is built with ligatures resolved from the very first frame. WebGL is
-    // still the renderer for ligatures (the WebGL renderer resolves joined ranges
-    // itself, the same path VS Code uses) — it must NOT fall back to the DOM
-    // renderer, which shapes text off the monospace grid and breaks mouse selection.
-    // The WebGL renderer itself is attached lazily, and only while the pane is
-    // visible (after the first fit + on every reveal), so hidden terminals don't hold
-    // a scarce GPU context. DOM stays the fallback only when WebGL is unavailable.
-    if (t.ligatures) {
-      try {
-        term.loadAddon(new LigaturesAddon());
-      } catch {
-        // Ligatures addon unavailable — glyphs still render, just without ligatures.
-      }
-    }
+    // An adopted instance may carry appearance from before this mount; re-apply
+    // the current resolved options so a theme change never waits for the next
+    // settings edit. (Fresh instances were just built from the same values.)
+    if (!created) applyAppearance();
 
-    // Make printed URLs clickable, routed through the integrated-browser link
-    // policy (in-app tab / OS browser / prompt). Gated on the setting; like
-    // ligatures, the choice applies to terminals created after it changes.
-    if (app.settings.browser?.terminalLinks ?? true) {
-      try {
-        term.loadAddon(
-          new WebLinksAddon((event, uri) => {
-            // Like VS Code: only Ctrl/Cmd-click follows a link; a plain click is
-            // just text selection (so links don't open by accident).
-            if (!event.ctrlKey && !event.metaKey) return;
-            event.preventDefault();
-            void openUrl(uri).catch(() => {});
-          }),
-        );
-      } catch {
-        // web-links addon unavailable — URLs just stay non-clickable.
-      }
-    }
-
-    // Layer 2 monitoring: agents that update the terminal title (OSC 0/2) report
-    // their state in it ("thinking…", "waiting for input", "done"); map it.
-    term.onTitleChange((title) => agentMonitor.noteTitle(id, title));
-
+    const kbd = inst.kbd;
     const ptyWrite = (data: string) => invoke("pty_write", { id, data }).catch(() => {});
 
     // Leader (tmux-style one-shot override): after the leader chord, the next key
@@ -516,7 +477,9 @@
     };
 
     // Custom key handling (everything else — Ctrl+←/→ word nav, Home/End, … —
-    // falls through to xterm's defaults and on to the PTY):
+    // falls through to xterm's defaults and on to the PTY). Re-attached on every
+    // mount (xterm keeps exactly one custom handler — attaching replaces the
+    // previous mount's):
     //  - The arbiter (`keybindings.ts`) decides app-shortcut vs TUI/agent per the
     //    user's per-action policy, with a leader one-shot override and a
     //    per-terminal focus (passthrough) mode; a resolved app action runs through
@@ -612,64 +575,12 @@
       return true;
     });
 
-    // Kitty/CSI-u protocol negotiation: an app enables/queries it via these
-    // prefixed `… u` sequences. The handlers update `kbd`'s flag stack; a query
-    // is answered straight back to the PTY. Registered only on this terminal's
-    // parser, disposed with it.
-    for (const handler of [
-      term.parser.registerCsiHandler({ prefix: "?", final: "u" }, () => {
-        ptyWrite(kbd.queryReply());
-        return true;
-      }),
-      term.parser.registerCsiHandler({ prefix: ">", final: "u" }, (params) => {
-        kbd.push(numParam(params, 0, 0));
-        return true;
-      }),
-      term.parser.registerCsiHandler({ prefix: "<", final: "u" }, (params) => {
-        kbd.pop(numParam(params, 0, 1));
-        return true;
-      }),
-      term.parser.registerCsiHandler({ prefix: "=", final: "u" }, (params) => {
-        kbd.set(numParam(params, 0, 0), numParam(params, 1, 1));
-        return true;
-      }),
-    ]) {
-      unlisteners.push(() => handler.dispose());
-    }
-
-    // Subscribe BEFORE spawning so no early output is missed. The write callback
-    // runs once the bytes are parsed into the buffer: if xterm's render service
-    // latched this (visible) pane as paused, un-pause it so the output we just wrote
-    // actually paints instead of leaving a blank pane with only a cursor.
-    unlisteners.push(
-      await listen<number[]>(`pty:output:${id}`, (e) => {
-        term?.write(new Uint8Array(e.payload), () => forceRenderResume());
-        agentMonitor.noteOutput(id);
-        scheduleAgentLaunch();
-      }),
-    );
-    unlisteners.push(
-      await listen(`pty:exit:${id}`, () => {
-        onexit?.();
-      }),
-    );
-
-    // Register onData BEFORE spawning the shell. On Windows, ConPTY/PowerShell emit a
-    // cursor-position query (DSR `ESC[6n`) at startup and BLOCK until the terminal
-    // replies; xterm generates that reply and delivers it here. If this handler were
-    // wired only after `pty_create` (as it used to be), the query — which arrives
-    // while we're still awaiting `pty_create` — would be parsed before onData exists,
-    // the reply would be dropped, and the shell would hang forever without ever
-    // printing its prompt (an intermittent blank pane). Wiring it first guarantees
-    // the reply is always sent. (`replaying` suppresses replies to queries embedded
-    // in a replayed snapshot so they don't leak into the live shell.)
-    term.onData((data) => {
-      if (replaying) return;
-      invoke("pty_write", { id, data }).catch(() => {});
-    });
-
     // Let the layout settle so the first fit measures real dimensions.
     await tick();
+    if (destroyed) {
+      abortMount();
+      return;
+    }
     fitToPane();
     // Now that the pane is laid out, bind the GPU renderer if it's the visible one.
     // A pane that mounts hidden (a background workspace/tab) stays on the DOM
@@ -684,63 +595,33 @@
       forceRenderResume();
     }
 
-    // `created` is false when the PTY already existed — i.e. this xterm is a
-    // *remount* onto a live session (e.g. the tab was dragged to another region,
-    // which recreates its Svelte component). Default to true on failure (web
-    // preview) so we don't chase a snapshot that can't exist.
-    let created = true;
-    let spawnFailed = false;
-    try {
-      created = await invoke<boolean>("pty_create", {
-        id,
-        cwd,
-        shell,
-        args,
-        env,
-        cols: term.cols || 80,
-        rows: term.rows || 24,
-      });
-      ptyReady = true;
-    } catch (e) {
-      // Only a real backend rejection means the shell failed to spawn (a missing
-      // shell / bad profile). Surface it in the pane instead of a silent black
-      // screen, and don't type the agent command into a dead PTY. In a plain web
-      // preview there's no Tauri backend at all — keep `created = true` there.
-      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-        spawnFailed = true;
-        const msg =
-          e && typeof e === "object" && "message" in e
-            ? String((e as { message: unknown }).message)
-            : String(e);
-        term?.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
-        term?.writeln(`\x1b[90m${msg}\x1b[0m`);
-      }
-    }
-
-    // Remount: replay the backend's retained output so the fresh xterm shows the
-    // scrollback it had before, instead of an empty screen until the next byte.
-    // `replaying` is held across the write so xterm's auto-replies to any queries in
-    // the replayed bytes don't leak into the live shell as stray input.
-    if (created === false) {
-      try {
-        const snap = await invoke<{ data: number[]; stale: boolean }>("pty_snapshot", { id });
-        if (snap.data.length) {
-          replaying = true;
-          term?.reset();
-          term?.write(new Uint8Array(snap.data), () => {
-            replaying = false;
-          });
+    // First-time setup only: spawn the PTY. Remounts adopt the live instance —
+    // its PTY, buffer and scrollback are simply still there; nothing to restore.
+    if (created) {
+      // Fit synchronously first (layout exists after `tick()`), so a visible
+      // pane spawns its PTY at the REAL settled grid instead of xterm's 80×24
+      // default — the shell's very first prompt is then laid out for the grid
+      // the user actually sees. (`fitToPane`'s frame-stability dance above is
+      // for divider drags; a hidden pane keeps the default and gets its resize
+      // on reveal through `requestPtyResize`.)
+      applyFit();
+      const res = await spawnPty(inst, term.cols || 80, term.rows || 24);
+      if (destroyed) {
+        // The tab closed while the spawn was in flight; its close path ran
+        // `pty_close` before the PTY existed, so close it here.
+        if (terminals.workspaceOfTab(id) === undefined) {
+          void invoke("pty_close", { id }).catch(() => {});
         }
-      } catch {
-        replaying = false;
-        // No snapshot (unknown id / not in Tauri) — keep the live stream only.
+        abortMount();
+        return;
       }
-    }
-
-    // Wait for shell output to settle before typing. PowerShell profiles often
-    // take longer than a fixed delay; the fallback covers a silent prompt.
-    if (runCommand && !spawnFailed && !launchedIds.has(id)) {
-      scheduleAgentLaunch(RUN_COMMAND_FALLBACK_MS);
+      if (res.error !== undefined) {
+        // Surface a real spawn failure (missing shell / bad profile) in the pane
+        // instead of a silent black screen; the agent command is never typed
+        // into a dead PTY (`spawnFailed` gates the launch).
+        term.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
+        term.writeln(`\x1b[90m${res.error}\x1b[0m`);
+      }
     }
 
     // Coalesce a burst of layout changes (divider drag, window resize) into a
@@ -757,11 +638,11 @@
           releaseTimer = undefined;
         }
         if (!wasVisible) {
-          // Revealed — reattach a GPU context (fresh atlas) and repaint through any
-          // stale pixels the hidden canvas kept.
+          // Revealed — reattach a GPU context (fresh render model) and repaint
+          // through any stale pixels the hidden canvas kept.
           attachRenderer();
           revealRepaint();
-        } else if (!renderer) {
+        } else if (!inst?.renderer) {
           // Still visible but the renderer was dropped by a recovered context loss —
           // bring WebGL back now that we can.
           attachRenderer();
@@ -806,10 +687,8 @@
     }
   });
 
-  // Re-apply appearance live when the theme or terminal overrides change. Font
-  // and color changes apply in place; toggling ligatures is only wired at mount
-  // (the ligatures addon isn't hot-swapped here), so that takes effect on next open.
-  $effect(() => {
+  /** Apply the current resolved appearance to the live terminal. */
+  function applyAppearance() {
     const t = termOpts;
     if (!term) return;
     term.options.theme = { ...t.theme };
@@ -820,23 +699,40 @@
     term.options.fontWeight = t.fontWeight as never;
     term.options.cursorStyle = t.cursorStyle;
     term.options.cursorBlink = t.cursorBlink;
+  }
+
+  // Re-apply appearance live when the theme or terminal overrides change. Font
+  // and color changes apply in place; toggling ligatures is only wired at instance
+  // creation (the ligatures addon isn't hot-swapped), so that takes effect on the
+  // next terminal.
+  $effect(() => {
+    void termOpts;
+    if (!term) return;
+    applyAppearance();
     fitToPane();
   });
 
   onDestroy(() => {
-    terminals.unregisterController(id);
-    terminalKeyboard.clear(id);
-    unlisteners.forEach((fn) => fn());
+    destroyed = true;
     resizeObserver?.disconnect();
     if (stableFitRaf !== null) cancelAnimationFrame(stableFitRaf);
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
-    if (launchTimer) clearTimeout(launchTimer);
     if (releaseTimer) clearTimeout(releaseTimer);
-    // Free the GPU context explicitly before disposing xterm: closing a tab must
-    // reclaim the WebGL slot now (not at GC time) so opening/closing many terminals
-    // never drifts toward WebView2's live-context budget.
-    releaseRenderer();
-    term?.dispose();
+    // Only the CURRENT adopter tears down shared per-terminal state: during a
+    // drag remount the new mount may already have adopted (and re-registered the
+    // controller / re-parented the element) before this unmount runs.
+    if (inst && inst.adopter === mountToken) {
+      terminals.unregisterController(id);
+      terminalKeyboard.clear(id);
+      // Free the GPU context explicitly now (not at GC time) so opening/closing
+      // and moving terminals never drifts toward WebView2's live-context budget.
+      releaseRenderer();
+      releaseInstance(id, mountToken);
+      if (terminals.workspaceOfTab(id) === undefined) {
+        // The tab is gone from every workspace — a real close, not a re-parent.
+        disposeInstance(id);
+      }
+    }
   });
 </script>
 

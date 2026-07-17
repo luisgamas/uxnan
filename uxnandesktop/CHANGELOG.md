@@ -5,6 +5,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — shell painting at wrong rows/columns: the spawn/resize race is gone
+
+- **A fresh terminal could come up with ConPTY believing xterm's default 80×24
+  grid while the pane really measured e.g. 147×40 — and stay that way.** Symptoms
+  (intermittent, per-tab): PowerShell painting its prompt/edit line mid-screen,
+  `dir` output overlaying earlier rows, short file names written over long ones
+  ("CLAUDE.mdONDUCT.md"), doubled headers, stacked partial prompts. Root cause: the
+  first fit settles on an animation frame while `pty_create` is still in flight;
+  the fit's `pty_resize` then hit **NotFound** (session not registered yet), the
+  error was swallowed, **and the change-dedupe recorded the size as sent** — so
+  the correction was never retried and the shell stayed on the wrong grid until
+  something else happened to resize the pane (which is why switching tabs
+  sometimes "fixed" it). This race predates the instance refactor; it is now
+  removed by construction, with grid syncing confined to one race-free path
+  (`requestPtyResize` in `src/lib/terminal/instances.ts`): a resize is **never
+  sent before the PTY exists** (pre-spawn requests are stashed as the desired
+  grid and flushed the moment `pty_create` returns), a **failed resize can never
+  poison the dedupe** (the known-grid resets so the next fit retries), and a
+  visible pane now **fits synchronously before spawning**, so the PTY is born at
+  the real settled grid and the shell's very first prompt is laid out for the
+  grid the user actually sees.
+
+### Fixed — terminal glyph corruption: never clear the shared WebGL texture atlas
+
+- **Text in a terminal no longer mutates into same-length gibberish ("memoria" →
+  "mamoria", "release" → "rn,ease") while other panes are revealed.** Root cause,
+  verified in the installed xterm 6.0.0 / addon-webgl 0.19.0 sources: xterm keeps
+  **one shared glyph texture atlas per font config** across every terminal with that
+  config (`CharAtlasCache` — still shared in 6.0), and `clearTextureAtlas()` clears
+  those shared pages while resyncing **only the calling terminal's** render model
+  (`TextureAtlas.clearTexture` never sets `_requestClearModel`, unlike the
+  page-merge path that #4480 fixed). `Terminal.svelte` called it on **every
+  hidden→visible reveal**, so any co-visible terminal (splits / multiple regions)
+  kept per-cell references into the recycled pages and permanently drew the wrong
+  glyphs in every row it doesn't repaint — precisely a full-screen agent's
+  scrolled-off transcript, while its constantly-redrawn input area stayed clean.
+  The clear is **removed** (not conditioned): glyph bitmaps can't go stale while a
+  pane is hidden, and a reveal already gets a fresh render model (new WebGL
+  attach) or a full-viewport `refresh`. The atlas is now managed exclusively by
+  xterm. (`src/lib/components/Terminal.svelte`.)
+
+### Changed — terminal panes re-parent one live xterm; raw-output snapshot/replay removed
+
+- **A terminal's xterm now lives as long as its tab.** Instances (buffer, parser
+  state, scrollback, addons, Kitty/CSI-u keyboard state, PTY event wiring) are kept
+  in a registry keyed by terminal id (`src/lib/terminal/instances.ts`) — the VS Code
+  model. `Terminal.svelte` is now purely the *view*: on mount it **adopts** the
+  instance (re-parents its DOM element into the pane) and on unmount it **parks** it;
+  the instance is disposed only when the tab no longer exists in any workspace.
+  Dragging a tab to another region — which remounts the Svelte component — no longer
+  recreates the terminal: the same element moves, nothing is restored, and PTY events
+  keep streaming into the live buffer even during the move (subscriptions live on the
+  instance), so no output is ever missed.
+- **Removed: the backend raw-output ring buffer and `pty_snapshot` (91 → 90
+  registered commands).** Replaying a full-screen TUI's raw byte stream into a fresh xterm was
+  unsound by construction — the ring could start mid-escape-sequence (parser desync →
+  dropped/garbled cells), the replay raced live `pty:output` events (`reset()` could
+  wipe bytes that arrived between snapshot and replay), xterm's auto-replies to
+  queries embedded in the replayed bytes had to be suppressed (`replaying` flag), and
+  ConPTY drops a same-size resize so the TUI never repainted over the damage. With
+  live instances the mechanism has no reason to exist, so it was deleted rather than
+  patched: `OutputBuffer` + `PtyManager::snapshot` + the `pty_snapshot` command and
+  its per-chunk buffering (a mutex lock on every PTY read) are gone. The backend
+  suite drops its 4 buffer/snapshot tests (**179 tests**).
+- `pty_create` returning `false` now has exactly one meaning: the webview reloaded
+  over a live backend (dev/HMR) — in-app remounts never respawn. For that case the
+  frontend sends a **row-bounce resize nudge** (ConPTY has no reattach protocol and
+  drops a same-size resize), so the running app repaints its screen instead of the
+  pane sitting empty until the next byte.
+
 ### Fixed — agent detection: non-agent processes mislabeled as agents (Layer 3)
 
 - **A non-agent command that spawns an agent CLI as a background helper no longer
@@ -54,14 +124,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the real end of the buffer, so the last lines were unreachable until a keypress
   nudged it (pressing Home/End "fixed" it because any key triggers xterm's own
   scroll-area sync). `Terminal.svelte` now recomputes the viewport on reveal
-  (`syncViewport()` re-measures the now-visible cell size, then calls xterm 6's
-  `viewport.queueSync()` — the replacement for the removed `syncScrollArea()`), so
+  (`syncViewport()` re-measures the now-visible cell size, then calls
+  `viewport.syncScrollArea()`), so
   scrolling reaches the true top/bottom immediately **without moving the user's
   position**. xterm 6's viewport has no `ResizeObserver`, so a revealed pane never
   re-syncs on its own — this drives it. Runs only while the pane is genuinely visible
   (a rapid tab-flick that re-hides it before the frame is a no-op; a later reveal
   re-runs it) and is guarded with optional chaining (a future xterm rename degrades to
-  a no-op, same posture as `forceRenderResume`).
+  a no-op, same posture as `forceRenderResume`). **Correction (internal-API audit):**
+  this entry originally shipped calling `_viewport.queueSync()`, an API that does not
+  exist in the installed xterm 6.0.0 — the optional chaining made the sync a silent
+  no-op. Auditing every internal-API touchpoint against the installed 6.0.0 sources
+  fixed it to the real method (`core.viewport.syncScrollArea()`, the same one xterm
+  itself calls on dimension changes) and re-verified the rest:
+  `RenderService._isPaused` / `_pausedResizeTask` (render-pause release) and
+  `CharSizeService.measure` are present and behave as the workarounds assume.
 
 ### Fixed — terminal rendering: blank panes on launch & doubled text
 
@@ -100,8 +177,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   pass clean.
 - **Renderer hardening (secondary, in `Terminal.svelte`).** Ligatures are loaded
   **before** WebGL so the glyph atlas is baked with ligatures resolved from the first
-  frame; the shared texture atlas is cleared only on a genuine hidden→reveal (not on
-  every resize, which could garble other panes — xterm #4480); WebGL is bound to
+  frame; the shared texture atlas is never cleared manually (see the atlas-corruption
+  fix above — the reveal-time clear this entry originally shipped turned out to be
+  the corruption trigger and was removed); WebGL is bound to
   **visible panes only** — attached on reveal, and on hide/close the GPU context is
   **explicitly released** (`WEBGL_lose_context.loseContext()` + zeroing the canvas,
   since plain `dispose()` doesn't reclaim the ANGLE context on Windows), capping live

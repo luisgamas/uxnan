@@ -570,8 +570,7 @@ Este diagrama muestra como **todos los modulos se conectan** para formar el ADE 
 |                                                                 |
 |  [PTY Manager (portable-pty + Tokio)]                          |
 |     |-- Spawn procesos PTY                                     |
-|     |-- Buffer async (tokio::sync::mpsc)                       |
-|     |-- Snapshot/restore de buffers                             |
+|     |-- Hilo lector dedicado por sesion (stream directo)       |
 |     |-- Deteccion de procesos foreground                       |
 |     +-- Emite eventos: pty:output:{id}                         |
 |                                                                 |
