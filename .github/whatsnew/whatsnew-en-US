@@ -1,5 +1,7 @@
 What's new in this update:
 
-• Fixed app updates. If an update downloaded but didn't install, the app would then tell you that you were up to date and never offer it again — the only way out was updating by hand from the Play Store. Now a downloaded update always comes back as "Install now", and one that is still downloading picks up where it left off.
+• A fresh look for files, Git history, onboarding and the composer, with one lively loading animation everywhere.
+• Profile stats now refresh whenever you open Profile, plus a refresh button — no more restarting the app to see them move. Pick automatic, timed or manual in Settings.
+• Backing up your stats works again without a passphrase, and tells you the real reason if it fails.
 
 Thanks for testing this alpha!
