@@ -102,14 +102,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the real end of the buffer, so the last lines were unreachable until a keypress
   nudged it (pressing Home/End "fixed" it because any key triggers xterm's own
   scroll-area sync). `Terminal.svelte` now recomputes the viewport on reveal
-  (`syncViewport()` re-measures the now-visible cell size, then calls xterm 6's
-  `viewport.queueSync()` — the replacement for the removed `syncScrollArea()`), so
+  (`syncViewport()` re-measures the now-visible cell size, then calls
+  `viewport.syncScrollArea()`), so
   scrolling reaches the true top/bottom immediately **without moving the user's
   position**. xterm 6's viewport has no `ResizeObserver`, so a revealed pane never
   re-syncs on its own — this drives it. Runs only while the pane is genuinely visible
   (a rapid tab-flick that re-hides it before the frame is a no-op; a later reveal
   re-runs it) and is guarded with optional chaining (a future xterm rename degrades to
-  a no-op, same posture as `forceRenderResume`).
+  a no-op, same posture as `forceRenderResume`). **Correction (internal-API audit):**
+  this entry originally shipped calling `_viewport.queueSync()`, an API that does not
+  exist in the installed xterm 6.0.0 — the optional chaining made the sync a silent
+  no-op. Auditing every internal-API touchpoint against the installed 6.0.0 sources
+  fixed it to the real method (`core.viewport.syncScrollArea()`, the same one xterm
+  itself calls on dimension changes) and re-verified the rest:
+  `RenderService._isPaused` / `_pausedResizeTask` (render-pause release) and
+  `CharSizeService.measure` are present and behave as the workarounds assume.
 
 ### Fixed — terminal rendering: blank panes on launch & doubled text
 

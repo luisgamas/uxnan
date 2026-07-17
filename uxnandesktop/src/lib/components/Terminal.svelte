@@ -204,10 +204,14 @@
   // ResizeObserver, so a revealed pane never re-syncs on its own — we drive it here
   // so scrolling reaches the true extent immediately, without moving the user's
   // position. Mirrors xterm's own recompute: re-measure the now-visible cell size,
-  // then queue a scroll-area sync (`_viewport.queueSync`, xterm 6's replacement for
-  // the old `syncScrollArea`). Internal fields, guarded with optional chaining: a
-  // future xterm rename becomes a no-op instead of throwing (same posture as
-  // `forceRenderResume`), and a keypress would still re-sync as a last resort.
+  // then sync the scroll area via `viewport.syncScrollArea()` — verified against
+  // the installed xterm 6.0.0: the Viewport lives at `core.viewport`
+  // (browser/Terminal.ts) and `syncScrollArea` is its sync method, the same one
+  // xterm calls on dimension changes; a previously-used `_viewport.queueSync`
+  // never existed in 6.0 and silently no-opped. Internal fields, guarded with
+  // optional chaining: a future xterm rename becomes a no-op instead of throwing
+  // (same posture as `forceRenderResume`), and a keypress still re-syncs as a
+  // last resort.
   function syncViewport() {
     // Only while genuinely visible: measuring/syncing against a 0×0 hidden pane
     // would re-cache the stale (zero) scroll area we're trying to fix. A later
@@ -220,7 +224,7 @@
       // real dimensions rather than the zero a hidden pane may have cached.
       core?._charSizeService?.measure?.();
       // Recompute the scroll area + scrollbar against the current buffer length.
-      core?._viewport?.queueSync?.();
+      core?.viewport?.syncScrollArea?.();
     } catch {
       // xterm internals renamed / terminal disposed — no-op (a keypress re-syncs).
     }
