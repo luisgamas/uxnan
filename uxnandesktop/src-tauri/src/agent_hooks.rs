@@ -247,7 +247,11 @@ fn write_if_changed(path: &Path, content: &str) -> Result<(), AppError> {
 }
 
 /// Atomic JSON write (sibling temp + rename, single rolling `.bak`).
-fn write_json_atomic(path: &Path, text: &str) -> Result<(), AppError> {
+///
+/// `pub(crate)` so the MCP config injector (`mcpinject.rs`) can route its
+/// foreign-config writes through the same safe envelope — never a bare
+/// `std::fs::write` that could truncate a user's CLI config mid-write.
+pub(crate) fn write_json_atomic(path: &Path, text: &str) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -255,6 +259,22 @@ fn write_json_atomic(path: &Path, text: &str) -> Result<(), AppError> {
     std::fs::write(&tmp, text)?;
     if path.exists() {
         let _ = std::fs::copy(path, path.with_extension("json.bak"));
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Atomic text write (sibling temp + rename, single rolling `.bak`) for
+/// non-JSON config files (e.g. Codex's `~/.codex/config.toml`). Mirrors
+/// [`write_json_atomic`] but leaves format-agnostic `.tmp`/`.bak` siblings.
+pub(crate) fn write_text_atomic(path: &Path, text: &str) -> Result<(), AppError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, text)?;
+    if path.exists() {
+        let _ = std::fs::copy(path, path.with_extension("bak"));
     }
     std::fs::rename(&tmp, path)?;
     Ok(())
