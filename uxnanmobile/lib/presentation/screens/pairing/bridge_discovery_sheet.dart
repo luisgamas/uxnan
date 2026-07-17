@@ -5,6 +5,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Modal sheet that browses the LAN for bridges (mDNS `_uxnan._tcp`) and lets
 /// the user pick one — returning its `host:port` so the manual-pairing form can
@@ -98,11 +99,7 @@ class _Searching extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.lg),
       child: Row(
         children: [
-          const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          const PolygonLoader(),
           const SizedBox(width: UxnanSpacing.md),
           Expanded(
             child: Text(

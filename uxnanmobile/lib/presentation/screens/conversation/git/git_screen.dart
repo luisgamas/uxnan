@@ -12,6 +12,7 @@ import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.d
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
@@ -1731,7 +1732,7 @@ class _NoRepository extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     if (connecting) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PolygonLoader(size: 48));
     }
     return Padding(
       padding: const EdgeInsets.all(UxnanSpacing.xl),
@@ -1902,11 +1903,7 @@ class _BranchPickerState extends State<_BranchPicker> {
                           padding: EdgeInsets.symmetric(
                             horizontal: UxnanSpacing.sm,
                           ),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          child: PolygonLoader(size: 20),
                         )
                       : IconSurface(
                           icon: Icons.delete_outline_rounded,
@@ -2371,14 +2368,7 @@ class _PrimaryActionButton extends StatelessWidget {
     final foreground =
         enabled ? colors.onPrimary : colors.onPrimary.withValues(alpha: 0.5);
     final spinner = busy
-        ? SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(foreground),
-            ),
-          )
+        ? PolygonLoader(size: 16, color: foreground)
         : Icon(icon, size: 20, color: foreground);
     return Tooltip(
       message: tooltip,

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -325,13 +326,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                           child: OutlinedButton.icon(
                             onPressed: _busy ? null : _fromUrl,
                             icon: _busy
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
+                                ? const PolygonLoader(size: 16)
                                 : const Icon(Icons.link_rounded, size: 18),
                             label: Text(l10n.themeImportFromUrl),
                           ),

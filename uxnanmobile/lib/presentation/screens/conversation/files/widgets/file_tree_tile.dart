@@ -5,6 +5,7 @@ import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// The name/icon color for a file or folder by its [GitFileStatus].
 ///
@@ -307,11 +308,7 @@ class FileTreeTile extends StatelessWidget {
                   color: colors.onSurfaceVariant,
                 )
               else if (node.loading)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                const PolygonLoader(size: 16),
             ],
           ),
         ),

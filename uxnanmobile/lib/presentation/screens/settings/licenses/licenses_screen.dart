@@ -5,6 +5,7 @@ import 'package:uxnan/presentation/providers/licenses_provider.dart';
 import 'package:uxnan/presentation/screens/settings/licenses/license_detail_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
@@ -41,7 +42,7 @@ class LicensesScreen extends ConsumerWidget {
             loading: () => const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.only(top: UxnanSpacing.xxl),
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(child: PolygonLoader(size: UxnanSpacing.xxl)),
               ),
             ),
             error: (_, __) => SliverToBoxAdapter(

@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — one loading language across the whole app
+- Every remaining `CircularProgressIndicator` is now the shared **`PolygonLoader`**
+  (the M3 Expressive shape morph), so loading looks the same everywhere instead of
+  splitting between the expressive loader on the redesigned screens and Material's
+  default spinner on the rest: **29 call sites across 16 files**, including the
+  conversation timeline, its "Agent responding…" cue, Git, the threads list and
+  tiles, new conversation, the profile stats/heatmap/usage, pairing discovery,
+  licenses, updates and theme import.
+- Each site keeps its own weight rather than a blanket size: 48 dp for full-screen
+  states, 32 dp for section blocks, 22–28 dp in sheets, 10–20 dp inline. Sites that
+  had a colored spinner keep their color.
+- **Two gauges intentionally stay `CircularProgressIndicator`:** the conversation's
+  context-usage ring and Settings ▸ Updates' download progress. Both draw a real
+  value (`percent`, `fraction`) and `PolygonLoader` is indeterminate by design, so
+  converting them would have thrown that number away. `loader_consistency_test.dart`
+  now enforces the rule in both directions — no stray spinner elsewhere, and those
+  two still reporting a `value:`.
+
 ### Changed — Composer palettes share a clear auxiliary hierarchy
 - Gave the `/` command and `@` workspace palettes the same M3 container,
   8 dp separation from the prompt pill and explicit trigger header. They read

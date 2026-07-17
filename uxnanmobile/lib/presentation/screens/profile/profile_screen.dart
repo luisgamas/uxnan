@@ -11,6 +11,7 @@ import 'package:uxnan/presentation/screens/profile/profile_backup_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
@@ -57,7 +58,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         loading: () => const [
           SliverFillRemaining(
             hasScrollBody: false,
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: PolygonLoader(size: 48)),
           ),
         ],
         error: (_, __) => [
@@ -152,11 +153,7 @@ class _StatsHeader extends ConsumerWidget {
         if (loading)
           const Padding(
             padding: EdgeInsets.all(UxnanSpacing.md),
-            child: SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+            child: PolygonLoader(),
           )
         else
           IconButton.filledTonal(

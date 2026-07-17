@@ -16,6 +16,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -207,13 +208,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         if (_starting)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: UxnanSpacing.md),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
+            child: Center(child: PolygonLoader()),
           )
         else
           Padding(
@@ -665,14 +660,7 @@ class _CheckSignInButton extends StatelessWidget {
         visualDensity: VisualDensity.compact,
       ),
       icon: checking
-          ? SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.error,
-              ),
-            )
+          ? PolygonLoader(size: 14, color: colors.error)
           : const Icon(Icons.login_rounded, size: 16),
       label: Text(l10n.agentCheckSignIn),
     );
@@ -819,11 +807,7 @@ class _ModelField extends StatelessWidget {
               ),
               const SizedBox(width: UxnanSpacing.sm),
               if (loading)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                const PolygonLoader(size: 16)
               else if (enabled && agentId != null)
                 Icon(
                   Icons.unfold_more_rounded,
@@ -864,13 +848,7 @@ class _Loading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Padding(
         padding: EdgeInsets.all(UxnanSpacing.lg),
-        child: Center(
-          child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
+        child: Center(child: PolygonLoader(size: 22)),
       );
 }
 

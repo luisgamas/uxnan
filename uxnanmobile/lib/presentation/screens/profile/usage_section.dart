@@ -9,6 +9,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// The "Usage & credit" block on the profile: per-provider quota windows, plan
 /// and credit read live from the connected PC (`agent/usageStats`). While
@@ -50,11 +51,7 @@ class UsageSection extends ConsumerWidget {
             if (loading)
               const Padding(
                 padding: EdgeInsets.all(UxnanSpacing.md),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                child: PolygonLoader(),
               )
             else
               IconButton.filledTonal(
@@ -78,7 +75,7 @@ class UsageSection extends ConsumerWidget {
         else if (loading)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: UxnanSpacing.lg),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: PolygonLoader(size: UxnanSpacing.xxl)),
           )
         else
           Text(

@@ -36,6 +36,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/message_scroll_rail.dart';
@@ -810,7 +811,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                     ),
                   if (snapshot == null)
                     const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()),
+                      child: Center(child: PolygonLoader(size: 48)),
                     )
                   else if (snapshot.messages.isEmpty)
                     const SliverFillRemaining(
@@ -1150,6 +1151,9 @@ class _ContextBadge extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // Stays a CircularProgressIndicator on purpose: this is a gauge of
+            // a known value, not a loader. `PolygonLoader` is indeterminate by
+            // design, so it cannot draw `percent`.
             SizedBox(
               width: 22,
               height: 22,
@@ -1700,11 +1704,7 @@ class _IdRow extends StatelessWidget {
               ),
               const SizedBox(height: UxnanSpacing.xs),
               if (loading)
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                const PolygonLoader(size: 14)
               else
                 Text(
                   hasValue ? value! : (placeholder ?? '—'),
@@ -1890,14 +1890,7 @@ class _LoginRequiredBanner extends ConsumerWidget {
           child: Row(
             children: [
               if (loginInProgress)
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.onErrorContainer,
-                  ),
-                )
+                PolygonLoader(color: colors.onErrorContainer)
               else
                 Icon(
                   Icons.login_rounded,
@@ -1944,13 +1937,9 @@ class _LoginRequiredBanner extends ConsumerWidget {
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         child: checking
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: colors.onErrorContainer,
-                                ),
+                            ? PolygonLoader(
+                                size: 16,
+                                color: colors.onErrorContainer,
                               )
                             : Text(l10n.agentCheckSignIn),
                       ),
