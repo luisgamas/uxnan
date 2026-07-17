@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+- Use constant-time comparisons for push notification secrets.
+
 ## [0.0.1-alpha.20260627] - 2026-06-27
 
 ### Changed — push notifications doc moved to the bridge

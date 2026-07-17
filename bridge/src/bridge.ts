@@ -31,6 +31,7 @@ import { startLanServer, type LanServerHandle } from './transport/lan-server.js'
 import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
+import { constantTimeEqual } from './transport/constant-time.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { MetricsService } from './metrics/metrics-service.js';
 import { AgentManager } from './agents/agent-manager.js';
@@ -563,7 +564,9 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         // Claude PreToolUse approval hook: ask the user (on the phone) whether a
         // tool may run; hold the response until they answer (or it times out).
         onHookApproval: async (body, token) => {
-          if (token !== hookState.token) return { status: 403, json: { error: 'bad_token' } };
+          if (typeof token !== 'string' || !constantTimeEqual(token, hookState.token)) {
+            return { status: 403, json: { error: 'bad_token' } };
+          }
           const b = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
           const threadId = typeof b['threadId'] === 'string' ? (b['threadId'] as string) : '';
           if (!threadId) return { status: 400, json: { error: 'missing_thread' } };
