@@ -482,6 +482,18 @@ abstract class AppLocalizations {
   /// **'Models'**
   String get statModelsUsed;
 
+  /// No description provided for @profileStatsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Statistics'**
+  String get profileStatsTitle;
+
+  /// No description provided for @profileStatsRefreshAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh stats'**
+  String get profileStatsRefreshAction;
+
   /// No description provided for @profileActivity.
   ///
   /// In en, this message translates to:
@@ -656,11 +668,17 @@ abstract class AppLocalizations {
   /// **'Uxnan stats backup'**
   String get profileBackupShareSubject;
 
-  /// No description provided for @profileBackupExportFailed.
+  /// Export failure, quoting the bridge's own reason verbatim rather than guessing at the cause.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t create the backup. Make sure a PC is connected.'**
-  String get profileBackupExportFailed;
+  /// **'Couldn\'t create the backup: {reason}'**
+  String profileBackupExportFailedReason(String reason);
+
+  /// No description provided for @profileBackupShareFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save or share the backup file.'**
+  String get profileBackupShareFailed;
 
   /// Snackbar after a successful metrics import that merged new events.
   ///
@@ -797,20 +815,56 @@ abstract class AppLocalizations {
   /// No description provided for @settingsUsageSection.
   ///
   /// In en, this message translates to:
-  /// **'Usage'**
+  /// **'Metrics & provider usage'**
   String get settingsUsageSection;
 
   /// No description provided for @settingsUsageNavSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'How often provider usage refreshes'**
+  /// **'How your stats and provider limits refresh'**
   String get settingsUsageNavSubtitle;
 
-  /// No description provided for @usageRefreshTitle.
+  /// No description provided for @settingsMetricsGroup.
   ///
   /// In en, this message translates to:
-  /// **'Auto-refresh'**
-  String get usageRefreshTitle;
+  /// **'Profile stats'**
+  String get settingsMetricsGroup;
+
+  /// No description provided for @metricsRefreshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How your profile stats keep up to date while a PC is connected. They always refresh when a PC connects, and the profile\'s refresh button works in every mode.'**
+  String get metricsRefreshHint;
+
+  /// No description provided for @metricsIntervalAutomatic.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic (every time you open the profile)'**
+  String get metricsIntervalAutomatic;
+
+  /// No description provided for @metricsInterval15m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 15 minutes'**
+  String get metricsInterval15m;
+
+  /// No description provided for @metricsInterval30m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 30 minutes'**
+  String get metricsInterval30m;
+
+  /// No description provided for @settingsProviderUsageGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider usage'**
+  String get settingsProviderUsageGroup;
+
+  /// No description provided for @settingsProviderUsageExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Each AI provider\'s remaining limits: how much of your quota is left, when it resets, your plan and any credit.'**
+  String get settingsProviderUsageExplainer;
 
   /// No description provided for @usageRefreshHint.
   ///

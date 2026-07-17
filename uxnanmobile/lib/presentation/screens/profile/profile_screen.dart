@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -16,13 +17,35 @@ import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 
 /// Aggregate activity across every paired PC: identity header, headline stats,
 /// a GitHub-style contribution heatmap and a per-agent breakdown — all derived
-/// locally.
-class ProfileScreen extends ConsumerWidget {
+/// from the bridge-owned snapshots.
+class ProfileScreen extends ConsumerStatefulWidget {
   /// Creates the [ProfileScreen].
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // On a live connection the snapshot is only re-fetched when the connection
+    // itself changes, so opening the profile would otherwise keep showing
+    // whatever was current at connect time. In `automatic` the stats are
+    // therefore refreshed on every open; the other modes leave it to their poll
+    // or to the refresh button. Post-frame: refresh() invalidates a provider,
+    // which must not happen during a build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!ref.read(metricsRefreshIntervalProvider).refreshesOnOpen) return;
+      if (ref.read(connectedDeviceProvider).value == null) return;
+      ref.read(metricsSnapshotsProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final metricsAsync = ref.watch(profileMetricsProvider);
     final pcsPaired = ref.watch(trustedDevicesProvider).value?.length ?? 0;
@@ -86,6 +109,8 @@ class ProfileScreen extends ConsumerWidget {
                     online: online,
                   ),
                   const SizedBox(height: UxnanSpacing.lg),
+                  const _StatsHeader(),
+                  const SizedBox(height: UxnanSpacing.sm),
                   MetricsStatGrid(metrics: m),
                   const SizedBox(height: UxnanSpacing.xl),
                   Text(l10n.profileActivity, style: titleStyle),
@@ -104,6 +129,46 @@ class ProfileScreen extends ConsumerWidget {
         ),
       ),
     ];
+  }
+}
+
+/// The stats section title plus a manual refresh — always available, whatever
+/// the configured refresh mode. Mirrors the usage section's header: a spinner
+/// replaces the button while a fetch is in flight, and the stats below stay put
+/// (Riverpod keeps the previous value during a refresh).
+class _StatsHeader extends ConsumerWidget {
+  const _StatsHeader();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final titleStyle = Theme.of(context).textTheme.titleLarge;
+    final loading = ref.watch(metricsSnapshotsProvider).isLoading;
+    final connected = ref.watch(connectedDeviceProvider).value != null;
+
+    return Row(
+      children: [
+        Expanded(child: Text(l10n.profileStatsTitle, style: titleStyle)),
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.all(UxnanSpacing.md),
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        else
+          IconButton.filledTonal(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: l10n.profileStatsRefreshAction,
+            // Nothing to fetch without a live PC; the cached stats stay shown.
+            onPressed: connected
+                ? () => ref.read(metricsSnapshotsProvider.notifier).refresh()
+                : null,
+          ),
+      ],
+    );
   }
 }
 

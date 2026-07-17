@@ -61,6 +61,74 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   binary/error states use the same calm card language as Profile and New
   conversation, while image preview remains a full-surface fit-to-screen canvas.
   File operations, Git state, search, editing and navigation are unchanged.
+### Added — refresh your profile stats on demand, and pick how they keep current
+- The profile's stats now carry a **manual refresh button** (mirroring the
+  provider-usage header: a spinner replaces it while the fetch is in flight, and
+  the stats below stay put). It is always available, whatever the mode.
+- A persisted **refresh mode** in Settings ▸ *Metrics & provider usage* ▸
+  *Profile stats*: **automatic** (re-fetch every time the profile is opened —
+  the new default), a **5 / 15 / 30 / 60-minute poll**, or **manual only**.
+  Every mode still re-fetches when a PC connects.
+- **Why:** the snapshot was only re-fetched when the *connection* changed, so on
+  a live connection the stats were frozen at connect time — the only way to move
+  them was to kill and reopen the app. Opening the profile now refreshes them.
+
+### Changed — the Usage settings section is now "Metrics & provider usage"
+- It covers two separate things, so it now says so and names both: **Profile
+  stats** (the new refresh mode) and **Provider usage**, the latter explained as
+  what it actually is — each AI provider's remaining limits: how much quota is
+  left, when it resets, the plan and any credit.
+
+### Fixed — a failed backup export says what actually went wrong
+- A rejected `metrics/export` now shows the **bridge's own reason** verbatim
+  ("Couldn't create the backup: …") instead of the blanket "Make sure a PC is
+  connected", which pointed at the connection no matter the cause — including
+  when the connection was fine. `exportBackup` throws `MetricsExportException`
+  carrying the reason rather than swallowing it into a null.
+- A file that seals fine but can't be saved/shared now has its own message
+  instead of borrowing the export-failure one.
+- Pairs with the bridge fix for the actual failure this surfaced: exporting with
+  **no passphrase** was rejected with `-32602 params must be an object` (see
+  `bridge/CHANGELOG.md`). Exporting *with* a passphrase always worked.
+
+## [0.0.7-alpha.20260716] - 2026-07-16
+
+### Fixed — A started Play update could never be finished, and then read as "up to date"
+- Accepting an Android update and failing to install it left the app **stuck for
+  good**: it kept reporting "you're up to date" while a fully downloaded APK sat
+  on the device, and neither *Check now* nor a relaunch could surface the install
+  again — the only way out was updating manually from Play.
+- Root cause: the app only ever trusted Play's **live** install-state stream and
+  an availability of `updateAvailable`. But Play stops reporting `updateAvailable`
+  the moment *we* start the flexible flow — from then on it reports
+  `developerTriggeredUpdateInProgress`, while the APK downloads and while it
+  waits, downloaded, for an install, **across app restarts**. That was read as
+  "no update", so every check after the first one hid the very banner that offers
+  the install. The download also outlives the app that starts it, so the live
+  stream — the app's only other source of truth — could simply miss the moment it
+  finished. Play's own contract gives this away: `installStatus` is *"defined only
+  if `updateAvailability` returns `DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS`"*.
+- `AppUpdateService` now reads an update **already in progress** as available and
+  surfaces the stage Play itself reports (`AppUpdateInfo.installStatus`) on the
+  new `AppUpdateStatus.installStage` — the field the app was discarding.
+- `AppUpdateController` derives its phase from that stage, so a check **resumes**
+  the flow where it actually is: an update left downloaded comes back as
+  *Install now* (banner + Settings → Updates) instead of collapsing to
+  "available" — which would restart Play's flow — or "up to date". An install
+  that never restarted the app is no longer a dead end: a re-check returns it to
+  an installable state rather than a permanent spinner.
+- A pending update now **bypasses the check interval** on every foreground, per
+  Play's guidance that a downloaded update be surfaced whenever the user brings
+  the app forward — otherwise its data silently occupies their storage. The
+  interval still governs looking for a *new* version. A self-clearing
+  `updateStarted` flag (`UpdatePreferencesStore`) carries this across restarts.
+- Regression tests in `app_update_service_test.dart` +
+  `update_controller_test.dart` (six of them fail against the previous logic):
+  in-progress availability, stage surfacing, resuming a downloaded/downloading
+  update, recovering a stalled install, the interval bypass and the flag's
+  self-clearing.
+
+## [0.0.6-alpha.20260716] - 2026-07-16
 
 ### Changed — Profile provider-usage cards follow the Neural Expressive hierarchy
 - Provider usage cards now form a cohesive dynamic-corner group, use 44 dp

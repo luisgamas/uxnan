@@ -18,6 +18,8 @@ class ProfilePreferencesStore {
   static const String _avatarKey = 'uxnan.profile.avatar';
   static const String _usageRefreshKey = 'uxnan.profile.usageRefreshInterval';
   static const String _usageClock24hKey = 'uxnan.profile.usageClock24h';
+  static const String _metricsRefreshKey =
+      'uxnan.profile.metricsRefreshInterval';
 
   /// The stored display name, or null when unset.
   Future<String?> readName() async {
@@ -71,6 +73,18 @@ class ProfilePreferencesStore {
   Future<void> writeUsageRefreshInterval(String name) async {
     final prefs = await _prefs;
     await prefs.setString(_usageRefreshKey, name);
+  }
+
+  /// The stored metrics refresh-mode name, or null when unset.
+  Future<String?> readMetricsRefreshInterval() async {
+    final prefs = await _prefs;
+    return prefs.getString(_metricsRefreshKey);
+  }
+
+  /// Persists the metrics refresh-mode name.
+  Future<void> writeMetricsRefreshInterval(String name) async {
+    final prefs = await _prefs;
+    await prefs.setString(_metricsRefreshKey, name);
   }
 
   /// Whether usage reset times use a 24-hour clock, or null when unset.
