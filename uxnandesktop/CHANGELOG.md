@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — browser-MCP config injection can no longer clobber a user's CLI configs
+
+- **The MCP config injector now writes each agent CLI's user-global config
+  atomically and skips (never overwrites) a config it cannot read or parse.**
+  Previously, when a CLI config (`~/.claude.json`, `~/.gemini/settings.json`,
+  `~/.config/opencode/opencode.json`, `~/.codex/config.toml`) failed to read or
+  parse, `write_entry`/`undo_entry` (`src-tauri/src/mcpinject.rs`) silently fell
+  back to an empty document and wrote a one-key stub back — destroying the user's
+  settings, MCP servers and account/project state (a parse failure is realistic:
+  the CLIs write these files concurrently, so a read can catch one mid-write).
+  The write was also a plain truncate-then-write that a crash or a concurrent CLI
+  write could corrupt. Now both paths route through an atomic temp+rename+`.bak`
+  helper (`agent_hooks::write_json_atomic` for JSON, a new sibling
+  `write_text_atomic` for the Codex TOML), and a config that exists but can't be
+  read or parsed is left **untouched** — the agent is simply skipped for that
+  session (injection is documented best-effort). The Codex branch is gated on a
+  successful TOML parse too, since `toml_codex` would otherwise rebuild from an
+  empty document. Covered by 7 new regression tests in `mcpinject.rs`; the backend
+  suite is now **217 tests**.
+
 ### Fixed — shell painting at wrong rows/columns: the spawn/resize race is gone
 
 - **A fresh terminal could come up with ConPTY believing xterm's default 80×24

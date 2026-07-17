@@ -268,12 +268,23 @@ fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
     doc.to_string()
 }
 
+/// True if `text` parses as valid TOML, so [`toml_codex`] can merge into it
+/// without discarding the user's content. Gates Codex config writes on parse
+/// success: a malformed `config.toml` is left untouched rather than rebuilt from
+/// an empty document (which would clobber the user's settings). Mirrors the
+/// JSON branch's parse-failure skip semantics.
+fn codex_parses(text: &str) -> bool {
+    text.parse::<toml_edit::DocumentMut>().is_ok()
+}
+
 // --- Injection + cleanup ---------------------------------------------------
 
 /// Write `agent`'s user-global config so it points at the browser MCP server,
 /// recording the write for later cleanup. Merges into an existing file (never
-/// clobbers other keys). Best-effort: I/O errors are ignored (a failed injection
-/// just means that agent won't see the tools).
+/// clobbers other keys). Writes are atomic (sibling temp + rename + rolling
+/// `.bak`). If an existing config can't be read or parsed, the agent is
+/// skipped — the file is never overwritten with a stub. Best-effort: I/O errors
+/// are ignored (a failed injection just means that agent won't see the tools).
 fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -281,21 +292,37 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
     let existed = path.exists();
 
     if agent == "codex" {
-        let existing = std::fs::read_to_string(path).unwrap_or_default();
+        // File missing → start from an empty document. File present but
+        // unreadable or unparseable → skip (never rebuild from an empty doc,
+        // which would discard the user's TOML).
+        let existing = if !existed {
+            String::new()
+        } else {
+            match std::fs::read_to_string(path) {
+                Ok(s) if codex_parses(&s) => s,
+                _ => return None,
+            }
+        };
         let merged = toml_codex(&existing, Some(endpoint));
-        std::fs::write(path, merged).ok()?;
+        crate::agent_hooks::write_text_atomic(path, &merged).ok()?;
     } else {
         let (pointer, entry) = json_entry(agent, endpoint)?;
-        let current: Value = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| json!({}));
+        // File missing → start from `{}`. File present but unreadable or
+        // unparseable → skip (never overwrite with a one-key stub).
+        let current: Value = if !existed {
+            json!({})
+        } else {
+            match std::fs::read_to_string(path) {
+                Ok(s) => match serde_json::from_str(&s) {
+                    Ok(v) => v,
+                    Err(_) => return None,
+                },
+                Err(_) => return None,
+            }
+        };
         let merged = json_set(current, &pointer, entry);
-        std::fs::write(
-            path,
-            format!("{}\n", serde_json::to_string_pretty(&merged).ok()?),
-        )
-        .ok()?;
+        let text = format!("{}\n", serde_json::to_string_pretty(&merged).ok()?);
+        crate::agent_hooks::write_json_atomic(path, &text).ok()?;
     }
 
     Some(Written {
@@ -306,30 +333,38 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
 }
 
 /// Undo one injected config: remove our server entry, deleting the file only if we
-/// created it and it's now empty. Best-effort.
+/// created it and it's now empty. Writes are atomic (sibling temp + rename +
+/// rolling `.bak`). If the file can't be read or parsed, it is left untouched
+/// (never overwritten). Best-effort.
 fn undo_entry(w: &Written) {
     let Ok(text) = std::fs::read_to_string(&w.path) else {
-        return;
+        return; // unreadable → do nothing
     };
     if w.agent == "codex" {
+        if !codex_parses(&text) {
+            return; // unparseable → leave untouched
+        }
         let stripped = toml_codex(&text, None);
         if w.created && stripped.trim().is_empty() {
             let _ = std::fs::remove_file(&w.path);
         } else {
-            let _ = std::fs::write(&w.path, stripped);
+            let _ = crate::agent_hooks::write_text_atomic(&w.path, &stripped);
         }
         return;
     }
     let Some((pointer, _)) = json_entry(&w.agent, "") else {
         return;
     };
-    let doc: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({}));
+    let doc: Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(_) => return, // unparseable → leave untouched
+    };
     let stripped = json_remove(doc, &pointer);
     let empty = stripped.as_object().map(|o| o.is_empty()).unwrap_or(false);
     if w.created && empty {
         let _ = std::fs::remove_file(&w.path);
     } else if let Ok(s) = serde_json::to_string_pretty(&stripped) {
-        let _ = std::fs::write(&w.path, format!("{s}\n"));
+        let _ = crate::agent_hooks::write_json_atomic(&w.path, &format!("{s}\n"));
     }
 }
 
@@ -522,5 +557,146 @@ mod tests {
             home.join(".config").join("opencode").join("opencode.json")
         );
         assert!(config_path("unknown", home).is_none());
+    }
+
+    // --- Regression tests: atomic + never-clobber writes (plan 001) ---------
+
+    #[test]
+    fn write_entry_preserves_unrelated_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.json");
+        let seed = r#"{
+  "topLevel": "keep-me",
+  "mcpServers": {
+    "existing": { "url": "http://x" }
+  }
+}"#;
+        std::fs::write(&path, seed).unwrap();
+
+        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp");
+        let w = w.expect("valid existing config should be merged");
+        assert!(!w.created); // file already existed
+
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["topLevel"], "keep-me"); // unrelated top-level key kept
+        assert_eq!(doc["mcpServers"]["existing"]["url"], "http://x"); // sibling server kept
+        assert_eq!(
+            doc["mcpServers"][SERVER_NAME]["url"],
+            "http://127.0.0.1:9/mcp"
+        ); // injected
+    }
+
+    #[test]
+    fn write_entry_skips_unparseable_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.json");
+        let broken = "{ \"unterminated\":"; // truncated object → invalid JSON
+        std::fs::write(&path, broken).unwrap();
+
+        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp");
+        assert!(
+            w.is_none(),
+            "unparseable config must be skipped, not stubbed"
+        );
+
+        // File bytes left untouched (never overwritten).
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    }
+
+    #[test]
+    fn write_entry_skips_unreadable_existing() {
+        // Cross-platform stand-in for "file exists but read fails": a directory
+        // at the path makes `read_to_string` error while `exists()` is true.
+        // (Permission-based unreadability is POSIX-flaky; this avoids it.)
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.json");
+        std::fs::create_dir(&path).unwrap();
+
+        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp");
+        assert!(w.is_none(), "exists-but-unreadable config must be skipped");
+        assert!(path.is_dir(), "no file should be written over the entry");
+    }
+
+    #[test]
+    fn undo_entry_leaves_unparseable_file_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.json");
+        let broken = "{ \"unterminated\":"; // invalid JSON
+        std::fs::write(&path, broken).unwrap();
+
+        let w = Written {
+            path: path.clone(),
+            agent: "claude".to_string(),
+            created: false,
+        };
+        undo_entry(&w);
+
+        // Bytes unchanged — never overwritten with a stub.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    }
+
+    #[test]
+    fn write_entry_creates_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.json");
+        assert!(!path.exists());
+
+        let w = write_entry("claude", &path, "http://127.0.0.1:9/mcp")
+            .expect("a missing config should be created");
+        assert!(w.created); // we created it
+        assert!(path.exists());
+
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            doc["mcpServers"][SERVER_NAME]["url"],
+            "http://127.0.0.1:9/mcp"
+        );
+    }
+
+    #[test]
+    fn write_entry_codex_preserves_unrelated_tables_and_cleans_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let seed = "model = \"o3\"\n\n[some.other]\nk = 1\n";
+        std::fs::write(&path, seed).unwrap();
+
+        let w = write_entry("codex", &path, "http://127.0.0.1:9/mcp")
+            .expect("valid codex config should be merged");
+        assert!(!w.created);
+
+        let after = std::fs::read_to_string(&path).unwrap();
+        let doc = after.parse::<toml_edit::DocumentMut>().unwrap();
+        assert_eq!(doc["model"].as_str(), Some("o3")); // user's settings preserved
+        assert_eq!(doc["some"]["other"]["k"].as_integer(), Some(1)); // unrelated table kept
+        assert_eq!(
+            doc["mcp_servers"][SERVER_NAME]["url"].as_str(),
+            Some("http://127.0.0.1:9/mcp")
+        ); // injected
+
+        // Cleanup removes only our entry; user's settings survive.
+        undo_entry(&w);
+        let cleaned = std::fs::read_to_string(&path).unwrap();
+        let cdoc = cleaned.parse::<toml_edit::DocumentMut>().unwrap();
+        let mcp_gone = cdoc
+            .get("mcp_servers")
+            .and_then(|m| m.as_table())
+            .map(|t| t.is_empty())
+            .unwrap_or(true);
+        assert!(mcp_gone, "our mcp_servers entry must be removed");
+        assert_eq!(cdoc["model"].as_str(), Some("o3"));
+        assert_eq!(cdoc["some"]["other"]["k"].as_integer(), Some(1));
+    }
+
+    #[test]
+    fn write_entry_codex_skips_unparseable_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let broken = "model = \"unterminated\n"; // invalid TOML (unterminated string)
+        std::fs::write(&path, broken).unwrap();
+
+        let w = write_entry("codex", &path, "http://127.0.0.1:9/mcp");
+        assert!(w.is_none(), "unparseable codex config must be skipped");
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken); // bytes unchanged
     }
 }
