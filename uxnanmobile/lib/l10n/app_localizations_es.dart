@@ -222,6 +222,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get statModelsUsed => 'Modelos';
 
   @override
+  String get profileStatsTitle => 'Estadísticas';
+
+  @override
+  String get profileStatsRefreshAction => 'Actualizar estadísticas';
+
+  @override
   String get profileActivity => 'Actividad';
 
   @override
@@ -318,8 +324,13 @@ class AppLocalizationsEs extends AppLocalizations {
   String get profileBackupShareSubject => 'Respaldo de estadísticas de Uxnan';
 
   @override
-  String get profileBackupExportFailed =>
-      'No se pudo crear el respaldo. Asegúrate de estar conectado a una PC.';
+  String profileBackupExportFailedReason(String reason) {
+    return 'No se pudo crear el respaldo: $reason';
+  }
+
+  @override
+  String get profileBackupShareFailed =>
+      'No se pudo guardar ni compartir el archivo de respaldo.';
 
   @override
   String profileBackupImportedNew(int count) {
@@ -401,13 +412,35 @@ class AppLocalizationsEs extends AppLocalizations {
   String get usageNoData => 'Sin datos de uso';
 
   @override
-  String get settingsUsageSection => 'Uso';
+  String get settingsUsageSection => 'Métricas y uso de proveedores';
 
   @override
-  String get settingsUsageNavSubtitle => 'Cada cuánto se actualiza el uso';
+  String get settingsUsageNavSubtitle =>
+      'Cada cuánto se actualizan tus estadísticas y los límites de proveedores';
 
   @override
-  String get usageRefreshTitle => 'Actualización automática';
+  String get settingsMetricsGroup => 'Estadísticas del perfil';
+
+  @override
+  String get metricsRefreshHint =>
+      'Cómo se mantienen al día las estadísticas de tu perfil mientras haya un PC conectado. Siempre se actualizan al conectar un PC, y el botón de actualizar del perfil funciona en cualquier modo.';
+
+  @override
+  String get metricsIntervalAutomatic =>
+      'Automático (cada vez que abres el perfil)';
+
+  @override
+  String get metricsInterval15m => 'Cada 15 minutos';
+
+  @override
+  String get metricsInterval30m => 'Cada 30 minutos';
+
+  @override
+  String get settingsProviderUsageGroup => 'Uso de proveedores';
+
+  @override
+  String get settingsProviderUsageExplainer =>
+      'Los límites disponibles de cada proveedor de IA: cuánta cuota te queda, cuándo se reinicia, tu plan y el crédito.';
 
   @override
   String get usageRefreshHint =>

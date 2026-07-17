@@ -87,12 +87,17 @@ class ProfileBackupSection extends ConsumerWidget {
       confirmLabel: l10n.profileBackupExport,
     );
     if (passphrase == null) return; // cancelled
-    final result = await ref
-        .read(metricsSnapshotsProvider.notifier)
-        .exportBackup(passphrase: passphrase.isEmpty ? null : passphrase);
-    if (result == null) {
+    final ({String blob, String filename, bool passphraseProtected}) result;
+    try {
+      result = await ref
+          .read(metricsSnapshotsProvider.notifier)
+          .exportBackup(passphrase: passphrase.isEmpty ? null : passphrase);
+    } on MetricsExportException catch (error) {
+      // Show the bridge's own reason — never a guess about the connection.
       messenger.showSnackBar(
-        SnackBar(content: Text(l10n.profileBackupExportFailed)),
+        SnackBar(
+          content: Text(l10n.profileBackupExportFailedReason(error.message)),
+        ),
       );
       return;
     }
@@ -103,7 +108,7 @@ class ProfileBackupSection extends ConsumerWidget {
     );
     if (!shared) {
       messenger.showSnackBar(
-        SnackBar(content: Text(l10n.profileBackupExportFailed)),
+        SnackBar(content: Text(l10n.profileBackupShareFailed)),
       );
     }
   }

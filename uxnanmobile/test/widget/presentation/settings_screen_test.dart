@@ -63,7 +63,7 @@ void main() {
     // …and the section entries under them.
     expect(find.text('Personalization'), findsOneWidget);
     expect(find.text('Notifications'), findsOneWidget);
-    expect(find.text('Usage'), findsOneWidget);
+    expect(find.text('Metrics & provider usage'), findsOneWidget);
     expect(find.text('Conversation'), findsOneWidget);
     expect(find.text('Source control'), findsOneWidget);
     expect(find.text('Updates'), findsOneWidget);

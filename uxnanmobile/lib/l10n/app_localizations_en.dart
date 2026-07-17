@@ -221,6 +221,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get statModelsUsed => 'Models';
 
   @override
+  String get profileStatsTitle => 'Statistics';
+
+  @override
+  String get profileStatsRefreshAction => 'Refresh stats';
+
+  @override
   String get profileActivity => 'Activity';
 
   @override
@@ -316,8 +322,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileBackupShareSubject => 'Uxnan stats backup';
 
   @override
-  String get profileBackupExportFailed =>
-      'Couldn\'t create the backup. Make sure a PC is connected.';
+  String profileBackupExportFailedReason(String reason) {
+    return 'Couldn\'t create the backup: $reason';
+  }
+
+  @override
+  String get profileBackupShareFailed =>
+      'Couldn\'t save or share the backup file.';
 
   @override
   String profileBackupImportedNew(int count) {
@@ -399,13 +410,35 @@ class AppLocalizationsEn extends AppLocalizations {
   String get usageNoData => 'No usage data';
 
   @override
-  String get settingsUsageSection => 'Usage';
+  String get settingsUsageSection => 'Metrics & provider usage';
 
   @override
-  String get settingsUsageNavSubtitle => 'How often provider usage refreshes';
+  String get settingsUsageNavSubtitle =>
+      'How your stats and provider limits refresh';
 
   @override
-  String get usageRefreshTitle => 'Auto-refresh';
+  String get settingsMetricsGroup => 'Profile stats';
+
+  @override
+  String get metricsRefreshHint =>
+      'How your profile stats keep up to date while a PC is connected. They always refresh when a PC connects, and the profile\'s refresh button works in every mode.';
+
+  @override
+  String get metricsIntervalAutomatic =>
+      'Automatic (every time you open the profile)';
+
+  @override
+  String get metricsInterval15m => 'Every 15 minutes';
+
+  @override
+  String get metricsInterval30m => 'Every 30 minutes';
+
+  @override
+  String get settingsProviderUsageGroup => 'Provider usage';
+
+  @override
+  String get settingsProviderUsageExplainer =>
+      'Each AI provider\'s remaining limits: how much of your quota is left, when it resets, your plan and any credit.';
 
   @override
   String get usageRefreshHint =>

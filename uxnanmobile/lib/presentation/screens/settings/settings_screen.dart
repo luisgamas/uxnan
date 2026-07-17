@@ -7,10 +7,10 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/settings/personalization_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/about_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/conversation_section_screen.dart';
+import 'package:uxnan/presentation/screens/settings/sections/metrics_usage_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/notifications_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/source_control_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/updates_section_screen.dart';
-import 'package:uxnan/presentation/screens/settings/sections/usage_section_screen.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
@@ -55,7 +55,7 @@ class SettingsScreen extends ConsumerWidget {
         icon: Icons.data_usage_rounded,
         title: l10n.settingsUsageSection,
         subtitle: l10n.settingsUsageNavSubtitle,
-        open: UsageSettingsScreen.push,
+        open: MetricsUsageSettingsScreen.push,
       ),
     ];
 

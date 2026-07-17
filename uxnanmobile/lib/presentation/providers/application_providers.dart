@@ -27,6 +27,7 @@ import 'package:uxnan/domain/enums/activity_metric.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
+import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
@@ -40,6 +41,7 @@ import 'package:uxnan/domain/value_objects/profile_avatar.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
+import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -182,6 +184,21 @@ final trustedDevicesProvider = StreamProvider<List<TrustedDevice>>(
   (ref) => ref.watch(trustedDeviceRepositoryProvider).watchDevices(),
 );
 
+/// Thrown when `metrics/export` fails, carrying the bridge's own reason so the
+/// UI can show it verbatim instead of guessing. (Guessing is exactly what went
+/// wrong before: a bridge-side rejection was reported to the user as "make sure
+/// you're connected to a PC", which sent them looking at the connection.)
+class MetricsExportException implements Exception {
+  /// Creates a [MetricsExportException] with the bridge's [message].
+  const MetricsExportException(this.message);
+
+  /// The human-readable reason the export failed.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Thrown when `metrics/import` is rejected by the bridge, carrying the bridge's
 /// reason (e.g. a foreign/edited file, or a missing/wrong passphrase) so the UI
 /// can show it verbatim.
@@ -203,7 +220,10 @@ class MetricsImportException implements Exception {
 /// profile derives from the cache. The on-device cache is a display cache only.
 ///
 /// This provider's `build` *is* the async load workflow, so fetching on
-/// (re)connect is intentional, not a hidden side effect.
+/// (re)connect is intentional, not a hidden side effect. Between two
+/// connections the snapshot would otherwise never move, so
+/// [metricsRefreshIntervalProvider] decides what keeps it current — a poll, the
+/// profile re-opening, or nothing but the manual [refresh].
 class MetricsController extends AsyncNotifier<Map<String, MetricsSnapshot>> {
   @override
   Future<Map<String, MetricsSnapshot>> build() async {
@@ -211,7 +231,14 @@ class MetricsController extends AsyncNotifier<Map<String, MetricsSnapshot>> {
     final cache = await store.readAll();
     // Re-fetch the connected PC's snapshot on each (re)connection; cache it.
     final connected = ref.watch(connectedDeviceProvider).value;
+    final interval = ref.watch(metricsRefreshIntervalProvider).duration;
     if (connected != null) {
+      if (interval != null) {
+        // Fires once per period, then re-schedules via the rebuild refresh()
+        // triggers — a self-renewing poll that resets on any manual refresh.
+        final timer = Timer.periodic(interval, (_) => refresh());
+        ref.onDispose(timer.cancel);
+      }
       final snapshot = await _fetch();
       if (snapshot != null && snapshot.deviceId.isNotEmpty) {
         cache[snapshot.deviceId] = snapshot;
@@ -220,6 +247,12 @@ class MetricsController extends AsyncNotifier<Map<String, MetricsSnapshot>> {
     }
     return cache;
   }
+
+  /// Re-fetches the connected PC's snapshot now. Rebuilds via
+  /// `ref.invalidateSelf`, so Riverpod keeps the previous data in
+  /// `state.value` while `state.isLoading` is true — the stats stay put and
+  /// the profile header shows a spinner during the refresh.
+  void refresh() => ref.invalidateSelf();
 
   /// Fetches `metrics/get` for the connected PC, or null when offline / against a
   /// bridge without the handler (degrades to the cached/drift data).
@@ -239,34 +272,42 @@ class MetricsController extends AsyncNotifier<Map<String, MetricsSnapshot>> {
   }
 
   /// Requests a sealed, tamper-proof backup of the connected PC's metrics
-  /// (`metrics/export`). Returns the blob + a suggested filename, or null when
-  /// offline / unsupported. An optional [passphrase] adds a second lock.
-  Future<({String blob, String filename, bool passphraseProtected})?>
+  /// (`metrics/export`). Returns the blob + a suggested filename. An optional
+  /// [passphrase] adds a second lock. Throws [MetricsExportException] carrying
+  /// the bridge's reason when it rejects the request, or the transport's when
+  /// the PC can't be reached.
+  Future<({String blob, String filename, bool passphraseProtected})>
       exportBackup({
     String? passphrase,
   }) async {
+    final RpcMessage response;
     try {
-      final response = await ref.read(sessionCoordinatorProvider).sendRequest(
+      response = await ref.read(sessionCoordinatorProvider).sendRequest(
             'metrics/export',
             passphrase != null && passphrase.isNotEmpty
                 ? {'passphrase': passphrase}
                 : null,
           );
-      if (response.error != null) return null;
-      final result = response.result;
-      if (result is! Map) return null;
-      final blob = result['blob'];
-      final filename = result['filename'];
-      if (blob is! String || filename is! String) return null;
-      return (
-        blob: blob,
-        filename: filename,
-        passphraseProtected: result['passphraseProtected'] == true,
-      );
     } on Object catch (error, stackTrace) {
       AppLogger.warn('metrics/export failed', error, stackTrace);
-      return null;
+      throw MetricsExportException(error.toString());
     }
+    final error = response.error;
+    if (error != null) {
+      AppLogger.warn('metrics/export rejected: ${error.message}');
+      throw MetricsExportException(error.message);
+    }
+    final result = response.result;
+    final blob = result is Map ? result['blob'] : null;
+    final filename = result is Map ? result['filename'] : null;
+    if (result is! Map || blob is! String || filename is! String) {
+      throw const MetricsExportException('malformed metrics/export response');
+    }
+    return (
+      blob: blob,
+      filename: filename,
+      passphraseProtected: result['passphraseProtected'] == true,
+    );
   }
 
   /// Sends a previously exported [blob] back to the bridge (`metrics/import`).
@@ -455,6 +496,41 @@ class UsageRefreshIntervalSetting extends Notifier<UsageRefreshInterval> {
 final usageRefreshIntervalProvider =
     NotifierProvider<UsageRefreshIntervalSetting, UsageRefreshInterval>(
   UsageRefreshIntervalSetting.new,
+);
+
+/// The metrics refresh mode (persisted; default
+/// [MetricsRefreshInterval.automatic]).
+/// Picks what happens between a (re)connection and a manual refresh — both of
+/// which always fetch, whatever the mode.
+class MetricsRefreshIntervalSetting extends Notifier<MetricsRefreshInterval> {
+  @override
+  MetricsRefreshInterval build() {
+    unawaited(_hydrate());
+    return MetricsRefreshInterval.automatic;
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(profilePreferencesStoreProvider)
+        .readMetricsRefreshInterval();
+    final value = MetricsRefreshIntervalX.fromName(stored);
+    if (value != state) state = value;
+  }
+
+  /// Persists and applies the metrics refresh mode.
+  Future<void> set(MetricsRefreshInterval interval) async {
+    if (interval == state) return;
+    state = interval;
+    await ref
+        .read(profilePreferencesStoreProvider)
+        .writeMetricsRefreshInterval(interval.name);
+  }
+}
+
+/// The persisted metrics refresh mode.
+final metricsRefreshIntervalProvider =
+    NotifierProvider<MetricsRefreshIntervalSetting, MetricsRefreshInterval>(
+  MetricsRefreshIntervalSetting.new,
 );
 
 /// Whether usage reset times use a 24-hour clock (true) or 12-hour (false).
