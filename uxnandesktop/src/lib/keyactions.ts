@@ -69,6 +69,9 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
     case "openSettings":
       app.openSettings();
       return true;
+    case "openGitHub":
+      app.openGitHub();
+      return true;
     case "openQuickCommands":
       app.quickCommandsMenuOpen = true;
       return true;

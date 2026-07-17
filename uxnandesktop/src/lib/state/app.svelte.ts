@@ -69,6 +69,14 @@ export type SettingsSection =
   | "updates"
   | "browser";
 
+/** A pane in the GitHub section (also the deep-link target of `openGitHub`). */
+export type GithubSection =
+  | "overview"
+  | "pulls"
+  | "issues"
+  | "actions"
+  | "settings";
+
 class AppStore {
   /** Registered repositories (and their worktrees). */
   repos = $state<RepoData[]>([]);
@@ -96,6 +104,10 @@ class AppStore {
   browserUrl = $state("");
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
+  /** Whether the GitHub section (full-screen overlay) is open. */
+  githubOpen = $state(false);
+  /** Which GitHub pane is shown (deep-linked via `openGitHub`). */
+  githubSection = $state<GithubSection>("overview");
   /** Live OS dark-mode preference (kept in sync via a matchMedia listener), so
    *  the "System" theme reacts to the OS switching light/dark at runtime. */
   systemDark = $state(detectSystemDark());
@@ -150,6 +162,12 @@ class AppStore {
   openSettings(section: SettingsSection = "appearance"): void {
     this.settingsSection = section;
     this.settingsOpen = true;
+  }
+
+  /** Open the GitHub section (full-screen overlay), optionally jumping to a pane. */
+  openGitHub(section: GithubSection = "overview"): void {
+    this.githubSection = section;
+    this.githubOpen = true;
   }
 
   /** Open the integrated browser panel at `url` (or the configured homepage, or a

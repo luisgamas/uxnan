@@ -10,8 +10,20 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
+  import InfoIcon from "@lucide/svelte/icons/info";
+  import LightbulbIcon from "@lucide/svelte/icons/lightbulb";
+  import MessageSquareIcon from "@lucide/svelte/icons/message-square-warning";
+  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import OctagonAlertIcon from "@lucide/svelte/icons/octagon-alert";
 
-  let { source, baseDir = null }: { source: string; baseDir?: string | null } = $props();
+  // `inline` renders the document as a compact fragment (no full-height scroller,
+  // no centered max-width, tighter rhythm) for embedding inside a card — e.g. a
+  // GitHub PR/issue comment. The default (document) mode is unchanged.
+  let {
+    source,
+    baseDir = null,
+    inline = false,
+  }: { source: string; baseDir?: string | null; inline?: boolean } = $props();
 
   const blocks = $derived(renderMarkdown(source));
 
@@ -41,7 +53,8 @@
     for (const b of list) {
       if (b.type === "table") [...b.header, ...b.rows.flat()].forEach((c) => collectInlineImages(c, out));
       else if (b.type === "heading" || b.type === "paragraph") collectInlineImages(b.children, out);
-      else if (b.type === "blockquote") collectImages(b.children, out);
+      else if (b.type === "blockquote" || b.type === "alert" || b.type === "details")
+        collectImages(b.children, out);
       else if (b.type === "list") b.items.forEach((it) => collectImages(it.children, out));
     }
   }
@@ -107,6 +120,24 @@
       <p class="md-p">{@render inlineRun(b.children)}</p>
     {:else if b.type === "blockquote"}
       <blockquote class="md-quote">{@render blockList(b.children)}</blockquote>
+    {:else if b.type === "alert"}
+      <!-- GitHub alert callout (`> [!WARNING]` …): a colored rail + labeled head. -->
+      <div class={cn("md-alert", `md-alert-${b.kind}`)}>
+        <p class="md-alert-title">
+          {#if b.kind === "note"}<InfoIcon class="size-4 shrink-0" />
+          {:else if b.kind === "tip"}<LightbulbIcon class="size-4 shrink-0" />
+          {:else if b.kind === "important"}<MessageSquareIcon class="size-4 shrink-0" />
+          {:else if b.kind === "warning"}<TriangleAlertIcon class="size-4 shrink-0" />
+          {:else}<OctagonAlertIcon class="size-4 shrink-0" />{/if}
+          {i18n.t(`markdown.alert.${b.kind}`)}
+        </p>
+        {@render blockList(b.children)}
+      </div>
+    {:else if b.type === "details"}
+      <details class="md-details">
+        <summary class="md-summary">{b.summary || i18n.t("markdown.detailsFallback")}</summary>
+        <div class="md-details-body">{@render blockList(b.children)}</div>
+      </details>
     {:else if b.type === "list"}
       {#if b.ordered}
         <ol class="md-list" start={b.start}>
@@ -158,9 +189,9 @@
 {/snippet}
 
 {#if blocks.length === 0}
-  <p class={cn("p-4", text.meta)}>{i18n.t("preview.markdownEmpty")}</p>
+  {#if !inline}<p class={cn("p-4", text.meta)}>{i18n.t("preview.markdownEmpty")}</p>{/if}
 {:else}
-  <div class="md uxnan-scroll">
+  <div class={cn("md", inline ? "md-inline" : "uxnan-scroll")}>
     {@render blockList(blocks)}
   </div>
 {/if}
@@ -182,6 +213,44 @@
     -webkit-user-select: text;
     user-select: text;
     cursor: auto;
+  }
+  /* Inline (embedded-in-a-card) variant: a plain fragment that flows with its
+     container — no full-height scroller, no centered max-width, no outer padding,
+     and a tighter rhythm with headings scaled down for a comment context. */
+  .md.md-inline {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+    max-width: none;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .md.md-inline > :global(:first-child) {
+    margin-top: 0;
+  }
+  .md.md-inline > :global(:last-child) {
+    margin-bottom: 0;
+  }
+  .md.md-inline :global(.md-h) {
+    margin: 0.9em 0 0.4em;
+  }
+  .md.md-inline :global(.md-h1) {
+    font-size: 1.3em;
+  }
+  .md.md-inline :global(.md-h2) {
+    font-size: 1.2em;
+  }
+  .md.md-inline :global(.md-h3) {
+    font-size: 1.1em;
+  }
+  .md.md-inline :global(.md-h4),
+  .md.md-inline :global(.md-h5),
+  .md.md-inline :global(.md-h6) {
+    font-size: 1em;
+  }
+  .md.md-inline :global(.md-p) {
+    margin: 0.5em 0;
   }
   .md :global(.md-h) {
     font-weight: 600;
@@ -253,6 +322,70 @@
     border: 1px dashed color-mix(in oklab, var(--border) 80%, transparent);
     background: color-mix(in oklab, var(--muted-foreground) 6%, transparent);
     color: var(--muted-foreground);
+    /* Raw HTML is `white-space: pre` like a code block, so it needs the same
+       scroller — without it a long line was clipped by the card instead. */
+    overflow-x: auto;
+  }
+
+  /* GitHub alerts (`> [!WARNING]`): a colored rail + a labeled, iconed head. */
+  .md :global(.md-alert) {
+    margin: 0.9em 0;
+    padding: 0.6em 1em;
+    border-left: 3px solid var(--md-alert-color);
+    border-radius: 0 6px 6px 0;
+    background: color-mix(in oklab, var(--md-alert-color) 7%, transparent);
+  }
+  .md :global(.md-alert-title) {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    margin: 0 0 0.35em;
+    font-weight: 600;
+    color: var(--md-alert-color);
+  }
+  .md :global(.md-alert > .md-p:last-child) {
+    margin-bottom: 0;
+  }
+  .md :global(.md-alert-note) {
+    --md-alert-color: var(--primary);
+  }
+  .md :global(.md-alert-tip) {
+    --md-alert-color: oklch(0.72 0.15 155);
+  }
+  .md :global(.md-alert-important) {
+    --md-alert-color: oklch(0.65 0.18 300);
+  }
+  .md :global(.md-alert-warning) {
+    --md-alert-color: oklch(0.72 0.16 75);
+  }
+  .md :global(.md-alert-caution) {
+    --md-alert-color: oklch(0.65 0.21 25);
+  }
+
+  /* <details>/<summary> disclosure, collapsed by default like on GitHub. */
+  .md :global(.md-details) {
+    margin: 0.9em 0;
+    padding: 0.5em 0.8em;
+    border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--foreground) 3%, transparent);
+  }
+  .md :global(.md-summary) {
+    cursor: pointer;
+    font-weight: 500;
+    list-style-position: outside;
+  }
+  .md :global(.md-summary:hover) {
+    color: var(--primary);
+  }
+  .md :global(.md-details[open] > .md-summary) {
+    margin-bottom: 0.5em;
+  }
+  .md :global(.md-details-body > :first-child) {
+    margin-top: 0;
+  }
+  .md :global(.md-details-body > :last-child) {
+    margin-bottom: 0;
   }
   .md :global(.md-quote) {
     margin: 0.9em 0;

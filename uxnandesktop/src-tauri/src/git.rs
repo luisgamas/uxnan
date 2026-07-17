@@ -196,10 +196,70 @@ pub struct RemoteOwner {
 /// Resolve `origin` to its hosting owner/org for the avatar option. Returns
 /// `None` when there's no `origin` remote or its URL can't be parsed.
 pub async fn remote_owner(repo_path: &str) -> Option<RemoteOwner> {
-    let url = git(repo_path, &["remote", "get-url", "origin"])
-        .await
-        .ok()?;
+    let url = remote_url(repo_path, "origin").await.ok()?;
     parse_remote_owner(url.trim())
+}
+
+/// The configured URL of a named remote (`git remote get-url <remote>`). Used by
+/// the GitHub layer to derive `owner/repo`.
+pub async fn remote_url(repo_path: &str, remote: &str) -> Result<String, AppError> {
+    git(repo_path, &["remote", "get-url", remote])
+        .await
+        .map(|s| s.trim().to_string())
+}
+
+/// The short name of the branch currently checked out in `repo_path`
+/// (`git rev-parse --abbrev-ref HEAD`; `HEAD` when detached).
+pub async fn current_branch(repo_path: &str) -> Result<String, AppError> {
+    git(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .await
+        .map(|s| s.trim().to_string())
+}
+
+/// Fetch a refspec from `origin` (e.g. `pull/42/head`) into `FETCH_HEAD`. Used to
+/// materialize a PR's head commit before adding a worktree at it.
+pub async fn fetch(repo_path: &str, refspec: &str) -> Result<(), AppError> {
+    git(repo_path, &["fetch", "origin", refspec])
+        .await
+        .map(|_| ())
+}
+
+/// The diff of the current branch against `base` (`git diff <base>...HEAD`), used
+/// to feed the AI PR-body drafter. Tolerant of a non-zero exit.
+pub async fn branch_diff(repo_path: &str, base: &str) -> Result<String, AppError> {
+    let base = resolve_diff_base(repo_path, base).await;
+    git_diff_tolerant(repo_path, &["diff", &format!("{base}...HEAD")]).await
+}
+
+/// Prefer `origin/<base>` over a bare `<base>` when the tracking ref exists.
+/// GitHub compares a PR against the branch **on the remote**, so diffing a stale
+/// local `main` would describe changes the PR doesn't actually carry. A base that
+/// already names a remote ref, or has no tracking counterpart, is left alone.
+async fn resolve_diff_base(repo_path: &str, base: &str) -> String {
+    if base.contains('/') || base == "HEAD" {
+        return base.to_string();
+    }
+    let remote = format!("origin/{base}");
+    if git(repo_path, &["rev-parse", "--verify", "--quiet", &remote])
+        .await
+        .is_ok()
+    {
+        return remote;
+    }
+    base.to_string()
+}
+
+/// Add a worktree checking out an **existing** local branch
+/// (`git worktree add <path> <branch>`). Used for the issue→worktree flow after
+/// `gh issue develop` created the linked branch.
+pub async fn add_worktree_existing(
+    repo_path: &str,
+    branch: &str,
+    worktree_path: &str,
+) -> Result<(), AppError> {
+    git(repo_path, &["worktree", "add", worktree_path, branch])
+        .await
+        .map(|_| ())
 }
 
 /// Parse a git remote URL (SSH `git@host:owner/repo.git`, `ssh://…`, or
@@ -306,6 +366,70 @@ fn parse_branch_lines(input: &str) -> Vec<String> {
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect()
+}
+
+/// Whether `name` is a branch name git would accept (a subset of
+/// `git check-ref-format --branch`, covering the rules a user can trip over in a
+/// name field). Checked up front so a bad name fails naming the field, instead of
+/// surfacing a raw git error from three calls deeper — and so a name can never be
+/// smuggled into a `git`/`gh` invocation as a flag. Pure, so it's unit-tested.
+pub fn is_valid_branch_name(name: &str) -> bool {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.starts_with('/')
+        || name.starts_with('.')
+        || name.ends_with('/')
+        || name.ends_with('.')
+        || name.ends_with(".lock")
+        || name == "@"
+    {
+        return false;
+    }
+    if name.contains("..")
+        || name.contains("//")
+        || name.contains("@{")
+        || name.contains("\\")
+        || name.contains("//")
+    {
+        return false;
+    }
+    // git forbids these outright, plus any control character or space.
+    !name.chars().any(|c| {
+        c.is_control()
+            || c.is_whitespace()
+            || matches!(c, '~' | '^' | ':' | '?' | '*' | '[' | '\x7f')
+    })
+}
+
+/// List the branches that exist on `origin`, short-named with the remote prefix
+/// stripped (`origin/main` → `main`). This — not [`list_branches`] — is the right
+/// set for a PR **base**: GitHub can only target a branch that exists on the
+/// remote, so offering local-only branches would build a PR gh must reject.
+pub async fn list_remote_branches(repo_path: &str) -> Result<Vec<String>, AppError> {
+    let out = git(
+        repo_path,
+        &["for-each-ref", "--format=%(refname:short)", "refs/remotes"],
+    )
+    .await?;
+    Ok(parse_remote_branch_lines(&out))
+}
+
+/// Strip the remote prefix from `for-each-ref refs/remotes` output, dropping the
+/// `origin/HEAD` alias (a symref to the default branch, not a branch of its own)
+/// and de-duplicating what's left. Pure so it's unit-tested.
+fn parse_remote_branch_lines(input: &str) -> Vec<String> {
+    let mut seen = Vec::new();
+    for line in parse_branch_lines(input) {
+        // `origin/main` → `main`; a bare ref with no `/` isn't a remote branch.
+        let Some((_remote, branch)) = line.split_once('/') else {
+            continue;
+        };
+        if branch.is_empty() || branch == "HEAD" || seen.iter().any(|b| b == branch) {
+            continue;
+        }
+        seen.push(branch.to_string());
+    }
+    seen
 }
 
 /// Resolve the most appropriate base ref for a new branch, probing in priority
@@ -1346,6 +1470,60 @@ mod tests {
         git(dir, args)
             .await
             .unwrap_or_else(|e| panic!("git {args:?} in {dir} failed: {e:?}"));
+    }
+
+    #[test]
+    fn valid_branch_names_accepted() {
+        for name in [
+            "pr-42",
+            "issue-17",
+            "feat/github-integration",
+            "17-fix-the-login",
+            "release_1.2",
+        ] {
+            assert!(is_valid_branch_name(name), "{name} should be valid");
+        }
+    }
+
+    #[test]
+    fn invalid_branch_names_rejected() {
+        for name in [
+            "",            // empty
+            "-force",      // could be read as a flag
+            "/leading",    // leading slash
+            "trailing/",   // trailing slash
+            ".hidden",     // leading dot
+            "trailing.",   // trailing dot
+            "feat..bug",   // double dot
+            "feat//bug",   // double slash
+            "a b",         // space
+            "wip.lock",    // .lock suffix
+            "@",           // the reflog shorthand
+            "head@{0}",    // @{ sequence
+            "back\\slash", // backslash
+            "star*",       // glob
+            "tilde~1",     // ancestry
+            "caret^",      // ancestry
+            "colon:name",  // refspec separator
+            "question?",   // glob
+            "brack[et",    // glob
+        ] {
+            assert!(!is_valid_branch_name(name), "{name:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn remote_branch_lines_strip_prefix_and_drop_head() {
+        let out = "origin/HEAD\norigin/main\norigin/feat/github\nupstream/main\n\n";
+        let branches = parse_remote_branch_lines(out);
+        // `origin/HEAD` is a symref alias, not a branch; `upstream/main` is the
+        // same branch as `origin/main` once short-named, so it de-duplicates.
+        assert_eq!(branches, vec!["main", "feat/github"]);
+    }
+
+    #[test]
+    fn remote_branch_lines_ignore_refs_without_a_remote() {
+        assert!(parse_remote_branch_lines("main\n").is_empty());
     }
 
     /// Init a repo on `main` with a deterministic identity and signing off, plus

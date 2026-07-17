@@ -115,4 +115,91 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("")).toEqual([]);
     expect(renderMarkdown("   \n\n")).toEqual([]);
   });
+
+  // --- GitHub-flavored bits that bot comments lean on -----------------------
+
+  it("drops HTML comments, which GitHub hides", () => {
+    // Bots use them as machine markers; rendering them buried the real comment.
+    expect(renderMarkdown("<!-- summarize by coderabbit.ai -->")).toEqual([]);
+    expect(renderMarkdown("<!-- a -->\n\n<!-- b -->")).toEqual([]);
+  });
+
+  it("keeps real HTML while stripping comments around it", () => {
+    const [html] = renderMarkdown("<!-- marker --><div>hi</div>");
+    expect(html).toEqual({ type: "html", value: "<div>hi</div>" });
+  });
+
+  it("renders a GitHub alert marker as an alert, not a link named !WARNING", () => {
+    const [alert] = renderMarkdown("> [!WARNING]\n> Review limit reached");
+    expect(alert.type).toBe("alert");
+    const a = alert as Extract<MdBlock, { type: "alert" }>;
+    expect(a.kind).toBe("warning");
+    // The marker line itself is consumed, leaving only the body.
+    expect(a.children).toHaveLength(1);
+    expect(inlineText((a.children[0] as Extract<MdBlock, { type: "paragraph" }>).children)).toBe(
+      "Review limit reached",
+    );
+  });
+
+  it("recognizes every alert kind, case-insensitively", () => {
+    for (const kind of ["note", "tip", "important", "warning", "caution"]) {
+      const [b] = renderMarkdown(`> [!${kind.toUpperCase()}]\n> body`);
+      expect(b.type).toBe("alert");
+      expect((b as Extract<MdBlock, { type: "alert" }>).kind).toBe(kind);
+    }
+  });
+
+  it("leaves an ordinary blockquote alone", () => {
+    const [b] = renderMarkdown("> just a quote");
+    expect(b.type).toBe("blockquote");
+    // A bracketed link that isn't an alert marker must not be eaten either.
+    const [c] = renderMarkdown("> [!NOTABLE]\n> body");
+    expect(c.type).toBe("blockquote");
+  });
+
+  it("renders <details> as a disclosure with its body parsed as Markdown", () => {
+    const [d] = renderMarkdown(
+      "<details>\n<summary>How can I continue?</summary>\n\n**Wait** for the limit.\n</details>",
+    );
+    expect(d.type).toBe("details");
+    const det = d as Extract<MdBlock, { type: "details" }>;
+    expect(det.summary).toBe("How can I continue?");
+    expect(det.children[0].type).toBe("paragraph");
+  });
+
+  it("keeps sibling <details> apart instead of nesting them in the first", () => {
+    // Inside a blockquote no line is blank, so every disclosure lands in ONE HTML
+    // block — a greedy match ran from the first opener to the LAST closer and ate
+    // the sibling. This is the exact shape a coderabbitai[bot] comment produces.
+    const [b] = renderMarkdown(
+      "> [!WARNING]\n> limit reached\n>\n> <details>\n> <summary>How can I continue?</summary>\n>\n> Wait.\n>\n> </details>\n>\n> <details>\n> <summary>How do limits work?</summary>\n>\n> Per developer.\n>\n> </details>",
+    );
+    const alert = b as Extract<MdBlock, { type: "alert" }>;
+    const details = alert.children.filter((c) => c.type === "details");
+    expect(details.map((d) => (d as Extract<MdBlock, { type: "details" }>).summary)).toEqual([
+      "How can I continue?",
+      "How do limits work?",
+    ]);
+    // No stray "</details>" left rendering as raw HTML anywhere.
+    expect(JSON.stringify(alert)).not.toContain("</details>");
+  });
+
+  it("leaves an unclosed <details> raw rather than swallowing the document", () => {
+    const out = renderMarkdown("<details>\n<summary>Oops</summary>\n\nbody text");
+    expect(out.some((b) => b.type === "details")).toBe(false);
+    expect(out.some((b) => b.type === "paragraph")).toBe(true);
+  });
+
+  it("strips the quote markers Lezer leaves on HTML nested in a blockquote", () => {
+    // Lezer reports the node's raw source range, so a `<details>` inside a `>`
+    // quote arrives with a literal "> " on every line after the first — which
+    // used to be dumped on screen verbatim.
+    const [b] = renderMarkdown(
+      "> [!WARNING]\n> body\n>\n> <details>\n> <summary>Why?</summary>\n> Because.\n> </details>",
+    );
+    const alert = b as Extract<MdBlock, { type: "alert" }>;
+    const details = alert.children.find((c) => c.type === "details");
+    expect(details).toBeDefined();
+    expect((details as Extract<MdBlock, { type: "details" }>).summary).toBe("Why?");
+  });
 });

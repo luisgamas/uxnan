@@ -1444,6 +1444,512 @@ pub async fn get_hook_scripts(
     }))
 }
 
+// --- GitHub integration (gh-backed) ----------------------------------------
+
+/// Current GitHub sign-in status (gh installed? authenticated? login/host/scopes)
+/// for the GitHub section's Account/Session panel and the section gate. Never
+/// returns the token.
+#[tauri::command]
+pub async fn github_status() -> Result<crate::github::GithubStatus, CommandError> {
+    Ok(crate::github::status().await)
+}
+
+/// The active worktree's GitHub context (owner/repo, current branch, and the PR
+/// for that branch with a checks roll-up). `None` when it isn't a GitHub repo.
+#[tauri::command]
+pub async fn github_repo_context(
+    worktree_path: String,
+) -> Result<Option<crate::github::RepoContext>, CommandError> {
+    Ok(crate::github::repo_context(&worktree_path).await)
+}
+
+/// List PRs for the worktree's repo. `state` is `open|closed|merged|all`.
+#[tauri::command]
+pub async fn github_pr_list(
+    worktree_path: String,
+    state: String,
+    search: Option<String>,
+    limit: u32,
+) -> Result<Vec<crate::github::PrListItem>, CommandError> {
+    crate::github::pr_list(&worktree_path, &state, search.as_deref(), limit)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Full detail for one PR (metadata + files + checks), for the review center tab.
+#[tauri::command]
+pub async fn github_pr_view(
+    worktree_path: String,
+    number: String,
+) -> Result<crate::github::PrDetail, CommandError> {
+    crate::github::pr_view(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The unified diff of a PR.
+#[tauri::command]
+pub async fn github_pr_diff(worktree_path: String, number: String) -> Result<String, CommandError> {
+    crate::github::pr_diff(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The chronological timeline of a PR or issue (comments, reviews, commits, and
+/// smaller events — labels, assignments, merges, cross-references, …).
+#[tauri::command]
+pub async fn github_pr_timeline(
+    worktree_path: String,
+    number: String,
+) -> Result<Vec<crate::github::TimelineEvent>, CommandError> {
+    crate::github::pr_timeline(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Create a PR. `options.base`/`options.head` select the target/source branches;
+/// when omitted gh falls back to the default branch / the checked-out branch.
+/// Returns the new PR URL.
+#[tauri::command]
+pub async fn github_pr_create(
+    worktree_path: String,
+    options: crate::github::PrCreateOptions,
+) -> Result<String, CommandError> {
+    crate::github::pr_create(&worktree_path, options)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The branch pickers' data for the create-PR form: local branches (head
+/// candidates), `origin` branches (base candidates), the default base and the
+/// checked-out branch.
+#[tauri::command]
+pub async fn github_branches(
+    worktree_path: String,
+) -> Result<crate::github::PrBranches, CommandError> {
+    crate::github::pr_branches(&worktree_path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Post a conversation comment on a PR (not a review verdict).
+#[tauri::command]
+pub async fn github_pr_comment(
+    worktree_path: String,
+    number: String,
+    body: String,
+) -> Result<(), CommandError> {
+    crate::github::pr_comment(&worktree_path, &number, &body)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Submit a review verb (`approve|request-changes|comment`) on a PR.
+#[tauri::command]
+pub async fn github_pr_review(
+    worktree_path: String,
+    number: String,
+    verb: String,
+    body: Option<String>,
+) -> Result<(), CommandError> {
+    crate::github::pr_review(&worktree_path, &number, &verb, body.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Close a PR without merging.
+#[tauri::command]
+pub async fn github_pr_close(worktree_path: String, number: String) -> Result<(), CommandError> {
+    crate::github::pr_close(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Reopen a closed PR.
+#[tauri::command]
+pub async fn github_pr_reopen(worktree_path: String, number: String) -> Result<(), CommandError> {
+    crate::github::pr_reopen(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Merge a PR, or arm auto-merge for it. See [`crate::github::PrMergeOptions`].
+#[tauri::command]
+pub async fn github_pr_merge(
+    worktree_path: String,
+    number: String,
+    options: crate::github::PrMergeOptions,
+) -> Result<(), CommandError> {
+    crate::github::pr_merge(&worktree_path, &number, options)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Edit a PR's title and/or body. `None` leaves a field untouched.
+#[tauri::command]
+pub async fn github_pr_edit(
+    worktree_path: String,
+    number: String,
+    title: Option<String>,
+    body: Option<String>,
+) -> Result<(), CommandError> {
+    crate::github::pr_edit(&worktree_path, &number, title.as_deref(), body.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Edit an issue's title and/or body. `None` leaves a field untouched.
+#[tauri::command]
+pub async fn github_issue_edit(
+    worktree_path: String,
+    number: String,
+    title: Option<String>,
+    body: Option<String>,
+) -> Result<(), CommandError> {
+    crate::github::issue_edit(&worktree_path, &number, title.as_deref(), body.as_deref())
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Bring a PR's branch up to date with its base — the fix for a `BEHIND` state.
+#[tauri::command]
+pub async fn github_pr_update_branch(
+    worktree_path: String,
+    number: String,
+    rebase: bool,
+) -> Result<(), CommandError> {
+    crate::github::pr_update_branch(&worktree_path, &number, rebase)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Take a PR out of draft, or (with `undo`) put it back.
+#[tauri::command]
+pub async fn github_pr_ready(
+    worktree_path: String,
+    number: String,
+    undo: bool,
+) -> Result<(), CommandError> {
+    crate::github::pr_ready(&worktree_path, &number, undo)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Turn off a PR's armed auto-merge.
+#[tauri::command]
+pub async fn github_pr_disable_auto_merge(
+    worktree_path: String,
+    number: String,
+) -> Result<(), CommandError> {
+    crate::github::pr_disable_auto_merge(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// What the base branch's rules and the repo's settings allow for merging PR
+/// `number`, plus the PR's live mergeability. Drives the merge controls.
+#[tauri::command]
+pub async fn github_merge_info(
+    worktree_path: String,
+    number: String,
+    base: String,
+) -> Result<crate::github::MergeInfo, CommandError> {
+    crate::github::merge_info(&worktree_path, &number, &base)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Check out a PR into a **new worktree** (`pr-<n>` at the fetched PR head). Fetches
+/// `pull/<n>/head` so forks work, then adds the worktree. Returns the new entry so
+/// the frontend adds it to the repo's worktree list (like `worktree_create`).
+#[tauri::command]
+pub async fn github_pr_checkout(
+    state: State<'_, AppState>,
+    repo_id: String,
+    number: String,
+    branch: Option<String>,
+) -> Result<WorktreeEntry, CommandError> {
+    let number = crate::github::validate_number(&number).map_err(CommandError::from)?;
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let branch = branch_or_default(branch, || format!("pr-{number}"))?;
+    git::fetch(&repo_path, &format!("pull/{number}/head"))
+        .await
+        .map_err(CommandError::from)?;
+    let worktree_path = git::worktree_path_for(&repo_path, &branch);
+    git::add_worktree(&repo_path, &branch, &worktree_path, Some("FETCH_HEAD"))
+        .await
+        .map_err(CommandError::from)?;
+    Ok(WorktreeEntry {
+        path: worktree_path,
+        branch: Some(branch),
+        head: None,
+        is_main: false,
+    })
+}
+
+/// Resolve a caller-supplied branch name, falling back to the generic default
+/// (`pr-<n>` / `issue-<n>`) when it's absent or blank. Rejects a name git itself
+/// would refuse, so the failure names the field rather than surfacing a raw git
+/// error from three calls deeper.
+fn branch_or_default(
+    branch: Option<String>,
+    default: impl FnOnce() -> String,
+) -> Result<String, CommandError> {
+    let branch = branch
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(default);
+    if !crate::git::is_valid_branch_name(&branch) {
+        return Err(CommandError::from(AppError::Invalid(format!(
+            "invalid branch name: {branch:?}"
+        ))));
+    }
+    Ok(branch)
+}
+
+/// List issues for the worktree's repo.
+#[tauri::command]
+pub async fn github_issue_list(
+    worktree_path: String,
+    state: String,
+    search: Option<String>,
+    limit: u32,
+) -> Result<Vec<crate::github::IssueListItem>, CommandError> {
+    crate::github::issue_list(&worktree_path, &state, search.as_deref(), limit)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Full detail for one issue (body + metadata).
+#[tauri::command]
+pub async fn github_issue_view(
+    worktree_path: String,
+    number: String,
+) -> Result<crate::github::IssueDetail, CommandError> {
+    crate::github::issue_view(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Post a comment on an issue.
+#[tauri::command]
+pub async fn github_issue_comment(
+    worktree_path: String,
+    number: String,
+    body: String,
+) -> Result<(), CommandError> {
+    crate::github::issue_comment(&worktree_path, &number, &body)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Close an issue.
+#[tauri::command]
+pub async fn github_issue_close(worktree_path: String, number: String) -> Result<(), CommandError> {
+    crate::github::issue_close(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Reopen a closed issue.
+#[tauri::command]
+pub async fn github_issue_reopen(
+    worktree_path: String,
+    number: String,
+) -> Result<(), CommandError> {
+    crate::github::issue_reopen(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Create an issue in the worktree's repo, optionally labeled and assigned.
+/// Returns the new issue URL.
+#[tauri::command]
+pub async fn github_issue_create(
+    worktree_path: String,
+    title: String,
+    body: String,
+    labels: Vec<String>,
+    assignees: Vec<String>,
+) -> Result<String, CommandError> {
+    crate::github::issue_create(&worktree_path, &title, &body, &labels, &assignees)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The repo's labels, for the issue-create picker.
+#[tauri::command]
+pub async fn github_labels(
+    worktree_path: String,
+) -> Result<Vec<crate::github::Label>, CommandError> {
+    crate::github::labels(&worktree_path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Logins assignable in the worktree's repo.
+#[tauri::command]
+pub async fn github_assignees(worktree_path: String) -> Result<Vec<String>, CommandError> {
+    crate::github::assignees(&worktree_path)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Request reviews on a PR from the given logins.
+#[tauri::command]
+pub async fn github_pr_add_reviewers(
+    worktree_path: String,
+    number: String,
+    logins: Vec<String>,
+) -> Result<(), CommandError> {
+    crate::github::pr_add_reviewers(&worktree_path, &number, &logins)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Start work on an issue: create + link a branch (`gh issue develop`) and add it
+/// as a **new worktree**. Returns the new entry.
+#[tauri::command]
+pub async fn github_issue_develop(
+    state: State<'_, AppState>,
+    repo_id: String,
+    number: String,
+    branch: Option<String>,
+) -> Result<WorktreeEntry, CommandError> {
+    let number = crate::github::validate_number(&number).map_err(CommandError::from)?;
+    let repo_path = repo_path_of(&state, &repo_id).await?;
+    let branch = branch_or_default(branch, || format!("issue-{number}"))?;
+    // If a worktree for this branch already exists (a re-run), just return it.
+    let worktree_path = git::worktree_path_for(&repo_path, &branch);
+    if std::path::Path::new(&worktree_path).exists() {
+        return Ok(WorktreeEntry {
+            path: worktree_path,
+            branch: Some(branch),
+            head: None,
+            is_main: false,
+        });
+    }
+    // Create the linked branch on the remote. Tolerate an "already exists"/"already
+    // linked" (a re-run) — the branch is materialized below regardless — but surface
+    // any other failure (e.g. no write access) with gh's own message.
+    if let Err(e) = crate::github::issue_develop(&repo_path, &number, &branch).await {
+        let msg = e.to_string().to_lowercase();
+        if !msg.contains("already") {
+            return Err(CommandError::from(e));
+        }
+    }
+    // Materialize the branch locally from origin (an explicit `branch:branch`
+    // refspec creates the local branch), then add the worktree. A fetch failure here
+    // means the linked branch wasn't created on the remote.
+    git::fetch(&repo_path, &format!("{branch}:{branch}"))
+        .await
+        .map_err(CommandError::from)?;
+    git::add_worktree_existing(&repo_path, &branch, &worktree_path)
+        .await
+        .map_err(CommandError::from)?;
+    Ok(WorktreeEntry {
+        path: worktree_path,
+        branch: Some(branch),
+        head: None,
+        is_main: false,
+    })
+}
+
+/// List recent workflow runs (optionally for a branch).
+#[tauri::command]
+pub async fn github_run_list(
+    worktree_path: String,
+    branch: Option<String>,
+    limit: u32,
+) -> Result<Vec<crate::github::RunListItem>, CommandError> {
+    crate::github::run_list(&worktree_path, branch.as_deref(), limit)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The log of a workflow run (`failed` = failed steps only), rendered in a tab.
+#[tauri::command]
+pub async fn github_run_log(
+    worktree_path: String,
+    run_id: String,
+    failed: bool,
+) -> Result<String, CommandError> {
+    crate::github::run_log(&worktree_path, &run_id, failed)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Re-run a workflow run (`failed` = only failed jobs).
+#[tauri::command]
+pub async fn github_run_rerun(
+    worktree_path: String,
+    run_id: String,
+    failed: bool,
+) -> Result<(), CommandError> {
+    crate::github::run_rerun(&worktree_path, &run_id, failed)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Cancel an in-progress workflow run.
+#[tauri::command]
+pub async fn github_run_cancel(worktree_path: String, run_id: String) -> Result<(), CommandError> {
+    crate::github::run_cancel(&worktree_path, &run_id)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// The authenticated core REST rate limit, for the status-bar quota gauge.
+#[tauri::command]
+pub async fn github_rate_limit() -> Result<crate::github::RateLimit, CommandError> {
+    crate::github::rate_limit()
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Count of unread GitHub notifications, for the status-bar badge.
+#[tauri::command]
+pub async fn github_notifications_count() -> Result<u64, CommandError> {
+    crate::github::notifications_count()
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Clone a GitHub repo into `dest` (`gh repo clone`). Returns the destination path.
+#[tauri::command]
+pub async fn github_clone(repo: String, dest: String) -> Result<String, CommandError> {
+    crate::github::clone(&repo, &dest)
+        .await
+        .map_err(CommandError::from)
+}
+
+/// Draft a PR description (Markdown) from the branch diff using a local CLI agent.
+/// One-shot, non-interactive — no API/keys. The agent/model/language/instructions
+/// come from `AppSettings.github` (GitHub → Settings), read here rather than passed
+/// in, matching `git_generate_commit_message` — the settings are the source of
+/// truth, so a caller can't run a different agent than the one configured.
+#[tauri::command]
+pub async fn github_ai_draft_pr(
+    state: State<'_, AppState>,
+    worktree_path: String,
+    base: Option<String>,
+) -> Result<String, CommandError> {
+    let cfg = state.data.read().await.settings.github.clone();
+    // Draft from the diff against the base the PR will actually target, so the body
+    // describes the PR's own changes. Only when the caller has no base to offer do
+    // we fall back to the repo's resolved default.
+    let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
+        Some(base) => base,
+        None => git::default_base(&worktree_path).await,
+    };
+    let diff = git::branch_diff(&worktree_path, &base)
+        .await
+        .map_err(CommandError::from)?;
+    crate::aicommit::draft_pr(&worktree_path, &cfg, &diff)
+        .await
+        .map_err(CommandError::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{bracketed_paste, pty_submit_payload, reorder_by_ids};

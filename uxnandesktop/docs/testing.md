@@ -39,8 +39,10 @@ readiness, context templates, cycle detection, validation + status derivation),
 `updaterLogic.ts` (download-progress fraction + install-policy decision),
 `diffParse.ts` (unified-diff parsing), `theme.ts` (batch theme-import
 normalization), `quickCommands.ts` (quick-command token substitution + scope
-filters) and `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration) —
-166 tests in `src/lib/**/*.test.ts`, config in
+filters), `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration),
+`branchName.ts` (GitHub branch-name slugging), `markdown.ts` (GitHub-flavored
+Markdown: alerts, disclosures, hidden HTML comments) and `relTime.ts` (localized
+relative dates) — 187 tests in `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
 [`../FOR-DEV.md`](../FOR-DEV.md).

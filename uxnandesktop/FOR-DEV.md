@@ -16,7 +16,7 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**, **user quick commands**). 179 Rust backend tests + 166 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+engine**, **user quick commands**, **GitHub integration (`gh`-backed)**). 210 Rust backend tests + 187 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -98,6 +98,130 @@ mobile pairing) is NOT started.**
   `{repoName}`/`{path}` tokens, resolves the shell (a terminal profile) + cwd, and
   dispatches to a **new tab** or the **focused terminal** (`pty_write`), running
   immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
+- **GitHub integration (`gh`-backed)** — a full-screen **GitHub section** (Overview /
+  Pull Requests / Issues / Actions / Account / Settings), a configurable **right-panel
+  GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR badges**, a
+  **status-bar button** (rate-limit gauge + optional notifications), and a post-push
+  **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
+  **close/reopen** + the unified **diff** (**split per file**, collapsed by default +
+  expand/collapse-all); a **GitHub-style timeline** (a chronological vertical rail
+  interleaving description + comments + review verdicts + commits + events —
+  labeled/assigned/closed/merged/…, via the Timeline Events API; bodies/comments/reviews
+  rendered as **Markdown** incl. inline images; a **Verified** badge on signed commits)
+  with **comment fields** on both PRs and issues; **reviewers**, colored **state/status
+  icons**, **search bars**, legible localized **relative dates** (`Intl.RelativeTimeFormat`),
+  an **expandable CI checks section** + a **CI popover** on the head commit and each
+  PR-list row, and the review/merge/close **tools in a bottom action bar**, with
+  merge/approve/request-changes **gated to open PRs**; **issue** triage/create +
+  **close/reopen** (+ **labels/assignees** from the repo's real sets when filing);
+  PR/issue **title+description editing** in place (`gh pr/issue edit`) and **reviewer
+  requests** (`--add-reviewer`);
+  **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
+  / `gh issue develop` — both behind a **settings + confirmation dialog** (editable branch
+  name pre-filled with the generic default, GitHub-slug suggestion for issues, launch-agent
+  picker, folder preview, existing-worktree warning) that adopts the result through the
+  same path as a hand-made worktree, so it gets its agent like any other; optional
+  **AI PR-body drafting** (the `aicommit` one-shot runner) configured in a full
+  **AI-PR-authoring settings section** built like Settings → AI commit (enable switch,
+  agent picker with logos + install state, shared `AiModelPicker`, language,
+  instructions).
+  PR detail is split into **Conversation / Files-changed tabs** with the action bar
+  available from both. Creating a PR **picks its `base ← head`** — **either side can be
+  any branch** (local ∪
+  `origin`, marked *local only* where relevant), defaulting to the repo's default branch
+  / the checked-out one (head pinned in the right-panel tab); it refuses base == head,
+  warns on an unpushed branch, and drafts the AI body against the **chosen** base. **Merging is protection-aware**: methods are the
+  repo's settings ∩ the base branch's **rulesets** (`gh api …/rules/branches/{base}` —
+  the classic protection endpoint 404s on ruleset-protected branches), defaults follow
+  `viewerDefaultMergeMethod`/`deleteBranchOnMerge`, a blocked PR **says why**, and the
+  escape hatches are **auto-merge** (`--auto`, gated on `allow_auto_merge`) then
+  **admin bypass** (`--admin`, offered on **any** blocked PR rather than gated on
+  `viewerCanAdminister` — that flag misses ruleset `bypass_actors` and fails on GHES;
+  behind a danger confirm that says when the right is unconfirmed);
+  every merge passes `--match-head-commit`. Every state the panel reports carries the
+  action that answers it: `BEHIND` → **Update branch** (`gh pr update-branch`, + rebase
+  variant), armed auto-merge → **Turn off** (`--disable-auto`), draft → **Mark ready**
+  (`gh pr ready`, reversible). All via the local **`gh` CLI** (incl.
+  `gh api` for rate-limit/notifications/timeline/rulesets) — **no token stored/read by
+  the app**; every agent action has a manual twin. Backend `src-tauri/src/github.rs`
+  (38 commands) + `AppSettings.github`. See [`docs/github.md`](docs/github.md).
+  **Caveat: the write side is implemented but not yet exercised against real GitHub
+  data** (this repo has no PRs/issues/collaborators) — see *Validation status* under
+  "GitHub integration — follow-ups" before trusting any of it in anger.
+
+## GitHub integration — follow-ups ☐
+
+**Validation status — read this first.** The surface above is **implemented and
+type/unit-tested, but the write side is essentially unexercised against real GitHub
+data.** What *has* been verified: the pure logic (rulesets → allowed methods, branch/
+Markdown/model parsers) by unit tests, and the **read** calls (`gh repo view`,
+`gh api …/rules/branches`, `gh pr view --json mergeStateStatus`, `gh label list`,
+assignees) probed live against `luisgamas/uxnan`. What has **not** been run even once:
+**creating a PR, merging one, an admin bypass, arming/disarming auto-merge,
+update-branch, mark-ready, editing a PR/issue, requesting a reviewer, filing a labeled
+issue, and the PR/issue → worktree dialog end-to-end.** This repo has no open PRs, no
+issues and no collaborators, so those paths get exercised as real work appears — expect
+first-run bugs there, and treat each as unproven until it's actually been done once.
+The gaps below are known and deliberate, not discoveries waiting to happen.
+
+The `gh`-backed integration above is otherwise complete for the standalone desktop app.
+Deferred:
+- [ ] **Cross-fork PRs.** The head picker offers this repo's branches (local ∪ `origin`)
+      only; GitHub's `owner:branch` form — a PR from someone's fork — isn't expressible.
+      `gh pr create --head owner:branch` supports it; the picker and `PrBranches` would
+      need to carry the fork's remotes.
+- [ ] **Pagination.** Lists are capped (50 PRs / 50 issues / 30 runs) with no "load
+      more", so a busy repo silently shows a window of its work. `gh` paginates with
+      `--limit`; the UI needs an explicit control rather than a bigger constant.
+- [ ] **Resolve review threads.** A blocked PR can say "every review thread must be
+      resolved" and offers no way to resolve one — `gh pr` has no verb for it, so this
+      needs the GraphQL `resolveReviewThread` mutation via `gh api graphql`. Pairs with
+      the inline-diff-comments item below.
+- [ ] **Cache the merge policy per repo.** Opening a PR fires ~6 `gh` calls
+      (view + diff + timeline + `merge_info`'s repo-view + REST repo + rules). The
+      repo-level and ruleset answers are near-static per repo/base, so a session cache
+      would cut half of them. Fine for one developer against a 5000/h limit; worth doing
+      before the notifications/poll surface grows. Pairs with the ETag item below.
+- [ ] **`gh pr` verbs still unwired:** `revert`, `lock`/`unlock` (and their `gh issue`
+      twins: `delete`, `pin`/`unpin`, `transfer`). None are review-flow blockers; add on
+      demand.
+- [ ] **Native (no-`gh`) sign-in.** An OAuth **device-flow** login (public `client_id`,
+      no secret) + **OS-keychain** token storage (the `keyring` crate), so GitHub works
+      without `gh` installed. Closes the T2.4 / keyring item below. Needs a registered
+      GitHub OAuth App `client_id` (a `FOR-HUMAN.md` item).
+- [ ] **GitLab / other hosts.** The `gh`-centric approach is GitHub-only. GitLab would
+      need `glab` or a native API layer. Out of scope for now (the remote parser already
+      recognizes GitLab hosts).
+- [ ] **PR review as a dockable center tab.** Today review/diff/issue/log open as a
+      master-detail inside the GitHub section (full-screen). Making them **center tabs**
+      that coexist with terminals needs a new tab kind across the terminals tab system
+      (`terminals.svelte.ts` + `TerminalArea.svelte` rendering + serialization) — a
+      larger, riskier change deferred as a UX refinement.
+- [ ] **WSL repos.** A Windows `gh` can't see a `\\wsl.localhost\…` checkout, so GitHub
+      features degrade to "not a GitHub repo" there (same class of gap as the WSL2
+      hook-loopback limitation). Would need routing `gh` through `wsl.exe`.
+- [ ] **"Clone from GitHub" UI entry.** The backend command + api wrapper exist
+      (`github_clone` / `githubClone`, `gh repo clone`), but no UI surface calls them
+      yet. Wire a small entry (a repo field + destination dir → clone → `repo_add`),
+      e.g. from the Add-project dialog or the GitHub section.
+- [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
+      worktrees (context cache), not eagerly for every worktree (that would poll a PR
+      per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.
+- [ ] **Inline diff comments.** CI ships as an expandable section + a popover on the head
+      commit (PR detail) and a per-row icon+popover in the PR list; **line-level review
+      comments** on the per-file diff are still deferred.
+- [ ] **List hovercards + label editing.** The issue/PR rows show a status icon, labels
+      and counts, but not GitHub's **hover preview card** for a linked/cross-referenced
+      item (would fetch the referenced issue/PR on hover). Also deferred: **editing labels**
+      (add/remove) from the detail — needs a label list + `gh … edit --add/remove-label`.
+- [ ] **P2/P3 niceties:** mark-files-as-viewed during review, `#`/`@` autocomplete +
+      hover cards, a unified **notifications inbox**, **releases** (list/create), a
+      write-only **Actions secrets/variables** setter, and native **conditional-request
+      (ETag/304) polling** to make the status layer quota-cheaper (today it re-calls `gh`).
+- [ ] **Cross-component (mobile):** surface PR/CI/issue status on the paired phone via
+      new `shared` `github/*` JSON-RPC methods served by the embedded bridge (Phase 6).
+- [ ] **Svelte component tests** for the GitHub UI (part of the standing component-test
+      TODO below); the pure backend logic is unit-tested in `github.rs` (20 tests).
 
 ## Integrated developer browser ☐
 
@@ -335,7 +459,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 179 Rust + 166 Vitest tests.
+  deferred with Apple). 210 Rust + 187 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

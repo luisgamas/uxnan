@@ -285,6 +285,39 @@ export interface AppSettings {
   /** Attention lanes (class 1–4) the user collapsed in the "group by status"
    *  view; persisted so the collapse survives a restart. */
   sidebarCollapsedLanes?: number[];
+  /** GitHub integration (the GitHub section + the right-panel GitHub tab). */
+  github?: GithubSettings;
+}
+
+/** GitHub integration preferences (mirror of Rust `GithubSettings`). The token is
+ *  never stored here — `gh` owns it. */
+export interface GithubSettings {
+  /** Show the contextual GitHub tab in the right panel (per-worktree PR/CI); it
+   *  only appears for GitHub repos. Default true. */
+  rightPanelTab?: boolean;
+  /** Show the GitHub status/quota button in the bottom status bar. Default true. */
+  statusBarEnabled?: boolean;
+  /** How often (seconds) the active worktree's PR/CI context refreshes while the
+   *  window is focused. 0 = manual only. Default 45. */
+  pollSeconds?: number;
+  /** Poll the notifications count for the status-bar badge. Default false. */
+  notificationsEnabled?: boolean;
+  /** Ask for confirmation before creating or merging a PR (both surfaces). Default
+   *  true. */
+  confirmPr?: boolean;
+  /** Agent id used to draft PR bodies / review summaries from a diff (same catalog
+   *  as AI commit). Undefined = the AI button is hidden. */
+  aiAgentId?: string;
+  /** Model for the AI-authoring agent (undefined = the CLI's default). */
+  aiModel?: string;
+  /** Master switch for AI PR authoring (mirrors `AiCommitSettings.enabled`).
+   *  Default false — nothing ever runs unasked. */
+  aiEnabled?: boolean;
+  /** Language for the drafted body: `auto`, or a language name stated verbatim in
+   *  the prompt (e.g. `English`). Default `auto`. */
+  aiLanguage?: string;
+  /** Extra free-form instructions appended to the PR-body prompt. */
+  aiInstructions?: string;
 }
 
 /** Left-sidebar grouping mode.
@@ -867,4 +900,295 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pinnedWorktrees: [],
   sidebarGroupBy: "none",
   sidebarCollapsedLanes: [],
+  github: {
+    rightPanelTab: true,
+    statusBarEnabled: true,
+    pollSeconds: 45,
+    notificationsEnabled: false,
+    confirmPr: true,
+  },
 };
+
+// --- GitHub integration (wire shapes; mirror of Rust `github.rs`) -----------
+
+/** Sanitized GitHub sign-in status. Never carries the token. */
+export interface GithubStatus {
+  ghInstalled: boolean;
+  authenticated: boolean;
+  login: string | null;
+  host: string | null;
+  scopes: string[];
+  message: string | null;
+}
+
+/** Rolled-up CI checks summary for a PR. `state` is one word. */
+export interface CheckSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  state: "success" | "failure" | "pending" | "none";
+}
+
+/** A single check/status row (drill-down). */
+export interface CheckItem {
+  name: string;
+  bucket: "pass" | "fail" | "pending" | "skip";
+  link: string | null;
+  workflow: string | null;
+}
+
+/** A compact PR summary for the worktree card / right-panel tab. */
+export interface PrSummary {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  reviewDecision: string | null;
+  mergeable: string | null;
+  checks: CheckSummary;
+}
+
+/** The active worktree's GitHub context. */
+export interface RepoContext {
+  host: string;
+  owner: string;
+  repo: string;
+  nameWithOwner: string;
+  branch: string | null;
+  pr: PrSummary | null;
+}
+
+/** One row in the PR list. */
+export interface PrListItem {
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  author: string | null;
+  headRefName: string | null;
+  baseRefName: string | null;
+  reviewDecision: string | null;
+  updatedAt: string | null;
+  checksSummary: CheckSummary;
+  checks: CheckItem[];
+}
+
+/** A changed file within a PR. */
+export interface PrFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+/** A submitted PR review (approve / request-changes / comment). */
+export interface PrReview {
+  author: string | null;
+  /** `APPROVED` | `CHANGES_REQUESTED` | `COMMENTED` | `DISMISSED`. */
+  state: string;
+  body: string;
+  submittedAt: string | null;
+}
+
+/** An issue-level comment on the PR (the conversation). */
+export interface PrComment {
+  author: string | null;
+  body: string;
+  createdAt: string | null;
+}
+
+/** A commit within the PR. */
+export interface PrCommit {
+  oid: string;
+  message: string;
+  author: string | null;
+  committedAt: string | null;
+}
+
+/**
+ * One normalized entry in a PR/issue timeline (GitHub's Timeline Events API).
+ * Only the fields relevant to a given `event` kind are populated.
+ */
+export interface TimelineEvent {
+  /** `commented` | `reviewed` | `committed` | `labeled` | `unlabeled` | `assigned`
+   *  | `unassigned` | `closed` | `merged` | `reopened` | `renamed`
+   *  | `review_requested` | `review_request_removed` | `head_ref_force_pushed`
+   *  | `cross-referenced` | `ready_for_review` | `convert_to_draft` | … */
+  event: string;
+  actor: string | null;
+  createdAt: string | null;
+  /** Comment / review body. */
+  body: string | null;
+  /** Uppercase review verdict (APPROVED / CHANGES_REQUESTED / COMMENTED / DISMISSED). */
+  state: string | null;
+  label: string | null;
+  /** Label hex color without `#`. */
+  labelColor: string | null;
+  commitSha: string | null;
+  commitMessage: string | null;
+  /** Assignee/reviewer login, rename destination, milestone title, or cross-ref title. */
+  subject: string | null;
+  /** A cross-referenced issue/PR number. */
+  refNumber: number | null;
+  /** Whether a `committed` event's commit signature is verified. */
+  verified: boolean | null;
+}
+
+/** Full PR detail for the review center tab. */
+export interface PrDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  author: string | null;
+  baseRefName: string | null;
+  headRefName: string | null;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  mergeable: string | null;
+  mergeStateStatus: string | null;
+  reviewDecision: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  labels: string[];
+  files: PrFile[];
+  checks: CheckItem[];
+  checksSummary: CheckSummary;
+  reviewers: string[];
+  reviews: PrReview[];
+  comments: PrComment[];
+  commits: PrCommit[];
+}
+
+/** Options for creating a PR. */
+export interface PrCreateOptions {
+  title: string;
+  body?: string;
+  /** Branch the PR targets. Omitted = the repo's default branch. */
+  base?: string | null;
+  /** Branch the PR comes from. Omitted = the checked-out branch. */
+  head?: string | null;
+  draft?: boolean;
+}
+
+/** A repo label (`github_labels`), for the issue-create picker. */
+export interface Label {
+  name: string;
+  /** Hex color without the `#`, as GitHub stores it (e.g. `d73a4a`). */
+  color: string;
+}
+
+/** What the repo + the base branch's rules allow when merging (`github_merge_info`). */
+export interface MergePolicy {
+  /** Methods allowed for this base: repo settings ∩ the branch's rules. */
+  allowedMethods: string[];
+  /** The repo's preferred method, when the base's rules still allow it. */
+  defaultMethod: string | null;
+  /** The repo has auto-merge enabled — the precondition for `--auto`. */
+  autoMergeAllowed: boolean;
+  /** The repo deletes the head branch on merge (the toggle's default). */
+  deleteBranchOnMerge: boolean;
+  /** The viewer can administer the repo — the precondition for `--admin`. */
+  canAdminister: boolean;
+  /** Some rule applies to the base branch. */
+  protected: boolean;
+  requiredApprovals: number;
+  requiresThreadResolution: boolean;
+  dismissesStaleReviews: boolean;
+  requiredChecks: string[];
+}
+
+/** A PR's live mergeability as GitHub reports it. */
+export interface MergeState {
+  /** `BLOCKED | BEHIND | CLEAN | DIRTY | DRAFT | UNSTABLE | UNKNOWN`. */
+  status: string;
+  mergeable: string | null;
+  autoMergeEnabled: boolean;
+  headOid: string | null;
+}
+
+/** Everything the merge controls need. `state` is null when gh couldn't report it. */
+export interface MergeInfo {
+  policy: MergePolicy;
+  state: MergeState | null;
+}
+
+/** Options for merging a PR (`github_pr_merge`). */
+export interface PrMergeOptions {
+  method: string;
+  deleteBranch?: boolean;
+  /** Arm auto-merge rather than merging now. */
+  auto?: boolean;
+  /** Merge despite unmet requirements, using admin privileges. */
+  admin?: boolean;
+  /** Refuse unless the head is still this commit. */
+  matchHeadCommit?: string | null;
+}
+
+/** Branch candidates for the create-PR form (`github_branches`). */
+export interface PrBranches {
+  /** Local branches — the head candidates. */
+  local: string[];
+  /** Branches on `origin` — the base candidates (GitHub can only target a
+   *  branch that exists on the remote). */
+  remote: string[];
+  /** The repo's default branch, preselected as the base. */
+  defaultBase: string;
+  /** The worktree's checked-out branch, preselected as the head. */
+  current: string | null;
+}
+
+/** One row in the issue list. */
+export interface IssueListItem {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  author: string | null;
+  labels: string[];
+  assignees: string[];
+  updatedAt: string | null;
+  comments: number;
+}
+
+/** Full detail for one issue. */
+export interface IssueDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  url: string;
+  author: string | null;
+  labels: string[];
+  assignees: string[];
+  createdAt: string | null;
+  updatedAt: string | null;
+  comments: PrComment[];
+}
+
+/** One workflow run row. */
+export interface RunListItem {
+  databaseId: number;
+  name: string;
+  displayTitle: string;
+  status: string;
+  conclusion: string | null;
+  headBranch: string | null;
+  workflowName: string | null;
+  event: string | null;
+  createdAt: string | null;
+  url: string;
+}
+
+/** The core REST rate-limit window (status-bar gauge). */
+export interface RateLimit {
+  limit: number;
+  remaining: number;
+  used: number;
+  reset: number;
+}

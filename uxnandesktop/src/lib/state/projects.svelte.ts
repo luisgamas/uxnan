@@ -651,23 +651,37 @@ class ProjectsStore {
     this.error = null;
     try {
       const created = await worktreeCreate(repoId, branch, base);
-      await this.loadWorktrees(repoId);
-      // Select the new worktree as the active context.
-      this.setActiveWorktree(created.path);
-      // Launch the chosen agent into it (per-worktree override, else the global
-      // default, else none). Opt-in: `null` explicitly launches nothing.
-      const agent =
-        agentId === undefined
-          ? app.defaultAgent()
-          : agentId
-            ? app.launchableAgents.find((a) => a.id === agentId)
-            : undefined;
-      if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
+      await this.adoptWorktree(repoId, created, agentId);
       return true;
     } catch (e) {
       this.error = msg(e);
       return false;
     }
+  }
+
+  /** Take a freshly-created worktree into the UI: refresh its repo's list, make
+   *  it the active context, and launch an agent into it. Shared by
+   *  [`createWorktree`] and the GitHub PR-checkout / issue-develop flows, which
+   *  build their worktree on the backend but must land in exactly the same state
+   *  — otherwise a GitHub-created worktree arrives with no agent, unlike every
+   *  other one.
+   *
+   *  `agentId`: a specific agent id, `null` for none, or `undefined` to fall back
+   *  to the global default agent. */
+  async adoptWorktree(
+    repoId: string,
+    created: WorktreeEntry,
+    agentId?: string | null,
+  ): Promise<void> {
+    await this.loadWorktrees(repoId);
+    this.setActiveWorktree(created.path);
+    const agent =
+      agentId === undefined
+        ? app.defaultAgent()
+        : agentId
+          ? app.launchableAgents.find((a) => a.id === agentId)
+          : undefined;
+    if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
   }
 
   /** Remove a worktree. Returns false (with `error` set) when it was refused

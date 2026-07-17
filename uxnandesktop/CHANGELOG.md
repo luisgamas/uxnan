@@ -68,7 +68,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   live instances the mechanism has no reason to exist, so it was deleted rather than
   patched: `OutputBuffer` + `PtyManager::snapshot` + the `pty_snapshot` command and
   its per-chunk buffering (a mutex lock on every PTY read) are gone. The backend
-  suite drops its 4 buffer/snapshot tests (**179 tests**).
+  suite drops its 4 buffer/snapshot tests.
 - `pty_create` returning `false` now has exactly one meaning: the webview reloaded
   over a live backend (dev/HMR) — in-app remounts never respawn. For that case the
   frontend sends a **row-bounce resize nudge** (ConPTY has no reattach protocol and
@@ -496,6 +496,262 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   logging the credential.
 - Added native parsing and detection tests; expired credentials degrade to a
   sign-in-required state without affecting other providers.
+
+### Changed — Desktop stable and nightly releases now have separate, enforced tags
+
+- **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and
+  updates only the stable updater manifest.
+- **Nightly:** `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` produces a GitHub
+  pre-release and updates only the nightly updater manifest.
+- A shared tag parser validates both forms in CI; the release workflow derives
+  the draft's pre-release flag from it, and the manifest workflow rejects a
+  manually altered flag. This removes the former ambiguous `desktop-v…-alpha…`
+  convention and prevents stable/nightly cross-publication.
+
+### Fixed
+
+- **The merge panel no longer tells you to do things it can't do.** Three dead ends,
+  each one a message with no action behind it:
+  - "This branch is behind its base — **update it before merging**" had no way to update
+    it. Now offers **Update branch** (`gh pr update-branch`) with a *Rebase instead*
+    variant.
+  - "**Auto-merge is on**" was a one-way door — nothing could disarm it. Now offers
+    **Turn off** (`gh pr merge --disable-auto`).
+  - A **draft** PR could be created here but never taken out of draft, so it could only
+    be readied on github.com. Now offers **Mark ready for review** (`gh pr ready`),
+    reversible with *Convert to draft*.
+- **The merge bypass is reachable on any repository.** It was gated on
+  `viewerCanAdminister`, which only knows about **repo admins** — GitHub also grants
+  bypass through a ruleset's `bypass_actors` (a team, a custom role, an app), and the
+  probe fails outright on GHES or a logged-out `gh`. On any repo where that flag was
+  false, a blocked PR had **no visible way forward**. The option is now offered whenever
+  GitHub is holding the merge back (`BLOCKED`, `BEHIND` or `UNSTABLE`), like GitHub's own
+  UI; when the right can't be confirmed the confirm dialog says so and lets `gh`'s error
+  be the authority, rather than us guessing and hiding the control.
+- **Bot comments render properly.** The Markdown renderer now covers the GitHub-flavored
+  constructs bot comments are built from; a CodeRabbit comment used to render as a wall
+  of noise (also improves the file viewer's Markdown Preview):
+  - **HTML comments are hidden**, as GitHub does — bots use them as machine markers
+    (`<!-- review_stack_entry_start -->`) and we drew each one as a code box.
+  - **Alerts** (`> [!WARNING]` …) render as colored, iconed callouts, instead of the
+    literal link `!WARNING` that Lezer parses the marker into.
+  - **`<details>`/`<summary>`** render as real collapsibles. Three bugs: the `>`
+    blockquote markers Lezer leaves on a nested HTML block's source were dumped on
+    screen verbatim; a disclosure split across blocks by a blank line (which ends an
+    HTML block in CommonMark) rendered as two bare tags; and a **greedy match ran from
+    the first `<details>` to the *last* `</details>`, swallowing sibling disclosures
+    into the first one's body** — the shape every bot comment has. Folding is now
+    depth-aware, and an unclosed disclosure is left raw rather than eating the comment.
+  - Long raw-HTML lines **scroll** instead of being clipped (`.md-html` was missing the
+    `overflow-x` its `.md-pre` sibling had).
+
+### Added — GitHub integration (dedicated section + right-panel tab), `gh`-backed
+
+- **Request reviewers; label and assign new issues.** The reviewers row *displayed*
+  reviewers but couldn't request any — now it takes comma-separated logins
+  (`gh pr edit --add-reviewer`, new `github_pr_add_reviewers`). Creating an issue offers
+  the repo's real **labels** (colored chips via the new `github_labels` → `gh label list`)
+  and **assignees** (new `github_assignees` → the assignees API), so one filed here lands
+  as triaged as one filed on github.com instead of a bare title someone has to label
+  later. Logins and label names are validated against a leading `-` before being passed
+  as args — not an injection risk (args are a vector, never a shell), but a leading dash
+  would silently turn `--add-reviewer -x` into a different command.
+- **Edit a PR or issue after opening it.** The pencil in the detail header edits the
+  **title and description** in place (`gh pr edit` / `gh issue edit`, new
+  `github_pr_edit` / `github_issue_edit`). Until now you could create a PR or issue from
+  here but never fix a typo in it without leaving for github.com. The editor replaces the
+  header while open (so you edit where you were reading), never survives switching to
+  another item, and reloads the detail on save so the view shows what GitHub stored.
+- **PR detail split into Conversation / Files tabs.** The changed-files diff used to sit
+  stacked under the whole conversation, so neither was scannable. It's now its own tab
+  (with a file count), leaving Conversation to the timeline + the collapsed CI checks.
+  The **bottom action bar stays available from both tabs** — reviewing the diff is
+  exactly when you want to approve or comment.
+- **Either side of a PR can be any branch.** The base offered only `origin` branches and
+  the head only local ones; both now list **every** branch (marked *local only* where
+  relevant), because a PR isn't always "my branch → main" — it may target a colleague's
+  branch, a release branch, or another feature branch it stacks on. The unpushed-branch
+  warning now covers the base too.
+- **A real "AI PR authoring" settings section — and the model pickers now tell the
+  truth.** GitHub's AI settings were two bare comboboxes listing the **raw agent id**,
+  with no logos, no install state, no enable switch and no way to tell a broken CLI from
+  an agent with no models. It's now built like **Settings → AI commit messages**: an
+  enable switch (off by default), an agent picker with **logos** that shows uninstalled
+  agents **disabled + "not found"** rather than omitting them, the shared
+  `AiModelPicker`, plus **language** and **instructions** knobs the PR body needs more
+  than a commit subject does. `GithubSettings` gains `aiEnabled` / `aiLanguage` /
+  `aiInstructions` (all defaulted, so older state loads unchanged), and
+  `github_ai_draft_pr` reads them from settings on the backend — matching
+  `git_generate_commit_message`, so a caller can't run an agent other than the
+  configured one.
+- **Fixed: model discovery silently swallowed failures** (this also fixes AI commit).
+  `run_list` never checked the child's **exit status**, so a CLI that failed reached the
+  UI as an empty list — indistinguishable from "no models". Three concrete bugs:
+  - **OpenCode**: when `opencode-ai`'s postinstall doesn't run (`--ignore-scripts`, or
+    pnpm), the installed `opencode.exe` is a **shell stub, not a PE**. `exe_runnable`
+    did `.unwrap_or(true)` when it couldn't read a PE header, so the stub passed as
+    *installed* and appeared **enabled** in the picker while being unable to run at all.
+    A non-PE `.exe` is now correctly treated as not runnable (Windows can't execute
+    one), and OpenCode's stderr is captured so its own complaint reaches the user.
+  - **Pi**: `parse_pi_models` accepted any line with ≥6 whitespace-separated columns.
+    Pi answers with **prose** when no provider is authenticated ("No models available.
+    Use /login…") — 16 words — so it minted a **phantom model literally named
+    `No/models`**. Rows are now recognized by their `yes`/`no` flag columns, and ANSI is
+    stripped like OpenCode's.
+  - The doc-comment claiming pi prints its table to **stderr** was wrong (it's stdout).
+  A failed discovery now surfaces **the CLI's own message** in the settings pane.
+- **PR/issue → worktree is now a real dialog, and finally launches an agent.**
+  *Check out to worktree* and *Start work* were a single click with a hard-coded branch
+  name (`pr-<n>` / `issue-<n>`) and no options. They also **skipped
+  `projects.createWorktree`**, so a GitHub-born worktree arrived with **no agent
+  launched** — unlike every other worktree in the app. Both now open a settings +
+  confirmation dialog modeled on the New-worktree dialog: an **editable branch name**
+  (pre-filled with the old generic default, so Enter reproduces the previous behavior;
+  issues also offer the GitHub-style slug `17-fix-the-login` in one click), a **launch-agent
+  picker** (same global default as everywhere else), a live **worktree-folder preview**,
+  and a warning when a worktree already exists at that folder. The created worktree is
+  adopted through the same path as a hand-made one (the new shared
+  `projects.adoptWorktree`), so it lands in the left-panel Projects tree identically.
+  `github_pr_checkout` / `github_issue_develop` take an optional `branch`, validated
+  against git's ref rules up front (new `git::is_valid_branch_name`) so a bad name names
+  the field instead of surfacing a raw git error — and can't be smuggled in as a flag.
+- **Merging now respects branch protection, and can bypass it properly.** The merge
+  controls previously offered a fixed squash/merge/rebase list and defaulted to
+  **squash + delete-branch** regardless of the repo — so on a repo whose `main` forbids
+  rebase (as this one's does) the app happily offered a merge GitHub would reject, and
+  its defaults contradicted the repo's own (`viewerDefaultMergeMethod`,
+  `deleteBranchOnMerge`). The new `github_merge_info` command resolves, per PR:
+  the repo's allowed methods **intersected with the base branch's rules**
+  (`gh api repos/{owner}/{repo}/rules/branches/{base}` — the **rulesets** API, which is
+  the source of truth: a branch protected by a ruleset makes the classic
+  `/branches/{b}/protection` endpoint answer **404 "Branch not protected"**, which would
+  have us report a protected branch as free), plus `allow_auto_merge`,
+  `viewerCanAdminister`, and the PR's live `mergeStateStatus`. The UI now: offers only
+  the methods the base actually allows, seeds the method + delete-branch toggle from the
+  repo's own preferences, **explains why a blocked PR is blocked** (required approvals,
+  unresolved threads, required checks, stale-review dismissal), and gives GitHub's
+  recommended escape hatches in order — **Enable auto-merge** (`--auto`, only when the
+  repo has auto-merge on) before **Merge as administrator** (`--admin`, only when you
+  actually can administer the repo, behind a danger confirm naming the branch). Every
+  merge also passes **`--match-head-commit`** with the head the UI is showing, so a push
+  landing mid-review can't be merged unseen. `mergeStateStatus` is fetched in a
+  **separate best-effort call** rather than added to `PR_DETAIL_FIELDS` — one unknown
+  field makes gh reject the whole request, which is what once left PR detail stuck
+  loading. `github_pr_merge` now takes a `PrMergeOptions` object.
+- **Pick the PR's branches (base ← head).** The create-PR form now shows, and lets you
+  choose, **which branch the PR targets and which it comes from** — previously neither
+  was selectable: `gh` silently used the repo's default branch as the base and whatever
+  branch happened to be checked out as the head, which in the **section** (scoped to a
+  *repo*, not a worktree) meant opening a PR from a branch you never picked. The base
+  offers the repo's **`origin` branches** (GitHub can only target a branch that exists
+  on the remote) defaulting to the repo's default branch; the head offers **local
+  branches**, defaulting to the checked-out one. In the **right-panel tab** the head is
+  pinned to the active worktree's branch and shown read-only — that tab *is* that
+  worktree. The form refuses a base == head PR up front, warns when the head isn't
+  pushed to `origin` yet (`gh` runs with prompts disabled, so it would otherwise fail
+  opaquely), and the confirm dialog names both branches. **AI-drafted PR bodies now
+  diff against the chosen base** rather than the repo's default, and against
+  `origin/<base>` when it exists, so the body describes the changes the PR actually
+  carries instead of a stale local branch's. New backend command `github_branches`;
+  `PrCreateOptions` gains `head` (its `base` was already plumbed but never sent).
+- **PR/issue list & detail polish.** The PR and issue **lists** now show a colored
+  **status icon** per row (open / merged / closed / draft; open vs closed issues), a
+  **search bar** (`gh …list --search`), legible **relative dates** ("2 days ago" /
+  "hace 2 días" via `Intl.RelativeTimeFormat`), and roomier rows. The PR-list CI icon's
+  popover now lists the **full checks** (GitHub-style), and the list query carries them.
+  **Issue detail** gains a **Close / Reopen** button and legible "opened … / edited …"
+  metadata; **Start work → worktree** got a tooltip and a **robustness fix** (it
+  surfaces `gh issue develop` errors and materializes the linked branch with an explicit
+  refspec instead of failing cryptically). **PR detail** was restructured GitHub-style:
+  the reply box + **review / merge / Close-PR / checkout** tools moved to a **bottom
+  action bar**; CI moved from a popover to an **expandable checks section** (plus a CI
+  popover on the head commit in the timeline); **commits show a "Verified" badge** when
+  their signature is verified; and the header shows the **last-edit time**. New backend
+  commands: `github_issue_close/reopen`, `github_pr_close/reopen`.
+- A brand-new **GitHub section** — a full-screen overlay (like Settings, entered from
+  the left sidebar or the status bar) with its own left nav: **Overview**, **Pull
+  Requests**, **Issues**, **Actions** and **Settings** (Account/Session folded into
+  Settings). A **repository selector** at the top of the section's left nav picks which
+  registered project the section acts on, so it works **without** an active worktree
+  (defaulting to the active worktree's repo, then the active project, then the first git
+  repo). The right-panel GitHub tab, by contrast, stays bound to the **active worktree**
+  (empty state when none, like the other tabs). PR detail rendering keys its checks list
+  by index (matrix CI can emit duplicate check names, which would otherwise crash the
+  detail view), and the diff renderer is wrapped in an error boundary. Pull requests
+  open a full **review view** (metadata + files + checks roll-up + the unified diff
+  via the existing `DiffView`) with **approve / request-changes / comment** reviews
+  and **merge** (squash/rebase/merge + delete-branch); issues open a detail view;
+  Actions runs open their **logs** with re-run / re-run-failed / cancel.
+- **Richer PR & issue detail views.** PRs now render a **colored state pill**
+  (open = green / merged = purple / closed = red / draft = muted) plus summary pills
+  (review decision, checks roll-up, `+/−`, commit & file counts, labels), a
+  **reviewers** row, a **conversation** card (the description + every comment and
+  review verdict, oldest-first) with a **comment field**, a collapsible **commits
+  list**, a **checks** list (colored status dots + workflow name + link to the run),
+  and a **per-file diff**: one collapsible row per changed file, **collapsed by
+  default** (each `DiffView` mounts only while expanded, so a huge PR stays cheap),
+  with **Expand all / Collapse all**. **Merge / approve / request-changes are gated
+  to open PRs** — a closed/merged PR shows a read-only notice (checkout still
+  available) instead of dead action buttons. Issues gain the same **conversation**
+  card (description + comments) with a **comment field** and a colored open/closed
+  pill. Comments post through `gh pr comment` / `gh issue comment`
+  (`github_pr_comment`, `github_issue_comment`).
+- **GitHub-style timeline.** The PR/issue conversation is now a single **chronological
+  vertical rail** (like GitHub) that interleaves *everything* — the opening
+  description, comments, review verdicts, commits, and smaller events (labeled,
+  assigned, closed, merged, reopened, renamed, review-requested, force-pushed,
+  cross-referenced, ready-for-review, …). Comments and text reviews render as cards on
+  the rail; the rest are compact one-line events with a per-type icon and color.
+  Backed by GitHub's **Timeline Events API** via a new `github_pr_timeline`
+  (`gh api repos/{owner}/{repo}/issues/{n}/timeline --paginate`, serving both PRs and
+  issues); if that call fails it falls back to the reviews/comments already in the
+  detail, so the conversation is never lost. The separate collapsible commits list is
+  gone (commits now live in the timeline).
+- **Markdown rendering in the timeline.** PR/issue descriptions, comments and reviews
+  now render as **Markdown** (headings, lists, task lists, tables, code blocks,
+  blockquotes, links that open externally, and **inline images/screenshots**) via the
+  existing in-house Lezer renderer (`MarkdownView`, new compact `inline` variant) —
+  never `{@html}`, so untrusted repo content can't script the webview. The timeline
+  cards were also given more breathing room (roomier padding, larger nodes, more
+  vertical rhythm) to match Uxnan's spacing.
+- **CI as a popover (GitHub-style).** The PR detail's long checks card is replaced by a
+  compact **CI status box** for the head (last) commit — "All checks passed" / "N
+  failing" with the full check list in a **popover**. Each **PR-list row** now shows a
+  colored **CI status icon** whose popover breaks down passed/failing/pending (the list
+  query now carries `statusCheckRollup`). The checks / files / diff sections were also
+  loosened (roomier headers, rows and diff padding).
+- **Worktree-native GitHub:** **check out a PR into a new worktree**
+  (`gh pr checkout` → `git worktree`) and **start work on an issue** as a new worktree
+  (`gh issue develop`). PRs/issues become first-class citizens of the sidebar tree.
+- A configurable **right-panel "GitHub" tab** (4th tab) scoped to the active worktree:
+  its PR (with a colored **checks roll-up**), quick actions, this branch's CI runs, and
+  a full **create-PR form** (title + body, manual or AI-drafted) right in the panel. The
+  tab stays put whenever enabled (toggle in GitHub → Settings) and shows a "connect" /
+  "not a GitHub repo" state instead of appearing/disappearing; the right-panel **tab
+  strip now scrolls horizontally** (never clips) and the panel has a min width that keeps
+  the four tabs visible.
+- **Confirmation for PR actions** (create / merge) — on by default, configurable in
+  GitHub → Settings, applied in **both** the section and the right-panel tab.
+- Opens with a keyboard shortcut (**`Ctrl/Cmd+G`**, rebindable in Settings → Keyboard
+  shortcuts, with its keycap shown on the sidebar button). The section header reserves
+  the window-controls zone, and detail views (PR / issue / run log) surface a clear
+  error + retry instead of hanging — every `gh` call is bounded by a 60 s timeout, and
+  the PR-view field set is trimmed to what all `gh`/GHES versions accept. UI aligned to
+  the app's design tokens & clean-desktop patterns (section headers, framed cards,
+  status pills, proper empty states).
+- **Sidebar-card PR badge** on worktree rows (colored by CI checks), a **status-bar
+  GitHub button** (opens the section; shows the API rate-limit remaining + an optional
+  unread-notifications count), and a post-push **"Create PR"** toast (the Zed pattern).
+- **Optional AI PR-body drafting** — draft a PR description from the branch diff with an
+  installed CLI agent (the same one-shot, non-interactive runner as AI commit messages;
+  configured in GitHub → Settings). Manual typing is always available.
+- **Posture:** everything is backed by the local **GitHub CLI (`gh`)** (including
+  `gh api` for rate-limit/notifications). **No token is ever stored or read by the app**
+  — `gh` owns it in the OS keychain; the app only reads sanitized status
+  (login/scopes/host). Every agent-automatable action has an identical manual path, so
+  GitHub features keep working with zero agent quota. Backend: `src-tauri/src/github.rs`
+  (30 commands) + `AppSettings.github` (`GithubSettings`, all fields default). User guide:
+  [`docs/github.md`](docs/github.md).
 
 ### Changed — Desktop stable and nightly releases now have separate, enforced tags
 

@@ -42,3 +42,14 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 
 - [ ] **Relay URL / self-hosted relay** (Phase 6) — for off-LAN mobile
       connectivity through the embedded bridge. LAN/Tailscale-direct needs none.
+
+- [ ] **GitHub OAuth App `client_id`** (only for the *native* GitHub sign-in follow-up
+      — `FOR-DEV.md → "GitHub integration — follow-ups"`). **Not needed today:** the
+      shipped GitHub integration signs in through the local **`gh` CLI**, so it needs no
+      app registration. It becomes relevant only if we add the OAuth **device-flow**
+      login (to work without `gh` installed).
+      - **What/Where:** register a **GitHub OAuth App** (Settings → Developer settings →
+        OAuth Apps), tick **"Enable Device Flow"**, and provide its **public**
+        `client_id` (a device-flow app needs **no client secret**). It would be wired
+        into the (future) native auth path, not into any file today.
+      - **Config:** none until the native-auth follow-up lands.

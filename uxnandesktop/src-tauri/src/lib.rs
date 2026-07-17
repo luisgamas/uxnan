@@ -19,6 +19,7 @@ mod fs;
 mod fswatch;
 mod git;
 mod gitfast;
+mod github;
 mod hooks;
 mod mcp;
 mod mcpinject;
@@ -315,6 +316,44 @@ pub fn run() {
             updater::updater_download,
             updater::updater_staged,
             updater::updater_install,
+            commands::github_status,
+            commands::github_repo_context,
+            commands::github_pr_list,
+            commands::github_pr_view,
+            commands::github_pr_diff,
+            commands::github_pr_timeline,
+            commands::github_pr_create,
+            commands::github_branches,
+            commands::github_merge_info,
+            commands::github_pr_update_branch,
+            commands::github_pr_ready,
+            commands::github_pr_disable_auto_merge,
+            commands::github_pr_edit,
+            commands::github_issue_edit,
+            commands::github_pr_add_reviewers,
+            commands::github_labels,
+            commands::github_assignees,
+            commands::github_pr_comment,
+            commands::github_pr_review,
+            commands::github_pr_close,
+            commands::github_pr_reopen,
+            commands::github_pr_merge,
+            commands::github_pr_checkout,
+            commands::github_issue_list,
+            commands::github_issue_view,
+            commands::github_issue_comment,
+            commands::github_issue_close,
+            commands::github_issue_reopen,
+            commands::github_issue_create,
+            commands::github_issue_develop,
+            commands::github_run_list,
+            commands::github_run_log,
+            commands::github_run_rerun,
+            commands::github_run_cancel,
+            commands::github_rate_limit,
+            commands::github_notifications_count,
+            commands::github_clone,
+            commands::github_ai_draft_pr,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

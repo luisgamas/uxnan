@@ -27,6 +27,8 @@ import {
 } from "$lib/api";
 import { projects } from "$lib/state/projects.svelte";
 import { history } from "$lib/state/history.svelte";
+import { app } from "$lib/state/app.svelte";
+import { github } from "$lib/state/github.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 import { isImagePath } from "$lib/diff";
@@ -299,11 +301,31 @@ class GitStore {
       this.syncing = false;
     }
   }
-  push(): Promise<void> {
-    return this.sync((p) => gitPush(p), i18n.t("toast.pushed"));
+  async push(): Promise<void> {
+    await this.sync((p) => gitPush(p), i18n.t("toast.pushed"));
+    await this.offerCreatePr();
   }
   pull(): Promise<void> {
     return this.sync((p) => gitPull(p), i18n.t("toast.pulled"));
+  }
+
+  /** After a push, if the branch is a GitHub repo with no PR yet, offer a "Create
+   *  PR" action (the Zed pattern). Best-effort; silent when GitHub is unavailable. */
+  private async offerCreatePr(): Promise<void> {
+    try {
+      await github.refreshContext();
+      const ctx = github.context;
+      if (github.available && ctx && ctx.branch && !ctx.pr) {
+        toast(i18n.t("github.toast.createPrPrompt"), {
+          action: {
+            label: i18n.t("github.pr.create"),
+            onClick: () => app.openGitHub("pulls"),
+          },
+        });
+      }
+    } catch {
+      /* ignore — the toast is a convenience, not a guarantee */
+    }
   }
 }
 

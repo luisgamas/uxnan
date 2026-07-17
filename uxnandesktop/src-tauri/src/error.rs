@@ -28,6 +28,8 @@ pub enum AppError {
     Invalid(String),
     #[error("updater error: {0}")]
     Updater(String),
+    #[error("github error: {0}")]
+    Github(String),
 }
 
 /// Serializable error returned to the frontend. `code` is a stable,
@@ -60,6 +62,7 @@ impl From<AppError> for CommandError {
             AppError::Agent(_) => "AGENT_ERROR",
             AppError::Invalid(_) => "INVALID_INPUT",
             AppError::Updater(_) => "UPDATER_ERROR",
+            AppError::Github(_) => "GITHUB_ERROR",
         };
         CommandError::new(code, e.to_string())
     }
