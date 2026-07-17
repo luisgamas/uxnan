@@ -4,6 +4,38 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — refresh your profile stats on demand, and pick how they keep current
+- The profile's stats now carry a **manual refresh button** (mirroring the
+  provider-usage header: a spinner replaces it while the fetch is in flight, and
+  the stats below stay put). It is always available, whatever the mode.
+- A persisted **refresh mode** in Settings ▸ *Metrics & provider usage* ▸
+  *Profile stats*: **automatic** (re-fetch every time the profile is opened —
+  the new default), a **5 / 15 / 30 / 60-minute poll**, or **manual only**.
+  Every mode still re-fetches when a PC connects.
+- **Why:** the snapshot was only re-fetched when the *connection* changed, so on
+  a live connection the stats were frozen at connect time — the only way to move
+  them was to kill and reopen the app. Opening the profile now refreshes them.
+
+### Changed — the Usage settings section is now "Metrics & provider usage"
+- It covers two separate things, so it now says so and names both: **Profile
+  stats** (the new refresh mode) and **Provider usage**, the latter explained as
+  what it actually is — each AI provider's remaining limits: how much quota is
+  left, when it resets, the plan and any credit.
+
+### Fixed — a failed backup export says what actually went wrong
+- A rejected `metrics/export` now shows the **bridge's own reason** verbatim
+  ("Couldn't create the backup: …") instead of the blanket "Make sure a PC is
+  connected", which pointed at the connection no matter the cause — including
+  when the connection was fine. `exportBackup` throws `MetricsExportException`
+  carrying the reason rather than swallowing it into a null.
+- A file that seals fine but can't be saved/shared now has its own message
+  instead of borrowing the export-failure one.
+- Pairs with the bridge fix for the actual failure this surfaced: exporting with
+  **no passphrase** was rejected with `-32602 params must be an object` (see
+  `bridge/CHANGELOG.md`). Exporting *with* a passphrase always worked.
+
 ## [0.0.7-alpha.20260716] - 2026-07-16
 
 ### Fixed — A started Play update could never be finished, and then read as "up to date"

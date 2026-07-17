@@ -23,6 +23,34 @@ class _NoMetrics extends MetricsController {
       const <String, MetricsSnapshot>{};
 }
 
+/// Counts loads so a test can prove a refresh actually re-fetched.
+class _CountingMetrics extends MetricsController {
+  int builds = 0;
+
+  @override
+  Future<Map<String, MetricsSnapshot>> build() async {
+    builds++;
+    return const <String, MetricsSnapshot>{};
+  }
+}
+
+/// Rejects `metrics/export` the way the bridge does, carrying its own reason.
+class _RejectingExport extends _NoMetrics {
+  @override
+  Future<({String blob, String filename, bool passphraseProtected})>
+      exportBackup({String? passphrase}) async =>
+          throw const MetricsExportException('the keychain is locked');
+}
+
+TrustedDevice _device() => TrustedDevice(
+      macDeviceId: 'pc-1',
+      displayName: 'My PC',
+      macIdentityPublicKey: Uint8List(32),
+      relayUrl: 'wss://relay.example',
+      sessionId: 'sess-1',
+      pairedAt: DateTime(2026, 3),
+    );
+
 ProfileMetrics _metrics() => ProfileMetrics(
       conversations: 12,
       agentsUsed: 3,
@@ -139,6 +167,106 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Stats: the manual refresh button re-fetches the connected PC snapshot',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      tester.view.physicalSize = const Size(1200, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final device = _device();
+      final controller = _CountingMetrics();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileMetricsProvider.overrideWith((ref) async => _metrics()),
+            trustedDevicesProvider
+                .overrideWith((ref) => Stream.value([device])),
+            connectedDeviceProvider.overrideWith((ref) => Stream.value(device)),
+            activityHeatmapProvider.overrideWith((ref, arg) async => const {}),
+            agentsProvider
+                .overrideWith((ref) async => const <AgentDescriptor>[]),
+            metricsSnapshotsProvider.overrideWith(() => controller),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ProfileScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // `automatic` is the default, so opening the profile already fetched once
+      // — that alone is the fix for stats frozen at connect time.
+      expect(controller.builds, greaterThanOrEqualTo(1));
+      final afterOpen = controller.builds;
+
+      final refresh = find.widgetWithIcon(IconButton, Icons.refresh_rounded);
+      await tester.ensureVisible(refresh.first);
+      await tester.tap(refresh.first);
+      await tester.pumpAndSettle();
+
+      expect(controller.builds, greaterThan(afterOpen));
+    },
+  );
+
+  testWidgets(
+    "Backup: a rejected export shows the bridge's own reason, not a guess",
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      tester.view.physicalSize = const Size(1200, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final device = _device();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileMetricsProvider.overrideWith((ref) async => _metrics()),
+            trustedDevicesProvider
+                .overrideWith((ref) => Stream.value([device])),
+            connectedDeviceProvider.overrideWith((ref) => Stream.value(device)),
+            activityHeatmapProvider.overrideWith((ref, arg) async => const {}),
+            agentsProvider
+                .overrideWith((ref) async => const <AgentDescriptor>[]),
+            metricsSnapshotsProvider.overrideWith(_RejectingExport.new),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ProfileScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Export'));
+      await tester.tap(find.text('Export'));
+      await tester.pumpAndSettle();
+      // Confirm with no passphrase — the path that blamed the connection.
+      await tester.tap(find.widgetWithText(TextButton, 'Export'));
+      await tester.pumpAndSettle();
+
+      // The snackbar quotes the bridge verbatim. It must not fall back to the
+      // old "Make sure a PC is connected", which sent the user debugging a
+      // connection that was fine.
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching:
+              find.text("Couldn't create the backup: the keychain is locked"),
+        ),
+        findsOneWidget,
+      );
     },
   );
 }

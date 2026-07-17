@@ -41,7 +41,12 @@ connected to live bridge data, validated on-device against a real bridge.
   display cache (`MetricsCacheStore`) and falls back to the local drift
   aggregation only when the cache is empty. A profile **"Backup"** section adds a
   "local data can be lost" note + **Export / Import** of a bridge-sealed,
-  tamper-proof file (`metrics/export` / `metrics/import`), with EN/ES strings. The
+  tamper-proof file (`metrics/export` / `metrics/import`), with EN/ES strings; a
+  rejected export surfaces the **bridge's own reason** verbatim. The stats carry
+  a **manual refresh** button (always available) and a persisted **refresh mode**
+  — automatic (on every profile open, the default), a 5/15/30/60-min poll, or
+  manual-only — in Settings ▸ *Metrics & provider usage*, which also names and
+  explains the provider-usage group (each provider's remaining limits). The
   per-agent usage/credit view stays Phase B (the `agent/usageStats` item below).
 - **Live streaming conversations** that survive leaving/re-entering the screen
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread

@@ -11,6 +11,17 @@ export function asObject(params: unknown): Record<string, unknown> {
   return params as Record<string, unknown>;
 }
 
+/**
+ * Params of a method whose every field is optional. JSON-RPC 2.0 makes the
+ * `params` member itself optional, so a caller with nothing to send omits it
+ * entirely; an absent value therefore means "no field set", not a malformed
+ * request. Methods with a required field keep using {@link asObject}, which
+ * still rejects an absent params.
+ */
+function optionalParams(params: unknown): Record<string, unknown> {
+  return params === undefined || params === null ? {} : asObject(params);
+}
+
 export function requireString(params: unknown, key: string): string {
   const value = asObject(params)[key];
   if (typeof value !== 'string' || value.length === 0) {
@@ -20,7 +31,7 @@ export function requireString(params: unknown, key: string): string {
 }
 
 export function optionalString(params: unknown, key: string): string | undefined {
-  const value = asObject(params)[key];
+  const value = optionalParams(params)[key];
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'string') {
     throw RpcError.invalidParams(`'${key}' must be a string`);
@@ -29,7 +40,7 @@ export function optionalString(params: unknown, key: string): string | undefined
 }
 
 export function optionalBoolean(params: unknown, key: string): boolean | undefined {
-  const value = asObject(params)[key];
+  const value = optionalParams(params)[key];
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'boolean') {
     throw RpcError.invalidParams(`'${key}' must be a boolean`);
@@ -38,7 +49,7 @@ export function optionalBoolean(params: unknown, key: string): boolean | undefin
 }
 
 export function optionalNumber(params: unknown, key: string): number | undefined {
-  const value = asObject(params)[key];
+  const value = optionalParams(params)[key];
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw RpcError.invalidParams(`'${key}' must be a number`);
