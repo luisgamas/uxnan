@@ -19,6 +19,7 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 Widget _wrap(Widget child) => ProviderScope(
       child: MaterialApp(
@@ -74,7 +75,7 @@ void main() {
     await tester.pumpWidget(_wrap(MessageBubble(message: message)));
     await tester.pump();
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(PolygonLoader), findsOneWidget);
     expect(find.text('Agent responding…'), findsOneWidget);
   });
 

@@ -290,11 +290,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                             padding: EdgeInsets.symmetric(
                               horizontal: UxnanSpacing.md,
                             ),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
+                            child: PolygonLoader(size: 20),
                           )
                         else
                           IconSurface(

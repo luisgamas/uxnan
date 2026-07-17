@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/widgets/activity_heatmap.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 
 /// Which lens the agent-activity block reads through: everyday **activity**
@@ -204,7 +205,7 @@ class _AgentActivitySectionState extends ConsumerState<AgentActivitySection> {
     return ref.watch(activityHeatmapProvider(query)).when(
           loading: () => const Padding(
             padding: EdgeInsets.symmetric(vertical: UxnanSpacing.lg),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: PolygonLoader(size: UxnanSpacing.xxl)),
           ),
           error: (_, __) => Text(l10n.profileNoData),
           data: (counts) => ActivityHeatmap(

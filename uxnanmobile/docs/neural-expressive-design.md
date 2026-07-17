@@ -1600,6 +1600,27 @@ Because the canonical component owns a 48 dp canvas, Uxnan scales it through a
 proportions. The wrapper isolates repainting and disables its ticker under
 `MediaQuery.disableAnimations`, leaving the first expressive shape visible
 and semantic for reduced-motion users.
+
+**Every indeterminate spinner in the app is this widget.** `PolygonLoader` owns
+its own `SizedBox.square` + `RepaintBoundary`, so a call site passes `size`
+directly instead of wrapping it (its default is 18 dp — the repo lints a
+redundant `size: 18`). The sizes in use, by context:
+
+| Context | `size` |
+| --- | --- |
+| Full-screen / `SliverFillRemaining` empty state | 48 |
+| Section block (heatmap, provider cards, licenses) | `UxnanSpacing.xxl` (32) |
+| Sheet / picker | 22–28 |
+| Inline beside text, in a button, or a header action | 10–20 |
+
+**The one exception — a gauge is not a loader.** `PolygonLoader` is
+indeterminate *by design*: it has no `value`. Two call sites therefore keep a
+`CircularProgressIndicator`, because each draws a number the user reads — the
+conversation's **context-usage ring** (percent of the model window used) and
+Settings ▸ Updates' **download progress** (fraction of the APK fetched).
+Converting them would silently discard that information. `loader_consistency_test.dart`
+enforces both halves of this rule: no stray spinner anywhere else, and those two
+sites still passing a `value:`.
 ---
 
 ## 7. Governance, Accessibility, and Performance

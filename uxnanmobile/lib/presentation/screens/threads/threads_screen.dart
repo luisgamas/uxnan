@@ -18,6 +18,7 @@ import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The threads of a connected PC (spec 02a §5.4.2). Lists the active bridge's
@@ -697,21 +698,9 @@ class _UpdateBanner extends ConsumerWidget {
   ) {
     switch (state.phase) {
       case AppUpdatePhase.downloading:
-        return const [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ];
+        return const [PolygonLoader()];
       case AppUpdatePhase.installing:
-        return const [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ];
+        return const [PolygonLoader()];
       case AppUpdatePhase.downloaded:
         return [
           FilledButton(

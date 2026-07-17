@@ -10,6 +10,7 @@ import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
@@ -44,7 +45,7 @@ class PcDetailsScreen extends ConsumerWidget {
         loading: () => const [
           SliverFillRemaining(
             hasScrollBody: false,
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: PolygonLoader(size: 48)),
           ),
         ],
         error: (_, __) => [

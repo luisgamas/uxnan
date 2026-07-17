@@ -24,6 +24,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
 /// background; this widget renders the block's body.
@@ -222,11 +223,7 @@ class _ApprovalActions extends StatelessWidget {
 
     Widget label(ApprovalDecision decision, String text) {
       if (sending && pending == decision) {
-        return const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
+        return const PolygonLoader(size: 16);
       }
       return Text(text);
     }
@@ -837,11 +834,7 @@ class _QuestionActions extends StatelessWidget {
               child: FilledButton(
                 onPressed: acting && canSubmit ? onSubmit : null,
                 child: sending
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const PolygonLoader(size: 16)
                     : Text(l10n.questionSubmit),
               ),
             ),
@@ -1818,15 +1811,7 @@ class _AgentRespondingStatus extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox.square(
-          dimension: 14,
-          child: RepaintBoundary(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: colors.onSurfaceVariant,
-            ),
-          ),
-        ),
+        PolygonLoader(size: 14, color: colors.onSurfaceVariant),
         const SizedBox(width: UxnanSpacing.sm),
         Text(
           label,
