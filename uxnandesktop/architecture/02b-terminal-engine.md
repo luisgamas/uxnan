@@ -248,12 +248,21 @@ El frontend Svelte conecta xterm.js al PTY vía Tauri events. La conexión es bi
 > emiten al arrancar un query de posición de cursor (DSR `ESC[6n`) y **se bloquean
 > hasta que el terminal responde**; xterm genera esa respuesta y la entrega por
 > `onData`. Por eso `onData` (que reenvía la respuesta al PTY con `pty_write`) se
-> registra **antes** de `pty_create`: el query llega *mientras* aún se espera
-> `pty_create`, así que un `onData` tardío perdería la respuesta y el shell quedaría
-> colgado sin imprimir nunca su prompt (panel en blanco intermitente). Un flag
-> `replaying` suprime `onData` mientras se reproduce un snapshot en un xterm
-> remontado, para que las respuestas a queries embebidos en esos bytes no se filtren
-> como input al shell vivo.
+> cablea al **crear la instancia** (`src/lib/terminal/instances.ts`), antes de que
+> `pty_create` pueda correr: el query llega *mientras* aún se espera `pty_create`,
+> así que un `onData` tardío perdería la respuesta y el shell quedaría colgado sin
+> imprimir nunca su prompt (panel en blanco intermitente). Como ya no existe ningún
+> replay de bytes, toda respuesta que xterm emite pertenece al shell vivo — no hace
+> falta ninguna ventana de supresión.
+>
+> **Orden crítico — el grid del spawn.** El tamaño del PTY se sincroniza por un
+> único camino libre de carreras (`requestPtyResize`): nunca se envía un
+> `pty_resize` antes de que el PTY exista (las peticiones pre-spawn se guardan como
+> *grid deseado* y se aplican al volver `pty_create`), un resize fallido nunca
+> bloquea el reintento (resetea el grid conocido), y un pane visible hace el fit
+> síncrono antes del spawn para que el PTY nazca con el grid real. Sin esto, un fit
+> que se asienta mientras `pty_create` está en vuelo dejaba a ConPTY creyendo 80×24
+> con el xterm en el tamaño real (prompt a media pantalla, filas encimadas).
 
 ### Paso 4: Lanzamiento del Agente
 
@@ -269,11 +278,11 @@ Secuencias **OSC** (Operating System Command) emitidas por el agente, o **heurí
 
 ### Paso 7: Background
 
-Si el usuario cambia de tab o de worktree, el PTY **sigue corriendo** en el backend Rust. No se mata el proceso. El buffer async (gestionado con `tokio::sync::mpsc`) acumula el output que el agente produce mientras está en background.
+Si el usuario cambia de tab o de worktree, el PTY **sigue corriendo** en el backend Rust. No se mata el proceso. El output sigue fluyendo por `pty:output:{id}` hacia el xterm del tab — que permanece montado (oculto con `display:none`) y consume el stream hacia su propio buffer, la única copia retenida.
 
-### Paso 8: Restauración
+### Paso 8: Regreso al tab
 
-Al volver al tab, el backend envía un **snapshot del buffer** acumulado al frontend para sincronizar xterm.js. El usuario ve todo el output que el agente produjo mientras no estaba mirando, como si nunca hubiera salido del tab.
+Al volver al tab no hay nada que restaurar: el xterm ya contiene todo el output que el agente produjo mientras el usuario no miraba (el pane repinta a través de los píxeles ocultos y re-adjunta su renderer WebGL). Es literalmente la misma instancia viva, no una reconstrucción.
 
 ### Paso 9: Terminación
 
