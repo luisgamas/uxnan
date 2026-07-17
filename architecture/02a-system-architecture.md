@@ -1275,6 +1275,13 @@ ConversationScreen
     └── ApprovalRequestOverlay
 ```
 
+El `AutocompleteOverlay` presenta `/` y `@` como superficies auxiliares
+hermanas 8 dp por encima del composer. Comparten superficie tonal elevada,
+geometria, ancho y una cabecera con el trigger y el titulo. `/` usa filas
+continuas de al menos 56 dp con icono contenido, nombre y descripcion; `@`
+conserva sus filas y estados de navegacion, busqueda, carga y error. Ambos
+respetan reduced motion.
+
 #### 5.6.2 Composer avanzado
 
 ```dart
@@ -1674,9 +1681,11 @@ de un commit (archivos tocados con +/- y diff completo).
 **UI:** `GitHistoryScreen` se abre desde un `IconSurface` `history_rounded`
 en la app-bar de `GitScreen` (solo visible cuando hay un repositorio
 abierto). Es **una sola lista plana** (sin chrome de tarjeta — el mismo
-lenguaje limpio del file browser): cada fila muestra los chips de
+lenguaje limpio del file browser), limitada a 840 dp en ventanas amplias:
+cada fila muestra los chips de
 rama/tag/HEAD (`refs[]`), un badge del short-SHA y `+/-` coloreados. La
-app-bar ofrece tres `IconSurface`:
+app-bar mantiene visibles Buscar y Grafo; las acciones menos frecuentes viven
+en un `IconSurfaceMenu` vertical igual al de `GitScreen`:
 
 - **Grafo** (`account_tree`) — superpone un grafo estilo VS Code (swimlanes):
   filas de **altura fija** para que los puntos se alineen en carriles, **color
@@ -1684,10 +1693,15 @@ app-bar ofrece tres `IconSurface`:
   curvas suaves en branch/merge, y un **nodo de merge** distinto (punto sólido
   + anillo de contorno separado). El gutter ocupa el ancho real de los carriles
   (el texto se recorre a la derecha para que el grafo se vea completo).
-- **Compacto** — densidad de fila más alta.
-- **Selector de rama/ref** (`alt_route`, vía `git/branches`) — ver el historial
+- **Compacto** (menú) — densidad de fila más alta.
+- **Selector de rama/ref** (menú, `alt_route`, vía `git/branches`) — ver el historial
   de cualquier rama/remota en modo **solo lectura** (no hace checkout); muestra
   un banner "Viewing <ref>" con retorno a HEAD en un toque.
+
+`GitCommitDetailScreen` usa una columna editorial limitada a 760 dp: mensaje
+y metadatos se leen sin tarjetas decorativas, y los archivos tocados forman
+filas planas expandibles con separadores. Sólo el diff abierto recibe una
+superficie tonal para distinguir el contenido de código del resumen.
 
 Paginación cursor-based con **scroll infinito** (carga al acercarse al final) +
 botón *Load older commits* + un FAB **volver-arriba**. Tocar un commit abre la

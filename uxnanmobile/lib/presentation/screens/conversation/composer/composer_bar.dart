@@ -459,7 +459,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                 // or command is active. AnimatedSize smooths its appearance and
                 // dismissal so it doesn't pop in/out abruptly.
                 AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
+                  duration: motionDuration,
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.topCenter,
                   child: _trigger != null
@@ -607,7 +607,6 @@ class _SuggestionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     final isCommand = trigger.trigger == ComposerTrigger.command;
     final commands = isCommand
@@ -625,21 +624,17 @@ class _SuggestionPanel extends StatelessWidget {
     final title =
         isCommand ? l10n.composerCommandsTitle : l10n.composerMentionFilesTitle;
 
-    final Widget body;
     if (isCommand) {
-      body = commands.isEmpty
-          ? _EmptyRow(label: l10n.composerCommandsEmpty)
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final command in commands)
-                  _CommandRow(
-                    command: command,
-                    onTap: () => onPickCommand(command),
-                  ),
-              ],
-            );
-    } else if (!hasWorkspace) {
+      return _CommandPalette(
+        title: title,
+        commands: commands,
+        emptyLabel: l10n.composerCommandsEmpty,
+        onPickCommand: onPickCommand,
+      );
+    }
+
+    final Widget body;
+    if (!hasWorkspace) {
       body = _EmptyRow(label: l10n.composerMentionNoWorkspace);
     } else if (searchMode) {
       // Repo-wide fuzzy search.
@@ -687,21 +682,8 @@ class _SuggestionPanel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UxnanSpacing.md,
-                  UxnanSpacing.sm,
-                  UxnanSpacing.md,
-                  UxnanSpacing.xs,
-                ),
-                child: Text(
-                  title,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              _SuggestionHeader(symbol: '@', title: title),
+              Divider(height: 1, color: colors.outlineVariant),
               Flexible(
                 child: SingleChildScrollView(
                   child: body,
@@ -710,6 +692,124 @@ class _SuggestionPanel extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The `/` palette is a direct extension of the composer: one elevated tonal
+/// surface, a recognizable slash header and a continuous command list. It does
+/// not turn commands into individual cards because scanning speed matters more
+/// than decorative grouping here.
+class _CommandPalette extends StatelessWidget {
+  const _CommandPalette({
+    required this.title,
+    required this.commands,
+    required this.emptyLabel,
+    required this.onPickCommand,
+  });
+
+  final String title;
+  final List<ComposerCommand> commands;
+  final String emptyLabel;
+  final ValueChanged<ComposerCommand> onPickCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+      child: Material(
+        key: const ValueKey('command-palette'),
+        color: colors.surfaceContainerHigh,
+        elevation: 3,
+        shadowColor: colors.shadow,
+        borderRadius: const BorderRadius.all(UxnanRadius.xl),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SuggestionHeader(symbol: '/', title: title),
+              Divider(height: 1, color: colors.outlineVariant),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: commands.isEmpty
+                      ? _EmptyRow(label: emptyLabel)
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final command in commands)
+                              _CommandRow(
+                                command: command,
+                                onTap: () => onPickCommand(command),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.xs),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shared visual header for the composer's two auxiliary palettes. The trigger
+/// glyph makes `/` commands and `@` workspace navigation recognizable without
+/// giving either surface a different hierarchy.
+class _SuggestionHeader extends StatelessWidget {
+  const _SuggestionHeader({required this.symbol, required this.title});
+
+  final String symbol;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    return Padding(
+      key: ValueKey('suggestion-header-$symbol'),
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.md,
+        UxnanSpacing.md,
+        UxnanSpacing.md,
+        UxnanSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: const BorderRadius.all(UxnanRadius.md),
+            ),
+            child: Text(
+              symbol,
+              style: textTheme.titleMedium?.copyWith(
+                color: colors.onPrimaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(
+              title,
+              style: textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -851,39 +951,54 @@ class _CommandRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.md,
-          vertical: UxnanSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            Icon(command.icon, size: 18, color: colors.primary),
-            const SizedBox(width: UxnanSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    command.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    command.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.md,
+            vertical: UxnanSpacing.xs,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.all(UxnanRadius.md),
+                ),
+                child: Icon(
+                  command.icon,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      command.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      command.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

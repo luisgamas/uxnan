@@ -33,7 +33,7 @@
    - [Widget: Expressive Card with Dynamic Radii](#63-widget-expressive-card-with-dynamic-radii)
    - [Widget: Responsive Navigation Drawer](#64-widget-responsive-navigation-drawer)
    - [Widget: Floating Pill Input](#65-widget-floating-pill-input)
-   - [Widget: Polygonal Loading Indicator (Shape Morphing)](#66-widget-polygonal-loading-indicator-shape-morphing)
+   - [Widget: Material 3 Expressive Loading Indicator](#66-widget-material-3-expressive-loading-indicator)
 7. [Governance, Accessibility, and Performance](#7-governance-accessibility-and-performance)
 
 ---
@@ -399,6 +399,17 @@ anchored M3 popup menu with two icon-and-label rows. A bottom sheet is reserved
 for a future larger action set; persistent turn context is not mixed into this
 menu.
 
+**Slash-command palette:**
+Typing `/` or `@` opens an auxiliary surface 8 dp above the composer. Both use
+the same elevated `surfaceContainerHigh`, conventional rounded rectangle and
+header structure: a 36 dp primary-container trigger (`/` or `@`) followed by
+the palette title. This shared hierarchy makes them sibling extensions while
+their rows remain task-specific. Slash commands form a continuous list with
+56 dp minimum targets, 40 dp neutral icon surfaces, names and one-line
+descriptions; workspace rows retain their navigation and loading states.
+Neither palette turns every entry into a card, and both follow the composer's
+reduced-motion setting.
+
 Reasoning/run-option and approval controls live as a tightly left-aligned icon
 group in a compact horizontal shelf above the pill. Each keeps a 48 dp touch
 target around a 38 dp neutral circular surface with a 24 dp glyph, matching the
@@ -613,6 +624,16 @@ When swipe-to-dismissing an item:
 - Auto-collapse of other cards in the same group: `effectsDefault` for the fade of
   the internal content + `spatialDefault` for the geometric collapse.
 
+#### When Not to Use Cards
+
+Cards are not the default treatment for every repeated item. Use a flat list
+with quiet `outlineVariant` separators when continuity between rows carries
+meaning or when card chrome would compete with the primary visualization. Git
+history is the canonical example: its branch graph must read as one continuous
+lane system, so commits stay flat and width-constrained. Commit-detail files
+also use expandable flat rows; only an opened diff receives tonal containment
+to separate code from surrounding metadata.
+
 ---
 
 ### 4.7 Progress Indicators
@@ -626,10 +647,9 @@ horizontal advance. It communicates activity without blocking the UI.
 
 A replacement for the `CircularProgressIndicator` for processes of < 5 seconds.
 
-**Critical technical rule:** The shape sequence must contain **at least 2 figures**.
-A sequence of 1 shape has no transition and causes an interpolation crash.
-
-Recommended sequence: `square → triangle → octagon → star → square (loop)`
+Use normalized rounded polygons and feature-aware cubic morphing; never pair raw
+vertices by index. The canonical indeterminate sequence is `soft burst → 9-sided
+cookie → pentagon → pill → sunny → 4-sided cookie → oval`.
 
 #### Contained Loading Indicator
 
@@ -1560,159 +1580,26 @@ class _M3EPillInputState extends State<M3EPillInput> {
 
 ---
 
-### 6.6 Widget: Polygonal Loading Indicator (Shape Morphing)
+### 6.6 Widget: Material 3 Expressive Loading Indicator
 
-```dart
-import 'package:flutter/material.dart';
-import 'dart:math' as math;
+Uxnan exposes one shared `PolygonLoader` from
+`lib/presentation/widgets/expressive_progress.dart`. It preserves the app's
+compact `size` / semantic `color` API while delegating the geometry to
+`material_loading_indicator`, the MIT-licensed Flutter port of AndroidX
+Material 3's `LoadingIndicator`.
 
-/// Polygonal loading indicator — a replacement for CircularProgressIndicator.
-/// Smoothly transitions between geometric figures using interpolation
-/// of vertex coordinates.
-///
-/// RULE: the [shapes] list must have ≥ 2 elements.
-/// A single shape has no transition and causes a division by zero in the interpolator.
-class M3EPolygonLoader extends StatefulWidget {
-  final double size;
-  final Color? color;
-  final Duration cycleDuration;
+The production implementation must not interpolate raw polygon vertices by
+index. Shapes with different feature counts need `RoundedPolygon` feature
+matching and cubic-curve correspondence through `Morph`; otherwise corners
+cross, collapse, or jump between frames. The canonical indeterminate sequence
+is soft burst → 9-sided cookie → pentagon → pill → sunny → 4-sided cookie →
+oval, with the Material rotation and 650 ms scale/morph cycle.
 
-  /// Number of sides of each figure in the morphing sequence.
-  /// A minimum of 2 figures is required.
-  final List<int> shapes;
-
-  const M3EPolygonLoader({
-    super.key,
-    this.size = 48.0,
-    this.color,
-    this.cycleDuration = const Duration(milliseconds: 1200),
-    this.shapes = const [4, 3, 8, 6], // square → triangle → octagon → hexagon
-  }) : assert(shapes.length >= 2,
-            'shapes must contain at least 2 figures to avoid an interpolation crash');
-
-  @override
-  State<M3EPolygonLoader> createState() => _M3EPolygonLoaderState();
-}
-
-class _M3EPolygonLoaderState extends State<M3EPolygonLoader>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  int _currentShapeIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: widget.cycleDuration,
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          setState(() {
-            _currentShapeIndex =
-                (_currentShapeIndex + 1) % widget.shapes.length;
-          });
-          _controller.forward(from: 0);
-        }
-      });
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.color ?? Theme.of(context).colorScheme.primary;
-    final nextIndex = (_currentShapeIndex + 1) % widget.shapes.length;
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (_, __) => CustomPaint(
-        size: Size(widget.size, widget.size),
-        painter: _PolygonMorphPainter(
-          currentSides: widget.shapes[_currentShapeIndex],
-          nextSides: widget.shapes[nextIndex],
-          factor: _controller.value,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-class _PolygonMorphPainter extends CustomPainter {
-  final int currentSides;
-  final int nextSides;
-  final double factor;
-  final Color color;
-
-  const _PolygonMorphPainter({
-    required this.currentSides,
-    required this.nextSides,
-    required this.factor,
-    required this.color,
-  });
-
-  List<Offset> _getVertices(int sides, double radius, Offset center) {
-    const initialAngle = -math.pi / 2;
-    return List.generate(sides, (i) {
-      final angle = initialAngle + (2 * math.pi / sides) * i;
-      return Offset(
-        center.dx + radius * math.cos(angle),
-        center.dy + radius * math.sin(angle),
-      );
-    });
-  }
-
-  List<Offset> _interpolateVertices(
-      List<Offset> from, List<Offset> to, double t) {
-    final count = math.max(from.length, to.length);
-    return List.generate(count, (i) {
-      final a = from[i % from.length];
-      final b = to[i % to.length];
-      return Offset(
-        a.dx + (b.dx - a.dx) * t,
-        a.dy + (b.dy - a.dy) * t,
-      );
-    });
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 * 0.85; // inner visual margin
-
-    final current = _getVertices(currentSides, radius, center);
-    final next = _getVertices(nextSides, radius, center);
-    final points = _interpolateVertices(current, next, factor);
-
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (final p in points.skip(1)) {
-      path.lineTo(p.dx, p.dy);
-    }
-    path.close();
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_PolygonMorphPainter old) =>
-      old.currentSides != currentSides ||
-      old.nextSides != nextSides ||
-      old.factor != factor ||
-      old.color != color;
-}
-```
-
+Because the canonical component owns a 48 dp canvas, Uxnan scales it through a
+`FittedBox` to each call site's requested size without changing its internal
+proportions. The wrapper isolates repainting and disables its ticker under
+`MediaQuery.disableAnimations`, leaving the first expressive shape visible
+and semantic for reduced-motion users.
 ---
 
 ## 7. Governance, Accessibility, and Performance
@@ -1750,8 +1637,8 @@ An excess of simultaneous animations contradicts the system's fundamental princi
 
 - Complex animations (polygon morphing, Hero transitions): use `RepaintBoundary`
   to isolate the subtree from the paint layer of the rest of the UI.
-- On devices with < 4 GB RAM or a limited GPU, disable polygonal morphing
-  and use `CircularProgressIndicator` as a fallback.
+- Under reduced motion, freeze the shared indicator on its first expressive
+  shape instead of running its rotation/morph ticker.
 - Verify that all `AnimationController`s are disposed in `dispose()`.
 - In long lists (> 100 items), the dynamic radii are computed without overhead
   at paint time (they are just `BorderRadius`, no shaders).
@@ -1766,11 +1653,25 @@ Before marking a widget as "complete" in your design system:
 - [ ] Is the drawer in Compact 100% of the screen width?
 - [ ] In Expanded+, is the drawer permanent (no opening animation)?
 - [ ] Do the grouped lists have a 3 dp gap and dynamic radii (24/4)?
-- [ ] Does the polygon loader's shape list have ≥ 2 figures?
+- [ ] Does loading use the shared feature-matched `PolygonLoader`?
 - [ ] Is `bouncySpatial` used ONLY on elements ≤ 56 dp?
 - [ ] Is there support for accessibility `disableAnimations`?
 - [ ] Do the icon-only button texts have a `semanticLabel`?
 - [ ] Does the color contrast meet WCAG AA (4.5:1 text, 3:1 icons)?
+
+### 7.5 Onboarding and Connection Entry Points
+
+Onboarding uses a calm, solid `surface` backdrop. Do not place a persistent
+grid, glow, or full-screen decorative gradient behind the entire flow: those
+patterns compete with changing page content and make setup feel disconnected
+from the product. Let decorative agent logos breathe directly on the canvas;
+do not trap them inside another card. Use the app's established rounded-
+rectangle hero geometry and a cohesive floating navigation surface. Connection
+alternatives use the same hero geometry and constrained content width so QR and
+manual-code entry feel like one journey.
+
+Ambient logo motion is decorative and must freeze when
+`MediaQuery.disableAnimationsOf(context)` is true.
 
 ---
 

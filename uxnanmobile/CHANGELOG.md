@@ -6,6 +6,61 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Composer palettes share a clear auxiliary hierarchy
+- Gave the `/` command and `@` workspace palettes the same M3 container,
+  8 dp separation from the prompt pill and explicit trigger header. They read
+  as sibling extensions above the composer without appearing fused into it.
+- Command rows now provide a minimum 56 dp target, contained 40 dp neutral icon
+  surfaces and clearer name/description hierarchy. Appearance follows the
+  composer's reduced-motion setting. Filtering, workspace navigation, agent
+  commands, prompt templates and insertion behavior are unchanged.
+
+### Changed — Git history and commit details use a cleaner review hierarchy
+- Preserved commit history as a flat list so its functional branch graph stays
+  continuous and readable; commits were not converted into cards. Rows now use
+  quiet separators and a responsive 840 dp reading bound on wider screens.
+- Kept Search and Graph as the two direct app-bar actions. Branch/ref selection
+  and density now live in the same vertical `IconSurfaceMenu` treatment as the
+  main Git screen, reducing toolbar noise without removing either control.
+- Commit details now use a 760 dp editorial column, an open message body and
+  flat expandable file rows instead of one outlined card per changed file.
+  Expanded diffs retain tonal containment. Git data, graph layout, pagination,
+  search, branch selection and file expansion behavior are unchanged.
+
+### Changed — Onboarding and manual pairing share the Neural Expressive language
+- Removed the onboarding's persistent square-grid and fade wallpaper in favor
+  of the same calm semantic `surface` used across Profile, conversations and
+  Settings. Floating agent logos remain open on that canvas, while the hero
+  uses the app's established rounded-rectangle geometry.
+- Grouped page progress and navigation into a floating rounded surface, widened
+  the responsive content bound, and made floating-agent motion respect the
+  platform's reduced-motion preference.
+- Constrained manual-code pairing on wide screens and aligned its rounded hero
+  with the onboarding and semantic primary-container treatment. Pairing,
+  discovery, validation and navigation behavior are unchanged.
+
+### Changed — Shared loader uses the real Material 3 Expressive morph
+- Replaced `PolygonLoader`'s vertex-by-index painter with the Material 3
+  `LoadingIndicator` geometry used by AndroidX and the Bunpod reference: seven
+  normalized rounded shapes, feature-aware cubic morph matching, rotation and
+  the canonical scale pulse. The shared wrapper preserves every existing
+  `size` / semantic-color call site, so workspace, model, Git, pairing and
+  conversation loaders adopt the corrected animation together.
+- The wrapper keeps exact requested dimensions through a fitted canonical
+  48 dp canvas, isolates repaints, supports an accessibility label and freezes
+  the decorative ticker on its first expressive shape under reduced motion.
+  Added widget coverage for sizing, color, semantics and reduced motion.
+
+### Changed — Workspace files follow the Neural Expressive mobile hierarchy
+- The workspace browser keeps its low-noise flat tree while enforcing 48 dp
+  touch targets and constraining the tree on tablet widths. Its rigid status
+  strip is now a rounded tonal workspace surface with a clearer path, branch,
+  ahead/behind hierarchy and the existing copy action.
+- File loading now uses the shared reduced-motion-aware polygon loader. Markdown,
+  source, editor and empty/error content are width-constrained on larger screens;
+  binary/error states use the same calm card language as Profile and New
+  conversation, while image preview remains a full-surface fit-to-screen canvas.
+  File operations, Git state, search, editing and navigation are unchanged.
 ### Added — refresh your profile stats on demand, and pick how they keep current
 - The profile's stats now carry a **manual refresh button** (mirroring the
   provider-usage header: a spinner replaces it while the fetch is in flight, and

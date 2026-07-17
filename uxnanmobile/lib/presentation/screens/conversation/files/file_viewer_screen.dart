@@ -18,7 +18,9 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen file viewer. Renders one of: an inline image, a markdown file
@@ -57,11 +59,7 @@ class FileViewerScreen extends ConsumerStatefulWidget {
   }) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => FileViewerScreen(
-          cwd: cwd,
-          path: path,
-          node: node,
-        ),
+        builder: (_) => FileViewerScreen(cwd: cwd, path: path, node: node),
       ),
     );
   }
@@ -369,7 +367,9 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     // the bar. Binary/error placeholders are nudged below it with [_belowBar],
     // while an image intentionally owns the full surface behind the top bar.
     if (_loading && payload == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: PolygonLoader(size: UxnanSpacing.xxl),
+      );
     }
     if (payload == null) {
       return const SizedBox.shrink();
@@ -514,30 +514,33 @@ class _ImageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return SizedBox.expand(
-      child: InteractiveViewer(
-        maxScale: 6,
-        minScale: 1,
-        clipBehavior: Clip.none,
-        child: Image.memory(
-          base64Decode(base64),
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.contain,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stack) => Padding(
-            padding: const EdgeInsets.all(UxnanSpacing.xl),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.broken_image_outlined,
-                  size: 40,
-                  color: colors.error,
-                ),
-                const SizedBox(height: UxnanSpacing.sm),
-                Text(mimeType, style: UxnanTypography.codeSmall),
-              ],
+    return ColoredBox(
+      color: colors.surfaceContainerLowest,
+      child: SizedBox.expand(
+        child: InteractiveViewer(
+          maxScale: 6,
+          minScale: 1,
+          clipBehavior: Clip.none,
+          child: Image.memory(
+            base64Decode(base64),
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stack) => Padding(
+              padding: const EdgeInsets.all(UxnanSpacing.xl),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.broken_image_outlined,
+                    size: 40,
+                    color: colors.error,
+                  ),
+                  const SizedBox(height: UxnanSpacing.sm),
+                  Text(mimeType, style: UxnanTypography.codeSmall),
+                ],
+              ),
             ),
           ),
         ),
@@ -577,11 +580,18 @@ class _MarkdownBody extends StatelessWidget {
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),
-      child: MarkdownBody(
-        data: text,
-        selectable: true,
-        styleSheet: uxnanMarkdownStyleSheet(context),
-        onTapLink: (linkText, href, title) => _onTapLink(context, href),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: MarkdownBody(
+            data: text,
+            selectable: true,
+            styleSheet: uxnanMarkdownStyleSheet(context),
+            onTapLink: (linkText, href, title) => _onTapLink(context, href),
+          ),
+        ),
       ),
     );
   }
@@ -629,16 +639,26 @@ class _CodeBody extends StatelessWidget {
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: _SelectableHighlightView(
-          text,
-          language: language,
-          theme: theme,
-          textStyle: UxnanTypography.codeBody,
-          padding: const EdgeInsets.symmetric(
-            horizontal: UxnanSpacing.sm,
-            vertical: UxnanSpacing.xs,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: _SelectableHighlightView(
+                text,
+                language: language,
+                theme: theme,
+                textStyle: UxnanTypography.codeBody,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.sm,
+                  vertical: UxnanSpacing.xs,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -667,9 +687,7 @@ class _SelectableHighlightView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rootStyle = TextStyle(
-      color: theme['root']?.color,
-    ).merge(textStyle);
+    final rootStyle = TextStyle(color: theme['root']?.color).merge(textStyle);
     final nodes = syntax.highlight
         .parse(source.replaceAll('\t', '        '), language: language)
         .nodes;
@@ -695,9 +713,7 @@ class _SelectableHighlightView extends StatelessWidget {
           else
             TextSpan(
               style: node.className == null ? null : theme[node.className],
-              children: _highlightSpans(
-                node.children ?? const <syntax.Node>[],
-              ),
+              children: _highlightSpans(node.children ?? const <syntax.Node>[]),
             ),
       ];
 }
@@ -715,23 +731,30 @@ class _EditorBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return TextField(
-      controller: controller,
-      maxLines: null,
-      expands: true,
-      autofocus: true,
-      keyboardType: TextInputType.multiline,
-      textAlignVertical: TextAlignVertical.top,
-      style: UxnanTypography.codeBody.copyWith(color: colors.onSurface),
-      cursorColor: colors.primary,
-      decoration: InputDecoration(
-        border: InputBorder.none,
-        filled: false,
-        contentPadding: EdgeInsets.fromLTRB(
-          UxnanSpacing.lg,
-          topInset + UxnanSpacing.sm,
-          UxnanSpacing.lg,
-          bottomInset + UxnanSpacing.lg,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: UxnanSpacing.maxContentWidth,
+        ),
+        child: TextField(
+          controller: controller,
+          maxLines: null,
+          expands: true,
+          autofocus: true,
+          keyboardType: TextInputType.multiline,
+          textAlignVertical: TextAlignVertical.top,
+          style: UxnanTypography.codeBody.copyWith(color: colors.onSurface),
+          cursorColor: colors.primary,
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            filled: false,
+            contentPadding: EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              topInset + UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              bottomInset + UxnanSpacing.lg,
+            ),
+          ),
         ),
       ),
     );
@@ -749,32 +772,39 @@ class _BinaryState extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-      child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.archive_outlined,
-              size: 40,
-              color: colors.onSurfaceVariant,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: NeCard(
+            padding: const EdgeInsets.all(UxnanSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.archive_outlined,
+                  size: 40,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(height: UxnanSpacing.md),
+                Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  l10n.fileViewerBinaryBody,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: UxnanSpacing.sm),
+                Text(
+                  '$sizeBytes bytes (base64)',
+                  style: UxnanTypography.codeSmall,
+                ),
+              ],
             ),
-            const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              l10n.fileViewerBinaryBody,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: UxnanSpacing.sm),
-            Text(
-              '$sizeBytes bytes (base64)',
-              style: UxnanTypography.codeSmall,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -793,33 +823,40 @@ class _ErrorState extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-      child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 40, color: colors.error),
-            const SizedBox(height: UxnanSpacing.md),
-            Text(
-              l10n.fileViewerLoadFailed,
-              style: textTheme.titleSmall,
-              textAlign: TextAlign.center,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: NeCard(
+            padding: const EdgeInsets.all(UxnanSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 40, color: colors.error),
+                const SizedBox(height: UxnanSpacing.md),
+                Text(
+                  l10n.fileViewerLoadFailed,
+                  style: textTheme.titleSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  message,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: UxnanSpacing.md),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(l10n.gitRefresh),
+                ),
+              ],
             ),
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              message,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: UxnanSpacing.md),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: Text(l10n.gitRefresh),
-            ),
-          ],
+          ),
         ),
       ),
     );

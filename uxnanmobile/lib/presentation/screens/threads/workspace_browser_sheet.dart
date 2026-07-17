@@ -135,9 +135,9 @@ class _WorkspaceBrowserSheetState extends ConsumerState<WorkspaceBrowserSheet> {
                         .clamp(160.0, MediaQuery.sizeOf(context).height),
               ),
               child: _loading
-                  ? Center(
+                  ? const Center(
                       child: Padding(
-                        padding: const EdgeInsets.all(UxnanSpacing.xl),
+                        padding: EdgeInsets.all(UxnanSpacing.xl),
                         child: PolygonLoader(size: 28),
                       ),
                     )
