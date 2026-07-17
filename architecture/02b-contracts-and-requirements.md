@@ -581,12 +581,22 @@ Todos los paquetes listados son compatibles con Android e iOS. Se priorizan los 
 | Paquete | Version min. | Rol |
 |---|---|---|
 | `pointycastle` | ^3.9.0 | AES-256-GCM, HKDF, SHA-256 — puro Dart |
-| `cryptography` | ^2.7.0 | X25519, Ed25519, HKDF — con fallback nativo |
-| `cryptography_flutter` | ^2.3.0 | Aceleracion nativa de cryptography en iOS y Android |
+| `cryptography` | ^2.9.0 | X25519, Ed25519, HKDF — con fallback nativo |
+| `cryptography_flutter` | ^2.3.4 | Aceleracion nativa de cryptography en iOS y Android |
 
 La combinacion `cryptography` + `cryptography_flutter` usa:
 - iOS: CryptoKit (Swift) para X25519 y Ed25519
 - Android: Android Keystore / JCE
+
+La aceleracion nativa se activa de forma **automatica**, sin llamar a
+`FlutterCryptography.enable()`: desde `cryptography_flutter` 2.2.0 el plugin
+declara `dartPluginClass: FlutterCryptography`, por lo que Flutter lo registra
+como `Cryptography.instance` durante `WidgetsFlutterBinding.ensureInitialized()`
+en `main()`. `FlutterCryptography.enable()` quedo deprecado y es redundante con
+ese auto-registro, asi que no se invoca. En plataformas sin soporte nativo
+(p. ej. la Dart VM en tests) se usa el fallback puro-Dart de forma transparente;
+el formato wire de AES-256-GCM (nonce de 12 bytes + tag GCM de 16 bytes) no
+cambia, por lo que interopera byte a byte con el bridge.
 
 ### 2.6 UI y componentes visuales
 

@@ -17,6 +17,15 @@ import 'package:uxnan/infrastructure/notifications/push_notification_service.dar
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // The E2EE envelope layer needs no explicit crypto activation here.
+  // `cryptography_flutter` auto-registers its accelerated
+  // `FlutterCryptography` as `Cryptography.instance` through its
+  // `dartPluginClass` during `ensureInitialized()` above, so AES-GCM and
+  // HKDF run on the OS-native backend on device (and on the
+  // byte-identical pure-Dart fallback elsewhere, e.g. in tests).
+  // `FlutterCryptography.enable()` has been redundant since
+  // cryptography_flutter 2.2.0 and is deprecated — do not add it.
+
   await _initFirebase();
 
   runApp(

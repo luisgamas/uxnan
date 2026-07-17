@@ -4,6 +4,28 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed — crypto libraries bumped to latest; native-backend activation documented
+- Bumped the crypto dependencies to their latest published versions:
+  `cryptography` `^2.7.0` → `^2.9.0` and `cryptography_flutter` `^2.3.0` →
+  `^2.3.4`. Dependency resolution is unchanged (both already resolved to the
+  latest), so `pubspec.lock` is untouched — the bump only advances the declared
+  floor to match.
+- Documented that the E2EE envelope crypto already runs on the platform-native
+  backend on device — no `main()` activation call is required. Since
+  `cryptography_flutter` **2.2.0** the plugin registers its accelerated
+  `FlutterCryptography` as `Cryptography.instance` **automatically** (via its
+  `dartPluginClass`) during `WidgetsFlutterBinding.ensureInitialized()`, so
+  AES-256-GCM + HKDF for every envelope use the OS-native primitives rather than
+  the pure-Dart fallback.
+- `FlutterCryptography.enable()` is deprecated (a no-op made redundant by the
+  auto-registration) and is intentionally **not** called — adding it would only
+  trip `deprecated_member_use`. Non-native targets (e.g. the Dart VM under
+  `flutter test`) use the byte-identical pure-Dart backend, and the AES-GCM wire
+  format (12-byte nonce + 16-byte GCM tag) is unchanged, so the native backend
+  interoperates byte-for-byte with the bridge.
+
 ## [0.0.8-alpha.20260716] - 2026-07-16
 
 ### Changed — one loading language across the whole app

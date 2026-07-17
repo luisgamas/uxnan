@@ -21,8 +21,8 @@ dependencies:
   async: ^2.11.0 # reactive stream helpers
   collection: ^1.18.0 # DeepCollectionEquality, etc.
   connectivity_plus: ^6.0.0 # network connectivity changes
-  cryptography: ^2.7.0 # X25519, Ed25519, HKDF
-  cryptography_flutter: ^2.3.0 # native crypto acceleration
+  cryptography: ^2.9.0 # X25519, Ed25519, HKDF
+  cryptography_flutter: ^2.3.4 # native crypto acceleration
   cupertino_icons: ^1.0.8
   dio: ^5.4.0 # HTTP client for relay REST endpoints
   drift: ^2.18.0 # SQLite ORM (local persistence)
