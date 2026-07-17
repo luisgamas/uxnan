@@ -16,6 +16,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { agentRunHeadless, setOrchestrationRuns, type HeadlessResult } from "$lib/api";
+import { registerFlush } from "./flushRegistry";
 import { terminals } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { orchestration } from "./orchestration.svelte";
@@ -136,6 +137,8 @@ class OrchestrationRunStore {
     const runs = (saved ?? []).map((r) => this.reconcile(r));
     this.runs = runs;
     this.hydrated = true;
+    // Force any pending debounced write on window close (singleton — no unregister).
+    registerFlush("orchestration-runs", () => this.flush());
     this.startEventBridge();
     if (this.activeRuns.length > 0) {
       this.ensureTimer();
@@ -202,6 +205,15 @@ class OrchestrationRunStore {
     this.saveTimer = setTimeout(() => {
       void setOrchestrationRuns($state.snapshot(this.runs) as SavedRun[]).catch(() => {});
     }, 500);
+  }
+
+  /** Force the pending (debounced) runs write immediately — called on window
+   *  close so a run edited within the debounce window isn't dropped. Cancels the
+   *  timer and writes the current snapshot; a no-op before hydration. */
+  async flush(): Promise<void> {
+    if (!this.hydrated) return;
+    clearTimeout(this.saveTimer);
+    await setOrchestrationRuns($state.snapshot(this.runs) as SavedRun[]).catch(() => {});
   }
 
   // --- Authoring (drafts) --------------------------------------------------

@@ -61,7 +61,12 @@ in [`../README.md`](../README.md); remaining work is in [`../FOR-DEV.md`](../FOR
 - `routes/+layout.svelte` — global styles, store hydration, theme sync.
 - `routes/+page.svelte` — the three-panel shell (left/center/right + resize).
 
-State lives in runes (`$state`/`$derived`); no external state library.
+State lives in runes (`$state`/`$derived`); no external state library. Several
+stores persist through a short debounce (terminal layout, orchestration runs,
+workspace recency, Settings edits); a small **flush registry**
+(`lib/state/flushRegistry.ts`) lets the main window's `onCloseRequested` handler
+force every pending write to disk before the webview is torn down, and a startup
+failure never overwrites an already-restored layout.
 
 ## Where the desktop sits in the monorepo
 
