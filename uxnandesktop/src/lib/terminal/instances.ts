@@ -94,10 +94,18 @@ export interface TerminalInstance {
    *  to pane visibility); stored here so a remount finds the live addon. */
   renderer: WebglAddon | undefined;
   webglLossAt: number;
-  /** Last grid sent to `pty_resize` — resize only on a real change, so a
+  /** Last grid the PTY is KNOWN to have (spawn size, or a `pty_resize` that was
+   *  actually sent to a live session). Resize only on a real change, so a
    *  redundant SIGWINCH never makes a full-screen TUI repaint/jump. */
   lastCols: number;
   lastRows: number;
+  /** Latest grid the view wants (from fits). Resizes requested before the PTY
+   *  exists land here and are flushed right after spawn — a resize must never
+   *  race `pty_create` (a swallowed NotFound used to poison the dedupe and leave
+   *  the shell permanently on the wrong grid: prompts painted mid-screen, short
+   *  names overwriting long ones). 0 = no fit has produced a grid yet. */
+  desiredCols: number;
+  desiredRows: number;
   /** The PTY accepts writes (spawn finished). */
   ptyReady: boolean;
   /** The backend rejected the spawn (missing shell / bad profile). */
@@ -202,6 +210,36 @@ export function disposeInstance(id: string): void {
   inst.wrapper.remove();
 }
 
+/** Ask for the PTY grid to match the view's grid. This is the ONLY path that
+ *  may call `pty_resize`, and it upholds two invariants that kill the
+ *  spawn/resize race for good:
+ *
+ *  1. **Never resize a PTY that doesn't exist yet.** A fit can settle while
+ *     `pty_create` is still in flight; sending the resize then hits NotFound,
+ *     and swallowing it while recording the size as "sent" used to poison the
+ *     change-dedupe — the correction was never retried, leaving ConPTY on the
+ *     spawn-default 80×24 while xterm showed the real grid (PowerShell painting
+ *     its prompt mid-screen, short names overwriting long ones, doubled
+ *     headers). Pre-spawn requests are stashed in `desiredCols/Rows` and
+ *     flushed by `spawnPty` the moment the session exists.
+ *  2. **Never let a failed resize block a future one.** On a rejected
+ *     `pty_resize` the known-grid is reset so the next fit retries instead of
+ *     being deduped away. */
+export function requestPtyResize(inst: TerminalInstance, cols: number, rows: number): void {
+  if (cols <= 0 || rows <= 0) return;
+  inst.desiredCols = cols;
+  inst.desiredRows = rows;
+  if (!inst.ptyReady) return; // stashed — spawnPty flushes it
+  if (cols === inst.lastCols && rows === inst.lastRows) return;
+  inst.lastCols = cols;
+  inst.lastRows = rows;
+  invoke("pty_resize", { id: inst.id, cols, rows }).catch(() => {
+    // Don't let a lost resize masquerade as the PTY's real grid.
+    inst.lastCols = 0;
+    inst.lastRows = 0;
+  });
+}
+
 /** Spawn the instance's PTY (first-time setup, called by the creating mount
  *  after the first fit so the grid is real). Resolves `fresh: false` when the
  *  backend already had a live PTY for this id — that can only mean the webview
@@ -226,10 +264,20 @@ export async function spawnPty(
       cols,
       rows,
     });
+    // The PTY now exists at exactly `cols`×`rows`; record that as the known
+    // grid, then flush any fit that settled while the spawn was in flight so
+    // the shell and xterm can never disagree about the grid.
+    inst.lastCols = cols;
+    inst.lastRows = rows;
     inst.ptyReady = true;
+    if (inst.desiredCols > 0 && inst.desiredRows > 0) {
+      requestPtyResize(inst, inst.desiredCols, inst.desiredRows);
+    }
     // Quiet-prompt fallback: shells whose profile prints nothing still launch.
     scheduleAgentLaunch(inst, RUN_COMMAND_FALLBACK_MS);
-    if (!fresh) await nudgeRepaint(inst, cols, rows);
+    // Nudge against the grid the PTY was just synced to (not the spawn args —
+    // the flush above may have moved it).
+    if (!fresh) await nudgeRepaint(inst, inst.lastCols, inst.lastRows);
     return { fresh };
   } catch (e) {
     if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
@@ -250,6 +298,7 @@ export async function spawnPty(
  *  bounce the row count once: the real WINCH makes a full-screen TUI redraw its
  *  screen instead of leaving the fresh xterm empty until the next byte. */
 async function nudgeRepaint(inst: TerminalInstance, cols: number, rows: number): Promise<void> {
+  if (cols <= 0 || rows <= 0) return; // grid unknown (a resize just failed) — skip
   try {
     await invoke("pty_resize", { id: inst.id, cols, rows: Math.max(1, rows - 1) });
     await invoke("pty_resize", { id: inst.id, cols, rows });
@@ -346,6 +395,8 @@ async function createInstance(
     webglLossAt: 0,
     lastCols: 0,
     lastRows: 0,
+    desiredCols: 0,
+    desiredRows: 0,
     ptyReady: false,
     spawnFailed: false,
     launched: false,

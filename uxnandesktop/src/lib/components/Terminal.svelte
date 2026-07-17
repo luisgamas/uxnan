@@ -14,6 +14,7 @@
     adoptInstance,
     releaseInstance,
     disposeInstance,
+    requestPtyResize,
     spawnPty,
     type TerminalInstance,
   } from "$lib/terminal/instances";
@@ -318,8 +319,10 @@
     }
   }
 
-  // Fit the xterm grid to the pane, resize the PTY only on a real grid change,
-  // and repaint whenever the canvas dimensions actually changed.
+  // Fit the xterm grid to the pane, sync the PTY grid through the race-free
+  // path (`requestPtyResize` — pre-spawn requests are stashed and flushed after
+  // spawn, so the shell can never be left believing a stale grid), and repaint
+  // whenever the canvas dimensions actually changed.
   function applyFit() {
     if (!inst || !term || !fit || !hasVisibleGeometry()) return;
     const beforeCols = term.cols;
@@ -331,13 +334,7 @@
       // Container not measurable yet; a later resize will retry.
       return;
     }
-    if (term.cols !== inst.lastCols || term.rows !== inst.lastRows) {
-      inst.lastCols = term.cols;
-      inst.lastRows = term.rows;
-      invoke("pty_resize", { id, cols: term.cols, rows: term.rows }).catch(
-        () => {},
-      );
-    }
+    requestPtyResize(inst, term.cols, term.rows);
     if (term.cols !== beforeCols || term.rows !== beforeRows) forceRepaint();
     if (distanceFromBottom > 0) {
       term.scrollToLine(Math.max(0, term.buffer.active.baseY - distanceFromBottom));
@@ -601,6 +598,13 @@
     // First-time setup only: spawn the PTY. Remounts adopt the live instance —
     // its PTY, buffer and scrollback are simply still there; nothing to restore.
     if (created) {
+      // Fit synchronously first (layout exists after `tick()`), so a visible
+      // pane spawns its PTY at the REAL settled grid instead of xterm's 80×24
+      // default — the shell's very first prompt is then laid out for the grid
+      // the user actually sees. (`fitToPane`'s frame-stability dance above is
+      // for divider drags; a hidden pane keeps the default and gets its resize
+      // on reveal through `requestPtyResize`.)
+      applyFit();
       const res = await spawnPty(inst, term.cols || 80, term.rows || 24);
       if (destroyed) {
         // The tab closed while the spawn was in flight; its close path ran

@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — shell painting at wrong rows/columns: the spawn/resize race is gone
+
+- **A fresh terminal could come up with ConPTY believing xterm's default 80×24
+  grid while the pane really measured e.g. 147×40 — and stay that way.** Symptoms
+  (intermittent, per-tab): PowerShell painting its prompt/edit line mid-screen,
+  `dir` output overlaying earlier rows, short file names written over long ones
+  ("CLAUDE.mdONDUCT.md"), doubled headers, stacked partial prompts. Root cause: the
+  first fit settles on an animation frame while `pty_create` is still in flight;
+  the fit's `pty_resize` then hit **NotFound** (session not registered yet), the
+  error was swallowed, **and the change-dedupe recorded the size as sent** — so
+  the correction was never retried and the shell stayed on the wrong grid until
+  something else happened to resize the pane (which is why switching tabs
+  sometimes "fixed" it). This race predates the instance refactor; it is now
+  removed by construction, with grid syncing confined to one race-free path
+  (`requestPtyResize` in `src/lib/terminal/instances.ts`): a resize is **never
+  sent before the PTY exists** (pre-spawn requests are stashed as the desired
+  grid and flushed the moment `pty_create` returns), a **failed resize can never
+  poison the dedupe** (the known-grid resets so the next fit retries), and a
+  visible pane now **fits synchronously before spawning**, so the PTY is born at
+  the real settled grid and the shell's very first prompt is laid out for the
+  grid the user actually sees.
+
 ### Fixed — terminal glyph corruption: never clear the shared WebGL texture atlas
 
 - **Text in a terminal no longer mutates into same-length gibberish ("memoria" →
