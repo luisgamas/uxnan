@@ -53,10 +53,9 @@ export function registerWorkspaceHandlers(router: HandlerRouter): void {
   router.register('workspace/searchFiles', (p) =>
     ws.searchFiles(requireString(p, 'cwd'), requireString(p, 'query'), optionalNumber(p, 'limit')),
   );
-  router.register('workspace/browseDirs', (p, ctx: BridgeContext) => {
-    const params = p ?? {};
-    return ctx.browse.browse(optionalString(params, 'rootId'), optionalString(params, 'path'));
-  });
+  router.register('workspace/browseDirs', (p, ctx: BridgeContext) =>
+    ctx.browse.browse(optionalString(p, 'rootId'), optionalString(p, 'path')),
+  );
   router.register('workspace/applyPatch', (p) =>
     ws.applyPatch(requireString(p, 'cwd'), parseChanges(p)),
   );

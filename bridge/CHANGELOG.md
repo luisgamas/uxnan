@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — an omitted `params` no longer fails methods whose fields are all optional
+- **`metrics/export` with no passphrase now works.** JSON-RPC 2.0 makes the
+  `params` member optional and the phone omits it whenever every field is unset,
+  but the optional param readers ran it through `asObject()`, which rejects an
+  absent value — so the **default, no-passphrase** export was answered with
+  `-32602 params must be an object`. The phone surfaces that as "couldn't create
+  the backup, make sure you're connected to a PC", which pointed at the
+  connection rather than the real cause. Exporting *with* a passphrase was
+  unaffected (it sends an object).
+- Root-caused in `handlers/params.ts`: `optionalString` / `optionalBoolean` /
+  `optionalNumber` now read through an `optionalParams()` helper that treats an
+  absent `params` as "no field set". Readers for a **required** field keep using
+  `asObject()`, so a method that needs params still rejects an omitted one, and a
+  `params` that is present but malformed is still `-32602`.
+- Same bug, same fix: **`thread/list`** with no `projectId` (the threads screen's
+  "list every thread" call) was rejected too, and `loadThreads` swallows the
+  error — the bridge-side list sync silently no-op'd. `workspace/browseDirs`
+  carried a local `p ?? {}` workaround for this; it's now redundant and removed
+  in favour of the root fix.
+- Covered by `test/handlers/params.test.ts` (8 tests, dispatched through the real
+  router with `params` omitted exactly as the phone sends it).
+
 ### Fixed — activity day buckets are timezone-stable
 - The `metrics/get` `activity[].day` bucket key is now **UTC midnight of the
   bridge host's local calendar date** (`utcDayKey`, was the local-midnight
