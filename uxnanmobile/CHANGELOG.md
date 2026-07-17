@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — smooth thread-delete animation
+- Deleting a conversation now animates the tile out instead of making it vanish
+  abruptly. On confirm, the card dims and floats the app's shape-morphing
+  `PolygonLoader` over it, then fades and collapses its height (≈320 ms, Material
+  3 Expressive easing) so the rows below slide up smoothly. The database delete
+  is committed only **after** the card has animated away, so the list mutates
+  while the slot is already invisible (no jarring pop). Honours the platform
+  "reduce motion" setting — the row is dropped without the animation. Applies to
+  both the active and archived thread lists.
+
 ### Changed — crypto libraries bumped to latest; native-backend activation documented
 - Bumped the crypto dependencies to their latest published versions:
   `cryptography` `^2.7.0` → `^2.9.0` and `cryptography_flutter` `^2.3.0` →
@@ -25,6 +35,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `flutter test`) use the byte-identical pure-Dart backend, and the AES-GCM wire
   format (12-byte nonce + 16-byte GCM tag) is unchanged, so the native backend
   interoperates byte-for-byte with the bridge.
+
+### Fixed — deleting a thread now removes its dependent rows
+- Deleting a single thread (tile long-press / conversation menu) previously
+  removed only the thread row and left every dependent row behind forever. The
+  `messages`, `turns`, `composer_drafts` and `git_action_log` tables all key off
+  `threadId` with no database cascade, so those orphans were never re-synced or
+  garbage-collected — the local SQLite DB grew unbounded with dead data and the
+  message / git-action counts were inflated by rows with no thread. `deleteThread`
+  now clears all four child tables and the thread in a single transaction, so a
+  delete leaves nothing behind (mirrors the device-wide `deleteThreadsByDeviceId`
+  path).
+- Extended `deleteThreadsByDeviceId` (the "remove device" path) to also clear
+  `composer_drafts` and `git_action_log`; it previously wiped only `messages` and
+  `turns`, leaking the same two tables when a whole PC was unpaired.
 
 ## [0.0.8-alpha.20260716] - 2026-07-16
 

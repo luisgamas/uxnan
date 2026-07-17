@@ -24,7 +24,7 @@ enum _ThreadAction { rename, copyId, archive, unarchive, delete }
 /// list. Tapping opens the conversation; long-pressing opens the actions menu
 /// (rename / copy id / archive · unarchive / delete), adapted to the thread's
 /// status.
-class ThreadTile extends ConsumerWidget {
+class ThreadTile extends ConsumerStatefulWidget {
   /// Creates a [ThreadTile].
   const ThreadTile({required this.thread, this.compact = false, super.key});
 
@@ -36,7 +36,61 @@ class ThreadTile extends ConsumerWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ThreadTile> createState() => _ThreadTileState();
+}
+
+class _ThreadTileState extends ConsumerState<ThreadTile>
+    with SingleTickerProviderStateMixin {
+  /// Drives the delete exit: the card fades over the first half, then its
+  /// height collapses over the second half, so the neighbouring rows slide up
+  /// smoothly before the row is finally removed from the list.
+  late final AnimationController _removal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  );
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _removal,
+    curve: const Interval(0, 0.5, curve: Curves.easeOut),
+  );
+  late final Animation<double> _collapse = CurvedAnimation(
+    parent: _removal,
+    curve: const Interval(0.3, 1, curve: Curves.easeInOut),
+  );
+
+  /// True from the moment a delete is confirmed: the card dims, floats the
+  /// app's loader and stops taking taps while it animates out.
+  bool _deleting = false;
+
+  @override
+  void dispose() {
+    _removal.dispose();
+    super.dispose();
+  }
+
+  /// Confirms, plays the exit animation, then commits the delete. The DB row is
+  /// removed only after the card has animated away, so the list mutates while
+  /// this slot is already invisible (no abrupt disappearance). The repository
+  /// delete cascades to the thread's messages/turns/draft/git-log.
+  Future<void> _delete() async {
+    final confirmed = await _confirmDeleteThread(context, widget.thread);
+    if (!confirmed || !mounted) return;
+    // Honour the platform "reduce motion" setting: drop the row without the
+    // fade-collapse (the manager clears in-memory state and the list rebuilds).
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduceMotion) {
+      await ref.read(threadManagerProvider).deleteThread(widget.thread.id);
+      return;
+    }
+    setState(() => _deleting = true);
+    await _removal.forward();
+    if (!mounted) return;
+    await ref.read(threadManagerProvider).deleteThread(widget.thread.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final thread = widget.thread;
+    final compact = widget.compact;
     final colors = Theme.of(context).colorScheme;
     final agent = AgentIdParsing.fromWireId(thread.agentId);
     // Live activity of the conversation (running/error), independent of the
@@ -50,7 +104,7 @@ class ThreadTile extends ConsumerWidget {
         ref.watch(authStatusProvider(thread.agentId)).value?.requiresLogin ??
             false;
 
-    return NeCard(
+    final card = NeCard(
       // An unread reply gently tints the card (primary over the calm base) so
       // it stands out without shouting.
       color: unread
@@ -66,7 +120,8 @@ class ThreadTile extends ConsumerWidget {
             )
           : const EdgeInsets.all(UxnanSpacing.md),
       onTap: () => context.push(AppRoutes.conversation(thread.id)),
-      onLongPress: () => showThreadActions(context, ref, thread),
+      onLongPress: () =>
+          showThreadActions(context, ref, thread, onDelete: _delete),
       child: Row(
         children: [
           _AgentAvatar(agent: agent, size: compact ? 34 : 44),
@@ -87,6 +142,29 @@ class ThreadTile extends ConsumerWidget {
                   ),
           ),
         ],
+      ),
+    );
+
+    // While deleting, dim the card and float the app's shape-morphing loader
+    // over it; the whole stack then fades and collapses via [_removal].
+    final content = _deleting
+        ? Stack(
+            alignment: Alignment.center,
+            children: [
+              Opacity(opacity: 0.4, child: IgnorePointer(child: card)),
+              const PolygonLoader(size: 22),
+            ],
+          )
+        : card;
+
+    // Wraps every row: at rest the reversed animations sit at 1 (full size and
+    // opacity), so this is a no-op until [_delete] drives [_removal] forward.
+    return SizeTransition(
+      alignment: Alignment.topCenter,
+      sizeFactor: ReverseAnimation(_collapse),
+      child: FadeTransition(
+        opacity: ReverseAnimation(_fade),
+        child: content,
       ),
     );
   }
@@ -244,12 +322,15 @@ String _subtitleFor(Thread thread) {
 }
 
 /// Shows the per-thread actions sheet on long-press. The archive / unarchive
-/// entry adapts to the thread's current status.
+/// entry adapts to the thread's current status. The delete entry defers to
+/// [onDelete], which the tile uses to confirm, animate the row out, then commit
+/// the (cascading) delete.
 Future<void> showThreadActions(
   BuildContext context,
   WidgetRef ref,
-  Thread thread,
-) async {
+  Thread thread, {
+  required Future<void> Function() onDelete,
+}) async {
   final l10n = AppLocalizations.of(context);
   final colors = Theme.of(context).colorScheme;
   final isArchived = thread.status == ThreadStatus.archived;
@@ -321,7 +402,7 @@ Future<void> showThreadActions(
     case _ThreadAction.unarchive:
       await ref.read(threadManagerProvider).unarchiveThread(thread.id);
     case _ThreadAction.delete:
-      await _confirmDeleteThread(context, ref, thread);
+      await onDelete();
   }
 }
 
@@ -363,10 +444,12 @@ Future<void> _promptRenameThread(
   await ref.read(threadManagerProvider).renameThread(thread.id, trimmed);
 }
 
-/// Confirms and deletes the thread via the thread manager.
-Future<void> _confirmDeleteThread(
+/// Shows the delete confirmation dialog and returns whether the user confirmed.
+/// The actual delete — and its exit animation — is driven by the caller so the
+/// row can animate out before the thread (and its cascading child rows) is
+/// removed.
+Future<bool> _confirmDeleteThread(
   BuildContext context,
-  WidgetRef ref,
   Thread thread,
 ) async {
   final l10n = AppLocalizations.of(context);
@@ -389,8 +472,7 @@ Future<void> _confirmDeleteThread(
       ],
     ),
   );
-  if (confirmed != true) return;
-  await ref.read(threadManagerProvider).deleteThread(thread.id);
+  return confirmed ?? false;
 }
 
 class _AgentAvatar extends StatelessWidget {

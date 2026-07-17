@@ -2518,7 +2518,16 @@ class DriftThreadRepository implements IThreadRepository {
 
   @override
   Future<void> deleteThread(String id) async {
-    await (_db.delete(_db.threadsTable)..where((t) => t.id.equals(id))).go();
+    // mensajes/turns/borradores/log de git cuelgan de threadId sin cascada en
+    // la BD; se borran de forma explícita (hijos primero, luego el padre) en
+    // una transacción para no dejar filas huérfanas.
+    await _db.transaction(() async {
+      await (_db.delete(_db.messagesTable)..where((m) => m.threadId.equals(id))).go();
+      await (_db.delete(_db.turnsTable)..where((t) => t.threadId.equals(id))).go();
+      await (_db.delete(_db.composerDraftsTable)..where((d) => d.threadId.equals(id))).go();
+      await (_db.delete(_db.gitActionLogTable)..where((g) => g.threadId.equals(id))).go();
+      await (_db.delete(_db.threadsTable)..where((t) => t.id.equals(id))).go();
+    });
   }
 
   @override

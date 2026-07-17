@@ -57,14 +57,30 @@ class DriftThreadRepository implements IThreadRepository {
 
   @override
   Future<void> deleteThread(String id) async {
-    await (_db.delete(_db.threadsTable)..where((t) => t.id.equals(id))).go();
+    // Messages/turns/composer-drafts/git-action-log key off threadId with no DB
+    // cascade, so clear them explicitly (children first, then the parent) in a
+    // transaction to avoid orphan rows — mirrors deleteThreadsByDeviceId.
+    await _db.transaction(() async {
+      await (_db.delete(_db.messagesTable)..where((m) => m.threadId.equals(id)))
+          .go();
+      await (_db.delete(_db.turnsTable)..where((t) => t.threadId.equals(id)))
+          .go();
+      await (_db.delete(_db.composerDraftsTable)
+            ..where((d) => d.threadId.equals(id)))
+          .go();
+      await (_db.delete(_db.gitActionLogTable)
+            ..where((g) => g.threadId.equals(id)))
+          .go();
+      await (_db.delete(_db.threadsTable)..where((t) => t.id.equals(id))).go();
+    });
   }
 
   @override
   Future<void> deleteThreadsByDeviceId(String deviceId) async {
     // Wipe the device's threads and their dependent rows in one transaction.
-    // Messages/turns key off threadId with no DB cascade, so clear them
-    // explicitly to avoid orphan rows when a whole PC is removed.
+    // Messages/turns/composer-drafts/git-action-log key off threadId with no DB
+    // cascade, so clear them explicitly to avoid orphan rows when a whole PC is
+    // removed.
     await _db.transaction(() async {
       final ids = await (_db.select(_db.threadsTable)
             ..where((t) => t.deviceId.equals(deviceId)))
@@ -74,6 +90,12 @@ class DriftThreadRepository implements IThreadRepository {
       await (_db.delete(_db.messagesTable)..where((m) => m.threadId.isIn(ids)))
           .go();
       await (_db.delete(_db.turnsTable)..where((t) => t.threadId.isIn(ids)))
+          .go();
+      await (_db.delete(_db.composerDraftsTable)
+            ..where((d) => d.threadId.isIn(ids)))
+          .go();
+      await (_db.delete(_db.gitActionLogTable)
+            ..where((g) => g.threadId.isIn(ids)))
           .go();
       await (_db.delete(_db.threadsTable)
             ..where((t) => t.deviceId.equals(deviceId)))

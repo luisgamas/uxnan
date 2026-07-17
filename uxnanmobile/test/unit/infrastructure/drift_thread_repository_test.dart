@@ -25,6 +25,67 @@ Thread _thread(
           : DateTime.fromMillisecondsSinceEpoch(lastActivityMs),
     );
 
+/// Inserts one row in each thread-owned child table for [threadId] (a message,
+/// a turn, the composer draft and a git-action-log entry) so cascade deletes
+/// can be asserted.
+Future<void> _insertChildren(UxnanDatabase db, String threadId) async {
+  await db.into(db.messagesTable).insert(
+        MessagesTableCompanion.insert(
+          id: 'm-$threadId',
+          threadId: threadId,
+          turnId: 'tn-$threadId',
+          role: 'user',
+          contentsJson: '[]',
+          deliveryState: 'sent',
+          orderIndex: 0,
+          createdAtMs: 0,
+        ),
+      );
+  await db.into(db.turnsTable).insert(
+        TurnsTableCompanion.insert(
+          id: 'tn-$threadId',
+          threadId: threadId,
+          status: 'completed',
+          startedAtMs: 0,
+        ),
+      );
+  await db.into(db.composerDraftsTable).insert(
+        ComposerDraftsTableCompanion.insert(
+          threadId: threadId,
+          draft: 'wip',
+          updatedAtMs: 0,
+        ),
+      );
+  await db.into(db.gitActionLogTable).insert(
+        GitActionLogTableCompanion.insert(
+          id: 'g-$threadId',
+          threadId: threadId,
+          kind: 'commit',
+          status: 'completed',
+          paramsJson: '{}',
+          startedAtMs: 0,
+        ),
+      );
+}
+
+/// Total number of child rows still keyed to [threadId] across all four
+/// dependent tables.
+Future<int> _childCount(UxnanDatabase db, String threadId) async {
+  final messages = await (db.select(db.messagesTable)
+        ..where((m) => m.threadId.equals(threadId)))
+      .get();
+  final turns = await (db.select(db.turnsTable)
+        ..where((t) => t.threadId.equals(threadId)))
+      .get();
+  final drafts = await (db.select(db.composerDraftsTable)
+        ..where((d) => d.threadId.equals(threadId)))
+      .get();
+  final gitLog = await (db.select(db.gitActionLogTable)
+        ..where((g) => g.threadId.equals(threadId)))
+      .get();
+  return messages.length + turns.length + drafts.length + gitLog.length;
+}
+
 void main() {
   late UxnanDatabase db;
   late DriftThreadRepository repo;
@@ -90,69 +151,45 @@ void main() {
       expect(all.length, 1);
     });
 
-    test('deleteThread removes the row', () async {
+    test('deleteThread cascades to every dependent table', () async {
       await repo.saveThread(_thread('t1', lastActivityMs: 1));
+      await _insertChildren(db, 't1');
+      expect(await _childCount(db, 't1'), 4);
+
       await repo.deleteThread('t1');
+
       expect(await repo.getThread('t1'), isNull);
+      expect(await _childCount(db, 't1'), 0);
     });
 
-    test('deleteThreadsByDeviceId wipes a device threads + messages + turns',
+    test('deleteThread leaves other threads and their rows intact', () async {
+      await repo.saveThread(_thread('t1', lastActivityMs: 1));
+      await repo.saveThread(_thread('t2', lastActivityMs: 2));
+      await _insertChildren(db, 't1');
+      await _insertChildren(db, 't2');
+
+      await repo.deleteThread('t1');
+
+      expect(await repo.getThread('t2'), isNotNull);
+      expect(await _childCount(db, 't1'), 0);
+      expect(await _childCount(db, 't2'), 4);
+    });
+
+    test('deleteThreadsByDeviceId wipes a device threads + all child rows',
         () async {
       await repo.saveThread(_thread('a', deviceId: 'mac-1', lastActivityMs: 1));
       await repo.saveThread(_thread('b', deviceId: 'mac-1', lastActivityMs: 2));
       await repo.saveThread(_thread('c', deviceId: 'mac-2', lastActivityMs: 3));
-      // A message + turn under a mac-1 thread (a) and a mac-2 thread (c).
-      await db.into(db.messagesTable).insert(
-            MessagesTableCompanion.insert(
-              id: 'm-a',
-              threadId: 'a',
-              turnId: 'tn-a',
-              role: 'user',
-              contentsJson: '[]',
-              deliveryState: 'sent',
-              orderIndex: 0,
-              createdAtMs: 0,
-            ),
-          );
-      await db.into(db.messagesTable).insert(
-            MessagesTableCompanion.insert(
-              id: 'm-c',
-              threadId: 'c',
-              turnId: 'tn-c',
-              role: 'user',
-              contentsJson: '[]',
-              deliveryState: 'sent',
-              orderIndex: 0,
-              createdAtMs: 0,
-            ),
-          );
-      await db.into(db.turnsTable).insert(
-            TurnsTableCompanion.insert(
-              id: 'tn-a',
-              threadId: 'a',
-              status: 'completed',
-              startedAtMs: 0,
-            ),
-          );
-      await db.into(db.turnsTable).insert(
-            TurnsTableCompanion.insert(
-              id: 'tn-c',
-              threadId: 'c',
-              status: 'completed',
-              startedAtMs: 0,
-            ),
-          );
+      // Child rows under a mac-1 thread (a) and a mac-2 thread (c).
+      await _insertChildren(db, 'a');
+      await _insertChildren(db, 'c');
 
       await repo.deleteThreadsByDeviceId('mac-1');
 
       // Only mac-2's thread and its dependent rows survive.
       expect((await repo.getThreads()).map((t) => t.id).toList(), ['c']);
-      final msgIds =
-          (await db.select(db.messagesTable).get()).map((m) => m.id).toList();
-      expect(msgIds, ['m-c']);
-      final turnIds =
-          (await db.select(db.turnsTable).get()).map((t) => t.id).toList();
-      expect(turnIds, ['tn-c']);
+      expect(await _childCount(db, 'a'), 0);
+      expect(await _childCount(db, 'c'), 4);
     });
 
     test('deleteThreadsByDeviceId is a no-op when no thread matches', () async {

@@ -262,8 +262,11 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               separatorBuilder: (_, __) => SizedBox(
                 height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
               ),
-              itemBuilder: (context, index) =>
-                  ThreadTile(thread: visible[index], compact: compact),
+              itemBuilder: (context, index) => ThreadTile(
+                key: ValueKey('thread-${visible[index].id}'),
+                thread: visible[index],
+                compact: compact,
+              ),
             ),
           ),
       ],
