@@ -8,6 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 
+### Security
+- Use constant-time comparisons for LAN approval-hook tokens.
+
 ## [0.0.7-alpha.20260716] - 2026-07-16
 
 ### Fixed — an omitted `params` no longer fails methods whose fields are all optional

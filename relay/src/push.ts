@@ -23,6 +23,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { PushNotifyRequest, PushPlatform } from '@uxnan/shared';
 import type { RelayLogger } from './relay-server.js';
+import { constantTimeEqual } from './constant-time.js';
 
 export interface PushPayload {
   title: string;
@@ -181,7 +182,11 @@ export class PushRegistry {
   /** Validate the secret, dedupe by (sessionId,turnId), then fan out to tokens. */
   async notify(req: PushNotifyRequest): Promise<NotifyOutcome> {
     const session = this.#sessions.get(req.sessionId);
-    if (!session || session.secret !== req.notificationSecret) {
+    if (
+      !session ||
+      typeof req.notificationSecret !== 'string' ||
+      !constantTimeEqual(session.secret, req.notificationSecret)
+    ) {
       return { delivered: false, recipients: 0, reason: 'unauthorized' };
     }
     const key = `${req.sessionId}:${req.turnId}`;
