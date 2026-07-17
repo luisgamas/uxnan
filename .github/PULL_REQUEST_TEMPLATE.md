@@ -41,7 +41,7 @@ screenshot/video for UI changes. "It builds" is not enough._
 
 > **Example:**
 >
-> 1. `cd bridge && npm test` → 263 tests pass (Ubuntu + Windows).
+> 1. `cd bridge && npm test` → the full bridge suite passes (Ubuntu + Windows).
 > 2. Manual, on Windows: started the bridge, paired my phone, sent a turn to the
 >    echo agent — the reply arrived and the turn showed `completed`.
 > 3. Built `flutter build apk --release` and confirmed the QR scanner opens and
