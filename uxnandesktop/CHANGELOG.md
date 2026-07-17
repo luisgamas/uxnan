@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — stale Git status responses cannot overwrite the active worktree
+
+- **Changes panel: a slow status response from a previously selected worktree
+  can no longer overwrite the list (or drive staging actions) for the current
+  one.**
+
 ### Fixed — browser-MCP config injection can no longer clobber a user's CLI configs
 
 - **The MCP config injector now writes each agent CLI's user-global config
