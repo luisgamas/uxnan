@@ -188,20 +188,25 @@
   }
 
   // Repaint on a genuine hidden→visible reveal. A hidden canvas can keep its
-  // pre-hide pixels and the atlas can be stale, so here — and ONLY here — we clear
-  // the texture atlas before the full redraw. Atlas clearing is confined to real
-  // reveals precisely because the atlas is shared across same-config terminals;
-  // doing it on every resize/refocus would wipe glyphs other panes are mid-drawing.
+  // pre-hide pixels, so the whole viewport is redrawn through them.
+  //
+  // The texture atlas is NEVER cleared here (or anywhere else). xterm shares ONE
+  // glyph atlas per font config across every terminal with that config — still
+  // true in xterm 6 (`CharAtlasCache`) — and `clearTextureAtlas()` wipes those
+  // shared pages while resyncing only the CALLING terminal's render model
+  // (`WebglRenderer.clearTextureAtlas` clears `_model` + redraws just its own
+  // viewport; `TextureAtlas.clearTexture` never sets `_requestClearModel`, unlike
+  // the page-merge path). Every OTHER live terminal keeps per-cell references into
+  // the recycled pages and permanently draws the WRONG glyphs in any row it doesn't
+  // repaint — a full-screen agent's scrolled-off transcript, exactly the reported
+  // corruption ("memoria" → "mamoria"). A reveal needs no atlas clear anyway: glyph
+  // bitmaps don't go stale while a pane is hidden, and a reveal either attaches a
+  // fresh renderer (fresh model) or full-refreshes the existing one below.
   function revealRepaint() {
     if (repaintRaf !== null) cancelAnimationFrame(repaintRaf);
     repaintRaf = requestAnimationFrame(() => {
       repaintRaf = null;
       if (!term) return;
-      try {
-        renderer?.clearTextureAtlas();
-      } catch {
-        // Renderer swapped or disposed — the refresh below still repaints.
-      }
       try {
         term.refresh(0, Math.max(0, term.rows - 1));
       } catch {
@@ -757,8 +762,8 @@
           releaseTimer = undefined;
         }
         if (!wasVisible) {
-          // Revealed — reattach a GPU context (fresh atlas) and repaint through any
-          // stale pixels the hidden canvas kept.
+          // Revealed — reattach a GPU context (fresh render model) and repaint
+          // through any stale pixels the hidden canvas kept.
           attachRenderer();
           revealRepaint();
         } else if (!renderer) {
