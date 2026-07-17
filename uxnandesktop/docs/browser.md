@@ -100,58 +100,65 @@ They map onto the same in-app browser and the same link policy as a clicked link
 
 The ADE runs a tiny MCP server at **`/mcp`** on the same local hook server the agent
 monitor already uses (`127.0.0.1`, ephemeral port, `Authorization: Bearer <token>`).
-When enabled, the ADE writes the agent CLI's **own** MCP config so it finds that
-server on launch. The bearer **token is never written to a file** — the config
-references the `UXNAN_MCP_TOKEN` environment variable, which the ADE injects into the
-terminal it spawns.
+When enabled, the ADE writes the agent CLI's **own user-global** MCP config (in
+`~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
+`~/.config/opencode/opencode.json`) so it finds that server on launch — **never a
+file in your project folder.** User-global config isn't project-approval-gated, so no
+CLI shows an "approve this MCP server?" prompt. The bearer **token is never written
+to a file** — the config references the `UXNAN_MCP_TOKEN` environment variable, which
+the ADE injects into the terminal it spawns.
 
 That env-scoping is deliberate: **the injected config only works inside a terminal
 uxnan launched.** The same agent run in another IDE/terminal reads the same config
 file but has no `UXNAN_MCP_TOKEN`, so it can't authenticate — the server simply
 doesn't load for it (it won't hijack your in-app browser). The worst case outside
-uxnan is a harmless, non-connecting entry, and files uxnan *creates* are removed when
-it exits.
+uxnan is a harmless, non-connecting entry, which uxnan removes on exit.
 
 ### Settings → Browser → Agent browser MCP
 
 | Setting | What it does | Default |
 | --- | --- | --- |
 | **Agent browser MCP** | Master switch for exposing the `browser_*` tools to agents. Off → no MCP config is injected (the `/mcp` endpoint still exists for manual wiring). | On |
-| **Injection mode** | `Workspace` writes a project-scoped config into the terminal's working directory (covers hand-typed and app-launched agents there, removed on exit). `Global` registers it in each CLI's global user config (every project; more footprint). `Off` injects nothing. | Workspace |
+| **Setup mode** | `Managed` registers the server in each CLI's **user-global** config only — never your project folder, so nothing lands in your files and no "approve this MCP server?" prompt appears (hand-typed agents pick it up too). `Global` is the same user-global config but leaves the CLIs' own trust prompts intact. `Off` injects nothing. | Managed |
+| **Frictionless launch** | (Managed only) Skip the CLI's "trust this folder?" prompt for app-launched agents — Gemini via `GEMINI_CLI_TRUST_WORKSPACE`, Codex via a per-folder `trust_level` seed. Turn off to keep the native prompts. | On |
 | **Per-agent** | Toggle injection per agent. | All on |
 | **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one the ADE doesn't auto-configure yet. | — |
 
+> The legacy **Workspace** mode (project-scoped config files in the working
+> directory) was removed — it was the only thing that put files in your project and
+> triggered per-project approval prompts. A saved `Workspace` choice becomes
+> `Managed`.
+
 ### Where each agent's config is written
 
-The ADE writes each CLI's native config in its standard location. The token is
-always referenced via `UXNAN_MCP_TOKEN` (never inlined):
+The ADE writes each CLI's native config in its **user-global** location (never the
+project folder). The token is always referenced via `UXNAN_MCP_TOKEN` (never inlined):
 
-| Agent | Workspace file (`<cwd>/…`) | Global file | Shape |
-| --- | --- | --- | --- |
-| Claude Code | `.mcp.json` | `~/.claude.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
-| Codex | `.codex/config.toml` | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
-| Gemini CLI | `.gemini/settings.json` | `~/.gemini/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, headers}` |
-| OpenCode | `opencode.json` | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
+| Agent | User-global file | Shape |
+| --- | --- | --- |
+| Claude Code | `~/.claude.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
+| Codex | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
+| Gemini CLI | `~/.gemini/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, trust, headers}` |
+| OpenCode | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
 
-Merges are non-destructive (your other keys/servers are preserved), and a file the
-ADE creates is added to the repo's local `info/exclude` so it doesn't show up in
-`git status`.
+Merges are non-destructive (your other keys/servers are preserved), and uxnan removes
+its own entry on exit. Gemini's entry carries `trust: true` so it doesn't ask for
+per-tool confirmation of the browser server.
 
 ### Adding another agent
 
 The injector is a small registry, so wiring a new CLI (e.g. `agy`/Antigravity,
 Cursor's `cursor-agent`, Grok, amp, Pi, …) is three edits in `src-tauri/src/mcpinject.rs`:
 
-1. Add a row to **`AGENTS`** — its stable id, label, and whether it has a
-   project-scoped config or only a global one (`Scope`).
-2. Add a match arm to **`config_path`** — where its MCP config file lives, relative
-   to the working directory (workspace mode) and to `$HOME` (global mode).
+1. Add a row to **`AGENTS`** — its stable id and label.
+2. Add a match arm to **`config_path`** — where its **user-global** MCP config file
+   lives, relative to `$HOME`.
 3. Add its server shape to **`json_entry`** (JSON configs) or handle it in
    **`write_entry`** (a non-JSON format, like Codex's TOML). Reference the token via
    the CLI's own env-expansion syntax so it's never written to the file.
 
 Then add the agent's id to the frontend's per-agent toggle list. Nothing else
-changes — injection, merging, git-hiding and cleanup are format-driven.
+changes — injection, merging and cleanup are format-driven.
 
 ## Performance
 

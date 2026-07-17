@@ -494,7 +494,7 @@ type(scope): mensaje descriptivo
 | **Tokio** | Runtime async para Rust. Proporciona un event loop, timers, channels (`mpsc`), y un pool de threads para ejecutar operaciones I/O sin bloquear el hilo principal. |
 | **Serde** | Framework de serializacion/deserializacion para Rust. Convierte structs de Rust a JSON (y viceversa) de forma type-safe y extremadamente rapida. |
 | **axum/hyper** | Frameworks de servidor HTTP para Rust. `hyper` es la capa de protocolo HTTP de bajo nivel; `axum` es un framework web ergonomico construido sobre `hyper` y Tokio. Se usan para el servidor local de hooks de agentes. |
-| **xterm.js** | Libreria de emulacion de terminal para la web. Renderiza output de terminal en un canvas/WebGL dentro del webview de Tauri. Soporta colores, mouse, resize y secuencias de escape completas. |
+| **xterm.js** | Libreria de emulacion de terminal para la web. Renderiza output con WebGLAddon dentro del webview de Tauri y usa DOM como fallback. Soporta colores, mouse, resize y secuencias de escape completas. |
 | **CodeMirror 6** | Editor de codigo para la web, utilizado en el ADE como visor de diffs. Mas ligero que Monaco (~300KB vs ~5MB). Extensible con plugins para diff inline y side-by-side. |
 | **shadcn-svelte** | Coleccion de componentes UI para Svelte basada en Bits UI (equivalente de Radix). Proporciona botones, dialogos, sidebars, tabs, tooltips y otros componentes accesibles y personalizables. |
 | **Tauri Command** | Mecanismo de IPC request/response de Tauri. El frontend invoca una funcion Rust anotada con `#[tauri::command]` usando `invoke()` en JavaScript. Ideal para operaciones que necesitan un resultado. |

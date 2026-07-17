@@ -31,6 +31,7 @@ export function initUpdateToast(): void {
         id: TOAST_ID,
         duration: Number.POSITIVE_INFINITY,
         dismissible: false,
+        class: "uxnan-update-toast",
       });
     } else {
       toast.dismiss(TOAST_ID);

@@ -66,6 +66,15 @@
     }
   });
 
+  // Agents can create worktrees through Git/CLI, outside the New Worktree
+  // dialog. Reconcile those changes while the sidebar is mounted so every
+  // project card and both sidebar views stay current without a manual click.
+  $effect(() => {
+    if (app.backend !== "ready") return;
+    const timer = setInterval(() => void projects.refreshWorktrees(), 3000);
+    return () => clearInterval(timer);
+  });
+
   // The rendered project order — frozen against jumping for the drifting modes
   // (recent/attention) — plus the pointer-drag reorder that feeds "manual".
   const stableRepos = createStableOrder({

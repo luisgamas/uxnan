@@ -122,7 +122,15 @@
   });
   let busy = $state<AgentId | "all" | null>(null);
   let activeAgent = $state<AgentId>("claude");
-  let showClaudeJson = $state(false);
+  // Per-agent "show installed config" toggle (JSON for Claude/Gemini/Codex, the
+  // plugin/extension source for OpenCode/Pi).
+  let showConfig = $state<Record<AgentId, boolean>>({
+    claude: false,
+    codex: false,
+    gemini: false,
+    opencode: false,
+    pi: false,
+  });
   let platform = $state<Platform>("bash");
   let copied = $state<Record<string, boolean>>({});
 
@@ -298,6 +306,25 @@
           ? scripts.wrapperCmd
           : scripts.wrapperFish;
   });
+
+  // The exact config the ADE installs for `id`, for the per-agent "Show config"
+  // affordance: a `hooks` block for the JSON-config agents, the plugin/extension
+  // source for OpenCode/Pi.
+  function agentConfig(id: AgentId): string {
+    if (!scripts) return "";
+    switch (id) {
+      case "claude":
+        return scripts.claudeJson;
+      case "gemini":
+        return scripts.geminiJson;
+      case "codex":
+        return scripts.codexJson;
+      case "opencode":
+        return scripts.opencodePluginJs;
+      case "pi":
+        return scripts.piExtensionJs;
+    }
+  }
   const wrapperPath = $derived.by(() => {
     if (!install) return "";
     return platform === "bash"
@@ -404,9 +431,11 @@
                 {/if}
               </div>
 
-              <!-- Claude: inspect / copy the exact JSON block -->
-              {#if id === "claude" && scripts}
-                <Collapsible.Root bind:open={showClaudeJson}>
+              <!-- Every agent: inspect / copy the exact config the ADE installs
+                   (a `hooks` block for Claude/Gemini/Codex, the plugin/extension
+                   source for OpenCode/Pi). -->
+              {#if scripts && agentConfig(id)}
+                <Collapsible.Root bind:open={showConfig[id]}>
                   <Collapsible.Trigger
                     class={cn(
                       "flex items-center gap-1 self-start rounded-md px-1.5 py-1 hover:bg-muted",
@@ -414,9 +443,9 @@
                     )}
                   >
                     <ChevronDownIcon
-                      class={cn(icon.button, "transition-transform", showClaudeJson && "rotate-180")}
+                      class={cn(icon.button, "transition-transform", showConfig[id] && "rotate-180")}
                     />
-                    {showClaudeJson ? i18n.t("hooks.hideJson") : i18n.t("hooks.showJson")}
+                    {showConfig[id] ? i18n.t("hooks.hideConfig") : i18n.t("hooks.showConfig")}
                   </Collapsible.Trigger>
                   <Collapsible.Content>
                     <div class="relative mt-2">
@@ -427,9 +456,9 @@
                             variant="ghost"
                             size="icon-sm"
                             class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-                            onclick={() => copy("claude-json", scripts?.claudeJson ?? "")}
+                            onclick={() => copy(`${id}-config`, agentConfig(id))}
                           >
-                            {#if copied["claude-json"]}
+                            {#if copied[`${id}-config`]}
                               <CheckIcon class={icon.button} />
                             {:else}
                               <CopyIcon class={icon.button} />
@@ -442,7 +471,7 @@
                           "max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
                           text.meta,
                           "whitespace-pre font-mono",
-                        )}>{scripts.claudeJson ?? "…"}</pre>
+                        )}>{agentConfig(id)}</pre>
                     </div>
                   </Collapsible.Content>
                 </Collapsible.Root>

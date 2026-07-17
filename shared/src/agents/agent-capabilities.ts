@@ -43,6 +43,13 @@ export interface AgentCapabilities {
    * false means the agent either gates tools or is pending approval wiring.
    */
   autonomous?: boolean;
+  /**
+   * Agent exposes special ("slash") commands the phone can discover via
+   * `agent/commands` and invoke through `turn/send` `command`. Optional for
+   * back-compat; absent/false means the agent advertises none (the phone shows
+   * only its client-side `/` palette). See {@link AgentCommand}.
+   */
+  commands?: boolean;
 }
 
 /**
@@ -134,4 +141,55 @@ export interface AgentModel {
    * hide the aliases and show exact versions only, without hardcoding ids.
    */
   isLatestAlias?: boolean;
+}
+
+/**
+ * A special ("slash") command an agent exposes, returned by `agent/commands`.
+ *
+ * Two kinds are unified under this one shape:
+ * - **control** commands the CLI understands in its headless/programmatic mode
+ *   (Claude Code's `/compact` sent as the prompt with `--resume`; the commands
+ *   ACP agents advertise via `available_commands_update`), and
+ * - **custom** user-defined prompt-template commands (`.claude/commands`,
+ *   `~/.codex/prompts`, `.gemini/commands`, `.opencode/command`) that the bridge
+ *   expands itself before running a normal turn.
+ *
+ * The phone is a generic renderer: it lists the advertised commands in its `/`
+ * palette and, when one is picked, echoes it back on `turn/send` under
+ * {@link AgentCommandInvocation} — the bridge resolves it to the final prompt
+ * text (expanded template) or the CLI's native `/name args` form. Consumers MUST
+ * tolerate absent optional fields so a newer bridge advertising a richer command
+ * never breaks an older app.
+ */
+export interface AgentCommand {
+  /** Command name WITHOUT the leading slash (e.g. `compact`, `refactor`). */
+  name: string;
+  /** One-line description for the palette, when the source provides one. */
+  description?: string;
+  /** Hint for the arguments the command accepts (e.g. `<file> <priority>`). */
+  argumentHint?: string;
+  /**
+   * Where the command comes from: `acp` (advertised by an ACP agent),
+   * `builtin` (a CLI control command reachable headless), or `custom` (a
+   * user-defined prompt-template file the bridge expands).
+   */
+  source: 'acp' | 'builtin' | 'custom';
+  /**
+   * Whether the command actually runs in the agent's headless/programmatic mode.
+   * Absent/true means yes; `false` marks a command that only works in the CLI's
+   * interactive TUI, which the phone should hide. The bridge only advertises
+   * commands it can run, so this is a belt-and-suspenders gate.
+   */
+  headlessSupported?: boolean;
+}
+
+/**
+ * A picked {@link AgentCommand} carried on `turn/send` under `command`, instead
+ * of free-form `text`. The bridge resolves `{ name, args }` to the final prompt.
+ */
+export interface AgentCommandInvocation {
+  /** The command's {@link AgentCommand.name} (no leading slash). */
+  name: string;
+  /** Raw argument string the user appended after the command, if any. */
+  args?: string;
 }

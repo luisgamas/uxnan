@@ -17,6 +17,7 @@ class _FakeTransport implements WebSocketTransport {
   /// or never completes (to trip the timeout).
   final Future<void> Function(String url) onConnect;
 
+  @override
   String? connectedUrl;
   Map<String, String>? connectedHeaders;
   bool disconnected = false;

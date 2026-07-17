@@ -18,6 +18,8 @@ class ConversationPreferencesStore {
   static const String _confirmPushKey = 'uxnan.git.confirmPush';
   static const String _confirmPrKey = 'uxnan.git.confirmPr';
   static const String _showClaudeLatestKey = 'uxnan.models.showClaudeLatest';
+  static const String _showAutonomousBannerKey =
+      'uxnan.conversation.showAutonomousBanner';
 
   /// Whether the agent-thinking section is shown, or `null` if never set (so
   /// the caller keeps the default).
@@ -100,5 +102,20 @@ class ConversationPreferencesStore {
   Future<void> writeShowClaudeLatest({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_showClaudeLatestKey, value);
+  }
+
+  /// Whether the autonomous ("YOLO") mode banner is shown when a conversation
+  /// opens, or `null` if never set (keep the default). A close button dismisses
+  /// it for the current visit; this preference hides it permanently.
+  Future<bool?> readShowAutonomousBanner() async {
+    final prefs = await _prefs;
+    if (!prefs.containsKey(_showAutonomousBannerKey)) return null;
+    return prefs.getBool(_showAutonomousBannerKey);
+  }
+
+  /// Persists the show-autonomous-mode-banner preference.
+  Future<void> writeShowAutonomousBanner({required bool value}) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_showAutonomousBannerKey, value);
   }
 }

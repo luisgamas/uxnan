@@ -117,9 +117,9 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                         .clamp(140.0, MediaQuery.sizeOf(context).height),
               ),
               child: modelsAsync.when(
-                loading: () => Center(
+                loading: () => const Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(UxnanSpacing.xl),
+                    padding: EdgeInsets.all(UxnanSpacing.xl),
                     child: PolygonLoader(size: 28),
                   ),
                 ),

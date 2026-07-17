@@ -4,7 +4,7 @@
 // caller's i18n.
 
 import type { MessageKey } from "./i18n/locales/en";
-import type { UsageStatus } from "./types";
+import type { AccountType, UsageStatus } from "./types";
 
 /** A compact, unit-based countdown to `epochMs` (e.g. `2h 30m`, `3d`, `5m`),
  *  or null when the reset is unknown or already past. */
@@ -19,6 +19,38 @@ export function formatReset(epochMs?: number): string | null {
   if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
   if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
   return `${Math.max(1, m)}m`;
+}
+
+/** The absolute reset moment as a localized clock/date, so the user knows *when*
+ *  (not just how long): `3:00 PM` if today, `Mon 9:00 AM` within a week, else
+ *  `Jul 12, 3:00 PM`. Uses the viewer's locale + timezone. null if unknown/past. */
+export function formatResetAbsolute(epochMs?: number): string | null {
+  if (!epochMs) return null;
+  const diff = epochMs - Date.now();
+  if (diff <= 0) return null;
+  const d = new Date(epochMs);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  if (diff < 7 * 86_400_000) {
+    return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+  }
+  return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+}
+
+/** i18n key for an account-type badge (subscription / pay-as-you-go / …). */
+export function accountTypeLabelKey(type: AccountType): MessageKey {
+  switch (type) {
+    case "subscription":
+      return "providers.accountSubscription";
+    case "payAsYouGo":
+      return "providers.accountPayg";
+    case "free":
+      return "providers.accountFree";
+    case "team":
+      return "providers.accountTeam";
+    case "enterprise":
+      return "providers.accountEnterprise";
+  }
 }
 
 /** A currency/credit amount (e.g. `$4.20`, `120 credits`). */

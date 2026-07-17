@@ -21,6 +21,7 @@ pub enum UsageProvider {
     Claude,
     Copilot,
     Gemini,
+    Grok,
 }
 
 /// Outcome of reading one provider's usage.
@@ -43,6 +44,34 @@ pub enum UsageStatus {
 #[serde(rename_all = "lowercase")]
 pub enum UsageSource {
     Token,
+}
+
+/// The kind of billing relationship, so the UI can label an account beyond its
+/// plan name. Derived per provider from its plan / billing signals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AccountType {
+    Subscription,
+    PayAsYouGo,
+    Free,
+    Team,
+    Enterprise,
+}
+
+/// Classify a provider plan/tier slug into an [`AccountType`] by keyword. Anything
+/// that isn't explicitly free / team / enterprise reads as a paid subscription
+/// (the common case for a CLI signed in with a personal plan).
+fn classify_plan(slug: &str) -> AccountType {
+    let s = slug.to_lowercase();
+    if s.contains("enterprise") {
+        AccountType::Enterprise
+    } else if s.contains("team") || s.contains("business") {
+        AccountType::Team
+    } else if s.contains("free") {
+        AccountType::Free
+    } else {
+        AccountType::Subscription
+    }
 }
 
 /// A single quota/rate window, expressed as a used-percentage with an optional
@@ -70,6 +99,41 @@ pub struct CreditBalance {
     pub period: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resets_at: Option<i64>,
+    /// Amount still available this period, when the provider reports a remaining
+    /// balance directly (e.g. Grok on-demand / prepaid).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available: Option<f64>,
+}
+
+/// One redeemable reset, for the per-credit detail (which one, when it expires).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetCreditEntry {
+    /// Short label the provider gives the reset (e.g. "Full reset"), when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// When this reset lapses (epoch ms), when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+}
+
+/// Redeemable rate-limit "reset credits" a provider grants to roll a hit limit
+/// back early (Codex). Distinct from [`CreditBalance`] (money): these are reset
+/// tokens, not a monetary balance.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetCredits {
+    /// How many resets can be redeemed right now.
+    pub available: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_earned: Option<i64>,
+    /// When the soonest still-available reset lapses (epoch ms).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_expires_at: Option<i64>,
+    /// The individual available resets, soonest-expiring first, when the provider
+    /// details them — so the UI can show which one and when each expires.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entries: Option<Vec<ResetCreditEntry>>,
 }
 
 /// Plan / account identity, when the provider reports it.
@@ -82,11 +146,18 @@ pub struct Account {
     pub organization: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan: Option<String>,
+    /// The kind of account (subscription / pay-as-you-go / …), derived per
+    /// provider so the UI can identify it beyond the plan name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_type: Option<AccountType>,
 }
 
 impl Account {
     fn is_empty(&self) -> bool {
-        self.email.is_none() && self.organization.is_none() && self.plan.is_none()
+        self.email.is_none()
+            && self.organization.is_none()
+            && self.plan.is_none()
+            && self.account_type.is_none()
     }
 }
 
@@ -105,6 +176,8 @@ pub struct ProviderUsage {
     pub windows: Vec<UsageWindow>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credit: Option<CreditBalance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reset_credits: Option<ResetCredits>,
     pub updated_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -119,6 +192,7 @@ impl ProviderUsage {
             account: None,
             windows: Vec::new(),
             credit: None,
+            reset_credits: None,
             updated_at: now_ms(),
             message: None,
         }
@@ -177,6 +251,7 @@ async fn read_one(provider: UsageProvider, home: &Path) -> ProviderUsage {
         UsageProvider::Claude => read_claude(home).await,
         UsageProvider::Copilot => read_copilot().await,
         UsageProvider::Gemini => read_gemini(home).await,
+        UsageProvider::Grok => read_grok(home).await,
     }
 }
 
@@ -189,7 +264,178 @@ fn is_present(provider: UsageProvider, home: &Path) -> bool {
         }
         UsageProvider::Gemini => home.join(".gemini").join("oauth_creds.json").exists(),
         UsageProvider::Copilot => crate::which::is_command_available("gh"),
+        UsageProvider::Grok => home.join(".grok").join("auth.json").exists(),
     }
+}
+
+// --- Grok -------------------------------------------------------------------
+
+async fn read_grok(home: &Path) -> ProviderUsage {
+    let auth_path = home.join(".grok").join("auth.json");
+    let Some(auth) = read_json(&auth_path) else {
+        return ProviderUsage::base(UsageProvider::Grok, UsageStatus::NotInstalled)
+            .with_message("Grok is not set up on this PC (~/.grok/auth.json missing)");
+    };
+    // Grok stores accounts under an issuer/client key. Select the first usable
+    // signed-in account without exposing its key in errors or logs.
+    let account = auth.as_object().and_then(|entries| {
+        entries
+            .values()
+            .find(|entry| entry.get("key").and_then(|v| v.as_str()).is_some())
+    });
+    let Some(token) = account
+        .and_then(|entry| entry.get("key"))
+        .and_then(|v| v.as_str())
+    else {
+        return ProviderUsage::base(UsageProvider::Grok, UsageStatus::AuthRequired)
+            .with_message("Grok has no usable signed-in credential — run `grok login`");
+    };
+    let email = account
+        .and_then(|entry| entry.get("email"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let client = match http_client() {
+        Ok(c) => c,
+        Err(e) => return errored(UsageProvider::Grok, e),
+    };
+    let req = client
+        .get("https://cli-chat-proxy.grok.com/v1/billing?format=credits")
+        .bearer_auth(token)
+        .header("accept", "application/json");
+    let body = match fetch_json(req).await {
+        Ok(v) => v,
+        Err(HttpError::Unauthorized) => {
+            return ProviderUsage::base(UsageProvider::Grok, UsageStatus::AuthRequired)
+                .with_account(Account {
+                    email,
+                    ..Default::default()
+                })
+                .with_message("Grok credential expired — run the Grok CLI to refresh it");
+        }
+        Err(e) => {
+            return http_error(UsageProvider::Grok, e).with_account(Account {
+                email,
+                ..Default::default()
+            });
+        }
+    };
+
+    let config = body.get("config").unwrap_or(&body);
+    let tier = config
+        .get("subscriptionTier")
+        .or_else(|| config.get("subscription_tier"))
+        .and_then(|v| v.as_str());
+    let plan = tier.map(str::to_string);
+
+    // Real $ balances Grok exposes (that a %-only reader misses): on-demand spend
+    // vs cap, and any prepaid balance.
+    let on_demand_used = grok_money(
+        config
+            .get("onDemandUsed")
+            .or_else(|| config.get("on_demand_used")),
+    );
+    let on_demand_cap = grok_money(
+        config
+            .get("onDemandCap")
+            .or_else(|| config.get("on_demand_cap")),
+    );
+    let prepaid = grok_money(
+        config
+            .get("prepaidBalance")
+            .or_else(|| config.get("prepaid_balance")),
+    );
+    let has_ondemand = on_demand_used.is_some() || on_demand_cap.is_some();
+    let account_type = match tier {
+        Some(t) => Some(classify_plan(t)),
+        None if has_ondemand || prepaid.is_some() => Some(AccountType::PayAsYouGo),
+        None => None,
+    };
+
+    let mut usage =
+        ProviderUsage::base(UsageProvider::Grok, UsageStatus::Ok).with_account(Account {
+            email,
+            plan,
+            account_type,
+            ..Default::default()
+        });
+    usage.source = Some(UsageSource::Token);
+    usage.credit = grok_credit(on_demand_used, on_demand_cap, prepaid);
+
+    if let Some(percent) = config
+        .get("creditUsagePercent")
+        .or_else(|| config.get("credit_usage_percent"))
+        .and_then(number)
+    {
+        let period = config.get("currentPeriod");
+        usage.windows.push(UsageWindow {
+            id: "credits".to_string(),
+            label: grok_period_label(period),
+            used_percent: clamp_pct(percent),
+            window_minutes: grok_period_minutes(period),
+            resets_at: period
+                .and_then(|p| p.get("end"))
+                .and_then(epoch_ms)
+                .or_else(|| config.get("billingPeriodEnd").and_then(epoch_ms)),
+        });
+    }
+    if usage.windows.is_empty() && usage.credit.is_none() {
+        usage = usage.with_message("signed in, but the Grok billing API returned no quota window");
+    }
+    usage
+}
+
+fn grok_period_label(period: Option<&serde_json::Value>) -> String {
+    match period.and_then(|p| p.get("type")).and_then(|v| v.as_str()) {
+        Some("USAGE_PERIOD_TYPE_DAILY") => "Daily".to_string(),
+        Some("USAGE_PERIOD_TYPE_WEEKLY") => "Weekly".to_string(),
+        Some("USAGE_PERIOD_TYPE_MONTHLY") => "Monthly".to_string(),
+        _ => "Usage".to_string(),
+    }
+}
+
+fn grok_period_minutes(period: Option<&serde_json::Value>) -> Option<u32> {
+    match period.and_then(|p| p.get("type")).and_then(|v| v.as_str()) {
+        Some("USAGE_PERIOD_TYPE_DAILY") => Some(1440),
+        Some("USAGE_PERIOD_TYPE_WEEKLY") => Some(10080),
+        Some("USAGE_PERIOD_TYPE_MONTHLY") => Some(43200),
+        _ => None,
+    }
+}
+
+/// A $ amount from a Grok billing field that may be a bare number or an object
+/// wrapping it (`{val}` / `{value}` / `{amount}`).
+fn grok_money(v: Option<&serde_json::Value>) -> Option<f64> {
+    let v = v?;
+    number(v)
+        .or_else(|| v.get("val").and_then(number))
+        .or_else(|| v.get("value").and_then(number))
+        .or_else(|| v.get("amount").and_then(number))
+}
+
+/// Build a $ credit balance from Grok's on-demand (spend vs cap) or prepaid
+/// (remaining balance) fields. `None` when neither carries a non-zero value.
+fn grok_credit(used: Option<f64>, cap: Option<f64>, prepaid: Option<f64>) -> Option<CreditBalance> {
+    let u = used.unwrap_or(0.0);
+    let c = cap.unwrap_or(0.0);
+    if u > 0.0 || c > 0.0 {
+        return Some(CreditBalance {
+            used: u,
+            limit: cap,
+            currency: "USD".to_string(),
+            period: "On-demand".to_string(),
+            resets_at: None,
+            available: cap.map(|cc| (cc - u).max(0.0)),
+        });
+    }
+    prepaid.filter(|b| *b > 0.0).map(|bal| CreditBalance {
+        used: 0.0,
+        limit: None,
+        currency: "USD".to_string(),
+        period: "Prepaid".to_string(),
+        resets_at: None,
+        available: Some(bal),
+    })
 }
 
 // --- Codex ------------------------------------------------------------------
@@ -230,10 +476,9 @@ async fn read_codex(home: &Path) -> ProviderUsage {
     let mut usage = ProviderUsage::base(UsageProvider::Codex, UsageStatus::Ok);
     usage.source = Some(UsageSource::Token);
 
-    let plan = body
-        .get("plan_type")
-        .and_then(|v| v.as_str())
-        .map(prettify_plan);
+    let plan_type = body.get("plan_type").and_then(|v| v.as_str());
+    let plan = plan_type.map(prettify_plan);
+    let account_type = plan_type.map(classify_plan);
     let email = body
         .get("email")
         .and_then(|v| v.as_str())
@@ -241,6 +486,7 @@ async fn read_codex(home: &Path) -> ProviderUsage {
     usage = usage.with_account(Account {
         email,
         plan,
+        account_type,
         ..Default::default()
     });
 
@@ -285,10 +531,147 @@ async fn read_codex(home: &Path) -> ProviderUsage {
         usage.credit = credit_from_value(credits, "Credits");
     }
 
-    if usage.windows.is_empty() && usage.credit.is_none() {
+    // Codex "reset credits" (reinicios): resets you can redeem to roll a hit
+    // rate-limit back early. Prefer the dedicated endpoint (full per-credit detail:
+    // a title + expiry each); the field in the usage response is count-only.
+    usage.reset_credits = codex_reset_credits(&client, &base, token, account_id).await;
+    if usage.reset_credits.is_none() {
+        usage.reset_credits = body
+            .get("rate_limit_reset_credits")
+            .and_then(parse_reset_credits);
+    }
+
+    if usage.windows.is_empty() && usage.credit.is_none() && usage.reset_credits.is_none() {
         usage = usage.with_message("signed in, but the usage API returned no quota windows");
     }
     usage
+}
+
+/// Fetch Codex's dedicated rate-limit-reset-credits endpoint and parse it. Same
+/// auth as `/wham/usage`. `None` on any failure (best-effort enrichment).
+async fn codex_reset_credits(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    account_id: Option<&str>,
+) -> Option<ResetCredits> {
+    let mut req = client
+        .get(format!("{base}/wham/rate-limit-reset-credits"))
+        .bearer_auth(token);
+    if let Some(acc) = account_id {
+        req = req.header("ChatGPT-Account-Id", acc);
+    }
+    let body = fetch_json(req).await.ok()?;
+    parse_reset_credits(&body)
+}
+
+/// Parse a Codex reset-credits payload — either a bare count, or an object with
+/// `available_count` / `total_earned_count` / `credits[]` (each `{status,
+/// expires_at}`). `next_expires_at` is the explicit field, else the earliest
+/// `expires_at` among still-available credits. `None` when there's nothing
+/// meaningful to show (no available and none ever earned).
+fn parse_reset_credits(v: &serde_json::Value) -> Option<ResetCredits> {
+    // A bare number = the available count (no per-credit detail).
+    if v.is_number() {
+        let n = number(v)? as i64;
+        return (n > 0).then_some(ResetCredits {
+            available: n,
+            total_earned: None,
+            next_expires_at: None,
+            entries: None,
+        });
+    }
+    let total_earned = v
+        .get("total_earned_count")
+        .or_else(|| v.get("totalEarnedCount"))
+        .and_then(number)
+        .map(|n| n as i64);
+
+    // Per-credit detail: the still-available resets, soonest-expiring first.
+    let mut entries: Vec<ResetCreditEntry> = v
+        .get("credits")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|c| {
+                    c.get("status")
+                        .and_then(|s| s.as_str())
+                        .map(|s| s.eq_ignore_ascii_case("available"))
+                        .unwrap_or(true)
+                })
+                .map(|c| ResetCreditEntry {
+                    title: c.get("title").and_then(|v| v.as_str()).map(str::to_string),
+                    expires_at: c
+                        .get("expires_at")
+                        .or_else(|| c.get("expiresAt"))
+                        .and_then(epoch_ms),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    entries.sort_by_key(|e| e.expires_at.unwrap_or(i64::MAX));
+
+    let available = v
+        .get("available_count")
+        .or_else(|| v.get("availableCount"))
+        .and_then(number)
+        .map(|n| n as i64)
+        .unwrap_or_else(|| entries.len() as i64);
+    let next_expires_at = entries.iter().find_map(|e| e.expires_at).or_else(|| {
+        v.get("next_expires_at")
+            .or_else(|| v.get("nextExpiresAt"))
+            .and_then(epoch_ms)
+    });
+    if available <= 0 && total_earned.unwrap_or(0) <= 0 && entries.is_empty() {
+        return None;
+    }
+    Some(ResetCredits {
+        available,
+        total_earned,
+        next_expires_at,
+        entries: (!entries.is_empty()).then_some(entries),
+    })
+}
+
+/// Redeem one Codex rate-limit reset ("reinicio"), rolling a hit limit back early.
+/// POSTs to the consume endpoint with a fresh request id and returns the outcome
+/// code (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed` / …), so
+/// the caller can message + refresh. Uses the same stored token as the reader.
+pub async fn codex_redeem_reset() -> Result<String, String> {
+    let home = home_dir().ok_or("cannot resolve the home directory")?;
+    let auth = read_json(&home.join(".codex").join("auth.json"))
+        .ok_or("Codex is not set up on this PC")?;
+    let token = auth
+        .get("tokens")
+        .and_then(|t| t.get("access_token"))
+        .and_then(|v| v.as_str())
+        .ok_or("Codex is not signed in with a ChatGPT account")?;
+    let account_id = auth
+        .get("tokens")
+        .and_then(|t| t.get("account_id"))
+        .and_then(|v| v.as_str());
+    let base = codex_base_url(&home);
+    let client = http_client()?;
+    let redeem_id = uuid::Uuid::new_v4().to_string();
+    let mut req = client
+        .post(format!("{base}/wham/rate-limit-reset-credits/consume"))
+        .bearer_auth(token)
+        .header("content-type", "application/json")
+        .body(serde_json::json!({ "redeem_request_id": redeem_id }).to_string());
+    if let Some(acc) = account_id {
+        req = req.header("ChatGPT-Account-Id", acc);
+    }
+    let body = fetch_json(req).await.map_err(|e| match e {
+        HttpError::Unauthorized => {
+            "the stored token was rejected — sign in again with Codex".to_string()
+        }
+        HttpError::Other(m) => m,
+    })?;
+    Ok(body
+        .get("code")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string())
 }
 
 fn codex_base_url(home: &Path) -> String {
@@ -332,10 +715,12 @@ async fn read_claude(home: &Path) -> ProviderUsage {
         return ProviderUsage::base(UsageProvider::Claude, UsageStatus::AuthRequired)
             .with_message("Claude Code has no OAuth access token");
     };
-    let plan = oauth
+    let subscription_type = oauth
         .and_then(|o| o.get("subscriptionType"))
         .and_then(|v| v.as_str())
-        .map(prettify_plan);
+        .map(str::to_string);
+    let plan = subscription_type.as_deref().map(prettify_plan);
+    let account_type = subscription_type.as_deref().map(classify_plan);
 
     let client = match http_client() {
         Ok(c) => c,
@@ -355,6 +740,7 @@ async fn read_claude(home: &Path) -> ProviderUsage {
     usage.source = Some(UsageSource::Token);
     usage = usage.with_account(Account {
         plan,
+        account_type,
         ..Default::default()
     });
 
@@ -421,6 +807,7 @@ async fn read_claude(home: &Path) -> ProviderUsage {
                         .to_string(),
                     period: "Monthly credits".to_string(),
                     resets_at: None,
+                    available: None,
                 });
             }
         }
@@ -497,15 +884,15 @@ async fn read_copilot() -> ProviderUsage {
 
     let mut usage = ProviderUsage::base(UsageProvider::Copilot, UsageStatus::Ok);
     usage.source = Some(UsageSource::Token);
-    let plan = body
-        .get("copilot_plan")
-        .and_then(|v| v.as_str())
-        .map(prettify_plan);
+    let copilot_plan = body.get("copilot_plan").and_then(|v| v.as_str());
+    let plan = copilot_plan.map(prettify_plan);
+    let account_type = copilot_plan.map(classify_plan);
     // Identity: the GitHub login, from the official /user endpoint (same token).
     let email = github_login(&client, &token).await;
     usage = usage.with_account(Account {
         email,
         plan,
+        account_type,
         ..Default::default()
     });
 
@@ -767,6 +1154,7 @@ fn credit_from_value(v: &serde_json::Value, period: &str) -> Option<CreditBalanc
         currency,
         period: period.to_string(),
         resets_at,
+        available: None,
     })
 }
 
@@ -937,6 +1325,7 @@ mod tests {
         let empty = std::path::Path::new("/nonexistent-uxnan-home-xyz");
         assert!(!is_present(UsageProvider::Codex, empty));
         assert!(!is_present(UsageProvider::Gemini, empty));
+        assert!(!is_present(UsageProvider::Grok, empty));
     }
 
     #[test]
@@ -978,5 +1367,87 @@ mod tests {
             claude_limit_label("weekly_scoped", "weekly", Some("Fable")),
             "Fable (weekly)"
         );
+    }
+
+    #[test]
+    fn grok_period_helpers_map_known_windows() {
+        let weekly = serde_json::json!({"type": "USAGE_PERIOD_TYPE_WEEKLY"});
+        assert_eq!(grok_period_label(Some(&weekly)), "Weekly");
+        assert_eq!(grok_period_minutes(Some(&weekly)), Some(10080));
+        assert_eq!(grok_period_label(None), "Usage");
+        assert_eq!(grok_period_minutes(None), None);
+    }
+
+    #[test]
+    fn classify_plan_maps_keywords() {
+        assert_eq!(classify_plan("chatgpt_pro"), AccountType::Subscription);
+        assert_eq!(classify_plan("max"), AccountType::Subscription);
+        assert_eq!(classify_plan("free"), AccountType::Free);
+        assert_eq!(classify_plan("business"), AccountType::Team);
+        assert_eq!(classify_plan("team"), AccountType::Team);
+        assert_eq!(classify_plan("Enterprise"), AccountType::Enterprise);
+    }
+
+    #[test]
+    fn parse_reset_credits_handles_shapes() {
+        // A bare count.
+        assert_eq!(
+            parse_reset_credits(&serde_json::json!(3))
+                .unwrap()
+                .available,
+            3
+        );
+        assert!(parse_reset_credits(&serde_json::json!(0)).is_none());
+        // An object with credits[]: earliest available expiry wins; consumed ignored.
+        let v = serde_json::json!({
+            "available_count": 2, "total_earned_count": 5,
+            "credits": [
+                {"status":"available","expires_at": 1_700_000_100i64},
+                {"status":"available","expires_at": 1_700_000_000i64},
+                {"status":"consumed","expires_at": 1}
+            ]
+        });
+        let rc = parse_reset_credits(&v).unwrap();
+        assert_eq!(rc.available, 2);
+        assert_eq!(rc.total_earned, Some(5));
+        assert_eq!(rc.next_expires_at, Some(1_700_000_000_000));
+        // Per-credit entries: only the available ones, soonest-expiring first.
+        let entries = rc.entries.as_ref().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].expires_at, Some(1_700_000_000_000));
+        assert_eq!(entries[1].expires_at, Some(1_700_000_100_000));
+        // Nothing meaningful → None.
+        assert!(parse_reset_credits(&serde_json::json!({"available_count":0})).is_none());
+    }
+
+    #[test]
+    fn grok_credit_from_ondemand_and_prepaid() {
+        // On-demand: used vs cap, with derived available.
+        let c = grok_credit(Some(4.0), Some(10.0), None).unwrap();
+        assert_eq!(c.used, 4.0);
+        assert_eq!(c.limit, Some(10.0));
+        assert_eq!(c.available, Some(6.0));
+        assert_eq!(c.period, "On-demand");
+        // Prepaid balance only.
+        let p = grok_credit(None, None, Some(25.0)).unwrap();
+        assert_eq!(p.available, Some(25.0));
+        assert_eq!(p.period, "Prepaid");
+        // Nothing to show.
+        assert!(grok_credit(None, None, None).is_none());
+        assert!(grok_credit(Some(0.0), Some(0.0), None).is_none());
+    }
+
+    #[test]
+    fn grok_money_unwraps_objects() {
+        assert_eq!(grok_money(Some(&serde_json::json!(4.5))), Some(4.5));
+        assert_eq!(
+            grok_money(Some(&serde_json::json!({"val": 7.0}))),
+            Some(7.0)
+        );
+        assert_eq!(
+            grok_money(Some(&serde_json::json!({"amount": "3.2"}))),
+            Some(3.2)
+        );
+        assert_eq!(grok_money(None), None);
     }
 }

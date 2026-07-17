@@ -128,6 +128,11 @@ El estado git se mantiene actualizado con un ciclo de polling:
 - **Detección de conflictos**: Se detecta si hay un merge, rebase o cherry-pick en curso.
 - **Estado upstream**: Se calcula cuántos commits está "ahead" y "behind" respecto a la rama remota.
 
+La sidebar mantiene además una reconciliación ligera cada 3 segundos de la lista
+de worktrees de cada repositorio registrado. Esto cubre worktrees creados fuera
+del ADE por agentes o por Git; solo se reasigna una lista cuando cambian sus
+entradas, para no perturbar el orden estabilizado de las vistas del panel.
+
 ### 3.4 Gestión de Ramas
 
 - **Nomenclatura**: Las ramas se crean con un prefijo configurable (ej: `usuario/feature-name`, `custom/feature-name`, o sin prefijo). Los nombres se sanitizan para eliminar caracteres no válidos.

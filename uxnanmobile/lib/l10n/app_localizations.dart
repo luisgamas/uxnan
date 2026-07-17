@@ -398,6 +398,528 @@ abstract class AppLocalizations {
   /// **'Devices'**
   String get devicesTitle;
 
+  /// No description provided for @profileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get profileTitle;
+
+  /// No description provided for @profileDisplayName.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan user'**
+  String get profileDisplayName;
+
+  /// Profile subtitle: when the user first started using the app.
+  ///
+  /// In en, this message translates to:
+  /// **'Member since {date}'**
+  String profileMemberSince(String date);
+
+  /// How many PCs are paired, shown in the profile header.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} PCs'**
+  String profilePairedPcs(int count);
+
+  /// How many live sessions the phone currently holds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} online now'**
+  String profileActiveSessions(int count);
+
+  /// No description provided for @statConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Chats'**
+  String get statConversations;
+
+  /// No description provided for @statAgentsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Agents used'**
+  String get statAgentsUsed;
+
+  /// No description provided for @statMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get statMessages;
+
+  /// No description provided for @statGitActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Git actions'**
+  String get statGitActions;
+
+  /// No description provided for @statSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Connections'**
+  String get statSessions;
+
+  /// No description provided for @statTimeConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Time connected'**
+  String get statTimeConnected;
+
+  /// No description provided for @statLongestSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Longest session'**
+  String get statLongestSession;
+
+  /// No description provided for @statMostUsedTransport.
+  ///
+  /// In en, this message translates to:
+  /// **'Most-used'**
+  String get statMostUsedTransport;
+
+  /// No description provided for @statModelsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Models'**
+  String get statModelsUsed;
+
+  /// No description provided for @profileStatsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Statistics'**
+  String get profileStatsTitle;
+
+  /// No description provided for @profileStatsRefreshAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh stats'**
+  String get profileStatsRefreshAction;
+
+  /// No description provided for @profileActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity'**
+  String get profileActivity;
+
+  /// No description provided for @profileByAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations by agent'**
+  String get profileByAgent;
+
+  /// No description provided for @profileNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No activity yet'**
+  String get profileNoData;
+
+  /// No description provided for @profileActivityLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Less'**
+  String get profileActivityLess;
+
+  /// No description provided for @profileActivityMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get profileActivityMore;
+
+  /// Heatmap caption summarizing the whole year.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} actions · {activeDays} active days'**
+  String profileHeatmapSummary(int count, int activeDays);
+
+  /// Heatmap caption for a single tapped day.
+  ///
+  /// In en, this message translates to:
+  /// **'{date} · {count} actions'**
+  String profileHeatmapDay(String date, int count);
+
+  /// No description provided for @metricCombined.
+  ///
+  /// In en, this message translates to:
+  /// **'Combined'**
+  String get metricCombined;
+
+  /// No description provided for @metricConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get metricConversations;
+
+  /// No description provided for @metricMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get metricMessages;
+
+  /// No description provided for @metricWork.
+  ///
+  /// In en, this message translates to:
+  /// **'Work'**
+  String get metricWork;
+
+  /// No description provided for @profileEditTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get profileEditTitle;
+
+  /// No description provided for @profileChoosePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose photo'**
+  String get profileChoosePhoto;
+
+  /// No description provided for @profilePickIcon.
+  ///
+  /// In en, this message translates to:
+  /// **'Or pick an icon'**
+  String get profilePickIcon;
+
+  /// No description provided for @profileNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get profileNameLabel;
+
+  /// No description provided for @profileNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your name'**
+  String get profileNameHint;
+
+  /// No description provided for @profileAgentConversationsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'conversations'**
+  String get profileAgentConversationsLabel;
+
+  /// No description provided for @profileBackupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup'**
+  String get profileBackupTitle;
+
+  /// No description provided for @profileBackupNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.'**
+  String get profileBackupNote;
+
+  /// No description provided for @profileBackupExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get profileBackupExport;
+
+  /// No description provided for @profileBackupImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get profileBackupImport;
+
+  /// No description provided for @profileBackupOfflineHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to a PC to back up or restore your stats.'**
+  String get profileBackupOfflineHint;
+
+  /// No description provided for @profileBackupPassphraseOptionalTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Protect this backup?'**
+  String get profileBackupPassphraseOptionalTitle;
+
+  /// No description provided for @profileBackupPassphraseOptionalHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a passphrase (optional). You\'ll need it to import the file.'**
+  String get profileBackupPassphraseOptionalHint;
+
+  /// No description provided for @profileBackupPassphraseRequiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Passphrase required'**
+  String get profileBackupPassphraseRequiredTitle;
+
+  /// No description provided for @profileBackupPassphraseRequiredHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This backup is protected. Enter its passphrase.'**
+  String get profileBackupPassphraseRequiredHint;
+
+  /// No description provided for @profileBackupPassphraseField.
+  ///
+  /// In en, this message translates to:
+  /// **'Passphrase'**
+  String get profileBackupPassphraseField;
+
+  /// No description provided for @profileBackupCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileBackupCancel;
+
+  /// No description provided for @profileBackupShareSubject.
+  ///
+  /// In en, this message translates to:
+  /// **'Uxnan stats backup'**
+  String get profileBackupShareSubject;
+
+  /// Export failure, quoting the bridge's own reason verbatim rather than guessing at the cause.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create the backup: {reason}'**
+  String profileBackupExportFailedReason(String reason);
+
+  /// No description provided for @profileBackupShareFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t save or share the backup file.'**
+  String get profileBackupShareFailed;
+
+  /// Snackbar after a successful metrics import that merged new events.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup restored — {count} new entries.'**
+  String profileBackupImportedNew(int count);
+
+  /// No description provided for @profileBackupImportedNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Your stats are already up to date.'**
+  String get profileBackupImportedNone;
+
+  /// No description provided for @profileBackupImportBadPassphrase.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong passphrase for this backup.'**
+  String get profileBackupImportBadPassphrase;
+
+  /// No description provided for @profileBackupImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t import this file. It may be from another PC or have been modified.'**
+  String get profileBackupImportFailed;
+
+  /// No description provided for @statTotalTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Total tokens'**
+  String get statTotalTokens;
+
+  /// No description provided for @profileAgentScopeAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All time'**
+  String get profileAgentScopeAll;
+
+  /// No description provided for @profileLensActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity'**
+  String get profileLensActivity;
+
+  /// No description provided for @profileLensTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get profileLensTokens;
+
+  /// No description provided for @profileTokensImprecise.
+  ///
+  /// In en, this message translates to:
+  /// **'Some CLIs don\'t report their full token usage, so these token figures can be imprecise.'**
+  String get profileTokensImprecise;
+
+  /// Tokens-lens heatmap caption for the whole year (tokens pre-formatted).
+  ///
+  /// In en, this message translates to:
+  /// **'{tokens} tokens · {activeDays} active days'**
+  String profileHeatmapTokensSummary(String tokens, int activeDays);
+
+  /// Tokens-lens heatmap caption for a single tapped day (tokens pre-formatted).
+  ///
+  /// In en, this message translates to:
+  /// **'{date} · {tokens} tokens'**
+  String profileHeatmapTokensDay(String date, String tokens);
+
+  /// No description provided for @profileAgentConvLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get profileAgentConvLabel;
+
+  /// No description provided for @profileAgentMsgLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get profileAgentMsgLabel;
+
+  /// No description provided for @profileAgentTokLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Tokens'**
+  String get profileAgentTokLabel;
+
+  /// No description provided for @profileUsageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Usage & credit'**
+  String get profileUsageTitle;
+
+  /// No description provided for @usageNotSignedIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in'**
+  String get usageNotSignedIn;
+
+  /// No description provided for @usageLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load'**
+  String get usageLoadError;
+
+  /// No description provided for @usageCreditLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Credit'**
+  String get usageCreditLabel;
+
+  /// Relative time until a short quota window resets (e.g. 6h 30min).
+  ///
+  /// In en, this message translates to:
+  /// **'Resets in {duration}'**
+  String usageResetsIn(String duration);
+
+  /// Days remaining + clock time until a weekly/monthly window resets.
+  ///
+  /// In en, this message translates to:
+  /// **'Resets in {days}d at {time}'**
+  String usageResetsInDays(int days, String time);
+
+  /// No description provided for @usageRefreshAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh usage'**
+  String get usageRefreshAction;
+
+  /// No description provided for @usageNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No usage data'**
+  String get usageNoData;
+
+  /// No description provided for @settingsUsageSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Metrics & provider usage'**
+  String get settingsUsageSection;
+
+  /// No description provided for @settingsUsageNavSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How your stats and provider limits refresh'**
+  String get settingsUsageNavSubtitle;
+
+  /// No description provided for @settingsMetricsGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile stats'**
+  String get settingsMetricsGroup;
+
+  /// No description provided for @metricsRefreshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How your profile stats keep up to date while a PC is connected. They always refresh when a PC connects, and the profile\'s refresh button works in every mode.'**
+  String get metricsRefreshHint;
+
+  /// No description provided for @metricsIntervalAutomatic.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic (every time you open the profile)'**
+  String get metricsIntervalAutomatic;
+
+  /// No description provided for @metricsInterval15m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 15 minutes'**
+  String get metricsInterval15m;
+
+  /// No description provided for @metricsInterval30m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 30 minutes'**
+  String get metricsInterval30m;
+
+  /// No description provided for @settingsProviderUsageGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider usage'**
+  String get settingsProviderUsageGroup;
+
+  /// No description provided for @settingsProviderUsageExplainer.
+  ///
+  /// In en, this message translates to:
+  /// **'Each AI provider\'s remaining limits: how much of your quota is left, when it resets, your plan and any credit.'**
+  String get settingsProviderUsageExplainer;
+
+  /// No description provided for @usageRefreshHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How often to refresh provider usage while a PC is connected.'**
+  String get usageRefreshHint;
+
+  /// No description provided for @usageIntervalManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual only'**
+  String get usageIntervalManual;
+
+  /// No description provided for @usageInterval5m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 5 minutes'**
+  String get usageInterval5m;
+
+  /// No description provided for @usageInterval10m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 10 minutes'**
+  String get usageInterval10m;
+
+  /// No description provided for @usageInterval20m.
+  ///
+  /// In en, this message translates to:
+  /// **'Every 20 minutes'**
+  String get usageInterval20m;
+
+  /// No description provided for @usageInterval1h.
+  ///
+  /// In en, this message translates to:
+  /// **'Every hour'**
+  String get usageInterval1h;
+
+  /// No description provided for @settingsUsageClockGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Time format'**
+  String get settingsUsageClockGroup;
+
+  /// No description provided for @usageClock24hTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'24-hour time'**
+  String get usageClock24hTitle;
+
+  /// No description provided for @usageClock24hSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show reset times as 14:30 instead of 2:30 PM'**
+  String get usageClock24hSubtitle;
+
   /// No description provided for @deviceActive.
   ///
   /// In en, this message translates to:
@@ -422,6 +944,18 @@ abstract class AppLocalizations {
   /// **'Last seen'**
   String get deviceLastSeenLabel;
 
+  /// Accessibility label / tooltip for the blurred PC address; tapping reveals the IP or relay host.
+  ///
+  /// In en, this message translates to:
+  /// **'Show address'**
+  String get deviceAddressReveal;
+
+  /// Accessibility label / tooltip for the revealed PC address; tapping blurs it again.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide address'**
+  String get deviceAddressHide;
+
   /// No description provided for @deviceNeverConnected.
   ///
   /// In en, this message translates to:
@@ -439,6 +973,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Rename'**
   String get deviceRename;
+
+  /// No description provided for @deviceStatistics.
+  ///
+  /// In en, this message translates to:
+  /// **'Statistics'**
+  String get deviceStatistics;
 
   /// No description provided for @deviceVerifyConnection.
   ///
@@ -836,6 +1376,18 @@ abstract class AppLocalizations {
   /// **'Copy message'**
   String get conversationCopyMessage;
 
+  /// Expands a long user message from its default preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Show more'**
+  String get conversationShowMore;
+
+  /// Collapses an expanded long user message back to its preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Show less'**
+  String get conversationShowLess;
+
   /// Snackbar confirming the user's message was copied.
   ///
   /// In en, this message translates to:
@@ -926,10 +1478,10 @@ abstract class AppLocalizations {
   /// **'Hide options'**
   String get composerOptionsHide;
 
-  /// Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button.
+  /// Tooltip of the composer '+' button. Its anchored menu contains immediate add-to-turn actions such as media attachments.
   ///
   /// In en, this message translates to:
-  /// **'Turn options'**
+  /// **'Add to conversation'**
   String get composerTools;
 
   /// Header of the inline @-mention suggestion panel above the composer.
@@ -1645,6 +2197,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The agent turn failed'**
   String get turnFailed;
+
+  /// Low-emphasis status beside the composer while the active agent turn is running.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent responding…'**
+  String get conversationAgentResponding;
 
   /// Run-option value meaning 'leave the agent's default' (no explicit choice).
   ///
@@ -2642,6 +3200,24 @@ abstract class AppLocalizations {
   /// **'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.'**
   String get settingsClaudeLatestHint;
 
+  /// Title of the toggle controlling the autonomous-mode banner shown in conversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Autonomous-mode banner'**
+  String get settingsAutonomousBannerTitle;
+
+  /// Subtitle of the autonomous-mode banner toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show it each time you open a conversation with an autonomous agent.'**
+  String get settingsAutonomousBannerSubtitle;
+
+  /// Explanatory note under the autonomous-mode banner toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'When on, a close button dismisses the banner just for the current visit and it reappears next time you open the conversation. Turn it off to hide the banner permanently.'**
+  String get settingsAutonomousBannerHint;
+
   /// No description provided for @settingsAppearanceSection.
   ///
   /// In en, this message translates to:
@@ -3542,11 +4118,41 @@ abstract class AppLocalizations {
   /// **'This agent runs in autonomous mode — it acts and edits without asking for approval first.'**
   String get conversationAutonomousMode;
 
+  /// Tooltip for the close button on the autonomous-mode banner; hides it for the current visit.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get conversationAutonomousModeDismiss;
+
   /// Title of the workspace file browser and its top-bar tooltip.
   ///
   /// In en, this message translates to:
   /// **'Files'**
   String get fileBrowserTitle;
+
+  /// No description provided for @fileBrowserSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search files'**
+  String get fileBrowserSearch;
+
+  /// No description provided for @fileBrowserSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search files in this project'**
+  String get fileBrowserSearchHint;
+
+  /// No description provided for @fileBrowserSearchEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matching files'**
+  String get fileBrowserSearchEmpty;
+
+  /// No description provided for @fileBrowserSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t search files'**
+  String get fileBrowserSearchFailed;
 
   /// Settings-menu toggle that controls whether file extensions are visible in the file browser list.
   ///
@@ -3637,24 +4243,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hide diff'**
   String get fileViewerHideDiff;
-
-  /// Tooltip on the action that copies the file's content to the clipboard.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy file'**
-  String get fileViewerCopy;
-
-  /// Snackbar shown when the file content is copied to the clipboard.
-  ///
-  /// In en, this message translates to:
-  /// **'File copied'**
-  String get fileViewerCopied;
-
-  /// Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload).
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t copy this file'**
-  String get fileViewerCopyFailed;
 
   /// Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).
   ///
@@ -4081,6 +4669,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Claude'**
   String get settingsConversationClaudeGroup;
+
+  /// Conversation section sub-group for Pi agent options (the autonomous-mode banner).
+  ///
+  /// In en, this message translates to:
+  /// **'Pi Agent'**
+  String get settingsConversationPiGroup;
 
   /// Conversation section sub-group for chat behaviour (scroll, templates).
   ///

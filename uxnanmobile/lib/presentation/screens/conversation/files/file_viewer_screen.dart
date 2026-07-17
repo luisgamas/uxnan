@@ -3,11 +3,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:highlight/highlight.dart' as syntax;
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
@@ -18,7 +18,9 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen file viewer. Renders one of: an inline image, a markdown file
@@ -57,11 +59,7 @@ class FileViewerScreen extends ConsumerStatefulWidget {
   }) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => FileViewerScreen(
-          cwd: cwd,
-          path: path,
-          node: node,
-        ),
+        builder: (_) => FileViewerScreen(cwd: cwd, path: path, node: node),
       ),
     );
   }
@@ -292,11 +290,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                             padding: EdgeInsets.symmetric(
                               horizontal: UxnanSpacing.md,
                             ),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
+                            child: PolygonLoader(size: 20),
                           )
                         else
                           IconSurface(
@@ -338,11 +332,6 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                             tooltip: l10n.fileViewerEdit,
                             onPressed: _startEditing,
                           ),
-                        IconSurface(
-                          icon: Icons.content_copy_outlined,
-                          tooltip: l10n.fileViewerCopy,
-                          onPressed: _copyContent,
-                        ),
                         // Refreshing moved to pull-to-refresh on the content
                         // body (see [_buildBody]) — matching FileBrowserScreen
                         // and GitScreen — so the appbar stays lean.
@@ -371,10 +360,12 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
 
     // Scrollable bodies pad their own top by [topInset] so they scroll under
-    // the bar; the centered placeholder states ([_ImageBody], [_BinaryState],
-    // [_ErrorState]) are nudged below the bar with [_belowBar].
+    // the bar. Binary/error placeholders are nudged below it with [_belowBar],
+    // while an image intentionally owns the full surface behind the top bar.
     if (_loading && payload == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: PolygonLoader(size: UxnanSpacing.xxl),
+      );
     }
     if (payload == null) {
       return const SizedBox.shrink();
@@ -386,12 +377,9 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
       );
     }
     if (isImage && payload.image != null) {
-      return _belowBar(
-        topInset,
-        _ImageBody(
-          base64: payload.image!.base64Data,
-          mimeType: payload.image!.mimeType,
-        ),
+      return _ImageBody(
+        base64: payload.image!.base64Data,
+        mimeType: payload.image!.mimeType,
       );
     }
     if (isImage) {
@@ -422,10 +410,12 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
     if (showDiffOverlay && payload.diff != null && payload.diff!.isNotEmpty) {
       return _refreshable(
-        FileDiffViewer(
-          diff: payload.diff!,
-          path: widget.path,
-          topInset: topInset,
+        SelectionArea(
+          child: FileDiffViewer(
+            diff: payload.diff!,
+            path: widget.path,
+            topInset: topInset,
+          ),
         ),
       );
     }
@@ -454,25 +444,6 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
         padding: EdgeInsets.only(top: topInset),
         child: child,
       );
-
-  Future<void> _copyContent() async {
-    final payload = _payload;
-    final l10n = AppLocalizations.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    if (payload?.content == null) {
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(l10n.fileViewerCopyFailed)));
-      return;
-    }
-    await Clipboard.setData(
-      ClipboardData(text: payload!.content!.content),
-    );
-    if (!mounted) return;
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(l10n.fileViewerCopied)));
-  }
 }
 
 Future<_ViewerPayload> _loadViewer(
@@ -528,9 +499,9 @@ class _ViewerPayload {
   final String? error;
 }
 
-/// Image body — base64 → `Image.memory` with an `InteractiveViewer` so the
-/// user can pinch-zoom and pan. Padded with `UxnanSpacing.lg` so the image
-/// doesn't sit against the screen edges on small viewports.
+/// Full-surface image preview. The image starts fully visible with
+/// [BoxFit.contain]; pinch zoom and pan then use the complete screen viewport
+/// instead of a smaller padded rectangle.
 class _ImageBody extends StatelessWidget {
   const _ImageBody({required this.base64, required this.mimeType});
   final String base64;
@@ -539,14 +510,17 @@ class _ImageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-      child: Center(
+    return ColoredBox(
+      color: colors.surfaceContainerLowest,
+      child: SizedBox.expand(
         child: InteractiveViewer(
           maxScale: 6,
           minScale: 1,
+          clipBehavior: Clip.none,
           child: Image.memory(
             base64Decode(base64),
+            width: double.infinity,
+            height: double.infinity,
             fit: BoxFit.contain,
             gaplessPlayback: true,
             errorBuilder: (context, error, stack) => Padding(
@@ -602,11 +576,18 @@ class _MarkdownBody extends StatelessWidget {
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),
-      child: MarkdownBody(
-        data: text,
-        selectable: true,
-        styleSheet: uxnanMarkdownStyleSheet(context),
-        onTapLink: (linkText, href, title) => _onTapLink(context, href),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: MarkdownBody(
+            data: text,
+            selectable: true,
+            styleSheet: uxnanMarkdownStyleSheet(context),
+            onTapLink: (linkText, href, title) => _onTapLink(context, href),
+          ),
+        ),
       ),
     );
   }
@@ -654,21 +635,83 @@ class _CodeBody extends StatelessWidget {
         UxnanSpacing.lg,
         UxnanSpacing.lg,
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: HighlightView(
-          text,
-          language: language,
-          theme: theme,
-          textStyle: UxnanTypography.codeBody,
-          padding: const EdgeInsets.symmetric(
-            horizontal: UxnanSpacing.sm,
-            vertical: UxnanSpacing.xs,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: _SelectableHighlightView(
+                text,
+                language: language,
+                theme: theme,
+                textStyle: UxnanTypography.codeBody,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.sm,
+                  vertical: UxnanSpacing.xs,
+                ),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Syntax-highlighted source rendered through [SelectableText.rich]. The
+/// `flutter_highlight` widget uses a plain `RichText`, which cannot expose the
+/// platform selection/copy menu; this keeps the same parser and themes while
+/// making every source range genuinely selectable.
+class _SelectableHighlightView extends StatelessWidget {
+  const _SelectableHighlightView(
+    this.source, {
+    required this.language,
+    required this.theme,
+    required this.textStyle,
+    required this.padding,
+  });
+
+  final String source;
+  final String language;
+  final Map<String, TextStyle> theme;
+  final TextStyle textStyle;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final rootStyle = TextStyle(color: theme['root']?.color).merge(textStyle);
+    final nodes = syntax.highlight
+        .parse(source.replaceAll('\t', '        '), language: language)
+        .nodes;
+    return Container(
+      color: theme['root']?.backgroundColor,
+      padding: padding,
+      child: SelectableText.rich(
+        TextSpan(
+          style: rootStyle,
+          children: _highlightSpans(nodes ?? const <syntax.Node>[]),
+        ),
+      ),
+    );
+  }
+
+  List<TextSpan> _highlightSpans(List<syntax.Node> nodes) => [
+        for (final node in nodes)
+          if (node.value != null)
+            TextSpan(
+              text: node.value,
+              style: node.className == null ? null : theme[node.className],
+            )
+          else
+            TextSpan(
+              style: node.className == null ? null : theme[node.className],
+              children: _highlightSpans(node.children ?? const <syntax.Node>[]),
+            ),
+      ];
 }
 
 /// Inline editor: a full-height monospace [TextField] over the raw file
@@ -684,23 +727,30 @@ class _EditorBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return TextField(
-      controller: controller,
-      maxLines: null,
-      expands: true,
-      autofocus: true,
-      keyboardType: TextInputType.multiline,
-      textAlignVertical: TextAlignVertical.top,
-      style: UxnanTypography.codeBody.copyWith(color: colors.onSurface),
-      cursorColor: colors.primary,
-      decoration: InputDecoration(
-        border: InputBorder.none,
-        filled: false,
-        contentPadding: EdgeInsets.fromLTRB(
-          UxnanSpacing.lg,
-          topInset + UxnanSpacing.sm,
-          UxnanSpacing.lg,
-          bottomInset + UxnanSpacing.lg,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: UxnanSpacing.maxContentWidth,
+        ),
+        child: TextField(
+          controller: controller,
+          maxLines: null,
+          expands: true,
+          autofocus: true,
+          keyboardType: TextInputType.multiline,
+          textAlignVertical: TextAlignVertical.top,
+          style: UxnanTypography.codeBody.copyWith(color: colors.onSurface),
+          cursorColor: colors.primary,
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            filled: false,
+            contentPadding: EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              topInset + UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              bottomInset + UxnanSpacing.lg,
+            ),
+          ),
         ),
       ),
     );
@@ -718,32 +768,39 @@ class _BinaryState extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-      child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.archive_outlined,
-              size: 40,
-              color: colors.onSurfaceVariant,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: NeCard(
+            padding: const EdgeInsets.all(UxnanSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.archive_outlined,
+                  size: 40,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(height: UxnanSpacing.md),
+                Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  l10n.fileViewerBinaryBody,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: UxnanSpacing.sm),
+                Text(
+                  '$sizeBytes bytes (base64)',
+                  style: UxnanTypography.codeSmall,
+                ),
+              ],
             ),
-            const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              l10n.fileViewerBinaryBody,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: UxnanSpacing.sm),
-            Text(
-              '$sizeBytes bytes (base64)',
-              style: UxnanTypography.codeSmall,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -762,33 +819,40 @@ class _ErrorState extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
-      child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 40, color: colors.error),
-            const SizedBox(height: UxnanSpacing.md),
-            Text(
-              l10n.fileViewerLoadFailed,
-              style: textTheme.titleSmall,
-              textAlign: TextAlign.center,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
+          ),
+          child: NeCard(
+            padding: const EdgeInsets.all(UxnanSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 40, color: colors.error),
+                const SizedBox(height: UxnanSpacing.md),
+                Text(
+                  l10n.fileViewerLoadFailed,
+                  style: textTheme.titleSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  message,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: UxnanSpacing.md),
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(l10n.gitRefresh),
+                ),
+              ],
             ),
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              message,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: UxnanSpacing.md),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: Text(l10n.gitRefresh),
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -182,29 +182,36 @@
   font-family: var(--ux-font-title);
 }
 
-/* Terminal (xterm) viewport scrollbar. The terminal renders on its own (usually
-   dark) themed surface, so a light thumb reads well there. A solid 10px thumb —
-   no transparent border eating into it — is wide enough to grab comfortably right
-   at the pane's right edge, where the flush inset places it. xterm forces the
-   viewport to `overflow-y: scroll`, so the FitAddon always reserves this width as
-   a column gutter (no wobble as content overflows) and glyphs never sit under it. */
-.xterm .xterm-viewport {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+/* Terminal (xterm) scrollbar. xterm 6 replaced the native viewport scrollbar with
+   VS Code's ScrollableElement (`.xterm-scrollable-element`), so the old
+   `::-webkit-scrollbar` rules on `.xterm-viewport` no longer target it (its default
+   is thicker). Restyle that scrollbar to uxnan's slim, hover-only design: a light
+   pill thumb on the dark terminal surface. This is presentation only — the slider
+   stays a real interactive element (we fade it with `opacity`, never `display` /
+   `visibility`), so mouse-wheel, keyboard and drag scrolling are unchanged. */
+.xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: 10px !important; /* slim track (VS Code's default is wider) */
 }
-.xterm .xterm-viewport::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-.xterm .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
-}
-.xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.28);
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  width: 6px !important;
+  left: 2px !important; /* centre the 6px pill in the 10px track */
   border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.28) !important;
 }
-.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.45);
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider:hover {
+  background-color: rgba(255, 255, 255, 0.45) !important;
+}
+/* Hover-only: keep the scrollbar hidden until the pointer is over the terminal,
+   then fade it in. Overrides xterm's own `.visible` / `.invisible` opacity toggling
+   while respecting it — `.visible` is only set when there is something to scroll, so
+   an unscrollable pane never shows a bar. Opacity (not `display`) keeps the slider
+   grabbable, so scrolling still works exactly as before. */
+.xterm .xterm-scrollable-element > .scrollbar {
+  opacity: 0 !important;
+  transition: opacity 140ms linear !important;
+}
+.xterm:hover .xterm-scrollable-element > .scrollbar.visible {
+  opacity: 1 !important;
 }
 
 /* Slim, theme-aware scrollbar for dense panels & lists (8px). The thumb is a
@@ -265,6 +272,13 @@
   border-radius: 9999px;
   background: color-mix(in srgb, var(--muted-foreground) 28%, transparent);
   background-clip: padding-box;
+}
+
+/* The pinned updater has denser, phase-aware content than ordinary agent
+   toasts. Give it enough horizontal room for its action labels while keeping
+   it inside the viewport on compact windows. */
+[data-sonner-toast].uxnan-update-toast {
+  width: min(22.5rem, calc(100vw - 1rem)) !important;
 }
 .scrollbar-sleek::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in srgb, var(--muted-foreground) 48%, transparent);

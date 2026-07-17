@@ -15,7 +15,8 @@ which tracks assets only a human can provide.)
 standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
-**in-app auto-updater**, **browser-control MCP for agents**, **GitHub integration (`gh`-backed)**). 185 Rust backend tests + 138 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+**in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
+engine**, **user quick commands**, **GitHub integration (`gh`-backed)**). 210 Rust backend tests + 187 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -23,10 +24,11 @@ mobile pairing) is NOT started.**
 
 - **Three-panel resizable shell** with atomic JSON persistence (5 rotating
   backups + sequential schema migrations).
-- **PTY terminals** (`portable-pty 0.9`, xterm Canvas + DOM fallback) — tabs +
+- **PTY terminals** (`portable-pty 0.9`, xterm WebGL + DOM fallback) — tabs +
   nested splits that never remount on split, drag-to-reorder / move tabs across
-  regions, `Ctrl+Tab` MRU cycling, a backend output ring buffer that restores a
-  recreated pane's scrollback, and the Kitty/CSI-u keyboard protocol. Tabs can be
+  regions (each terminal's xterm instance stays alive and is **re-parented** on a
+  move — registry in `src/lib/terminal/instances.ts`; nothing is replayed),
+  `Ctrl+Tab` MRU cycling, and the Kitty/CSI-u keyboard protocol. Tabs can be
   **renamed** (free-form label for terminals/diffs, persisted; on-disk rename for
   file tabs via `fs_rename`, with an extension-change warning) and **closed all at
   once** per active workspace.
@@ -55,10 +57,18 @@ mobile pairing) is NOT started.**
   (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
   WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
   card per agent (incl. Pi) + a master install switch.
-- **Multi-agent orchestration** (spec `02d` §3) — a console (status bar, shown with
-  ≥2 live agents) routing a message to all agents, one type (fan-out), or a
-  coordinator's workers, with backpressure + an in-memory coordinator→workers task
-  graph.
+- **Multi-agent orchestration** (spec `02d` §3) — a two-tab console (status bar,
+  shown with ≥2 live agents or any saved run): **Broadcast** (**explicit recipient
+  selection** — tick individuals / whole types / all; coordinator retired — with
+  robust paste+submit delivery and a busy-agent hold cap) + a **run engine**
+  (**Runs**): a DAG of steps with context passing (`{{steps.s1.output}}`),
+  parallel/fan-in dependencies, **headless** steps (print-mode, verified by exit
+  code), **HITL gates**, per-step **retry**, durable persistence + re-attach, and
+  orchestration **MCP tools** for structured agent reports (auto-nudged into
+  chaining interactive steps when the agent has the tool). The builder has a
+  **contextual variable picker** (per-field descriptions + live previews, insert at
+  cursor), **type cards** (headless the default for chaining), **searchable**
+  agent/model/worktree pickers, and an **Examples** menu of ready-made runs.
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
@@ -72,12 +82,22 @@ mobile pairing) is NOT started.**
   a `FOR-HUMAN.md` item.
 - **AI-provider usage statistics (Settings → Providers)** — native Rust reader
   (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
-  Copilot, Gemini**, reading each CLI's own stored token → the provider's official
+  Copilot, Gemini, Grok**, reading each CLI's own stored token → the provider's official
   usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
   bridge/mobile side is Phase 6 (see below).
+- **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
+  slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
+  Quick commands editor. Commands are persisted flat in `AppData.quickCommands`
+  (`quick_commands_set`), each scoped **global / project / worktree** and pruned
+  when its project/worktree is removed (frontend-side, where live worktree paths
+  are known). Runtime (`projects.runQuickCommand`) reuses the terminal
+  `runCommand` launch path: substitutes `{worktree}`/`{branch}`/`{repo}`/
+  `{repoName}`/`{path}` tokens, resolves the shell (a terminal profile) + cwd, and
+  dispatches to a **new tab** or the **focused terminal** (`pty_write`), running
+  immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
 - **GitHub integration (`gh`-backed)** — a full-screen **GitHub section** (Overview /
   Pull Requests / Issues / Actions / Account / Settings), a configurable **right-panel
   GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR badges**, a
@@ -234,10 +254,15 @@ clickable terminal links** (`@xterm/addon-web-links`).
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
 `mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/Gemini/
-OpenCode) referencing the `UXNAN_MCP_TOKEN` env (token never in a file), merging
-without clobbering and cleaning up on exit; `BrowserSettings.mcp*` (enabled /
-injection mode `off|workspace|global` / disabled-agents) + `mcp_info` command. See
-`docs/browser.md` → *Agent browser MCP*.
+OpenCode) into its **user-global** config only (never the project dir) referencing
+the `UXNAN_MCP_TOKEN` env (token never in a file), merging without clobbering and
+cleaning up on exit; Gemini's entry carries `trust: true`. `BrowserSettings.mcp*`
+(enabled / injection mode `off|managed|global` / `friction_free` / disabled-agents)
++ `mcp_info` command. **Frictionless** (managed + `friction_free`): app-launched
+agents skip the CLI folder-trust prompt — Gemini via `GEMINI_CLI_TRUST_WORKSPACE`
+(`commands.rs`), Codex via `codex_trust::ensure_project_trust` seeding
+`[projects."<cwd>"].trust_level`. The legacy project-scoped `workspace` mode was
+removed. See `docs/browser.md` → *Agent browser MCP*.
 
 Spec synced: `architecture/02a` §4.2b documents the integrated browser, `02d` §1.6
 the browser MCP; user guide in `docs/browser.md`.
@@ -304,35 +329,57 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       modifiers. Needs validation against a real Kitty-protocol TUI. The base
       protocol (negotiation + disambiguate / event-types / all-keys) is
       implemented in `src/lib/terminal/keyboardProtocol.ts`.
-- [ ] Dispose hidden xterm renderers and rely solely on the backend ring buffer
-      (today both coexist: the buffer restores recreated panes, but hidden tabs
-      keep their xterm mounted). Would cut memory for many background terminals
-      at the cost of a replay on every show.
 - [ ] **Workspace lifecycle — active indicator + sleep/hibernate.** Surface which
       projects/worktrees have a *live* space (open terminals) vs an empty one — an
       indicator on the project/worktree cards, so it's obvious where terminals are
       running and which space is completely empty. Add a **"Sleep workspace"**
       action (+ shortcut) that closes every tab of a workspace and frees its
-      resources (kill the PTYs + drop the xterm renderers) to reclaim memory on a
-      machine with many active projects. Complements the hidden-renderer disposal
-      above (that trims per-tab memory; this drops a whole workspace at once). Wire
-      into the card context menu (`RowActionsMenu`) and the keyboard-shortcut set;
-      the workspace store already keys terminals per worktree path, so "which
-      workspaces have tabs" is derivable from `terminals.workspaces`.
+      resources (kill the PTYs + drop the xterm instances) to reclaim memory on a
+      machine with many active projects. Complements the built-in per-pane trims
+      (hidden panes already release their WebGL/GPU context, and each terminal's
+      scrollback is capped at 5 000 lines; this drops a whole workspace at once).
+      Wire into the card context menu (`RowActionsMenu`) and the keyboard-shortcut
+      set; the workspace store already keys terminals per worktree path, so "which
+      workspaces have tabs" is derivable from `terminals.workspaces`. (Note: the
+      old idea of unmounting hidden xterms and replaying a backend ring buffer on
+      show is off the table — raw-byte replay of a TUI stream proved unsound and
+      the ring buffer was removed; terminals keep one live xterm per tab.)
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
-orchestration (in-memory task graph, @type/@all routing, fan-out, backpressure)
-are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups:
+orchestration — **Broadcast** (fan-out + backpressure) and the **run engine** (DAG
+of steps, context passing, headless with verified completion, HITL gates, retry,
+durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.md` +
+`architecture/02d` §3). Remaining orchestration follow-ups:
+- [ ] **Headless large context via stdin.** The headless prompt is passed as a CLI
+      argument and capped (~28 KB) to stay under the OS argv limit
+      (`agentrun.rs::MAX_PROMPT_BYTES`); a chained, context-heavy prompt is clipped.
+      Add a per-agent stdin variant for large prompts (pattern in
+      `aicommit::codex_models_inner`).
+- [ ] **Headless in-distro WSL routing.** A headless step in a `\\wsl$` worktree runs
+      the Windows-side CLI against the 9P share (functional but slow); route it
+      through `wsl.exe -d <distro>` with the Linux-side CLI (see `wsl.rs` +
+      `git.rs`'s WSL path). `FOR-DEV:` marker in `agentrun.rs`.
+- [ ] **Per-agent PTY submit strategy.** `pty_paste_submit` (bracketed paste + a
+      delayed Enter, 150 ms for multi-line) covers standard TUIs, but a Claude
+      Code-family agent with a *long* post-paste Enter guard may still leave a
+      multi-line prompt unsent when driven interactively. Add a per-agent submit
+      override (delay / key) if one is found. `FOR-DEV:` marker in `commands.rs`
+      (`pty_paste_submit`). Headless avoids typing entirely, so it's the workaround.
+- [ ] **Remediation + evaluator-optimizer.** `onFailure: "remediate:<stepId>"` (run a
+      fix step, then retry) and a `kind: "eval"` step (generate → evaluate → loop) —
+      the DAG/model supports them; the scheduler + UI don't yet.
+- [ ] **`orchestration_raise_gate` MCP tool / agent-created steps.** Let a coordinator
+      agent request a human gate or spawn worker steps over the injected MCP channel
+      (the report tools exist; step-creation from an agent doesn't).
+- [ ] **Background (Tokio) run engine.** The engine advances while the app is open;
+      runs are durable and re-attach on load, but a closed app doesn't progress a
+      run. A backend driver would let runs advance headless. (LangGraph-style:
+      durable data, re-attachable driver — the data half is done.)
 - [ ] **Orchestration lineage in the *main* sidebar.** The coordinator→workers
-      task graph is surfaced in the orchestration console today (spec `02d` §3.4
-      updated to match). Moving the nested lineage into the left project tree is
-      a larger sidebar-tree refactor, deferred.
-- [ ] **Agent-driven worker creation.** §3.1's "a coordinator *creates* worker
-      agents in their own worktrees" needs an agent→ADE control channel that
-      doesn't exist yet (agents are opaque CLIs). Today the user creates the
-      worktrees/agents and designates the coordinator/workers. Unblocks with the
-      embedded bridge / a local control API.
+      relation and a run's step graph are surfaced in the console today (spec `02d`
+      §3.8 / §3.1). Moving the nested lineage into the left project tree is a larger
+      sidebar-tree refactor, deferred.
 - [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
       the choice drives the one-shot launch but isn't recorded on the worktree).
 
@@ -400,7 +447,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
       (`power.rs`); Windows works.
 - [ ] **Update UI (pinned sonner toast + in-Settings download/install) — visual +
       functional validation pending.** The former top banner is now a pinned
-      sonner toast (`UpdateToast.svelte` + `updateToast.ts`) and the
+      sonner toast (`UpdateToast.svelte` + `updateToast.svelte.ts`) and the
       download/install actions were surfaced inline in **Settings → Updates**.
       `svelte-check` + Vitest pass, but the toast's on-screen appearance and the
       end-to-end download → install flow haven't been exercised in a running build
@@ -412,7 +459,7 @@ are **done** (see `CHANGELOG.md` + `architecture/02d` §3). Remaining follow-ups
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 185 Rust + 138 Vitest tests.
+  deferred with Apple). 210 Rust + 187 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

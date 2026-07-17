@@ -12,7 +12,9 @@ import 'package:uxnan/presentation/screens/conversation/files/widgets/file_tree_
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen workspace file browser for the active thread's `cwd`.
@@ -57,6 +59,10 @@ class FileBrowserScreen extends ConsumerStatefulWidget {
 }
 
 class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _revealedFileKey = GlobalKey();
+  String? _revealedFilePath;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +71,68 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(fileBrowserManagerProvider).loadRoot(widget.cwd);
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openSearchResult(
+    FileSearchMatch match,
+    SearchController searchController,
+  ) async {
+    final manager = ref.read(fileBrowserManagerProvider);
+    await manager.revealFile(widget.cwd, match.path);
+    if (!mounted) return;
+
+    setState(() => _revealedFilePath = match.path);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final root = manager.rootFor(widget.cwd);
+    if (root != null && _scrollController.hasClients) {
+      final showHidden = ref.read(showHiddenFilesProvider);
+      final tiles = <_TileEntry>[];
+      _walk(root, 0, showHidden: showHidden, into: tiles);
+      final index = tiles.indexWhere((entry) => entry.node.path == match.path);
+      if (index >= 0 && tiles.length > 1) {
+        // SliverList builds lazily, so first jump near the result to mount it.
+        // Search still covers the tree at this point, making the repositioning
+        // imperceptible. ensureVisible below then performs the exact alignment.
+        final position = _scrollController.position;
+        final estimatedOffset =
+            position.maxScrollExtent * index / (tiles.length - 1);
+        position.jumpTo(
+          estimatedOffset.clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    }
+
+    if (!mounted) return;
+    final revealedContext = _revealedFileKey.currentContext;
+    if (revealedContext != null && revealedContext.mounted) {
+      await Scrollable.ensureVisible(revealedContext, alignment: 0.45);
+    }
+    if (!mounted) return;
+
+    searchController.closeView(_basename(match.path));
+    await FileViewerScreen.push(
+      context,
+      cwd: widget.cwd,
+      path: match.path,
+      node: FileTreeNode(
+        name: _basename(match.path),
+        path: match.path,
+        type: match.type,
+      ),
+    );
+    if (mounted) FocusManager.instance.primaryFocus?.unfocus();
   }
 
   /// Pull-to-refresh handler: re-issues the root load so the tree rebuilds
@@ -124,11 +192,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           compact: compact,
                         ),
                         loading: () => const Center(
-                          child: CircularProgressIndicator(),
+                          child: PolygonLoader(size: UxnanSpacing.xxl),
                         ),
-                        error: (Object error, StackTrace _) => _ErrorBody(
-                          message: '$error',
-                        ),
+                        error: (Object error, StackTrace _) =>
+                            _ErrorBody(message: '$error'),
                       ),
                     ),
                     // Bottom scroll veil mirroring the top bar's: the last
@@ -173,12 +240,12 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 l10n.fileBrowserTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontSize: 20),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontSize: 20),
               ),
               actions: [
+                _FileSearchAnchor(cwd: widget.cwd, onSelect: _openSearchResult),
                 // Collapse-all: only shown when at least one directory is
                 // expanded, so the bar stays clean on a fresh (flat) listing.
                 if (anyExpanded)
@@ -279,7 +346,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     if (root == null) {
       return Padding(
         padding: EdgeInsets.only(top: topInset),
-        child: const Center(child: CircularProgressIndicator()),
+        child: const Center(
+          child: PolygonLoader(size: UxnanSpacing.xxl),
+        ),
       );
     }
     if (root.error != null) {
@@ -301,12 +370,20 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final tiles = <_TileEntry>[];
     _walk(root, 0, showHidden: showHidden, into: tiles);
 
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final horizontalInset = UxnanSpacing.lg +
+        ((viewportWidth - UxnanSpacing.maxContentWidth) / 2).clamp(
+          0.0,
+          double.infinity,
+        );
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusScope.of(context).unfocus(),
       child: RefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(
+          controller: _scrollController,
           // BouncingScrollPhysics + AlwaysScrollable is the same combo
           // `NeScaffold` and `ConversationScreen` use, so the list feels
           // native on both iOS and Android and the user can always
@@ -315,46 +392,50 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
             parent: AlwaysScrollableScrollPhysics(),
           ),
           slivers: [
-            SliverToBoxAdapter(
-              child: SizedBox(height: topInset),
-            ),
+            SliverToBoxAdapter(child: SizedBox(height: topInset)),
             SliverList.builder(
               itemCount: tiles.length,
               itemBuilder: (context, index) {
                 final entry = tiles[index];
-                return FileTreeTile(
-                  node: entry.node,
-                  depth: entry.depth,
-                  showExtension: showExtension,
-                  showDetails: showDetails,
-                  compact: compact,
-                  onTap: () async {
-                    if (entry.node.isDir) {
-                      unawaited(
-                        manager.toggleDirectory(widget.cwd, entry.node.path),
-                      );
-                    } else {
-                      await FileViewerScreen.push(
-                        context,
-                        cwd: widget.cwd,
-                        path: entry.node.path,
-                        node: entry.node,
-                      );
-                      // Returning from the viewer can leave a soft keyboard up
-                      // (e.g. after using its inline editor); drop focus so it
-                      // dismisses and the read-only path bar never reads as a
-                      // composer.
-                      if (context.mounted) {
-                        FocusManager.instance.primaryFocus?.unfocus();
+                return Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalInset - UxnanSpacing.lg,
+                  ),
+                  child: FileTreeTile(
+                    key: entry.node.path == _revealedFilePath
+                        ? _revealedFileKey
+                        : null,
+                    node: entry.node,
+                    depth: entry.depth,
+                    showExtension: showExtension,
+                    showDetails: showDetails,
+                    compact: compact,
+                    onTap: () async {
+                      if (entry.node.isDir) {
+                        unawaited(
+                          manager.toggleDirectory(widget.cwd, entry.node.path),
+                        );
+                      } else {
+                        await FileViewerScreen.push(
+                          context,
+                          cwd: widget.cwd,
+                          path: entry.node.path,
+                          node: entry.node,
+                        );
+                        // Returning from the viewer can leave a soft keyboard
+                        // up (e.g. after using its inline editor); drop focus
+                        // dismisses and the read-only path bar never reads as a
+                        // composer.
+                        if (context.mounted) {
+                          FocusManager.instance.primaryFocus?.unfocus();
+                        }
                       }
-                    }
-                  },
+                    },
+                  ),
                 );
               },
             ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: UxnanSpacing.lg),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: UxnanSpacing.lg)),
           ],
         ),
       ),
@@ -386,6 +467,117 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   bool _isHidden(String name) => name.startsWith('.');
 }
 
+/// Repo-wide file search using the same full-screen M3 pattern as thread and
+/// commit-history search. Results keep the filename prominent and show only
+/// the workspace-relative path beneath it.
+class _FileSearchAnchor extends ConsumerWidget {
+  const _FileSearchAnchor({required this.cwd, required this.onSelect});
+
+  final String cwd;
+  final Future<void> Function(
+    FileSearchMatch match,
+    SearchController controller,
+  ) onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    return SearchAnchor(
+      isFullScreen: true,
+      viewHintText: l10n.fileBrowserSearchHint,
+      builder: (context, controller) => IconSurface(
+        icon: Icons.search_rounded,
+        tooltip: l10n.fileBrowserSearch,
+        onPressed: controller.openView,
+      ),
+      suggestionsBuilder: (context, controller) async {
+        final query = controller.text.trim();
+        if (query.isEmpty) return const <Widget>[];
+        try {
+          final result = await ref
+              .read(fileBrowserManagerProvider)
+              .searchFiles(cwd, query, limit: 40);
+          if (controller.text.trim() != query) return const <Widget>[];
+          final matches = result.matches.where(
+            (match) => match.type == FileEntryType.file,
+          );
+          if (matches.isEmpty) {
+            return [_FileSearchMessage(message: l10n.fileBrowserSearchEmpty)];
+          }
+          return [
+            for (final match in matches)
+              _FileSearchResultTile(
+                match: match,
+                onTap: () => unawaited(onSelect(match, controller)),
+              ),
+          ];
+        } on Object {
+          return [_FileSearchMessage(message: l10n.fileBrowserSearchFailed)];
+        }
+      },
+    );
+  }
+}
+
+class _FileSearchResultTile extends StatelessWidget {
+  const _FileSearchResultTile({required this.match, required this.onTap});
+
+  final FileSearchMatch match;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final visuals = fileTypeVisuals(
+      name: _basename(match.path),
+      type: match.type,
+    );
+    return ListTile(
+      leading: Icon(visuals.icon, color: colors.onSurfaceVariant),
+      title: Text(
+        _basename(match.path),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        match.path,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+      ),
+      onTap: onTap,
+    );
+  }
+}
+
+class _FileSearchMessage extends StatelessWidget {
+  const _FileSearchMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.all(UxnanSpacing.xl),
+      child: Center(
+        child: Text(
+          message,
+          style: textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
+String _basename(String path) {
+  final normalized = path.replaceAll(r'\', '/');
+  final index = normalized.lastIndexOf('/');
+  return index < 0 ? normalized : normalized.substring(index + 1);
+}
+
 /// Whether any directory in [node]'s subtree is currently expanded. Drives
 /// the visibility of the collapse-all action. Cheap: stops at the first
 /// expanded directory.
@@ -404,7 +596,7 @@ bool _anyExpanded(FileTreeNode? node) {
 final _fileTreeStreamProvider =
     StreamProvider.autoDispose.family<FileTreeNode?, String>((ref, String cwd) {
   final manager = ref.watch(fileBrowserManagerProvider);
-  // Eagerly start the load so a screen that opens before any other call still
+  // Eagerly start the load so a screen opened before any other call still
   // receives the root — `loadRoot` is idempotent and cheap to re-issue.
   unawaited(manager.loadRoot(cwd));
   return manager.watchRoot(cwd);
@@ -433,86 +625,110 @@ class _StatusBar extends ConsumerWidget {
     final gitState = ref.watch(gitRepoStateProvider).value;
     return SafeArea(
       top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colors.surfaceContainer,
-          border: Border(
-            top: BorderSide(color: colors.outlineVariant),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: UxnanSpacing.maxContentWidth,
           ),
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: UxnanSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.folder_outlined,
-              size: 16,
-              color: colors.onSurfaceVariant,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.xs,
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
             ),
-            const SizedBox(width: UxnanSpacing.sm),
-            Expanded(
-              child: Text(
-                cwd,
-                style: UxnanTypography.codeSmall.copyWith(
-                  color: colors.onSurface,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+            child: NeCard(
+              color: colors.surfaceContainerHigh,
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                UxnanSpacing.sm,
+                UxnanSpacing.xs,
+                UxnanSpacing.sm,
               ),
-            ),
-            if (gitState != null && gitState.branch.isNotEmpty) ...[
-              const SizedBox(width: UxnanSpacing.sm),
-              const Icon(
-                Icons.account_tree_outlined,
-                size: 14,
-                color: UxnanColors.success,
-              ),
-              const SizedBox(width: UxnanSpacing.xs),
-              Text(
-                gitState.branch,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (gitState.ahead > 0) ...[
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(
-                  '↑${gitState.ahead}',
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: UxnanColors.success,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.folder_outlined,
+                    size: 20,
+                    color: colors.onSurfaceVariant,
                   ),
-                ),
-              ],
-              if (gitState.behind > 0) ...[
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(
-                  '↓${gitState.behind}',
-                  style: UxnanTypography.codeSmall.copyWith(
-                    color: UxnanColors.warning,
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          cwd,
+                          style: UxnanTypography.codeSmall.copyWith(
+                            color: colors.onSurface,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                        if (gitState != null && gitState.branch.isNotEmpty) ...[
+                          const SizedBox(height: UxnanSpacing.xs),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.account_tree_outlined,
+                                size: 14,
+                                color: UxnanColors.success,
+                              ),
+                              const SizedBox(width: UxnanSpacing.xs),
+                              Flexible(
+                                child: Text(
+                                  gitState.branch,
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (gitState.ahead > 0) ...[
+                                const SizedBox(width: UxnanSpacing.sm),
+                                Text(
+                                  '↑${gitState.ahead}',
+                                  style: UxnanTypography.codeSmall.copyWith(
+                                    color: UxnanColors.success,
+                                  ),
+                                ),
+                              ],
+                              if (gitState.behind > 0) ...[
+                                const SizedBox(width: UxnanSpacing.xs),
+                                Text(
+                                  '↓${gitState.behind}',
+                                  style: UxnanTypography.codeSmall.copyWith(
+                                    color: UxnanColors.warning,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ],
-            const SizedBox(width: UxnanSpacing.sm),
-            IconSurface(
-              icon: Icons.content_copy_outlined,
-              tooltip: l10n.fileBrowserCopyPath,
-              background: colors.surfaceContainerHigh,
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: cwd));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                    ..clearSnackBars()
-                    ..showSnackBar(
-                      SnackBar(content: Text(l10n.fileBrowserPathCopied)),
-                    );
-                }
-              },
+                  const SizedBox(width: UxnanSpacing.xs),
+                  IconSurface(
+                    icon: Icons.content_copy_outlined,
+                    tooltip: l10n.fileBrowserCopyPath,
+                    background: colors.surfaceContainerHighest,
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: cwd));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            SnackBar(content: Text(l10n.fileBrowserPathCopied)),
+                          );
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -568,11 +784,7 @@ class _ErrorBody extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 40,
-            color: colors.error,
-          ),
+          Icon(Icons.error_outline, size: 40, color: colors.error),
           const SizedBox(height: UxnanSpacing.md),
           Text(
             l10n.fileBrowserLoadFailed,

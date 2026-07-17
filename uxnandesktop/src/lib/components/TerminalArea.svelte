@@ -706,6 +706,7 @@
                             shell={t.shell}
                             args={t.args}
                             runCommand={t.runCommand}
+                            runCommandExecute={t.runCommandExecute}
                             env={t.env}
                             focused={activeRegion && paneActive}
                             onexit={() => void terminals.closeTabAnywhere(t.id)}

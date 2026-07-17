@@ -5,6 +5,7 @@ import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// The name/icon color for a file or folder by its [GitFileStatus].
 ///
@@ -220,7 +221,7 @@ class FileTreeTile extends StatelessWidget {
     final isIgnored = node.ignored;
     final typeVisuals = fileTypeVisuals(name: node.basename, type: node.type);
     final displayName = node.displayName(showExtension: showExtension);
-    final indent = depth * 16.0;
+    final indent = depth * UxnanSpacing.lg;
 
     // Ignored entries are *dimmed* — a muted tone + italic — and win over any
     // git colour (an ignored entry never has a git status anyway). Otherwise
@@ -242,74 +243,74 @@ class FileTreeTile extends StatelessWidget {
     final details =
         (!isDir && showDetails) ? _detailsLine(context, node) : null;
 
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: Padding(
-        // Comfortable by default (taller rows); compact restores the tighter
-        // single-line spacing.
-        padding: EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            SizedBox(width: indent),
-            // The leading glyph communicates the file *type*; its colour
-            // communicates the git state.
-            Icon(
-              typeVisuals.icon,
-              size: 20,
-              color: iconColor,
-              semanticLabel: isDir
-                  ? 'Folder'
-                  : isIgnored
-                      ? 'Ignored file'
-                      : status?.name ?? 'File',
-            ),
-            const SizedBox(width: UxnanSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    displayName,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: statusColor,
-                      fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (details != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        details,
-                        style: UxnanTypography.codeSmall.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (isDir)
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: UxnanSize.minTouchTarget),
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Padding(
+          // Comfortable by default (taller rows); compact restores the tighter
+          // single-line spacing.
+          padding: EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.lg,
+            vertical: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              SizedBox(width: indent),
+              // The leading glyph communicates the file *type*; its colour
+              // communicates the git state.
               Icon(
-                node.expanded
-                    ? Icons.expand_more_rounded
-                    : Icons.chevron_right_rounded,
+                typeVisuals.icon,
                 size: 20,
-                color: colors.onSurfaceVariant,
-              )
-            else if (node.loading)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                color: iconColor,
+                semanticLabel: isDir
+                    ? 'Folder'
+                    : isIgnored
+                        ? 'Ignored file'
+                        : status?.name ?? 'File',
               ),
-          ],
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      displayName,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: statusColor,
+                        fontStyle:
+                            isItalic ? FontStyle.italic : FontStyle.normal,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (details != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          details,
+                          style: UxnanTypography.codeSmall.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (isDir)
+                Icon(
+                  node.expanded
+                      ? Icons.expand_more_rounded
+                      : Icons.chevron_right_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                )
+              else if (node.loading)
+                const PolygonLoader(size: 16),
+            ],
+          ),
         ),
       ),
     );

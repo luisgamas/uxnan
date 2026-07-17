@@ -20,15 +20,19 @@
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md (validating adapters).
  */
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type {
   AgentCapabilities,
+  AgentCommand,
   AgentConfig,
   AgentId,
   AgentModel,
   AgentModelOption,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
   extractToolResults,
@@ -58,7 +62,27 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  commands: true,
 };
+
+/**
+ * Built-in slash commands Claude Code runs in headless (`-p`) mode — sent as the
+ * prompt string, resolved against the thread's `--resume` session so
+ * history-dependent ones (`/compact`) work. A conservative, maintained set;
+ * interactive-only commands (`/config`, `/login`) are excluded. The running
+ * CLI's own `system/init` `slash_commands` list (captured per turn) augments
+ * this with skills/plugins and any custom commands it actually sees.
+ */
+const CLAUDE_BUILTIN_COMMANDS: readonly { name: string; description: string }[] = [
+  { name: 'compact', description: 'Summarize the conversation to free up context' },
+  { name: 'context', description: 'Show current context usage' },
+  { name: 'status', description: 'Show session status' },
+  { name: 'cost', description: 'Show token cost for this session' },
+  { name: 'usage', description: 'Show plan usage limits' },
+];
+
+/** Slash commands that only work in the interactive TUI — never advertised. */
+const CLAUDE_EXCLUDED_COMMANDS = new Set(['config', 'login', 'logout', 'doctor']);
 
 /**
  * Stable `--model` aliases Claude Code accepts. Claude Code has no enumerate
@@ -153,6 +177,11 @@ export interface ClaudeEvent {
   text?: string;
   /** Only set for `init`: the concrete model id the run resolved the alias to. */
   model?: string;
+  /**
+   * Only set for `init`: the slash commands the running CLI reports as available
+   * in this session (built-ins + skills + custom), used to advertise `agent/commands`.
+   */
+  slashCommands?: string[];
   /** Only set for `result`: whether the turn ended in error. */
   isError?: boolean;
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
@@ -204,7 +233,15 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
   switch (parsed['type']) {
     case 'system': {
       const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined;
-      return { kind: 'init', ...base, ...(model !== undefined ? { model } : {}) };
+      const slashCommands = Array.isArray(parsed['slash_commands'])
+        ? parsed['slash_commands'].filter((c): c is string => typeof c === 'string')
+        : undefined;
+      return {
+        kind: 'init',
+        ...base,
+        ...(model !== undefined ? { model } : {}),
+        ...(slashCommands !== undefined ? { slashCommands } : {}),
+      };
     }
     case 'stream_event': {
       const event = isRecord(parsed['event']) ? parsed['event'] : undefined;
@@ -275,6 +312,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #spawn: SpawnFn;
   /** threadId → Claude session id, for `--resume` continuity. */
   readonly #sessionByThread = new Map<string, string>();
+  /** Slash commands the CLI reported in the last turn's `system/init` (see listCommands). */
+  #slashCommands: string[] = [];
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
@@ -430,6 +469,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       const event = parseClaudeLine(line);
       if (!event) return;
       if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
+      // Cache the CLI's advertised slash commands for `agent/commands` discovery.
+      if (event.slashCommands) this.#slashCommands = event.slashCommands;
       // Register tool invocations (with their inputs) so the result can pair.
       if (event.toolUses) {
         for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
@@ -592,6 +633,41 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     return Promise.resolve(
       withOptions([...aliasModels, ...pinnedModels], [CLAUDE_REASONING_OPTION]),
     );
+  }
+
+  /**
+   * Slash commands Claude Code exposes: the curated headless-safe built-ins,
+   * plus project/user custom commands (`.claude/commands/*.md`), plus whatever
+   * the running CLI last reported in `system/init` (skills, plugins, custom).
+   * Claude runs them natively in `-p` mode, so there is no {@link expandCommand}
+   * — the bridge sends `/name args` and the CLI expands it against the thread's
+   * `--resume` session. Discovery only; deduped by name.
+   */
+  async listCommands(cwd?: string): Promise<AgentCommand[]> {
+    const byName = new Map<string, AgentCommand>();
+    for (const b of CLAUDE_BUILTIN_COMMANDS) {
+      byName.set(b.name, {
+        name: b.name,
+        description: b.description,
+        source: 'builtin',
+        headlessSupported: true,
+      });
+    }
+    const dir = cwd ?? this.#defaultCwd;
+    const scanned = await scanCustomCommands({
+      dirs: [join(dir, '.claude', 'commands'), join(homedir(), '.claude', 'commands')],
+      ext: '.md',
+      format: 'markdown',
+    });
+    for (const c of scanned) byName.set(c.name, c);
+    // Names the running CLI advertised last turn — authoritative, covers skills/
+    // plugins we don't scan. Names only (no description). Skip interactive-only.
+    for (const raw of this.#slashCommands) {
+      const name = raw.replace(/^\//, '');
+      if (!name || CLAUDE_EXCLUDED_COMMANDS.has(name) || byName.has(name)) continue;
+      byName.set(name, { name, source: 'builtin', headlessSupported: true });
+    }
+    return [...byName.values()];
   }
 }
 

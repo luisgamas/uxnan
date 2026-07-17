@@ -32,6 +32,7 @@ import { localHostPorts, localIPv4s } from './transport/local-hosts.js';
 import { MdnsAdvertiser } from './transport/mdns-advertiser.js';
 import { SessionRegistry } from './transport/session-registry.js';
 import { ThreadStore } from './conversation/thread-store.js';
+import { MetricsService } from './metrics/metrics-service.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
 import { writeGeminiApprovalHook } from './hooks/gemini-approval-hook.js';
@@ -118,6 +119,23 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
   const threadStore = new ThreadStore(state);
+  // Bridge-owned profile metrics: aggregates the conversation store + the session
+  // and git-action events the bridge observes itself, and seals/verifies the
+  // tamper-proof backup file. The phone reads these over `metrics/*`.
+  const metrics = new MetricsService({
+    state,
+    secretStore,
+    threadStore,
+    deviceId: deviceState.identity.macDeviceId,
+    now,
+  });
+  // Close any session left open by a previous run so a crash never inflates the
+  // connected-time metric (best-effort; never blocks startup).
+  void metrics
+    .closeDanglingSessions()
+    .catch((err: unknown) =>
+      logger.warn(`failed to close dangling metric sessions: ${String(err)}`),
+    );
   // Reads agent on-disk session logs when the store has no turns (§5.8.8).
   const sessionHistory = new SessionHistoryReader();
   // Single source of the pairing payload — shared by the QR and the manual-code
@@ -397,6 +415,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     sessionRegistry,
     trustStore,
     threadStore,
+    metrics,
     sessionHistory,
     agentManager,
     projects,
@@ -474,6 +493,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             deviceState,
             trustStore,
             displayName: hostname(),
+            transport: 'relay',
             expectedSessionId: sessionId,
           });
         } finally {
@@ -528,6 +548,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             deviceState,
             trustStore,
             displayName: hostname(),
+            transport: 'direct',
           });
         },
         // Manual-code pairing: trade a code shown on the PC for the pairing payload.

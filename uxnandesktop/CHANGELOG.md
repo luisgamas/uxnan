@@ -5,6 +5,509 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — shell painting at wrong rows/columns: the spawn/resize race is gone
+
+- **A fresh terminal could come up with ConPTY believing xterm's default 80×24
+  grid while the pane really measured e.g. 147×40 — and stay that way.** Symptoms
+  (intermittent, per-tab): PowerShell painting its prompt/edit line mid-screen,
+  `dir` output overlaying earlier rows, short file names written over long ones
+  ("CLAUDE.mdONDUCT.md"), doubled headers, stacked partial prompts. Root cause: the
+  first fit settles on an animation frame while `pty_create` is still in flight;
+  the fit's `pty_resize` then hit **NotFound** (session not registered yet), the
+  error was swallowed, **and the change-dedupe recorded the size as sent** — so
+  the correction was never retried and the shell stayed on the wrong grid until
+  something else happened to resize the pane (which is why switching tabs
+  sometimes "fixed" it). This race predates the instance refactor; it is now
+  removed by construction, with grid syncing confined to one race-free path
+  (`requestPtyResize` in `src/lib/terminal/instances.ts`): a resize is **never
+  sent before the PTY exists** (pre-spawn requests are stashed as the desired
+  grid and flushed the moment `pty_create` returns), a **failed resize can never
+  poison the dedupe** (the known-grid resets so the next fit retries), and a
+  visible pane now **fits synchronously before spawning**, so the PTY is born at
+  the real settled grid and the shell's very first prompt is laid out for the
+  grid the user actually sees.
+
+### Fixed — terminal glyph corruption: never clear the shared WebGL texture atlas
+
+- **Text in a terminal no longer mutates into same-length gibberish ("memoria" →
+  "mamoria", "release" → "rn,ease") while other panes are revealed.** Root cause,
+  verified in the installed xterm 6.0.0 / addon-webgl 0.19.0 sources: xterm keeps
+  **one shared glyph texture atlas per font config** across every terminal with that
+  config (`CharAtlasCache` — still shared in 6.0), and `clearTextureAtlas()` clears
+  those shared pages while resyncing **only the calling terminal's** render model
+  (`TextureAtlas.clearTexture` never sets `_requestClearModel`, unlike the
+  page-merge path that #4480 fixed). `Terminal.svelte` called it on **every
+  hidden→visible reveal**, so any co-visible terminal (splits / multiple regions)
+  kept per-cell references into the recycled pages and permanently drew the wrong
+  glyphs in every row it doesn't repaint — precisely a full-screen agent's
+  scrolled-off transcript, while its constantly-redrawn input area stayed clean.
+  The clear is **removed** (not conditioned): glyph bitmaps can't go stale while a
+  pane is hidden, and a reveal already gets a fresh render model (new WebGL
+  attach) or a full-viewport `refresh`. The atlas is now managed exclusively by
+  xterm. (`src/lib/components/Terminal.svelte`.)
+
+### Changed — terminal panes re-parent one live xterm; raw-output snapshot/replay removed
+
+- **A terminal's xterm now lives as long as its tab.** Instances (buffer, parser
+  state, scrollback, addons, Kitty/CSI-u keyboard state, PTY event wiring) are kept
+  in a registry keyed by terminal id (`src/lib/terminal/instances.ts`) — the VS Code
+  model. `Terminal.svelte` is now purely the *view*: on mount it **adopts** the
+  instance (re-parents its DOM element into the pane) and on unmount it **parks** it;
+  the instance is disposed only when the tab no longer exists in any workspace.
+  Dragging a tab to another region — which remounts the Svelte component — no longer
+  recreates the terminal: the same element moves, nothing is restored, and PTY events
+  keep streaming into the live buffer even during the move (subscriptions live on the
+  instance), so no output is ever missed.
+- **Removed: the backend raw-output ring buffer and `pty_snapshot` (91 → 90
+  registered commands).** Replaying a full-screen TUI's raw byte stream into a fresh xterm was
+  unsound by construction — the ring could start mid-escape-sequence (parser desync →
+  dropped/garbled cells), the replay raced live `pty:output` events (`reset()` could
+  wipe bytes that arrived between snapshot and replay), xterm's auto-replies to
+  queries embedded in the replayed bytes had to be suppressed (`replaying` flag), and
+  ConPTY drops a same-size resize so the TUI never repainted over the damage. With
+  live instances the mechanism has no reason to exist, so it was deleted rather than
+  patched: `OutputBuffer` + `PtyManager::snapshot` + the `pty_snapshot` command and
+  its per-chunk buffering (a mutex lock on every PTY read) are gone. The backend
+  suite drops its 4 buffer/snapshot tests.
+- `pty_create` returning `false` now has exactly one meaning: the webview reloaded
+  over a live backend (dev/HMR) — in-app remounts never respawn. For that case the
+  frontend sends a **row-bounce resize nudge** (ConPTY has no reattach protocol and
+  drops a same-size resize), so the running app repaints its screen instead of the
+  pane sitting empty until the next byte.
+
+### Fixed — agent detection: non-agent processes mislabeled as agents (Layer 3)
+
+- **A non-agent command that spawns an agent CLI as a background helper no longer
+  hijacks the tab.** Layer 3 process detection (`src-tauri/src/procscan.rs`) used to
+  walk the terminal's **entire descendant tree** and attribute the tab to *any*
+  known-agent process found anywhere below the shell. So running a program that
+  itself launches an agent CLI in the background (e.g. `node .\bridge\dist\src\cli.js
+  start`, whose bridge spawns a long-lived `zero acp` child) made the worktree card
+  and tab adopt that agent's name/logo/status a few seconds later — even though the
+  foreground job was never an agent. Detection now identifies only the shell's
+  **foreground job**: it descends **through shells only** (seeing through a
+  `.cmd`/`.ps1`/shell shim that runs the real agent as its child), and treats any
+  non-shell process as a dead end — its background helpers are never attributed to
+  the terminal.
+- **Look-alike misidentification — launching one agent showing another's name/logo —
+  fixed.** Matching used to tokenize the process's **whole command line** and
+  substring-match every segment against the agent catalog, so a prompt or flag that
+  mentioned another agent (`claude "compare with codex"`) or a path segment that
+  collided with an agent name could win the wrong identity. A process is now
+  identified only by its **executable name** and — for a language interpreter — the
+  **path of the script it runs** (`node …\@openai\codex\cli.js` → Codex); prompt
+  text, flags and the working directory are ignored.
+- Both fixes are covered by new unit tests in `procscan.rs` (foreground-job
+  discipline, shell-shim transparency, script-path identity, prompt-text immunity);
+  the backend suite is now **183 tests**. A launched tab still carries its true launch
+  identity, and a hook report still seals identity by the agent's self-declared type —
+  neither path is affected. Spec: `architecture/02d-agent-monitoring.md` §1.4.
+
+### Changed — terminal scrollbar restyled after the xterm 6 upgrade
+
+- **Restored uxnan's slim, hover-only terminal scrollbar.** xterm 6 replaced the
+  native viewport scrollbar with VS Code's `ScrollableElement`, so uxnan's old
+  `::-webkit-scrollbar` styling no longer targeted it and the terminal picked up the
+  wider default bar. Re-styled the new `.xterm-scrollable-element` scrollbar in
+  `src/app.css` to the previous slim light pill and made it **hover-only** (hidden
+  until the pointer is over the terminal, then it fades in). Presentation only — the
+  slider stays a real interactive element (faded with `opacity`, never `display`), so
+  mouse-wheel / keyboard / drag scrolling is unchanged.
+
+### Fixed — terminal scroll: scrollbar stuck short of the end after switching tabs
+
+- **Returning to a terminal that produced output while it was hidden no longer
+  traps the scroll.** Switching to another tab/workspace hides a terminal (its pane
+  reports a `0×0` box); output that streams in meanwhile — e.g. a bridge run printing
+  a second QR — grows xterm's buffer, but its viewport is left with a **stale scroll
+  area** computed against the hidden pane. On return the scrollbar topped out before
+  the real end of the buffer, so the last lines were unreachable until a keypress
+  nudged it (pressing Home/End "fixed" it because any key triggers xterm's own
+  scroll-area sync). `Terminal.svelte` now recomputes the viewport on reveal
+  (`syncViewport()` re-measures the now-visible cell size, then calls
+  `viewport.syncScrollArea()`), so
+  scrolling reaches the true top/bottom immediately **without moving the user's
+  position**. xterm 6's viewport has no `ResizeObserver`, so a revealed pane never
+  re-syncs on its own — this drives it. Runs only while the pane is genuinely visible
+  (a rapid tab-flick that re-hides it before the frame is a no-op; a later reveal
+  re-runs it) and is guarded with optional chaining (a future xterm rename degrades to
+  a no-op, same posture as `forceRenderResume`). **Correction (internal-API audit):**
+  this entry originally shipped calling `_viewport.queueSync()`, an API that does not
+  exist in the installed xterm 6.0.0 — the optional chaining made the sync a silent
+  no-op. Auditing every internal-API touchpoint against the installed 6.0.0 sources
+  fixed it to the real method (`core.viewport.syncScrollArea()`, the same one xterm
+  itself calls on dimension changes) and re-verified the rest:
+  `RenderService._isPaused` / `_pausedResizeTask` (render-pause release) and
+  `CharSizeService.measure` are present and behave as the workarounds assume.
+
+### Fixed — terminal rendering: blank panes on launch & doubled text
+
+- **Intermittent blank terminal on launch (cursor blinks, no prompt) — the primary
+  fix.** On Windows, ConPTY/PowerShell emit a cursor-position query (DSR `ESC[6n`)
+  at startup and **block until the terminal replies**; xterm generates that reply and
+  delivers it through `onData`. `onData` was wired **after** `pty_create`, but the
+  query arrives *while `pty_create` is still awaited*, so the reply was parsed before
+  the handler existed, got dropped, and the shell hung forever without printing its
+  prompt — an intermittent blank pane (confirmed by instrumentation: the shell sent
+  exactly the 4-byte `ESC[6n` and then went silent). `onData` is now registered
+  **before** `pty_create`, so the reply is always sent and the shell always starts. A
+  `replaying` guard suppresses `onData` while a snapshot is replayed into a remounted
+  xterm, so replies to queries embedded in the replayed bytes don't leak into the live
+  shell. (`src/lib/components/Terminal.svelte`.)
+- **Deformed / doubled / ghosted text after a terminal or panel resize — root-cause
+  fix by upgrading xterm.js to the 6.x line.** With the WebGL renderer, resizing a
+  pane (or a uxnan panel) could reflow the text on top of a **stale copy of the old
+  content** at the left edge, and it stayed corrupted through further resizes
+  (sometimes leaving ghost fragments). The cause is xterm 5.x's **shared WebGL glyph
+  texture atlas** — one atlas is cached per font config and shared across *every*
+  terminal with that config (confirmed in xterm's `CharAtlasCache`), so multi-tab /
+  multi-resize churn corrupts it (glyphs at wrong coordinates); a known xterm issue
+  (xtermjs/xterm.js #4065, #4480) that also blocked clearing it on resize, since
+  clearing a *shared* atlas garbles the co-visible panes. xterm **6.0.0 reworks the
+  texture atlas** (and lands many WebGL/ligature render fixes: #5253, #5276, #5277,
+  #5305, #5335), so we upgraded the whole xterm set **in lockstep** —
+  `@xterm/xterm@^6.0.0`, `addon-webgl@^0.19.0`, `addon-ligatures@^0.10.0`,
+  `addon-fit@^0.11.0`, `addon-web-links@^0.12.0` — and re-synced the lockfile. This
+  also resolves a prior lockstep mismatch (core was pinned to `^5.5.0` while
+  `addon-webgl@^0.19.0` belongs to core 6.0). **No `Terminal.svelte` source change was
+  needed:** every public + internal xterm API uxnan relies on
+  (`_renderService`/`_isPaused` render-pause release, `clearTextureAtlas`,
+  `onContextLoss`, `scrollToLine`, `registerCsiHandler`, `proposeDimensions`, buffer
+  scroll offsets, …) is still present in 6.0; `svelte-check` and the production build
+  pass clean.
+- **Renderer hardening (secondary, in `Terminal.svelte`).** Ligatures are loaded
+  **before** WebGL so the glyph atlas is baked with ligatures resolved from the first
+  frame; the shared texture atlas is never cleared manually (see the atlas-corruption
+  fix above — the reveal-time clear this entry originally shipped turned out to be
+  the corruption trigger and was removed); WebGL is bound to
+  **visible panes only** — attached on reveal, and on hide/close the GPU context is
+  **explicitly released** (`WEBGL_lose_context.loseContext()` + zeroing the canvas,
+  since plain `dispose()` doesn't reclaim the ANGLE context on Windows), capping live
+  WebGL contexts to the few visible panes so many open terminals/worktrees can't
+  approach WebView2's ~16-context limit; and a visible pane that xterm's
+  `IntersectionObserver` has latched as paused is force-resumed. Hidden terminals keep
+  streaming into their buffer via the DOM fallback, so no output or scrollback is lost.
+
+### Added — OpenCode sub-agents in the agent view
+
+- OpenCode's delegated sub-agents (the `task` tool, which OpenCode runs as **child
+  sessions**) now appear as nested rows under the parent, the same as Claude's. The
+  OpenCode status plugin detects a child session (a `session.created` carrying a
+  `parentID`), reports its lifecycle as `SubagentStart` / `SubagentStop` (named from
+  its title `"… (@<name> subagent)"`), and — the key fix — **no longer lets a child
+  session's busy/idle flip the parent's status** (a background child finishing used
+  to read the parent as done). The backend sub-agent routing is now agent-agnostic
+  (`is_subagent_event`), so Claude and OpenCode share one roster path. **Validated
+  against OpenCode 1.17.20** by capturing real bus events.
+  (`static/hooks/uxnan-opencode-status-plugin.js`, `src-tauri/src/hooks.rs`.)
+
+### Changed — left-panel polish
+
+- Subtle refinements to the left panel, keeping the neutral token-driven style
+  (projects stay borderless): the agent-view **"Agents · n"** label is more legible
+  (8px → 10px), the **unread / "needs review"** dot on project & worktree cards is a
+  touch larger with a soft halo (so a finished-but-unreviewed agent reads at a
+  glance without tinting the card), and the collapsed agent-avatar strip gains a
+  tactile hover + a more legible "+N". (`AgentSpace.svelte`, `WorktreeRow.svelte`,
+  `ProjectCard.svelte`.)
+
+### Added — configurable terminal keyboard arbitration + interrupt inference
+
+- **You now control which shortcuts go to uxnan vs the TUI/agent while a terminal
+  is focused.** A single per-action policy (**Settings → Keyboard shortcuts** — a
+  uxnan/TUI toggle on each shortcut) replaces the two old hardcoded switches. The
+  default reserves the low-collision chords for uxnan and **yields the ones shells
+  & TUIs rely on** — `Ctrl+W` (delete-word), `Ctrl+P` (history), `Ctrl+S` (XOFF),
+  `Ctrl+J` (newline), `Ctrl+B` (tmux prefix). Cross-platform via the `Mod` (⌘ on
+  macOS, Ctrl elsewhere) + `Alt` (⌥) tokens. (Behaviour change from before:
+  `Ctrl+W` no longer steals delete-word from the shell, and `Ctrl+,` /
+  `Ctrl+Shift+P` now work inside a terminal.)
+- **Focus mode (passthrough)** — flip a terminal so every key reaches the TUI (even
+  reserved uxnan shortcuts), shown by an on-terminal badge; click it (or bind
+  `toggleTerminalPassthrough`) to exit.
+- **Leader key (tmux-style, opt-in)** — set a leader chord in Settings; in a focused
+  terminal, press it then a shortcut to send that one to uxnan whatever its policy.
+- **Interrupt inference** — `Ctrl+C` / double-`Esc` while an agent is `working` with
+  no closing `Stop` hook now settles its card to `done + interrupted`. The keys are
+  **observed, never consumed** (the agent still gets its SIGINT/Esc), and a genuine
+  later hook always wins.
+- Refactor: a shared dispatcher (`keyactions.ts` `runAppAction`) and a pure,
+  unit-tested arbiter (`terminalArbiter.ts` `decideTerminalKey` — 10 new Vitest
+  cases → 137); settings `AppSettings.terminalKeyPolicy` + `leaderKey`. Spec:
+  `architecture/02b` §4.b.
+
+### Added — sub-agent (Task-tool child) tracking in the agent view
+
+- When a Claude Code session spawns **sub-agents** (via the Task tool), they now
+  appear as **nested rows** under the parent in the left-panel agent view, each
+  with its own status dot, and the parent shows a **count badge** (active / total).
+  The parent is **done-gated**: it won't flash "Done" while a spawned child is
+  still working (a background child can outlive the parent's own Stop).
+- Rides the same hook transport: the ADE now subscribes Claude's `SubagentStart` /
+  `SubagentStop` and tracks children in a **per-session roster** on the parent's
+  cache entry (keyed by a child id pulled from the raw payload, capped at 32),
+  **without ever touching the parent's own status**. The roster is **agent-generic**,
+  so any agent that later reports child signals plugs in (OpenCode sub-sessions are
+  wired too — see the OpenCode entry above).
+- `src-tauri/src/model.rs` (`SubagentEntry` + `upsert_subagent`), `hooks.rs`
+  (`source_subagent`, subagent routing in `handle_hook`, `subagents` on
+  `AgentStatusEvent`), `agent_hooks.rs` (`CLAUDE_EVENTS`), and the frontend
+  (`types.ts`, `agentStatus.svelte.ts`, `agentDisplay.ts` done-gate, `AgentRow.svelte`
+  nested rows + badge, EN/ES i18n). 4 new Rust tests (163 total). **Validated against
+  Claude Code 2.1.209** by capturing real hook payloads: `SubagentStart` / `SubagentStop`
+  both carry `agent_id` + `agent_type`, and `SubagentStop` adds the child's final reply.
+  The extractor stays defensive — it **ignores an event with no stable child id** (no
+  bogus rows) — since the fields are version-sensitive.
+
+### Fixed — agent status no longer sticks on "Waiting for input" after a turn ends
+
+- **Claude:** a finished turn now reads as **Done**, not "Waiting for input".
+  When Claude finishes it fires `Stop` (→ `done`) and then, sitting idle at the
+  prompt, a `Notification` with `notification_type: "idle_prompt"`. The ADE was
+  mapping that idle notice to **`waiting`**, which — because the state cache is
+  last-write-wins — clobbered the `done` and left the worktree card stuck on
+  "Waiting for input" (and pinned in the **Needs you** lane). `idle_prompt` now
+  maps to **`done`** (the resting/finished state) and the transient `auth_success`
+  notice is ignored; only genuine mid-turn prompts (`permission_prompt` /
+  `elicitation_dialog` / `agent_needs_input`) still mean `waiting`. This affected
+  Claude only — Codex doesn't subscribe to `Notification`, and Gemini/OpenCode/Pi
+  already map their idle/finish events to `done`. (`src-tauri/src/hooks.rs`.)
+- A **stale** `waiting`/`blocked` hook state (no update in > 30 min and no closing
+  event) now decays to a neutral **`idle`** in the UI instead of dominating the
+  **Needs you** lane forever — an agent-agnostic backstop for any agent that gets
+  stuck without a terminal event. (`src/lib/state/agentDisplay.ts`.)
+
+### Changed — a hook report now establishes the tab's agent identity
+
+- An agent started **by hand** in any ADE terminal (not just via the launch
+  button) now appears in the agent view — and drives the worktree status dot — as
+  soon as its **first hook** arrives, instead of waiting for (or depending on)
+  process-tree detection matching its executable name. A hook is self-declared (it
+  carries the agent type), so a wrapper / renamed / `node`-launched agent that
+  process detection can't name is no longer invisible while still reporting precise
+  states. Process detection remains the fallback for agents with no hook.
+  (`src/lib/state/agentStatus.svelte.ts`.)
+
+### Added — user quick commands (top-bar ⚡ launcher + Settings)
+
+- Program shell commands you run often and launch them in the active
+  worktree — or a project/worktree of your choice — from a new **⚡ launcher** in
+  the top bar. It sits in the fixed window-controls slot (left of
+  minimize/maximize/close), so a hidden panel never covers it. Empty → a "create
+  your first command" entry that jumps to settings; otherwise a stable menu with
+  two titled sections — **active worktree/project** commands, then **global** ones
+  — plus **Manage commands…**. Opens with **`Ctrl/⌘+Shift+P`** (rebindable in
+  Settings → Keyboard shortcuts).
+- **Settings → Quick commands** — create / edit / duplicate / delete / **move**
+  commands. Each command has: a name + optional icon, the command line with
+  **insertable variables** (`{worktree}` `{branch}` `{repo}` `{repoName}` `{path}`,
+  substituted at run time, each a click-to-insert chip with a tooltip), a **scope**
+  (global / project / worktree — the move target), and, under **Advanced options**,
+  where it runs (**a new terminal tab** or the **currently-focused terminal**),
+  whether it **runs immediately or is only pre-typed**, the **working directory**
+  (active worktree / project root / a custom path), the **shell** (any configured
+  terminal profile), and an optional **confirm-before-running** toggle.
+- Commands persist flat in `AppData.quickCommands` (new `quick_commands_set`
+  command; `#[serde(default)]`, so older state loads with no schema bump).
+  Project- and worktree-scoped commands are **pruned automatically** when their
+  project or worktree is removed. Running reuses the existing terminal
+  `runCommand` launch path (so PowerShell/pwsh's slower startup is handled by the
+  same shell-settle timing as agent launch), threading a new `runCommandExecute`
+  flag to omit the trailing Enter for "type only". EN/ES i18n; 10 new Vitest cases
+  in `src/lib/quickCommands.test.ts` (token substitution, cwd resolution, scope
+  filters).
+
+### Changed — agent MCP/trust setup no longer writes to your project or prompts
+
+- The browser-control MCP server is now injected **only** into each CLI's
+  **user-global** config (`~/.claude.json`, `~/.codex/config.toml`,
+  `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`) — **never a file in
+  your project folder**. User-global config isn't project-approval-gated, so no CLI
+  shows an "approve this MCP server?" prompt. This replaces the old project-scoped
+  `Workspace` mode, which was the only thing that dropped files in the working
+  directory and triggered per-project approval. The injection setting is now
+  `Off | Managed (default) | Global`; a saved `Workspace` choice migrates to
+  `Managed`.
+- Gemini's injected entry now carries `trust: true`, so it no longer asks for
+  per-tool confirmation of the browser server.
+- New **Frictionless launch** setting (Settings → Browser → Agent browser MCP;
+  default on, Managed mode only): app-launched agents skip the CLI's "trust this
+  folder?" prompt — Gemini via the `GEMINI_CLI_TRUST_WORKSPACE` env var
+  (version-robust; an unknown env var is a no-op, unlike the `--skip-trust` flag that
+  newer Gemini rejects), Codex via a per-folder
+  `[projects."<cwd>"].trust_level = "trusted"` seed — keyed with **forward slashes**
+  as Codex itself stores project paths (even on Windows), canonicalized, and
+  respecting any explicit user choice. Turn it off to keep the CLIs' native prompts.
+- Agent status **hooks** are unchanged — they were already written to user-global
+  config (`~/.claude/settings.json`, `~/.gemini/settings.json`, `~/.codex/hooks.json`)
+  and the OpenCode/Pi plugin dirs, never the project.
+
+### Added
+
+- Settings → Agents → Hooks: **every** agent card now has a **Show config**
+  disclosure (previously Claude Code only) that inspects and copies the exact config
+  the ADE installs — the `hooks` block for Claude Code / Gemini CLI, the
+  `~/.codex/hooks.json` body for Codex, and the plugin / extension source for
+  OpenCode / Pi.
+
+### Fixed
+
+- Terminal text selection no longer starts one or two columns before the click, and the selection highlight no longer appears to sit on top of the glyphs. With ligatures enabled the terminal was falling back to xterm's DOM renderer, which shapes text off the fixed monospace grid while the mouse maps selection to the grid; ligatures now render through the WebGL renderer's character joiner (as in VS Code), so every terminal stays on the grid-aligned accelerated renderer.
+- Terminals no longer leave ghosted/stale frames after resizing an adjacent panel: the WebGL renderer now recovers from a lost GPU context (`onContextLoss`) instead of compositing a frozen frame, and a grid change or pane reveal forces a single full repaint (clearing the glyph atlas and cell model) instead of tearing down and recreating the render surface each time (which also removes a disposer race that could leave a pane blank).
+- Stabilized agent launch by waiting for interactive shell startup before typing the command, and preserved scrollback position across pane fits.
+
+### Changed
+
+- The terminal always uses xterm's WebGL renderer (the accelerated path VS Code uses), including when ligatures are enabled; the DOM renderer remains only as an automatic fallback when WebGL is unavailable.
+
+### Fixed — updater notification phases and responsive layout
+
+- The update notification no longer shows release notes while the installer is
+  downloading; that link appears only in the persistent ready-to-install state.
+- The pinned update card now uses a compact vertical layout aligned with the app
+  tokens: a larger title, normal-sized supporting text, top-right dismissal, and
+  full-width actions at the bottom.
+- Release-note URLs now follow the selected stable/nightly release tag.
+
+### Fixed — provider usage popover focus and live worktree discovery
+
+- The status-bar provider-usage popover no longer moves focus to **Refresh** on
+  open or restores focus to the status-bar trigger on close, preventing tooltips
+  from appearing while the pointer is elsewhere. Any pending gauge or Refresh
+  tooltip is also cancelled when the popover closes.
+- The Projects sidebar now reconciles each registered repository's worktree list
+  every 3 seconds. Worktrees created externally by an agent or Git therefore
+  appear automatically in the project card and in the **By status** view; only
+  changed lists are applied to keep ordering stable.
+### Added — richer provider usage (reset time, Codex resets, account type, $)
+
+- **Absolute reset time.** Every quota window and credit line now shows *when* a
+  limit resets (a localized clock/date — "resets in 2h · 3:00 PM"), not just a
+  relative countdown, in the Settings card and (opt-in) the status-bar popover.
+- **Codex "reset credits" (reinicios).** Settings → Providers now reads Codex's
+  redeemable rate-limit resets (dedicated endpoint) and shows how many are available
+  and **when each one expires** (per‑credit) — and lets you **redeem one directly
+  from uxnan** (`usage_codex_redeem_reset` → the provider's `consume` endpoint)
+  **behind a confirmation** (uxnan's shared `ConfirmDialog`) that spells out which
+  reset is used, how many remain, and their expiries, then refreshes so the count
+  and windows update.
+- **Real $ balance for Grok.** The Grok reader now surfaces the on-demand spend vs
+  cap (and any prepaid balance) the billing API exposes, as a $ credit line.
+- **Account type.** The "Authenticated as …" line now carries an account-type badge
+  (Subscription / Pay-as-you-go / Free / Team / Enterprise), derived per provider,
+  so the kind of account is clear beyond the plan name.
+- **Status-bar toggles.** New per-provider popover toggles to show/hide the reset
+  time and Codex's reset credits, alongside the existing plan/credit/window picks.
+- Contract additions (`shared/…/usage.ts`, `architecture/02b`): `account.accountType`,
+  `ProviderUsage.resetCredits`, `CreditBalance.available` — all additive.
+
+### Added — Orchestration run engine (chaining, headless, HITL gates, MCP)
+
+- The multi-agent orchestration console gains a second surface. It is now two tabs:
+  **Broadcast** (the fan-out router — **pick recipients explicitly** and route a
+  message to them, backpressured) and **Runs** (a new deterministic **run engine**).
+- **Runs** are a graph (DAG) of **steps**. Build a run in the console (New run → Add
+  step), then Start / Pause / Resume / Cancel / Re-run it. Each step targets an agent,
+  carries a prompt, and declares which steps it **runs after** — so steps chain,
+  fan out in parallel, and fan in.
+- **Context passing (A → B → C).** A step's prompt can plant a prior step's captured
+  output with `{{steps.s1.output}}` / `.summary` / `.title` (insert-chips in the
+  editor auto-add the dependency). Headless output is the full stdout; interactive
+  output is the agent's hook summary or — when the step feeds a later one and the
+  agent is MCP-capable — a structured report the ADE nudges it to send.
+- **Three step types.** *Interactive* types the prompt into a live agent's terminal
+  (completes on the hook/idle signal). *Headless* runs an installed CLI in print-mode
+  in a chosen worktree — the ADE **owns the process**, so it captures the full stdout
+  and **verifies completion by exit code** (new `agent_run_headless` backend command,
+  reusing `agentcli`). *Human gate* pauses the run for an Approve/Reject decision
+  (with a note that feeds later steps + a native notification).
+- **Auto-repair.** Per-step *On failure* policy: **Stop the run** or **Retry** (up to
+  a configurable Max attempts; an interactive retry may re-bind to another live agent
+  of the same type, a headless retry re-spawns).
+- **Durable + re-attachable.** The run graph, step states and captured outputs persist
+  across restarts (opaque `orchestrationRuns` blob via the new `set_orchestration_runs`
+  command, mirroring `terminal_layout`); the engine re-attaches on load, keeping
+  completed outputs and returning a mid-flight step to *ready*.
+- **Cooperative agent→ADE channel.** New orchestration MCP tools
+  (`orchestration_report_result` / `orchestration_report_progress`) on the injected
+  MCP server let an interactive agent report its **structured result** (attributed by
+  `UXNAN_AGENT_ID`), captured verbatim as the step output — better than the coarse
+  hook summary.
+- The status-bar entry point now also appears when any run exists (not only with ≥2
+  live agents), so a saved run stays reachable. Pure engine logic
+  (`src/lib/orchestration/run.ts`) is unit-tested (23 Vitest cases); the headless
+  runner (`src-tauri/src/agentrun.rs`) and the persistence field are unit-tested too.
+  Full EN/ES i18n. Spec: `architecture/02d-agent-monitoring.md` §3.
+
+### Changed — Broadcast: explicit recipient selection (coordinator retired)
+
+- The Broadcast tab now picks recipients **explicitly**: a checkbox per running
+  agent (grouped by type, with a per-type "all") plus **All / None** presets and a
+  live "N of M selected" count. The **coordinator / workers** concept (the crown) is
+  **removed** — you choose exactly who receives, so "everyone" no longer implicitly
+  bundled a designated coordinator.
+
+### Fixed — reliable prompt delivery to agent terminals
+
+- Prompts are typed into an agent's PTY as a **paste** and submitted with a
+  **separate** Enter (new `pty_paste_submit` command). Fixes agents that left the
+  message sitting in their composer (so a second send concatenated into
+  "message1message2"), and keeps multi-line prompts from submitting at the first
+  newline (multi-line goes via bracketed paste; single-line verbatim, so
+  paste-guarding agents still submit).
+- Backpressure no longer wedges on an agent that reads **busy** forever (no hooks /
+  a stuck status): a queued message — or a blocked interactive step — is
+  **force-delivered** after a 12 s hold cap, and the Broadcast list shows a
+  "waiting for the agent to be free…" hint meanwhile.
+- A **multi-line** paste now waits longer (150 ms vs 50 ms) before its Enter, so
+  Claude Code-family agents that briefly *guard* the post-paste Enter still submit.
+
+### Changed — Run builder: clearer authoring + ready-made examples
+
+- **Contextual variable picker.** The step editor's cryptic "insert output" chips
+  are replaced by an **Insert from context** picker that lists the prior steps and,
+  per field (`output` / `summary` / `title`), shows a description **and a live
+  preview** of the captured value once the step has run. **Insert** drops the token
+  **at the cursor** and auto-adds the dependency — no more guessing `{{steps.s1.…}}`.
+- **Step type as cards, headless first.** The type is chosen from three cards
+  (Headless / Interactive / Human gate); a new step defaults to **headless** (full
+  output, verified — best for chaining). A visible hint + the context picker state
+  that an **interactive** step's output is a thin summary — real content only if the
+  agent reports via MCP (Claude / Codex / Gemini / OpenCode) — so use headless for
+  full chaining.
+- **Searchable pickers.** Agent / model / worktree now use the shared **Combobox**
+  (and **AiModelPicker** for models: searchable, `provider/model` split, a **loading
+  state** for CLIs queried live) instead of a plain Select that could overflow.
+- **Roomier console.** The modal is wider and uses the full height, so the builder
+  isn't cramped.
+- **Examples.** A new **Examples** menu adds ready-made runs — *Read & summarize*
+  (A→B), *Parallel review → merge* (fan-in), *Draft → approve → polish* (gate) — as
+  editable drafts with **headless** steps preset to an installed agent (paid like
+  Claude/Codex, else free like OpenCode/Pi). Pure builder unit-tested
+  (`orchestration/examples.test.ts`).
+- **Status-bar attention.** The orchestration entry point highlights subtly when it
+  (re)appears, clearing when you open the console.
+
+### Added — Grok provider usage
+
+- Added Grok to Settings → Providers, using the Grok CLI's own
+  `~/.grok/auth.json` credential and official billing endpoint to show the
+  current credit-usage window, reset time, plan and account without storing or
+  logging the credential.
+- Added native parsing and detection tests; expired credentials degrade to a
+  sign-in-required state without affecting other providers.
+
+### Changed — Desktop stable and nightly releases now have separate, enforced tags
+
+- **Stable:** `desktop-stable-v0.0.PATCH` produces a normal GitHub Release and
+  updates only the stable updater manifest.
+- **Nightly:** `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` produces a GitHub
+  pre-release and updates only the nightly updater manifest.
+- A shared tag parser validates both forms in CI; the release workflow derives
+  the draft's pre-release flag from it, and the manifest workflow rejects a
+  manually altered flag. This removes the former ambiguous `desktop-v…-alpha…`
+  convention and prevents stable/nightly cross-publication.
+
 ### Fixed
 
 - **The merge panel no longer tells you to do things it can't do.** Three dead ends,

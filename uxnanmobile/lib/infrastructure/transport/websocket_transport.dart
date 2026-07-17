@@ -39,6 +39,12 @@ abstract class WebSocketTransport {
 
   /// Connection state transitions.
   Stream<TransportState> get stateChanges;
+
+  /// The URL the live connection is served through (as passed to [connect]), or
+  /// null when not connected. Lets callers surface the endpoint actually in use
+  /// — which direct LAN/Tailscale host won the dial race, or the relay — rather
+  /// than a statically-guessed "first advertised host".
+  String? get connectedUrl;
 }
 
 /// `web_socket_channel`-backed [WebSocketTransport] for Android and iOS.
@@ -53,12 +59,16 @@ class WebSocketChannelTransport implements WebSocketTransport {
       StreamController<Uint8List>.broadcast();
   final StreamController<TransportState> _state =
       StreamController<TransportState>.broadcast();
+  String? _connectedUrl;
 
   @override
   Stream<Uint8List> get incoming => _incoming.stream;
 
   @override
   Stream<TransportState> get stateChanges => _state.stream;
+
+  @override
+  String? get connectedUrl => _connectedUrl;
 
   @override
   Future<void> connect(String url, {Map<String, String>? headers}) async {
@@ -87,6 +97,9 @@ class WebSocketChannelTransport implements WebSocketTransport {
       },
       onError: _incoming.addError,
     );
+    // Record the endpoint only once the channel is actually up, so a failed
+    // attempt never leaves a stale "connected to" address behind.
+    _connectedUrl = url;
     _state.add(TransportState.connected);
   }
 
@@ -105,6 +118,7 @@ class WebSocketChannelTransport implements WebSocketTransport {
     await _subscription?.cancel();
     await _channel?.sink.close();
     _channel = null;
+    _connectedUrl = null;
     _resetIncoming();
     _state.add(TransportState.disconnected);
   }

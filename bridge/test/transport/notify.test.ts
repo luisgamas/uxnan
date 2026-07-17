@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { rmrf } from '../helpers/fs.js';
 import {
   InMemorySecretStore,
   SessionRegistry,
@@ -30,6 +30,7 @@ test('bridge.notify delivers a notification to a connected phone', async () => {
     deviceState: bridge.context.deviceState,
     trustStore: bridge.trustStore,
     displayName: 'Test PC',
+    transport: 'direct',
     expectedSessionId: sessionId,
   });
   const phone = await FakePhone.connect(phoneIo, { sessionId });
@@ -47,7 +48,7 @@ test('bridge.notify delivers a notification to a connected phone', async () => {
 
   phone.close();
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('messages sent to an offline device are recorded in its log for catch-up', () => {

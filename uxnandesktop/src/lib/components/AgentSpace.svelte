@@ -55,8 +55,8 @@
             <ChevronRightIcon
               class={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
             />
-            <span class="text-[8px] font-medium uppercase tracking-[0.05em]">{i18n.t("agents.spaceLabel")}</span>
-            <span class="text-[8px] text-muted-foreground/50">{tabs.length}</span>
+            <span class="text-[10px] font-medium uppercase tracking-[0.05em]">{i18n.t("agents.spaceLabel")}</span>
+            <span class="text-[10px] tabular-nums text-muted-foreground/50">{tabs.length}</span>
           </button>
         {/snippet}
       </TooltipSimple>
@@ -72,7 +72,11 @@
               title={`${t.agentName ?? ""}${d ? ` · ${i18n.t(`monitor.${d.status}`)}` : ""}`}
             >
               {#snippet children(tp)}
-                <button {...tp} class="shrink-0" onclick={() => reveal(t.id)}>
+                <button
+                  {...tp}
+                  class="shrink-0 transition-transform hover:scale-110"
+                  onclick={() => reveal(t.id)}
+                >
                   <AgentAvatar
                     logo={t.agentIcon}
                     status={d?.status ?? "idle"}
@@ -83,7 +87,7 @@
             </TooltipSimple>
           {/each}
           {#if tabs.length > MAX_AVATARS}
-            <span class="shrink-0 text-[9px] tabular-nums text-muted-foreground/70">
+            <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
               +{tabs.length - MAX_AVATARS}
             </span>
           {/if}

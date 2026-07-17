@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uxnan/infrastructure/storage/tables/composer_drafts_table.dart';
+import 'package:uxnan/infrastructure/storage/tables/connection_sessions_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/git_action_log_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/messages_table.dart';
 import 'package:uxnan/infrastructure/storage/tables/projects_table.dart';
@@ -24,6 +25,7 @@ part 'local_database.g.dart';
     TrustedDevicesTable,
     ComposerDraftsTable,
     GitActionLogTable,
+    ConnectionSessionsTable,
   ],
 )
 class UxnanDatabase extends _$UxnanDatabase {
@@ -34,7 +36,7 @@ class UxnanDatabase extends _$UxnanDatabase {
   UxnanDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -67,6 +69,12 @@ class UxnanDatabase extends _$UxnanDatabase {
               trustedDevicesTable,
               trustedDevicesTable.lastAppliedBridgeOutboundSeq,
             );
+          }
+          // v6: phone-only connection-session log powering the connection
+          // metrics (time connected, longest session, sessions count,
+          // relay-vs-direct split) on the profile / per-PC screens.
+          if (from < 6) {
+            await m.createTable(connectionSessionsTable);
           }
         },
         beforeOpen: (details) async {

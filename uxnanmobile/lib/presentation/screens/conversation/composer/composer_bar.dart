@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/core/extensions/string_ext.dart';
+import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
+import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -14,14 +16,14 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_suggestion.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_text_controller.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// The message composer — a Neural Expressive **floating pill** (guide §4.3):
 /// a `surfaceContainerHighest` rounded surface holding just the essentials —
-/// a "+" that opens the turn-tools sheet (attach + run options + approval), an
-/// expandable text field, and a trailing mic/send/stop. The model picker and
-/// context meter moved up to the app bar; the run-option/approval controls moved
-/// into the "+" sheet, so the composer stays uncluttered.
+/// a "+" that opens immediate attachment actions, an expandable text field,
+/// an independent mic, and a contextual send/stop action. Persistent run-option
+/// and approval context lives in the collapsible shelf above the pill.
 ///
 /// Two inline affordances float **above** the pill while typing:
 ///   - **`@` file mentions** — listing the thread's `cwd` (via `workspace/list`)
@@ -38,8 +40,9 @@ class ComposerBar extends ConsumerStatefulWidget {
     this.running = false,
     this.hasAttachments = false,
     this.cwd,
+    this.agentCommands = const [],
     this.onStop,
-    this.onPlus,
+    this.onAttach,
     super.key,
   });
 
@@ -60,12 +63,16 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// When null the `@` picker reports "no folder" (the `/` palette still works).
   final String? cwd;
 
+  /// The agent's slash commands (`agent/commands`) for the `/` palette. Empty →
+  /// only the client-side entries (file hand-off + templates) are shown.
+  final List<AgentCommand> agentCommands;
+
   /// Cancels the in-flight turn. Required when [running] is true.
   final VoidCallback? onStop;
 
-  /// Opens the unified turn-tools sheet (attach + run options + approval). When
-  /// null the "+" is hidden (the agent advertises no tools).
-  final VoidCallback? onPlus;
+  /// Handles a media source picked from the compact "+" menu. When null the
+  /// action is hidden because the active agent does not advertise image input.
+  final ValueChanged<AttachmentSource>? onAttach;
 
   @override
   ConsumerState<ComposerBar> createState() => _ComposerBarState();
@@ -75,7 +82,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   // Renders completed `@` mentions as inline code-style badges (visual only —
   // the underlying text stays plain, so the sent prompt is unchanged).
   final MentionTextController _controller = MentionTextController();
+  final FocusNode _focusNode = FocusNode();
   bool _hasText = false;
+  bool _focused = false;
 
   /// Whether a voice-dictation session is currently active.
   bool _listening = false;
@@ -136,6 +145,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   void initState() {
     super.initState();
     _controller.addListener(_onChanged);
+    _focusNode.addListener(_onFocusChanged);
   }
 
   @override
@@ -158,7 +168,16 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     _controller
       ..removeListener(_onChanged)
       ..dispose();
+    _focusNode
+      ..removeListener(_onFocusChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (_focused != _focusNode.hasFocus) {
+      setState(() => _focused = _focusNode.hasFocus);
+    }
   }
 
   void _onChanged() {
@@ -330,6 +349,9 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final replacement = switch (command.kind) {
       ComposerCommandKind.startFileMention => '@',
       ComposerCommandKind.insertTemplate => command.template ?? '',
+      // Inserts `/<name> ` so the user can add args; routed as a real agent
+      // command on send (see parseAgentCommand in the conversation screen).
+      ComposerCommandKind.invokeAgentCommand => command.template ?? '',
     };
     _applyEdit(
       applyCommand(_controller.text, trigger, replacement: replacement),
@@ -344,10 +366,18 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     // The controller listener re-detects the (possibly still-open) context.
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
     if (!widget.enabled) return;
     if (text.isEmpty && !widget.hasAttachments) return;
+    // Voice remains an independent action even when the field has text. Stop
+    // an active session before clearing so a late recognition result cannot
+    // repopulate a message that was already sent.
+    if (_listening) {
+      await ref.read(speechToTextServiceProvider).stop();
+      if (!mounted) return;
+      setState(() => _listening = false);
+    }
     widget.onSend(text);
     _controller.clear();
   }
@@ -399,7 +429,11 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final l10n = AppLocalizations.of(context);
     final showSend = _hasText || widget.hasAttachments;
     final canSend = showSend && widget.enabled;
-    // The `/` palette is the built-in file hand-off + the user's templates.
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final motionDuration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
+    // The `/` palette is the agent's own slash commands (agent/commands) plus
+    // the built-in file hand-off + the user's templates.
     final templates = ref.watch(promptTemplatesLibraryProvider);
 
     return SafeArea(
@@ -408,12 +442,14 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
         child: ConstrainedBox(
           constraints:
               const BoxConstraints(maxWidth: UxnanSpacing.maxContentWidth),
-          child: Padding(
+          child: AnimatedPadding(
+            duration: motionDuration,
+            curve: Curves.easeOutCubic,
             // Floating pill: gutter all around, lifted off the screen edge.
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
+            padding: EdgeInsets.fromLTRB(
+              _focused ? UxnanSpacing.lg : UxnanSpacing.xl,
               UxnanSpacing.sm,
-              UxnanSpacing.lg,
+              _focused ? UxnanSpacing.lg : UxnanSpacing.xl,
               UxnanSpacing.md,
             ),
             child: Column(
@@ -423,13 +459,14 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                 // or command is active. AnimatedSize smooths its appearance and
                 // dismissal so it doesn't pop in/out abruptly.
                 AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
+                  duration: motionDuration,
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.topCenter,
                   child: _trigger != null
                       ? _SuggestionPanel(
                           trigger: _trigger!,
                           templates: templates,
+                          agentCommands: widget.agentCommands,
                           files: _fileMatches,
                           listing: _listing,
                           listError: _listError,
@@ -445,36 +482,33 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                         )
                       : const SizedBox.shrink(),
                 ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerHighest,
-                    // Fully rounded (pill) to match the other NE surfaces;
-                    // grows into a capsule when multi-line.
-                    borderRadius: const BorderRadius.all(UxnanRadius.full),
+                Material(
+                  key: const ValueKey('composer-surface'),
+                  color: colors.surfaceContainerHighest,
+                  elevation: _focused ? 2 : 0,
+                  shadowColor: colors.shadow,
+                  animationDuration: motionDuration,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(UxnanRadius.full),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
+                  child: AnimatedPadding(
+                    duration: motionDuration,
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.symmetric(
                       horizontal: UxnanSpacing.xs,
-                      vertical: UxnanSpacing.xs,
+                      vertical: _focused ? UxnanSpacing.sm : UxnanSpacing.xs,
                     ),
                     child: Row(
                       // crossAxisAlignment defaults to center, so the "+", the
-                      // text field and the mic/send button share one baseline
+                      // text field and the mic/send buttons share one baseline
                       // (different intrinsic heights); the field grows upward
                       // when multi-line.
                       children: [
-                        // "+" opens the unified turn-tools sheet; hidden when
-                        // the agent advertises no attach/run-options/approval.
-                        if (widget.onPlus != null)
-                          IconButton(
-                            tooltip: l10n.composerTools,
-                            visualDensity: VisualDensity.compact,
-                            icon: Icon(
-                              Icons.add_rounded,
-                              size: 22,
-                              color: colors.onSurfaceVariant,
-                            ),
-                            onPressed: widget.onPlus,
+                        // "+" opens immediate media actions; persistent turn
+                        // settings stay visible in the shelf above.
+                        if (widget.onAttach != null)
+                          TurnToolsMenuButton(
+                            onSelected: widget.onAttach!,
                           )
                         else
                           const SizedBox(width: UxnanSpacing.sm),
@@ -485,6 +519,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                             ),
                             child: TextField(
                               controller: _controller,
+                              focusNode: _focusNode,
                               // Autofocus so the keyboard opens as soon as the
                               // conversation is opened — users almost always
                               // want to start typing right away. The tap-
@@ -510,12 +545,12 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                           ),
                         ),
                         const SizedBox(width: UxnanSpacing.xs),
-                        _TrailingAction(
+                        _ComposerActions(
                           hasText: showSend,
                           enabled: widget.enabled,
                           running: widget.running,
                           listening: _listening,
-                          onSend: canSend ? _send : null,
+                          onSend: canSend ? () => unawaited(_send()) : null,
                           onStop: widget.onStop,
                           onVoice: widget.enabled ? _toggleDictation : null,
                         ),
@@ -538,6 +573,7 @@ class _SuggestionPanel extends StatelessWidget {
   const _SuggestionPanel({
     required this.trigger,
     required this.templates,
+    required this.agentCommands,
     required this.files,
     required this.listing,
     required this.listError,
@@ -554,6 +590,7 @@ class _SuggestionPanel extends StatelessWidget {
 
   final ComposerTriggerContext trigger;
   final List<PromptTemplate> templates;
+  final List<AgentCommand> agentCommands;
   final List<FileEntry> files;
   final bool listing;
   final bool listError;
@@ -570,12 +607,16 @@ class _SuggestionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     final isCommand = trigger.trigger == ComposerTrigger.command;
     final commands = isCommand
         ? matchComposerCommands(
-            composerCommands(l10n, templates),
+            [
+              // The agent's own slash commands first, then the client-side
+              // file hand-off + the user's prompt templates.
+              ...agentComposerCommands(agentCommands),
+              ...composerCommands(l10n, templates),
+            ],
             trigger.query,
           )
         : const <ComposerCommand>[];
@@ -583,21 +624,17 @@ class _SuggestionPanel extends StatelessWidget {
     final title =
         isCommand ? l10n.composerCommandsTitle : l10n.composerMentionFilesTitle;
 
-    final Widget body;
     if (isCommand) {
-      body = commands.isEmpty
-          ? _EmptyRow(label: l10n.composerCommandsEmpty)
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final command in commands)
-                  _CommandRow(
-                    command: command,
-                    onTap: () => onPickCommand(command),
-                  ),
-              ],
-            );
-    } else if (!hasWorkspace) {
+      return _CommandPalette(
+        title: title,
+        commands: commands,
+        emptyLabel: l10n.composerCommandsEmpty,
+        onPickCommand: onPickCommand,
+      );
+    }
+
+    final Widget body;
+    if (!hasWorkspace) {
       body = _EmptyRow(label: l10n.composerMentionNoWorkspace);
     } else if (searchMode) {
       // Repo-wide fuzzy search.
@@ -645,21 +682,8 @@ class _SuggestionPanel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UxnanSpacing.md,
-                  UxnanSpacing.sm,
-                  UxnanSpacing.md,
-                  UxnanSpacing.xs,
-                ),
-                child: Text(
-                  title,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              _SuggestionHeader(symbol: '@', title: title),
+              Divider(height: 1, color: colors.outlineVariant),
               Flexible(
                 child: SingleChildScrollView(
                   child: body,
@@ -668,6 +692,124 @@ class _SuggestionPanel extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The `/` palette is a direct extension of the composer: one elevated tonal
+/// surface, a recognizable slash header and a continuous command list. It does
+/// not turn commands into individual cards because scanning speed matters more
+/// than decorative grouping here.
+class _CommandPalette extends StatelessWidget {
+  const _CommandPalette({
+    required this.title,
+    required this.commands,
+    required this.emptyLabel,
+    required this.onPickCommand,
+  });
+
+  final String title;
+  final List<ComposerCommand> commands;
+  final String emptyLabel;
+  final ValueChanged<ComposerCommand> onPickCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+      child: Material(
+        key: const ValueKey('command-palette'),
+        color: colors.surfaceContainerHigh,
+        elevation: 3,
+        shadowColor: colors.shadow,
+        borderRadius: const BorderRadius.all(UxnanRadius.xl),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SuggestionHeader(symbol: '/', title: title),
+              Divider(height: 1, color: colors.outlineVariant),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: commands.isEmpty
+                      ? _EmptyRow(label: emptyLabel)
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final command in commands)
+                              _CommandRow(
+                                command: command,
+                                onTap: () => onPickCommand(command),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: UxnanSpacing.xs),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shared visual header for the composer's two auxiliary palettes. The trigger
+/// glyph makes `/` commands and `@` workspace navigation recognizable without
+/// giving either surface a different hierarchy.
+class _SuggestionHeader extends StatelessWidget {
+  const _SuggestionHeader({required this.symbol, required this.title});
+
+  final String symbol;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    return Padding(
+      key: ValueKey('suggestion-header-$symbol'),
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.md,
+        UxnanSpacing.md,
+        UxnanSpacing.md,
+        UxnanSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: const BorderRadius.all(UxnanRadius.md),
+            ),
+            child: Text(
+              symbol,
+              style: textTheme.titleMedium?.copyWith(
+                color: colors.onPrimaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(
+            child: Text(
+              title,
+              style: textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -809,39 +951,54 @@ class _CommandRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.md,
-          vertical: UxnanSpacing.sm,
-        ),
-        child: Row(
-          children: [
-            Icon(command.icon, size: 18, color: colors.primary),
-            const SizedBox(width: UxnanSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    command.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    command.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.md,
+            vertical: UxnanSpacing.xs,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.all(UxnanRadius.md),
+                ),
+                child: Icon(
+                  command.icon,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: UxnanSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      command.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      command.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -871,10 +1028,11 @@ class _EmptyRow extends StatelessWidget {
   }
 }
 
-/// The pill's trailing button: Stop while running, Send when there's text,
-/// otherwise the mic (which toggles voice dictation).
-class _TrailingAction extends StatelessWidget {
-  const _TrailingAction({
+/// Independent dictation plus the contextual primary action. Keeping the mic
+/// visible while text exists lets the user append speech at any point; the
+/// second slot appears only for Send or Stop.
+class _ComposerActions extends StatelessWidget {
+  const _ComposerActions({
     required this.hasText,
     required this.enabled,
     required this.running,
@@ -897,9 +1055,9 @@ class _TrailingAction extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
 
-    final Widget child;
+    final Widget primary;
     if (running) {
-      child = IconButton.filled(
+      primary = IconButton.filled(
         key: const ValueKey('stop'),
         tooltip: l10n.composerStop,
         onPressed: onStop,
@@ -910,36 +1068,48 @@ class _TrailingAction extends StatelessWidget {
         icon: const Icon(Icons.stop_rounded),
       );
     } else if (hasText) {
-      child = IconButton.filled(
+      primary = IconButton.filled(
         key: const ValueKey('send'),
         tooltip: l10n.composerSend,
         onPressed: onSend,
         icon: const Icon(Icons.arrow_upward_rounded),
       );
     } else {
-      child = IconButton(
-        key: const ValueKey('mic'),
-        tooltip: listening ? l10n.composerVoiceStop : l10n.composerVoice,
-        isSelected: listening,
-        style: listening
-            ? IconButton.styleFrom(
-                backgroundColor: colors.errorContainer,
-                foregroundColor: colors.onErrorContainer,
-              )
-            : null,
-        icon: Icon(
-          listening ? Icons.mic_rounded : Icons.mic_none_rounded,
-          color: listening ? colors.onErrorContainer : colors.onSurfaceVariant,
-        ),
-        onPressed: onVoice,
-      );
+      primary = const SizedBox.shrink(key: ValueKey('empty-primary'));
     }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
-      transitionBuilder: (child, animation) =>
-          ScaleTransition(scale: animation, child: child),
-      child: child,
+    final mic = IconButton(
+      key: const ValueKey('mic'),
+      tooltip: listening ? l10n.composerVoiceStop : l10n.composerVoice,
+      isSelected: listening,
+      style: listening
+          ? IconButton.styleFrom(
+              backgroundColor: colors.errorContainer,
+              foregroundColor: colors.onErrorContainer,
+            )
+          : null,
+      icon: Icon(
+        listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+        color: listening ? colors.onErrorContainer : colors.onSurfaceVariant,
+      ),
+      onPressed: onVoice,
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        mic,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            transitionBuilder: (child, animation) =>
+                ScaleTransition(scale: animation, child: child),
+            child: primary,
+          ),
+        ),
+      ],
     );
   }
 }

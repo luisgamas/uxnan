@@ -276,7 +276,7 @@ El **Uxnan Relay** es un servidor Node.js que facilita la comunicación entre la
 
 | Tecnología | Capa | Propósito |
 |---|---|---|
-| **xterm.js** | Frontend | Emulador de terminal en el webview. Renderiza output de PTY en canvas/WebGL. Soporte completo de secuencias ANSI y colores. |
+| **xterm.js** | Frontend | Emulador de terminal en el webview. Renderiza output de PTY con WebGLAddon (DOM fallback). Soporte completo de secuencias ANSI y colores. |
 | **CodeMirror 6** | Frontend | Editor de código y visor de diffs. Significativamente más ligero que Monaco (~300 KB vs ~5 MB). Extensible con plugins. |
 | **portable-pty** (crate) | Backend Rust | Crear y gestionar pseudoterminales multiplataforma (Windows, macOS, Linux). |
 | **git2** (crate) | Backend Rust | Operaciones git de alta frecuencia (status, diff, stage, log) sin crear subprocesos. Bindings nativos de libgit2. |

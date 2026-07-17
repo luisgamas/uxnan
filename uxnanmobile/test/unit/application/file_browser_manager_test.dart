@@ -758,4 +758,66 @@ void main() {
 
     await manager.dispose();
   });
+
+  test('revealFile expands only the selected file parent directories',
+      () async {
+    final listedCwds = <String>[];
+    final manager = _buildManager(
+      onCall: (m, p) {
+        if (m == 'workspace/list') listedCwds.add(p['cwd'] as String);
+      },
+      responder: (m, p) {
+        if (m == 'git/status') {
+          return RpcMessage.response(
+            id: 'g',
+            result: const <String, dynamic>{},
+          );
+        }
+        final cwd = p['cwd'];
+        if (cwd == _workspaceRoot) {
+          return RpcMessage.response(id: '1', result: _listRootResult);
+        }
+        if (cwd == '$_workspaceRoot/src') {
+          return RpcMessage.response(
+            id: '2',
+            result: const <String, dynamic>{
+              'cwd': 'src',
+              'entries': [
+                {'name': 'nested', 'type': 'dir'},
+                {'name': 'sibling.dart', 'type': 'file'},
+              ],
+            },
+          );
+        }
+        return RpcMessage.response(
+          id: '3',
+          result: const <String, dynamic>{
+            'cwd': 'src/nested',
+            'entries': [
+              {'name': 'target.dart', 'type': 'file'},
+            ],
+          },
+        );
+      },
+    );
+
+    await manager.revealFile(_workspaceRoot, 'src/nested/target.dart');
+
+    final src = manager
+        .rootFor(_workspaceRoot)!
+        .children
+        .firstWhere((node) => node.path == 'src');
+    final nested = src.children.firstWhere(
+      (node) => node.path == 'src/nested',
+    );
+    expect(src.expanded, isTrue);
+    expect(nested.expanded, isTrue);
+    expect(listedCwds, [
+      _workspaceRoot,
+      '$_workspaceRoot/src',
+      '$_workspaceRoot/src/nested',
+    ]);
+
+    await manager.dispose();
+  });
 }

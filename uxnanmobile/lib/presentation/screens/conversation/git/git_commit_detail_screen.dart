@@ -11,7 +11,6 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
-import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen detail for a single commit, backed by `git/commitShow`.
@@ -184,144 +183,145 @@ class _Header extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final stats = commit.stats;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        UxnanSpacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SelectableText(
-            commit.messageTitle,
-            style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            UxnanSpacing.xs,
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
           ),
-          if (commit.refs.isNotEmpty) ...[
-            const SizedBox(height: UxnanSpacing.sm),
-            Wrap(
-              spacing: UxnanSpacing.xs,
-              runSpacing: UxnanSpacing.xs,
-              children: [
-                for (final ref in commit.refs) CommitRefChip(refData: ref),
-              ],
-            ),
-          ],
-          if (commit.messageBody.trim().isNotEmpty) ...[
-            const SizedBox(height: UxnanSpacing.md),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(UxnanSpacing.md),
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHigh,
-                borderRadius: const BorderRadius.all(UxnanRadius.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(
+                commit.messageTitle,
+                style: textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
-              child: SelectableText(
-                commit.messageBody.trim(),
-                style: textTheme.bodyMedium,
-              ),
-            ),
-          ],
-          const SizedBox(height: UxnanSpacing.md),
-          _MetaRow(
-            label: l10n.gitHistoryDetailsAuthor,
-            value: '${commit.authorName} <${commit.authorEmail}>',
-          ),
-          _MetaRow(
-            label: l10n.gitHistoryDetailsDate,
-            value: _fullDate(commit.authorDate),
-          ),
-          if (commit.committerName != commit.authorName ||
-              commit.committerEmail != commit.authorEmail)
-            _MetaRow(
-              label: l10n.gitHistoryDetailsCommitter,
-              value: '${commit.committerName} <${commit.committerEmail}>',
-            ),
-          const SizedBox(height: UxnanSpacing.sm),
-          // SHA pill with copy.
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: UxnanSpacing.md,
-              vertical: UxnanSpacing.xs,
-            ),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest,
-              borderRadius: const BorderRadius.all(UxnanRadius.md),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    commit.sha,
-                    style: UxnanTypography.codeSmall.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                IconButton(
-                  tooltip: l10n.gitHistoryCopySha,
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.content_copy_rounded, size: 18),
-                  onPressed: onCopySha,
+              if (commit.refs.isNotEmpty) ...[
+                const SizedBox(height: UxnanSpacing.sm),
+                Wrap(
+                  spacing: UxnanSpacing.xs,
+                  runSpacing: UxnanSpacing.xs,
+                  children: [
+                    for (final ref in commit.refs) CommitRefChip(refData: ref),
+                  ],
                 ),
               ],
-            ),
-          ),
-          if (commit.parents.isNotEmpty) ...[
-            const SizedBox(height: UxnanSpacing.md),
-            Text(
-              l10n.gitHistoryDetailsParents(commit.parents.length),
-              style: textTheme.labelMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UxnanSpacing.xs),
-            Wrap(
-              spacing: UxnanSpacing.xs,
-              runSpacing: UxnanSpacing.xs,
-              children: [
-                for (final parent in commit.parents)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UxnanSpacing.sm,
-                      vertical: UxnanSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest,
-                      borderRadius: const BorderRadius.all(UxnanRadius.md),
-                    ),
-                    child: Text(
-                      parent.length < 7 ? parent : parent.substring(0, 7),
-                      style: UxnanTypography.codeSmall,
-                    ),
+              if (commit.messageBody.trim().isNotEmpty) ...[
+                const SizedBox(height: UxnanSpacing.md),
+                SelectableText(
+                  commit.messageBody.trim(),
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.5,
                   ),
+                ),
               ],
-            ),
-          ],
-          if (stats != null) ...[
-            const SizedBox(height: UxnanSpacing.md),
-            Text(
-              l10n.gitHistoryFilesTouched(
-                stats.additions,
-                stats.deletions,
-                stats.changedFileCount,
+              const SizedBox(height: UxnanSpacing.md),
+              _MetaRow(
+                label: l10n.gitHistoryDetailsAuthor,
+                value: '${commit.authorName} <${commit.authorEmail}>',
               ),
-              style: textTheme.bodyMedium,
-            ),
-          ],
-          const SizedBox(height: UxnanSpacing.sm),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: onCopyMessage,
-              icon: const Icon(Icons.copy_all_rounded, size: 18),
-              label: Text(l10n.gitHistoryCopyMessage),
-            ),
+              _MetaRow(
+                label: l10n.gitHistoryDetailsDate,
+                value: _fullDate(commit.authorDate),
+              ),
+              if (commit.committerName != commit.authorName ||
+                  commit.committerEmail != commit.authorEmail)
+                _MetaRow(
+                  label: l10n.gitHistoryDetailsCommitter,
+                  value: '${commit.committerName} <${commit.committerEmail}>',
+                ),
+              const SizedBox(height: UxnanSpacing.sm),
+              // SHA pill with copy.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.all(UxnanRadius.md),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        commit.sha,
+                        style: UxnanTypography.codeSmall.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: l10n.gitHistoryCopySha,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.content_copy_rounded, size: 18),
+                      onPressed: onCopySha,
+                    ),
+                  ],
+                ),
+              ),
+              if (commit.parents.isNotEmpty) ...[
+                const SizedBox(height: UxnanSpacing.md),
+                Text(
+                  l10n.gitHistoryDetailsParents(commit.parents.length),
+                  style: textTheme.labelMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: UxnanSpacing.xs),
+                Wrap(
+                  spacing: UxnanSpacing.xs,
+                  runSpacing: UxnanSpacing.xs,
+                  children: [
+                    for (final parent in commit.parents)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: UxnanSpacing.sm,
+                          vertical: UxnanSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest,
+                          borderRadius: const BorderRadius.all(UxnanRadius.md),
+                        ),
+                        child: Text(
+                          parent.length < 7 ? parent : parent.substring(0, 7),
+                          style: UxnanTypography.codeSmall,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+              if (stats != null) ...[
+                const SizedBox(height: UxnanSpacing.md),
+                Text(
+                  l10n.gitHistoryFilesTouched(
+                    stats.additions,
+                    stats.deletions,
+                    stats.changedFileCount,
+                  ),
+                  style: textTheme.bodyMedium,
+                ),
+              ],
+              const SizedBox(height: UxnanSpacing.sm),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: onCopyMessage,
+                  icon: const Icon(Icons.copy_all_rounded, size: 18),
+                  label: Text(l10n.gitHistoryCopyMessage),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -349,51 +349,53 @@ class _FilesSection extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.sm,
-        UxnanSpacing.lg,
-        UxnanSpacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            files.isEmpty
-                ? l10n.gitHistoryNoFileChanges
-                : l10n.gitHistoryDetailsFiles(files.length),
-            style: textTheme.labelLarge?.copyWith(
-              color: colors.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            UxnanSpacing.lg,
+            UxnanSpacing.sm,
           ),
-          const SizedBox(height: UxnanSpacing.xs),
-          for (final file in files)
-            Padding(
-              padding: const EdgeInsets.only(bottom: UxnanSpacing.xs),
-              child: _CommitFileCard(
-                file: file,
-                diff: diffByPath[file.path] ??
-                    (file.oldPath != null ? diffByPath[file.oldPath!] : null),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                files.isEmpty
+                    ? l10n.gitHistoryNoFileChanges
+                    : l10n.gitHistoryDetailsFiles(files.length),
+                style: textTheme.labelLarge?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-          if (diffTruncated) ...[
-            const SizedBox(height: UxnanSpacing.xs),
-            Text(
-              l10n.gitHistoryDiffTruncated,
-              style: textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ],
+              const SizedBox(height: UxnanSpacing.xs),
+              for (final file in files)
+                _CommitFileCard(
+                  file: file,
+                  diff: diffByPath[file.path] ??
+                      (file.oldPath != null ? diffByPath[file.oldPath!] : null),
+                ),
+              if (diffTruncated) ...[
+                const SizedBox(height: UxnanSpacing.xs),
+                Text(
+                  l10n.gitHistoryDiffTruncated,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-/// A collapsible card for one file touched by the commit: a tappable header
+/// A collapsible flat row for one file touched by the commit: a tappable header
 /// (status icon, name, rename/dir, per-file +/-, chevron) that reveals that
 /// file's own colored diff. Collapsed by default — mirrors the version-control
 /// screen's file cards.
@@ -424,86 +426,83 @@ class _CommitFileCardState extends State<_CommitFileCard> {
     final subtitle =
         file.oldPath != null ? l10n.gitHistoryRenamedFrom(file.oldPath!) : dir;
 
-    return NeSurface(
-      outlined: true,
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UxnanSpacing.md,
-                vertical: UxnanSpacing.sm,
-              ),
-              child: Row(
-                children: [
-                  Icon(icon, size: 18, color: color),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UxnanSpacing.md,
+              vertical: UxnanSpacing.sm,
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: UxnanSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: textTheme.titleSmall?.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null)
                         Text(
-                          name,
-                          style: textTheme.titleSmall?.copyWith(
-                            color: color,
-                            fontWeight: FontWeight.w500,
+                          subtitle,
+                          style: UxnanTypography.codeSmall.copyWith(
+                            color: colors.onSurfaceVariant,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (subtitle != null)
-                          Text(
-                            subtitle,
-                            style: UxnanTypography.codeSmall.copyWith(
-                              color: colors.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  if (file.binary)
-                    Text(
-                      'bin',
-                      style: UxnanTypography.codeSmall.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    )
-                  else ...[
-                    if (file.additions > 0)
-                      Text(
-                        '+${file.additions}',
-                        style: UxnanTypography.codeSmall.copyWith(
-                          color: UxnanColors.gitAdded,
-                        ),
-                      ),
-                    if (file.deletions > 0) ...[
-                      const SizedBox(width: UxnanSpacing.xs),
-                      Text(
-                        '−${file.deletions}',
-                        style: UxnanTypography.codeSmall.copyWith(
-                          color: UxnanColors.gitDeleted,
-                        ),
-                      ),
                     ],
-                  ],
-                  const SizedBox(width: UxnanSpacing.xs),
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 20,
-                    color: colors.onSurfaceVariant,
                   ),
+                ),
+                const SizedBox(width: UxnanSpacing.sm),
+                if (file.binary)
+                  Text(
+                    'bin',
+                    style: UxnanTypography.codeSmall.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  )
+                else ...[
+                  if (file.additions > 0)
+                    Text(
+                      '+${file.additions}',
+                      style: UxnanTypography.codeSmall.copyWith(
+                        color: UxnanColors.gitAdded,
+                      ),
+                    ),
+                  if (file.deletions > 0) ...[
+                    const SizedBox(width: UxnanSpacing.xs),
+                    Text(
+                      '−${file.deletions}',
+                      style: UxnanTypography.codeSmall.copyWith(
+                        color: UxnanColors.gitDeleted,
+                      ),
+                    ),
+                  ],
                 ],
-              ),
+                const SizedBox(width: UxnanSpacing.xs),
+                Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
             ),
           ),
-          if (_expanded) _DiffLines(diff: widget.diff, binary: file.binary),
-        ],
-      ),
+        ),
+        if (_expanded) _DiffLines(diff: widget.diff, binary: file.binary),
+        Divider(height: 1, color: colors.outlineVariant),
+      ],
     );
   }
 }

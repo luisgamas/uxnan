@@ -3,7 +3,74 @@
 All notable changes to the shared contracts package are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [0.0.6-alpha.20260716] - 2026-07-16
+
+### Added — profile metrics (`metrics/*`) contract
+- **Three new JSON-RPC methods** (`src/jsonrpc/methods.ts` + `METHOD_NAMES`, now
+  **66 entries**) that make the mobile profile metrics durable by moving ownership
+  to the bridge (they were phone-local and lost on an app uninstall):
+  - **`metrics/get`** — `void` → `MetricsSnapshot`: the requesting PC's aggregated
+    stats (conversations, distinct agents/models, messages, git actions, sessions,
+    total/longest connected time, relay-vs-direct split, per-agent breakdown,
+    member-since, and per-day activity buckets for the heatmap). The bridge is the
+    source of truth; the phone renders one snapshot per PC and sums across PCs.
+  - **`metrics/export`** — `{ passphrase? }` → `{ blob, filename, passphraseProtected }`:
+    the bridge seals its metrics event log into an opaque, **tamper-proof** file
+    that only the SAME bridge can later verify + decrypt (so users can't fabricate
+    or edit their stats). Optional passphrase adds a second confidentiality layer.
+  - **`metrics/import`** — `{ blob, passphrase? }` → `{ imported, snapshot }`: feed a
+    previously exported file back; the bridge rejects a foreign/edited file, then
+    merges its events **by id** (idempotent).
+- **New models** (`src/models/metrics.ts`, exported from the package root):
+  `MetricsSnapshot`, `MetricsAgentUsage`, `MetricsActivityDay`, `MetricsTransport`,
+  and the `metrics/export`|`import` param/result shapes. `MetricsActivityDay.day`
+  is **UTC midnight of the calendar date** (timezone-stable, so the phone's
+  heatmap maps it to the right cell in any timezone).
+- **`MetricsSnapshot.byAgentDay`** (`MetricsDayBreakdown` + `MetricsAgentDay`):
+  per-day activity split per agent (UTC-midnight day keys) — conversations,
+  messages and **tokens processed** each day — for the unified agent-activity
+  view (per-agent totals all-time, or a single day when a heatmap cell is
+  picked). Tokens are throughput (sum of each turn's reported usage), not billed
+  cost — caching/pricing differ; `agent/usageStats` stays the source for money;
+  0 for agents that don't report usage (e.g. Zero).
+- Provider usage/credits are deliberately **excluded** — those stay live-read via
+  `agent/usageStats`, never persisted.
+
+### Added — agent commands (`agent/commands`) contract
+- **New JSON-RPC method `agent/commands`** (`src/jsonrpc/methods.ts` +
+  `METHOD_NAMES`, now **63 entries**): discover an agent's special ("slash")
+  commands. Params `{ agentId, cwd? }` → `{ commands: AgentCommand[] }` (`cwd`
+  scopes discovery so a project's own custom commands are included).
+- **New models** (`src/agents/agent-capabilities.ts`): `AgentCommand =
+  { name, description?, argumentHint?, source: 'acp'|'builtin'|'custom',
+  headlessSupported? }` and `AgentCommandInvocation = { name, args? }`.
+- **`turn/send` gains `command?: AgentCommandInvocation`** — invoke a discovered
+  command instead of free-form `text`; the bridge resolves it to the prompt the
+  agent runs (an expanded custom template, or the CLI's native `/name args`
+  form). `text` is optional when `command` is present.
+- **`AgentCapabilities` gains `commands?: boolean`.** The adapter contract
+  (`src/agents/agent-adapter.ts`) gains optional `listCommands?(cwd?)` and
+  `expandCommand?(name, args?, cwd?)`, and `SendTurnOptions` gains `command?`.
+
+### Added — richer `agent/usageStats` fields (account type, reset credits, $ balance)
+
+- `ProviderUsage.account` gains **`accountType`**
+  (`AccountType = 'subscription' | 'payAsYouGo' | 'free' | 'team' | 'enterprise'`),
+  derived per provider so a client can identify the account beyond its plan name.
+- `ProviderUsage` gains **`resetCredits`** (`{ available, totalEarned?,
+  nextExpiresAt?, entries?: { title?, expiresAt? }[] }`) — a provider's redeemable
+  rate-limit "resets" (Codex), with per-credit detail (which one, when each expires).
+- `CreditBalance` gains **`available`** — a remaining $ balance the provider reports
+  directly (e.g. Grok on-demand / prepaid).
+- All additive: older payloads deserialize unchanged. Contract mirrored in
+  `architecture/02b`; desktop reader implemented, bridge/mobile consume in Phase 6.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
+
+### Changed — Grok usage provider
+
+- Extended the `agent/usageStats` `UsageProvider` union with `grok` for the
+  desktop's Grok CLI billing reader and future bridge/mobile consumers.
 
 ### Added — `grok` in the `AgentId` union
 - **`AgentId`** (`src/agents/agent-capabilities.ts`) gains **`'grok'`** — xAI's
@@ -20,7 +87,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   balance — for the providers the caller activated. Params
   `{ providers: UsageProvider[] }` → `{ usage: ProviderUsage[] }`.
 - **Usage models** (`src/models/usage.ts`, exported from the package root):
-  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`), `UsageStatus`
+  `UsageProvider` (`codex`/`claude`/`copilot`/`gemini`/`grok`), `UsageStatus`
   (`ok`/`authRequired`/`notInstalled`/`error`), `UsageSource` (`token`),
   `UsageWindow`, `CreditBalance`, `ProviderUsage`, and the
   `UsageStatsParams`/`UsageStatsResult` request/response shapes.

@@ -3,6 +3,125 @@
 All notable changes to the bridge daemon are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/).
 
+## [0.0.7-alpha.20260716] - 2026-07-16
+
+### Fixed — an omitted `params` no longer fails methods whose fields are all optional
+- **`metrics/export` with no passphrase now works.** JSON-RPC 2.0 makes the
+  `params` member optional and the phone omits it whenever every field is unset,
+  but the optional param readers ran it through `asObject()`, which rejects an
+  absent value — so the **default, no-passphrase** export was answered with
+  `-32602 params must be an object`. The phone surfaces that as "couldn't create
+  the backup, make sure you're connected to a PC", which pointed at the
+  connection rather than the real cause. Exporting *with* a passphrase was
+  unaffected (it sends an object).
+- Root-caused in `handlers/params.ts`: `optionalString` / `optionalBoolean` /
+  `optionalNumber` now read through an `optionalParams()` helper that treats an
+  absent `params` as "no field set". Readers for a **required** field keep using
+  `asObject()`, so a method that needs params still rejects an omitted one, and a
+  `params` that is present but malformed is still `-32602`.
+- Same bug, same fix: **`thread/list`** with no `projectId` (the threads screen's
+  "list every thread" call) was rejected too, and `loadThreads` swallows the
+  error — the bridge-side list sync silently no-op'd. `workspace/browseDirs`
+  carried a local `p ?? {}` workaround for this; it's now redundant and removed
+  in favour of the root fix.
+- Covered by `test/handlers/params.test.ts` (8 tests, dispatched through the real
+  router with `params` omitted exactly as the phone sends it).
+
+## [0.0.6-alpha.20260716] - 2026-07-16
+
+### Fixed — activity day buckets are timezone-stable
+- The `metrics/get` `activity[].day` bucket key is now **UTC midnight of the
+  bridge host's local calendar date** (`utcDayKey`, was the local-midnight
+  *instant*). A local-midnight instant (e.g. `06:00Z` for a UTC-6 host)
+  reconstructed on a phone in another timezone landed on the wrong calendar day,
+  so the profile heatmap painted nothing while the stat tiles still showed the
+  counts. UTC-midnight encoding matches the phone's per-cell key in any timezone.
+
+### Added — bridge-owned profile metrics + tamper-proof backup (`metrics/*`)
+- The bridge now **serves `metrics/get`, `metrics/export`, `metrics/import`** (66
+  JSON-RPC methods now). It becomes the source of truth for the mobile profile
+  metrics, which were phone-local and lost on an app uninstall.
+- **Observation (the phone can't inflate the numbers):**
+  - `metrics/metrics-store.ts` persists an event log at `~/.uxnan/metrics.json`
+    (sessions + git actions, each with a stable id so imports merge idempotently).
+  - **Connection sessions** are logged by `handleSecureConnection` (transport
+    threaded through as `relay`/`direct`); a session left open by a crash is
+    closed at startup at its own start time (counts the session, never inflates
+    connected time).
+  - **Git actions** are counted in `git-handler` for the mutating operations
+    (commit/push/pull/checkout/createBranch/createWorktree/discard/createPr/
+    undoCommit/switchBranch/revert/deleteBranch/removeWorktree), with outcome.
+  - **Conversation counts** (conversations, messages, distinct agents/models,
+    per-agent, member-since, per-day activity) are computed live from the
+    `ThreadStore` (`conversationMetrics()`).
+  - **Per-day per-agent activity** (`byAgentDay`): conversations, messages and
+    **tokens processed** (each assistant turn's reported `usage.tokens`) summed
+    per agent + UTC calendar day, for the unified agent-activity view. Agents
+    that don't report usage still count their conversations/messages with tokens
+    0; tokens are **processed, not billed cost** (`agent/usageStats` stays money).
+- **Tamper-proof export/import** (`metrics/metrics-seal.ts`): the backup file is
+  sealed with AES-256-GCM under a **32-byte key held in the OS keychain**
+  (`metrics-seal-key`, via the existing `SecretStore`), with the header bound as
+  AAD. Only the same bridge can verify + decrypt it, so users cannot fabricate or
+  edit their stats; a foreign/edited file is rejected. **Same-PC only** by design.
+  An optional user passphrase adds a scrypt-derived confidentiality layer.
+- New `BridgeContext.metrics` (`MetricsService`); `metrics.json` added to
+  `DAEMON_FILES`; `metrics-handler` registered. Spec: `architecture/02a` §5.8.11,
+  `02b` §1.2 (method total 63 → 66).
+- **Tests (+3 files):** `test/metrics/metrics-seal.test.ts` (round-trip,
+  foreign-device, wrong-key, edited ciphertext/header, passphrase),
+  `metrics-store.test.ts` (record/read, dangling-close, idempotent merge),
+  `metrics-service.test.ts` (snapshot aggregation, live-session duration,
+  export/import round-trip + rejection, passphrase). Transport/e2e tests that
+  build a bridge switched to the resilient `rmrf` cleanup (the new async metric
+  writes were racing plain `rm` on Windows).
+
+### Fixed — CLI help/comment no longer calls `start` a skeleton
+- The `start` usage line and the `cli.ts` header comment claimed a
+  "skeleton: no live transport yet" — stale wording from an early increment.
+  `start` boots the live LAN (and optional relay) transport with QR +
+  manual-code pairing; the help and comment now say so.
+
+### Added — `agent/usageStats` provider usage reader (bridge side)
+- The bridge now **serves `agent/usageStats`** — previously a known method with no
+  handler (`-32601`). A new TS reader (`src/usage/usage-reader.ts`) ports the
+  desktop's native Rust reader: for each provider the user activated (**Codex,
+  Claude, Copilot, Gemini, Grok**) it reads that CLI's own already-stored OAuth
+  token (or `gh auth token` for Copilot) → the provider's official usage API and
+  returns quota windows (% used + reset), plan/account and credit balance. Only the
+  CLI's own token is read — never browser cookies or pasted keys. Each provider is
+  isolated and best-effort: a slow/failed one degrades to its own `status`
+  (`ok`/`authRequired`/`notInstalled`/`error`) + message and never rejects the whole
+  call; 15 s per‑request timeout; 401/403 → `authRequired`. Handler
+  `src/handlers/usage-handler.ts` validates the provider list. No new method (it was
+  already in `METHOD_NAMES`); the phone-side UI is the remaining piece (mobile).
+
+### Added — agent commands: discovery (`agent/commands`) + invocation (`turn/send` `command`)
+- **What:** the bridge now discovers each agent's special ("slash") commands and
+  runs them remotely. New handler `agent/commands` (`src/handlers/agent-handler.ts`)
+  → `AgentManager.getCommands(agentId, cwd?)`; `turn/send` accepts a `command`
+  (`{ name, args? }`) which `AgentManager.sendTurn` resolves to the prompt the
+  agent runs. **63 JSON-RPC methods** now (`METHOD_NAMES`).
+- **Two command classes, one invocation path** — every command runs through the
+  existing streaming turn:
+  - **Custom prompt-template commands** (`source: 'custom'`) — the bridge scans
+    the agent's command directories and **expands the template itself** (argument
+    substitution) via `expandCommand`, so they work even though the CLI's headless
+    mode does not expand them. New shared helper `src/adapters/command-scan.ts`
+    (dependency-free markdown-front-matter + TOML parsers; **Codex**
+    `~/.codex/prompts/*.md`, **Gemini** `.gemini/commands/*.toml`, **OpenCode**
+    `.opencode/command(s)/*.md`).
+  - **Native control commands** — sent as the CLI's `/name args` form: **Claude
+    Code** (advertised from the `system/init` `slash_commands` list captured per
+    turn, ∪ a curated headless-safe built-in set ∪ `.claude/commands/*.md`; run
+    against the thread's `--resume` session), and the **ACP agents Zero/Grok**
+    (advertised from the ACP `available_commands_update` notification the adapters
+    now capture instead of dropping; invoked via `session/prompt`).
+- **Capability:** the five command-capable adapters set `capabilities.commands =
+  true`. `pi` advertises none (no documented command surface).
+- **History:** a command turn persists the `/name args` form (not the expansion)
+  as the user message. Covered by new `command-scan` + `agent-manager` tests.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Fixed — turn errors are surfaced with the real reason and survive re-sync

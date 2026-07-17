@@ -59,7 +59,12 @@ export const METHOD_NAMES = [
   // Agents
   'agent/list',
   'agent/models',
+  'agent/commands',
   'agent/usageStats',
+  // Metrics (bridge-owned, survivable profile stats + tamper-proof backup)
+  'metrics/get',
+  'metrics/export',
+  'metrics/import',
   // Auth
   'auth/status',
   'auth/login',

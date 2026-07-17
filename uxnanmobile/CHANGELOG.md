@@ -4,6 +4,503 @@ All notable changes to the `uxnanmobile` app are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.0.8-alpha.20260716] - 2026-07-16
+
+### Changed — one loading language across the whole app
+- Every remaining `CircularProgressIndicator` is now the shared **`PolygonLoader`**
+  (the M3 Expressive shape morph), so loading looks the same everywhere instead of
+  splitting between the expressive loader on the redesigned screens and Material's
+  default spinner on the rest: **29 call sites across 16 files**, including the
+  conversation timeline, its "Agent responding…" cue, Git, the threads list and
+  tiles, new conversation, the profile stats/heatmap/usage, pairing discovery,
+  licenses, updates and theme import.
+- Each site keeps its own weight rather than a blanket size: 48 dp for full-screen
+  states, 32 dp for section blocks, 22–28 dp in sheets, 10–20 dp inline. Sites that
+  had a colored spinner keep their color.
+- **Two gauges intentionally stay `CircularProgressIndicator`:** the conversation's
+  context-usage ring and Settings ▸ Updates' download progress. Both draw a real
+  value (`percent`, `fraction`) and `PolygonLoader` is indeterminate by design, so
+  converting them would have thrown that number away. `loader_consistency_test.dart`
+  now enforces the rule in both directions — no stray spinner elsewhere, and those
+  two still reporting a `value:`.
+
+### Changed — Composer palettes share a clear auxiliary hierarchy
+- Gave the `/` command and `@` workspace palettes the same M3 container,
+  8 dp separation from the prompt pill and explicit trigger header. They read
+  as sibling extensions above the composer without appearing fused into it.
+- Command rows now provide a minimum 56 dp target, contained 40 dp neutral icon
+  surfaces and clearer name/description hierarchy. Appearance follows the
+  composer's reduced-motion setting. Filtering, workspace navigation, agent
+  commands, prompt templates and insertion behavior are unchanged.
+
+### Changed — Git history and commit details use a cleaner review hierarchy
+- Preserved commit history as a flat list so its functional branch graph stays
+  continuous and readable; commits were not converted into cards. Rows now use
+  quiet separators and a responsive 840 dp reading bound on wider screens.
+- Kept Search and Graph as the two direct app-bar actions. Branch/ref selection
+  and density now live in the same vertical `IconSurfaceMenu` treatment as the
+  main Git screen, reducing toolbar noise without removing either control.
+- Commit details now use a 760 dp editorial column, an open message body and
+  flat expandable file rows instead of one outlined card per changed file.
+  Expanded diffs retain tonal containment. Git data, graph layout, pagination,
+  search, branch selection and file expansion behavior are unchanged.
+
+### Changed — Onboarding and manual pairing share the Neural Expressive language
+- Removed the onboarding's persistent square-grid and fade wallpaper in favor
+  of the same calm semantic `surface` used across Profile, conversations and
+  Settings. Floating agent logos remain open on that canvas, while the hero
+  uses the app's established rounded-rectangle geometry.
+- Grouped page progress and navigation into a floating rounded surface, widened
+  the responsive content bound, and made floating-agent motion respect the
+  platform's reduced-motion preference.
+- Constrained manual-code pairing on wide screens and aligned its rounded hero
+  with the onboarding and semantic primary-container treatment. Pairing,
+  discovery, validation and navigation behavior are unchanged.
+
+### Changed — Shared loader uses the real Material 3 Expressive morph
+- Replaced `PolygonLoader`'s vertex-by-index painter with the Material 3
+  `LoadingIndicator` geometry used by AndroidX and the Bunpod reference: seven
+  normalized rounded shapes, feature-aware cubic morph matching, rotation and
+  the canonical scale pulse. The shared wrapper preserves every existing
+  `size` / semantic-color call site, so workspace, model, Git, pairing and
+  conversation loaders adopt the corrected animation together.
+- The wrapper keeps exact requested dimensions through a fitted canonical
+  48 dp canvas, isolates repaints, supports an accessibility label and freezes
+  the decorative ticker on its first expressive shape under reduced motion.
+  Added widget coverage for sizing, color, semantics and reduced motion.
+
+### Changed — Workspace files follow the Neural Expressive mobile hierarchy
+- The workspace browser keeps its low-noise flat tree while enforcing 48 dp
+  touch targets and constraining the tree on tablet widths. Its rigid status
+  strip is now a rounded tonal workspace surface with a clearer path, branch,
+  ahead/behind hierarchy and the existing copy action.
+- File loading now uses the shared reduced-motion-aware polygon loader. Markdown,
+  source, editor and empty/error content are width-constrained on larger screens;
+  binary/error states use the same calm card language as Profile and New
+  conversation, while image preview remains a full-surface fit-to-screen canvas.
+  File operations, Git state, search, editing and navigation are unchanged.
+### Added — refresh your profile stats on demand, and pick how they keep current
+- The profile's stats now carry a **manual refresh button** (mirroring the
+  provider-usage header: a spinner replaces it while the fetch is in flight, and
+  the stats below stay put). It is always available, whatever the mode.
+- A persisted **refresh mode** in Settings ▸ *Metrics & provider usage* ▸
+  *Profile stats*: **automatic** (re-fetch every time the profile is opened —
+  the new default), a **5 / 15 / 30 / 60-minute poll**, or **manual only**.
+  Every mode still re-fetches when a PC connects.
+- **Why:** the snapshot was only re-fetched when the *connection* changed, so on
+  a live connection the stats were frozen at connect time — the only way to move
+  them was to kill and reopen the app. Opening the profile now refreshes them.
+
+### Changed — the Usage settings section is now "Metrics & provider usage"
+- It covers two separate things, so it now says so and names both: **Profile
+  stats** (the new refresh mode) and **Provider usage**, the latter explained as
+  what it actually is — each AI provider's remaining limits: how much quota is
+  left, when it resets, the plan and any credit.
+
+### Fixed — a failed backup export says what actually went wrong
+- A rejected `metrics/export` now shows the **bridge's own reason** verbatim
+  ("Couldn't create the backup: …") instead of the blanket "Make sure a PC is
+  connected", which pointed at the connection no matter the cause — including
+  when the connection was fine. `exportBackup` throws `MetricsExportException`
+  carrying the reason rather than swallowing it into a null.
+- A file that seals fine but can't be saved/shared now has its own message
+  instead of borrowing the export-failure one.
+- Pairs with the bridge fix for the actual failure this surfaced: exporting with
+  **no passphrase** was rejected with `-32602 params must be an object` (see
+  `bridge/CHANGELOG.md`). Exporting *with* a passphrase always worked.
+
+## [0.0.7-alpha.20260716] - 2026-07-16
+
+### Fixed — A started Play update could never be finished, and then read as "up to date"
+- Accepting an Android update and failing to install it left the app **stuck for
+  good**: it kept reporting "you're up to date" while a fully downloaded APK sat
+  on the device, and neither *Check now* nor a relaunch could surface the install
+  again — the only way out was updating manually from Play.
+- Root cause: the app only ever trusted Play's **live** install-state stream and
+  an availability of `updateAvailable`. But Play stops reporting `updateAvailable`
+  the moment *we* start the flexible flow — from then on it reports
+  `developerTriggeredUpdateInProgress`, while the APK downloads and while it
+  waits, downloaded, for an install, **across app restarts**. That was read as
+  "no update", so every check after the first one hid the very banner that offers
+  the install. The download also outlives the app that starts it, so the live
+  stream — the app's only other source of truth — could simply miss the moment it
+  finished. Play's own contract gives this away: `installStatus` is *"defined only
+  if `updateAvailability` returns `DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS`"*.
+- `AppUpdateService` now reads an update **already in progress** as available and
+  surfaces the stage Play itself reports (`AppUpdateInfo.installStatus`) on the
+  new `AppUpdateStatus.installStage` — the field the app was discarding.
+- `AppUpdateController` derives its phase from that stage, so a check **resumes**
+  the flow where it actually is: an update left downloaded comes back as
+  *Install now* (banner + Settings → Updates) instead of collapsing to
+  "available" — which would restart Play's flow — or "up to date". An install
+  that never restarted the app is no longer a dead end: a re-check returns it to
+  an installable state rather than a permanent spinner.
+- A pending update now **bypasses the check interval** on every foreground, per
+  Play's guidance that a downloaded update be surfaced whenever the user brings
+  the app forward — otherwise its data silently occupies their storage. The
+  interval still governs looking for a *new* version. A self-clearing
+  `updateStarted` flag (`UpdatePreferencesStore`) carries this across restarts.
+- Regression tests in `app_update_service_test.dart` +
+  `update_controller_test.dart` (six of them fail against the previous logic):
+  in-progress availability, stage surfacing, resuming a downloaded/downloading
+  update, recovering a stalled install, the interval bypass and the flag's
+  self-clearing.
+
+## [0.0.6-alpha.20260716] - 2026-07-16
+
+### Changed — Profile provider-usage cards follow the Neural Expressive hierarchy
+- Provider usage cards now form a cohesive dynamic-corner group, use 44 dp
+  neutral logo surfaces, responsive plan/status pills and clearer M3 typography.
+  Quota percentages retain their meaningful progress bars with a more legible
+  8 dp track and accessibility semantics; credit is separated into a quiet tonal
+  row. Data loading, refresh and provider behavior are unchanged.
+
+### Fixed — Activity heatmap opens on the current week (recent squares were off-screen)
+- Even with correct day keys, the contribution heatmap still looked empty for the
+  **in-progress year**: the grid rendered all of Jan–Dec and, scrolled to its most
+  recent edge (`reverse: true`), opened on the **empty future months** — so the
+  recent activity sat off-screen to the left and no painted square was ever in
+  view (the caption's "N actions · M active days" was right the whole time). The
+  in-progress year now **stops at today**, so the grid opens on the current week
+  with the latest activity visible; past years still render in full. Regression
+  test in `activity_heatmap_test.dart`.
+
+### Added — Profile "Tokens" lens + redesigned per-agent cards
+- The unified activity block gains an **Activity / Tokens** toggle. **Tokens**
+  colors the heatmap by **tokens processed per day** (from the bridge's per-day,
+  per-agent breakdown), re-ranks the agents by tokens and captions in tokens,
+  with a note that **some CLIs don't report their full token usage, so the
+  figures can be imprecise**. **Activity** is the everyday conversations +
+  messages view. The token-reporting caveat remains visible in both lenses so
+  the limitation is clear before interpreting any per-agent total.
+- The lens selector now reuses the app's Neural Expressive **Connected Button
+  Group** instead of a standalone segmented button, matching Personalization.
+  The agent history is presented as one dynamic-corner card group, while the
+  profile header, year control, stat grid and tablet width constraint follow the
+  same semantic-surface and responsive hierarchy as the rest of the app.
+- Each agent card is redesigned to read clearly: an Icon-Surface logo + name, a
+  set of three **labeled** stats — the value (e.g. "174K") over a caption naming
+  it ("Tokens") — instead of one cramped "9 conv · 16 msg · 174K tokens" line.
+  The ambiguous single progress bar is removed: the active lens now uses quiet
+  tonal stat surfaces (conversations + messages for Activity, tokens for Tokens),
+  avoiding false comparisons between unlike units. Follows the M3 / Neural
+  Expressive card hierarchy.
+
+### Changed — Unified "Activity" section (one block, linked selection)
+- "Conversations by agent" and the separate token widget merge into a single
+  **agent-activity** block: the year selector, the contribution heatmap and the
+  per-agent cards, linked by the heatmap selection (no cell = all-time; tap a day
+  to scope the cards to it). Lists the **available** agents (`agent/list`) plus any
+  with history. New `MetricsSnapshot.byAgentDay` (per-day, per-agent conversations
+  / messages / **tokens**) supersedes the coarser `tokensByDay`; `agentBreakdown`,
+  `aggregateTokensByDay` and `totalTokensOf` derive from it, and a **Total tokens**
+  stat tile joins the grid. Tests: `aggregateTokensByDay` bucketing + agent
+  breakdown.
+
+### Fixed — Activity heatmap now paints (timezone-stable day keys)
+- The contribution heatmap showed nothing painted (while the stat tiles had data)
+  whenever the phone's timezone differed from the PC's — e.g. a UTC emulator
+  against a UTC-6 bridge. The day buckets were keyed by an absolute
+  local-midnight instant that reconstructed to the wrong calendar day on the
+  phone, so no cell matched. Day keys are now **UTC midnight of the calendar
+  date** end-to-end (bridge snapshot, drift fallback, `aggregateActivity` and the
+  heatmap cells), so cells match in any timezone.
+
+### Added — Profile "Backup" section (encrypted export / import)
+- The profile now has a **Backup** card: a note that stats live on this phone +
+  the PC and **can be lost without a backup**, plus **Export** and **Import**
+  actions. Export seals the metrics into a tamper-proof `.uxmetrics` file via the
+  bridge (`metrics/export`) and opens the native share sheet; Import picks a file
+  and restores it (`metrics/import`) — a foreign/edited file is rejected, and a
+  passphrase-protected file prompts for the phrase and retries. Both actions need
+  a connected PC (the bridge seals/verifies), so they disable with a hint while
+  offline. Full EN/ES strings.
+- The passphrase dialog owns its `TextEditingController` in a `StatefulWidget`
+  (disposed in `dispose()`), so the dialog's close animation never touches a
+  disposed controller. Regression test in `profile_screen_test.dart`.
+
+### Changed — Profile metrics now come from the bridge (survive an uninstall)
+- The profile / per-PC metrics (conversations, messages, agents/models used,
+  connection time, sessions, git actions, activity heatmap) are now sourced from
+  the **bridge** (`metrics/get`) instead of the phone's local drift aggregation,
+  so they **survive an app uninstall** — after a reinstall + re-pair the bridge
+  re-supplies the real numbers. Provider usage/credits are unchanged (still
+  live-read via `agent/usageStats`).
+- New `MetricsController` (`metricsSnapshotsProvider`) fetches each connected PC's
+  `MetricsSnapshot` on every (re)connection and persists it per PC in a display
+  cache (`MetricsCacheStore`, SharedPreferences). `profileMetricsProvider` /
+  `pcMetricsProvider` / `activityHeatmapProvider` derive from the cache (summing
+  across PCs), falling back to the local `DriftMetricsRepository` only when the
+  cache is empty (offline / pre-metrics bridge) so nothing regresses.
+- The controller also drives the **tamper-proof backup**: `exportBackup()`
+  (`metrics/export`) and `importBackup()` (`metrics/import`, throwing
+  `MetricsImportException` with the bridge's reason on rejection). The profile
+  "local data can be lost" note + the export/import UI land next.
+- New Dart contract mirror `MetricsSnapshot` (+ `MetricsAgentUsage`,
+  `MetricsActivityDay`, `aggregateSnapshots`, `aggregateActivity`). Tests: model
+  parse/round-trip/mapping/aggregation + cache store round-trip/persistence.
+
+### Changed — Message rail jump glides in/out and lands precisely
+- Picking a message on the scroll rail now **eases in and out** (a soft start
+  and stop, quicker through the middle, the duration scaled to the distance)
+  instead of a flat, abrupt jump, and adds a short final **settle** so it lands
+  precisely on the user's bubble even as content above finishes laying out.
+
+### Changed — Message scroll rail hides at the bottom, slides in on scroll-up
+- The conversation's message scroll rail is now **hidden while the timeline is
+  at the bottom** and **slides in from the right edge** (with a fade) when the
+  user scrolls up — driven by the same signal that reveals *Jump to latest* and
+  hides the composer ribbon, so the scroll-up chrome moves as one. It is
+  non-interactive while hidden and honors reduced-motion (a new `visible` prop
+  on the widget, an easeOutCubic slide ~280 ms in / ~200 ms out).
+
+### Changed — Conversation chrome clears the reading area while scrolled up
+- When **Jump to latest** appears, the turn-context strip (reasoning, approval,
+  edits, context and tokens) now slides down toward the composer, fades and
+  collapses out of layout. The autonomous-mode notice used by agents such as pi
+  follows the same transition. Both are clipped while leaving so they never
+  remain visible beneath the composer's translucent veil; the jump shortcut
+  naturally settles directly above the remaining composer chrome.
+- The shared conversation/history scroll shortcut is now a more reachable
+  **52 dp neutral circular surface** with a subtle outline, replacing the
+  smaller and more saturated 44 dp `secondaryContainer` treatment in both
+  **Jump to latest** and git-history **Back to top**.
+
+### Fixed — Reasoning menu stays anchored without dismissing the keyboard
+- Opening the reasoning-effort menu no longer steals focus from the composer or
+  hides the software keyboard. Its popup position is recalculated when layout
+  changes, so it remains attached to the reasoning control if the keyboard
+  geometry changes while the menu is open.
+
+### Changed — Turn controls start collapsed
+- The turn-controls shelf above the composer (reasoning effort / approval) now
+  opens **collapsed to its chevron** by default, for a quieter conversation
+  surface; tapping the chevron expands the controls (the choice is per-visit).
+
+### Fixed — Composer shelf buttons use a circular press ripple
+- The reasoning / approval / collapse buttons on the composer's turn-controls
+  shelf now render a **circular** tap ripple and the same M3E press-scale as the
+  app-bar `IconSurface` actions (a circle-shaped `Material` + an `InkWell` with a
+  `CircleBorder`), instead of a grey **square**. The reasoning control also opens
+  its value menu via `showMenu` rather than a `PopupMenuButton`, whose internal
+  `InkWell` was rectangular.
+
+### Added — Message scroll rail (conversation minimap)
+- Conversations gain a **message scroll rail** on the right edge — one short,
+  faint tick per user message. A slight drag (or hover) reveals it: the nearest
+  tick grows with a dock-style **fisheye** falloff, a preview bubble shows that
+  message (its text + the turn's final reply), and releasing jumps the timeline
+  to it; it auto-hides shortly after. Built as a **self-contained,
+  dependency-free reusable widget** (`lib/presentation/widgets/message_scroll_rail.dart`,
+  Flutter-only) so it can be lifted into another app, fed by a memoized
+  `railAnchorsProvider` derived off the timeline. Shown only with ≥2 user
+  messages; honors reduced-motion and 48 dp touch targets.
+
+### Changed — Floating scroll shortcuts are bottom-centered
+- The conversation's **Jump to latest** button and the git-history **Back to
+  top** FAB now float **bottom-centered** (were bottom-right), clear of the
+  composer's left turn-controls and right token/context indicators and reading as
+  a consistent pair (one scrolls down, one up). `NeScaffold` gains a
+  `floatingActionButtonLocation`.
+
+### Fixed — Jump to latest always returns to the newest content
+- Tapping **Jump to latest** now always scrolls the conversation to the bottom,
+  even mid-fling or right after using the message rail. The auto-follow policy's
+  `resume()` was leaving an in-progress drag/momentum flag set, so `shouldFollow`
+  could stay false and the scheduled jump was skipped — the button appeared to do
+  nothing. `resume()` now clears that intent, so an explicit jump-to-latest is
+  never swallowed by an in-flight scroll.
+
+### Changed — Usage & credit: persistent, manual by default, clearer labels
+- The "Usage & credit" data now **persists in memory**, so scrolling the profile
+  no longer reloads it; the section is always present while connected
+  (loading → cards) with a **manual refresh** button. **Auto-refresh is off
+  (manual only) by default**, configurable in **Settings → Usage**
+  (5 / 10 / 20 min, 1 h, or manual), which also gains a **24-hour / 12-hour**
+  clock toggle for reset times.
+- Reset times now read **"Resets in 6h 30min"** for sub-day windows and
+  **"Resets in 5d at 14:30"** for weekly/monthly windows (the clock honors the
+  24/12-hour setting).
+- Clearer metric labels: the connection-count tile is now **Connections** (was
+  "Sessions"), the per-agent breakdown labels each figure, and the conversations
+  tile is shortened to **Chats** so it no longer clips. (The per-agent breakdown
+  is later folded into the unified agent-activity section above.)
+
+### Added — Usage & credit on the profile (`agent/usageStats`)
+- The Profile screen now has a **"Usage & credit"** section (shown only when a PC
+  is connected) that calls the bridge's new `agent/usageStats` and renders, per
+  activated provider (**Codex, Claude, Copilot, Gemini, Grok**), its quota windows
+  (a labelled bar with % used + reset time), plan and credit balance — read live
+  from the paired PC. Not-installed providers are hidden; `authRequired` / `error`
+  states show a small pill + the bridge's hint. Degrades to nothing against an
+  older bridge without the handler. New `ProviderUsage` model + `usageStatsProvider`.
+
+### Added — Profile in Settings + per-PC statistics
+- The **Profile** now has a header at the top of **Settings** (avatar + name +
+  active-session count) that opens it, and each PC's card overflow menu gains a
+  **Statistics** entry opening a **per-PC details screen** — the same activity
+  heatmap, stat tiles and per-agent breakdown, scoped to that one PC, with a
+  header showing its pairing / last-seen and live connection status. The stat
+  grid and per-agent breakdown are now shared widgets reused by both screens.
+
+### Added — Profile screen: activity heatmap, stats & customization
+- A new **Profile** screen (a person icon in the Devices app bar) aggregates
+  activity across every paired PC — all derived locally, no bridge call: an
+  identity header, headline stat tiles (time connected, longest session, agents
+  used, conversations, messages, sessions, git actions, most-used transport,
+  models), a **GitHub-style contribution heatmap** (one cell per day, a full
+  year, with a year selector to browse past years and a metric selector —
+  Combined / Conversations / Messages / Work — captioning exactly what's shown;
+  tapping a day shows its count, tapping elsewhere on the heatmap clears it), and
+  a per-agent breakdown (one card per agent: logo, a proportional bar and its
+  labelled conversation count).
+- **Profile customization:** a display name and an avatar — a picked gallery
+  image (downscaled to 256 px and stored inline) or one of 12 preset icons —
+  edited from a bottom sheet (tap the header or the pencil) and persisted
+  on-device. Defaults to a neutral name + person glyph until set.
+- Metrics come from a new local `MetricsRepository` aggregating the
+  already-persisted threads / messages / git actions plus the connection-session
+  log; the heatmap and totals recompute on open (`autoDispose`). No wire contract
+  — everything is phone-local.
+
+### Added — connection-session log (metrics foundation)
+- New phone-local drift table (schema **v6**) recording each phone→PC connection
+  session: device, transport (relay/direct), the real endpoint, start,
+  last-active (advanced by the heartbeat) and end. The `SessionCoordinator` opens
+  a row on connect, closes it on every teardown, and — at startup — closes any
+  session left dangling by a force-kill at its last-known-alive time, so
+  durations never inflate. This powers the upcoming connection metrics (time
+  connected, longest session, sessions count, relay-vs-direct split) on the
+  profile / per-PC screens. Phone-only — nothing crosses the wire.
+
+### Changed — truthful, privacy-blurred PC address on the devices card
+- The address under each PC name now reflects the endpoint the live channel is
+  **actually** served through (the direct LAN/Tailscale host that won the dial
+  race, or the relay) instead of the first advertised host. The bridge sorts its
+  advertised hosts lexicographically, so a Tailscale `100.x` address always
+  sorted ahead of a LAN `192.168.x` one and was shown even while connected over
+  LAN — a display-only bug (the connection itself already picked the reachable
+  host). The connected endpoint is now carried from the transport through the
+  session coordinator (`connectedEndpointStream`) to the card. When not
+  connected, it still falls back to the relay host, then the first advertised
+  host.
+- The address is now **blurred by default and revealed on tap** (tap again to
+  re-hide), so a PC's network topology (its LAN/Tailscale IP) isn't exposed at a
+  glance to shoulder-surfing, screenshots, or screen-sharing. The blur animates
+  (reduced-motion aware), carries an eye affordance, and is accessibility
+  labelled ("Show address" / "Hide address"). Its own tap handling never opens
+  the PC's threads.
+
+### Changed — focused composer and compact turn context
+- The Neural Expressive composer now contracts slightly while idle, then
+  stretches, gains vertical breathing room and subtle elevation when focused,
+  without adding an outline. Voice dictation remains independently
+  available beside the contextual Send/Stop action, including after text has
+  already been entered; sending safely stops an active dictation session.
+- The Git commit composer now shares the same focus response: 24 dp idle and
+  16 dp focused side margins, 4→8 dp vertical padding, elevation 0→2, and the
+  same reduced-motion-aware 220 ms transition. Its existing commit-details
+  morph and separate action buttons remain unchanged.
+- Reasoning/run-option knobs and approval mode moved out of the "+" menu into
+  a compact icon-only shelf above the composer. The shelf is visible by
+  default, folds to one chevron, and left-aligns its controls as one tight
+  group. Interactive targets remain 48 dp while their neutral 38 dp visual
+  surfaces and 24 dp glyphs match the context, token, and edit indicators
+  anchored on the right. Approval is green for Approve for me, orange for Request
+  approval, and red for Full access.
+- The "+" now opens a small anchored two-row menu for Photo library and Camera
+  instead of a modal sheet. The live assistant turn once again owns its
+  activity cue, now a small circular progress indicator followed by the quiet
+  italic "Agent responding…" label instead of the previous polygon loader.
+
+### Changed — calmer, controllable conversation timeline
+- Streaming auto-follow now yields immediately to a manual timeline drag. The
+  conversation keeps following naturally when untouched, remains detached
+  while the user reads older content, and resumes only after returning near the
+  bottom, tapping the existing jump-to-latest affordance, or sending with
+  "Scroll to latest on send" enabled. Post-layout corrections are coalesced and
+  re-check user intent so a delayed callback cannot pull against a gesture.
+- Thinking, work-log, and changed-files disclosures now use quiet borderless
+  `surfaceContainerLow` panels that morph from compact pills into rounded
+  expanded surfaces. Their Material ink response is clipped to the same
+  animated shape, so taps never paint a square ripple beyond the rounded
+  corners. Thinking and work-log panels start collapsed; the compact work log
+  retains its count and latest one-line activity summary, and opening one
+  process panel collapses the previously open panel in that assistant turn.
+- Long user-message text now starts as a responsive ten-line preview with a
+  subtle tonal fade and explicit Show more / Show less actions. Expansion does
+  not hide image attachments, short messages keep their previous behavior, and
+  Copy message always copies the complete source rather than the visible
+  preview.
+
+### Changed — Neural Expressive new-conversation full-screen dialog
+- Restored direct agent comparison cards in the full-screen creation flow,
+  replacing the sparse agent combobox and its extra picker sheet. Agent cards
+  now form a dynamic-corner Neural Expressive group, expose sign-in state in
+  place, and use semantic tonal selection rather than heavy outlines. Cards
+  stay compact until selected: choosing an agent expands only its capability
+  chips and automatically collapses the previously selected card.
+- Moved the variable-length dialog headline into the content area, leaving the
+  compact top bar for close/start actions per Material 3 full-screen-dialog
+  guidance. The workspace card now has one unified tap target, section labels
+  use normal title casing, the optional worktree follows the essential
+  agent/model choices, and wide layouts use the shared content-width token.
+
+### Fixed — complete default Material 3 color scheme
+- The fresh-install Uxnan brand theme now derives a complete Material 3
+  `ColorScheme` from the official blue, green, and error seed colors instead
+  of manually supplying only a subset of roles. Every surface layer
+  (`surfaceContainerLowest` through `surfaceContainerHighest`), fixed role,
+  inverse role, and outline now has a deliberate tonal value, restoring visible
+  depth for cards, sheets, inputs, and Neural Expressive neutral surfaces in
+  both light and dark mode. Custom themes remain untouched.
+
+### Changed — selectable text and full-surface image previews
+- Removed the file-wide copy action from the viewer app bar. Markdown preview,
+  syntax-highlighted source and git diff text now support native selection and
+  contextual copying; the inline editor retains the platform `TextField`
+  selection/copy controls.
+- Image previews now occupy the complete viewer surface. They start with the
+  whole image visible (`BoxFit.contain`) and pinch zoom/pan use the full screen
+  instead of the former horizontally padded preview rectangle.
+
+### Added — repo-wide search in the workspace file browser
+- The workspace file browser now exposes the same full-screen Material search
+  pattern used by threads and Git history, backed by the existing
+  `workspace/searchFiles` fuzzy search. Results emphasize the filename and
+  show its workspace-relative path beneath it.
+- Opening a search result lazily expands only that file's ancestor folders in
+  the underlying tree and positions its row near the middle of the viewport
+  while search still covers the tree. The viewer then opens, so returning
+  reveals the file immediately without exposing a scroll animation. Root-level
+  files near the end naturally clamp to the maximum scroll extent. Dismissing
+  search without choosing a result leaves the tree unchanged.
+
+### Changed — the autonomous-mode banner is dismissible + a settings toggle
+- The autonomous ("YOLO") mode banner (shown for agents like pi) now has a
+  **close button** that dismisses it for the current visit; it reappears the
+  next time the conversation is opened (per-visit `State`, not persisted).
+- New **Settings ▸ Conversation ▸ Pi Agent** sub-section with an
+  Autonomous-mode banner toggle to hide the banner **permanently** vs. see it
+  each time (the default, now with the close button). Persisted via
+  `ConversationPreferencesStore` + `showAutonomousBannerProvider`.
+
+### Added — agent slash commands in the composer `/` palette
+- The composer's `/` palette now lists the **agent's own special ("slash")
+  commands** the bridge advertises via the new `agent/commands` method (e.g.
+  Claude Code's `/compact`, an ACP agent's advertised commands, or a project's
+  custom `.gemini/commands` / `.opencode/command` / `~/.codex/prompts`
+  templates), above the existing client-side entries (file hand-off + prompt
+  templates). New `AgentCommand` entity + `agentCommandsProvider` +
+  `ThreadManager.loadCommands`.
+- Picking a command inserts `/<name> ` so arguments can be added; on send a
+  `/name args` that matches an advertised command is routed as a real command
+  (`turn/send` `command`) — the bridge resolves and runs it — while any other
+  text is sent verbatim as before. `AgentCapabilities` gains a `commands` flag.
+- Generic renderer: the palette shows whatever the bridge advertises, so new
+  agent commands appear with no app change; commands the agent can't run
+  headless (`headlessSupported: false`) are hidden.
+
 ## [0.0.5-alpha.20260711] - 2026-07-11
 
 ### Added — Grok agent support

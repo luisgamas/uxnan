@@ -22,13 +22,18 @@ class _InMemoryTransport implements WebSocketTransport {
   late _InMemoryTransport peer;
 
   @override
+  String? connectedUrl;
+
+  @override
   Stream<Uint8List> get incoming => _incoming.stream;
 
   @override
   Stream<TransportState> get stateChanges => const Stream.empty();
 
   @override
-  Future<void> connect(String url, {Map<String, String>? headers}) async {}
+  Future<void> connect(String url, {Map<String, String>? headers}) async {
+    connectedUrl = url;
+  }
 
   @override
   Future<void> disconnect() async {

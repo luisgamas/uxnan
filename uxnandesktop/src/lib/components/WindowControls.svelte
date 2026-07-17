@@ -2,6 +2,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
+  import QuickCommandsMenu from "./QuickCommandsMenu.svelte";
   import MinusIcon from "@lucide/svelte/icons/minus";
   import SquareIcon from "@lucide/svelte/icons/square";
   import XIcon from "@lucide/svelte/icons/x";
@@ -25,6 +26,9 @@
      reachable even when that panel is hidden (otherwise hiding it would leave no
      way to close the window). -->
 <div class="fixed right-0 top-0 z-50 flex select-none items-center">
+  <!-- Quick-commands launcher: its own slot to the left of the window controls,
+       so a hidden panel never covers it (same rationale as the controls). -->
+  <QuickCommandsMenu />
   <TooltipSimple title={i18n.t("titlebar.minimize")}>
     {#snippet children(tp)}
       <button

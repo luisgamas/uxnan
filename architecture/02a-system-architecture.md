@@ -107,6 +107,9 @@ domestico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
 > para aprobaciones interactivas, `nativeSessionId()` para que el bridge
 > localice la sesion on-disk del agente, y `attachments` en `sendTurn()`.
 > `AgentCapabilities` ahora incluye `reportsContextUsage` y `images`.
+> **(2026-07)** se agregaron `listCommands()`/`expandCommand()` para los
+> comandos "slash" del agente (`agent/commands`), `command?` en `sendTurn()`
+> para invocarlos, y `commands?` en `AgentCapabilities`.
 > Ver `shared/src/agents/agent-adapter.ts` para la fuente de verdad
 > TypeScript; esta seccion documenta el contrato, no la sintaxis.
 
@@ -140,7 +143,7 @@ interface IAgentAdapter {
   sendTurn(
     threadId: string,
     content: TurnContent,
-    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse }
+    options?: SendTurnOptions  // { cwd?, model?, options?: Record<string, string|boolean>, attachments?: TurnAttachment[], approvalResponse?: ApprovalResponse, questionResponse?: QuestionResponse, command?: AgentCommandInvocation }
   ): Promise<TurnResult>;
 
   // Aprobaciones interactivas (opt-in por agente)
@@ -151,6 +154,10 @@ interface IAgentAdapter {
 
   // Modelo discovery (retorna AgentModel[] estructurado, no string[])
   listModels?(): Promise<AgentModel[]>;   // id, displayName, description?, version?, isDefault?, options?: AgentModelOption[]
+
+  // Command discovery + expansion (comandos "slash" del agente → agent/commands)
+  listCommands?(cwd?: string): Promise<AgentCommand[]>;         // name, description?, argumentHint?, source, headlessSupported?
+  expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;  // solo custom prompt-template agents; nativos (Claude/ACP) no lo implementan
 
   // Identidad de la sesion nativa del agente (para fallback on-disk en turn/list)
   nativeSessionId?(threadId: string): string | null;
@@ -1268,6 +1275,13 @@ ConversationScreen
     └── ApprovalRequestOverlay
 ```
 
+El `AutocompleteOverlay` presenta `/` y `@` como superficies auxiliares
+hermanas 8 dp por encima del composer. Comparten superficie tonal elevada,
+geometria, ancho y una cabecera con el trigger y el titulo. `/` usa filas
+continuas de al menos 56 dp con icono contenido, nombre y descripcion; `@`
+conserva sus filas y estados de navegacion, busqueda, carga y error. Ambos
+respetan reduced motion.
+
 #### 5.6.2 Composer avanzado
 
 ```dart
@@ -1297,6 +1311,32 @@ Reglas de streaming:
 - El auto-scroll esta activo mientras el usuario no haya scrolleado hacia arriba.
 - Si el usuario scrollea durante streaming, el auto-scroll se pausa.
 - Al completar el turno, si el usuario esta cerca del fondo, auto-scroll se reactiva.
+
+> ✅ **Implementación actual:** `ConversationScreen` usa una política explícita
+> de auto-follow. Cualquier drag manual se impone inmediatamente a los eventos
+> de streaming; los saltos post-layout se agrupan por frame y vuelven a validar
+> la intención antes de mover el `ScrollController`. El seguimiento se reactiva
+> al volver cerca del fondo, usar "jump to latest" o enviar con la preferencia
+> correspondiente activa. "Jump to latest" es un comando explícito que **siempre**
+> desciende al contenido más reciente, superando cualquier inercia/arrastre en
+> curso. Los disclosures secundarios de proceso (razonamiento/actividad) son
+> paneles tonales sin borde, contraídos por defecto y con expansión exclusiva
+> dentro de cada turno; los prompts largos del usuario ofrecen una vista previa
+> expandible sin alterar la copia completa. Para navegar una conversación larga,
+> un **riel de mensajes** reutilizable (`MessageScrollRail`) — un tick por
+> mensaje del usuario, tenue en reposo — vive en la orilla derecha: está oculto
+> mientras el scroll está hasta abajo y **entra deslizándose desde la derecha**
+> (con fade) cuando el usuario sube (la misma señal que muestra "jump to latest"
+> y oculta la cinta de contexto). Al arrastrarlo revela un efecto "fisheye" y una
+> vista previa del mensaje, y al soltar se desplaza suavemente (ease-in/out, con
+> un settle final) hasta la burbuja de ese mensaje. Los atajos de scroll flotantes van **centrados abajo**
+> ("jump to latest" en la conversación, que baja; "back to top" en el historial
+> de commits, que sube) y comparten un botón circular neutral de 52 dp. Cuando
+> "jump to latest" aparece, la franja de contexto del turno y el aviso de modo
+> autónomo (si existe) se deslizan hacia el composer, se desvanecen y colapsan
+> dentro de un clip; así despejan el área de lectura sin quedar visibles bajo el
+> velo translúcido. Los menús de opciones del turno no roban el foco del
+> composer y recalculan su anclaje si cambia la geometría del teclado.
 
 #### 5.6.4 Reconciliacion de historial
 
@@ -1641,9 +1681,11 @@ de un commit (archivos tocados con +/- y diff completo).
 **UI:** `GitHistoryScreen` se abre desde un `IconSurface` `history_rounded`
 en la app-bar de `GitScreen` (solo visible cuando hay un repositorio
 abierto). Es **una sola lista plana** (sin chrome de tarjeta — el mismo
-lenguaje limpio del file browser): cada fila muestra los chips de
+lenguaje limpio del file browser), limitada a 840 dp en ventanas amplias:
+cada fila muestra los chips de
 rama/tag/HEAD (`refs[]`), un badge del short-SHA y `+/-` coloreados. La
-app-bar ofrece tres `IconSurface`:
+app-bar mantiene visibles Buscar y Grafo; las acciones menos frecuentes viven
+en un `IconSurfaceMenu` vertical igual al de `GitScreen`:
 
 - **Grafo** (`account_tree`) — superpone un grafo estilo VS Code (swimlanes):
   filas de **altura fija** para que los puntos se alineen en carriles, **color
@@ -1651,10 +1693,15 @@ app-bar ofrece tres `IconSurface`:
   curvas suaves en branch/merge, y un **nodo de merge** distinto (punto sólido
   + anillo de contorno separado). El gutter ocupa el ancho real de los carriles
   (el texto se recorre a la derecha para que el grafo se vea completo).
-- **Compacto** — densidad de fila más alta.
-- **Selector de rama/ref** (`alt_route`, vía `git/branches`) — ver el historial
+- **Compacto** (menú) — densidad de fila más alta.
+- **Selector de rama/ref** (menú, `alt_route`, vía `git/branches`) — ver el historial
   de cualquier rama/remota en modo **solo lectura** (no hace checkout); muestra
   un banner "Viewing <ref>" con retorno a HEAD en un toque.
+
+`GitCommitDetailScreen` usa una columna editorial limitada a 760 dp: mensaje
+y metadatos se leen sin tarjetas decorativas, y los archivos tocados forman
+filas planas expandibles con separadores. Sólo el diff abierto recibe una
+superficie tonal para distinguir el contenido de código del resumen.
 
 Paginación cursor-based con **scroll infinito** (carga al acercarse al final) +
 botón *Load older commits* + un FAB **volver-arriba**. Tocar un commit abre la
@@ -1690,18 +1737,32 @@ fuzzy de archivos en todo el repositorio** (respeta `.gitignore`, excluye
 `git ls-files` (tracked + untracked no ignorados) mas las carpetas ancestro
 derivadas; fuera de un repo, un walk recursivo acotado. El ranking es
 basename-substring > path-substring > subsecuencia. Lo consume el picker `@`
-del composer movil, y queda listo para un buscador en el visor de archivos.
+del composer movil y el buscador de `FileBrowserScreen`. Este último muestra
+el nombre como información principal y la ruta relativa al workspace como
+información secundaria; al abrir un resultado expande de forma perezosa sólo
+sus carpetas ancestro para revelar su ubicación al volver del visor. Cerrar la
+búsqueda sin seleccionar un resultado no modifica el árbol. Mientras la vista
+de búsqueda aún cubre el árbol, el móvil pre-posiciona la fila seleccionada
+cerca del centro del viewport (limitada por los extremos normales del scroll),
+de modo que el usuario no ve una animación de desplazamiento y al volver del
+visor encuentra el archivo inmediatamente.
 
 Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
 `workspace/readImage` son consumidas hoy por:
 
-- **Folder browser en la app** (`NewConversationSheet` /
-  `workspace_browser.dart`) — el selector de root + breadcrumb.
+- **Folder browser en la app** (`NewConversationScreen` /
+  `WorkspaceBrowserSheet`, en `presentation/screens/threads/`) — el selector
+  de root + breadcrumb dentro del diálogo full-screen Neural Expressive. La
+  selección de agente se compara directamente en un grupo de tarjetas de
+  esquinas dinámicas; sólo la tarjeta seleccionada revela sus capability chips.
 - **Visor de archivos del workspace** (`FileBrowserScreen` +
   `FileViewerScreen` en `presentation/screens/conversation/files/`,
-  manageado por `FileBrowserManager`) — el árbol perezoso y el
-  viewer por extensión (image / markdown preview vs source /
-  code-highlighted + diff overlay / binary placeholder), accesado
+  manageado por `FileBrowserManager`) — el árbol perezoso, la búsqueda fuzzy
+  repo-wide con revelado de ancestros y el
+  viewer por extensión (imagen inicialmente completa con `BoxFit.contain` y
+  zoom/pan en toda la superficie / Markdown preview vs source seleccionable /
+  código resaltado y seleccionable + diff overlay seleccionable / binary
+  placeholder), accesado
   desde un `IconSurface` `folder_open_rounded` en la app-bar de
   `ConversationScreen` al lado del botón de `GitScreen`. Las
   rutas se validan en el bridge por `path-guard`
@@ -1783,7 +1844,8 @@ ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
 cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
 **Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
 → `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa). Cada proveedor degrada a un
+**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa) y **Grok**
+(`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
 `status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
 los demas.
 
@@ -1791,9 +1853,61 @@ los demas.
 es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codigo:
 - **Desktop (standalone, hoy):** lo lee **nativo en Rust** (`src-tauri/src/usage.rs`,
   comando `usage_read`), sin dependencia de Node — Settings → Providers.
-- **Bridge (Fase 6):** lo leera en **TS** y lo servira por `agent/usageStats` al
-  telefono, que no ve el disco de la PC directamente. Piloto natural del bridge
-  embebido (ver `uxnandesktop/architecture/02e` y los `FOR-DEV.md` de bridge/mobile).
+- **Bridge (implementado):** lo lee en **TS** (`bridge/src/usage/usage-reader.ts`,
+  handler `agent/usageStats`) portando el mismo reader del desktop, y lo sirve al
+  telefono, que no ve el disco de la PC directamente — mismo contrato, misma
+  postura de datos. La UI del telefono (seccion "Uso y credito" en el perfil) es
+  el pendiente restante (ver `uxnanmobile/FOR-DEV.md`).
+
+#### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
+
+Las metricas del perfil movil (conversaciones, mensajes, agentes/modelos usados,
+tiempo conectado, sesiones, git actions, heatmap de actividad) se derivaban en el
+telefono y **se perdian al desinstalar** la app (no hay login en la nube). Para
+hacerlas durables, el **bridge** pasa a ser la fuente de verdad y las sirve por
+`metrics/*` (contrato `MetricsSnapshot` en `shared/src/models/metrics.ts`; ver 02b
+§1.2). El telefono renderiza un snapshot por PC y suma entre PCs; su store local
+queda como cache. El uso/creditos de proveedores **no** entran aqui (viven en
+`agent/usageStats`, lectura en vivo).
+
+**Que observa el bridge (nadie puede inflarlo desde el telefono):**
+- **Sesiones de conexion** — `handleSecureConnection` abre/cierra una fila por
+  cada canal (con su transporte relay/directo), en `metrics/metrics-store.ts`
+  (`~/.uxnan/metrics.json`). Una sesion colgada por un crash se cierra al inicio
+  en su `startedAt` (cuenta la sesion, nunca infla el tiempo).
+- **Git actions** — `git-handler` cuenta cada operacion mutante (`git/commit`,
+  `push`, `pull`, `checkout`, `createBranch`, `createWorktree`, `discard`,
+  `createPr`, `undoCommit`, `switchBranch`, `revert`, `deleteBranch`,
+  `removeWorktree`) con su resultado.
+- **Conteos de conversacion** — se computan en vivo desde el `ThreadStore`
+  (`conversationMetrics()`): conversaciones, mensajes (ambos roles), agentes y
+  modelos distintos, por-agente, member-since y buckets de actividad por dia. La
+  clave de dia es **medianoche UTC de la fecha de calendario** (`utcDayKey`),
+  tz-estable: el heatmap del telefono la mapea a la celda correcta en cualquier
+  zona horaria (una medianoche-local absoluta caia en el dia equivocado y no se
+  pintaba nada).
+- **Actividad por agente y dia** (`byAgentDay`): por cada **agente + dia (UTC)**,
+  las conversaciones, los mensajes y los **tokens procesados** (la `usage.tokens`
+  reportada por cada turno del assistant), para la vista unificada de actividad
+  por agente (totales historicos, o de un solo dia al elegir una celda del
+  heatmap). Los agentes que no reportan uso igual cuentan conversaciones/mensajes
+  con tokens 0 (Zero). Es **throughput (tokens procesados), no costo facturado**
+  — el caching y el precio input/output difieren; el dinero exacto sigue en
+  `agent/usageStats`.
+
+Los eventos se guardan **con id** para que importar sea idempotente (union por id).
+
+**Backup a prueba de manipulacion (`metrics-seal.ts`):** `metrics/export` sella el
+log de eventos con **AES-256-GCM bajo una clave de 32 bytes del llavero del SO**
+(la cabecera va como AAD, asi cualquier edicion se detecta). Como la clave es
+secreta del bridge y no sale de la PC, un usuario **no puede fabricar ni editar**
+sus stats, y el archivo es **same-PC only** (otra PC tiene otra clave → lo rechaza,
+error `foreign-device`). Una **passphrase** opcional del usuario añade una segunda
+capa (scrypt) por si el archivo se filtra — no es lo que da la infalsificabilidad
+(esa la da la clave del llavero). `metrics/import` verifica el sello, descifra,
+valida y fusiona por id (reimportar no cambia nada). El auto-restore al
+re-emparejar es transparente: el telefono llama a `metrics/get` y ve el historial
+real del PC sin archivo.
 
 ---
 

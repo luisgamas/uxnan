@@ -173,6 +173,303 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesTitle => 'Devices';
 
   @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileDisplayName => 'Uxnan user';
+
+  @override
+  String profileMemberSince(String date) {
+    return 'Member since $date';
+  }
+
+  @override
+  String profilePairedPcs(int count) {
+    return '$count PCs';
+  }
+
+  @override
+  String profileActiveSessions(int count) {
+    return '$count online now';
+  }
+
+  @override
+  String get statConversations => 'Chats';
+
+  @override
+  String get statAgentsUsed => 'Agents used';
+
+  @override
+  String get statMessages => 'Messages';
+
+  @override
+  String get statGitActions => 'Git actions';
+
+  @override
+  String get statSessions => 'Connections';
+
+  @override
+  String get statTimeConnected => 'Time connected';
+
+  @override
+  String get statLongestSession => 'Longest session';
+
+  @override
+  String get statMostUsedTransport => 'Most-used';
+
+  @override
+  String get statModelsUsed => 'Models';
+
+  @override
+  String get profileStatsTitle => 'Statistics';
+
+  @override
+  String get profileStatsRefreshAction => 'Refresh stats';
+
+  @override
+  String get profileActivity => 'Activity';
+
+  @override
+  String get profileByAgent => 'Conversations by agent';
+
+  @override
+  String get profileNoData => 'No activity yet';
+
+  @override
+  String get profileActivityLess => 'Less';
+
+  @override
+  String get profileActivityMore => 'More';
+
+  @override
+  String profileHeatmapSummary(int count, int activeDays) {
+    return '$count actions · $activeDays active days';
+  }
+
+  @override
+  String profileHeatmapDay(String date, int count) {
+    return '$date · $count actions';
+  }
+
+  @override
+  String get metricCombined => 'Combined';
+
+  @override
+  String get metricConversations => 'Conversations';
+
+  @override
+  String get metricMessages => 'Messages';
+
+  @override
+  String get metricWork => 'Work';
+
+  @override
+  String get profileEditTitle => 'Edit profile';
+
+  @override
+  String get profileChoosePhoto => 'Choose photo';
+
+  @override
+  String get profilePickIcon => 'Or pick an icon';
+
+  @override
+  String get profileNameLabel => 'Name';
+
+  @override
+  String get profileNameHint => 'Your name';
+
+  @override
+  String get profileAgentConversationsLabel => 'conversations';
+
+  @override
+  String get profileBackupTitle => 'Backup';
+
+  @override
+  String get profileBackupNote =>
+      'Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.';
+
+  @override
+  String get profileBackupExport => 'Export';
+
+  @override
+  String get profileBackupImport => 'Import';
+
+  @override
+  String get profileBackupOfflineHint =>
+      'Connect to a PC to back up or restore your stats.';
+
+  @override
+  String get profileBackupPassphraseOptionalTitle => 'Protect this backup?';
+
+  @override
+  String get profileBackupPassphraseOptionalHint =>
+      'Add a passphrase (optional). You\'ll need it to import the file.';
+
+  @override
+  String get profileBackupPassphraseRequiredTitle => 'Passphrase required';
+
+  @override
+  String get profileBackupPassphraseRequiredHint =>
+      'This backup is protected. Enter its passphrase.';
+
+  @override
+  String get profileBackupPassphraseField => 'Passphrase';
+
+  @override
+  String get profileBackupCancel => 'Cancel';
+
+  @override
+  String get profileBackupShareSubject => 'Uxnan stats backup';
+
+  @override
+  String profileBackupExportFailedReason(String reason) {
+    return 'Couldn\'t create the backup: $reason';
+  }
+
+  @override
+  String get profileBackupShareFailed =>
+      'Couldn\'t save or share the backup file.';
+
+  @override
+  String profileBackupImportedNew(int count) {
+    return 'Backup restored — $count new entries.';
+  }
+
+  @override
+  String get profileBackupImportedNone => 'Your stats are already up to date.';
+
+  @override
+  String get profileBackupImportBadPassphrase =>
+      'Wrong passphrase for this backup.';
+
+  @override
+  String get profileBackupImportFailed =>
+      'Couldn\'t import this file. It may be from another PC or have been modified.';
+
+  @override
+  String get statTotalTokens => 'Total tokens';
+
+  @override
+  String get profileAgentScopeAll => 'All time';
+
+  @override
+  String get profileLensActivity => 'Activity';
+
+  @override
+  String get profileLensTokens => 'Tokens';
+
+  @override
+  String get profileTokensImprecise =>
+      'Some CLIs don\'t report their full token usage, so these token figures can be imprecise.';
+
+  @override
+  String profileHeatmapTokensSummary(String tokens, int activeDays) {
+    return '$tokens tokens · $activeDays active days';
+  }
+
+  @override
+  String profileHeatmapTokensDay(String date, String tokens) {
+    return '$date · $tokens tokens';
+  }
+
+  @override
+  String get profileAgentConvLabel => 'Conversations';
+
+  @override
+  String get profileAgentMsgLabel => 'Messages';
+
+  @override
+  String get profileAgentTokLabel => 'Tokens';
+
+  @override
+  String get profileUsageTitle => 'Usage & credit';
+
+  @override
+  String get usageNotSignedIn => 'Not signed in';
+
+  @override
+  String get usageLoadError => 'Couldn\'t load';
+
+  @override
+  String get usageCreditLabel => 'Credit';
+
+  @override
+  String usageResetsIn(String duration) {
+    return 'Resets in $duration';
+  }
+
+  @override
+  String usageResetsInDays(int days, String time) {
+    return 'Resets in ${days}d at $time';
+  }
+
+  @override
+  String get usageRefreshAction => 'Refresh usage';
+
+  @override
+  String get usageNoData => 'No usage data';
+
+  @override
+  String get settingsUsageSection => 'Metrics & provider usage';
+
+  @override
+  String get settingsUsageNavSubtitle =>
+      'How your stats and provider limits refresh';
+
+  @override
+  String get settingsMetricsGroup => 'Profile stats';
+
+  @override
+  String get metricsRefreshHint =>
+      'How your profile stats keep up to date while a PC is connected. They always refresh when a PC connects, and the profile\'s refresh button works in every mode.';
+
+  @override
+  String get metricsIntervalAutomatic =>
+      'Automatic (every time you open the profile)';
+
+  @override
+  String get metricsInterval15m => 'Every 15 minutes';
+
+  @override
+  String get metricsInterval30m => 'Every 30 minutes';
+
+  @override
+  String get settingsProviderUsageGroup => 'Provider usage';
+
+  @override
+  String get settingsProviderUsageExplainer =>
+      'Each AI provider\'s remaining limits: how much of your quota is left, when it resets, your plan and any credit.';
+
+  @override
+  String get usageRefreshHint =>
+      'How often to refresh provider usage while a PC is connected.';
+
+  @override
+  String get usageIntervalManual => 'Manual only';
+
+  @override
+  String get usageInterval5m => 'Every 5 minutes';
+
+  @override
+  String get usageInterval10m => 'Every 10 minutes';
+
+  @override
+  String get usageInterval20m => 'Every 20 minutes';
+
+  @override
+  String get usageInterval1h => 'Every hour';
+
+  @override
+  String get settingsUsageClockGroup => 'Time format';
+
+  @override
+  String get usageClock24hTitle => '24-hour time';
+
+  @override
+  String get usageClock24hSubtitle =>
+      'Show reset times as 14:30 instead of 2:30 PM';
+
+  @override
   String get deviceActive => 'Active';
 
   @override
@@ -187,6 +484,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceLastSeenLabel => 'Last seen';
 
   @override
+  String get deviceAddressReveal => 'Show address';
+
+  @override
+  String get deviceAddressHide => 'Hide address';
+
+  @override
   String get deviceNeverConnected => 'Never connected';
 
   @override
@@ -194,6 +497,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceRename => 'Rename';
+
+  @override
+  String get deviceStatistics => 'Statistics';
 
   @override
   String get deviceVerifyConnection => 'Verify connection';
@@ -403,6 +709,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationCopyMessage => 'Copy message';
 
   @override
+  String get conversationShowMore => 'Show more';
+
+  @override
+  String get conversationShowLess => 'Show less';
+
+  @override
   String get conversationMessageCopied => 'Message copied';
 
   @override
@@ -457,7 +769,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerOptionsHide => 'Hide options';
 
   @override
-  String get composerTools => 'Turn options';
+  String get composerTools => 'Add to conversation';
 
   @override
   String get composerMentionFilesTitle => 'Files & folders';
@@ -826,6 +1138,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get turnFailed => 'The agent turn failed';
+
+  @override
+  String get conversationAgentResponding => 'Agent responding…';
 
   @override
   String get runOptionAuto => 'Auto';
@@ -1383,6 +1698,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'The “(latest)” aliases always route to the newest version of each tier your account can use, so you don\'t have to pick an exact one. Turn this off to hide them and choose only pinned, exact versions. Conversations already using an alias keep working.';
 
   @override
+  String get settingsAutonomousBannerTitle => 'Autonomous-mode banner';
+
+  @override
+  String get settingsAutonomousBannerSubtitle =>
+      'Show it each time you open a conversation with an autonomous agent.';
+
+  @override
+  String get settingsAutonomousBannerHint =>
+      'When on, a close button dismisses the banner just for the current visit and it reappears next time you open the conversation. Turn it off to hide the banner permanently.';
+
+  @override
   String get settingsAppearanceSection => 'Appearance';
 
   @override
@@ -1887,7 +2213,22 @@ class AppLocalizationsEn extends AppLocalizations {
       'This agent runs in autonomous mode — it acts and edits without asking for approval first.';
 
   @override
+  String get conversationAutonomousModeDismiss => 'Dismiss';
+
+  @override
   String get fileBrowserTitle => 'Files';
+
+  @override
+  String get fileBrowserSearch => 'Search files';
+
+  @override
+  String get fileBrowserSearchHint => 'Search files in this project';
+
+  @override
+  String get fileBrowserSearchEmpty => 'No matching files';
+
+  @override
+  String get fileBrowserSearchFailed => 'Couldn\'t search files';
 
   @override
   String get fileBrowserShowExtensions => 'Show file extensions';
@@ -1933,15 +2274,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fileViewerHideDiff => 'Hide diff';
-
-  @override
-  String get fileViewerCopy => 'Copy file';
-
-  @override
-  String get fileViewerCopied => 'File copied';
-
-  @override
-  String get fileViewerCopyFailed => 'Couldn\'t copy this file';
 
   @override
   String fileViewerLinkCopied(String href) {
@@ -2185,6 +2517,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsConversationClaudeGroup => 'Claude';
+
+  @override
+  String get settingsConversationPiGroup => 'Pi Agent';
 
   @override
   String get settingsConversationChatGroup => 'Conversation';

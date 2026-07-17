@@ -24,6 +24,7 @@ Widget _wrap({
   required List<TrustedDevice> devices,
   TrustedDevice? connected,
   BridgeStatus? bridgeStatus,
+  String? connectedEndpoint,
 }) {
   final router = GoRouter(
     routes: [
@@ -35,6 +36,8 @@ Widget _wrap({
       trustedDevicesProvider.overrideWith((ref) => Stream.value(devices)),
       connectedDeviceProvider.overrideWith((ref) => Stream.value(connected)),
       connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      connectedEndpointProvider
+          .overrideWith((ref) => Stream.value(connectedEndpoint)),
       bridgeStatusProvider.overrideWith((ref) async => bridgeStatus),
     ],
     child: MaterialApp.router(
@@ -119,6 +122,46 @@ void main() {
     await tester.pump();
 
     expect(find.text('· Direct'), findsOneWidget);
+  });
+
+  testWidgets('shows the real connected endpoint, not the advertised host', (
+    tester,
+  ) async {
+    final device = _device('mac-1', 'My Mac');
+    await tester.pumpWidget(
+      _wrap(
+        devices: [device],
+        connected: device,
+        // The live channel actually won a direct LAN host; the card must show
+        // it (host:port) rather than the paired relay host.
+        connectedEndpoint: 'ws://192.168.1.42:8765',
+        bridgeStatus: const BridgeStatus(relayConnected: false),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('192.168.1.42:8765'), findsOneWidget);
+    expect(find.text('relay.uxnan.dev'), findsNothing);
+  });
+
+  testWidgets('the address is tap-to-reveal (blurred by default)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(devices: [_device('mac-1', 'My Mac')]),
+    );
+    await tester.pump();
+
+    // Hidden by default: the "reveal" affordance is shown.
+    expect(find.byIcon(Icons.visibility_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off_rounded), findsNothing);
+
+    // Tapping the address reveals it (affordance flips to "hide") without
+    // navigating away — the screen (and its card) are still on screen.
+    await tester.tap(find.byIcon(Icons.visibility_rounded));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.visibility_off_rounded), findsOneWidget);
+    expect(find.text('My Mac'), findsOneWidget);
   });
 
   testWidgets('shows the pair empty state with no devices', (tester) async {

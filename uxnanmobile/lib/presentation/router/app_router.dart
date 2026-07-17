@@ -5,6 +5,8 @@ import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/manual_code_screen.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
+import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
+import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
@@ -31,6 +33,9 @@ class AppRoutes {
   /// App settings (notification preferences, …).
   static const String settings = '/settings';
 
+  /// The user's aggregate activity profile (metrics across all PCs).
+  static const String profile = '/profile';
+
   /// Per-device threads screen path pattern (`:deviceId`).
   static const String deviceThreadsPattern = '/device/:deviceId/threads';
 
@@ -42,6 +47,12 @@ class AppRoutes {
 
   /// Builds the archived-threads route for the PC with [deviceId].
   static String deviceArchived(String deviceId) => '/device/$deviceId/archived';
+
+  /// Per-device metrics ("statistics") screen path pattern (`:deviceId`).
+  static const String deviceStatsPattern = '/device/:deviceId/stats';
+
+  /// Builds the per-PC statistics route for the PC with [deviceId].
+  static String deviceStats(String deviceId) => '/device/$deviceId/stats';
 
   /// Conversation screen path pattern (`:threadId`).
   static const String conversationPattern = '/conversation/:threadId';
@@ -79,6 +90,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: AppRoutes.deviceStatsPattern,
+        builder: (context, state) => PcDetailsScreen(
+          deviceId: state.pathParameters['deviceId']!,
+        ),
+      ),
+      GoRoute(
         path: AppRoutes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
       ),
@@ -93,6 +110,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.settings,
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.profile,
+        builder: (context, state) => const ProfileScreen(),
       ),
       GoRoute(
         path: AppRoutes.conversationPattern,

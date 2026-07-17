@@ -75,6 +75,137 @@
   "actionDismiss": "Dismiss",
 
   "devicesTitle": "Devices",
+  "profileTitle": "Profile",
+  "profileDisplayName": "Uxnan user",
+  "profileMemberSince": "Member since {date}",
+  "@profileMemberSince": {
+    "description": "Profile subtitle: when the user first started using the app.",
+    "placeholders": { "date": { "type": "String" } }
+  },
+  "profilePairedPcs": "{count} PCs",
+  "@profilePairedPcs": {
+    "description": "How many PCs are paired, shown in the profile header.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "profileActiveSessions": "{count} online now",
+  "@profileActiveSessions": {
+    "description": "How many live sessions the phone currently holds.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "statConversations": "Chats",
+  "statAgentsUsed": "Agents used",
+  "statMessages": "Messages",
+  "statGitActions": "Git actions",
+  "statSessions": "Connections",
+  "statTimeConnected": "Time connected",
+  "statLongestSession": "Longest session",
+  "statMostUsedTransport": "Most-used",
+  "statModelsUsed": "Models",
+  "profileStatsTitle": "Statistics",
+  "profileStatsRefreshAction": "Refresh stats",
+  "profileActivity": "Activity",
+  "profileByAgent": "Conversations by agent",
+  "profileNoData": "No activity yet",
+  "profileActivityLess": "Less",
+  "profileActivityMore": "More",
+  "profileHeatmapSummary": "{count} actions · {activeDays} active days",
+  "@profileHeatmapSummary": {
+    "description": "Heatmap caption summarizing the whole year.",
+    "placeholders": { "count": { "type": "int" }, "activeDays": { "type": "int" } }
+  },
+  "profileHeatmapDay": "{date} · {count} actions",
+  "@profileHeatmapDay": {
+    "description": "Heatmap caption for a single tapped day.",
+    "placeholders": { "date": { "type": "String" }, "count": { "type": "int" } }
+  },
+  "metricCombined": "Combined",
+  "metricConversations": "Conversations",
+  "metricMessages": "Messages",
+  "metricWork": "Work",
+  "profileEditTitle": "Edit profile",
+  "profileChoosePhoto": "Choose photo",
+  "profilePickIcon": "Or pick an icon",
+  "profileNameLabel": "Name",
+  "profileNameHint": "Your name",
+  "profileAgentConversationsLabel": "conversations",
+  "profileBackupTitle": "Backup",
+  "profileBackupNote": "Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.",
+  "profileBackupExport": "Export",
+  "profileBackupImport": "Import",
+  "profileBackupOfflineHint": "Connect to a PC to back up or restore your stats.",
+  "profileBackupPassphraseOptionalTitle": "Protect this backup?",
+  "profileBackupPassphraseOptionalHint": "Add a passphrase (optional). You'll need it to import the file.",
+  "profileBackupPassphraseRequiredTitle": "Passphrase required",
+  "profileBackupPassphraseRequiredHint": "This backup is protected. Enter its passphrase.",
+  "profileBackupPassphraseField": "Passphrase",
+  "profileBackupCancel": "Cancel",
+  "profileBackupShareSubject": "Uxnan stats backup",
+  "profileBackupExportFailedReason": "Couldn't create the backup: {reason}",
+  "@profileBackupExportFailedReason": {
+    "description": "Export failure, quoting the bridge's own reason verbatim rather than guessing at the cause.",
+    "placeholders": { "reason": { "type": "String" } }
+  },
+  "profileBackupShareFailed": "Couldn't save or share the backup file.",
+  "profileBackupImportedNew": "Backup restored — {count} new entries.",
+  "@profileBackupImportedNew": {
+    "description": "Snackbar after a successful metrics import that merged new events.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "profileBackupImportedNone": "Your stats are already up to date.",
+  "profileBackupImportBadPassphrase": "Wrong passphrase for this backup.",
+  "profileBackupImportFailed": "Couldn't import this file. It may be from another PC or have been modified.",
+  "statTotalTokens": "Total tokens",
+  "profileAgentScopeAll": "All time",
+  "profileLensActivity": "Activity",
+  "profileLensTokens": "Tokens",
+  "profileTokensImprecise": "Some CLIs don't report their full token usage, so these token figures can be imprecise.",
+  "profileHeatmapTokensSummary": "{tokens} tokens · {activeDays} active days",
+  "@profileHeatmapTokensSummary": {
+    "description": "Tokens-lens heatmap caption for the whole year (tokens pre-formatted).",
+    "placeholders": { "tokens": { "type": "String" }, "activeDays": { "type": "int" } }
+  },
+  "profileHeatmapTokensDay": "{date} · {tokens} tokens",
+  "@profileHeatmapTokensDay": {
+    "description": "Tokens-lens heatmap caption for a single tapped day (tokens pre-formatted).",
+    "placeholders": { "date": { "type": "String" }, "tokens": { "type": "String" } }
+  },
+  "profileAgentConvLabel": "Conversations",
+  "profileAgentMsgLabel": "Messages",
+  "profileAgentTokLabel": "Tokens",
+  "profileUsageTitle": "Usage & credit",
+  "usageNotSignedIn": "Not signed in",
+  "usageLoadError": "Couldn't load",
+  "usageCreditLabel": "Credit",
+  "usageResetsIn": "Resets in {duration}",
+  "@usageResetsIn": {
+    "description": "Relative time until a short quota window resets (e.g. 6h 30min).",
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "usageResetsInDays": "Resets in {days}d at {time}",
+  "@usageResetsInDays": {
+    "description": "Days remaining + clock time until a weekly/monthly window resets.",
+    "placeholders": { "days": { "type": "int" }, "time": { "type": "String" } }
+  },
+  "usageRefreshAction": "Refresh usage",
+  "usageNoData": "No usage data",
+  "settingsUsageSection": "Metrics & provider usage",
+  "settingsUsageNavSubtitle": "How your stats and provider limits refresh",
+  "settingsMetricsGroup": "Profile stats",
+  "metricsRefreshHint": "How your profile stats keep up to date while a PC is connected. They always refresh when a PC connects, and the profile's refresh button works in every mode.",
+  "metricsIntervalAutomatic": "Automatic (every time you open the profile)",
+  "metricsInterval15m": "Every 15 minutes",
+  "metricsInterval30m": "Every 30 minutes",
+  "settingsProviderUsageGroup": "Provider usage",
+  "settingsProviderUsageExplainer": "Each AI provider's remaining limits: how much of your quota is left, when it resets, your plan and any credit.",
+  "usageRefreshHint": "How often to refresh provider usage while a PC is connected.",
+  "usageIntervalManual": "Manual only",
+  "usageInterval5m": "Every 5 minutes",
+  "usageInterval10m": "Every 10 minutes",
+  "usageInterval20m": "Every 20 minutes",
+  "usageInterval1h": "Every hour",
+  "settingsUsageClockGroup": "Time format",
+  "usageClock24hTitle": "24-hour time",
+  "usageClock24hSubtitle": "Show reset times as 14:30 instead of 2:30 PM",
   "deviceActive": "Active",
   "deviceConnect": "Connect",
   "deviceConnectFailed": "Couldn't reach {device}. Staying on the current PC.",
@@ -84,9 +215,18 @@
     }
   },
   "deviceLastSeenLabel": "Last seen",
+  "deviceAddressReveal": "Show address",
+  "@deviceAddressReveal": {
+    "description": "Accessibility label / tooltip for the blurred PC address; tapping reveals the IP or relay host."
+  },
+  "deviceAddressHide": "Hide address",
+  "@deviceAddressHide": {
+    "description": "Accessibility label / tooltip for the revealed PC address; tapping blurs it again."
+  },
   "deviceNeverConnected": "Never connected",
   "devicePairedLabel": "Paired",
   "deviceRename": "Rename",
+  "deviceStatistics": "Statistics",
   "deviceVerifyConnection": "Verify connection",
   "deviceVerifying": "Checking the bridge…",
   "deviceVerifyOk": "The bridge is reachable.",
@@ -186,6 +326,14 @@
   "@conversationCopyMessage": {
     "description": "Action that copies the user's own message (revealed by tapping the bubble)."
   },
+  "conversationShowMore": "Show more",
+  "@conversationShowMore": {
+    "description": "Expands a long user message from its default preview."
+  },
+  "conversationShowLess": "Show less",
+  "@conversationShowLess": {
+    "description": "Collapses an expanded long user message back to its preview."
+  },
   "conversationMessageCopied": "Message copied",
   "@conversationMessageCopied": {
     "description": "Snackbar confirming the user's message was copied."
@@ -220,9 +368,9 @@
   },
   "composerOptionsShow": "Show options",
   "composerOptionsHide": "Hide options",
-  "composerTools": "Turn options",
+  "composerTools": "Add to conversation",
   "@composerTools": {
-    "description": "Title of the composer '+' turn-tools sheet (attach + run options + approval) and tooltip of the '+' button."
+    "description": "Tooltip of the composer '+' button. Its anchored menu contains immediate add-to-turn actions such as media attachments."
   },
 
   "composerMentionFilesTitle": "Files & folders",
@@ -396,6 +544,10 @@
   "turnFailed": "The agent turn failed",
   "@turnFailed": {
     "description": "Fallback shown inline on a failed agent turn when the bridge sent no error text."
+  },
+  "conversationAgentResponding": "Agent responding…",
+  "@conversationAgentResponding": {
+    "description": "Low-emphasis status beside the composer while the active agent turn is running."
   },
   "runOptionAuto": "Auto",
   "@runOptionAuto": {
@@ -718,6 +870,18 @@
   "@settingsClaudeLatestHint": {
     "description": "Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do."
   },
+  "settingsAutonomousBannerTitle": "Autonomous-mode banner",
+  "@settingsAutonomousBannerTitle": {
+    "description": "Title of the toggle controlling the autonomous-mode banner shown in conversations."
+  },
+  "settingsAutonomousBannerSubtitle": "Show it each time you open a conversation with an autonomous agent.",
+  "@settingsAutonomousBannerSubtitle": {
+    "description": "Subtitle of the autonomous-mode banner toggle."
+  },
+  "settingsAutonomousBannerHint": "When on, a close button dismisses the banner just for the current visit and it reappears next time you open the conversation. Turn it off to hide the banner permanently.",
+  "@settingsAutonomousBannerHint": {
+    "description": "Explanatory note under the autonomous-mode banner toggle."
+  },
   "settingsAppearanceSection": "Appearance",
   "settingsPersonalizationTitle": "Personalization",
   "settingsPersonalizationSubtitle": "Theme, custom themes and language",
@@ -923,11 +1087,19 @@
   "gitForceDelete": "Force delete",
   "conversationCwdMissing": "This conversation's folder no longer exists. Reconnect or remove it.",
   "conversationAutonomousMode": "This agent runs in autonomous mode — it acts and edits without asking for approval first.",
+  "conversationAutonomousModeDismiss": "Dismiss",
+  "@conversationAutonomousModeDismiss": {
+    "description": "Tooltip for the close button on the autonomous-mode banner; hides it for the current visit."
+  },
 
   "fileBrowserTitle": "Files",
   "@fileBrowserTitle": {
     "description": "Title of the workspace file browser and its top-bar tooltip."
   },
+  "fileBrowserSearch": "Search files",
+  "fileBrowserSearchHint": "Search files in this project",
+  "fileBrowserSearchEmpty": "No matching files",
+  "fileBrowserSearchFailed": "Couldn't search files",
   "fileBrowserShowExtensions": "Show file extensions",
   "@fileBrowserShowExtensions": {
     "description": "Settings-menu toggle that controls whether file extensions are visible in the file browser list."
@@ -988,18 +1160,6 @@
   "fileViewerHideDiff": "Hide diff",
   "@fileViewerHideDiff": {
     "description": "Tooltip on the action that disables the git diff overlay in the file viewer."
-  },
-  "fileViewerCopy": "Copy file",
-  "@fileViewerCopy": {
-    "description": "Tooltip on the action that copies the file's content to the clipboard."
-  },
-  "fileViewerCopied": "File copied",
-  "@fileViewerCopied": {
-    "description": "Snackbar shown when the file content is copied to the clipboard."
-  },
-  "fileViewerCopyFailed": "Couldn't copy this file",
-  "@fileViewerCopyFailed": {
-    "description": "Snackbar shown when the file content cannot be copied (e.g. a binary read returned no payload)."
   },
   "fileViewerLinkCopied": "Link copied: {href}",
   "@fileViewerLinkCopied": {
@@ -1319,6 +1479,10 @@
   "settingsConversationClaudeGroup": "Claude",
   "@settingsConversationClaudeGroup": {
     "description": "Conversation section sub-group for Claude model-picker options."
+  },
+  "settingsConversationPiGroup": "Pi Agent",
+  "@settingsConversationPiGroup": {
+    "description": "Conversation section sub-group for Pi agent options (the autonomous-mode banner)."
   },
   "settingsConversationChatGroup": "Conversation",
   "@settingsConversationChatGroup": {

@@ -1,7 +1,7 @@
 What's new in this update:
 
-• Choose Zero and Grok when starting a new AI conversation.
-• Agents can now ask you questions, show plans, and request approval directly in the chat.
-• Clearer error messages when an agent cannot finish a task, plus smoother Markdown and table reading.
+• A fresh look for files, Git history, onboarding and the composer, with one lively loading animation everywhere.
+• Profile stats now refresh whenever you open Profile, plus a refresh button — no more restarting the app to see them move. Pick automatic, timed or manual in Settings.
+• Backing up your stats works again without a passphrase, and tells you the real reason if it fails.
 
 Thanks for testing this alpha!

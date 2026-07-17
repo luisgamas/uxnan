@@ -4,7 +4,10 @@ description: "Uxnan - remote control for AI coding agents (E2EE mobile client)"
 publish_to: 'none'
 
 # version: <build-name>+<build-number>
-version: 0.0.5-alpha.20260711+20260711
+# The build-number is Play's versionCode and must strictly increase. 0.0.6 (cut
+# earlier today) already took 20260716, so this same-day release borrows the next
+# day — the same thing 0.0.2-alpha.20260628+20260629 did.
+version: 0.0.8-alpha.20260716+20260718
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -39,10 +42,12 @@ dependencies:
   flutter_secure_storage: ^9.2.0 # Keychain / Keystore
   flutter_svg: ^2.0.10 # SVG rendering (agent logos)
   go_router: ^14.0.0 # declarative navigation
+  highlight: ^0.7.0 # parser used to build selectable highlighted source spans
   image_picker: ^1.1.2 # composer attach: pick image from gallery/camera
   in_app_update_flutter: ^3.0.0 # in-app update: Play flexible (Android) + StoreKit (iOS)
   intl: any # i18n + date formatting (pinned by flutter_localizations)
   logger: ^2.4.0 # structured logging
+  material_loading_indicator: ^1.0.0 # M3 Expressive rounded-shape morph loader
   mobile_scanner: ^6.0.11 # QR scanner (CameraX/MLKit, AVFoundation)
   nsd: ^5.0.1 # mDNS/Bonjour browse of _uxnan._tcp bridges (NsdManager / DNSSD)
   package_info_plus: ^9.0.1 # installed app name/version/build (About + Updates)

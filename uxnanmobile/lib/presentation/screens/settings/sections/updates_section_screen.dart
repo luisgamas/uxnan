@@ -7,6 +7,7 @@ import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
@@ -166,12 +167,12 @@ class _UpdateStateCard extends ConsumerWidget {
     switch (state.phase) {
       case AppUpdatePhase.checking:
       case AppUpdatePhase.installing:
-        return const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
+        return const PolygonLoader(size: 20);
       case AppUpdatePhase.downloading:
+        // Stays a CircularProgressIndicator: it reports how much of the APK has
+        // actually downloaded. PolygonLoader is indeterminate by design and
+        // cannot draw `fraction`. (Play leaves `fraction` null until it knows
+        // the size, and the indicator spins on its own until then.)
         final fraction = state.install?.fraction;
         return SizedBox(
           width: 20,

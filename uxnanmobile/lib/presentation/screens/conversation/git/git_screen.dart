@@ -12,6 +12,7 @@ import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.d
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
@@ -1406,7 +1407,7 @@ class _FileCard extends StatelessWidget {
 /// Commit / Push action row. The morphing pill (stadium → rounded rect) is a
 /// signature element from the conversation composer — re-used here so both
 /// input surfaces share the same shape language.
-class _CommitBar extends StatelessWidget {
+class _CommitBar extends StatefulWidget {
   const _CommitBar({
     required this.state,
     required this.title,
@@ -1432,7 +1433,45 @@ class _CommitBar extends StatelessWidget {
   final VoidCallback onUndoCommit;
 
   @override
+  State<_CommitBar> createState() => _CommitBarState();
+}
+
+class _CommitBarState extends State<_CommitBar> {
+  final FocusNode _titleFocusNode = FocusNode();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleFocusNode.addListener(_onFocusChanged);
+  }
+
+  @override
+  void dispose() {
+    _titleFocusNode
+      ..removeListener(_onFocusChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (_focused != _titleFocusNode.hasFocus) {
+      setState(() => _focused = _titleFocusNode.hasFocus);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
+    final title = widget.title;
+    final description = widget.description;
+    final coAuthor = widget.coAuthor;
+    final showDetails = widget.showDetails;
+    final busy = widget.busy;
+    final onToggleDetails = widget.onToggleDetails;
+    final onCommit = widget.onCommit;
+    final onPush = widget.onPush;
+    final onUndoCommit = widget.onUndoCommit;
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final canCommit = state.isDirty && !busy;
@@ -1441,6 +1480,9 @@ class _CommitBar extends StatelessWidget {
     // morph from commit/details to push/undo-last-commit.
     final pushMode = !state.isDirty && hasPush;
     final textTheme = Theme.of(context).textTheme;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final motionDuration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
 
     // Floating composer matching the conversation pill: a fully-rounded
     // (stadium) pill when collapsed — the title field and the inline actions on
@@ -1453,122 +1495,137 @@ class _CommitBar extends StatelessWidget {
           constraints: const BoxConstraints(
             maxWidth: UxnanSpacing.maxContentWidth,
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
+          child: AnimatedPadding(
+            duration: motionDuration,
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.fromLTRB(
+              _focused ? UxnanSpacing.lg : UxnanSpacing.xl,
               UxnanSpacing.sm,
-              UxnanSpacing.lg,
+              _focused ? UxnanSpacing.lg : UxnanSpacing.xl,
               UxnanSpacing.md,
             ),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHighest,
-                // Stadium when collapsed, rounded rectangle when expanded.
+            child: Material(
+              key: const ValueKey('git-composer-surface'),
+              color: colors.surfaceContainerHighest,
+              elevation: _focused ? 2 : 0,
+              shadowColor: colors.shadow,
+              animationDuration: motionDuration,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(showDetails ? 24 : 100),
               ),
-              padding: EdgeInsets.fromLTRB(
-                UxnanSpacing.md,
-                showDetails ? UxnanSpacing.sm : UxnanSpacing.xs,
-                UxnanSpacing.sm,
-                showDetails ? UxnanSpacing.sm : UxnanSpacing.xs,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // The aligned top row — the whole pill when collapsed.
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _BorderlessField(
-                          controller: title,
-                          enabled: canCommit,
-                          hint: l10n.gitCommitMessageLabel,
-                          style: textTheme.titleSmall,
-                          textInputAction: TextInputAction.next,
-                          // Autofocus the title field the first time the
-                          // commit bar appears: the user opened the git
-                          // screen to type a commit message, so the keyboard
-                          // should pop up as soon as the repo state loads.
-                          // Tapping the timeline area (the
-                          // GestureDetector in build()) still drops focus
-                          // via FocusScope.unfocus — the existing
-                          // tap-outside-to-unfocus behavior is preserved.
-                          autofocus: true,
+              child: AnimatedPadding(
+                duration: motionDuration,
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.fromLTRB(
+                  UxnanSpacing.md,
+                  _focused ? UxnanSpacing.sm : UxnanSpacing.xs,
+                  UxnanSpacing.sm,
+                  _focused ? UxnanSpacing.sm : UxnanSpacing.xs,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // The aligned top row — the whole pill when collapsed.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _BorderlessField(
+                            controller: title,
+                            enabled: canCommit,
+                            hint: l10n.gitCommitMessageLabel,
+                            style: textTheme.titleSmall,
+                            textInputAction: TextInputAction.next,
+                            // Autofocus the title field the first time the
+                            // commit bar appears: the user opened the git
+                            // screen to type a commit message, so the keyboard
+                            // should pop up as soon as the repo state loads.
+                            // Tapping the timeline area (the
+                            // GestureDetector in build()) still drops focus
+                            // via FocusScope.unfocus — the existing
+                            // tap-outside-to-unfocus behavior is preserved.
+                            autofocus: true,
+                            focusNode: _titleFocusNode,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                      // Secondary: the details toggle while committing; the
-                      // undo-last-commit once committed (push mode).
-                      if (pushMode)
-                        IconSurface(
-                          icon: Icons.undo_rounded,
-                          tooltip: l10n.gitUndoCommit,
-                          onPressed: busy ? null : onUndoCommit,
-                        )
-                      else
-                        IconSurface(
-                          icon: showDetails
-                              ? Icons.expand_more_rounded
-                              : Icons.notes_rounded,
-                          tooltip: l10n.gitCommitDescriptionLabel,
-                          selected: showDetails,
-                          onPressed: canCommit ? onToggleDetails : null,
-                        ),
-                      const SizedBox(width: UxnanSpacing.xs),
-                      // Primary: commit while dirty; push once committed.
-                      if (pushMode)
-                        _PrimaryActionButton(
-                          icon: Icons.arrow_upward_rounded,
-                          tooltip: '${l10n.gitPushButton} (${state.ahead})',
-                          busy: busy,
-                          // Push is badged with the number of commits ahead.
-                          badge: state.ahead > 0
-                              ? Badge.count(
-                                  count: state.ahead,
-                                  child: const SizedBox.shrink(),
-                                )
-                              : null,
-                          onPressed: busy ? null : onPush,
-                        )
-                      else
-                        _PrimaryActionButton(
-                          icon: Icons.check_rounded,
-                          tooltip: l10n.gitCommitButton,
-                          busy: busy,
-                          onPressed: canCommit ? onCommit : null,
-                        ),
-                    ],
-                  ),
-                  // Optional fields slide in below (morphing pill → rectangle).
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topCenter,
-                    child: showDetails && !pushMode
-                        ? Column(
-                            children: [
-                              const SizedBox(height: UxnanSpacing.xs),
-                              Divider(height: 1, color: colors.outlineVariant),
-                              _BorderlessField(
-                                controller: description,
-                                enabled: canCommit,
-                                hint: l10n.gitCommitDescriptionHint,
-                                minLines: 1,
-                                maxLines: 4,
-                              ),
-                              Divider(height: 1, color: colors.outlineVariant),
-                              _BorderlessField(
-                                controller: coAuthor,
-                                enabled: canCommit,
-                                hint: l10n.gitCoAuthorHint,
-                              ),
-                            ],
+                        const SizedBox(width: UxnanSpacing.xs),
+                        // Secondary: the details toggle while committing; the
+                        // undo-last-commit once committed (push mode).
+                        if (pushMode)
+                          IconSurface(
+                            icon: Icons.undo_rounded,
+                            tooltip: l10n.gitUndoCommit,
+                            onPressed: busy ? null : onUndoCommit,
                           )
-                        : const SizedBox(width: double.infinity),
-                  ),
-                ],
+                        else
+                          IconSurface(
+                            icon: showDetails
+                                ? Icons.expand_more_rounded
+                                : Icons.notes_rounded,
+                            tooltip: l10n.gitCommitDescriptionLabel,
+                            selected: showDetails,
+                            onPressed: canCommit ? onToggleDetails : null,
+                          ),
+                        const SizedBox(width: UxnanSpacing.xs),
+                        // Primary: commit while dirty; push once committed.
+                        if (pushMode)
+                          _PrimaryActionButton(
+                            icon: Icons.arrow_upward_rounded,
+                            tooltip: '${l10n.gitPushButton} (${state.ahead})',
+                            busy: busy,
+                            // Push is badged with the number of commits ahead.
+                            badge: state.ahead > 0
+                                ? Badge.count(
+                                    count: state.ahead,
+                                    child: const SizedBox.shrink(),
+                                  )
+                                : null,
+                            onPressed: busy ? null : onPush,
+                          )
+                        else
+                          _PrimaryActionButton(
+                            icon: Icons.check_rounded,
+                            tooltip: l10n.gitCommitButton,
+                            busy: busy,
+                            onPressed: canCommit ? onCommit : null,
+                          ),
+                      ],
+                    ),
+                    // Optional fields slide in below (morphing pill →
+                    // rectangle).
+                    AnimatedSize(
+                      duration: motionDuration,
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: showDetails && !pushMode
+                          ? Column(
+                              children: [
+                                const SizedBox(height: UxnanSpacing.xs),
+                                Divider(
+                                  height: 1,
+                                  color: colors.outlineVariant,
+                                ),
+                                _BorderlessField(
+                                  controller: description,
+                                  enabled: canCommit,
+                                  hint: l10n.gitCommitDescriptionHint,
+                                  minLines: 1,
+                                  maxLines: 4,
+                                ),
+                                Divider(
+                                  height: 1,
+                                  color: colors.outlineVariant,
+                                ),
+                                _BorderlessField(
+                                  controller: coAuthor,
+                                  enabled: canCommit,
+                                  hint: l10n.gitCoAuthorHint,
+                                ),
+                              ],
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1590,6 +1647,7 @@ class _BorderlessField extends StatelessWidget {
     this.maxLines = 1,
     this.textInputAction,
     this.autofocus = false,
+    this.focusNode,
   });
 
   final TextEditingController controller;
@@ -1604,12 +1662,14 @@ class _BorderlessField extends StatelessWidget {
   /// field passes `true`; the description and co-author fields stay
   /// non-autofocus so expanding the details doesn't yank the caret.
   final bool autofocus;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
+      focusNode: focusNode,
       enabled: enabled,
       minLines: minLines,
       maxLines: maxLines,
@@ -1672,7 +1732,7 @@ class _NoRepository extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     if (connecting) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: PolygonLoader(size: 48));
     }
     return Padding(
       padding: const EdgeInsets.all(UxnanSpacing.xl),
@@ -1843,11 +1903,7 @@ class _BranchPickerState extends State<_BranchPicker> {
                           padding: EdgeInsets.symmetric(
                             horizontal: UxnanSpacing.sm,
                           ),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          child: PolygonLoader(size: 20),
                         )
                       : IconSurface(
                           icon: Icons.delete_outline_rounded,
@@ -2312,14 +2368,7 @@ class _PrimaryActionButton extends StatelessWidget {
     final foreground =
         enabled ? colors.onPrimary : colors.onPrimary.withValues(alpha: 0.5);
     final spinner = busy
-        ? SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(foreground),
-            ),
-          )
+        ? PolygonLoader(size: 16, color: foreground)
         : Icon(icon, size: 20, color: foreground);
     return Tooltip(
       message: tooltip,

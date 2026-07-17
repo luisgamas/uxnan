@@ -12,7 +12,8 @@ import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
 /// The Conversation settings section, itself grouped into sub-sections:
 /// **Agents** (reasoning visibility + context indicator), **Claude** (model
-/// picker options) and **Conversation** (scroll behaviour + prompt templates).
+/// picker options), **Pi Agent** (autonomous-mode banner) and **Conversation**
+/// (scroll behaviour + prompt templates).
 class ConversationSectionScreen extends ConsumerWidget {
   /// Creates the conversation section screen.
   const ConversationSectionScreen({super.key});
@@ -82,6 +83,19 @@ class ConversationSectionScreen extends ConsumerWidget {
                     .set(value: v),
               ),
               NeSectionHint(text: l10n.settingsClaudeLatestHint),
+
+              // ── Pi Agent ───────────────────────────────────────────────
+              NeSectionHeader(label: l10n.settingsConversationPiGroup),
+              NeSwitchTile(
+                icon: Icons.campaign_outlined,
+                title: l10n.settingsAutonomousBannerTitle,
+                subtitle: l10n.settingsAutonomousBannerSubtitle,
+                value: ref.watch(showAutonomousBannerProvider),
+                onChanged: (v) => ref
+                    .read(showAutonomousBannerProvider.notifier)
+                    .set(value: v),
+              ),
+              NeSectionHint(text: l10n.settingsAutonomousBannerHint),
 
               // ── Conversation ───────────────────────────────────────────
               NeSectionHeader(label: l10n.settingsConversationChatGroup),

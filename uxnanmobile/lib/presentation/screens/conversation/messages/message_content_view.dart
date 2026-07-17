@@ -54,7 +54,7 @@ class MessageContentView extends StatelessWidget {
       final TextContent c => _TextBlock(content: c, selectable: selectableText),
       // Thinking is normally lifted into the turn's dedicated section by
       // AssistantTurnView; rendered here too for completeness.
-      final ThinkingContent c => _ThinkingSection(text: c.text),
+      final ThinkingContent c => _StandaloneThinkingSection(text: c.text),
       final CodeContent c => _CodeBlock(content: c),
       final CommandExecutionContent c => _CommandCard(content: c),
       final SystemContent c => _SystemBanner(content: c),
@@ -223,11 +223,7 @@ class _ApprovalActions extends StatelessWidget {
 
     Widget label(ApprovalDecision decision, String text) {
       if (sending && pending == decision) {
-        return const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
+        return const PolygonLoader(size: 16);
       }
       return Text(text);
     }
@@ -838,11 +834,7 @@ class _QuestionActions extends StatelessWidget {
               child: FilledButton(
                 onPressed: acting && canSubmit ? onSubmit : null,
                 child: sending
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const PolygonLoader(size: 16)
                     : Text(l10n.questionSubmit),
               ),
             ),
@@ -1677,7 +1669,7 @@ class _Placeholder extends StatelessWidget {
 /// one selectable block, other blocks as their own cards), a collapsible
 /// **Changed files** summary at the end, and a "Copy response" action. Only
 /// user messages get a bubble.
-class AssistantTurnView extends ConsumerWidget {
+class AssistantTurnView extends ConsumerStatefulWidget {
   /// Creates an [AssistantTurnView] for an assistant [message].
   const AssistantTurnView({required this.message, super.key});
 
@@ -1685,7 +1677,19 @@ class AssistantTurnView extends ConsumerWidget {
   final Message message;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AssistantTurnView> createState() => _AssistantTurnViewState();
+}
+
+class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
+  String? _expandedProcess;
+
+  void _toggleProcess(String id) {
+    setState(() => _expandedProcess = _expandedProcess == id ? null : id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = widget.message;
     final showThinking = ref.watch(showAgentThinkingProvider);
     final thinking = StringBuffer();
     final diffs = <DiffContent>[];
@@ -1697,6 +1701,7 @@ class AssistantTurnView extends ConsumerWidget {
     final segments = <Widget>[];
     final pendingCommands = <MessageContent>[];
     final pendingText = StringBuffer();
+    var workLogIndex = 0;
 
     void gap() {
       if (segments.isNotEmpty) {
@@ -1716,8 +1721,15 @@ class AssistantTurnView extends ConsumerWidget {
       if (pendingCommands.isEmpty) return;
       final items = List<MessageContent>.of(pendingCommands);
       pendingCommands.clear();
+      final processId = 'work-${workLogIndex++}';
       gap();
-      segments.add(_WorkLogSection(items: items));
+      segments.add(
+        _WorkLogSection(
+          items: items,
+          expanded: _expandedProcess == processId,
+          onToggle: () => _toggleProcess(processId),
+        ),
+      );
     }
 
     for (final content in message.contents) {
@@ -1754,16 +1766,18 @@ class AssistantTurnView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Neural Expressive activity cue: a morphing polygon at the very
-          // start of the response while the agent is still producing it.
           if (message.isStreaming) ...[
-            // Not `const`: PolygonLoader's assert reads `shapes.length`, which
-            // isn't a valid constant expression.
-            PolygonLoader(size: 20),
+            _AgentRespondingStatus(
+              label: AppLocalizations.of(context).conversationAgentResponding,
+            ),
             const SizedBox(height: UxnanSpacing.sm),
           ],
           if (showThinking && thinking.isNotEmpty) ...[
-            _ThinkingSection(text: thinking.toString()),
+            _ThinkingSection(
+              text: thinking.toString(),
+              expanded: _expandedProcess == 'thinking',
+              onToggle: () => _toggleProcess('thinking'),
+            ),
             const SizedBox(height: UxnanSpacing.sm),
           ],
           ...segments,
@@ -1777,6 +1791,37 @@ class AssistantTurnView extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A quiet in-flow activity cue at the beginning of the live assistant turn.
+/// It stays with the response instead of competing with composer context and
+/// token meters in the fixed bottom chrome.
+class _AgentRespondingStatus extends StatelessWidget {
+  const _AgentRespondingStatus({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PolygonLoader(size: 14, color: colors.onSurfaceVariant),
+        const SizedBox(width: UxnanSpacing.sm),
+        Text(
+          label,
+          key: const ValueKey('agent-responding-status'),
+          style: textTheme.labelMedium?.copyWith(
+            color: colors.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1820,191 +1865,221 @@ class _ResponseActions extends StatelessWidget {
   }
 }
 
-/// A collapsible "Thinking" section showing the agent's reasoning. Default
-/// collapsed; only built when the show-thinking setting is on.
-class _ThinkingSection extends StatefulWidget {
-  const _ThinkingSection({required this.text});
+/// Standalone fallback for a reasoning block rendered outside an assistant
+/// turn. Assistant turns lift expansion state to their parent so opening one
+/// process panel collapses the previously open panel in that same turn.
+class _StandaloneThinkingSection extends StatefulWidget {
+  const _StandaloneThinkingSection({required this.text});
   final String text;
 
   @override
-  State<_ThinkingSection> createState() => _ThinkingSectionState();
+  State<_StandaloneThinkingSection> createState() =>
+      _StandaloneThinkingSectionState();
 }
 
-class _ThinkingSectionState extends State<_ThinkingSection> {
+class _StandaloneThinkingSectionState
+    extends State<_StandaloneThinkingSection> {
   bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
+    return _ThinkingSection(
+      text: widget.text,
+      expanded: _expanded,
+      onToggle: () => setState(() => _expanded = !_expanded),
+    );
+  }
+}
+
+/// A subdued reasoning disclosure. Its tonal surface keeps the process visible
+/// without competing with the assistant's editorial response.
+class _ThinkingSection extends StatelessWidget {
+  const _ThinkingSection({
+    required this.text,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final String text;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return DecoratedBox(
-      // Borderless, light outline — same container as the new Work log.
-      decoration: BoxDecoration(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outlineVariant),
+    final l10n = AppLocalizations.of(context);
+    return _AgentProcessDisclosure(
+      icon: Icons.psychology_outlined,
+      title: l10n.conversationThinking,
+      expanded: expanded,
+      onToggle: onToggle,
+      child: SelectableText(
+        text,
+        style: textTheme.bodySmall?.copyWith(
+          color: colors.onSurfaceVariant,
+          fontStyle: FontStyle.italic,
+        ),
       ),
+    );
+  }
+}
+
+/// A compact work-log disclosure. Collapsed state keeps only the count and the
+/// latest activity summary visible; expansion reveals every command/tool and
+/// its available output.
+class _WorkLogSection extends StatelessWidget {
+  const _WorkLogSection({
+    required this.items,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  /// The [CommandExecutionContent] / [ToolUseContent] blocks of the turn.
+  final List<MessageContent> items;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return _AgentProcessDisclosure(
+      icon: Icons.terminal_rounded,
+      title: l10n.conversationWorkLog,
+      count: items.length,
+      collapsedSummary: _workLogSummary(items.last),
+      expanded: expanded,
+      onToggle: onToggle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(height: UxnanSpacing.sm),
+            _WorkLogRow(item: items[i]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _workLogSummary(MessageContent item) => switch (item) {
+      final CommandExecutionContent command => '\$ ${command.command}',
+      final ToolUseContent tool =>
+        tool.toolName.isEmpty ? 'tool' : tool.toolName,
+      _ => '',
+    };
+
+/// Shared low-emphasis Neural Expressive disclosure for secondary agent
+/// process information. It morphs from a compact pill into a rounded tonal
+/// panel, has no outline, and respects the platform's reduced-motion setting.
+class _AgentProcessDisclosure extends StatelessWidget {
+  const _AgentProcessDisclosure({
+    required this.icon,
+    required this.title,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+    this.count,
+    this.collapsedSummary,
+  });
+
+  final IconData icon;
+  final String title;
+  final int? count;
+  final String? collapsedSummary;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final duration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
+    final summary = collapsedSummary;
+
+    return Material(
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(
+          expanded ? UxnanRadius.lg : UxnanRadius.full,
+        ),
+      ),
+      animationDuration: duration,
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
-            borderRadius: const BorderRadius.all(UxnanRadius.lg),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.md),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.psychology_outlined,
-                    size: 14,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Text(
-                    l10n.conversationThinking,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ],
+            onTap: onToggle,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: UxnanSpacing.xxxl,
               ),
-            ),
-          ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.md,
-                0,
-                UxnanSpacing.md,
-                UxnanSpacing.md,
-              ),
-              child: SelectableText(
-                widget.text,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
                 ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A "Work log" of the commands/tools an agent turn ran, in a **light,
-/// borderless** container (no fill, just a hairline outline). The first few
-/// entries are always visible — so the activity reads inline, in order, under
-/// the message that triggered it — and a "+N" toggle reveals the rest when
-/// there are more.
-class _WorkLogSection extends StatefulWidget {
-  const _WorkLogSection({required this.items});
-
-  /// The [CommandExecutionContent] / [ToolUseContent] blocks of the turn.
-  final List<MessageContent> items;
-
-  @override
-  State<_WorkLogSection> createState() => _WorkLogSectionState();
-}
-
-class _WorkLogSectionState extends State<_WorkLogSection> {
-  bool _expanded = false;
-
-  /// How many entries show before the "+N" toggle appears.
-  static const int _preview = 3;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final items = widget.items;
-    final shown = _expanded ? items : items.take(_preview).toList();
-    final extra = items.length - shown.length;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Tappable header — always expandable, so even a single command can
-          // be opened to reveal its full text and output.
-          InkWell(
-            borderRadius: const BorderRadius.all(UxnanRadius.lg),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.md,
-                UxnanSpacing.md,
-                UxnanSpacing.md,
-                UxnanSpacing.sm,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.terminal_rounded,
-                    size: 14,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Text(
-                    l10n.conversationWorkLog,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: UxnanSpacing.xs),
-                  _CountBadge(count: items.length),
-                  const Spacer(),
-                  if (!_expanded && extra > 0) ...[
+                child: Row(
+                  children: [
+                    Icon(icon, size: 16, color: colors.onSurfaceVariant),
+                    const SizedBox(width: UxnanSpacing.sm),
                     Text(
-                      '+$extra',
-                      style: textTheme.labelSmall?.copyWith(
+                      title,
+                      style: textTheme.labelMedium?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),
                     ),
+                    if (count != null) ...[
+                      const SizedBox(width: UxnanSpacing.xs),
+                      _CountBadge(count: count!),
+                    ],
+                    if (!expanded && summary != null && summary.isNotEmpty) ...[
+                      const SizedBox(width: UxnanSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          summary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: UxnanTypography.codeSmall.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ] else
+                      const Spacer(),
                     const SizedBox(width: UxnanSpacing.xs),
+                    Icon(
+                      expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ],
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.md,
-              0,
-              UxnanSpacing.md,
-              UxnanSpacing.md,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < shown.length; i++) ...[
-                  if (i > 0) const SizedBox(height: UxnanSpacing.sm),
-                  // Collapsed shows just the command (truncated); expanded
-                  // shows the full command and its output.
-                  _WorkLogRow(item: shown[i], compact: !_expanded),
-                ],
-              ],
-            ),
+          AnimatedSize(
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UxnanSpacing.md,
+                      0,
+                      UxnanSpacing.md,
+                      UxnanSpacing.md,
+                    ),
+                    child: child,
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),
@@ -2012,13 +2087,11 @@ class _WorkLogSectionState extends State<_WorkLogSection> {
   }
 }
 
-/// One work-log entry: a command or a tool call. When [compact] (the collapsed
-/// preview) it shows just the command on a single truncated line; expanded it
-/// shows the full command and its output.
+/// One expanded work-log entry: a command or tool call with its available
+/// output. The collapsed disclosure uses [_workLogSummary] instead.
 class _WorkLogRow extends StatelessWidget {
-  const _WorkLogRow({required this.item, this.compact = false});
+  const _WorkLogRow({required this.item});
   final MessageContent item;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2052,14 +2125,11 @@ class _WorkLogRow extends StatelessWidget {
                   child: Text(
                     '\$ ${command.command}',
                     style: UxnanTypography.codeSmall,
-                    maxLines: compact ? 1 : null,
-                    overflow:
-                        compact ? TextOverflow.ellipsis : TextOverflow.clip,
                   ),
                 ),
               ],
             ),
-            if (!compact && hasOutput)
+            if (hasOutput)
               Padding(
                 padding: const EdgeInsets.only(
                   left: UxnanSpacing.lg,
@@ -2121,68 +2191,88 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final duration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
     var additions = 0;
     var deletions = 0;
     for (final diff in widget.diffs) {
       additions += diff.additions;
       deletions += diff.deletions;
     }
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
+    return Material(
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(
+          _expanded ? UxnanRadius.lg : UxnanRadius.full,
+        ),
       ),
+      animationDuration: duration,
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           InkWell(
-            borderRadius: const BorderRadius.all(UxnanRadius.lg),
             onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.md),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.difference_outlined,
-                    size: 16,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Text(
-                    l10n.conversationChangedFiles,
-                    style: textTheme.labelMedium,
-                  ),
-                  const SizedBox(width: UxnanSpacing.xs),
-                  _CountBadge(count: widget.diffs.length),
-                  const Spacer(),
-                  _DiffCounts(additions: additions, deletions: deletions),
-                  const SizedBox(width: UxnanSpacing.sm),
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ],
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: UxnanSpacing.xxxl,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.difference_outlined,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    Text(
+                      l10n.conversationChangedFiles,
+                      style: textTheme.labelMedium,
+                    ),
+                    const SizedBox(width: UxnanSpacing.xs),
+                    _CountBadge(count: widget.diffs.length),
+                    const Spacer(),
+                    _DiffCounts(additions: additions, deletions: deletions),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    Icon(
+                      _expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.sm,
-                0,
-                UxnanSpacing.sm,
-                UxnanSpacing.sm,
-              ),
-              child: Column(
-                children: [
-                  for (final diff in widget.diffs) _ChangedFileRow(diff: diff),
-                ],
-              ),
-            ),
+          AnimatedSize(
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UxnanSpacing.sm,
+                      0,
+                      UxnanSpacing.sm,
+                      UxnanSpacing.sm,
+                    ),
+                    child: Column(
+                      children: [
+                        for (final diff in widget.diffs)
+                          _ChangedFileRow(diff: diff),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       ),
     );

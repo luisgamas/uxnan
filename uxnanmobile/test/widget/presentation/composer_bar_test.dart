@@ -102,6 +102,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // The palette surfaces the matching command.
+    expect(find.byKey(const ValueKey('command-palette')), findsOneWidget);
+    expect(find.text('/'), findsOneWidget);
     expect(find.text('Commands'), findsOneWidget);
     expect(find.text('Review'), findsOneWidget);
 
@@ -124,6 +126,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // The file panel lists the directory entries (folder shown with a slash).
+    expect(find.byKey(const ValueKey('suggestion-header-@')), findsOneWidget);
     expect(find.text('Files & folders'), findsOneWidget);
     expect(find.text('lib/'), findsOneWidget);
     expect(find.text('README.md'), findsOneWidget);

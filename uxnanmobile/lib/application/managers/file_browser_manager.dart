@@ -209,6 +209,40 @@ class FileBrowserManager {
     _subject(cwd).add(next);
   }
 
+  /// Expands every parent directory of the workspace-relative file [path].
+  ///
+  /// This is used after choosing a repo-wide search result so the lazy tree
+  /// reveals the selected file when the viewer is closed. Directories that
+  /// are already expanded stay expanded, and unrelated branches are left
+  /// untouched. Merely opening or closing search never calls this method.
+  Future<void> revealFile(String cwd, String path) async {
+    final segments = path
+        .replaceAll(r'\', '/')
+        .split('/')
+        .where((segment) => segment.isNotEmpty && segment != '.')
+        .toList();
+    if (segments.length < 2) return;
+
+    await loadRoot(cwd);
+    var directoryPath = '';
+    for (final segment in segments.take(segments.length - 1)) {
+      directoryPath =
+          directoryPath.isEmpty ? segment : '$directoryPath/$segment';
+      final node = _findNode(_rootFor(cwd), directoryPath);
+      if (node == null || !node.isDir) return;
+      if (!node.expanded) await toggleDirectory(cwd, directoryPath);
+    }
+  }
+
+  FileTreeNode? _findNode(FileTreeNode node, String path) {
+    if (node.path == path) return node;
+    for (final child in node.children) {
+      final match = _findNode(child, path);
+      if (match != null) return match;
+    }
+    return null;
+  }
+
   /// Collapses every expanded directory under [cwd] in one shot. The fetched
   /// children are kept in the tree (so re-expanding is instant) — only the
   /// `expanded` flag is cleared. No-op when nothing is expanded.

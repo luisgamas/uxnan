@@ -169,7 +169,9 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
     final body = switch (_access) {
-      _CameraAccess.checking => Center(child: PolygonLoader(size: 36)),
+      _CameraAccess.checking => const Center(
+          child: PolygonLoader(size: 36),
+        ),
       _CameraAccess.granted => _ScannerView(
           controller: _controller!,
           onDetect: _onDetect,
@@ -274,7 +276,7 @@ class _ScannerView extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  PolygonLoader(size: 48, color: Colors.white),
+                  const PolygonLoader(size: 48, color: Colors.white),
                   const SizedBox(height: UxnanSpacing.lg),
                   Text(
                     l10n.pairingConnecting,

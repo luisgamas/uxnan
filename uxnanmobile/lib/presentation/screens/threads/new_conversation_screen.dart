@@ -9,22 +9,23 @@ import 'package:uxnan/domain/value_objects/git/git_action_io.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
-import 'package:uxnan/presentation/screens/threads/agent_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen Material 3 dialog to start a new conversation: pick the working
-/// directory (defaults to the bridge's root; "Browse…" to descend), an agent
-/// (cards with logo, name and capability chips), and an optional model. A
-/// roomier surface than a bottom sheet for a multi-input creation task with
-/// several agents to compare. Resolves with the new thread id (or null).
+/// directory, compare the available agents directly, choose an optional model,
+/// and optionally create a worktree. The descriptive headline lives in the
+/// content area so translated text never competes with the close and start
+/// actions in the compact top bar. Resolves with the new thread id (or null).
 class NewConversationScreen extends ConsumerStatefulWidget {
   /// Creates a [NewConversationScreen].
   const NewConversationScreen({super.key});
@@ -179,6 +180,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
 
     final projects = ref.watch(projectsProvider);
     final agentsAsync = ref.watch(agentsProvider);
@@ -195,9 +197,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
     final canStart = activeProject != null && agent != null && !_starting;
 
     return NeScaffold(
-      title: l10n.newThreadTitle,
-      // Full-screen dialog: a close (✕) instead of a back arrow; the
-      // affirmative action is a compact text button.
+      // M3 full-screen dialog: keep variable-length headlines in the content
+      // area and reserve the top bar for dismissal + the affirmative action.
       leading: IconSurface(
         icon: Icons.close_rounded,
         tooltip: l10n.actionCancel,
@@ -207,13 +208,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         if (_starting)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: UxnanSpacing.md),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
+            child: Center(child: PolygonLoader()),
           )
         else
           Padding(
@@ -229,7 +224,9 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
         SliverToBoxAdapter(
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
+              constraints: const BoxConstraints(
+                maxWidth: UxnanSpacing.maxContentWidth,
+              ),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
                   UxnanSpacing.lg,
@@ -240,6 +237,18 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        top: UxnanSpacing.sm,
+                        bottom: UxnanSpacing.md,
+                      ),
+                      child: Text(
+                        l10n.newThreadTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.headlineSmall,
+                      ),
+                    ),
                     _SectionHeader(label: l10n.newThreadWorkingDir),
                     if (projects.isLoading && workingCwd == null)
                       const _Loading()
@@ -251,17 +260,6 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         path: workingCwd,
                         onBrowse: _browseFolder,
                       ),
-                    if (workingCwd != null) ...[
-                      const SizedBox(height: UxnanSpacing.sm),
-                      _WorktreeCard(
-                        enabled: _useWorktree,
-                        managed: _worktreeManaged,
-                        branch: _worktreeBranch,
-                        onToggle: (v) => setState(() => _useWorktree = v),
-                        onToggleManaged: (v) =>
-                            setState(() => _worktreeManaged = v),
-                      ),
-                    ],
                     const SizedBox(height: UxnanSpacing.lg),
                     _SectionHeader(label: l10n.newThreadAgent),
                     agentsAsync.when(
@@ -275,10 +273,19 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         if (visible.isEmpty) {
                           return _Empty(message: l10n.newThreadNoAgents);
                         }
-                        return _AgentSelector(
-                          agents: visible,
-                          selected: _agent,
-                          onSelect: _selectAgent,
+                        return ExpressiveCardGroup(
+                          count: visible.length,
+                          itemBuilder: (context, index, position) {
+                            final candidate = visible[index];
+                            return _AgentCard(
+                              agent: candidate,
+                              position: position,
+                              selected: candidate.agentId == _agent?.agentId,
+                              onTap: candidate.available
+                                  ? () => _selectAgent(candidate)
+                                  : null,
+                            );
+                          },
                         );
                       },
                     ),
@@ -291,6 +298,17 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                       agentId: agent?.agentId,
                       onChanged: (_) => setState(() => _modelTouched = true),
                     ),
+                    if (workingCwd != null) ...[
+                      const SizedBox(height: UxnanSpacing.lg),
+                      _WorktreeCard(
+                        enabled: _useWorktree,
+                        managed: _worktreeManaged,
+                        branch: _worktreeBranch,
+                        onToggle: (v) => setState(() => _useWorktree = v),
+                        onToggleManaged: (v) =>
+                            setState(() => _worktreeManaged = v),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -302,8 +320,8 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   }
 }
 
-/// The selected working directory, with a "Change" action that opens the
-/// folder browser.
+/// The selected working directory. The whole card opens the folder browser,
+/// avoiding a second nested control with the same action.
 class _WorkingDirCard extends StatelessWidget {
   const _WorkingDirCard({
     required this.name,
@@ -345,7 +363,7 @@ class _WorkingDirCard extends StatelessWidget {
                   style: textTheme.titleSmall,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: UxnanSpacing.xs),
                 Text(
                   path,
                   style: UxnanTypography.codeSmall.copyWith(
@@ -358,10 +376,9 @@ class _WorkingDirCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: UxnanSpacing.sm),
-          TextButton.icon(
-            onPressed: onBrowse,
-            icon: const Icon(Icons.folder_open_outlined, size: 18),
-            label: Text(AppLocalizations.of(context).newThreadChangeFolder),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: colors.onSurfaceVariant,
           ),
         ],
       ),
@@ -373,7 +390,8 @@ class _WorkingDirCard extends StatelessWidget {
 /// `git worktree` (an isolated branch checkout) instead of the chosen working
 /// directory. Expands to reveal the branch name and a "managed by the bridge"
 /// switch (forwarded for future bridge support; the path is still derived on
-/// the phone today). Mirrors the collapsible agent card's surface and motion.
+/// the phone today). Uses the same calm surface and restrained expansion motion
+/// as the rest of the dialog.
 class _WorktreeCard extends StatelessWidget {
   const _WorktreeCard({
     required this.enabled,
@@ -417,7 +435,7 @@ class _WorktreeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(l10n.newThreadWorktree, style: textTheme.titleSmall),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: UxnanSpacing.xs),
                     Text(
                       l10n.newThreadWorktreeDesc,
                       style: textTheme.bodySmall?.copyWith(
@@ -476,160 +494,131 @@ class _WorktreeCard extends StatelessWidget {
   }
 }
 
-/// The agent selector: a combobox-style field (mirroring [`_ModelField`]) that
-/// opens the searchable, alphabetical [AgentPickerSheet], with the SELECTED
-/// agent's capability chips + sign-in status shown inline **below** it. This
-/// keeps everything on one screen and scales as the agent list grows (the old
-/// per-agent card stack didn't).
-class _AgentSelector extends StatelessWidget {
-  const _AgentSelector({
-    required this.agents,
+/// An agent option in a cohesive Neural Expressive card group. Every compact
+/// header remains visible for direct comparison; selecting a card reveals only
+/// its capability chips, so choosing another agent automatically collapses the
+/// previous card. Selection uses a semantic tonal surface and a check mark,
+/// while unavailable or signed-out states remain actionable and legible
+/// without adding outline noise.
+class _AgentCard extends ConsumerWidget {
+  const _AgentCard({
+    required this.agent,
+    required this.position,
     required this.selected,
-    required this.onSelect,
+    required this.onTap,
   });
 
-  final List<AgentDescriptor> agents;
-  final AgentDescriptor? selected;
-  final ValueChanged<AgentDescriptor> onSelect;
-
-  Future<void> _pick(BuildContext context) async {
-    final picked = await AgentPickerSheet.show(
-      context,
-      agents: agents,
-      selectedId: selected?.agentId,
-    );
-    if (picked == null) return;
-    for (final a in agents) {
-      if (a.agentId == picked) {
-        onSelect(a);
-        return;
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final agent = selected;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _AgentField(agent: agent, onTap: () => _pick(context)),
-        if (agent != null) ...[
-          const SizedBox(height: UxnanSpacing.md),
-          _AgentDetail(agent: agent),
-        ],
-      ],
-    );
-  }
-}
-
-/// The combobox field showing the selected agent (logo + name) or a hint, with
-/// an unfold chevron; tapping opens the [AgentPickerSheet].
-class _AgentField extends StatelessWidget {
-  const _AgentField({required this.agent, required this.onTap});
-
-  final AgentDescriptor? agent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final l10n = AppLocalizations.of(context);
-    final a = agent;
-
-    return Material(
-      color: colors.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        side: BorderSide(color: colors.outline),
-      ),
-      child: InkWell(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(UxnanSpacing.md),
-          child: Row(
-            children: [
-              if (a != null)
-                _AgentLeading(agentId: a.agentId)
-              else
-                Icon(
-                  Icons.smart_toy_outlined,
-                  size: 20,
-                  color: colors.onSurfaceVariant,
-                ),
-              const SizedBox(width: UxnanSpacing.md),
-              Expanded(
-                child: Text(
-                  a?.displayName ?? l10n.newThreadAgentHint,
-                  style: textTheme.bodyLarge?.copyWith(
-                    color: a == null ? colors.onSurfaceVariant : null,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: UxnanSpacing.sm),
-              Icon(
-                Icons.unfold_more_rounded,
-                size: 20,
-                color: colors.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Below the combobox: the selected agent's capability chips, plus the sign-in
-/// status (a "Check sign-in" action for an installed-but-not-signed-in agent,
-/// re-querying `auth/status`, or an "unavailable" note).
-class _AgentDetail extends ConsumerWidget {
-  const _AgentDetail({required this.agent});
-
   final AgentDescriptor agent;
+  final CardGroupPosition position;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
     final caps = _agentCapabilities(agent, l10n);
-
     final auth = ref.watch(authStatusProvider(agent.agentId));
     final requiresLogin =
         agent.available && (auth.value?.requiresLogin ?? false);
     final checking = requiresLogin && auth.isLoading;
+    final foreground = requiresLogin
+        ? colors.onErrorContainer
+        : selected
+            ? colors.onPrimaryContainer
+            : colors.onSurface;
+    final mutedForeground = foreground.withValues(alpha: 0.75);
+    final background = requiresLogin
+        ? colors.errorContainer
+        : selected
+            ? colors.primaryContainer
+            : colors.surfaceContainer;
+    final chipBackground = requiresLogin || selected
+        ? colors.surface.withValues(alpha: 0.7)
+        : colors.surfaceContainerHighest;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (!agent.available)
-          Text(
-            l10n.newThreadAgentUnavailable,
-            style:
-                textTheme.bodySmall?.copyWith(color: UxnanColors.disconnected),
-          )
-        else if (requiresLogin)
-          Padding(
-            padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-            child: _CheckSignInButton(
-              checking: checking,
-              onPressed: () =>
-                  ref.invalidate(authStatusProvider(agent.agentId)),
-            ),
-          ),
-        if (agent.available && caps.isNotEmpty)
-          Wrap(
-            spacing: UxnanSpacing.xs,
-            runSpacing: UxnanSpacing.xs,
+    return Semantics(
+      button: agent.available,
+      selected: selected,
+      enabled: agent.available,
+      child: Opacity(
+        opacity: agent.available ? 1 : 0.55,
+        child: ExpressiveCard(
+          position: position,
+          onTap: onTap,
+          color: background,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final cap in caps)
-                _CapabilityChip(icon: cap.$1, label: cap.$2),
+              Row(
+                children: [
+                  _AgentLeading(agentId: agent.agentId),
+                  const SizedBox(width: UxnanSpacing.md),
+                  Expanded(
+                    child: Text(
+                      agent.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleMedium?.copyWith(color: foreground),
+                    ),
+                  ),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  if (!agent.available)
+                    Text(
+                      l10n.newThreadAgentUnavailable,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: UxnanColors.disconnected,
+                      ),
+                    )
+                  else if (selected)
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: foreground,
+                    ),
+                ],
+              ),
+              if (caps.isNotEmpty)
+                AnimatedSize(
+                  duration: reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topLeft,
+                  child: selected
+                      ? Padding(
+                          padding: const EdgeInsets.only(
+                            top: UxnanSpacing.md,
+                          ),
+                          child: Wrap(
+                            spacing: UxnanSpacing.xs,
+                            runSpacing: UxnanSpacing.xs,
+                            children: [
+                              for (final cap in caps)
+                                _CapabilityChip(
+                                  icon: cap.$1,
+                                  label: cap.$2,
+                                  background: chipBackground,
+                                  foreground: mutedForeground,
+                                ),
+                            ],
+                          ),
+                        )
+                      : const SizedBox(width: double.infinity),
+                ),
+              if (requiresLogin) ...[
+                const SizedBox(height: UxnanSpacing.sm),
+                _CheckSignInButton(
+                  checking: checking,
+                  onPressed: () =>
+                      ref.invalidate(authStatusProvider(agent.agentId)),
+                ),
+              ],
             ],
           ),
-      ],
+        ),
+      ),
     );
   }
 }
@@ -671,14 +660,7 @@ class _CheckSignInButton extends StatelessWidget {
         visualDensity: VisualDensity.compact,
       ),
       icon: checking
-          ? SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.error,
-              ),
-            )
+          ? PolygonLoader(size: 14, color: colors.error)
           : const Icon(Icons.login_rounded, size: 16),
       label: Text(l10n.agentCheckSignIn),
     );
@@ -686,33 +668,38 @@ class _CheckSignInButton extends StatelessWidget {
 }
 
 class _CapabilityChip extends StatelessWidget {
-  const _CapabilityChip({required this.icon, required this.label});
+  const _CapabilityChip({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
   final IconData icon;
   final String label;
+  final Color background;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: UxnanSpacing.sm,
-        vertical: 4,
+        vertical: UxnanSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
+        color: background,
         borderRadius: const BorderRadius.all(UxnanRadius.full),
-        border: Border.all(color: colors.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: colors.onSurfaceVariant),
+          Icon(icon, size: 16, color: foreground),
           const SizedBox(width: UxnanSpacing.xs),
           Text(
             label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
+            style: textTheme.labelSmall?.copyWith(color: foreground),
           ),
         ],
       ),
@@ -736,7 +723,6 @@ class _AgentLeading extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surfaceContainerHigh,
         borderRadius: const BorderRadius.all(UxnanRadius.md),
-        border: Border.all(color: colors.outline),
       ),
       child: Icon(
         Icons.smart_toy_outlined,
@@ -791,9 +777,8 @@ class _ModelField extends StatelessWidget {
 
     return Material(
       color: colors.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        side: BorderSide(color: colors.outline),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(UxnanRadius.lg),
       ),
       child: InkWell(
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
@@ -822,11 +807,7 @@ class _ModelField extends StatelessWidget {
               ),
               const SizedBox(width: UxnanSpacing.sm),
               if (loading)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                const PolygonLoader(size: 16)
               else if (enabled && agentId != null)
                 Icon(
                   Icons.unfold_more_rounded,
@@ -852,10 +833,9 @@ class _SectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.sm),
       child: Text(
-        label.toUpperCase(),
-        style: textTheme.bodySmall?.copyWith(
+        label,
+        style: textTheme.titleSmall?.copyWith(
           color: colors.onSurfaceVariant,
-          letterSpacing: 0.6,
         ),
       ),
     );
@@ -868,13 +848,7 @@ class _Loading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Padding(
         padding: EdgeInsets.all(UxnanSpacing.lg),
-        child: Center(
-          child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
+        child: Center(child: PolygonLoader(size: 22)),
       );
 }
 
@@ -899,14 +873,12 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.md),
       child: Text(
         message,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.copyWith(color: colors.onSurfaceVariant),
+        style: textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
       ),
     );
   }

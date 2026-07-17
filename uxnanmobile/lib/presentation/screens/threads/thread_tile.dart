@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
+import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 
 /// A per-thread action chosen from the long-press menu.
@@ -437,13 +438,9 @@ class _ActivityIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (activity) {
       case ThreadActivity.running:
-        return SizedBox(
-          width: 10,
-          height: 10,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Theme.of(context).colorScheme.primary,
-          ),
+        return PolygonLoader(
+          size: 10,
+          color: Theme.of(context).colorScheme.primary,
         );
       case ThreadActivity.error:
         return const _Dot(color: UxnanColors.error);

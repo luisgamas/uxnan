@@ -637,7 +637,7 @@ class BaseAgentAdapter {
 
 ### 3.1 Sistema de diseno
 
-> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` adaptativo para claro/oscuro. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono ya están incluidas en `assets/fonts/` y declaradas en `pubspec.yaml` (verificado en dispositivo).
+> ✅ **Implementado** (rama `uxnanmobile`): tokens en `lib/presentation/theme/` (`colors.dart`, `typography.dart`, `spacing.dart`) y `buildUxnanTheme()` adaptativo para claro/oscuro. El tema de marca genera primero un `ColorScheme` Material 3 completo desde sus semillas oficial azul/verde/error, por lo que toda la jerarquía de superficies y los roles fijos/inversos tienen tonos explícitos; nunca se construye un esquema parcial. Nota: se usa `Color.withValues(alpha:)` en lugar de `withOpacity()` (deprecado en Flutter actual). Las fuentes Inter/JetBrainsMono ya están incluidas en `assets/fonts/` y declaradas en `pubspec.yaml` (verificado en dispositivo).
 
 Uxnan usa un sistema de diseno propio basado en Material Design 3 con personalizacion especifica para el contexto de terminal/codigo.
 
@@ -771,24 +771,33 @@ class UxnanRadius {
 ```dart
 // lib/presentation/theme/uxnan_theme.dart
 ThemeData buildUxnanTheme({Brightness brightness = Brightness.dark}) {
-  final colorScheme = ColorScheme(
+  // Never instantiate a partial ColorScheme. `fromSeed` materializes all M3
+  // roles, including surfaceContainerLowest…Highest, inverse and fixed roles.
+  final primary = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandPrimary,
     brightness: brightness,
-    primary: UxnanColors.primary,
-    onPrimary: UxnanColors.onPrimary,
-    primaryContainer: UxnanColors.primaryContainer,
-    onPrimaryContainer: UxnanColors.onSurface,
-    secondary: UxnanColors.secondary,
-    onSecondary: UxnanColors.onSecondary,
-    secondaryContainer: UxnanColors.secondaryContainer,
-    onSecondaryContainer: UxnanColors.onSurface,
-    error: UxnanColors.error,
-    onError: Colors.white,
-    surface: UxnanColors.surface,
-    onSurface: UxnanColors.onSurface,
-    surfaceContainerHighest: UxnanColors.surfaceVariant,
-    surfaceContainerHigh: UxnanColors.surfaceElevated,
-    outline: UxnanColors.outline,
-    outlineVariant: UxnanColors.outline.withOpacity(0.5),
+  );
+  final secondary = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandSecondary,
+    brightness: brightness,
+  );
+  final error = ColorScheme.fromSeed(
+    seedColor: UxnanColors.brandError,
+    brightness: brightness,
+  );
+  final colorScheme = primary.copyWith(
+    secondary: secondary.primary,
+    onSecondary: secondary.onPrimary,
+    secondaryContainer: secondary.primaryContainer,
+    onSecondaryContainer: secondary.onPrimaryContainer,
+    secondaryFixed: secondary.primaryFixed,
+    secondaryFixedDim: secondary.primaryFixedDim,
+    onSecondaryFixed: secondary.onPrimaryFixed,
+    onSecondaryFixedVariant: secondary.onPrimaryFixedVariant,
+    error: error.primary,
+    onError: error.onPrimary,
+    errorContainer: error.primaryContainer,
+    onErrorContainer: error.onPrimaryContainer,
   );
   return ThemeData(
     useMaterial3: true,
@@ -1664,6 +1673,7 @@ dependencies:
   # UI
   flutter_markdown: ^0.7.3
   flutter_highlight: ^0.7.0
+  material_loading_indicator: ^1.0.0
   flutter_inappwebview: ^6.0.0
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0
@@ -3041,40 +3051,39 @@ El onboarding esta disenado para llevar a un desarrollador desde cero hasta la p
 ```
 OnboardingScreen
 +-- PageController con 4 paginas
-+-- Indicadores de pagina (dots)
-+-- Boton "Siguiente" / "Comenzar" en el ultimo paso
++-- Fondo `surface` solido; la expresion se concentra en el contenido
++-- Logos de agentes flotan directamente sobre el fondo (respeta reduced motion)
++-- Superficie flotante unificada: indicadores + Atras/Siguiente/Escanear
 
 Pagina 1: WelcomePage
-+-- Animacion Lottie de agente en accion (loop)
++-- Escenario tonal con agentes compatibles
 +-- Titulo: "Controla tus agentes desde cualquier lugar"
 +-- Subtitulo: descripcion del producto en 2 lineas
-+-- Boton: "Comenzar" -> avanza a pagina 2
++-- Boton: "Siguiente" -> avanza a pagina 2
 
 Pagina 2: FeaturesPage
-+-- Lista de 4 caracteristicas clave:
-|   +-- Cifrado E2EE — "Tu codigo nunca toca nuestros servidores"
-|   +-- Multi-agente — "Compatible con Codex, OpenCode, Gemini CLI y mas"
-|   +-- Local-first — "Funciona en tu red local sin internet"
-|   +-- Notificaciones — "Te avisamos cuando el agente termina"
++-- Lista de 3 caracteristicas clave:
+|   +-- Multi-agente
+|   +-- Cifrado E2EE
+|   +-- Local-first
 +-- Boton: "Siguiente" -> pagina 3
 
 Pagina 3: InstallStepPage
 +-- Titulo: "Instala el bridge en tu PC"
-+-- Tabs: macOS | Windows | Linux
 +-- CommandCardWidget con el comando de instalacion
 |   +-- npm install -g uxnan-bridge
 |       (boton de copia automatica)
 +-- CommandCardWidget con el comando de inicio
 |   +-- uxnan-bridge start
-+-- CommandCardWidget para mostrar el QR
-|   +-- uxnan-bridge qr
-+-- Boton: "Ya lo instale, escanear QR" -> pagina 4
++-- Nota sobre la carpeta raiz atendida por el bridge
++-- Boton "Siguiente" -> pagina 4
 
 Pagina 4: PairingStep
 +-- Titulo: "Escanea el QR de tu PC"
-+-- Subtitulo: "El QR aparece en tu terminal al ejecutar uxnan-bridge qr"
 +-- Boton primario: "Escanear QR" -> QrScannerScreen
 +-- Boton secundario: "Ingresar codigo manual" -> ManualCodeScreen
++-- ManualCodeScreen: contenido limitado a 560 dp, hero semantico compartido,
+    descubrimiento LAN y formulario manual en superficies NE
 ```
 
 ### 13.2 CommandCardWidget

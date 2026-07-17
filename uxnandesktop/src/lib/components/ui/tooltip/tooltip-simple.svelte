@@ -3,12 +3,14 @@
 	import TooltipContent from "./tooltip-content.svelte";
 
 	let {
+		open = $bindable(false),
 		title = "",
 		side = "top",
 		sideOffset = 4,
 		delayDuration = 700,
 		children,
 	}: {
+		open?: boolean;
 		title: string;
 		side?: "top" | "right" | "bottom" | "left";
 		sideOffset?: number;
@@ -17,7 +19,7 @@
 	} = $props();
 </script>
 
-<TooltipPrimitive.Root {delayDuration}>
+<TooltipPrimitive.Root bind:open {delayDuration}>
 	<TooltipPrimitive.Trigger>
 		{#snippet child({ props })}
 			{@render children(props)}
