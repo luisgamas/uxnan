@@ -17,6 +17,7 @@
   import { revealPath } from "$lib/api";
   import { dropPathsIntoTerminal } from "$lib/terminal/terminalDrop";
   import { cn } from "$lib/utils";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { icon, iconButton, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -168,15 +169,18 @@
     return i > 0 ? entry.path.slice(0, i) : entry.path;
   }
 
+  // Defer the dialog open until the context menu has fully closed, so the menu's
+  // teardown releases the body pointer-lock before the dialog captures it (else
+  // the dialog can restore `pointer-events: none` on close and freeze the mouse).
   function openPrompt(mode: PromptMode, entry: FsEntry): void {
     promptMode = mode;
     promptEntry = entry;
-    promptOpen = true;
+    deferModalOpen(() => (promptOpen = true));
   }
   function openDelete(entry: FsEntry): void {
     deleteTarget = entry;
     deleteError = null;
-    deleteOpen = true;
+    deferModalOpen(() => (deleteOpen = true));
   }
 
   async function submitPrompt(name: string): Promise<void> {
