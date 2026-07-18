@@ -962,21 +962,22 @@ pub async fn apply_patch(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| AppError::Git(e.to_string()))?;
-    // Write the patch, then drop stdin so git sees EOF.
-    {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| AppError::Git("failed to open git stdin".to_string()))?;
-        stdin
-            .write_all(patch.as_bytes())
-            .await
-            .map_err(|e| AppError::Git(e.to_string()))?;
-    }
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| AppError::Git(e.to_string()))?;
+    // Feed the patch on stdin while draining git's output concurrently: writing
+    // the whole patch before reading would deadlock if git filled its stdout/
+    // stderr pipe (a chatty failure on a large patch) while blocked on our read.
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| AppError::Git("failed to open git stdin".to_string()))?;
+    let patch_bytes = patch.as_bytes().to_vec();
+    let writer = async move {
+        let res = stdin.write_all(&patch_bytes).await;
+        drop(stdin); // EOF so git stops reading
+        res
+    };
+    let (write_res, output) = tokio::join!(writer, child.wait_with_output());
+    write_res.map_err(|e| AppError::Git(e.to_string()))?;
+    let output = output.map_err(|e| AppError::Git(e.to_string()))?;
     if !output.status.success() {
         return Err(AppError::Git(
             String::from_utf8_lossy(&output.stderr).trim().to_string(),

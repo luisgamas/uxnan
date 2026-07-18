@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — hunk-level `git apply` can't stall on a large failing patch
+
+- **`git apply` (hunk staging, hunk unstage and hunk discard) now drains git's
+  output while feeding the patch on stdin**, instead of writing the whole patch
+  to completion and only then waiting for the process. On a chatty rejection (a
+  large patch git refuses with a lot of stderr), the old order could block: we
+  blocked writing a full stdin pipe while git blocked writing a full stderr
+  pipe. The stdin write and the process wait now run concurrently
+  (`tokio::join!`, `git.rs::apply_patch`), so stdin drains as git reads it and
+  git's output is consumed as it's produced.
+
 ### Added — the destructive git mutation paths are now under test
 
 - **Staging, discard, hunk-apply and commit in the git CLI layer
