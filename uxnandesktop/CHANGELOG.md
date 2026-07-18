@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.16] - 2026-07-18
+
 ### Fixed — the window's Close (✕) button now actually closes the app
 
 - **Clicking Close (or otherwise requesting a window close) left the window open.**
