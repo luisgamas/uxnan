@@ -146,6 +146,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+Shift+Tab",
   },
   {
+    id: "sleepWorkspace",
+    labelKey: "shortcuts.sleepWorkspace",
+    descKey: "shortcuts.sleepWorkspaceDesc",
+    category: "terminal",
+    default: "Mod+Shift+Z",
+  },
+  {
     id: "focusSplitNext",
     labelKey: "shortcuts.focusSplitNext",
     descKey: "shortcuts.focusSplitNextDesc",

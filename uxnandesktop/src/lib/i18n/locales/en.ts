@@ -153,6 +153,22 @@ export const en = {
   "worktree.aheadTooltip": "ahead of upstream",
   "worktree.behindTooltip": "behind upstream",
   "worktree.runningTooltip": "{n} terminal(s) running",
+  "worktree.asleepTooltip": "{n} terminal(s) asleep",
+
+  // Workspace sleep/wake
+  "workspace.sleep": "Sleep workspace",
+  "workspace.wake": "Wake workspace",
+  "workspace.sleepBlockedTitle": "Sleep this workspace?",
+  "workspace.sleepBlockedDesc":
+    "Agents are still working here: {agents}. Sleeping stops their processes; the workspace keeps its tabs and can be woken later.",
+  "workspace.sleepAnyway": "Sleep anyway",
+  "workspace.sleepBlockedToast":
+    "An agent is still working here — sleep it from the worktree's menu to confirm.",
+  "terminal.asleep": "Workspace asleep — processes stopped",
+  "terminal.restoredScrollback": "restored scrollback — shell restarted",
+  "shortcuts.sleepWorkspace": "Sleep workspace",
+  "shortcuts.sleepWorkspaceDesc":
+    "Stop the active workspace's terminals (keeping tabs and scrollback) to free resources.",
 
   // New-worktree dialog
   "newWorktree.title": "New worktree",

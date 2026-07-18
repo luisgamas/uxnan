@@ -11,6 +11,8 @@
   import { projects } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
+  import { samePath } from "$lib/pathid";
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
@@ -67,6 +69,18 @@
   let expanded = $state(false);
 
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
+
+  // Live-space aggregate for the collapsed card: terminals open across this
+  // project's workspaces (main + every worktree). Keys are matched by path
+  // identity, and each workspace key counts once.
+  const termCount = $derived.by(() => {
+    const paths = [repo.path, ...projects.worktreesOf(repo.id).map((w) => w.path)];
+    let n = 0;
+    for (const key of terminals.openWorkspaceKeys) {
+      if (paths.some((p) => samePath(p, key))) n += terminals.terminalCount(key);
+    }
+    return n;
+  });
 
   // Child worktrees in their effective order — frozen against jumping for the
   // drifting modes — plus the pointer-drag reorder that feeds this project's
@@ -175,6 +189,18 @@
             {...tp2}
             class="size-2 shrink-0 rounded-full bg-red-500 ring-2 ring-red-500/15"
           ></span>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
+    {#if termCount > 0}
+      <TooltipSimple title={i18n.t("project.runningTooltip", { n: termCount })}>
+        {#snippet children(tp2)}
+          <span
+            {...tp2}
+            class={cn("inline-flex shrink-0 items-center gap-0.5 text-muted-foreground", text.indicator)}
+          >
+            <TerminalIcon class="size-3" />{termCount}
+          </span>
         {/snippet}
       </TooltipSimple>
     {/if}

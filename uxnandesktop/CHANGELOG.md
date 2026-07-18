@@ -5,6 +5,65 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a restored session now re-binds to its project at boot
+
+- **Restoring terminals no longer leaves the app half-selected.** The persisted
+  layout's active workspace used to come back on screen (shells respawned at
+  their old cwd) while the sidebar selection stayed empty, so the git panel,
+  fs watcher, GitHub context and agent targeting all ran against nothing until
+  a manual click. On boot the app now loads the worktree world first and
+  re-binds the restored workspace through the same path a sidebar click takes
+  — selection, watchers and launch targeting follow with zero clicks.
+- **Stale terminal workspaces are purged at boot.** Workspace keys whose
+  worktree folder no longer exists on disk (removed in some earlier session)
+  used to pile up in the persisted layout forever; the boot reconciler drops
+  them. Surviving keys are re-spelled to the canonical (git-emitted) path, so
+  a path-separator/case difference can no longer split one folder into two
+  workspaces (`src/lib/pathid.ts` is the shared path-identity helper).
+- **Boot no longer respawns every saved workspace's shells at once.** Only the
+  active workspace mounts (and spawns) at startup; background workspaces mount
+  on first activation. Boot cost scales with the workspace you're looking at,
+  not the whole saved session.
+
+### Added — workspace sleep/wake, live-space indicators, scrollback restore
+
+- **Sleep workspace** (worktree context menu, or `Mod+Shift+Z` on the active
+  workspace): stops every terminal's process and frees its renderer memory
+  while keeping all tabs, splits and titles in place. Each terminal's parsed
+  screen + last 1 000 scrollback lines are serialized first
+  (`@xterm/addon-serialize` — parsed cells, never raw PTY bytes). Sleeping a
+  workspace with a *working* agent asks for explicit confirmation (the
+  keyboard shortcut declines instead and says so). Waking — automatic when the
+  workspace is activated, or via the in-pane button — respawns each shell at
+  its cwd with the previous screen replayed above a dim divider.
+- **Scrollback survives restarts.** On window close (and on every sleep) the
+  serialized screens are written to a `terminal-buffers.json` sidecar next to
+  `state.json` (atomic write; snapshots stay off the debounced state hot
+  path). A restored terminal replays its previous session's screen before the
+  fresh shell prompt.
+- **Live-space indicators**: project cards and worktree rows show a small
+  terminal count while a workspace has open terminals, dimmed with a moon
+  glyph when the workspace is asleep.
+
+### Added — agent CLI sessions can be resumed after a restart or wake
+
+- The local hook server now captures each agent's **provider session id** (and
+  session/transcript file, when reported) from the hook payloads it already
+  receives, sanitized as hostile input at ingestion (bounded length/charset,
+  no option injection) and cached with the agent state (TTL-pruned as before).
+  Session ids are identifiers, not credentials.
+- A terminal tab that hosted an agent session remembers it with the layout.
+  When that tab comes back — app restart or workspace wake — the workspace
+  returns **as it was, TUIs included**: if the agent was still running when
+  the app closed (or the workspace slept), the CLI's resume command
+  **auto-runs** in the respawned shell and the conversation reopens by
+  itself; if the agent had already exited (tracked live via process
+  detection), the command is only **pre-typed** — one Enter reopens it,
+  anything else dismisses it. Verified resume entry points:
+  `claude --resume <id>`, `codex resume <id>`, `opencode --session <id>`,
+  `pi --session <file|id>`. Gemini CLI exposes no session resume today
+  (captured, not offered); Zero is not wired (no verified resume command).
+
 ## [0.0.16] - 2026-07-18
 
 ### Fixed — the window's Close (✕) button now actually closes the app

@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 251 Rust backend tests + 192 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+with" external editors/IDEs**). 256 Rust backend tests + 207 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -330,21 +330,33 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       modifiers. Needs validation against a real Kitty-protocol TUI. The base
       protocol (negotiation + disambiguate / event-types / all-keys) is
       implemented in `src/lib/terminal/keyboardProtocol.ts`.
-- [ ] **Workspace lifecycle — active indicator + sleep/hibernate.** Surface which
-      projects/worktrees have a *live* space (open terminals) vs an empty one — an
-      indicator on the project/worktree cards, so it's obvious where terminals are
-      running and which space is completely empty. Add a **"Sleep workspace"**
-      action (+ shortcut) that closes every tab of a workspace and frees its
-      resources (kill the PTYs + drop the xterm instances) to reclaim memory on a
-      machine with many active projects. Complements the built-in per-pane trims
-      (hidden panes already release their WebGL/GPU context, and each terminal's
-      scrollback is capped at 5 000 lines; this drops a whole workspace at once).
-      Wire into the card context menu (`RowActionsMenu`) and the keyboard-shortcut
-      set; the workspace store already keys terminals per worktree path, so "which
-      workspaces have tabs" is derivable from `terminals.workspaces`. (Note: the
-      old idea of unmounting hidden xterms and replaying a backend ring buffer on
-      show is off the table — raw-byte replay of a TUI stream proved unsound and
-      the ring buffer was removed; terminals keep one live xterm per tab.)
+- [ ] **Workspace lifecycle — implemented, pending on-device validation.** The
+      live-space indicator (terminal count on cards/rows, moon variant when
+      asleep), **Sleep workspace** (row menu + `Mod+Shift+Z`; keeps every
+      tab/split, kills PTYs, disposes xterms, snapshots each parsed screen via
+      `@xterm/addon-serialize` into the `terminal-buffers.json` sidecar),
+      wake-on-activation with scrollback replay, and the boot re-bind/reconcile
+      pass (restored workspace selects its worktree; dead workspace keys
+      dropped; canonical re-keying via `src/lib/pathid.ts`) are all
+      code-complete with green gates. Semantics deliberately changed from the
+      original idea: sleep must NOT close tabs — the space survives; only its
+      processes stop. (Raw-byte ring replay remains off the table; the replay
+      is the PARSED screen from SerializeAddon, which is sound.) **Still owed:**
+      the maintainer's on-device QA pass (sleep/wake round-trip, boot re-bind,
+      indicator/i18n review — UI changes need visual approval before commit);
+      remove this item when validated. Follow-ups (non-blocking): a setting to
+      opt OUT of the TUI auto-relaunch (today a live-at-close agent session
+      always auto-resumes; an exited one is pre-typed only), a sleep action in
+      the worktree palette, and a card-level sleep for a whole project.
+- [ ] **Agent session resume — on-device validation + parity.** Session capture
+      (hook `session_id`/file → `agent_cache.session` + the tab's persisted
+      `agentSession`) and the pre-typed resume commands (claude / codex /
+      opencode / pi; registry `src/lib/agentResume.ts`) are code-complete with
+      green gates. **Still owed:** an end-to-end on-device pass per agent (run →
+      quit app → relaunch → Enter reopens the conversation; same via
+      sleep→wake). Follow-ups: Gemini CLI/Zero resume when their CLIs expose a
+      verifiable entry point (capture already works for Gemini); bridge/mobile
+      parity rides Phase 6 (the backend capture half is reusable as-is).
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
@@ -449,7 +461,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 251 Rust + 192 Vitest tests.
+  deferred with Apple). 256 Rust + 207 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

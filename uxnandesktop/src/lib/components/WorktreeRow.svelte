@@ -25,7 +25,9 @@
   import type { DragReorder } from "$lib/state/dragReorder.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
+  import MoonIcon from "@lucide/svelte/icons/moon";
   import PinIcon from "@lucide/svelte/icons/pin";
+  import TerminalIcon from "@lucide/svelte/icons/terminal";
 
   let {
     row,
@@ -73,6 +75,26 @@
     return p.split("/").pop() ?? p;
   });
   const tipText = $derived(showRepo ? shortLocation : row.path);
+
+  // Live-space indicator: how many terminals this worktree's workspace holds
+  // (0 hides the chip — an empty space needs no marker), and whether the whole
+  // workspace is asleep (dimmed moon variant).
+  const termCount = $derived(terminals.terminalCount(row.path));
+  const wsAsleep = $derived(terminals.isWorkspaceAsleep(row.path));
+
+  // Sleep with a working agent inside requires an explicit confirm; the dialog
+  // opens a macrotask after the menu closes (the menu→dialog body-lock race).
+  let sleepConfirmOpen = $state(false);
+  let sleepAgents = $state<string[]>([]);
+  function requestSleep() {
+    const blockers = terminals.sleepBlockers(row.path);
+    if (blockers.length === 0) {
+      void terminals.sleepWorkspace(row.path);
+      return;
+    }
+    sleepAgents = blockers;
+    setTimeout(() => (sleepConfirmOpen = true), 0);
+  }
 
   // Aggregate agent status for the leading dot: a working agent wins, else the
   // first one; null when the worktree has no agents (show the branch icon).
@@ -176,6 +198,26 @@
                       {/snippet}
                     </TooltipSimple>
                   {/if}
+                  {#if termCount > 0}
+                    <TooltipSimple
+                      title={wsAsleep
+                        ? i18n.t("worktree.asleepTooltip", { n: termCount })
+                        : i18n.t("worktree.runningTooltip", { n: termCount })}
+                    >
+                      {#snippet children(tp2)}
+                        <span
+                          {...tp2}
+                          class={cn(
+                            "inline-flex shrink-0 items-center gap-0.5",
+                            wsAsleep ? "text-muted-foreground/50" : "text-muted-foreground",
+                            text.indicator,
+                          )}
+                        >
+                          {#if wsAsleep}<MoonIcon class="size-3" />{:else}<TerminalIcon class="size-3" />{/if}{termCount}
+                        </span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
                   {#if status && status.dirty > 0}
                     <TooltipSimple title={i18n.t("worktree.dirtyTooltip", { n: status.dirty })}>
                       {#snippet children(tp2)}
@@ -240,6 +282,7 @@
       onRemove={row.isMain ? onRemoveProject : openRemove}
       onChangeIcon={() => (iconPickerOpen = true)}
       onTogglePin={row.isMain ? undefined : () => projects.toggleWorktreePin(row.path)}
+      onSleep={requestSleep}
       pinned={projects.isWorktreePinned(row.path)}
     />
   </ContextMenu.Root>
@@ -248,6 +291,18 @@
     <AgentSpace path={row.path} />
   </div>
 </div>
+
+<ConfirmDialog
+  bind:open={sleepConfirmOpen}
+  danger
+  title={i18n.t("workspace.sleepBlockedTitle")}
+  description={i18n.t("workspace.sleepBlockedDesc", { agents: sleepAgents.join(", ") })}
+  confirmLabel={i18n.t("workspace.sleepAnyway")}
+  onconfirm={async () => {
+    await terminals.sleepWorkspace(row.path);
+    return true;
+  }}
+/>
 
 <ConfirmDialog
   bind:open={removeOpen}

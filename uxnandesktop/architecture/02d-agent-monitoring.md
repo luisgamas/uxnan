@@ -78,6 +78,22 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   línea en Gemini) para que una `'`/`"` en la ruta no rompa el quoting. Toda ruta
   nueva en este servidor debe ir tras **ambos** gates (loopback + token).
 
+- **Captura de sesión del proveedor (resume):** cuando el payload de un evento
+  trae la identidad de sesión del propio proveedor (`session_id` / `sessionID` /
+  `sessionId` / `session-id` / `conversation_id`, más un archivo opcional en
+  `session_file` / `sessionFile` / `transcript_path`), el servidor la extrae y
+  **sanea como entrada hostil** (longitud acotada, charset conservador, sin `-`
+  inicial — el id llega después a una línea de comandos) antes de guardarla en
+  `AgentStateEntry.session` (mismo TTL de 7 días). El frontend la persiste
+  además en el tab dueño (con el layout), y al restaurar/despertar ese tab
+  lanza el comando de resume del CLI (`claude --resume <id>`,
+  `codex resume <id>`, `opencode --session <id>`, `pi --session <archivo|id>`;
+  registro en `src/lib/agentResume.ts`) como comando de arranque: se
+  **auto-ejecuta si la TUI seguía viva al cerrar/dormir** (el workspace vuelve
+  con sus TUIs abiertas — la detección de procesos `agent:detected` mantiene
+  al día el flag `live` de la sesión), y solo queda pre-escrito si el agente
+  ya había salido. Los ids de sesión son identificadores, no credenciales.
+
 **Diagrama de flujo del hook HTTP:**
 
 ```

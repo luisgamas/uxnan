@@ -7,6 +7,8 @@
 import { app } from "$lib/state/app.svelte";
 import { terminals } from "$lib/state/terminals.svelte";
 import { projects } from "$lib/state/projects.svelte";
+import { toast } from "$lib/toast";
+import { i18n } from "$lib/i18n";
 
 export interface RunActionOpts {
   /** The terminal that had focus — so `closeCenter` closes *this* terminal
@@ -45,6 +47,21 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
       if (!terminals.root) return false;
       terminals.focusSplit(-1);
       return true;
+    case "sleepWorkspace": {
+      // Sleep the active workspace. With a working agent inside, the shortcut
+      // declines (killing a mid-turn agent needs the row menu's explicit
+      // confirm) and says so.
+      const key = terminals.activeWorkspace;
+      if (!key || terminals.terminalCount(key) === 0 || terminals.isWorkspaceAsleep(key)) {
+        return false;
+      }
+      if (terminals.sleepBlockers(key).length > 0) {
+        toast.warning(i18n.t("workspace.sleepBlockedToast"));
+        return true;
+      }
+      void terminals.sleepWorkspace(key);
+      return true;
+    }
     case "newTerminal":
       app.openTerminal();
       return true;

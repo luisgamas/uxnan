@@ -2,6 +2,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { app } from "$lib/state/app.svelte";
+  import { projects } from "$lib/state/projects.svelte";
   import { applyTheme } from "$lib/theme";
   import { agentMonitor } from "$lib/state/agentMonitor.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
@@ -13,9 +14,19 @@
 
   let { children } = $props();
 
-  // Hydrate from the Rust backend once the webview is mounted.
+  // Hydrate from the Rust backend once the webview is mounted. After the layout
+  // restore, load the worktree world and reconcile the two: the restored active
+  // workspace re-binds to (and selects) its project/worktree, stale workspace
+  // keys for deleted worktrees are dropped, and alternate path spellings are
+  // re-keyed — see `projects.reconcileRestoredWorkspaces`.
   onMount(() => {
-    app.init();
+    void (async () => {
+      await app.init();
+      if (app.backend === "ready") {
+        await projects.init();
+        await projects.reconcileRestoredWorkspaces();
+      }
+    })();
     // Listen for agents detected (or stopped) in any terminal.
     void agentMonitor.startDetection();
     // Hydrate + subscribe to precise hook-reported agent states.

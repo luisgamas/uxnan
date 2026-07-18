@@ -28,6 +28,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal, type ITerminalOptions } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { LigaturesAddon } from "@xterm/addon-ligatures";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { WebglAddon } from "@xterm/addon-webgl";
@@ -84,6 +85,11 @@ export interface TerminalInstance {
   readonly id: string;
   readonly term: Terminal;
   readonly fit: FitAddon;
+  /** Serializes the PARSED screen+scrollback to ANSI (workspace sleep / the
+   *  close-time snapshot). Unlike the removed raw-byte ring replay, this is
+   *  sound by construction: it emits cell contents and attributes, never a
+   *  mid-escape stream and never device queries. */
+  readonly serializer: SerializeAddon;
   /** Kitty/CSI-u keyboard protocol state — negotiated by apps in the PTY, so it
    *  must survive remounts with the instance. */
   readonly kbd: KeyboardProtocol;
@@ -131,6 +137,19 @@ const pending = new Map<string, Promise<TerminalInstance>>();
 
 export function getInstance(id: string): TerminalInstance | undefined {
   return registry.get(id);
+}
+
+/** Serialize a live instance's parsed screen + last `scrollback` lines as ANSI
+ *  (for workspace sleep and the close-time snapshot). `null` when the instance
+ *  doesn't exist or serialization throws. */
+export function serializeInstance(id: string, scrollback = 1000): string | null {
+  const inst = registry.get(id);
+  if (!inst) return null;
+  try {
+    return inst.serializer.serialize({ scrollback });
+  } catch {
+    return null;
+  }
 }
 
 /** Get-or-create the instance for `id`. `created` tells the caller whether it
@@ -350,6 +369,8 @@ async function createInstance(
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  const serializer = new SerializeAddon();
+  term.loadAddon(serializer);
   term.open(wrapper);
 
   // Ligatures are loaded BEFORE the WebGL renderer, on purpose. xterm bakes its
@@ -388,6 +409,7 @@ async function createInstance(
     id,
     term,
     fit,
+    serializer,
     kbd: new KeyboardProtocol(),
     wrapper,
     spec: opts.spec,

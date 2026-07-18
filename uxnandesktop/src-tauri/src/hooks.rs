@@ -50,7 +50,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::TcpListener;
 
-use crate::model::{AgentReport, AgentStatus, SubagentEntry};
+use crate::model::{AgentReport, AgentSession, AgentStatus, SubagentEntry};
 use crate::state::{AppState, HookServerInfo};
 
 /// Header carrying the shared secret that authorizes a hook report.
@@ -724,6 +724,9 @@ async fn handle_hook(
     }
 
     let now = now_secs();
+    // Provider session identity (for resume) — most events repeat it; a miss
+    // never clears an id captured earlier (see `upsert_agent_state`).
+    let session = source.and_then(|s| extract_session(s, now));
     let state = ctx.app.state::<AppState>();
     let entry = {
         let mut data = state.data.write().await;
@@ -736,6 +739,7 @@ async fn handle_hook(
                 tool,
                 interrupted,
                 summary,
+                session,
             },
             now,
         );
@@ -746,6 +750,61 @@ async fn handle_hook(
 
     emit_agent_status(&ctx.app, entry);
     StatusCode::NO_CONTENT
+}
+
+/// Field names providers use for their session id, across the wired agents
+/// (Claude/Gemini: `session_id`; OpenCode plugin: `sessionID`; other spellings
+/// kept for robustness — the value is sanitized regardless of its source).
+const SESSION_ID_KEYS: [&str; 5] = [
+    "session_id",
+    "sessionID",
+    "sessionId",
+    "session-id",
+    "conversation_id",
+];
+/// Field names carrying a session/transcript FILE path (Pi resumes by file;
+/// Claude's transcript file is named separately from its session id).
+const SESSION_FILE_KEYS: [&str; 3] = ["session_file", "sessionFile", "transcript_path"];
+
+/// Sanitize a provider-supplied session id. The id later reaches a command
+/// line (the resume command is pre-typed into a shell), so it is validated as
+/// hostile input at ingestion: bounded length, no leading dash (option
+/// injection), and a conservative charset covering every observed provider id
+/// format (UUIDs and friends). Anything else is dropped, never "fixed".
+fn sanitize_session_id(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() || s.len() > 256 || s.starts_with('-') {
+        return None;
+    }
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+    {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// Extract the provider session identity from a raw hook payload, if present
+/// and sane. The file path (when reported) is stored verbatim apart from a
+/// length/control-character bound — it is only ever passed as a single argv
+/// element, never interpolated.
+fn extract_session(source: &serde_json::Value, now: i64) -> Option<AgentSession> {
+    let id = SESSION_ID_KEYS
+        .iter()
+        .find_map(|k| source.get(k).and_then(|v| v.as_str()))
+        .and_then(sanitize_session_id)?;
+    let file = SESSION_FILE_KEYS
+        .iter()
+        .find_map(|k| source.get(k).and_then(|v| v.as_str()))
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 512 && !s.chars().any(char::is_control))
+        .map(String::from);
+    Some(AgentSession {
+        id,
+        file,
+        captured_at: now,
+    })
 }
 
 /// Parse a lifecycle-state string into an [`AgentStatus`] (case-insensitive).
@@ -812,6 +871,50 @@ mod tests {
     #[test]
     fn now_secs_is_positive() {
         assert!(now_secs() > 0);
+    }
+
+    #[test]
+    fn extract_session_reads_each_provider_spelling() {
+        // Claude/Gemini: session_id (+ Claude's separately-named transcript).
+        let claude = json!({
+            "session_id": "3f9a1c2e-1111-2222-3333-444455556666",
+            "transcript_path": "C:/Users/dev/.claude/projects/x/t.jsonl",
+            "hook_event_name": "Stop"
+        });
+        let s = extract_session(&claude, 7).expect("claude session");
+        assert_eq!(s.id, "3f9a1c2e-1111-2222-3333-444455556666");
+        assert_eq!(
+            s.file.as_deref(),
+            Some("C:/Users/dev/.claude/projects/x/t.jsonl")
+        );
+        assert_eq!(s.captured_at, 7);
+        // OpenCode plugin: sessionID, no file.
+        let oc = json!({ "sessionID": "ses_01J0ABC" });
+        assert_eq!(extract_session(&oc, 1).expect("opencode").id, "ses_01J0ABC");
+        // No recognized key → None.
+        assert!(extract_session(&json!({ "prompt": "hi" }), 1).is_none());
+    }
+
+    #[test]
+    fn extract_session_rejects_hostile_ids() {
+        // Option injection, shell metacharacters, whitespace, oversized.
+        for bad in [
+            "-rm", "a b", "x;y", "x`y`", "x$(y)", "x|y", "x\"y", "x'y", "", " ",
+        ] {
+            assert!(
+                extract_session(&json!({ "session_id": bad }), 1).is_none(),
+                "id {bad:?} must be rejected"
+            );
+        }
+        let oversized = "a".repeat(257);
+        assert!(extract_session(&json!({ "session_id": oversized }), 1).is_none());
+        // A hostile FILE drops the file but keeps a good id.
+        let s = extract_session(
+            &json!({ "session_id": "ok-1", "session_file": "bad\u{0007}path" }),
+            1,
+        )
+        .expect("id survives");
+        assert_eq!(s.file, None);
     }
 
     #[test]

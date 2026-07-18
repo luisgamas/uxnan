@@ -6,7 +6,7 @@
 //! `architecture/03-implementation-guide.md` §2.1).
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 use crate::agent_hooks::{self, AgentHooksStatus, HookInstall};
@@ -771,6 +771,57 @@ pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
 pub async fn fs_write_file(path: String, content: String) -> Result<(), CommandError> {
     crate::fs::write_file(&path, &content)
         .await
+        .map_err(CommandError::from)
+}
+
+/// Whether a filesystem path currently exists. Read-only; the frontend's boot
+/// reconciler uses it to decide whether a restored terminal workspace still has
+/// a worktree folder behind it (gone → the stale workspace entry is dropped).
+#[tauri::command]
+pub async fn fs_path_exists(path: String) -> Result<bool, CommandError> {
+    Ok(tokio::fs::try_exists(&path).await.unwrap_or(false))
+}
+
+/// The terminal scrollback-snapshot sidecar, next to `state.json`. Kept out of
+/// the main persistence file so bulky ANSI snapshots never ride the debounced
+/// `state.json` hot path (they are written only on workspace sleep and window
+/// close). The content is opaque, frontend-owned JSON (sid → snapshot).
+pub(crate) fn term_buffers_path(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join("terminal-buffers.json")
+}
+
+pub(crate) async fn read_term_buffers(path: &std::path::Path) -> Option<serde_json::Value> {
+    let text = tokio::fs::read_to_string(path).await.ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Read the persisted terminal scrollback snapshots (`None` when absent/corrupt —
+/// the app then simply restores without scrollback).
+#[tauri::command]
+pub async fn term_buffers_get(app: AppHandle) -> Result<Option<serde_json::Value>, CommandError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?;
+    Ok(read_term_buffers(&term_buffers_path(&dir)).await)
+}
+
+/// Overwrite the terminal scrollback snapshots (atomic write, same envelope as
+/// every other persisted file).
+#[tauri::command]
+pub async fn term_buffers_set(
+    app: AppHandle,
+    buffers: serde_json::Value,
+) -> Result<(), CommandError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?;
+    let path = term_buffers_path(&dir);
+    let text = serde_json::to_string(&buffers).map_err(AppError::from)?;
+    tokio::task::spawn_blocking(move || agent_hooks::write_json_atomic(&path, &text))
+        .await
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
         .map_err(CommandError::from)
 }
 
@@ -1990,7 +2041,41 @@ pub async fn github_ai_draft_pr(
 
 #[cfg(test)]
 mod tests {
-    use super::{bracketed_paste, pty_submit_payload, reorder_by_ids};
+    use super::{
+        bracketed_paste, fs_path_exists, pty_submit_payload, read_term_buffers, reorder_by_ids,
+        term_buffers_path,
+    };
+
+    #[tokio::test]
+    async fn term_buffers_sidecar_round_trips_and_tolerates_corruption() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = term_buffers_path(dir.path());
+        assert!(path.ends_with("terminal-buffers.json"));
+        // Absent file → None (restore proceeds without scrollback).
+        assert!(read_term_buffers(&path).await.is_none());
+        // Round-trip through the same atomic writer the command uses.
+        let value = serde_json::json!({ "sid-1": "\u{1b}[2J snapshot" });
+        crate::agent_hooks::write_json_atomic(&path, &serde_json::to_string(&value).unwrap())
+            .expect("write");
+        assert_eq!(read_term_buffers(&path).await, Some(value));
+        // Corrupt content → None, never an error.
+        tokio::fs::write(&path, b"{not json")
+            .await
+            .expect("corrupt");
+        assert!(read_term_buffers(&path).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn path_exists_reports_real_and_missing_paths() {
+        let dir = std::env::temp_dir();
+        assert!(fs_path_exists(dir.to_string_lossy().into_owned())
+            .await
+            .unwrap());
+        let missing = dir.join("uxnan-definitely-missing-3f9a1c");
+        assert!(!fs_path_exists(missing.to_string_lossy().into_owned())
+            .await
+            .unwrap());
+    }
 
     #[test]
     fn bracketed_paste_wraps_and_sanitizes() {

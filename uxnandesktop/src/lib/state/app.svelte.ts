@@ -14,6 +14,7 @@ import {
   ping,
   quickCommandsSet,
   setAgentCommands,
+  termBuffersGet,
   updateSettings,
 } from "$lib/api";
 import { i18n } from "$lib/i18n";
@@ -277,7 +278,15 @@ class AppStore {
       this.quickCommands = data.quickCommands ?? [];
       this.backend = "ready";
       this.errorMessage = null;
-      terminals.restore(data.terminalLayout ?? null);
+      // Load the scrollback sidecar BEFORE restoring the layout, so the first
+      // terminal mounts can replay their previous session's screen.
+      let buffers: Record<string, string> | null = null;
+      try {
+        buffers = await termBuffersGet();
+      } catch {
+        buffers = null;
+      }
+      terminals.restore(data.terminalLayout ?? null, buffers);
       restored = true;
       // Re-attach the orchestration engine to its durable runs (spec 02d §3).
       orchestrationRun.hydrate(data.orchestrationRuns ?? null);

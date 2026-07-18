@@ -21,6 +21,8 @@
   import OpenWith from "./OpenWith.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import MoonIcon from "@lucide/svelte/icons/moon";
+  import SunIcon from "@lucide/svelte/icons/sun";
   import BotIcon from "@lucide/svelte/icons/bot";
   import ActivityIcon from "@lucide/svelte/icons/activity";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
@@ -37,6 +39,7 @@
     onRemove,
     onChangeIcon,
     onTogglePin,
+    onSleep,
     pinned = false,
   }: {
     /** The worktree/project folder every action targets. */
@@ -51,6 +54,10 @@
     onChangeIcon?: () => void;
     /** When provided, adds a pin/unpin item (reorderable child worktrees only). */
     onTogglePin?: () => void;
+    /** When provided, adds a "Sleep workspace" item while the workspace has
+     *  live terminals (the caller owns the working-agent confirm). Waking is
+     *  handled here directly — it needs no confirmation. */
+    onSleep?: () => void;
     /** Whether the target is currently pinned (drives the item's label/icon). */
     pinned?: boolean;
   } = $props();
@@ -59,6 +66,9 @@
   const launchable = $derived(app.launchableAgents);
   // Agents currently running in this workspace (for the "Active agents" submenu).
   const activeAgents = $derived(terminals.agentTabs(path));
+  // Live-space state for the sleep/wake item.
+  const termCount = $derived(terminals.terminalCount(path));
+  const asleep = $derived(terminals.isWorkspaceAsleep(path));
 
   function profileLabel(name: string): string {
     return name.trim() || i18n.t("terminal.unnamedProfile");
@@ -137,6 +147,21 @@
   {/if}
 
   <ContextMenu.Separator />
+
+  {#if asleep}
+    <ContextMenu.Item class={text.menu} onclick={() => terminals.wakeWorkspace(path)}>
+      <SunIcon />
+      {i18n.t("workspace.wake")}
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+  {:else if onSleep && termCount > 0}
+    <ContextMenu.Item class={text.menu} onclick={onSleep}>
+      <MoonIcon />
+      {i18n.t("workspace.sleep")}
+      <KeyChord chord={resolveBinding("sleepWorkspace")} class="ml-auto pl-2" />
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+  {/if}
 
   {#if onTogglePin}
     <ContextMenu.Item class={text.menu} onclick={onTogglePin}>

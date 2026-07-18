@@ -150,6 +150,22 @@ export const es: Record<MessageKey, string> = {
   "worktree.aheadTooltip": "adelante del upstream",
   "worktree.behindTooltip": "atrás del upstream",
   "worktree.runningTooltip": "{n} terminal(es) activa(s)",
+  "worktree.asleepTooltip": "{n} terminal(es) dormida(s)",
+
+  // Workspace sleep/wake
+  "workspace.sleep": "Dormir espacio",
+  "workspace.wake": "Despertar espacio",
+  "workspace.sleepBlockedTitle": "¿Dormir este espacio?",
+  "workspace.sleepBlockedDesc":
+    "Hay agentes trabajando aquí: {agents}. Dormir detiene sus procesos; el espacio conserva sus pestañas y podrás despertarlo después.",
+  "workspace.sleepAnyway": "Dormir de todos modos",
+  "workspace.sleepBlockedToast":
+    "Un agente sigue trabajando aquí — duérmelo desde el menú del worktree para confirmar.",
+  "terminal.asleep": "Espacio dormido — procesos detenidos",
+  "terminal.restoredScrollback": "historial restaurado — shell reiniciado",
+  "shortcuts.sleepWorkspace": "Dormir espacio",
+  "shortcuts.sleepWorkspaceDesc":
+    "Detiene las terminales del espacio activo (conservando pestañas e historial) para liberar recursos.",
 
   // New-worktree dialog
   "newWorktree.title": "Nuevo worktree",
