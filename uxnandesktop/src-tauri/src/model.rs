@@ -473,6 +473,52 @@ pub struct AppSettings {
     /// stored here — `gh` owns it (see `github.rs`).
     #[serde(default)]
     pub github: GithubSettings,
+    /// "Open with" external editors/IDEs (the project-card / worktree /
+    /// file-tree menus). Holds the user's custom editors and which auto-detected
+    /// ones they hid; the detected set itself is a live PATH probe (`editors.rs`),
+    /// not persisted. Default empty.
+    #[serde(default)]
+    pub open_with: OpenWithSettings,
+}
+
+/// "Open with" configuration: user-added editors + hidden auto-detected ones.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenWithSettings {
+    /// Editors the user added by hand (name + launch command + optional args).
+    /// Shown alongside the auto-detected ones in every "Open with" menu.
+    #[serde(default)]
+    pub custom_editors: Vec<ExternalEditor>,
+    /// Auto-detected editor ids (`editors::DetectedEditor::id`) the user hid from
+    /// the menus. Unknown ids are ignored, so it self-heals.
+    #[serde(default)]
+    pub hidden_detected: Vec<String>,
+    /// Per-detected-editor icon overrides, keyed by `editors::DetectedEditor::id`.
+    /// A builtin-glyph key or an inline `data:` URL (same shape as a project icon).
+    /// Absent → the auto-fetched favicon, else a generic glyph. Self-healing.
+    #[serde(default)]
+    pub detected_icons: std::collections::HashMap<String, String>,
+}
+
+/// One user-configured external editor (mirror of the frontend `ExternalEditor`).
+/// Launched via the same path as a detected editor: `command` + `args` + the
+/// target path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalEditor {
+    /// Stable id (a UUID minted in the UI).
+    pub id: String,
+    /// Display name shown in the menu.
+    pub name: String,
+    /// Executable to launch (a PATH command or an absolute path).
+    pub command: String,
+    /// Extra arguments inserted before the target path.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Menu icon: a builtin-glyph key or an inline `data:` URL (same shape as a
+    /// project icon). Absent → an auto-fetched favicon, else a generic glyph.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// GitHub integration settings (Settings live in the GitHub section → Settings).
@@ -859,6 +905,7 @@ impl Default for AppSettings {
             sidebar_group_by: default_group_by(),
             sidebar_collapsed_lanes: Vec::new(),
             github: GithubSettings::default(),
+            open_with: OpenWithSettings::default(),
         }
     }
 }
@@ -1279,6 +1326,49 @@ mod tests {
         assert!(json.contains("includeBody"));
         let back: AiCommitSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(cfg, back);
+    }
+
+    #[test]
+    fn open_with_round_trips_camel_case() {
+        let cfg = OpenWithSettings {
+            custom_editors: vec![ExternalEditor {
+                id: "abc".into(),
+                name: "My Editor".into(),
+                command: r"C:\Apps\ed.exe".into(),
+                args: vec!["--flag".into()],
+                icon: Some("data:image/png;base64,AAAA".into()),
+            }],
+            hidden_detected: vec!["vscode".into()],
+            detected_icons: std::collections::HashMap::from([(
+                "cursor".to_string(),
+                "builtin:code".to_string(),
+            )]),
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("customEditors"));
+        assert!(json.contains("hiddenDetected"));
+        assert!(json.contains("detectedIcons"));
+        let back: OpenWithSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, back);
+    }
+
+    #[test]
+    fn app_settings_with_open_with_round_trips() {
+        // `update_settings` deserializes the whole `AppSettings` the frontend
+        // sends; make sure the new `open_with` field never breaks that path
+        // (a broken deserialize would stall the debounced-persist-on-close write).
+        let mut settings = AppSettings::default();
+        settings.open_with.custom_editors.push(ExternalEditor {
+            id: "id".into(),
+            name: "n".into(),
+            command: "code".into(),
+            args: Vec::new(),
+            icon: None,
+        });
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("openWith"));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.open_with, settings.open_with);
     }
 
     #[test]

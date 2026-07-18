@@ -61,6 +61,12 @@ available today are:
   diffs, squash-merged branch cleanup on worktree removal, WSL repositories routed
   through `wsl.exe`, and optional **AI-generated commit messages** drafted by a
   local CLI agent from your staged diff.
+- **Open with your editor.** An **"Open with →"** entry on the project, worktree and
+  file-tree menus launches the folder or file in an external editor or IDE — VS Code,
+  Cursor, Windsurf, Zed, Sublime Text, the JetBrains IDEs and more are detected
+  automatically (installed apps, even without a CLI on `PATH`), text files can open in
+  your OS's native editor, and in **Settings → Open with** you can browse for any other
+  app, add custom ones, and set each editor's icon.
 - **Agent monitoring.** Three layers — a precise local hook server, terminal-title
   inference, and process-tree detection — drive colored status dots, unread / done
   badges, and native idle notifications, so you always know whether an agent is
