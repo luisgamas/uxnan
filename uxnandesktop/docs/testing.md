@@ -18,11 +18,12 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`updater.rs`, `which.rs`); integration tests go in `src-tauri/tests/`. ~235
+`updater.rs`, `which.rs`); integration tests go in `src-tauri/tests/`. ~238
 backend tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including staging, discard, hunk apply
 and commit against throwaway repos), the git2 fast path, the PTY lifecycle,
-the agent hook server, process detection, and the updater's per-channel endpoints.
+the agent hook server, the integrated-browser scheme gate, process detection,
+and the updater's per-channel endpoints.
 
 ## Frontend (Svelte / TypeScript)
 
