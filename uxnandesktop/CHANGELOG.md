@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — the destructive git mutation paths are now under test
+
+- **Staging, discard, hunk-apply and commit in the git CLI layer
+  (`git.rs`) have direct tests** — previously only its parsers were covered.
+  Twelve `#[tokio::test]`s drive the real `git` binary against throwaway repos to
+  pin today's behavior: `stage`/`unstage` (single file + all), tracked-file
+  restore-to-`HEAD` and untracked-file delete discard, the four documented
+  `apply_patch` `cached`/`reverse` combinations (stage / unstage / discard a
+  hunk, plus an invalid-patch error), and `commit` (message, `--amend` keeps the
+  commit count, sign-off trailer, empty-index error). This guards the app's most
+  destructive git surface against a silent argument-mapping regression. The
+  backend suite is now **229 tests** (was 217).
+
 ### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
 
 - **Pending (debounced) saves of the terminal layout, orchestration runs,
