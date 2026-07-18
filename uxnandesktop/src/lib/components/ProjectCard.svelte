@@ -16,6 +16,7 @@
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { icon, iconButton, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -270,11 +271,14 @@
             {/if}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
-          <DropdownMenu.Item class={text.menu} onclick={() => (settingsOpen = true)}>
+          <!-- Defer each dialog open until this menu has fully closed, so its
+               teardown releases the body pointer-lock before the dialog captures
+               it (else the dialog can orphan the lock on close). -->
+          <DropdownMenu.Item class={text.menu} onclick={() => deferModalOpen(() => (settingsOpen = true))}>
             <SettingsIcon class={icon.button} />
             {i18n.t("project.settings")}
           </DropdownMenu.Item>
-          <DropdownMenu.Item class={text.menu} onclick={() => (iconPickerOpen = true)}>
+          <DropdownMenu.Item class={text.menu} onclick={() => deferModalOpen(() => (iconPickerOpen = true))}>
             <ImageIcon class={icon.button} />
             {i18n.t("project.changeIcon")}
           </DropdownMenu.Item>
@@ -312,7 +316,7 @@
           <DropdownMenu.Item
             variant="destructive"
             class={text.menu}
-            onclick={() => (confirmRemoveOpen = true)}
+            onclick={() => deferModalOpen(() => (confirmRemoveOpen = true))}
           >
             <Trash2Icon class={icon.button} />
             {i18n.t("project.removeProject")}

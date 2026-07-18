@@ -64,6 +64,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `pi --session <file|id>`. Gemini CLI exposes no session resume today
   (captured, not offered); Zero is not wired (no verified resume command).
 
+### Fixed — the file editor rendered unstyled (oversized line numbers, invisible content) in packaged builds
+
+- **Opening a file's Edit view in a packaged build showed only giant, stacked
+  line numbers and no content** (Markdown preview and the diff views were fine,
+  and the bug never reproduced under `tauri dev`). Root cause: the main window
+  ships a Content-Security-Policy with `style-src 'self' 'unsafe-inline'`, but
+  `app.security.dangerousDisableAssetCspModification` was unset, so at build time
+  Tauri appended a style **nonce** (and style hashes) to `style-src`. Per the CSP
+  spec, once a `style-src` directive carries a nonce/hash source the browser
+  **ignores `'unsafe-inline'`** — which silently voided the very allowance the app
+  relies on. The file editor is CodeMirror 6, which injects **all** of its
+  structural and theme CSS at runtime as a plain, non-nonced `<style>` tag
+  (`style-mod`), so every editor style was blocked in production: the gutter
+  rendered as oversized stacked line numbers and the content was invisible. The
+  terminal (xterm), Markdown preview and diff views use compiled static CSS served
+  under `'self'`, so they were unaffected; in `tauri dev` no CSP applies, hence it
+  was invisible during development. Fix: `tauri.conf.json` → `app.security` now
+  sets `"dangerousDisableAssetCspModification": ["style-src"]`, exempting **only**
+  `style-src` from Tauri's build-time modification so the declared
+  `'unsafe-inline'` is what actually ships. `script-src` keeps its full nonce
+  hardening (it is not in the exempt list), and no CSP source was widened — the
+  policy shipped is exactly the one authored.
+
+### Fixed — an orphaned modal lock could freeze the whole window to the mouse
+
+- **A modal layer torn down without its cleanup — classically a dialog opened from
+  a dropdown/context-menu item — could leave `document.body` stuck at
+  `pointer-events: none` with no owner.** Every click then died at `<body>` while
+  the keyboard kept working, and only killing the process recovered (losing any
+  un-flushed work and every live agent conversation). This is the well-documented
+  bits-ui/Radix "orphaned body pointer-lock" race: the dialog captures the closing
+  menu's `pointer-events: none` as the body's "initial" style and faithfully
+  restores it forever on close. Two defenses now ship. (1) An **app-level guard**
+  (`$lib/utils/pointerLock`, installed in the root layout) registers a
+  capture-phase `pointerdown` watchdog: on the first click during such a freeze it
+  detects that the body lock has no open-modal (`[data-state="open"]`) owner and —
+  after a short re-check that outlives the library's own ~24 ms cleanup window —
+  clears the inline `pointer-events`, so the first click heals the app and the
+  second lands normally. It never touches any other style (bits-ui still owns the
+  scroll-lock restore) and is idle until an actual freeze. (2) The **menu→dialog
+  flows now defer the dialog open past the menu's close** (project card, worktree
+  and branch row actions, file-tree context menu), and the New-worktree dialog can
+  no longer be unmounted while open — so the race is also prevented at the source.
+
+
 ## [0.0.16] - 2026-07-18
 
 ### Fixed — the window's Close (✕) button now actually closes the app
