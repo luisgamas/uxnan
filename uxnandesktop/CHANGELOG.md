@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — bounded the always-on backend watchers and the icon fetch
+
+Three always-on resource drains were trimmed, each behavior-preserving:
+
+- **The 3 s git watcher scans the working tree once per tick (was twice).** It
+  previously ran two full `repo.statuses()` walks — the expensive part, with
+  untracked recursion and rename detection — one for the file list
+  (`status_files`) and one for the summary (`worktree_status`), even though the
+  summary's `dirty` count is just the file list's length. A new
+  `git::status_with_summary` (fast path `gitfast::status_with_summary`, with the
+  same `git2`→CLI fallback shape as the standalone wrappers) returns the file
+  list and the ahead/behind summary from a single scan, halving the watcher's
+  git cost. The on-demand `git_status` command path is unchanged.
+- **The 2 s agent process scan pauses while the window is unfocused.** It
+  refreshed the whole OS process table *with command lines* every 2 s while any
+  terminal was live — even backgrounded. It now honors the same `focused` gate
+  the git watcher already had (re-scanning on the first tick after focus
+  returns), and the blocking, syscall-heavy `sysinfo` refresh now runs on a
+  blocking thread (`spawn_blocking`) instead of stalling a Tokio worker.
+- **Icon fetches from URLs are time- and size-bounded.** `image_fetch_data_url`
+  now builds its client with a 15 s timeout (matching the usage-stats client)
+  and streams the response body chunk-by-chunk, enforcing the 5 MiB cap as it
+  grows — so a server that lies about (or omits) `Content-Length` can no longer
+  hang the command or balloon memory.
+
 ### Security — hardened the local hook/MCP server (defense-in-depth)
 
 The in-process `axum` server (loopback, ephemeral port) that serves the
@@ -57,8 +82,8 @@ None fixed an active break — the posture was already loopback-bound, with a
   hunk, plus an invalid-patch error), and `commit` (message, `--amend` keeps the
   commit count, sign-off trailer, empty-index error). This guards the app's most
   destructive git surface against a silent argument-mapping regression. The
-  backend suite is now **235 tests** (was 217 — 12 added here, 6 from the
-  hook/MCP hardening above).
+  backend suite is now **236 tests** (was 217 — 12 added here, 6 from the
+  hook/MCP hardening above, 1 from the watcher change above).
 
 ### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
 
