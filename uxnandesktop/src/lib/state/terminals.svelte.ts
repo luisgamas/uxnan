@@ -11,9 +11,14 @@
 // `AreaSplit` divides a region into two with an adjustable ratio. Restructuring
 // the tree never remounts xterm or restarts a PTY.
 
+import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { fsRename } from "$lib/api";
+import { fsRename, termBuffersSet } from "$lib/api";
+import { registerFlush } from "$lib/state/flushRegistry";
+import { disposeInstance, serializeInstance } from "$lib/terminal/instances";
+import { resumeCommand, type CapturedAgentSession } from "$lib/agentResume";
+import type { ProviderSession } from "$lib/types";
 import { isImagePath } from "$lib/diff";
 import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
 import { i18n } from "$lib/i18n";
@@ -41,6 +46,18 @@ interface BaseTab {
 /** A terminal tab, backed by a single PTY. */
 export interface TerminalTab extends BaseTab {
   kind: "terminal";
+  /** Stable id that survives serialize/restore (tab ids are re-minted each
+   *  boot). Keys this tab's scrollback snapshot in the terminal-buffers
+   *  sidecar. Persisted. */
+  sid?: string;
+  /** Asleep: the tab keeps its place and layout but its PTY was killed and its
+   *  xterm disposed (workspace sleep). Waking respawns the shell at `cwd` and
+   *  replays the stored snapshot. Persisted. */
+  asleep?: boolean;
+  /** The agent session that lived in this tab, captured from its hook reports
+   *  — lets a restored/woken tab pre-type the CLI's own resume command.
+   *  Persisted. */
+  agentSession?: CapturedAgentSession;
   cwd?: string;
   /** Shell executable for this tab's PTY (from the chosen terminal profile). */
   shell?: string;
@@ -187,6 +204,7 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTa
   return {
     kind: "terminal",
     id: crypto.randomUUID(),
+    sid: crypto.randomUUID(),
     title: opts?.title ?? `Terminal ${termCount}`,
     cwd: opts?.cwd,
     shell: opts?.shell,
@@ -359,6 +377,9 @@ function serializeTab(t: GroupTab): SavedTab {
       cwd: t.cwd,
       shell: t.shell,
       args: t.args,
+      sid: t.sid,
+      asleep: t.asleep || undefined,
+      agentSession: t.agentSession,
     };
   }
   return { kind: "terminal", title: t.title };
@@ -404,14 +425,29 @@ function buildTab(t: SavedTab): GroupTab {
     };
   }
   termCount += 1;
+  // A tab that hosted an agent session gets the CLI's own resume command as
+  // its startup command. If the agent's TUI was still running when the app
+  // closed, it AUTO-relaunches — the workspace comes back exactly as it was,
+  // TUIs included. If the agent had already exited, the command is only
+  // pre-typed (one Enter reopens; anything else dismisses). A stale session
+  // just errors visibly in the CLI itself.
+  const resume = t.agentSession ? resumeCommand(t.agentSession) : null;
   return {
     kind: "terminal",
     id: crypto.randomUUID(),
+    // The stable id survives restarts (tab ids don't) — it keys this tab's
+    // scrollback snapshot in the terminal-buffers sidecar.
+    sid: t.sid ?? crypto.randomUUID(),
     title: t.title,
     customTitle: t.customTitle,
     cwd: t.cwd,
     shell: t.shell,
     args: t.args,
+    asleep: t.asleep,
+    agentSession: t.agentSession,
+    ...(resume
+      ? { runCommand: resume, runCommandExecute: t.agentSession?.live !== false }
+      : {}),
     exited: false,
   };
 }
@@ -458,6 +494,8 @@ class TerminalStore {
    *  waits for this before mounting terminals, so no shell is spawned and then
    *  discarded by a restore. */
   hydrated = $state(false);
+  /** See [`mountedWorkspaceKeys`]. Seeded by `restore`, grown by `setWorkspace`. */
+  private mountedKeys = $state<string[]>([GLOBAL_WORKSPACE]);
   private controllers = new Map<string, TermController>();
   /** Per-tab live state for `file` tabs, keyed by tab id (kept out of the
    *  serialized tree so typing never churns the persisted layout). */
@@ -498,6 +536,19 @@ class TerminalStore {
   get openWorkspaceKeys(): string[] {
     return Object.keys(this.workspaces).filter((k) => this.workspaces[k] != null);
   }
+  /** Every workspace key, including empty (null-tree) entries — the boot
+   *  reconciler sweeps all of them, not just the ones with tabs. */
+  get workspaceKeys(): string[] {
+    return Object.keys(this.workspaces);
+  }
+  /** Workspace keys whose trees have been shown at least once this session —
+   *  the only ones TerminalArea mounts. A restored background workspace stays
+   *  unmounted (its shells unspawned) until first activation, so boot cost
+   *  scales with the active workspace, not the whole saved session. Once
+   *  mounted, a workspace stays mounted (live panes are never remounted). */
+  get mountedWorkspaceKeys(): string[] {
+    return this.mountedKeys.filter((k) => this.workspaces[k] != null);
+  }
   /** A specific workspace's tree (for rendering every workspace mounted). */
   workspaceRoot(key: string): AreaNode | null {
     return this.workspaces[key] ?? null;
@@ -515,16 +566,196 @@ class TerminalStore {
     return count;
   }
 
-  /** Switch the visible workspace (creating an empty entry if unknown). */
+  /** Switch the visible workspace (creating an empty entry if unknown).
+   *  Switching INTO an asleep workspace wakes it — activation is the wake
+   *  gesture. (Sleeping the already-active workspace shows its panes asleep;
+   *  those wake via their in-pane button.) */
   setWorkspace(key: string): void {
+    const switching = key !== this.activeWorkspace;
     if (!(key in this.workspaces)) {
       this.workspaces = { ...this.workspaces, [key]: null };
     }
+    if (!this.mountedKeys.includes(key)) {
+      this.mountedKeys = [...this.mountedKeys, key];
+    }
     this.activeWorkspace = key;
+    if (switching) this.wakeWorkspace(key);
   }
 
-  /** Restore per-workspace trees from a saved snapshot, then mark hydrated. */
-  restore(saved: SavedTerminalLayout | null | undefined): void {
+  // --- Workspace sleep/wake --------------------------------------------------
+  //
+  // Sleeping a workspace keeps every tab and its split layout but kills the
+  // processes and frees the renderer memory: each terminal's parsed screen is
+  // serialized (ANSI) into the terminal-buffers sidecar, its PTY is closed and
+  // its xterm instance disposed. Waking (automatic on activation) respawns each
+  // shell at its cwd and replays the snapshot above a dim divider. The same
+  // snapshots are captured on window close, so a restored session gets its
+  // scrollback back too.
+
+  /** Persisted scrollback snapshots, keyed by tab `sid`. Loaded before
+   *  `restore`; written on sleep and window close (never on the debounced
+   *  layout hot path). */
+  private snapshots: Record<string, string> = {};
+  /** Per-tab snapshot cap — a serialized 1000-line scrollback stays far under
+   *  this; the cap only guards against pathological cell attributes. */
+  private static readonly SNAPSHOT_MAX = 512_000;
+
+  /** Whether every terminal tab of a workspace is asleep (and there is at
+   *  least one) — drives the dimmed indicator + the wake affordances. */
+  isWorkspaceAsleep(key: string): boolean {
+    const tree = this.workspaces[key];
+    if (!tree) return false;
+    let terminalTabs = 0;
+    for (const tab of allTabs(tree)) {
+      if (tab.kind !== "terminal") continue;
+      terminalTabs += 1;
+      if (!tab.asleep) return false;
+    }
+    return terminalTabs > 0;
+  }
+
+  /** Titles of this workspace's agent tabs that are still working — surfaced as
+   *  blockers before a sleep (killing a mid-turn agent needs an explicit OK). */
+  sleepBlockers(key: string): string[] {
+    const tree = this.workspaces[key];
+    if (!tree) return [];
+    const out: string[] = [];
+    for (const tab of allTabs(tree)) {
+      if (tab.kind === "terminal" && tab.agentName && tab.working && !tab.asleep) {
+        out.push(tab.customTitle ?? tab.title);
+      }
+    }
+    return out;
+  }
+
+  /** Put a workspace to sleep: snapshot + kill every terminal's PTY and dispose
+   *  its xterm, keeping tabs/layout in place. Idempotent per tab. */
+  async sleepWorkspace(key: string): Promise<void> {
+    const tree = this.workspaces[key];
+    if (!tree) return;
+    const slept: TerminalTab[] = [];
+    for (const tab of allTabs(tree)) {
+      if (tab.kind !== "terminal" || tab.asleep) continue;
+      tab.sid ??= crypto.randomUUID();
+      const snap = serializeInstance(tab.id);
+      if (snap != null && snap.length <= TerminalStore.SNAPSHOT_MAX) {
+        this.snapshots[tab.sid] = snap;
+      }
+      invoke("pty_close", { id: tab.id }).catch(() => {});
+      tab.asleep = true;
+      tab.working = false;
+      slept.push(tab);
+    }
+    if (slept.length === 0) return;
+    this.workspaces = { ...this.workspaces };
+    // Let the asleep panes unmount (their mounts park the instances), then
+    // dispose the parked instances for real — that's the memory being freed.
+    await tick();
+    for (const tab of slept) disposeInstance(tab.id);
+    void this.flushSnapshots();
+  }
+
+  /** Wake a workspace: asleep tabs remount, respawn their shells at their cwd
+   *  and replay their stored snapshot (see `consumeSnapshot`). A tab that
+   *  hosted an agent session gets that CLI's resume command pre-typed. */
+  wakeWorkspace(key: string): void {
+    const tree = this.workspaces[key];
+    if (!tree) return;
+    let woke = false;
+    for (const tab of allTabs(tree)) {
+      if (tab.kind === "terminal" && tab.asleep) {
+        tab.asleep = false;
+        const resume = tab.agentSession ? resumeCommand(tab.agentSession) : null;
+        if (resume) {
+          // Sleep killed a live TUI → waking relaunches it automatically;
+          // an already-exited agent only gets the command pre-typed.
+          tab.runCommand = resume;
+          tab.runCommandExecute = tab.agentSession?.live !== false;
+        }
+        woke = true;
+      }
+    }
+    if (woke) this.workspaces = { ...this.workspaces };
+  }
+
+  /** Record the provider session identity a hook report carried onto its tab
+   *  (persisted with the layout), so restore/wake can offer the resume. */
+  recordAgentSession(
+    tabId: string,
+    agentType: string | null | undefined,
+    session: ProviderSession,
+  ): void {
+    if (!agentType) return;
+    const tab = this.findTab(tabId);
+    if (!tab || tab.kind !== "terminal") return;
+    tab.agentSession = {
+      agent: agentType,
+      id: session.id,
+      file: session.file ?? undefined,
+      // A hook just fired, so the TUI is running right now; process detection
+      // (`agent:detected`) keeps this current if the agent exits later.
+      live: true,
+      capturedAt: session.capturedAt,
+    };
+  }
+
+  /** The stored scrollback snapshot for a (re)mounting terminal, if any — the
+   *  mount writes it into the fresh xterm before spawning the shell. */
+  consumeSnapshot(tabId: string): string | null {
+    const tab = this.findTab(tabId);
+    if (!tab || tab.kind !== "terminal" || !tab.sid) return null;
+    return this.snapshots[tab.sid] ?? null;
+  }
+
+  /** Capture every live terminal's snapshot, prune entries whose tab is gone,
+   *  and persist the sidecar. Runs on sleep and on window close (flush). */
+  async flushSnapshots(): Promise<void> {
+    const live = new Set<string>();
+    for (const { tab } of this.tabsWithWorkspace()) {
+      if (tab.kind !== "terminal") continue;
+      tab.sid ??= crypto.randomUUID();
+      live.add(tab.sid);
+      if (tab.asleep) continue; // keep the snapshot taken at sleep time
+      const snap = serializeInstance(tab.id);
+      if (snap != null && snap.length <= TerminalStore.SNAPSHOT_MAX) {
+        this.snapshots[tab.sid] = snap;
+      }
+    }
+    for (const sid of Object.keys(this.snapshots)) {
+      if (!live.has(sid)) delete this.snapshots[sid];
+    }
+    try {
+      await termBuffersSet(this.snapshots);
+    } catch {
+      // No backend (web preview) — snapshots just don't persist.
+    }
+  }
+
+  /** Re-spell a workspace key in place (same folder, canonical spelling — see
+   *  `$lib/pathid`). Live panes are untouched: only the key under which the
+   *  tree/region/mount state is filed changes. A no-op when the target
+   *  spelling already exists as a workspace (nothing is merged on a guess). */
+  rekeyWorkspace(oldKey: string, newKey: string): void {
+    if (oldKey === newKey || !(oldKey in this.workspaces) || newKey in this.workspaces) return;
+    const { [oldKey]: tree, ...restWs } = this.workspaces;
+    this.workspaces = { ...restWs, [newKey]: tree ?? null };
+    const { [oldKey]: group, ...restAg } = this.activeGroups;
+    this.activeGroups = group !== undefined ? { ...restAg, [newKey]: group } : restAg;
+    this.mountedKeys = this.mountedKeys.map((k) => (k === oldKey ? newKey : k));
+    if (this.activeWorkspace === oldKey) this.activeWorkspace = newKey;
+  }
+
+  /** Restore per-workspace trees from a saved snapshot, then mark hydrated.
+   *  `snapshots` is the terminal-buffers sidecar (sid → serialized scrollback),
+   *  loaded by the caller BEFORE restore so the first mounts can replay it. */
+  restore(
+    saved: SavedTerminalLayout | null | undefined,
+    snapshots?: Record<string, string> | null,
+  ): void {
+    this.snapshots = snapshots ?? {};
+    // Capture every live terminal's scrollback when the window closes, so the
+    // next boot can replay it under the restored layout.
+    registerFlush("terminal-buffers", () => this.flushSnapshots());
     const ws: Record<string, AreaNode | null> = {};
     const ag: Record<string, string> = {};
     if (saved?.workspaces) {
@@ -543,6 +774,9 @@ class TerminalStore {
     this.workspaces = ws;
     this.activeGroups = ag;
     this.activeWorkspace = active;
+    // Only the restored active workspace mounts (and spawns shells) at boot;
+    // the other saved workspaces wait for their first activation.
+    this.mountedKeys = [active];
     this.hydrated = true;
     this.registerFileStates();
     void this.startFsListening();
@@ -1358,7 +1592,10 @@ class TerminalStore {
     const tree = this.workspaces[key];
     if (tree) {
       for (const tab of allTabs(tree)) {
-        if (tab.kind === "terminal") invoke("pty_close", { id: tab.id }).catch(() => {});
+        if (tab.kind === "terminal") {
+          invoke("pty_close", { id: tab.id }).catch(() => {});
+          if (tab.sid) delete this.snapshots[tab.sid];
+        }
         this.disposeTab(tab.id);
       }
     }
@@ -1366,6 +1603,7 @@ class TerminalStore {
     const { [key]: _grp, ...restAg } = this.activeGroups;
     this.workspaces = restWs;
     this.activeGroups = restAg;
+    this.mountedKeys = this.mountedKeys.filter((k) => k !== key);
     if (this.activeWorkspace === key) this.activeWorkspace = GLOBAL_WORKSPACE;
   }
 

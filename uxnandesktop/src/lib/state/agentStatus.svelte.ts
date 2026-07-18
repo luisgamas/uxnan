@@ -75,6 +75,9 @@ class AgentStatusStore {
         // Let the hook establish the tab's agent identity (below), so an agent
         // started by hand shows up without waiting for process detection.
         this.sealIdentity(p);
+        // Persist the provider session onto the tab (with the layout), so a
+        // restored/woken tab can pre-type this CLI's resume command.
+        if (p.session) terminals.recordAgentSession(p.agentId, p.agentType, p.session);
         // Announce meaningful transitions (done / blocked / waiting). Pass the
         // previous state so we can recover the task prompt on `done` (the Stop
         // report's own prompt may be the freshly-read transcript task).

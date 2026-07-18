@@ -745,8 +745,19 @@ export interface AgentStateEntry {
   summary?: string | null;
   /** Sub-agents (children) this session spawned; empty for agents that don't. */
   subagents?: SubagentEntry[];
+  /** The provider's own session identity (latest captured), for resume. */
+  session?: ProviderSession | null;
   firstSeen: number;
   lastUpdate: number;
+}
+
+/** A provider-side session identity captured from an agent's hook payload
+ *  (mirror of Rust `AgentSession`) — what the CLI's resume entry point takes. */
+export interface ProviderSession {
+  id: string;
+  /** Session/transcript file path, when the provider reports one. */
+  file?: string | null;
+  capturedAt: number;
 }
 
 /** Payload of the `agent:status-changed` event (mirror of Rust
@@ -829,6 +840,23 @@ export type SavedTab =
       cwd?: string;
       shell?: string;
       args?: string[];
+      /** Stable id surviving restarts — keys the tab's scrollback snapshot in
+       *  the terminal-buffers sidecar. */
+      sid?: string;
+      /** The tab was asleep (PTY killed, layout kept) when the layout was
+       *  saved; it restores asleep and wakes on activation. */
+      asleep?: boolean;
+      /** The agent session that lived in this tab (captured from its hooks),
+       *  so a restored/woken tab can offer the CLI's own resume command. */
+      agentSession?: {
+        /** The reporting agent type (`claude`, `codex`, …). */
+        agent: string;
+        id: string;
+        file?: string;
+        /** TUI still running at close → restore auto-relaunches it. */
+        live?: boolean;
+        capturedAt: number;
+      };
     }
   | {
       kind: "file";

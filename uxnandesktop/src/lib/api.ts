@@ -385,6 +385,24 @@ export function fsRename(path: string, newName: string): Promise<string> {
   return invoke<string>("fs_rename", { path, newName });
 }
 
+/** Whether `path` currently exists on disk. Used by the boot reconciler to drop
+ *  restored terminal workspaces whose worktree folder is gone. */
+export function fsPathExists(path: string): Promise<boolean> {
+  return invoke<boolean>("fs_path_exists", { path });
+}
+
+/** Read the terminal scrollback-snapshot sidecar (sid → serialized ANSI), or
+ *  null when absent/corrupt — restore then proceeds without scrollback. */
+export function termBuffersGet(): Promise<Record<string, string> | null> {
+  return invoke<Record<string, string> | null>("term_buffers_get");
+}
+
+/** Overwrite the terminal scrollback-snapshot sidecar (atomic on the backend).
+ *  Written on workspace sleep and window close — never on the layout hot path. */
+export function termBuffersSet(buffers: Record<string, string>): Promise<void> {
+  return invoke("term_buffers_set", { buffers });
+}
+
 /** Create a new empty file `name` inside directory `dir` (file tree "New File").
  *  `name` must be a bare name that doesn't already exist. Returns the new
  *  absolute, forward-slash path. */
