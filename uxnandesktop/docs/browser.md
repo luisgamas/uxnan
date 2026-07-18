@@ -9,7 +9,7 @@ It lives in a **right-side "4th panel"**. The page itself is a real system webvi
 (a frameless `WebviewWindow` — Chromium/WebView2 on Windows) **owned by** and
 **docked to** uxnan: it follows the app when you move/resize it and stays above it,
 so it reads as a panel. Because it's a real top-level webview (not an iframe), it
-loads **any** site (Google included) and has **real DevTools**, while staying light
+loads **any** http(s) website (Google included) and has **real DevTools**, while staying light
 (it reuses the OS webview the ADE already runs). It's created when you open the
 panel and destroyed when you close it.
 
@@ -28,7 +28,9 @@ resize (the width is remembered). The browser has no separate size of its own.
 
 Back · Forward · Reload · address bar (type a URL and press Enter) · **open in
 system browser** · **DevTools** · close. For `localhost` the address bar assumes
-`http://`; otherwise it defaults to `https://`.
+`http://`; otherwise it defaults to `https://`. The integrated browser only loads
+**http(s)** URLs — any other scheme (`file:`, `tauri:`, `data:`, …) is refused
+rather than loaded in-app; use **open in system browser** for those.
 
 ## Settings → Browser
 

@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Security — main-window CSP + an http(s)-only integrated browser (defense-in-depth)
+
+Two layered-defense hardenings around the webviews. Neither closes an active
+break — Svelte auto-escaping already prevents HTML injection (`markdown.ts`
+renders without `{@html}`; no `innerHTML`/`eval` anywhere) and the browser window
+has no IPC (`capabilities` scope it to `["main"]`) — but each adds a cheap second
+layer:
+
+- **The main window now ships a Content-Security-Policy.** The privileged window
+  renders agent-controlled text (hook `prompt`/`tool`/`summary`, transcript
+  previews, orchestration MCP report text) *and* holds the full Tauri command
+  surface (`fs_*`, `pty_*`, `git_*`), yet previously ran with `csp: null` — so
+  auto-escaping was the *only* barrier against a future `{@html}` regression or a
+  compromised UI dependency escalating to local file read/write + PTY spawn. It
+  now enforces `default-src 'self'`, with `img-src` / `style-src` / `connect-src`
+  widened only as far as the app truly needs (`data:`/`blob:`/`asset:` icons and
+  image previews, inline Tailwind/Svelte `<style>`, the Tauri `ipc:` bridge) and
+  `object-src` / `frame-src` set to `'none'`. `script-src` stays `'self'` — no
+  `'unsafe-inline'`, no `'unsafe-eval'`, no remote origins.
+- **The integrated browser only loads http(s) URLs.** Both entry points — the
+  open/navigate commands and in-page navigations (`on_navigation`) — now refuse
+  any non-`http(s)` scheme (`BROWSER_BAD_URL`), so an agent (via the browser MCP
+  or the `$BROWSER`/`/browser` route) or an open redirect can no longer steer the
+  docked window onto a `file:`, `tauri:`, `data:` or `javascript:` origin. The
+  window's IPC isolation was already correct; this keeps it off local/privileged
+  origins entirely, and is the boundary a future `browser_evaluate` tool would
+  rely on.
+
 ### Changed — bounded the always-on backend watchers and the icon fetch
 
 Three always-on resource drains were trimmed, each behavior-preserving:
@@ -82,8 +110,9 @@ None fixed an active break — the posture was already loopback-bound, with a
   hunk, plus an invalid-patch error), and `commit` (message, `--amend` keeps the
   commit count, sign-off trailer, empty-index error). This guards the app's most
   destructive git surface against a silent argument-mapping regression. The
-  backend suite is now **236 tests** (was 217 — 12 added here, 6 from the
-  hook/MCP hardening above, 1 from the watcher change above).
+  backend suite is now **239 tests** (was 217 — 12 added here, 6 from the
+  hook/MCP hardening above, 1 from the watcher change above, 3 from the browser
+  scheme gate above).
 
 ### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
 
