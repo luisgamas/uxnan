@@ -157,6 +157,39 @@ pub fn worktree_status(path: &str) -> Result<WorktreeStatus, git2::Error> {
     })
 }
 
+/// One-scan combination of [`status_files`] + [`worktree_status`]: the file
+/// list, plus a summary whose `dirty` is the list's length (same `IGNORED`
+/// filter) and whose ahead/behind comes from the cheap graph walk — so the
+/// 3 s watcher pays for one working-tree scan, not two. Because both parts read
+/// from the same `statuses()` walk, `summary.dirty == files.len()` holds by
+/// construction.
+pub fn status_with_summary(path: &str) -> Result<(Vec<FileChange>, WorktreeStatus), git2::Error> {
+    let repo = Repository::open(path)?;
+    let mut opts = status_options();
+    let statuses = repo.statuses(Some(&mut opts))?;
+    let mut files = Vec::new();
+    for entry in statuses.iter() {
+        let s = entry.status();
+        if s.contains(Status::IGNORED) {
+            continue;
+        }
+        let Some(p) = entry.path() else { continue };
+        let (index, worktree) = map_status(s);
+        files.push(FileChange {
+            path: p.replace('\\', "/"),
+            index,
+            worktree,
+        });
+    }
+    let (ahead, behind) = ahead_behind(&repo);
+    let summary = WorktreeStatus {
+        dirty: files.len() as u32,
+        ahead,
+        behind,
+    };
+    Ok((files, summary))
+}
+
 /// Render a `git2::Diff` to a unified-diff string (the format the frontend's
 /// `diff.ts` parser expects).
 fn diff_to_string(diff: &git2::Diff) -> Result<String, git2::Error> {
@@ -433,6 +466,43 @@ mod tests {
         let st = worktree_status(&tmp.path().to_string_lossy()).unwrap();
         assert_eq!(st.dirty, 0);
         assert_eq!((st.ahead, st.behind), (0, 0));
+    }
+
+    /// The one-scan `status_with_summary` must return exactly what the two
+    /// separate `status_files` + `worktree_status` scans do — this pins the
+    /// "combined == parts" contract so the watcher's single scan can't silently
+    /// drift from the on-demand path. Also asserts `dirty == files.len()`, the
+    /// invariant that makes dropping the second scan sound.
+    #[test]
+    fn status_with_summary_matches_parts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let repo = Repository::init(dir).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Tester").unwrap();
+        cfg.set_str("user.email", "t@t").unwrap();
+
+        // One committed file, then a tracked modification + an untracked file so
+        // the working tree is genuinely dirty when we scan.
+        commit_file(&repo, dir, "a.txt", "one\ntwo\n", "init");
+        std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+        std::fs::write(dir.join("b.txt"), "new\n").unwrap();
+
+        let path = dir.to_string_lossy().to_string();
+        let (files, summary) = status_with_summary(&path).unwrap();
+        let parts_files = status_files(&path).unwrap();
+        let parts_status = worktree_status(&path).unwrap();
+
+        // The file list is identical to the standalone scan's.
+        assert_eq!(files, parts_files);
+        // dirty equals the list length (same IGNORED filter) — the invariant.
+        assert_eq!(summary.dirty as usize, files.len());
+        assert_eq!(summary.dirty, parts_status.dirty);
+        // ahead/behind matches the cheap graph walk of the standalone summary.
+        assert_eq!(
+            (summary.ahead, summary.behind),
+            (parts_status.ahead, parts_status.behind)
+        );
     }
 
     /// Commit a file to `repo`, returning the new commit oid. Stages the whole
