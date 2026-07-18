@@ -124,7 +124,10 @@ const GEMINI_EVENTS: &[&str] = &["BeforeAgent", "AfterAgent", "BeforeTool", "Aft
 // Paths
 // ---------------------------------------------------------------------------
 
-fn home_dir() -> Option<PathBuf> {
+/// The current user's home directory (`%USERPROFILE%` on Windows, `$HOME`
+/// elsewhere). `pub(crate)` so the hook server can resolve the `~/.claude`
+/// transcript base from the same source of truth.
+pub(crate) fn home_dir() -> Option<PathBuf> {
     let home = if cfg!(windows) {
         std::env::var_os("USERPROFILE")?
             .to_string_lossy()
@@ -341,6 +344,30 @@ fn fwd(path: &str) -> String {
     path.replace('\\', "/")
 }
 
+/// POSIX single-quote a string for safe interpolation into an `sh` command: wrap
+/// in `'…'` and replace every embedded `'` with `'\''` (close quote, escaped
+/// quote, reopen quote). For a string with no `'` this is exactly `'<s>'`, so the
+/// common Codex hook path is byte-identical to the previous hand-written quoting
+/// (the golden `trusted_hash` vectors stay valid). A stray `'` in the path — a
+/// POSIX home-dir edge case — can no longer break out of the quoting.
+fn sh_squote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Escape a path for embedding inside a **double-quoted** shell string. `fwd`
+/// already normalized backslashes to `/`, so only an embedded `"` could break the
+/// quoting — escape it as `\"`. A newline can't appear in a real path and would
+/// corrupt the command, so it's stripped (and logged) defensively.
+fn dquote_path(path: &str) -> String {
+    if path.contains('\n') || path.contains('\r') {
+        eprintln!("[uxnan-desktop] hook reporter path contains a newline; stripping it: {path:?}");
+    }
+    path.chars()
+        .filter(|c| *c != '\n' && *c != '\r')
+        .collect::<String>()
+        .replace('"', "\\\"")
+}
+
 /// The relay command entry for Claude Code — **exec form**: `node` is spawned
 /// directly with args, bypassing the shell so it works from any terminal
 /// (cmd / PowerShell / Git Bash / WSL / …) without depending on one being present.
@@ -359,7 +386,7 @@ fn claude_hook_entry(relay: &str) -> Value {
 fn gemini_hook_entry(relay: &str) -> Value {
     json!({
         "type": "command",
-        "command": format!("node \"{}\" --agent gemini", fwd(relay)),
+        "command": format!("node \"{}\" --agent gemini", dquote_path(&fwd(relay))),
         "timeout": GEMINI_TIMEOUT_MS
     })
 }
@@ -372,8 +399,11 @@ fn codex_command(install: &HookInstall) -> String {
     if cfg!(windows) {
         install.codex_hook_cmd.clone()
     } else {
-        let sh = &install.codex_hook_sh;
-        format!("if [ -x '{sh}' ]; then /bin/sh '{sh}'; fi")
+        // Single-quote the path so a `'` in it can't break out of the quoting.
+        // For a quote-free path this is byte-identical to the previous `'{sh}'`,
+        // keeping the golden `trusted_hash` vectors valid.
+        let sh = sh_squote(&install.codex_hook_sh);
+        format!("if [ -x {sh} ]; then /bin/sh {sh}; fi")
     }
 }
 
@@ -1110,5 +1140,48 @@ mod tests {
             "references the curl hook"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn sh_squote_wraps_plain_and_escapes_quote() {
+        // A quote-free path is just wrapped in single quotes — byte-identical to
+        // the previous hand-written `'{sh}'`, so the Codex trust hash is unchanged.
+        assert_eq!(
+            sh_squote("/tmp/uxnan/codex-hook.sh"),
+            "'/tmp/uxnan/codex-hook.sh'"
+        );
+        // A single quote is escaped as '\'' (close quote, escaped quote, reopen).
+        assert_eq!(
+            sh_squote("/home/o'brien/hook.sh"),
+            r"'/home/o'\''brien/hook.sh'"
+        );
+        assert_eq!(sh_squote(""), "''");
+    }
+
+    #[test]
+    fn dquote_path_escapes_quote_and_strips_newline() {
+        // A quote-free path is unchanged.
+        assert_eq!(dquote_path("/x/relay.cjs"), "/x/relay.cjs");
+        // An embedded `"` is escaped so it can't break out of the `"…"` string.
+        assert_eq!(dquote_path(r#"/x/we"ird.cjs"#), r#"/x/we\"ird.cjs"#);
+        // Newlines are stripped defensively (they can't be in a real path).
+        assert_eq!(dquote_path("/x/re\nlay.cjs"), "/x/relay.cjs");
+    }
+
+    #[test]
+    fn gemini_entry_escapes_embedded_quote() {
+        // A `"` in the relay path must be escaped so the double-quoted shell
+        // command string stays well-formed.
+        let g = gemini_hook_entry(r#"/x/we"ird/relay.cjs"#);
+        assert_eq!(
+            g["command"].as_str().unwrap(),
+            r#"node "/x/we\"ird/relay.cjs" --agent gemini"#
+        );
+        // A quote-free path is unchanged (aside from forward-slashing).
+        let plain = gemini_hook_entry("/x/relay.cjs");
+        assert_eq!(
+            plain["command"].as_str().unwrap(),
+            r#"node "/x/relay.cjs" --agent gemini"#
+        );
     }
 }

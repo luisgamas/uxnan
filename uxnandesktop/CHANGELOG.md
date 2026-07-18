@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Security — hardened the local hook/MCP server (defense-in-depth)
+
+The in-process `axum` server (loopback, ephemeral port) that serves the
+agent-status hook (`/hook`), the in-app browser route (`/browser`) and the
+browser-control MCP endpoint (`/mcp`) gained four defense-in-depth hardenings.
+None fixed an active break — the posture was already loopback-bound, with a
+122-bit per-launch token that's never written to disk — but each closes a gap:
+
+- **Constant-time token comparison.** The shared per-launch token is now checked
+  by comparing SHA-256 digests of both sides (`hooks::token_eq`, reused by the
+  MCP authorizer) instead of `==` on the raw secret, removing the short-circuit
+  timing side channel. `sha2` was already a dependency (Codex trust hashing), so
+  no new crate.
+- **Loopback `Host`/`Origin` gate.** Every state-changing route now rejects a
+  request whose `Host` isn't absent-or-loopback or whose `Origin` isn't
+  absent-or-a-loopback-`http(s)`-origin (`403`), before the token check — an
+  explicit guard against browser-driven CSRF / DNS-rebinding that no longer
+  depends on the token or CORS-preflight behavior.
+- **Transcript-path constraint.** A Claude `done` report's `transcript_path` is
+  now dereferenced only when it is a `.jsonl` file that canonicalizes to inside
+  the user's `~/.claude` home; any other path (a `..` traversal, a wrong
+  extension, an arbitrary readable file) is skipped and the report still
+  succeeds without the preview.
+- **Escaped reporter command interpolations.** The generated Codex (POSIX) and
+  Gemini reporter command strings now escape the app-data script path
+  (POSIX single-quote `'\''` for Codex; `\"` + newline-strip for Gemini), so a
+  `'`/`"` in the path (a home-dir edge case) can no longer break out of the
+  quoting. Quote-free paths are byte-identical to before, so installed Codex
+  hooks keep their reproduced `trusted_hash`.
+
 ### Fixed — hunk-level `git apply` can't stall on a large failing patch
 
 - **`git apply` (hunk staging, hunk unstage and hunk discard) now drains git's
@@ -27,7 +57,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   hunk, plus an invalid-patch error), and `commit` (message, `--amend` keeps the
   commit count, sign-off trailer, empty-index error). This guards the app's most
   destructive git surface against a silent argument-mapping regression. The
-  backend suite is now **229 tests** (was 217).
+  backend suite is now **235 tests** (was 217 — 12 added here, 6 from the
+  hook/MCP hardening above).
 
 ### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
 

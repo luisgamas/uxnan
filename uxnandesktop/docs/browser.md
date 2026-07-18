@@ -114,6 +114,11 @@ file but has no `UXNAN_MCP_TOKEN`, so it can't authenticate — the server simpl
 doesn't load for it (it won't hijack your in-app browser). The worst case outside
 uxnan is a harmless, non-connecting entry, which uxnan removes on exit.
 
+The `/mcp` endpoint is guarded exactly like the hook routes: the bearer token is
+compared in constant time, and a **loopback `Host`/`Origin` gate** rejects (`403`)
+any non-loopback caller before the token check, so a web page can't reach it via
+CSRF / DNS-rebinding.
+
 ### Settings → Browser → Agent browser MCP
 
 | Setting | What it does | Default |
