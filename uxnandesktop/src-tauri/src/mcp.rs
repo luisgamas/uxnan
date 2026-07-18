@@ -61,12 +61,12 @@ fn authorized(headers: &HeaderMap, token: &str) -> bool {
             v.strip_prefix("Bearer ")
                 .or_else(|| v.strip_prefix("bearer "))
         })
-        .map(|v| v.trim() == token)
+        .map(|v| crate::hooks::token_eq(v.trim(), token))
         .unwrap_or(false);
     let legacy = headers
         .get(TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
-        .map(|v| v == token)
+        .map(|v| crate::hooks::token_eq(v, token))
         .unwrap_or(false);
     bearer || legacy
 }
@@ -289,6 +289,11 @@ async fn handle_message(app: &AppHandle, msg: &Value) -> Option<Value> {
 /// `202 Accepted` with no content; anything with a request replies `200` with the
 /// JSON-RPC response(s). Called from the thin route wrapper in `hooks.rs`.
 pub async fn handle(app: AppHandle, token: String, headers: HeaderMap, body: Bytes) -> Response {
+    // Loopback Host/Origin gate (shared with the hook routes): reject a
+    // browser-driven CSRF / DNS-rebinding caller before the token check.
+    if !crate::hooks::loopback_caller(&headers) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
     if !authorized(&headers, &token) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }

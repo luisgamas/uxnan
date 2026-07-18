@@ -63,6 +63,20 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   **Settings → Agents → Hooks** expone un botón **Install** por agente (mergea de
   forma idempotente, marcando lo gestionado por el nombre del script/relay);
   Uninstall es su reverso. Así los estados precisos funcionan out-of-the-box.
+- **Seguridad del servidor local (defensa en profundidad):** el servidor liga
+  solo a `127.0.0.1` (loopback) con puerto efímero y exige el **token por
+  lanzamiento** (nunca escrito a disco). Sobre esa base: (a) el token se compara
+  en **tiempo constante** (igualdad de digests SHA-256, no `==` sobre el secreto);
+  (b) **todas** las rutas que mutan estado (`/hook`, `/browser`, `/mcp`) pasan
+  primero por un **gate loopback de `Host`/`Origin`** (rechaza con `403` un `Host`
+  o `Origin` no-loopback — defensa explícita contra CSRF / DNS-rebinding, sin
+  depender del token ni del preflight CORS); (c) el `transcript_path` de un `done`
+  de Claude solo se lee si es un `.jsonl` dentro de `~/.claude` (canonicalizado,
+  así un `..` no escapa) — nunca un archivo arbitrario que pida el llamante; y
+  (d) las cadenas de comando de los reporters Codex (POSIX) y Gemini **escapan**
+  la ruta del script (comilla simple `'\''` en Codex; `\"` + strip de saltos de
+  línea en Gemini) para que una `'`/`"` en la ruta no rompa el quoting. Toda ruta
+  nueva en este servidor debe ir tras **ambos** gates (loopback + token).
 
 **Diagrama de flujo del hook HTTP:**
 
