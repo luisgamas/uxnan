@@ -11,8 +11,10 @@ import type {
   BranchList,
   AgentHooksStatus,
   CommitInfo,
+  DetectedEditor,
   DirListing,
   FileChange,
+  NativeEditor,
   FileContent,
   FileNumstat,
   FileSearch,
@@ -437,6 +439,28 @@ export function imageFetchDataUrl(url: string): Promise<string> {
 /** Reveal a path in the OS file manager (Explorer / Finder / etc.). */
 export function revealPath(path: string): Promise<void> {
   return invoke("reveal_path", { path });
+}
+
+/** Detect the installed GUI editors/IDEs on this machine (a PATH probe plus a
+ *  per-OS install-location scan), for the "Open with" menus. */
+export function editorsDetect(): Promise<DetectedEditor[]> {
+  return invoke<DetectedEditor[]>("editors_detect");
+}
+
+/** The platform's native plain-text editor (Notepad / TextEdit / a Linux editor),
+ *  offered for text files. `null` when none is found. */
+export function nativeTextEditor(): Promise<NativeEditor | null> {
+  return invoke<NativeEditor | null>("native_text_editor");
+}
+
+/** Launch `path` (a folder or file) in an external editor — `command` (a detected
+ *  editor's PATH command or a user-configured one) + `args`, with `path` last. */
+export function openInEditor(
+  command: string,
+  args: string[],
+  path: string,
+): Promise<void> {
+  return invoke("open_in_editor", { command, args, path });
 }
 
 // --- Integrated browser ----------------------------------------------------

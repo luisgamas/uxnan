@@ -23,6 +23,7 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import FileTreeRow from "./FileTreeRow.svelte";
+  import OpenWith from "./OpenWith.svelte";
   import FileNamePromptDialog from "./FileNamePromptDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import FolderIcon from "@lucide/svelte/icons/folder";
@@ -411,6 +412,7 @@
               <FolderOpenIcon />
               {i18n.t("fileTree.reveal")}
             </DropdownMenu.Item>
+            <OpenWith menu={DropdownMenu} path={root} />
             <DropdownMenu.Separator />
             <DropdownMenu.CheckboxItem class={text.menu} bind:checked={fileTree.showHidden}>
               {i18n.t("fileTree.showHidden")}

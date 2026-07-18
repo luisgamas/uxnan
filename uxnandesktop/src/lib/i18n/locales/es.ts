@@ -338,6 +338,33 @@ export const es: Record<MessageKey, string> = {
   "settings.browser": "Navegador",
   "settings.browserDesc":
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",
+  "settings.openWith": "Abrir con",
+  // Abrir con (editores/IDEs externos)
+  "openWith.label": "Abrir con",
+  "openWith.none": "No se encontraron editores",
+  "openWith.detecting": "Detectando editores…",
+  "openWith.manage": "Administrar editores…",
+  "openWith.settingsTitle": "Abrir con",
+  "openWith.settingsDesc":
+    "Elige qué editores e IDEs externos aparecen en los menús «Abrir con» de proyectos, worktrees y archivos.",
+  "openWith.settingsHint":
+    "Los editores detectados se encuentran automáticamente en tu PATH; agrega cualquier otro programa abajo.",
+  "openWith.refresh": "Actualizar",
+  "openWith.detected": "Editores detectados",
+  "openWith.noneDetected": "No se detectó ningún editor conocido en este equipo.",
+  "openWith.custom": "Editores personalizados",
+  "openWith.addEditor": "Agregar editor",
+  "openWith.browse": "Explorar…",
+  "openWith.browseTitle": "Elige una aplicación",
+  "openWith.applications": "Aplicaciones",
+  "openWith.customEmpty": "Aún no hay editores personalizados.",
+  "openWith.changeIcon": "Cambiar icono",
+  "openWith.iconTitle": "Icono del editor",
+  "openWith.namePlaceholder": "Nombre (p. ej. Mi Editor)",
+  "openWith.commandPlaceholder": "Comando (p. ej. code)",
+  "openWith.argsPlaceholder": "Argumentos (opcional)",
+  "openWith.customHint":
+    "El archivo o carpeta se pasa como último argumento. Usa un comando de tu PATH o una ruta absoluta.",
   "settings.aiCommit": "Mensaje de commit con IA",
   "settings.aiCommitDesc":
     "Redacta opcionalmente mensajes de commit a partir de tus cambios preparados con un agente CLI local. Desactivado por defecto; no se ejecuta nada hasta que lo actives y elijas un agente.",

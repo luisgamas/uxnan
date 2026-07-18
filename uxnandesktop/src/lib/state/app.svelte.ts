@@ -69,7 +69,8 @@ export type SettingsSection =
   | "hooks"
   | "terminal"
   | "updates"
-  | "browser";
+  | "browser"
+  | "openWith";
 
 /** A pane in the GitHub section (also the deep-link target of `openGitHub`). */
 export type GithubSection =

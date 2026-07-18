@@ -24,6 +24,7 @@
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
   import ProjectSettingsDialog from "./ProjectSettingsDialog.svelte";
+  import OpenWith from "./OpenWith.svelte";
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder, type DragReorder } from "$lib/state/dragReorder.svelte";
   import { isStaticSortMode } from "$lib/sidebar-sort";
@@ -262,6 +263,7 @@
             <CopyIcon class={icon.button} />
             {i18n.t("common.copyPath")}
           </DropdownMenu.Item>
+          <OpenWith menu={DropdownMenu} path={mainPath} />
           <DropdownMenu.Sub>
             <DropdownMenu.SubTrigger class={text.menu}>
               <SettingsIcon class={icon.button} />

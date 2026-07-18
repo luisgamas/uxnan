@@ -192,6 +192,49 @@ export interface UsageProviderConfig {
   statusBar: UsageStatusBarPick;
 }
 
+// --- "Open with" external editors (mirror of Rust `editors.rs` / model) ------
+
+/** A user-configured external editor (mirror of Rust `ExternalEditor`). Launched
+ *  as `command` + `args` + the target path. */
+export interface ExternalEditor {
+  id: string;
+  name: string;
+  /** Executable to launch (a PATH command or an absolute path). */
+  command: string;
+  /** Extra arguments inserted before the target path. */
+  args: string[];
+  /** Menu icon: a builtin-glyph key or an inline `data:` URL (absent → favicon). */
+  icon?: string | null;
+}
+
+/** "Open with" configuration (mirror of Rust `OpenWithSettings`). */
+export interface OpenWithSettings {
+  /** Editors the user added by hand (shown alongside the detected ones). */
+  customEditors: ExternalEditor[];
+  /** Auto-detected editor ids the user hid from the menus (self-healing). */
+  hiddenDetected: string[];
+  /** Per-detected-editor icon overrides, keyed by the detected editor id
+   *  (builtin-glyph key or inline `data:` URL). Absent → the auto-fetched favicon. */
+  detectedIcons?: Record<string, string>;
+}
+
+/** An auto-detected installed editor/IDE (mirror of Rust `DetectedEditor`). The
+ *  `command` is a PATH CLI name, an absolute `.exe` path, or `open` (macOS, with
+ *  the app in `args`); the target path is appended after `args` at launch. */
+export interface DetectedEditor {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+}
+
+/** The platform's native plain-text editor (mirror of Rust `NativeEditor`). */
+export interface NativeEditor {
+  name: string;
+  command: string;
+  args: string[];
+}
+
 export interface AppSettings {
   theme: Theme;
   leftSidebarWidth: number;
@@ -287,6 +330,8 @@ export interface AppSettings {
   sidebarCollapsedLanes?: number[];
   /** GitHub integration (the GitHub section + the right-panel GitHub tab). */
   github?: GithubSettings;
+  /** "Open with" external editors/IDEs (custom list + hidden auto-detected). */
+  openWith?: OpenWithSettings;
 }
 
 /** GitHub integration preferences (mirror of Rust `GithubSettings`). The token is
@@ -906,6 +951,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pollSeconds: 45,
     notificationsEnabled: false,
     confirmPr: true,
+  },
+  openWith: {
+    customEditors: [],
+    hiddenDetected: [],
+    detectedIcons: {},
   },
 };
 

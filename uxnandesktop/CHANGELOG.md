@@ -5,6 +5,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — "Open with" external editors & IDEs
+
+- **Every workspace and file menu now has an "Open with →" submenu** that launches
+  the target folder/file in an external editor or IDE: the project card's ⋯ menu
+  and the right-click menu on branches/worktrees (`RowActionsMenu`), plus the
+  right-panel **Files** tab's "More actions" menu and each file-tree entry's
+  right-click menu (`FileTreeContextMenu`). Installed GUI editors are **detected
+  automatically** on `PATH` (VS Code + Insiders/VSCodium, Cursor, Windsurf, Zed,
+  Sublime Text, Fleet, the JetBrains IDEs, Android Studio, Nova) via a new native
+  `editors_detect` command (`src-tauri/src/editors.rs`, a pure `which` probe over a
+  known catalog **plus a per-OS install-location scan** — so an editor is found
+  even when its CLI isn't on `PATH` (which is the common case): Windows checks the
+  known `Program Files` / per-user install paths, macOS scans `/Applications` +
+  `~/Applications` for the `.app` bundle). Launching goes through a new
+  `open_in_editor` command with **no console flash**: on Windows a native `.exe` is
+  spawned directly and windowless while a bare CLI name (a `.cmd`/`.bat` shim like
+  `code.cmd`) runs under a windowless `cmd /C`; macOS uses `open -a <App>`;
+  elsewhere the command is spawned directly. **Text files** additionally offer the
+  OS's native text editor (Notepad / TextEdit / a detected Linux editor, via
+  `native_text_editor`), and a **Browse…** button in Settings adds any application
+  from a native file picker (`@tauri-apps/plugin-dialog`). A new
+  **Settings → Open with** pane lets the user hide any detected editor and add
+  **custom editors** (name + launch command + optional args), persisted in
+  `AppSettings.openWith` (`OpenWithSettings` / `ExternalEditor`). **Editor icons**:
+  each menu entry shows the editor's **favicon** (best-effort, fetched once from its
+  known website via the existing `image_fetch_data_url` and cached for the session)
+  with a generic glyph fallback, and any editor's icon can be **overridden** with a
+  built-in glyph or an uploaded image / SVG through the shared `IconPicker`
+  (`ExternalEditor.icon` / `OpenWithSettings.detectedIcons`). Shared submenu
+  component `OpenWith.svelte` (works in both dropdown and context menus) + the
+  `openWith` store cache the detected list + favicons for the session. Completes the
+  "Open with" `FOR-DEV` item. 10 backend tests (`editors.rs`) + 2 `openWith`
+  settings serde round-trip tests (`model.rs`); the Rust suite is now **229 tests**.
+
+### Changed — right panel floors at its tab strip, and the launcher "what to open" selector no longer lingers open
+
+- **The right panel can no longer be dragged narrower than its own tab strip.** Its
+  minimum width is now the **measured** intrinsic width of the tab row
+  (Files / Changes / History / GitHub), so the four tabs always fit — no clipping
+  or horizontal scroll — regardless of the UI language or whether the GitHub tab is
+  shown. At exactly that minimum the strip fills the panel edge-to-edge, so the
+  tabs read as centered; dragging the panel wider leaves them left-aligned. The
+  floor is measured live in `RightPanel.svelte` and published through a small
+  `rightPanel` layout store that the shell (`+page.svelte`) reads as the resize
+  minimum (replacing the old fixed `300 px`).
+- **The launcher's ("+") "What to open" picker no longer stays/re-expands after a
+  selection.** Picking a terminal/agent/browser closes the popover instead of
+  keeping it open, so a single-item launch doesn't force a click elsewhere (which
+  risked closing the whole dialog) to dismiss it; reopen the picker to add more.
+  Implemented as an opt-in `closeOnSelect` on the shared `MultiSelect` component,
+  enabled by `LauncherDialog`.
+
 ### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
 
 - **Pending (debounced) saves of the terminal layout, orchestration runs,

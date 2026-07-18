@@ -277,6 +277,7 @@
           addLabel={i18n.t("launcher.whatAdd")}
           searchPlaceholder={i18n.t("launcher.whatSearch")}
           emptyText={i18n.t("launcher.noResults")}
+          closeOnSelect
           itemPrefix={openPrefix}
         />
         {#if !launchable.length}

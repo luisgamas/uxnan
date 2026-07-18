@@ -16,7 +16,8 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**, **user quick commands**, **GitHub integration (`gh`-backed)**). 217 Rust backend tests + 192 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
+with" external editors/IDEs**). 229 Rust backend tests + 192 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -400,17 +401,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       links to sibling files → open that file's tab). Today only external links
       open (via the OS) and only local *images* are resolved (`fs_read_data_url`).
 
-**Workspace / context menu**
-- [ ] **"Open with" external editors/IDEs + customization.** The worktree row's
-      right-click menu (a reusable `ui/context-menu`) covers terminals · agents ·
-      reveal-in-file-manager · configure · remove. The requested *Open with →
-      text editors / IDEs* submenu (launch the worktree folder in VS Code / an
-      IDE) plus a user-customizable editor list needs a new **external-editor
-      registry**: a catalog + per-editor launch command, a Settings pane to
-      add/edit them, and a backend "open path in app" command. Only "Reveal in
-      file manager" (`reveal_path`) ships today. Inline `FOR-DEV:` marker at the
-      reveal item in `src/lib/components/WorktreeRow.svelte`.
-
 **Theming**
 - [ ] Import font *files* (.ttf/.otf/.woff2) via `@font-face` (today: installed
       family name only).
@@ -459,7 +449,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 217 Rust + 192 Vitest tests.
+  deferred with Apple). 229 Rust + 192 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

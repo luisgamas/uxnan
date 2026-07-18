@@ -945,6 +945,35 @@ pub fn reveal_path(app: AppHandle, path: String) -> Result<(), CommandError> {
         .map_err(|e| CommandError::new("REVEAL_FAILED", e.to_string()))
 }
 
+/// Detect the installed GUI editors/IDEs on this machine (a PATH probe plus a
+/// per-OS install-location scan), for the "Open with" menus. Only the available
+/// ones come back, each with the command used to launch it.
+#[tauri::command]
+pub fn editors_detect() -> Vec<crate::editors::DetectedEditor> {
+    crate::editors::detect()
+}
+
+/// The platform's native plain-text editor (Notepad / TextEdit / a detected Linux
+/// editor), offered for text files. `None` when none is found (bare Linux).
+#[tauri::command]
+pub fn native_text_editor() -> Option<crate::editors::NativeEditor> {
+    crate::editors::native_text_editor()
+}
+
+/// Launch `path` (a folder or file) in an external editor: `command` (a detected
+/// editor's PATH command, or a user-configured one) + `args`, with `path` last.
+/// Detached and windowless — see `editors::open_in_editor`. `async` so the child
+/// is spawned on the Tokio runtime (`winproc::command` builds a `tokio` command).
+#[tauri::command]
+pub async fn open_in_editor(
+    command: String,
+    args: Vec<String>,
+    path: String,
+) -> Result<(), CommandError> {
+    crate::editors::open_in_editor(&command, &args, &path)
+        .map_err(|e| CommandError::new("OPEN_IN_EDITOR_FAILED", e.to_string()))
+}
+
 /// The single decision point every link in the ADE funnels through: open `url` in
 /// the integrated browser tab, hand it to the OS default browser, or (for the
 /// `Ask` policy) let the frontend prompt — per the user's `BrowserSettings`.

@@ -18,6 +18,7 @@
   import { i18n } from "$lib/i18n";
   import KeyChord from "./KeyChord.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import OpenWith from "./OpenWith.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import BotIcon from "@lucide/svelte/icons/bot";
@@ -150,10 +151,7 @@
     <ContextMenu.Separator />
   {/if}
 
-  <!-- FOR-DEV: add an "Open with" submenu (external text editors / IDEs) + a
-       customizable editor list here, once an external-editor registry and a
-       backend "open path in app" command exist. Only reveal-in-file-manager
-       ships today. See FOR-DEV.md → Workspace / context menu. -->
+  <OpenWith menu={ContextMenu} {path} />
   <ContextMenu.Item class={text.menu} onclick={() => void revealPath(path)}>
     <FolderOpenIcon />
     {i18n.t("ctx.reveal")}

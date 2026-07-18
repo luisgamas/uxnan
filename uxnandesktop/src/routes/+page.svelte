@@ -7,6 +7,7 @@
   import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
   import { git } from "$lib/state/git.svelte";
   import { github } from "$lib/state/github.svelte";
+  import { openWith } from "$lib/state/openWith.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
@@ -27,6 +28,7 @@
   import WindowControls from "$lib/components/WindowControls.svelte";
   import LeftSidebar from "$lib/components/LeftSidebar.svelte";
   import RightPanel from "$lib/components/RightPanel.svelte";
+  import { rightPanel, RIGHT_PANEL_MAX } from "$lib/state/rightPanel.svelte";
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
   import NewWorktreeDialog from "$lib/components/NewWorktreeDialog.svelte";
   import Settings from "$lib/components/Settings.svelte";
@@ -43,10 +45,11 @@
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
   const LEFT_MAX = 480;
-  // Floor keeps the four right-panel tabs (Files/Changes/History/GitHub) visible;
-  // longer/localized labels overflow into the tab strip's horizontal scroll.
-  const RIGHT_MIN = 300;
-  const RIGHT_MAX = 560;
+  // The right panel's floor is the measured width of its tab strip
+  // (Files/Changes/History/GitHub) so every tab always fits — see
+  // `rightPanel.min` (localized labels + the optional GitHub tab shift it). The
+  // ceiling is shared with that module.
+  const RIGHT_MAX = RIGHT_PANEL_MAX;
   const BROWSER_MIN = 320;
   const BROWSER_MAX = 900;
 
@@ -80,10 +83,11 @@
     if (dragging === "left") {
       app.settings.leftSidebarWidth = clamp(startWidth + dx, LEFT_MIN, LEFT_MAX);
     } else if (dragging === "right") {
-      // Right handle grows the panel as the pointer moves left.
+      // Right handle grows the panel as the pointer moves left. The floor is the
+      // live tab-strip width, so the panel can't be shrunk to clip the tabs.
       app.settings.rightSidebarWidth = clamp(
         startWidth - dx,
-        RIGHT_MIN,
+        rightPanel.min,
         RIGHT_MAX,
       );
     } else {
@@ -172,6 +176,12 @@
     // Restart the poll when the interval setting changes; cleanup stops it.
     void app.settings.github?.pollSeconds;
     return github.startPolling();
+  });
+
+  // Detect installed external editors once, so the "Open with" menus are ready
+  // the first time one is opened (idempotent; cheap PATH probe).
+  $effect(() => {
+    void openWith.ensureLoaded();
   });
 
   // Drive the pinned, persistent update toast (replaces the old fixed banner):
@@ -296,7 +306,7 @@
 
         <aside
           class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
-          style="width: {clamp(app.settings.rightSidebarWidth, RIGHT_MIN, RIGHT_MAX)}px"
+          style="width: {clamp(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
         >
           <RightPanel />
         </aside>
