@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — the window's Close (✕) button now actually closes the app
+
+- **Clicking Close (or otherwise requesting a window close) left the window open.**
+  The flush-on-close handler (`app.svelte.ts`) calls `getCurrentWindow().destroy()`
+  after flushing pending writes, but the Tauri capability set
+  (`src-tauri/capabilities/default.json`) granted `core:window:allow-close` and
+  **not** `core:window:allow-destroy` — so `destroy()` was rejected by the
+  permission layer and the window stayed open (the `close()` still fired
+  `onCloseRequested`, which `preventDefault()`s, so nothing ever closed it). Added
+  the missing `core:window:allow-destroy` permission. This shipped with the
+  flush-on-close change (whose manual QA was skipped in a headless env); it is now
+  exercised. Additionally hardened the handler: the flush is now bounded by a short
+  deadline (`Promise.race`), so even a persist write that never resolves can no
+  longer keep the window from reaching `destroy()`.
+
 ### Added — "Open with" external editors & IDEs
 
 - **Every workspace and file menu now has an "Open with →" submenu** that launches
