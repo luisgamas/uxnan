@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.17] - 2026-07-18
+
 ### Fixed — a restored session now re-binds to its project at boot
 
 - **Restoring terminals no longer leaves the app half-selected.** The persisted
