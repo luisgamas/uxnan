@@ -41,6 +41,7 @@
   import GithubStatusButton from "$lib/components/GithubStatusButton.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
+  import type { RepoData } from "$lib/types";
 
   // Resize bounds for each sidebar (px).
   const LEFT_MIN = 200;
@@ -184,6 +185,21 @@
     void openWith.ensureLoaded();
   });
 
+  // New-worktree dialog: hold a stable repo reference for as long as the dialog
+  // is open, so its bits-ui Dialog root is never *unmounted while open* (the
+  // `{#if}` below keys off this latch, not the live `activeRepo`). An abrupt
+  // unmount of an open modal can orphan the body pointer-events lock and freeze
+  // the whole window; latching on open and releasing only once fully closed keeps
+  // the root mounted through a normal close even if the active repo changes.
+  let newWorktreeRepo = $state<RepoData | null>(null);
+  $effect(() => {
+    if (projects.newWorktreeOpen) {
+      if (projects.activeRepo) newWorktreeRepo = projects.activeRepo;
+    } else {
+      newWorktreeRepo = null;
+    }
+  });
+
   // Drive the pinned, persistent update toast (replaces the old fixed banner):
   // shown while the updater has something actionable, re-shown on reload when a
   // staged download is restored, dismissed via the store. Native OS
@@ -262,11 +278,13 @@
   <!-- Add-project directory picker (Ctrl/Cmd+O; also from the sidebar) -->
   <DirectoryPicker bind:open={projects.pickerOpen} />
 
-  <!-- New-worktree dialog (Ctrl/Cmd+Shift+N; also the empty-state button). Mounted
-       once here so the shortcut works regardless of what the center shows; only
-       present when the active workspace is inside a repo to branch from. -->
-  {#if projects.activeRepo}
-    <NewWorktreeDialog repo={projects.activeRepo} bind:open={projects.newWorktreeOpen} />
+  <!-- New-worktree dialog (Ctrl/Cmd+Shift+N; also the empty-state button). Lives
+       here so the shortcut works regardless of what the center shows. Keyed off
+       the `newWorktreeRepo` latch (set in the script) rather than the live
+       `activeRepo`, so the Dialog root is never unmounted while open — it mounts
+       when the dialog opens and unmounts only after it has fully closed. -->
+  {#if newWorktreeRepo}
+    <NewWorktreeDialog repo={newWorktreeRepo} bind:open={projects.newWorktreeOpen} />
   {/if}
 
   <!-- Unsaved-edit prompt (driven by the saveDiscard service on tab close) -->

@@ -9,6 +9,7 @@
   import { anyAgentWorking } from "$lib/state/agentDisplay";
   import { unread } from "$lib/state/unread.svelte";
   import { setPreventSleep } from "$lib/api";
+  import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
 
   let { children } = $props();
@@ -25,6 +26,10 @@
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);
+    // App-level watchdog: heal an orphaned bits-ui body pointer-events lock (a
+    // modal torn down without its cleanup can leave the whole window deaf to the
+    // mouse) on the next click. Zero idle cost — see $lib/utils/pointerLock.
+    const uninstallPointerLockGuard = installPointerLockGuard();
     // Dismiss the pre-hydration brand splash (in `app.html`) once the shell
     // has painted its first frame, handing off to the real UI.
     requestAnimationFrame(() =>
@@ -33,7 +38,10 @@
           .__uxnanSplashDone?.(),
       ),
     );
-    return () => window.removeEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      uninstallPointerLockGuard();
+    };
   });
 
   // Re-sync the agent commands to detect whenever the configured agents change.

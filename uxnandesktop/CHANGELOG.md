@@ -28,6 +28,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   hardening (it is not in the exempt list), and no CSP source was widened — the
   policy shipped is exactly the one authored.
 
+### Fixed — an orphaned modal lock could freeze the whole window to the mouse
+
+- **A modal layer torn down without its cleanup — classically a dialog opened from
+  a dropdown/context-menu item — could leave `document.body` stuck at
+  `pointer-events: none` with no owner.** Every click then died at `<body>` while
+  the keyboard kept working, and only killing the process recovered (losing any
+  un-flushed work and every live agent conversation). This is the well-documented
+  bits-ui/Radix "orphaned body pointer-lock" race: the dialog captures the closing
+  menu's `pointer-events: none` as the body's "initial" style and faithfully
+  restores it forever on close. Two defenses now ship. (1) An **app-level guard**
+  (`$lib/utils/pointerLock`, installed in the root layout) registers a
+  capture-phase `pointerdown` watchdog: on the first click during such a freeze it
+  detects that the body lock has no open-modal (`[data-state="open"]`) owner and —
+  after a short re-check that outlives the library's own ~24 ms cleanup window —
+  clears the inline `pointer-events`, so the first click heals the app and the
+  second lands normally. It never touches any other style (bits-ui still owns the
+  scroll-lock restore) and is idle until an actual freeze. (2) The **menu→dialog
+  flows now defer the dialog open past the menu's close** (project card, worktree
+  and branch row actions, file-tree context menu), and the New-worktree dialog can
+  no longer be unmounted while open — so the race is also prevented at the source.
+
 ## [0.0.16] - 2026-07-18
 
 ### Fixed — the window's Close (✕) button now actually closes the app

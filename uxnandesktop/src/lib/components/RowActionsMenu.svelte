@@ -14,6 +14,7 @@
   import { revealPath } from "$lib/api";
   import { agentLogoKey } from "$lib/agentCatalog";
   import { resolveBinding } from "$lib/keybindings";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import KeyChord from "./KeyChord.svelte";
@@ -161,7 +162,9 @@
     {i18n.t("common.copyPath")}
   </ContextMenu.Item>
   {#if onChangeIcon}
-    <ContextMenu.Item class={text.menu} onclick={onChangeIcon}>
+    <!-- Defer the dialog open until this context menu has fully closed, so its
+         teardown releases the body pointer-lock before the dialog captures it. -->
+    <ContextMenu.Item class={text.menu} onclick={() => deferModalOpen(onChangeIcon)}>
       <ImageIcon />
       {i18n.t("worktree.changeIcon")}
     </ContextMenu.Item>
@@ -187,7 +190,7 @@
   {#if onRemove}
     <ContextMenu.Separator />
 
-    <ContextMenu.Item variant="destructive" class={text.menu} onclick={onRemove}>
+    <ContextMenu.Item variant="destructive" class={text.menu} onclick={() => deferModalOpen(onRemove)}>
       <Trash2Icon />
       {removeLabel}
     </ContextMenu.Item>
