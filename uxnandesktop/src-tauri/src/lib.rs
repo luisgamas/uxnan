@@ -139,6 +139,7 @@ pub fn run() {
             // Background git watcher: poll the watched worktree every 3 s (paused
             // when unfocused) and emit `git:status-changed` only when it changes.
             let handle = app.handle().clone();
+            let focused_for_agent = focused.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(3));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -151,8 +152,12 @@ pub fn run() {
                     let Some(path) = git_watch.read().await.clone() else {
                         continue;
                     };
-                    let files = crate::git::status_files(&path).await.unwrap_or_default();
-                    let status = crate::git::worktree_status(&path).await.unwrap_or_default();
+                    // One working-tree scan per tick: `status_with_summary`
+                    // returns the file list and the ahead/behind summary from a
+                    // single `git2` walk instead of two separate scans.
+                    let (files, status) = crate::git::status_with_summary(&path)
+                        .await
+                        .unwrap_or_default();
                     let payload = GitStatusEvent {
                         path,
                         files,
@@ -170,7 +175,9 @@ pub fn run() {
             // Background agent watcher: every 2 s scan each terminal's process
             // tree for a known agent command and emit `agent:detected` on change,
             // so a terminal that runs (or stops running) any agent updates its
-            // sidebar row + tab name — even one the user typed by hand.
+            // sidebar row + tab name — even one the user typed by hand. Paused
+            // while the window is unfocused (like the git watcher); a re-scan
+            // happens on the first tick after focus returns.
             let agent_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(2));
@@ -180,6 +187,9 @@ pub fn run() {
                     std::collections::HashMap::new();
                 loop {
                     interval.tick().await;
+                    if !focused_for_agent.load(Ordering::Relaxed) {
+                        continue;
+                    }
                     let state = agent_handle.state::<AppState>();
                     let pids = state.pty.live_pids();
                     if pids.is_empty() {
@@ -189,13 +199,21 @@ pub fn run() {
                     let commands = state.agent_commands.read().await.clone();
                     // Refresh WITH command lines — the default refresh only gives
                     // the exe name (`node`), so node-shim agents (codex/gemini/…)
-                    // would never match without their `…/agent.js` argument.
-                    sys.refresh_processes_specifics(
-                        sysinfo::ProcessesToUpdate::All,
-                        true,
-                        sysinfo::ProcessRefreshKind::nothing()
-                            .with_cmd(sysinfo::UpdateKind::Always),
-                    );
+                    // would never match without their `…/agent.js` argument. The
+                    // scan is a blocking, syscall-heavy walk of the whole process
+                    // table, so run it on a blocking thread (moving `sys` in and
+                    // back out) instead of stalling this Tokio worker.
+                    sys = tokio::task::spawn_blocking(move || {
+                        sys.refresh_processes_specifics(
+                            sysinfo::ProcessesToUpdate::All,
+                            true,
+                            sysinfo::ProcessRefreshKind::nothing()
+                                .with_cmd(sysinfo::UpdateKind::Always),
+                        );
+                        sys
+                    })
+                    .await
+                    .expect("agent scan task panicked");
                     let mut live = std::collections::HashSet::new();
                     for (pty_id, pid) in pids {
                         live.insert(pty_id.clone());

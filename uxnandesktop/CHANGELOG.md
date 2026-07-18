@@ -52,7 +52,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   component `OpenWith.svelte` (works in both dropdown and context menus) + the
   `openWith` store cache the detected list + favicons for the session. Completes the
   "Open with" `FOR-DEV` item. 10 backend tests (`editors.rs`) + 2 `openWith`
-  settings serde round-trip tests (`model.rs`); the Rust suite is now **229 tests**.
+  settings serde round-trip tests (`model.rs`); the Rust suite is now **251 tests**.
 
 ### Changed — right panel floors at its tab strip, and the launcher "what to open" selector no longer lingers open
 
@@ -71,6 +71,115 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   risked closing the whole dialog) to dismiss it; reopen the picker to add more.
   Implemented as an opt-in `closeOnSelect` on the shared `MultiSelect` component,
   enabled by `LauncherDialog`.
+
+### Security — main-window CSP + an http(s)-only integrated browser (defense-in-depth)
+
+Two layered-defense hardenings around the webviews. Neither closes an active
+break — Svelte auto-escaping already prevents HTML injection (`markdown.ts`
+renders without `{@html}`; no `innerHTML`/`eval` anywhere) and the browser window
+has no IPC (`capabilities` scope it to `["main"]`) — but each adds a cheap second
+layer:
+
+- **The main window now ships a Content-Security-Policy.** The privileged window
+  renders agent-controlled text (hook `prompt`/`tool`/`summary`, transcript
+  previews, orchestration MCP report text) *and* holds the full Tauri command
+  surface (`fs_*`, `pty_*`, `git_*`), yet previously ran with `csp: null` — so
+  auto-escaping was the *only* barrier against a future `{@html}` regression or a
+  compromised UI dependency escalating to local file read/write + PTY spawn. It
+  now enforces `default-src 'self'`, with `img-src` / `style-src` / `connect-src`
+  widened only as far as the app truly needs (`data:`/`blob:`/`asset:` icons and
+  image previews, inline Tailwind/Svelte `<style>`, the Tauri `ipc:` bridge) and
+  `object-src` / `frame-src` set to `'none'`. `script-src` stays `'self'` — no
+  `'unsafe-inline'`, no `'unsafe-eval'`, no remote origins.
+- **The integrated browser only loads http(s) URLs.** Both entry points — the
+  open/navigate commands and in-page navigations (`on_navigation`) — now refuse
+  any non-`http(s)` scheme (`BROWSER_BAD_URL`), so an agent (via the browser MCP
+  or the `$BROWSER`/`/browser` route) or an open redirect can no longer steer the
+  docked window onto a `file:`, `tauri:`, `data:` or `javascript:` origin. The
+  window's IPC isolation was already correct; this keeps it off local/privileged
+  origins entirely, and is the boundary a future `browser_evaluate` tool would
+  rely on.
+
+### Changed — bounded the always-on backend watchers and the icon fetch
+
+Three always-on resource drains were trimmed, each behavior-preserving:
+
+- **The 3 s git watcher scans the working tree once per tick (was twice).** It
+  previously ran two full `repo.statuses()` walks — the expensive part, with
+  untracked recursion and rename detection — one for the file list
+  (`status_files`) and one for the summary (`worktree_status`), even though the
+  summary's `dirty` count is just the file list's length. A new
+  `git::status_with_summary` (fast path `gitfast::status_with_summary`, with the
+  same `git2`→CLI fallback shape as the standalone wrappers) returns the file
+  list and the ahead/behind summary from a single scan, halving the watcher's
+  git cost. The on-demand `git_status` command path is unchanged.
+- **The 2 s agent process scan pauses while the window is unfocused.** It
+  refreshed the whole OS process table *with command lines* every 2 s while any
+  terminal was live — even backgrounded. It now honors the same `focused` gate
+  the git watcher already had (re-scanning on the first tick after focus
+  returns), and the blocking, syscall-heavy `sysinfo` refresh now runs on a
+  blocking thread (`spawn_blocking`) instead of stalling a Tokio worker.
+- **Icon fetches from URLs are time- and size-bounded.** `image_fetch_data_url`
+  now builds its client with a 15 s timeout (matching the usage-stats client)
+  and streams the response body chunk-by-chunk, enforcing the 5 MiB cap as it
+  grows — so a server that lies about (or omits) `Content-Length` can no longer
+  hang the command or balloon memory.
+
+### Security — hardened the local hook/MCP server (defense-in-depth)
+
+The in-process `axum` server (loopback, ephemeral port) that serves the
+agent-status hook (`/hook`), the in-app browser route (`/browser`) and the
+browser-control MCP endpoint (`/mcp`) gained four defense-in-depth hardenings.
+None fixed an active break — the posture was already loopback-bound, with a
+122-bit per-launch token that's never written to disk — but each closes a gap:
+
+- **Constant-time token comparison.** The shared per-launch token is now checked
+  by comparing SHA-256 digests of both sides (`hooks::token_eq`, reused by the
+  MCP authorizer) instead of `==` on the raw secret, removing the short-circuit
+  timing side channel. `sha2` was already a dependency (Codex trust hashing), so
+  no new crate.
+- **Loopback `Host`/`Origin` gate.** Every state-changing route now rejects a
+  request whose `Host` isn't absent-or-loopback or whose `Origin` isn't
+  absent-or-a-loopback-`http(s)`-origin (`403`), before the token check — an
+  explicit guard against browser-driven CSRF / DNS-rebinding that no longer
+  depends on the token or CORS-preflight behavior.
+- **Transcript-path constraint.** A Claude `done` report's `transcript_path` is
+  now dereferenced only when it is a `.jsonl` file that canonicalizes to inside
+  the user's `~/.claude` home; any other path (a `..` traversal, a wrong
+  extension, an arbitrary readable file) is skipped and the report still
+  succeeds without the preview.
+- **Escaped reporter command interpolations.** The generated Codex (POSIX) and
+  Gemini reporter command strings now escape the app-data script path
+  (POSIX single-quote `'\''` for Codex; `\"` + newline-strip for Gemini), so a
+  `'`/`"` in the path (a home-dir edge case) can no longer break out of the
+  quoting. Quote-free paths are byte-identical to before, so installed Codex
+  hooks keep their reproduced `trusted_hash`.
+
+### Fixed — hunk-level `git apply` can't stall on a large failing patch
+
+- **`git apply` (hunk staging, hunk unstage and hunk discard) now drains git's
+  output while feeding the patch on stdin**, instead of writing the whole patch
+  to completion and only then waiting for the process. On a chatty rejection (a
+  large patch git refuses with a lot of stderr), the old order could block: we
+  blocked writing a full stdin pipe while git blocked writing a full stderr
+  pipe. The stdin write and the process wait now run concurrently
+  (`tokio::join!`, `git.rs::apply_patch`), so stdin drains as git reads it and
+  git's output is consumed as it's produced.
+
+### Added — the destructive git mutation paths are now under test
+
+- **Staging, discard, hunk-apply and commit in the git CLI layer
+  (`git.rs`) have direct tests** — previously only its parsers were covered.
+  Twelve `#[tokio::test]`s drive the real `git` binary against throwaway repos to
+  pin today's behavior: `stage`/`unstage` (single file + all), tracked-file
+  restore-to-`HEAD` and untracked-file delete discard, the four documented
+  `apply_patch` `cached`/`reverse` combinations (stage / unstage / discard a
+  hunk, plus an invalid-patch error), and `commit` (message, `--amend` keeps the
+  commit count, sign-off trailer, empty-index error). This guards the app's most
+  destructive git surface against a silent argument-mapping regression. The
+  backend suite is now **239 tests** (was 217 — 12 added here, 6 from the
+  hook/MCP hardening above, 1 from the watcher change above, 3 from the browser
+  scheme gate above).
 
 ### Fixed — debounced saves survive a window close, and a startup error can't wipe a restored layout
 

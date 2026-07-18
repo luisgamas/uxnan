@@ -486,6 +486,29 @@ async fn worktree_status_cli(worktree_path: &str) -> Result<WorktreeStatus, AppE
     Ok(parse_status_porcelain(&out))
 }
 
+/// Combined [`status_files`] + [`worktree_status`] in a single working-tree
+/// scan — for the 3 s status watcher, which needs both and would otherwise walk
+/// the tree twice per tick. Fast path: one `git2` scan
+/// ([`crate::gitfast::status_with_summary`]). On a WSL path or a `git2` failure
+/// it falls back to running the two existing CLI fallbacks sequentially — the
+/// CLI path is the rare case, so paying for two scans there is acceptable.
+pub async fn status_with_summary(
+    worktree_path: &str,
+) -> Result<(Vec<FileChange>, WorktreeStatus), AppError> {
+    // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
+    if !crate::wsl::is_wsl_path(worktree_path) {
+        let p = worktree_path.to_string();
+        if let Ok(Ok(v)) =
+            tokio::task::spawn_blocking(move || crate::gitfast::status_with_summary(&p)).await
+        {
+            return Ok(v);
+        }
+    }
+    let files = status_files_cli(worktree_path).await?;
+    let status = worktree_status_cli(worktree_path).await?;
+    Ok((files, status))
+}
+
 /// Parse `git status --porcelain=v1 --branch` output: the first `## ` line
 /// carries the upstream ahead/behind (`[ahead N, behind M]`); every other
 /// non-empty line is one changed entry.
@@ -962,21 +985,22 @@ pub async fn apply_patch(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| AppError::Git(e.to_string()))?;
-    // Write the patch, then drop stdin so git sees EOF.
-    {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| AppError::Git("failed to open git stdin".to_string()))?;
-        stdin
-            .write_all(patch.as_bytes())
-            .await
-            .map_err(|e| AppError::Git(e.to_string()))?;
-    }
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| AppError::Git(e.to_string()))?;
+    // Feed the patch on stdin while draining git's output concurrently: writing
+    // the whole patch before reading would deadlock if git filled its stdout/
+    // stderr pipe (a chatty failure on a large patch) while blocked on our read.
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| AppError::Git("failed to open git stdin".to_string()))?;
+    let patch_bytes = patch.as_bytes().to_vec();
+    let writer = async move {
+        let res = stdin.write_all(&patch_bytes).await;
+        drop(stdin); // EOF so git stops reading
+        res
+    };
+    let (write_res, output) = tokio::join!(writer, child.wait_with_output());
+    write_res.map_err(|e| AppError::Git(e.to_string()))?;
+    let output = output.map_err(|e| AppError::Git(e.to_string()))?;
     if !output.status.success() {
         return Err(AppError::Git(
             String::from_utf8_lossy(&output.stderr).trim().to_string(),
@@ -1533,6 +1557,8 @@ mod tests {
         run_git(dir, &["config", "user.email", "test@uxnan.dev"]).await;
         run_git(dir, &["config", "user.name", "Uxnan Test"]).await;
         run_git(dir, &["config", "commit.gpgsign", "false"]).await;
+        // Keep line endings byte-exact so a captured diff round-trips on Windows.
+        run_git(dir, &["config", "core.autocrlf", "false"]).await;
         std::fs::write(format!("{dir}/README.md"), "base\n").unwrap();
         run_git(dir, &["add", "-A"]).await;
         run_git(dir, &["commit", "-m", "initial"]).await;
@@ -1638,5 +1664,330 @@ mod tests {
         let diff = image_diff(&repo_path, "new.png", false).await.unwrap();
         assert!(diff.old.is_none(), "added file has no baseline");
         assert_eq!(diff.new.unwrap().base64, BASE64.encode([7u8, 7, 7]));
+    }
+
+    // --- Staging / discard / apply_patch / commit (mutation characterization) --
+    //
+    // These drive the real git CLI against a throwaway repo to pin what the
+    // destructive git surface does today — staging, discard, hunk apply and
+    // commit — so a regression in an argument mapping (e.g. apply_patch's
+    // cached/reverse pair) fails loudly instead of silently staging or
+    // discarding the wrong thing. They complement the parser tests above.
+
+    /// Like [`run_git`] but returns git's stdout, for asserting on `log`/`diff`.
+    async fn run_git_stdout(dir: &str, args: &[&str]) -> String {
+        git(dir, args)
+            .await
+            .unwrap_or_else(|e| panic!("git {args:?} in {dir} failed: {e:?}"))
+    }
+
+    /// The `(index, worktree)` porcelain code pair for `path`, or `None` when the
+    /// file is clean (absent from `status_files`, the function the UI consumes).
+    async fn status_of(repo: &str, path: &str) -> Option<(String, String)> {
+        status_files(repo)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|c| c.path == path)
+            .map(|c| (c.index, c.worktree))
+    }
+
+    #[tokio::test]
+    async fn stage_and_unstage_file_roundtrip() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
+        // Unstaged modification: worktree "M", index clear.
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            Some((" ".into(), "M".into()))
+        );
+
+        stage_file(&repo_path, "README.md").await.unwrap();
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            Some(("M".into(), " ".into())),
+            "staged: index M, worktree clear"
+        );
+
+        unstage_file(&repo_path, "README.md").await.unwrap();
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            Some((" ".into(), "M".into())),
+            "unstaged again"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_all_and_unstage_all() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nmore\n").unwrap();
+        std::fs::write(format!("{repo_path}/new.txt"), "fresh\n").unwrap();
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            Some((" ".into(), "M".into()))
+        );
+        assert_eq!(
+            status_of(&repo_path, "new.txt").await,
+            Some(("?".into(), "?".into())),
+            "untracked before staging"
+        );
+
+        stage_all(&repo_path).await.unwrap();
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            Some(("M".into(), " ".into()))
+        );
+        assert_eq!(
+            status_of(&repo_path, "new.txt").await,
+            Some(("A".into(), " ".into())),
+            "new file staged as added"
+        );
+
+        unstage_all(&repo_path).await.unwrap();
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            Some((" ".into(), "M".into()))
+        );
+        assert_eq!(
+            status_of(&repo_path, "new.txt").await,
+            Some(("?".into(), "?".into())),
+            "back to untracked"
+        );
+    }
+
+    #[tokio::test]
+    async fn discard_tracked_file_restores_head() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nedited\n").unwrap();
+        stage_file(&repo_path, "README.md").await.unwrap();
+
+        discard_file(&repo_path, "README.md", false).await.unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(format!("{repo_path}/README.md")).unwrap(),
+            "base\n",
+            "file content restored to HEAD"
+        );
+        assert_eq!(
+            status_of(&repo_path, "README.md").await,
+            None,
+            "clean after discard"
+        );
+    }
+
+    #[tokio::test]
+    async fn discard_untracked_file_deletes_it() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let junk = format!("{repo_path}/junk.txt");
+        std::fs::write(&junk, "temporary\n").unwrap();
+        assert!(std::path::Path::new(&junk).exists());
+
+        discard_file(&repo_path, "junk.txt", true).await.unwrap();
+
+        assert!(
+            !std::path::Path::new(&junk).exists(),
+            "untracked file removed by git clean"
+        );
+    }
+
+    /// Commit a tracked multi-line `file.txt` so a hunk apply has real context.
+    async fn commit_multiline_file(repo_path: &str) {
+        std::fs::write(format!("{repo_path}/file.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+        run_git(repo_path, &["add", "-A"]).await;
+        run_git(repo_path, &["commit", "-m", "add file"]).await;
+    }
+
+    #[tokio::test]
+    async fn apply_patch_stage_hunk() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        commit_multiline_file(&repo_path).await;
+
+        // Unstaged edit; capture the worktree diff and stage it via apply.
+        std::fs::write(format!("{repo_path}/file.txt"), "one\nTWO\nthree\nfour\n").unwrap();
+        let patch = run_git_stdout(&repo_path, &["diff", "--", "file.txt"]).await;
+
+        apply_patch(&repo_path, &patch, true, false).await.unwrap();
+
+        // cached=true, reverse=false stages the change without touching the disk
+        // file: the index now carries the edit (M), the worktree is unchanged.
+        assert_eq!(
+            status_of(&repo_path, "file.txt").await.unwrap().0,
+            "M",
+            "staged"
+        );
+        assert_eq!(
+            std::fs::read_to_string(format!("{repo_path}/file.txt")).unwrap(),
+            "one\nTWO\nthree\nfour\n",
+            "worktree file untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_patch_unstage_hunk() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        commit_multiline_file(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/file.txt"), "one\nTWO\nthree\nfour\n").unwrap();
+        stage_file(&repo_path, "file.txt").await.unwrap();
+        let staged = run_git_stdout(&repo_path, &["diff", "--cached", "--", "file.txt"]).await;
+
+        apply_patch(&repo_path, &staged, true, true).await.unwrap();
+
+        // cached=true, reverse=true removes the change from the index only: the
+        // index returns to HEAD (clean) while the worktree stays modified.
+        assert_eq!(
+            status_of(&repo_path, "file.txt").await,
+            Some((" ".into(), "M".into())),
+            "index clean, worktree still modified"
+        );
+        assert_eq!(
+            std::fs::read_to_string(format!("{repo_path}/file.txt")).unwrap(),
+            "one\nTWO\nthree\nfour\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_patch_discard_hunk() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+        commit_multiline_file(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/file.txt"), "one\nTWO\nthree\nfour\n").unwrap();
+        let patch = run_git_stdout(&repo_path, &["diff", "--", "file.txt"]).await;
+
+        apply_patch(&repo_path, &patch, false, true).await.unwrap();
+
+        // cached=false, reverse=true reverses the change in the worktree itself
+        // (destructive discard): the file returns to HEAD and status is clean.
+        assert_eq!(
+            status_of(&repo_path, "file.txt").await,
+            None,
+            "clean after discard"
+        );
+        assert_eq!(
+            std::fs::read_to_string(format!("{repo_path}/file.txt")).unwrap(),
+            "one\ntwo\nthree\nfour\n",
+            "worktree reverted to HEAD"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_patch_invalid_patch_errors() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        match apply_patch(&repo_path, "not a patch\n", false, false).await {
+            Err(AppError::Git(msg)) => {
+                assert!(!msg.trim().is_empty(), "git's stderr is surfaced");
+            }
+            other => panic!("expected Err(Git), got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn commit_creates_commit_with_message() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nchange\n").unwrap();
+        stage_file(&repo_path, "README.md").await.unwrap();
+
+        commit(&repo_path, "characterize commit", false, false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            run_git_stdout(&repo_path, &["log", "-1", "--format=%s"])
+                .await
+                .trim(),
+            "characterize commit"
+        );
+        assert!(
+            status_files(&repo_path).await.unwrap().is_empty(),
+            "working tree clean after commit"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_amend_rewrites_head() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nfirst\n").unwrap();
+        stage_file(&repo_path, "README.md").await.unwrap();
+        commit(&repo_path, "first", false, false).await.unwrap();
+        let count_before = run_git_stdout(&repo_path, &["rev-list", "--count", "HEAD"]).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nsecond\n").unwrap();
+        stage_file(&repo_path, "README.md").await.unwrap();
+        commit(&repo_path, "reworded", true, false).await.unwrap();
+
+        assert_eq!(
+            count_before.trim(),
+            run_git_stdout(&repo_path, &["rev-list", "--count", "HEAD"])
+                .await
+                .trim(),
+            "amend rewrites HEAD, does not add a commit"
+        );
+        assert_eq!(
+            run_git_stdout(&repo_path, &["log", "-1", "--format=%s"])
+                .await
+                .trim(),
+            "reworded"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_sign_off_appends_trailer() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        std::fs::write(format!("{repo_path}/README.md"), "base\nsigned\n").unwrap();
+        stage_file(&repo_path, "README.md").await.unwrap();
+        commit(&repo_path, "with trailer", false, true)
+            .await
+            .unwrap();
+
+        let body = run_git_stdout(&repo_path, &["log", "-1", "--format=%B"]).await;
+        assert!(
+            body.contains("Signed-off-by: Uxnan Test"),
+            "sign-off trailer present in body: {body:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_nothing_staged_errors() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // Nothing staged (and no amend) → git commit fails, surfaced as an error.
+        assert!(
+            commit(&repo_path, "nothing here", false, false)
+                .await
+                .is_err(),
+            "commit with an empty index errors"
+        );
     }
 }

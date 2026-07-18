@@ -347,6 +347,7 @@ JSON body:
 Responses:
 
 - `204 No Content` on success.
+- `403` if the caller isn't loopback (a non-loopback `Host`/`Origin` header).
 - `401` if the token is missing or wrong.
 - `400` / `422` for a malformed body.
 - `GET /health` returns `ok`.
@@ -417,6 +418,21 @@ The hook server only listens on `127.0.0.1` (loopback) and requires the
 - Stray local processes can't spoof reports without reading the token.
 - The token is never logged or persisted to disk — it lives only in the
   ADE's process memory and the spawned terminals' environment.
+
+Defense-in-depth on top of that baseline:
+
+- **Loopback `Host`/`Origin` gate.** Every state-changing route (`/hook`,
+  `/browser`, `/mcp`) first rejects (`403`) a request whose `Host` isn't
+  absent-or-loopback, or whose `Origin` isn't absent-or-a-loopback
+  `http(s)` origin — a guard against browser-driven CSRF / DNS-rebinding that
+  doesn't rely on the token or CORS-preflight behavior.
+- **Constant-time token check.** The token is compared via SHA-256 digests of
+  both sides, not `==` on the raw secret, so a comparison can't leak the token
+  through timing.
+- **No arbitrary file reads.** A Claude `done` report's `transcript_path` is
+  read only when it's a `.jsonl` file inside the user's `~/.claude` home
+  (canonicalized, so `..` can't escape); any other path is ignored and the
+  report still succeeds.
 
 If you need to rotate the token, restart the ADE — a fresh token is
 generated on every launch.

@@ -39,13 +39,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::{
     body::Bytes,
     extract::{DefaultBodyLimit, State as AxumState},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::Response,
     routing::{get, post},
     Router,
 };
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::TcpListener;
 
@@ -286,10 +287,42 @@ fn text_of(content: &Value) -> String {
         .join("\n")
 }
 
+/// The base directory Claude Code stores session transcripts under
+/// (`~/.claude/projects/<sanitized-cwd>/<session>.jsonl`). Resolved from the
+/// same home-dir source as the reporter installers; kept in one place so that if
+/// Claude changes this upstream, previews degrade gracefully (skipped) instead of
+/// breaking.
+fn claude_transcript_base() -> Option<PathBuf> {
+    crate::agent_hooks::home_dir().map(|h| h.join(".claude"))
+}
+
+/// Whether a request-supplied `transcript_path` may be dereferenced: it must be a
+/// `.jsonl` file that, once canonicalized, lives inside the canonicalized `base`
+/// (the user's `~/.claude` home). Canonicalizing both sides collapses any `..`
+/// traversal and resolves symlinks, so a token-holding caller cannot point the
+/// preview at an arbitrary readable file (SSH keys, `.env`, …) outside the
+/// transcript tree. Fails closed (`false`) when either path can't be
+/// canonicalized — the caller then simply skips the preview.
+fn transcript_path_allowed(path: &Path, base: &Path) -> bool {
+    if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+        return false;
+    }
+    let (Ok(canon_path), Ok(canon_base)) =
+        (std::fs::canonicalize(path), std::fs::canonicalize(base))
+    else {
+        return false;
+    };
+    canon_path.starts_with(&canon_base)
+}
+
 /// Read a Claude session transcript (JSONL) and return the last user prompt +
 /// the last assistant text response, to enrich a `done` notification. All I/O is
 /// best-effort: any read/parse problem yields `(None, None)`. The transcript can
 /// be large, so this only runs on the (infrequent) `done` transition.
+///
+/// The caller MUST first validate `path` with [`transcript_path_allowed`] — this
+/// function dereferences the path directly and must never be handed an arbitrary
+/// request-supplied path.
 fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return (None, None);
@@ -448,13 +481,90 @@ pub async fn start(
     })
 }
 
+/// Constant-time equality for the shared per-launch token. Comparing the
+/// SHA-256 digests of both sides (rather than the raw strings) removes the
+/// short-circuit timing side channel a plain `==` on a secret leaks — the count
+/// of matching leading bytes — because the comparison runs over fixed-length,
+/// unpredictable digest bytes an attacker cannot steer toward the target. `sha2`
+/// is already a dependency (Codex trust hashing), so this adds no crate.
+///
+/// `pub(crate)` because `mcp.rs` authorizes callers against the same token and
+/// must use the same constant-time check.
+pub(crate) fn token_eq(a: &str, b: &str) -> bool {
+    let da = Sha256::digest(a.as_bytes());
+    let db = Sha256::digest(b.as_bytes());
+    // Data-independent fold over the two fixed-length (32-byte) digests.
+    let mut diff = 0u8;
+    for (x, y) in da.iter().zip(db.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Whether the request carries the shared token.
 fn authorized(headers: &HeaderMap, token: &str) -> bool {
     headers
         .get(TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
-        .map(|v| v == token)
+        .map(|v| token_eq(v, token))
         .unwrap_or(false)
+}
+
+/// Whether an HTTP authority (`host[:port]`, or a bracketed IPv6 literal) points
+/// at loopback: `127.0.0.1`, `localhost`, or `::1`. Any other host — a real
+/// name a DNS-rebinding/CSRF attacker would use — is rejected. A present but
+/// empty authority is treated as suspicious (rejected).
+fn host_is_loopback(authority: &str) -> bool {
+    let authority = authority.trim();
+    if authority.is_empty() {
+        return false;
+    }
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        // Bracketed IPv6 literal: `[::1]` or `[::1]:port` → take up to `]`.
+        match rest.split_once(']') {
+            Some((inner, _)) => inner,
+            None => return false,
+        }
+    } else if authority == "::1" {
+        // Bare IPv6 loopback (no brackets, no port).
+        "::1"
+    } else {
+        // `host` or `host:port` → the part before the first `:`.
+        authority.split(':').next().unwrap_or(authority)
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
+}
+
+/// Whether an `Origin` header value is a loopback `http`/`https` origin. A real
+/// web page (the CSRF / DNS-rebinding vector) always sends its true,
+/// non-loopback `Origin`, so only a loopback one is accepted.
+fn origin_is_loopback(origin: &str) -> bool {
+    origin
+        .trim()
+        .strip_prefix("http://")
+        .or_else(|| origin.trim().strip_prefix("https://"))
+        .map(host_is_loopback)
+        .unwrap_or(false)
+}
+
+/// Reject non-loopback callers by header — an explicit gate against
+/// browser-driven CSRF / DNS-rebinding that does not depend on the token or on
+/// CORS-preflight behavior. `Host` must be absent or loopback; `Origin` must be
+/// absent or a loopback `http(s)` origin. The reporters send a loopback `Host`
+/// and no `Origin`; a browser page always sends its real `Origin`. Every
+/// state-changing route runs this before the token check.
+pub(crate) fn loopback_caller(headers: &HeaderMap) -> bool {
+    if let Some(host) = headers.get(header::HOST).and_then(|v| v.to_str().ok()) {
+        if !host_is_loopback(host) {
+            return false;
+        }
+    }
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        if !origin_is_loopback(origin) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Read a header as an owned, trimmed, non-empty string.
@@ -475,6 +585,9 @@ async fn handle_hook(
     headers: HeaderMap,
     body: Bytes,
 ) -> StatusCode {
+    if !loopback_caller(&headers) {
+        return StatusCode::FORBIDDEN;
+    }
     if !authorized(&headers, &ctx.token) {
         return StatusCode::UNAUTHORIZED;
     }
@@ -591,12 +704,21 @@ async fn handle_hook(
             .and_then(|s| s.get("transcript_path"))
             .and_then(|v| v.as_str())
         {
-            let (t_prompt, t_summary) = transcript_preview(tp);
-            if let Some(p) = t_prompt {
-                prompt = Some(p);
-            }
-            if summary.is_none() {
-                summary = t_summary;
+            // Only dereference a request-supplied path that is a `.jsonl`
+            // transcript inside the user's `~/.claude` home — never an arbitrary
+            // readable file a token-holding caller named. On any failure the
+            // report still succeeds, just without the preview.
+            let allowed = claude_transcript_base()
+                .map(|base| transcript_path_allowed(Path::new(tp), &base))
+                .unwrap_or(false);
+            if allowed {
+                let (t_prompt, t_summary) = transcript_preview(tp);
+                if let Some(p) = t_prompt {
+                    prompt = Some(p);
+                }
+                if summary.is_none() {
+                    summary = t_summary;
+                }
             }
         }
     }
@@ -651,6 +773,9 @@ async fn handle_browser(
     headers: HeaderMap,
     axum::Json(payload): axum::Json<BrowserRequest>,
 ) -> StatusCode {
+    if !loopback_caller(&headers) {
+        return StatusCode::FORBIDDEN;
+    }
     if !authorized(&headers, &ctx.token) {
         return StatusCode::UNAUTHORIZED;
     }
@@ -866,5 +991,87 @@ mod tests {
         assert!(json.contains("agentId"));
         assert!(json.contains("firstSeen"));
         assert!(json.contains("\"waiting\""));
+    }
+
+    #[test]
+    fn token_eq_matches_only_equal_strings() {
+        assert!(token_eq("s3cret-token", "s3cret-token"));
+        assert!(token_eq("", ""));
+        // Same length, one differing byte.
+        assert!(!token_eq("s3cret-token", "s3cret-tokeN"));
+        // Prefix of the real token must not pass.
+        assert!(!token_eq("s3cret", "s3cret-token"));
+        assert!(!token_eq("", "x"));
+    }
+
+    #[test]
+    fn loopback_caller_gates_by_host_and_origin() {
+        use axum::http::{HeaderName, HeaderValue};
+        let with = |pairs: &[(HeaderName, &str)]| {
+            let mut h = HeaderMap::new();
+            for (name, value) in pairs {
+                h.insert(name.clone(), HeaderValue::from_str(value).unwrap());
+            }
+            h
+        };
+        // No Host/Origin at all → allowed (programmatic clients may omit both).
+        assert!(loopback_caller(&HeaderMap::new()));
+        // Loopback Host, no Origin → allowed (the reporters' request shape).
+        assert!(loopback_caller(&with(&[(header::HOST, "127.0.0.1:5123")])));
+        assert!(loopback_caller(&with(&[(header::HOST, "localhost")])));
+        assert!(loopback_caller(&with(&[(header::HOST, "[::1]:80")])));
+        assert!(loopback_caller(&with(&[(header::HOST, "::1")])));
+        // A loopback http(s) Origin (a dev page served from localhost) → allowed.
+        assert!(loopback_caller(&with(&[(
+            header::ORIGIN,
+            "http://localhost:1420"
+        )])));
+        // A real, non-loopback Host or Origin → rejected (CSRF / DNS-rebinding).
+        assert!(!loopback_caller(&with(&[(header::HOST, "evil.example")])));
+        assert!(!loopback_caller(&with(&[(
+            header::ORIGIN,
+            "https://evil.example"
+        )])));
+        // A loopback Host paired with a hostile Origin → still rejected.
+        assert!(!loopback_caller(&with(&[
+            (header::HOST, "127.0.0.1:5123"),
+            (header::ORIGIN, "https://evil.example"),
+        ])));
+    }
+
+    #[test]
+    fn transcript_path_allowed_requires_jsonl_under_base() {
+        let base = std::env::temp_dir().join(format!("uxnan-transcript-{}", uuid::Uuid::new_v4()));
+        let inside = base.join("projects").join("proj");
+        std::fs::create_dir_all(&inside).unwrap();
+        let good = inside.join("session.jsonl");
+        std::fs::write(&good, "{}\n").unwrap();
+        let wrong_ext = inside.join("notes.txt");
+        std::fs::write(&wrong_ext, "x").unwrap();
+
+        let outside_dir =
+            std::env::temp_dir().join(format!("uxnan-outside-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        let outside = outside_dir.join("evil.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+
+        // A `.jsonl` inside the base is allowed.
+        assert!(transcript_path_allowed(&good, &base));
+        // Wrong extension → rejected even inside the base.
+        assert!(!transcript_path_allowed(&wrong_ext, &base));
+        // A `.jsonl` genuinely outside the base → rejected.
+        assert!(!transcript_path_allowed(&outside, &base));
+        // A `..` traversal that lexically starts inside the base but resolves
+        // outside it is rejected (canonicalization collapses the `..`).
+        let traversal = base
+            .join("projects")
+            .join("..")
+            .join("..")
+            .join(outside_dir.file_name().unwrap())
+            .join("evil.jsonl");
+        assert!(!transcript_path_allowed(&traversal, &base));
+
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&outside_dir);
     }
 }

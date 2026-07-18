@@ -410,6 +410,24 @@ mod tests {
             b,
             "sha256:49242d9686a47c9e60b704683c1e91aeffec09f12d9e691ca5dd840fda55caa9"
         );
+
+        // Quoted-path edge case: when the POSIX hook path contains a `'`,
+        // `agent_hooks::codex_command` escapes it as `'\''`. Pin the hash over
+        // those exact bytes so the trust reproduction stays correct for a home
+        // dir like `/home/o'brien/…` (the escape only changes the command for a
+        // path that actually contains a quote; quote-free paths are unchanged).
+        let c = compute_hash(
+            "pre_tool_use",
+            r"if [ -x '/home/o'\''brien/.uxnan/hooks/uxnan-codex-hook.sh' ]; then /bin/sh '/home/o'\''brien/.uxnan/hooks/uxnan-codex-hook.sh'; fi",
+            600,
+            false,
+            None,
+            None,
+        );
+        assert_eq!(
+            c,
+            "sha256:956161cb4f86ab33c5f72fae731c7ee8cc5413e5c16053227d1ea45d2dd1baf3"
+        );
     }
 
     #[test]

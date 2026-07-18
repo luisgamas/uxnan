@@ -874,6 +874,7 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
     }
     let client = reqwest::Client::builder()
         .user_agent("uxnan-desktop")
+        .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
     let resp = client
@@ -899,15 +900,23 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
         .map(|s| s.split(';').next().unwrap_or(s).trim().to_string())
         .filter(|m| m.starts_with("image/"));
 
-    let bytes = resp
-        .bytes()
+    // Stream the body chunk-by-chunk, enforcing the cap as it grows: a server
+    // that lies about (or omits) Content-Length can't push more than
+    // MAX_ICON_BYTES into memory, and the client timeout bounds a slow trickle.
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut resp = resp;
+    while let Some(chunk) = resp
+        .chunk()
         .await
-        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?;
-    if bytes.len() as u64 > MAX_ICON_BYTES {
-        return Err(CommandError::new(
-            "IMAGE_FETCH_FAILED",
-            "the image is too large",
-        ));
+        .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?
+    {
+        if (bytes.len() + chunk.len()) as u64 > MAX_ICON_BYTES {
+            return Err(CommandError::new(
+                "IMAGE_FETCH_FAILED",
+                "the image is too large",
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
     }
     // Prefer the server's content-type; else sniff from magic bytes. Refuse
     // anything that isn't a recognizable image so we never inline HTML/JSON.

@@ -1,7 +1,9 @@
 //! Integrated developer browser — link routing + the docked browser window.
 //!
 //! The browser is a separate **`WebviewWindow`** (a real system webview —
-//! Chromium/WebView2 on Windows — so it loads any site and has real DevTools),
+//! Chromium/WebView2 on Windows — so it loads any **http(s)** site and has real
+//! DevTools; non-`http(s)` schemes are refused so the window stays off local/
+//! privileged origins),
 //! owned by the main window and frameless, positioned by the frontend so it sits
 //! over uxnan's right-side browser panel and looks like a 4th panel. The toolbar
 //! (address bar, back/forward, …) lives in the main window's DOM; this window holds
@@ -108,8 +110,32 @@ struct NavigatedEvent {
     url: String,
 }
 
+/// Parse a raw address for the integrated browser, rejecting any non-`http(s)`
+/// scheme. The browser window is docked over the privileged main window, so it
+/// only ever loads remote web content: `file:`, `tauri:`, `data:`,
+/// `javascript:` and every other scheme are refused here (as a `BROWSER_BAD_URL`
+/// error), keeping the window off local/privileged origins. Every open/navigate
+/// entry point funnels through this, so the gate is inherited everywhere;
+/// in-page navigations are held to the same rule by [`nav_allowed`].
 fn parse_url(raw: &str) -> Result<tauri::Url, CommandError> {
-    tauri::Url::parse(raw).map_err(|e| CommandError::new("BROWSER_BAD_URL", e.to_string()))
+    let url =
+        tauri::Url::parse(raw).map_err(|e| CommandError::new("BROWSER_BAD_URL", e.to_string()))?;
+    if !nav_allowed(&url) {
+        return Err(CommandError::new(
+            "BROWSER_BAD_URL",
+            "only http(s) URLs can open in the integrated browser",
+        ));
+    }
+    Ok(url)
+}
+
+/// Whether a navigation may proceed in the integrated browser: only `http(s)`
+/// origins are allowed. This blocks a page — or an open redirect — from steering
+/// the window onto a `file:`, `tauri:`, `data:` or any other privileged/local
+/// scheme. Pure, so it backs both [`parse_url`] and the window's `on_navigation`
+/// guard and can be unit-tested directly.
+fn nav_allowed(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
 }
 
 /// Record the browser's live URL in shared state so the browser MCP server's
@@ -237,6 +263,11 @@ pub async fn browser_window_open(
         .shadow(false)
         .visible(false)
         .on_navigation(move |u| {
+            // Gate in-page navigations to http(s): a page (or an open redirect)
+            // must never steer the window onto a local/privileged origin.
+            if !nav_allowed(u) {
+                return false;
+            }
             let url = u.to_string();
             track_url(&nav_app, &url);
             let _ = nav_app.emit("browser:navigated", NavigatedEvent { url });
@@ -377,5 +408,31 @@ mod tests {
     fn parse_url_rejects_garbage() {
         assert!(parse_url("not a url").is_err());
         assert!(parse_url("https://example.com").is_ok());
+    }
+
+    #[test]
+    fn parse_url_accepts_http_and_https() {
+        assert!(parse_url("http://example.com").is_ok());
+        assert!(parse_url("https://example.com/path?q=1").is_ok());
+    }
+
+    #[test]
+    fn parse_url_rejects_non_http_schemes() {
+        // Local, privileged and inline schemes can never open in the browser —
+        // they parse fine but the scheme gate refuses them.
+        assert!(parse_url("file:///etc/hosts").is_err());
+        assert!(parse_url("tauri://localhost").is_err());
+        assert!(parse_url("data:text/html,<h1>x</h1>").is_err());
+        assert!(parse_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn nav_allowed_only_for_http_schemes() {
+        let allow = |u: &str| nav_allowed(&tauri::Url::parse(u).unwrap());
+        assert!(allow("http://example.com"));
+        assert!(allow("https://example.com"));
+        assert!(!allow("file:///etc/hosts"));
+        assert!(!allow("tauri://localhost"));
+        assert!(!allow("data:text/html,x"));
     }
 }
