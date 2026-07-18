@@ -1297,6 +1297,12 @@ if !window_visible.load(Ordering::Relaxed) {
 
 Al volver a enfocar la ventana, se ejecuta inmediatamente un ciclo de polling para actualizar el estado.
 
+Ademas, cada tick del watcher realiza **un unico recorrido del working tree** (no dos): una sola funcion combinada (`git::status_with_summary`, ruta rapida `gitfast::status_with_summary` con el mismo fallback `git2`->CLI) devuelve tanto la lista de archivos como el resumen ahead/behind desde el mismo `statuses()`. El conteo `dirty` es la longitud de esa lista, por lo que no hace falta un segundo escaneo.
+
+#### Escaneo de Procesos de Agentes (focus-gated + off-worker)
+
+El watcher de deteccion de agentes (Layer 3, cada 2 segundos) comparte la misma pausa por foco que el polling de git: mientras la ventana no esta enfocada no refresca la tabla de procesos, y vuelve a escanear en el primer tick tras recuperar el foco. Como el refresco de `sysinfo` (con lineas de comando) es una llamada bloqueante y pesada en syscalls, se ejecuta en un hilo bloqueante (`spawn_blocking`, moviendo `sys` de ida y vuelta) en lugar de bloquear un worker de Tokio.
+
 #### Buffers de Terminal Limitados
 
 Los terminales ocultos (en tabs no activos) acumulan output en un buffer limitado de **2MB por terminal oculto**. Si el buffer se llena, los datos mas antiguos se descartan. Esto previene que terminales con output rapido y continuo (compilaciones, logs) consuman memoria indefinidamente:
