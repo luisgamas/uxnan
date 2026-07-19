@@ -9,6 +9,8 @@ export type AgentId =
   | 'opencode'
   | 'claude-code'
   | 'gemini-cli'
+  /** Antigravity — Google's `agy` CLI, the successor to the deprecated Gemini CLI. */
+  | 'antigravity-cli'
   | 'pi-agent'
   /** Zero — open-source Go coding agent, driven over the Agent Client Protocol. */
   | 'zero'

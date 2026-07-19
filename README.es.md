@@ -136,7 +136,7 @@ local oficial** de cada uno tal como lo harías en una terminal. Sin API de
 proveedor, sin SDK, sin keys: cada agente corre bajo la cuenta con la que ya
 iniciaste sesión.
 
-**Agentes reales cableados:** OpenCode, Claude Code, Codex, pi, Gemini CLI, Zero, Grok.
+**Agentes reales cableados:** OpenCode, Claude Code, Codex, pi, Gemini CLI, Antigravity, Zero, Grok.
 
 → **[Lee el README del bridge](bridge/README.md)**
 
@@ -203,8 +203,8 @@ Si encuentras una vulnerabilidad, por favor no abras un issue público — revis
 
 Uxnan está en **alpha**, y el ciclo central ya funciona de extremo a extremo.
 Desde el teléfono puedo emparejarme con el bridge y mantener una conversación
-real en streaming con **siete agentes** —OpenCode, Claude Code, Codex, pi,
-Gemini CLI, Zero y Grok— sobre el canal cifrado. La app de escritorio es alpha-funcional por
+real en streaming con **ocho agentes** —OpenCode, Claude Code, Codex, pi,
+Gemini CLI, Antigravity, Zero y Grok— sobre el canal cifrado. La app de escritorio es alpha-funcional por
 sí sola. Las notificaciones push están vivas en Android (iOS depende de assets de
 Apple).
 
@@ -215,7 +215,7 @@ vive en su propio `FOR-DEV.md`:
 |---|---|---|
 | [`uxnanmobile/`](uxnanmobile/README.md) | MVP cableado, Android alpha-ready; iOS pendiente de assets de Apple | [estado](uxnanmobile/FOR-DEV.md) |
 | [`uxnandesktop/`](uxnandesktop/README.md) | Alpha-funcional como app standalone | [estado](uxnandesktop/FOR-DEV.md) |
-| [`bridge/`](bridge/README.md) | Implementado; 7 agentes reales cableados | [estado](bridge/FOR-DEV.md) |
+| [`bridge/`](bridge/README.md) | Implementado; 8 agentes reales cableados | [estado](bridge/FOR-DEV.md) |
 | [`relay/`](relay/README.md) | Implementado; opcional / self-hosted | [estado](relay/FOR-DEV.md) |
 | [`shared/`](shared/README.md) | Implementado; contratos bloqueados en CI | [README](shared/README.md) |
 

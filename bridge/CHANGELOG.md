@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Antigravity (`agy`) wired as the 8th real agent
+- Wired **Antigravity**, Google's `agy` CLI (the successor to the deprecated
+  standalone Gemini CLI; its models are the Gemini family), as a real one-shot
+  per-turn adapter (`adapters/antigravity-adapter.ts` +
+  `adapters/resolve-antigravity.ts`, registered in `startBridge`). Validated live
+  against `agy` 1.1.4 — the thin-`-p` blockers that had it deferred (no `--model`,
+  no output to a piped stdout, no session id) are resolved:
+  - each turn spawns `agy --conversation <uuid> --add-dir <cwd>
+    (--dangerously-skip-permissions | --mode plan) [--model "<label>"] -p <text>`
+    and streams the plain-text stdout as `delta`s + a `turn/completed`;
+  - **continuity** via a client-owned `--conversation <uuid>` — it CREATES the
+    conversation on the first turn and RESUMES it after, so no log parsing;
+  - **workspace targeting** via `--add-dir <cwd>` (`agy` has no `-C/--cwd`, and
+    without it edits a private scratch dir instead of the project);
+  - **permission posture** from the thread `accessMode`: `approveForMe`/
+    `fullAccess` → `--dangerously-skip-permissions` (autonomous — the only posture
+    under which headless `agy` can edit at all), `requestApproval` → read-only
+    `--mode plan` (`agy -p` cannot prompt for approval, so "ask me first" safely
+    degrades to plan-only);
+  - **model discovery** via `agy models` (`listModels`); capabilities advertise
+    `planMode` + `streaming` + `autonomous` (no interactive approvals, no per-turn
+    token usage). Auth falls back to binary availability (like the Gemini adapter).
+- 11 new adapter unit tests (bridge suite now **493**, on top of the session-recovery
+  fix's +7).
+
 ### Fixed — parallel subagent activity no longer corrupts the text↔work-log order
 - **Claude Code subagent (Task) events are now recognized and ordered correctly.**
   With parallel subagents, `claude --output-format stream-json` interleaves the
@@ -32,18 +57,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - Tests: +7 → **482** (subagent parsing/flagging ×3, store placement ×2,
   completion-tail reconcile, wire flag end-to-end through `AgentManager`).
 
-### Fixed — `turn/list` clears `activeTurnId` atomically with turn completion
-- **A just-completed turn could momentarily still report as active.** In
-  `AgentManager`'s `turn_completed` handling, `store.completeTurn` flips the
-  turn's persisted status while `#activeTurnByThread` — the map `turn/list`
-  derives `activeTurnId` from — was only cleared several `await`s later
-  (`#assistantText`, `setUsage`, `notify`). A `turn/list` that raced into that
-  window saw the turn as **completed yet still active**, so the phone briefly
-  kept the "responding…" indicator on an idle thread. The in-flight marker is
-  now deleted synchronously the instant the turn is persisted as completed, so
-  the store status and `activeTurnId` flip together (`agent-manager.ts`). This
-  makes the existing `turn/list … clears it on completion` handler test
-  deterministic (it was timing-dependent and flaked under load).
+### Fixed — `activeTurnId` clears before a turn's terminal status is observable
+- **A just-ended turn could momentarily still report as active.** In
+  `AgentManager`, `store.completeTurn`/`failTurn`/`abortTurn` flip the turn's
+  status to a terminal value **inside** their mutation — observable via
+  `getTurn` before the promise even resolves — while `#activeTurnByThread`, the
+  map `turn/list` derives `activeTurnId` from, was cleared only afterwards. A
+  `turn/list` (or a test) that observed the terminal status in that window still
+  saw the turn as **completed yet active**, so the phone briefly kept the
+  "responding…" indicator on an idle thread. The in-flight marker is now deleted
+  **before** each terminal store call in all three handlers, so no observer ever
+  sees a turn that is terminal yet still active; the status and `activeTurnId`
+  flip together (`agent-manager.ts`). This makes the `activeTurnId …` /
+  `turn/list … clears it on completion` tests deterministic (they were
+  timing-dependent and flaked on the loaded node-24/ubuntu CI leg).
 
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.

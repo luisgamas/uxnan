@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 471, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 493, shared 36, relay
 27). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -40,8 +40,9 @@ push validation (FOR-HUMAN).
   run — in the store and on the `stream/content/block` wire — so a text run is
   never severed mid-word, live and re-synced order always match, and subagent
   text/usage never folds into the main message.
-- **7 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
-  Gemini CLI, Zero, and Grok. Each drives its **official local CLI** with
+- **8 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
+  Gemini CLI, Antigravity (Google's `agy`, the Gemini-CLI successor), Zero, and
+  Grok. Each drives its **official local CLI** with
   `shell:false`, parses the native stream, and emits structured
   `stream/content/block` events (command / diff / tool) plus
   `stream/thinking/delta` (reasoning). Most spawn the CLI over stdio; the
@@ -238,23 +239,12 @@ or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE ov
    content), `SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if
    the CLI exposes a pre-tool channel.
 
-- [ ] **Antigravity CLI (`agy`) — investigated, deliberately NOT integrated**
-      (decided 2026-06-19; validated against `agy` 1.0.3 — trust the binary, the web
-      docs are unreliable). `agy` is a distinct binary from Gemini CLI (own exe/state
-      dir/hook file) and must NOT be wired through `gemini-adapter.ts`. Deferred
-      because its headless `-p` surface is too thin for the agent contract the phone
-      renders: **confirmed absent** `--model`, `--json`, `--output-format`,
-      `--stream`, `--thinking`, `--approval-mode`, `--list-models`, `--session-id`,
-      `-C/--cwd` → no streaming/structured blocks, no token usage, no model
-      discovery/selection, no reasoning knob, no blocking pre-tool hook (only
-      `Post*`), no headless plan/to-do, protobuf history (not the Gemini JSON
-      format). Only continuity maps (`--continue`/`--conversation`). **Open blocker:**
-      `agy -p` produced no output to a piped (non-TTY) stdout in repeated runs — may
-      need a pty harness. **Unblock when** `agy` ships a machine-readable
-      `--output-format json|stream-json`, and/or an app-server JSON-RPC turn protocol
-      (as Codex did), and/or a documented blocking pre-tool hook. Until then no
-      adapter and no `'antigravity-cli'` AgentId — a degraded text-only agent would be
-      strictly worse than the existing CLIs.
+- [ ] **Antigravity on-disk history fallback** — like Grok, `AntigravityAdapter`
+      has no `SessionHistoryReader`, so a `turn/list` after a bridge restart falls
+      back to the bridge's own thread store (live/in-memory history still works). If
+      an on-disk reader is wanted, parse `agy`'s conversation store
+      (`~/.gemini/antigravity-cli/…`) and wire it into `session-history.ts` like the
+      Claude/Codex/OpenCode/pi/Gemini readers.
 
 ## Daemon lifecycle & ops
 

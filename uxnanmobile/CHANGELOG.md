@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Antigravity agent (Google's `agy`) rendering
+- The app now renders the bridge's new `antigravity-cli` agent as a first-class,
+  branded choice — Google's Antigravity CLI, the successor to the deprecated
+  Gemini CLI (its models are the Gemini family). Added `AgentId.antigravity`
+  (wire id `antigravity-cli`) with its logo, "Antigravity" label and brand colour,
+  so it shows in the new-conversation picker with the same treatment as every
+  other agent instead of falling back to the generic "custom" look. Onboarding
+  copy and the welcome logos now feature Antigravity in place of Gemini. Pairs
+  with the bridge-side adapter that actually drives `agy` (see `bridge/CHANGELOG`).
+
+### Changed — Gemini CLI hidden from the new-conversation agent picker
+- Google deprecated the standalone Gemini CLI in favour of the Antigravity CLI
+  (`agy`), so `gemini-cli` is now hidden from the "available agents" list on the
+  new-conversation screen. The removal is a purely client-side curtain: a single
+  documented `_hiddenAgentIds` set (alongside the existing `echo` dev-agent hide)
+  filters the bridge-advertised `agent/list` before it is rendered. All Gemini
+  wiring — the `AgentId.geminiCli` enum value and `gemini-cli` wire id, its logo,
+  label and brand colour — is left fully intact, so bringing it back is a
+  one-line change (delete the `'gemini-cli'` entry). Existing Gemini threads and
+  the historical agent-activity / metrics breakdown are deliberately untouched.
+
 ### Fixed — a session closed and reopened mid-turn recovers the FULL agent reply
 - **The reopen race that silently dropped everything produced while the app was
   closed is fixed at the root.** On reopen, the first post-reconnect deltas
