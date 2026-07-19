@@ -19,7 +19,7 @@ optional, self-hosted off-LAN fallback. Background push notifications are sent
 receiving them whether it reached the bridge directly or through a relay.
 
 > **Status:** alpha-functional on the primary path (LAN/Tailscale-direct,
-> bridge-direct push), with **seven real agents wired**. The detailed breakdown of
+> bridge-direct push), with **eight real agents wired**. The detailed breakdown of
 > what is built and what remains lives in [`FOR-DEV.md`](FOR-DEV.md); the release
 > history is in [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -163,7 +163,7 @@ Task-focused guides live in [`docs/`](docs/):
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32008` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
-  Gemini CLI / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
+  Gemini CLI / Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
   notifications to connected phones.
 - **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
   directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay

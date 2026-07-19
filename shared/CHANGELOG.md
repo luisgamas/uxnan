@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `antigravity-cli` agent id
+- Added `antigravity-cli` to the `AgentId` union (`agents/agent-capabilities.ts`)
+  — Google's Antigravity CLI (`agy`), the successor to the deprecated standalone
+  Gemini CLI (its models are the Gemini family). Consumed by the bridge (a new
+  real adapter) and the mobile app (a new `AgentId.antigravity` value + visuals).
+  No validator change: `AgentId` is a type-only union with no runtime enum schema.
+
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 
