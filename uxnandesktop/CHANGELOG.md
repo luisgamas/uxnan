@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.18] - 2026-07-19
+
 ### Fixed — agent session resume now works end-to-end
 
 - **The captured session never reached the tabs.** The backend captured every
