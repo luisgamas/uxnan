@@ -6,6 +6,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a session closed and reopened mid-turn recovers the FULL agent reply
+- **The reopen race that silently dropped everything produced while the app was
+  closed is fixed at the root.** On reopen, the first post-reconnect deltas
+  re-created the live buffer for the in-flight turn (with only the new tail),
+  and the re-sync's seed guard (`turnId != activeTurnId`) then saw a match and
+  **skipped seeding** — so the user saw their prompt but none of the output the
+  agent had produced while the app was away, and `_finishTurn` later persisted
+  that truncation for good. `_resyncThread` now **re-seeds unconditionally**
+  from the bridge's accumulated `turn/list` record (which persists every
+  delta/block BEFORE notifying, so the snapshot is a superset of anything the
+  phone already applied — replacing never loses data). Applies to every agent:
+  the recovery path is agent-agnostic (`thread_manager.dart`).
+- **A turn's finalized bubble now always carries the bridge's authoritative
+  final text.** `_finishTurn` previously preferred the live buffer whenever it
+  held ANY text — a tail-only buffer became the permanent message. It now keeps
+  the live interleave when the buffer matches (or is a prefix of) the final
+  text, and otherwise falls back to the authoritative text with the live blocks.
+- **Every completed turn reconciles against the bridge record** (best-effort
+  `turn/read` after `turn/completed`): the persisted message is rewritten to the
+  bridge's exact ordered `segments` whenever the live view diverged (a delta in
+  transit during a re-sync, a re-attach that missed early blocks), so the stored
+  conversation always converges to the bridge's truth.
+- **Re-sync now also runs on every (re)established connection** (new
+  `connectionPhases` wiring): the bridge's catch-up replay is a bounded window
+  (500 frames / 10 MiB), so a long disconnection mid-turn — a network blip with
+  the screen on, a cold start whose first re-sync timed out — is only
+  recoverable through a `turn/list` re-pull.
+- **A replayed `stream/turn/started` no longer wipes the live buffer** for a
+  turn already being tracked (the reconnect replay could re-deliver it right
+  after the seed).
+
+### Fixed — activity cards no longer split a sentence mid-word
+- **Blocks flagged `beforeText` by the bridge** (a parallel/background activity
+  — e.g. a Claude Code subagent's tool — that landed while the main answer was
+  still streaming) are now inserted BEFORE the open text run in the live buffer,
+  so the run keeps extending in place and the Work-log card sits above the
+  paragraph instead of cutting it mid-word. Sequential blocks keep today's
+  arrival-order append (`ContentBlockEvent.beforeText`,
+  `incoming_message_processor.dart`, `_LiveTurn.addBlock`).
+- Tests: +8 → **669** (reopen-race re-seed, replayed turn/started guard,
+  beforeText placement ×2, authoritative finalize ×2, turn/read reconcile,
+  processor flag parsing).
+
 ### Added — smooth thread-delete animation
 - Deleting a conversation now animates the tile out instead of making it vanish
   abruptly. On confirm, the card dims and floats the app's shape-morphing
