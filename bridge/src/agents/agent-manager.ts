@@ -641,14 +641,15 @@ export class AgentManager {
         }
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
-          await this.#options.store.completeTurn(threadId, turnId, provided, now);
-          // Clear the in-flight marker the instant the turn is persisted as
-          // completed — BEFORE the awaits below (`#assistantText`, `setUsage`)
-          // yield to the event loop. `turn/list` derives `activeTurnId` from
-          // this map, so a poll that has just observed the store status flip to
-          // `completed` must not still see the turn as active: the store status
-          // and `activeTurnId` have to flip together.
+          // Clear the in-flight marker BEFORE persisting the terminal status.
+          // `store.completeTurn` flips the turn's status to `completed` INSIDE
+          // its mutation — observable via `getTurn` before the promise even
+          // resolves — and `turn/list` derives `activeTurnId` from this map.
+          // Clearing it first guarantees no observer (a racing `turn/list`, the
+          // phone's "responding…" indicator) ever sees a turn reported as
+          // `completed` yet still active; the two flip together.
           this.#activeTurnByThread.delete(threadId);
+          await this.#options.store.completeTurn(threadId, turnId, provided, now);
           const text = await this.#assistantText(turnId, provided);
           const usage = readUsage(event.data);
           if (usage) await this.#options.store.setUsage(threadId, turnId, usage, now);
@@ -669,6 +670,10 @@ export class AgentManager {
         }
         case 'turn_error': {
           const message = readOptionalText(event.data) ?? 'agent error';
+          // Clear the in-flight marker before persisting the terminal status
+          // (same race as turn_completed — the status is observable via
+          // `getTurn` before `failTurn` resolves).
+          this.#activeTurnByThread.delete(threadId);
           // Persist the reason as an error content block in the turn's history so
           // a `turn/list` re-sync (e.g. after a bridge restart) still shows *why*
           // the turn failed. NOT broadcast as a `stream/content/block` — the phone
@@ -688,19 +693,20 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           break;
         }
         case 'turn_aborted':
+          // Clear the in-flight marker before persisting the terminal status
+          // (same race as turn_completed).
+          this.#activeTurnByThread.delete(threadId);
           await this.#options.store.abortTurn(threadId, turnId, now);
           this.#options.notify(
             makeNotification(StreamNotification.TurnAborted, { threadId, turnId }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           break;
       }
