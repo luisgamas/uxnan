@@ -32,6 +32,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - Tests: +7 → **482** (subagent parsing/flagging ×3, store placement ×2,
   completion-tail reconcile, wire flag end-to-end through `AgentManager`).
 
+### Fixed — `turn/list` clears `activeTurnId` atomically with turn completion
+- **A just-completed turn could momentarily still report as active.** In
+  `AgentManager`'s `turn_completed` handling, `store.completeTurn` flips the
+  turn's persisted status while `#activeTurnByThread` — the map `turn/list`
+  derives `activeTurnId` from — was only cleared several `await`s later
+  (`#assistantText`, `setUsage`, `notify`). A `turn/list` that raced into that
+  window saw the turn as **completed yet still active**, so the phone briefly
+  kept the "responding…" indicator on an idle thread. The in-flight marker is
+  now deleted synchronously the instant the turn is persisted as completed, so
+  the store status and `activeTurnId` flip together (`agent-manager.ts`). This
+  makes the existing `turn/list … clears it on completion` handler test
+  deterministic (it was timing-dependent and flaked under load).
+
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 

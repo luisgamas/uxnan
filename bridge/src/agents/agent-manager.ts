@@ -642,6 +642,13 @@ export class AgentManager {
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
           await this.#options.store.completeTurn(threadId, turnId, provided, now);
+          // Clear the in-flight marker the instant the turn is persisted as
+          // completed — BEFORE the awaits below (`#assistantText`, `setUsage`)
+          // yield to the event loop. `turn/list` derives `activeTurnId` from
+          // this map, so a poll that has just observed the store status flip to
+          // `completed` must not still see the turn as active: the store status
+          // and `activeTurnId` have to flip together.
+          this.#activeTurnByThread.delete(threadId);
           const text = await this.#assistantText(turnId, provided);
           const usage = readUsage(event.data);
           if (usage) await this.#options.store.setUsage(threadId, turnId, usage, now);
@@ -655,7 +662,6 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
