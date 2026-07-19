@@ -74,7 +74,7 @@ flowchart LR
     p1["project-a (git)"]
     p2["project-b (git)"]
     p3["notes/ (plain folder)"]
-    a1["agents<br/>opencode · claude · codex · pi · gemini · zero · grok"]
+    a1["agents<br/>opencode · claude · codex · pi · antigravity · zero · grok"]
   end
 
   app -- "QR · mDNS · manual code" --> bridge

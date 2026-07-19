@@ -73,7 +73,7 @@ flowchart LR
       p2["project-b (git)"]
       p3["scripts/ (plain folder)"]
     end
-    clis["Official local CLIs<br/>opencode · claude · codex · pi · gemini · zero · grok"]
+    clis["Official local CLIs<br/>opencode · claude · codex · pi · gemini · agy · zero · grok"]
   end
 
   phone -- "E2EE" --> disc
@@ -91,7 +91,7 @@ flowchart LR
 ## How the bridge drives agents
 
 This is the mechanism behind "provider-agnostic": the bridge spawns each agent's
-official local CLI — `opencode`, `claude`, `codex`, `pi`, `gemini`, `zero`, `grok` — as a
+official local CLI — `opencode`, `claude`, `codex`, `pi`, `gemini`, `agy`, `zero`, `grok` — as a
 child process and drives it over stdio, exactly as you would in a terminal (Zero is
 driven over the Agent Client Protocol, `zero acp`). Prompts are
 passed as `argv` elements with `shell:false` (no shell injection), in the thread's
