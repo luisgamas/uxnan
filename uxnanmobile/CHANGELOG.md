@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — Gemini CLI hidden from the new-conversation agent picker
+- Google deprecated the standalone Gemini CLI in favour of the Antigravity CLI
+  (`agy`), so `gemini-cli` is now hidden from the "available agents" list on the
+  new-conversation screen. The removal is a purely client-side curtain: a single
+  documented `_hiddenAgentIds` set (alongside the existing `echo` dev-agent hide)
+  filters the bridge-advertised `agent/list` before it is rendered. All Gemini
+  wiring — the `AgentId.geminiCli` enum value and `gemini-cli` wire id, its logo,
+  label and brand colour — is left fully intact, so bringing it back is a
+  one-line change (delete the `'gemini-cli'` entry). Existing Gemini threads and
+  the historical agent-activity / metrics breakdown are deliberately untouched.
+
 ### Added — smooth thread-delete animation
 - Deleting a conversation now animates the tile out instead of making it vanish
   abruptly. On confirm, the card dims and floats the app's shape-morphing
