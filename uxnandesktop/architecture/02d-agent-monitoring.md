@@ -80,19 +80,30 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
 
 - **Captura de sesión del proveedor (resume):** cuando el payload de un evento
   trae la identidad de sesión del propio proveedor (`session_id` / `sessionID` /
-  `sessionId` / `session-id` / `conversation_id`, más un archivo opcional en
+  `sessionId` / `session-id` / `conversation_id` / `conversation-id`, más un
+  archivo opcional en
   `session_file` / `sessionFile` / `transcript_path`), el servidor la extrae y
   **sanea como entrada hostil** (longitud acotada, charset conservador, sin `-`
   inicial — el id llega después a una línea de comandos) antes de guardarla en
-  `AgentStateEntry.session` (mismo TTL de 7 días). El frontend la persiste
+  `AgentStateEntry.session` (mismo TTL de 7 días). Los reporters incluidos la
+  reenvían ellos mismos: el relay de Claude/Gemini pasa el JSON crudo íntegro,
+  el plugin de OpenCode adjunta el `sessionID` de la sesión RAÍZ a cada evento
+  de estado (una sesión hija de sub-agente nunca lo pisa), y la extensión de
+  Pi reenvía los campos explícitos `session_id`/`session_file` que observa. El
+  evento difundido `agent:status-changed` **incluye la sesión** (espeja la
+  entrada cacheada — omitirla fue exactamente el bug que desactivó el resume
+  en silencio); el frontend la persiste con él
   además en el tab dueño (con el layout), y al restaurar/despertar ese tab
   lanza el comando de resume del CLI (`claude --resume <id>`,
   `codex resume <id>`, `opencode --session <id>`, `pi --session <archivo|id>`;
   registro en `src/lib/agentResume.ts`) como comando de arranque: se
   **auto-ejecuta si la TUI seguía viva al cerrar/dormir** (el workspace vuelve
   con sus TUIs abiertas — la detección de procesos `agent:detected` mantiene
-  al día el flag `live` de la sesión), y solo queda pre-escrito si el agente
-  ya había salido. Los ids de sesión son identificadores, no credenciales.
+  al día el flag `live` de la sesión; el pane omite entonces el replay del
+  snapshot, la TUI redibuja su propia conversación), y solo queda pre-escrito
+  si el agente ya había salido (un tab despertado SIN sesión reanudable limpia
+  su comando de lanzamiento sobrante en vez de re-dispararlo). Los ids de
+  sesión son identificadores, no credenciales.
 
 **Diagrama de flujo del hook HTTP:**
 

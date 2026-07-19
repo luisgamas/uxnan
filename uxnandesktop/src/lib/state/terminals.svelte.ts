@@ -671,6 +671,13 @@ class TerminalStore {
           // an already-exited agent only gets the command pre-typed.
           tab.runCommand = resume;
           tab.runCommandExecute = tab.agentSession?.live !== false;
+        } else {
+          // No resumable session: CLEAR any leftover one-shot launch command
+          // (the original agent launch / quick command). The woken pane builds
+          // a FRESH instance, so a stale command would silently re-fire and
+          // start a brand-new agent session over the restored scrollback.
+          tab.runCommand = undefined;
+          tab.runCommandExecute = undefined;
         }
         woke = true;
       }
