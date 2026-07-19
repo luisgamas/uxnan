@@ -12,6 +12,7 @@ void main() {
     test('hyphenated wire ids decode correctly', () {
       expect(AgentIdParsing.fromWireId('claude-code'), AgentId.claudeCode);
       expect(AgentIdParsing.fromWireId('gemini-cli'), AgentId.geminiCli);
+      expect(AgentIdParsing.fromWireId('antigravity-cli'), AgentId.antigravity);
       expect(AgentIdParsing.fromWireId('pi-agent'), AgentId.piAgent);
     });
 

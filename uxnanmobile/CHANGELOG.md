@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Antigravity agent (Google's `agy`) rendering
+- The app now renders the bridge's new `antigravity-cli` agent as a first-class,
+  branded choice — Google's Antigravity CLI, the successor to the deprecated
+  Gemini CLI (its models are the Gemini family). Added `AgentId.antigravity`
+  (wire id `antigravity-cli`) with its logo, "Antigravity" label and brand colour,
+  so it shows in the new-conversation picker with the same treatment as every
+  other agent instead of falling back to the generic "custom" look. Onboarding
+  copy and the welcome logos now feature Antigravity in place of Gemini. Pairs
+  with the bridge-side adapter that actually drives `agy` (see `bridge/CHANGELOG`).
+
 ### Changed — Gemini CLI hidden from the new-conversation agent picker
 - Google deprecated the standalone Gemini CLI in favour of the Antigravity CLI
   (`agy`), so `gemini-cli` is now hidden from the "available agents" list on the

@@ -17,7 +17,7 @@ class WelcomePage extends StatelessWidget {
       title: l10n.onboardingWelcomeTitle,
       body: l10n.onboardingWelcomeBody,
       top: const FloatingAgents(
-        assets: [AgentLogos.claude, AgentLogos.gemini, AgentLogos.codex],
+        assets: [AgentLogos.claude, AgentLogos.antigravity, AgentLogos.codex],
         placements: FloatingAgents.layoutA,
       ),
     );
