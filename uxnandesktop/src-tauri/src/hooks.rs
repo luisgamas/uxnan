@@ -926,6 +926,25 @@ mod tests {
         // OpenCode plugin: sessionID, no file.
         let oc = json!({ "sessionID": "ses_01J0ABC" });
         assert_eq!(extract_session(&oc, 1).expect("opencode").id, "ses_01J0ABC");
+        // Codex: golden shape captured from a real intercepted hook payload —
+        // `session_id` + rollout `transcript_path` ride every lifecycle event,
+        // so capture needs no Codex-specific wiring (`codex resume <id>`).
+        let codex = json!({
+            "session_id": "019f77df-f3e1-7bd2-91bf-d32de3b44b26",
+            "turn_id": "019f77df-f6d4-7d31-b93a-d2296a3fe117",
+            "transcript_path":
+                "C:\\Users\\dev\\.codex\\sessions\\2026\\07\\18\\rollout-x.jsonl",
+            "cwd": "C:\\Users\\dev\\repo",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "ok"
+        });
+        let cx = extract_session(&codex, 3).expect("codex session");
+        assert_eq!(cx.id, "019f77df-f3e1-7bd2-91bf-d32de3b44b26");
+        assert!(cx
+            .file
+            .as_deref()
+            .unwrap_or("")
+            .ends_with("rollout-x.jsonl"));
         // No recognized key → None.
         assert!(extract_session(&json!({ "prompt": "hi" }), 1).is_none());
     }
