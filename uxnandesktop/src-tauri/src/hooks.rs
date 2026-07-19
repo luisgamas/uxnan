@@ -369,6 +369,11 @@ pub struct AgentStatusEvent {
     pub interrupted: bool,
     pub summary: Option<String>,
     pub subagents: Vec<SubagentEntry>,
+    /// Provider session identity (latest captured) — the frontend stamps it on
+    /// the owning tab so restore/wake can resume the CLI's own session. This
+    /// field MUST mirror the cache: omitting it here is exactly the bug that
+    /// silently disabled resume while the cache captured perfectly.
+    pub session: Option<AgentSession>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -386,6 +391,7 @@ fn emit_agent_status(app: &AppHandle, entry: crate::model::AgentStateEntry) {
             interrupted: entry.interrupted,
             summary: entry.summary,
             subagents: entry.subagents,
+            session: entry.session,
             first_seen: entry.first_seen,
             last_update: entry.last_update,
         },
@@ -755,12 +761,13 @@ async fn handle_hook(
 /// Field names providers use for their session id, across the wired agents
 /// (Claude/Gemini: `session_id`; OpenCode plugin: `sessionID`; other spellings
 /// kept for robustness — the value is sanitized regardless of its source).
-const SESSION_ID_KEYS: [&str; 5] = [
+const SESSION_ID_KEYS: [&str; 6] = [
     "session_id",
     "sessionID",
     "sessionId",
     "session-id",
     "conversation_id",
+    "conversation-id",
 ];
 /// Field names carrying a session/transcript FILE path (Pi resumes by file;
 /// Claude's transcript file is named separately from its session id).
@@ -874,6 +881,34 @@ mod tests {
     }
 
     #[test]
+    fn status_event_payload_carries_the_session() {
+        // Regression pin: the broadcast event must mirror the cached entry's
+        // session — dropping it here silently disables resume everywhere while
+        // the backend cache keeps capturing (the frontend stamps tabs from
+        // this event, never from the cache).
+        let event = AgentStatusEvent {
+            agent_id: "a1".into(),
+            status: AgentStatus::Working,
+            agent_type: Some("claude".into()),
+            prompt: None,
+            tool: None,
+            interrupted: false,
+            summary: None,
+            subagents: Vec::new(),
+            session: Some(AgentSession {
+                id: "s-99".into(),
+                file: None,
+                captured_at: 5,
+            }),
+            first_seen: 1,
+            last_update: 5,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"session\""));
+        assert!(json.contains("s-99"));
+    }
+
+    #[test]
     fn extract_session_reads_each_provider_spelling() {
         // Claude/Gemini: session_id (+ Claude's separately-named transcript).
         let claude = json!({
@@ -891,6 +926,25 @@ mod tests {
         // OpenCode plugin: sessionID, no file.
         let oc = json!({ "sessionID": "ses_01J0ABC" });
         assert_eq!(extract_session(&oc, 1).expect("opencode").id, "ses_01J0ABC");
+        // Codex: golden shape captured from a real intercepted hook payload —
+        // `session_id` + rollout `transcript_path` ride every lifecycle event,
+        // so capture needs no Codex-specific wiring (`codex resume <id>`).
+        let codex = json!({
+            "session_id": "019f77df-f3e1-7bd2-91bf-d32de3b44b26",
+            "turn_id": "019f77df-f6d4-7d31-b93a-d2296a3fe117",
+            "transcript_path":
+                "C:\\Users\\dev\\.codex\\sessions\\2026\\07\\18\\rollout-x.jsonl",
+            "cwd": "C:\\Users\\dev\\repo",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "ok"
+        });
+        let cx = extract_session(&codex, 3).expect("codex session");
+        assert_eq!(cx.id, "019f77df-f3e1-7bd2-91bf-d32de3b44b26");
+        assert!(cx
+            .file
+            .as_deref()
+            .unwrap_or("")
+            .ends_with("rollout-x.jsonl"));
         // No recognized key → None.
         assert!(extract_session(&json!({ "prompt": "hi" }), 1).is_none());
     }
@@ -1087,6 +1141,7 @@ mod tests {
             interrupted: false,
             summary: None,
             subagents: Vec::new(),
+            session: None,
             first_seen: 1,
             last_update: 2,
         };

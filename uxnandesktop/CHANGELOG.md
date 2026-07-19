@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — agent session resume now works end-to-end
+
+- **The captured session never reached the tabs.** The backend captured every
+  provider session id correctly (verified against the live server), but the
+  `agent:status-changed` event it broadcasts was built field-by-field and
+  omitted `session` — so the frontend never stamped the owning tab, restored
+  tabs had nothing to resume (a dead snapshot over a bare shell), and waking
+  re-fired the tab's **original** launch command, silently starting a
+  brand-new agent conversation. The event now mirrors the cached entry, with
+  a regression test pinning the field.
+- **OpenCode and Pi reporters now forward their session identity.** The
+  OpenCode plugin attaches the ROOT session's `sessionID` to every state event
+  it reports (a sub-agent child session can never overwrite it), enabling
+  `opencode --session <id>` on restore/wake. The Pi extension sniffs explicit
+  session fields (`session_id`/`session_file` spellings, or a dedicated
+  `session` object — never a generic `.id`) from its event payloads and rides
+  them on every report, enabling `pi --session <file|id>`. `conversation-id`
+  joined the server's accepted id spellings.
+- **Waking a tab without a resumable session no longer relaunches the agent
+  fresh.** The leftover one-shot launch command (agent launch / quick command)
+  is cleared on wake instead of re-firing into the new pane.
+- **No more "two sessions stacked" on resume.** When a resume auto-runs, the
+  pane skips the old-screen replay — the relaunched TUI redraws its own
+  conversation. The replay (with its dim divider) remains for plain shells
+  and for pre-typed-only resumes, where the old screen is useful context.
+
 ## [0.0.17] - 2026-07-18
 
 ### Fixed — a restored session now re-binds to its project at boot
