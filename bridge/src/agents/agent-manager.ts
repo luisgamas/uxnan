@@ -451,12 +451,17 @@ export class AgentManager {
     approvalId: string,
     decision: ApprovalDecision,
   ): Promise<{ turnId: string }> {
+    // Capture the in-flight turn id UP FRONT: resolving the approval can drive
+    // the turn straight to completion (the Echo demo does), which clears
+    // `#activeTurnByThread` before we return — so read it while it is still set
+    // and report that regardless of when the completion event lands.
+    const turnId = this.#activeTurnByThread.get(threadId) ?? '';
     const pending = this.#pendingHookApprovals.get(approvalId);
     if (pending) {
       clearTimeout(pending.timer);
       this.#pendingHookApprovals.delete(approvalId);
       pending.resolve(decision);
-      return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
+      return { turnId };
     }
     const agentId = this.#agentByThread.get(threadId);
     const adapter = agentId ? this.#adapters.get(agentId) : undefined;
@@ -473,7 +478,7 @@ export class AgentManager {
       );
     }
     await adapter.respondApproval(threadId, approvalId, decision);
-    return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
+    return { turnId };
   }
 
   /**
