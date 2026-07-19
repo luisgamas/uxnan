@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — parallel subagent activity no longer corrupts the text↔work-log order
+- **Claude Code subagent (Task) events are now recognized and ordered correctly.**
+  With parallel subagents, `claude --output-format stream-json` interleaves the
+  subagent's `assistant`/`user` lines (marked `parent_tool_use_id`) with the main
+  loop's partial text deltas. The adapter treated them as main-loop events, so a
+  subagent tool result landing mid-delta severed the open text run — the stored
+  `Message.segments` (and the live phone view) rendered the sentence **split
+  mid-word by a Work-log card** (verified against a real session: 3 mid-word cuts
+  in one 355-segment turn). Now (`claude-adapter.ts`):
+  - the parser surfaces `parent_tool_use_id` plus `content_block_start/stop`
+    boundaries, and the adapter tracks whether a MAIN text run is open;
+  - a block emitted while the run is open is flagged **`beforeText`** — the store
+    (`thread-store.appendBlock`) and the `stream/content/block` notification both
+    slot it BEFORE the open run, so the run is never severed and live/re-sync
+    order match; sequential blocks keep plain arrival order;
+  - subagent **text** never folds into the main message (the no-partials
+    `assistant_text` fallback previously could) and subagent **usage** no longer
+    overwrites the main context-meter fallback. Subagent tool results still feed
+    the Work log.
+- **`completeTurn` keeps the interleave when the final text merely extends the
+  streamed deltas.** `reconcileSegmentsWithText` now folds an unstreamed tail
+  onto the trailing text run instead of collapsing the whole turn to
+  blocks-first + one merged paragraph; only a genuinely divergent final text
+  still falls back (`thread-store.ts`).
+- Tests: +7 → **482** (subagent parsing/flagging ×3, store placement ×2,
+  completion-tail reconcile, wire flag end-to-end through `AgentManager`).
+
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 

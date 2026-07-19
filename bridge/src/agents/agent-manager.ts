@@ -620,13 +620,20 @@ export class AgentManager {
         case 'block': {
           const content = readContent(event.data);
           if (content !== undefined) {
-            await this.#options.store.appendBlock(threadId, turnId, content, now);
+            // A block flagged `beforeText` came from a parallel/background
+            // activity while the main text was still streaming: the store slots
+            // it before the open text run (never severing it), and the flag
+            // rides on the notification so the phone's live buffer applies the
+            // identical placement — live view and re-sync render the same order.
+            const beforeText = readBeforeText(event.data);
+            await this.#options.store.appendBlock(threadId, turnId, content, now, beforeText);
             this.#options.notify(
               makeNotification(StreamNotification.ContentBlock, {
                 threadId,
                 turnId,
                 messageId,
                 content,
+                ...(beforeText ? { beforeText } : {}),
               }),
             );
           }
@@ -763,6 +770,20 @@ function readContent(data: unknown): unknown {
     return (data as { content: unknown }).content;
   }
   return undefined;
+}
+
+/**
+ * Extract a block event's `beforeText` marker: `true` when the adapter emitted
+ * the block while the assistant's main text was still streaming (a parallel/
+ * background activity), so it must be ordered before the open text run.
+ */
+function readBeforeText(data: unknown): boolean {
+  return (
+    data !== null &&
+    typeof data === 'object' &&
+    'beforeText' in data &&
+    (data as { beforeText: unknown }).beforeText === true
+  );
 }
 
 function readOptionalText(data: unknown): string | undefined {

@@ -375,12 +375,34 @@ export class ThreadStore {
     });
   }
 
-  /** Appends a structured content block (command/diff/tool) to the message. */
-  appendBlock(threadId: string, turnId: string, content: unknown, now: number): Promise<void> {
+  /**
+   * Appends a structured content block (command/diff/tool) to the message.
+   *
+   * [beforeText] marks a block that arrived from a **parallel/background**
+   * activity (e.g. a Claude Code subagent's tool run) while the assistant's
+   * main text was still streaming: it is inserted BEFORE the trailing open
+   * text run instead of after it, so the run is never severed — appending
+   * would make the next delta open a new run and render the sentence split
+   * mid-word by an activity card. Sequential blocks (the default) land at a
+   * real text-run boundary and keep plain arrival-order append.
+   */
+  appendBlock(
+    threadId: string,
+    turnId: string,
+    content: unknown,
+    now: number,
+    beforeText = false,
+  ): Promise<void> {
     return this.#mutate(async (threads) => {
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.blocks = [...(assistant.blocks ?? []), content];
-      (assistant.segments ??= []).push(content);
+      const segments = (assistant.segments ??= []);
+      const last = segments[segments.length - 1];
+      if (beforeText && isTextSegment(last)) {
+        segments.splice(segments.length - 1, 0, content);
+      } else {
+        segments.push(content);
+      }
       this.#touch(threads, threadId, now);
     });
   }
@@ -664,16 +686,30 @@ function appendTextSegment(assistant: StoredMessage, delta: string): void {
  * Make the ordered `segments` agree with the turn's authoritative [finalText]
  * (the `turn/completed` text, which replaces the streamed deltas). When the
  * streamed text runs already concatenate to [finalText] — the normal case — the
- * interleave is left untouched. Otherwise the text runs are dropped and a single
- * trailing text run is appended after the blocks (the best we can do when the
- * final text diverges from, or arrived without, streamed deltas). A no-op when
- * no `segments` were ever built (a plain-text turn with no blocks).
+ * interleave is left untouched. When they concatenate to a strict PREFIX of
+ * [finalText] (the completion text carries a tail the deltas never streamed,
+ * e.g. an adapter that reports a fuller final message), the missing tail is
+ * appended as/onto the trailing text run so the interleave survives intact.
+ * Only when the final text genuinely diverges are the text runs dropped and a
+ * single trailing text run appended after the blocks (the best possible order
+ * without streamed positions). A no-op when no `segments` were ever built (a
+ * plain-text turn with no blocks).
  */
 function reconcileSegmentsWithText(assistant: StoredMessage, finalText: string): void {
   const segments = assistant.segments;
   if (!segments || segments.length === 0) return;
   const streamed = segments.filter(isTextSegment).reduce((acc, s) => acc + s.text, '');
   if (streamed === finalText) return;
+  if (streamed.length > 0 && finalText.startsWith(streamed)) {
+    const tail = finalText.slice(streamed.length);
+    const last = segments[segments.length - 1];
+    if (isTextSegment(last)) {
+      last.text += tail;
+    } else {
+      segments.push({ type: 'text', text: tail });
+    }
+    return;
+  }
   const blocks = segments.filter((s) => !isTextSegment(s));
   assistant.segments =
     finalText.length > 0 ? [...blocks, { type: 'text', text: finalText }] : blocks;
