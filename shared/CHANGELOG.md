@@ -12,6 +12,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   real adapter) and the mobile app (a new `AgentId.antigravity` value + visuals).
   No validator change: `AgentId` is a type-only union with no runtime enum schema.
 
+### Added — `ContentBlockParams.beforeText` (ordering hint for parallel-activity blocks)
+- **`stream/content/block` gains an optional `beforeText?: boolean`**
+  (`src/jsonrpc/notifications.ts`). `true` marks a block produced by a
+  **parallel/background** activity (e.g. a Claude Code subagent's tool run) that
+  arrived while the assistant's main text was still streaming: the client must
+  insert it BEFORE the currently-open text run instead of appending it, so the
+  run is never severed (appending rendered sentences split mid-word by a Work-log
+  card). Additive and backward-compatible: absent/false keeps today's sequential
+  append. The bridge applies the identical placement when persisting
+  `Message.segments`, so the live view and a `turn/list` re-sync render the same
+  interleave. Spec: `architecture/02b` §1.4.
+
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 

@@ -293,3 +293,74 @@ test('fork copies a thread; unknown ids reject', async () => {
   await assert.rejects(store.getTurn('nope'), RpcError);
   await rm(baseDir, { recursive: true, force: true });
 });
+
+test('appendBlock beforeText slots the block before the open text run', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  // main text mid-run when a parallel (subagent) block lands
+  await store.appendDelta(thread.id, turnId, 'y si re', 3);
+  await store.appendBlock(thread.id, turnId, { type: 'tool', name: 'Read' }, 4, true);
+  await store.appendDelta(thread.id, turnId, 'porta tokens', 5);
+  // a sequential block (text run closed) keeps plain arrival order
+  await store.appendBlock(thread.id, turnId, { type: 'tool', name: 'Bash' }, 6);
+  await store.completeTurn(thread.id, turnId, undefined, 7);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  // the run was never severed: block first, then one whole text run, then the
+  // sequential block after it
+  assert.deepEqual(assistant?.segments, [
+    { type: 'tool', name: 'Read' },
+    { type: 'text', text: 'y si reporta tokens' },
+    { type: 'tool', name: 'Bash' },
+  ]);
+  assert.equal(assistant?.content, 'y si reporta tokens');
+  // `blocks` keeps plain arrival order regardless
+  assert.deepEqual(assistant?.blocks, [
+    { type: 'tool', name: 'Read' },
+    { type: 'tool', name: 'Bash' },
+  ]);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('appendBlock beforeText with no open text run appends normally', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendBlock(thread.id, turnId, { type: 'tool', name: 'Read' }, 3, true);
+  await store.appendDelta(thread.id, turnId, 'after', 4);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'tool', name: 'Read' },
+    { type: 'text', text: 'after' },
+  ]);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('completeTurn extends the trailing run when the final text has an unstreamed tail', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendDelta(thread.id, turnId, 'first ', 3);
+  await store.appendBlock(thread.id, turnId, { type: 'tool', name: 'Bash' }, 4);
+  await store.appendDelta(thread.id, turnId, 'second', 5);
+  // the completion text carries a tail the deltas never streamed: the
+  // interleave must survive, with the tail folded onto the trailing run
+  await store.completeTurn(thread.id, turnId, 'first second and tail', 6);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'text', text: 'first ' },
+    { type: 'tool', name: 'Bash' },
+    { type: 'text', text: 'second and tail' },
+  ]);
+  assert.equal(assistant?.content, 'first second and tail');
+  await rm(baseDir, { recursive: true, force: true });
+});

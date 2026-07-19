@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 486, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 493, shared 36, relay
 27). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -35,6 +35,11 @@ push validation (FOR-HUMAN).
   `Message.segments` interleave (text runs + work-log/diff/tool blocks in
   production order) so a `turn/list` re-sync renders the work log inline with
   the response instead of stacking all activity above one merged paragraph.
+  Parallel-activity blocks (e.g. a Claude Code subagent's tool landing while the
+  main text streams) are flagged `beforeText` and slotted BEFORE the open text
+  run — in the store and on the `stream/content/block` wire — so a text run is
+  never severed mid-word, live and re-synced order always match, and subagent
+  text/usage never folds into the main message.
 - **8 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
   Gemini CLI, Antigravity (Google's `agy`, the Gemini-CLI successor), Zero, and
   Grok. Each drives its **official local CLI** with

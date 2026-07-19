@@ -620,13 +620,20 @@ export class AgentManager {
         case 'block': {
           const content = readContent(event.data);
           if (content !== undefined) {
-            await this.#options.store.appendBlock(threadId, turnId, content, now);
+            // A block flagged `beforeText` came from a parallel/background
+            // activity while the main text was still streaming: the store slots
+            // it before the open text run (never severing it), and the flag
+            // rides on the notification so the phone's live buffer applies the
+            // identical placement — live view and re-sync render the same order.
+            const beforeText = readBeforeText(event.data);
+            await this.#options.store.appendBlock(threadId, turnId, content, now, beforeText);
             this.#options.notify(
               makeNotification(StreamNotification.ContentBlock, {
                 threadId,
                 turnId,
                 messageId,
                 content,
+                ...(beforeText ? { beforeText } : {}),
               }),
             );
           }
@@ -635,6 +642,13 @@ export class AgentManager {
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
           await this.#options.store.completeTurn(threadId, turnId, provided, now);
+          // Clear the in-flight marker the instant the turn is persisted as
+          // completed — BEFORE the awaits below (`#assistantText`, `setUsage`)
+          // yield to the event loop. `turn/list` derives `activeTurnId` from
+          // this map, so a poll that has just observed the store status flip to
+          // `completed` must not still see the turn as active: the store status
+          // and `activeTurnId` have to flip together.
+          this.#activeTurnByThread.delete(threadId);
           const text = await this.#assistantText(turnId, provided);
           const usage = readUsage(event.data);
           if (usage) await this.#options.store.setUsage(threadId, turnId, usage, now);
@@ -648,7 +662,6 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
@@ -763,6 +776,20 @@ function readContent(data: unknown): unknown {
     return (data as { content: unknown }).content;
   }
   return undefined;
+}
+
+/**
+ * Extract a block event's `beforeText` marker: `true` when the adapter emitted
+ * the block while the assistant's main text was still streaming (a parallel/
+ * background activity), so it must be ordered before the open text run.
+ */
+function readBeforeText(data: unknown): boolean {
+  return (
+    data !== null &&
+    typeof data === 'object' &&
+    'beforeText' in data &&
+    (data as { beforeText: unknown }).beforeText === true
+  );
 }
 
 function readOptionalText(data: unknown): string | undefined {
