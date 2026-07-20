@@ -727,3 +727,45 @@ baseTest('a beforeText block is stored before the open run and flagged on the wi
 
   await rm(baseDir, { recursive: true, force: true });
 });
+
+baseTest('a terminal event that throws ends the turn instead of hanging it', async () => {
+  // Defense in depth for the Windows atomic-write failure fixed in
+  // `DaemonState.writeJson`: `#onEvent` catches everything and only logged, so a
+  // throw on a TERMINAL event left the turn `streaming` forever — the phone sat
+  // on "responding…" and the suite burned its full 120s `waitFor` budget.
+  const baseDir = join(tmpdir(), `uxnan-am-terminal-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string; params?: Record<string, unknown> }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (m) => notifications.push(m as { method: string; params?: Record<string, unknown> }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new StreamingAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+
+  // Break ONLY the completion path, exactly as a refused rename would. An own
+  // property shadows the prototype method while `this` stays the real store, so
+  // its private fields and every other method keep working.
+  const original = store.completeTurn.bind(store);
+  Object.defineProperty(store, 'completeTurn', {
+    configurable: true,
+    value: () => Promise.reject(new Error('simulated persistence failure')),
+  });
+
+  adapter.complete(thread.id, turnId, 'partial');
+
+  // It must reach a TERMINAL state — the whole point is that it does not hang.
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'error');
+  const errorNote = notifications.find((n) => n.method === StreamNotification.TurnError);
+  assert.ok(errorNote, 'the phone must be told the turn ended');
+  assert.match(JSON.stringify(errorNote?.params ?? {}), /could not be finalized/);
+
+  Object.defineProperty(store, 'completeTurn', { configurable: true, value: original });
+  await rm(baseDir, { recursive: true, force: true });
+});
