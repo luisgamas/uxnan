@@ -473,6 +473,52 @@ pub struct AppSettings {
     /// stored here — `gh` owns it (see `github.rs`).
     #[serde(default)]
     pub github: GithubSettings,
+    /// "Open with" external editors/IDEs (the project-card / worktree /
+    /// file-tree menus). Holds the user's custom editors and which auto-detected
+    /// ones they hid; the detected set itself is a live PATH probe (`editors.rs`),
+    /// not persisted. Default empty.
+    #[serde(default)]
+    pub open_with: OpenWithSettings,
+}
+
+/// "Open with" configuration: user-added editors + hidden auto-detected ones.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenWithSettings {
+    /// Editors the user added by hand (name + launch command + optional args).
+    /// Shown alongside the auto-detected ones in every "Open with" menu.
+    #[serde(default)]
+    pub custom_editors: Vec<ExternalEditor>,
+    /// Auto-detected editor ids (`editors::DetectedEditor::id`) the user hid from
+    /// the menus. Unknown ids are ignored, so it self-heals.
+    #[serde(default)]
+    pub hidden_detected: Vec<String>,
+    /// Per-detected-editor icon overrides, keyed by `editors::DetectedEditor::id`.
+    /// A builtin-glyph key or an inline `data:` URL (same shape as a project icon).
+    /// Absent → the auto-fetched favicon, else a generic glyph. Self-healing.
+    #[serde(default)]
+    pub detected_icons: std::collections::HashMap<String, String>,
+}
+
+/// One user-configured external editor (mirror of the frontend `ExternalEditor`).
+/// Launched via the same path as a detected editor: `command` + `args` + the
+/// target path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalEditor {
+    /// Stable id (a UUID minted in the UI).
+    pub id: String,
+    /// Display name shown in the menu.
+    pub name: String,
+    /// Executable to launch (a PATH command or an absolute path).
+    pub command: String,
+    /// Extra arguments inserted before the target path.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Menu icon: a builtin-glyph key or an inline `data:` URL (same shape as a
+    /// project icon). Absent → an auto-fetched favicon, else a generic glyph.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 /// GitHub integration settings (Settings live in the GitHub section → Settings).
@@ -859,6 +905,7 @@ impl Default for AppSettings {
             sidebar_group_by: default_group_by(),
             sidebar_collapsed_lanes: Vec::new(),
             github: GithubSettings::default(),
+            open_with: OpenWithSettings::default(),
         }
     }
 }
@@ -921,6 +968,23 @@ pub enum Theme {
 /// UI-only concern, applied in the frontend `agentStatus` store.)
 pub const AGENT_CACHE_TTL_SECS: i64 = 7 * 24 * 60 * 60;
 
+/// The provider's own conversation/session identity for a running agent, as
+/// captured from its hook payload (spec `02d` §1.1). This is what the CLI's
+/// resume entry point addresses — PTY/tab ids are useless as resume targets.
+/// The id is sanitized at ingestion (`hooks::extract_session`): it later
+/// reaches a command line, so it is treated as hostile input.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSession {
+    /// The provider session id (`claude --resume <id>`, `codex resume <id>`, …).
+    pub id: String,
+    /// A session/transcript file path, when the provider reports one (Pi
+    /// resumes by file; Claude names its transcript separately from the id).
+    #[serde(default)]
+    pub file: Option<String>,
+    pub captured_at: i64,
+}
+
 /// A single agent state report — the mutable fields of an [`AgentStateEntry`],
 /// as received from the hook server before it is stamped and cached.
 #[derive(Debug, Clone)]
@@ -933,6 +997,9 @@ pub struct AgentReport {
     pub interrupted: bool,
     /// Short preview of the agent's latest response (for `done` notifications).
     pub summary: Option<String>,
+    /// Provider session identity, when this event's payload carried one. `None`
+    /// never clears a previously captured session (see `upsert_agent_state`).
+    pub session: Option<AgentSession>,
 }
 
 /// Max sub-agents tracked per parent session — a safety cap so a runaway
@@ -991,6 +1058,9 @@ pub struct AgentStateEntry {
     /// subagents). Empty for agents that don't spawn children.
     #[serde(default)]
     pub subagents: Vec<SubagentEntry>,
+    /// The provider's own session identity (latest captured), for resume.
+    #[serde(default)]
+    pub session: Option<AgentSession>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -1021,6 +1091,11 @@ impl AppData {
             entry.tool = report.tool;
             entry.interrupted = report.interrupted;
             entry.summary = report.summary;
+            // Latest capture wins, but an event without a session (most hook
+            // events don't repeat it) never clears one already captured.
+            if report.session.is_some() {
+                entry.session = report.session;
+            }
             entry.last_update = now;
             entry.clone()
         } else {
@@ -1033,6 +1108,7 @@ impl AppData {
                 interrupted: report.interrupted,
                 summary: report.summary,
                 subagents: Vec::new(),
+                session: report.session,
                 first_seen: now,
                 last_update: now,
             };
@@ -1069,6 +1145,7 @@ impl AppData {
                     interrupted: false,
                     summary: None,
                     subagents: Vec::new(),
+                    session: None,
                     first_seen: now,
                     last_update: now,
                 });
@@ -1282,6 +1359,49 @@ mod tests {
     }
 
     #[test]
+    fn open_with_round_trips_camel_case() {
+        let cfg = OpenWithSettings {
+            custom_editors: vec![ExternalEditor {
+                id: "abc".into(),
+                name: "My Editor".into(),
+                command: r"C:\Apps\ed.exe".into(),
+                args: vec!["--flag".into()],
+                icon: Some("data:image/png;base64,AAAA".into()),
+            }],
+            hidden_detected: vec!["vscode".into()],
+            detected_icons: std::collections::HashMap::from([(
+                "cursor".to_string(),
+                "builtin:code".to_string(),
+            )]),
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("customEditors"));
+        assert!(json.contains("hiddenDetected"));
+        assert!(json.contains("detectedIcons"));
+        let back: OpenWithSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, back);
+    }
+
+    #[test]
+    fn app_settings_with_open_with_round_trips() {
+        // `update_settings` deserializes the whole `AppSettings` the frontend
+        // sends; make sure the new `open_with` field never breaks that path
+        // (a broken deserialize would stall the debounced-persist-on-close write).
+        let mut settings = AppSettings::default();
+        settings.open_with.custom_editors.push(ExternalEditor {
+            id: "id".into(),
+            name: "n".into(),
+            command: "code".into(),
+            args: Vec::new(),
+            icon: None,
+        });
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("openWith"));
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.open_with, settings.open_with);
+    }
+
+    #[test]
     fn default_settings_seed_terminal_profiles() {
         let settings = AppSettings::default();
         assert!(!settings.terminal_profiles.is_empty());
@@ -1342,7 +1462,50 @@ mod tests {
             tool: None,
             interrupted: false,
             summary: None,
+            session: None,
         }
+    }
+
+    #[test]
+    fn upsert_agent_state_keeps_session_unless_replaced() {
+        let mut data = AppData::default();
+        let with_session = AgentReport {
+            session: Some(AgentSession {
+                id: "abc-123".into(),
+                file: None,
+                captured_at: 10,
+            }),
+            ..report("a1", AgentStatus::Working)
+        };
+        assert_eq!(
+            data.upsert_agent_state(with_session, 10)
+                .session
+                .as_ref()
+                .map(|s| s.id.as_str()),
+            Some("abc-123")
+        );
+        // A later event WITHOUT a session must not clear the captured one.
+        let kept = data.upsert_agent_state(report("a1", AgentStatus::Done), 20);
+        assert_eq!(
+            kept.session.as_ref().map(|s| s.id.as_str()),
+            Some("abc-123")
+        );
+        // A later event WITH a session replaces it.
+        let replaced = data.upsert_agent_state(
+            AgentReport {
+                session: Some(AgentSession {
+                    id: "def-456".into(),
+                    file: Some("/tmp/t.jsonl".into()),
+                    captured_at: 30,
+                }),
+                ..report("a1", AgentStatus::Working)
+            },
+            30,
+        );
+        assert_eq!(
+            replaced.session.as_ref().map(|s| s.id.as_str()),
+            Some("def-456")
+        );
     }
 
     #[test]
@@ -1438,6 +1601,11 @@ mod tests {
             interrupted: true,
             summary: None,
             subagents: Vec::new(),
+            session: Some(AgentSession {
+                id: "s-1".into(),
+                file: None,
+                captured_at: 1,
+            }),
             first_seen: 1,
             last_update: 2,
         };

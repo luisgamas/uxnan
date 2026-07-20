@@ -2,6 +2,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import Combobox, { type ComboGroup } from "./Combobox.svelte";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
   import { app } from "$lib/state/app.svelte";
@@ -182,6 +183,9 @@
     <Dialog.Footer>
       <Button variant="ghost" onclick={() => (open = false)}>{i18n.t("common.cancel")}</Button>
       <Button onclick={submit} disabled={!branch.trim() || busy || loading}>
+        {#if busy}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {/if}
         {busy ? i18n.t("common.creating") : i18n.t("newWorktree.create")}
       </Button>
     </Dialog.Footer>

@@ -15,6 +15,74 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   base 2s / cap 30s) after any session shorter than 3s, and resets to the base
   delay once a session actually carries a phone. Covered by
   `test/transport/relay-backoff.test.ts` (5 tests).
+## [0.0.8-alpha.20260719] - 2026-07-19
+
+### Added — Antigravity (`agy`) wired as the 8th real agent
+- Wired **Antigravity**, Google's `agy` CLI (the successor to the deprecated
+  standalone Gemini CLI; its models are the Gemini family), as a real one-shot
+  per-turn adapter (`adapters/antigravity-adapter.ts` +
+  `adapters/resolve-antigravity.ts`, registered in `startBridge`). Validated live
+  against `agy` 1.1.4 — the thin-`-p` blockers that had it deferred (no `--model`,
+  no output to a piped stdout, no session id) are resolved:
+  - each turn spawns `agy --conversation <uuid> --add-dir <cwd>
+    (--dangerously-skip-permissions | --mode plan) [--model "<label>"] -p <text>`
+    and streams the plain-text stdout as `delta`s + a `turn/completed`;
+  - **continuity** via a client-owned `--conversation <uuid>` — it CREATES the
+    conversation on the first turn and RESUMES it after, so no log parsing;
+  - **workspace targeting** via `--add-dir <cwd>` (`agy` has no `-C/--cwd`, and
+    without it edits a private scratch dir instead of the project);
+  - **permission posture** from the thread `accessMode`: `approveForMe`/
+    `fullAccess` → `--dangerously-skip-permissions` (autonomous — the only posture
+    under which headless `agy` can edit at all), `requestApproval` → read-only
+    `--mode plan` (`agy -p` cannot prompt for approval, so "ask me first" safely
+    degrades to plan-only);
+  - **model discovery** via `agy models` (`listModels`); capabilities advertise
+    `planMode` + `streaming` + `autonomous` (no interactive approvals, no per-turn
+    token usage). Auth falls back to binary availability (like the Gemini adapter).
+- 11 new adapter unit tests (bridge suite now **493**, on top of the session-recovery
+  fix's +7).
+
+### Fixed — parallel subagent activity no longer corrupts the text↔work-log order
+- **Claude Code subagent (Task) events are now recognized and ordered correctly.**
+  With parallel subagents, `claude --output-format stream-json` interleaves the
+  subagent's `assistant`/`user` lines (marked `parent_tool_use_id`) with the main
+  loop's partial text deltas. The adapter treated them as main-loop events, so a
+  subagent tool result landing mid-delta severed the open text run — the stored
+  `Message.segments` (and the live phone view) rendered the sentence **split
+  mid-word by a Work-log card** (verified against a real session: 3 mid-word cuts
+  in one 355-segment turn). Now (`claude-adapter.ts`):
+  - the parser surfaces `parent_tool_use_id` plus `content_block_start/stop`
+    boundaries, and the adapter tracks whether a MAIN text run is open;
+  - a block emitted while the run is open is flagged **`beforeText`** — the store
+    (`thread-store.appendBlock`) and the `stream/content/block` notification both
+    slot it BEFORE the open run, so the run is never severed and live/re-sync
+    order match; sequential blocks keep plain arrival order;
+  - subagent **text** never folds into the main message (the no-partials
+    `assistant_text` fallback previously could) and subagent **usage** no longer
+    overwrites the main context-meter fallback. Subagent tool results still feed
+    the Work log.
+- **`completeTurn` keeps the interleave when the final text merely extends the
+  streamed deltas.** `reconcileSegmentsWithText` now folds an unstreamed tail
+  onto the trailing text run instead of collapsing the whole turn to
+  blocks-first + one merged paragraph; only a genuinely divergent final text
+  still falls back (`thread-store.ts`).
+- Tests: +7 → **482** (subagent parsing/flagging ×3, store placement ×2,
+  completion-tail reconcile, wire flag end-to-end through `AgentManager`).
+
+### Fixed — `activeTurnId` clears before a turn's terminal status is observable
+- **A just-ended turn could momentarily still report as active.** In
+  `AgentManager`, `store.completeTurn`/`failTurn`/`abortTurn` flip the turn's
+  status to a terminal value **inside** their mutation — observable via
+  `getTurn` before the promise even resolves — while `#activeTurnByThread`, the
+  map `turn/list` derives `activeTurnId` from, was cleared only afterwards. A
+  `turn/list` (or a test) that observed the terminal status in that window still
+  saw the turn as **completed yet active**, so the phone briefly kept the
+  "responding…" indicator on an idle thread. The in-flight marker is now deleted
+  **before** each terminal store call in all three handlers, so no observer ever
+  sees a turn that is terminal yet still active; the status and `activeTurnId`
+  flip together (`agent-manager.ts`). This makes the `activeTurnId …` /
+  `turn/list … clears it on completion` tests deterministic (they were
+  timing-dependent and flaked on the loaded node-24/ubuntu CI leg).
 
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.

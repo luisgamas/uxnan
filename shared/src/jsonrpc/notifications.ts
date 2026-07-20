@@ -51,6 +51,18 @@ export interface ContentBlockParams {
   turnId: string;
   messageId: string;
   content: unknown;
+  /**
+   * `true` when the block arrived from a **parallel/background** activity (e.g.
+   * a Claude Code subagent's tool run) while the assistant's main text was
+   * still streaming. The client must then insert the block BEFORE the
+   * currently-open text run instead of appending it after — appending would
+   * sever the run and render the sentence split mid-word by an activity card.
+   * Absent/false for the sequential case (the block lands at a real text-run
+   * boundary and is appended in arrival order). Mirrors how the bridge itself
+   * orders the block inside the persisted `Message.segments`, so the live view
+   * and a later `turn/list` re-sync render the identical interleave.
+   */
+  beforeText?: boolean;
 }
 
 /**

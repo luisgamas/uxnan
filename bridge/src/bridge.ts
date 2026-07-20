@@ -1,8 +1,8 @@
 /**
  * Bridge daemon orchestration: wires daemon state, identity, config, the
  * JSON-RPC router and handlers, the agent runtimes (OpenCode/Claude/Codex/pi/
- * Gemini + echo), the per-device outbound catch-up log, and the live E2EE
- * transport (relay + direct LAN).
+ * Gemini/Antigravity/Zero/Grok + echo), the per-device outbound catch-up log, and
+ * the live E2EE transport (relay + direct LAN).
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
  */
@@ -48,6 +48,8 @@ import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { GeminiAdapter } from './adapters/gemini-adapter.js';
 import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
+import { AntigravityAdapter, antigravityPermissionMode } from './adapters/antigravity-adapter.js';
+import { resolveAntigravityBinary } from './adapters/resolve-antigravity.js';
 import { ZeroAdapter } from './adapters/zero-adapter.js';
 import { resolveZeroBinary } from './adapters/resolve-zero.js';
 import { GrokAdapter } from './adapters/grok-adapter.js';
@@ -366,6 +368,27 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       displayName: 'Gemini',
       available: gemini.available,
       ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+    },
+  );
+  // Antigravity: real agent driven via `agy … -p` (Google's successor to the
+  // deprecated Gemini CLI; models are the Gemini family). See FOR-DEV.md.
+  const antigravitySettings = config.agents['antigravity-cli'] ?? {};
+  const antigravity = resolveAntigravityBinary(antigravitySettings.binaryPath);
+  agentManager.register(
+    new AntigravityAdapter({
+      binaryPath: antigravity.binaryPath,
+      prependArgs: antigravity.prependArgs,
+      permissionMode: antigravityPermissionMode(antigravitySettings.permissionMode),
+      ...(antigravitySettings.model !== undefined
+        ? { defaultModel: antigravitySettings.model }
+        : {}),
+    }),
+    {
+      displayName: 'Antigravity',
+      available: antigravity.available,
+      ...(antigravitySettings.model !== undefined
+        ? { defaultModel: antigravitySettings.model }
+        : {}),
     },
   );
   // Zero: open-source Go agent driven over the Agent Client Protocol (`zero acp`

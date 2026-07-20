@@ -52,6 +52,7 @@
   import AgentHooksPanel from "./AgentHooksPanel.svelte";
   import ThemeSettings from "./ThemeSettings.svelte";
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
+  import OpenWithSettings from "./OpenWithSettings.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import {
@@ -82,6 +83,7 @@
   import XIcon from "@lucide/svelte/icons/x";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import GlobeIcon from "@lucide/svelte/icons/globe";
+  import AppWindowIcon from "@lucide/svelte/icons/app-window";
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CheckIcon from "@lucide/svelte/icons/check";
@@ -730,6 +732,7 @@
       items: [
         { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
         { id: "browser", key: "settings.browser", icon: GlobeIcon },
+        { id: "openWith", key: "settings.openWith", icon: AppWindowIcon },
       ],
     },
     {
@@ -1594,6 +1597,8 @@
               </div>
             </div>
           </SettingsSection>
+        {:else if app.settingsSection === "openWith"}
+          <OpenWithSettings />
         {:else}
           <div class="flex flex-col gap-6">
           <SettingsSection title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>

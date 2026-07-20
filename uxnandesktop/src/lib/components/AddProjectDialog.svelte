@@ -6,6 +6,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Spinner } from "$lib/components/ui/spinner";
   import Kbd from "./Kbd.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
@@ -33,7 +34,7 @@
 
   /** Paths ticked to be added as separate projects. */
   let selected = $state<Set<string>>(new Set());
-  let busy = $state(false);
+  let busy = $state<"parent" | "selected" | null>(null);
   let error = $state<string | null>(null);
 
   // Seed the selection each time the dialog opens: pre-check the git repos (the
@@ -43,7 +44,7 @@
     if (open) {
       selected = new Set(entries.filter((e) => e.isRepo).map((e) => e.path));
       error = null;
-      busy = false;
+      busy = null;
     }
   });
 
@@ -63,10 +64,10 @@
   }
 
   async function addParent() {
-    busy = true;
+    busy = "parent";
     error = null;
     const ok = await projects.addProjectPath(folderPath);
-    busy = false;
+    busy = null;
     if (ok) {
       open = false;
       onadded?.();
@@ -77,12 +78,12 @@
 
   async function addSelected() {
     if (selectedCount === 0) return;
-    busy = true;
+    busy = "selected";
     error = null;
     // Preserve the listing order for a predictable result.
     const paths = entries.filter((e) => selected.has(e.path)).map((e) => e.path);
     const { added } = await projects.addProjectPaths(paths);
-    busy = false;
+    busy = null;
     if (added > 0) {
       open = false;
       onadded?.();
@@ -181,11 +182,17 @@
         </span>
       </div>
       <div class="flex shrink-0 items-center gap-2">
-        <Button variant="outline" size="sm" disabled={busy} onclick={addParent}>
+        <Button variant="outline" size="sm" disabled={busy !== null} onclick={addParent}>
+          {#if busy === "parent"}
+            <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+          {/if}
           {i18n.t("addProject.addParent")}
         </Button>
-        <Button size="sm" disabled={busy || selectedCount === 0} onclick={addSelected}>
-          {busy
+        <Button size="sm" disabled={busy !== null || selectedCount === 0} onclick={addSelected}>
+          {#if busy === "selected"}
+            <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+          {/if}
+          {busy === "selected"
             ? i18n.t("common.adding")
             : i18n.t("addProject.addSelected", { count: String(selectedCount) })}
         </Button>

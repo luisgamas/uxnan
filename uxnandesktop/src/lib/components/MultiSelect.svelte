@@ -28,6 +28,7 @@
     emptyText = "—",
     contentClass = "",
     align = "start",
+    closeOnSelect = false,
     itemPrefix,
   }: {
     groups: ComboGroup[];
@@ -43,11 +44,21 @@
     emptyText?: string;
     contentClass?: string;
     align?: "start" | "center" | "end";
+    /** Close the popover after each pick instead of keeping it open for the next
+     *  one. The trigger stays available to add more, but the list never lingers
+     *  (or re-expands) after a selection — so a single pick doesn't force the user
+     *  to click elsewhere to dismiss it. Reopen via the trigger to add another. */
+    closeOnSelect?: boolean;
     /** Leading content for both the rows and the chips (e.g. an agent logo). */
     itemPrefix?: Snippet<[ComboItem]>;
   } = $props();
 
   let open = $state(false);
+
+  function select(value: string): void {
+    onToggle(value);
+    if (closeOnSelect) open = false;
+  }
 
   const allItems = $derived(groups.flatMap((g) => g.items));
   // Preserve the selection order (the order things were added).
@@ -112,7 +123,7 @@
                     value={item.value}
                     keywords={[item.label, item.meta ?? "", ...(item.keywords ?? [])].filter(Boolean)}
                     disabled={item.disabled}
-                    onSelect={() => onToggle(item.value)}
+                    onSelect={() => select(item.value)}
                   >
                     {#if itemPrefix}{@render itemPrefix(item)}{/if}
                     <span class={cn("flex-1 truncate", text.body, picked ? "text-foreground" : "")}>

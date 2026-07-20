@@ -16,6 +16,9 @@ enum AgentId {
   /// Google Gemini CLI.
   geminiCli,
 
+  /// Google Antigravity CLI (`agy`) — the successor to the Gemini CLI.
+  antigravity,
+
   /// earendil-works/pi agent.
   piAgent,
 
@@ -42,6 +45,8 @@ extension AgentIdWire on AgentId {
         return 'claude-code';
       case AgentId.geminiCli:
         return 'gemini-cli';
+      case AgentId.antigravity:
+        return 'antigravity-cli';
       case AgentId.piAgent:
         return 'pi-agent';
       case AgentId.zero:
@@ -68,6 +73,8 @@ extension AgentIdParsing on AgentId {
         return AgentId.claudeCode;
       case 'gemini-cli':
         return AgentId.geminiCli;
+      case 'antigravity-cli':
+        return AgentId.antigravity;
       case 'pi-agent':
         return AgentId.piAgent;
       case 'zero':

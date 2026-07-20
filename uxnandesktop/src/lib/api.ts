@@ -11,8 +11,10 @@ import type {
   BranchList,
   AgentHooksStatus,
   CommitInfo,
+  DetectedEditor,
   DirListing,
   FileChange,
+  NativeEditor,
   FileContent,
   FileNumstat,
   FileSearch,
@@ -383,6 +385,24 @@ export function fsRename(path: string, newName: string): Promise<string> {
   return invoke<string>("fs_rename", { path, newName });
 }
 
+/** Whether `path` currently exists on disk. Used by the boot reconciler to drop
+ *  restored terminal workspaces whose worktree folder is gone. */
+export function fsPathExists(path: string): Promise<boolean> {
+  return invoke<boolean>("fs_path_exists", { path });
+}
+
+/** Read the terminal scrollback-snapshot sidecar (sid → serialized ANSI), or
+ *  null when absent/corrupt — restore then proceeds without scrollback. */
+export function termBuffersGet(): Promise<Record<string, string> | null> {
+  return invoke<Record<string, string> | null>("term_buffers_get");
+}
+
+/** Overwrite the terminal scrollback-snapshot sidecar (atomic on the backend).
+ *  Written on workspace sleep and window close — never on the layout hot path. */
+export function termBuffersSet(buffers: Record<string, string>): Promise<void> {
+  return invoke("term_buffers_set", { buffers });
+}
+
 /** Create a new empty file `name` inside directory `dir` (file tree "New File").
  *  `name` must be a bare name that doesn't already exist. Returns the new
  *  absolute, forward-slash path. */
@@ -437,6 +457,28 @@ export function imageFetchDataUrl(url: string): Promise<string> {
 /** Reveal a path in the OS file manager (Explorer / Finder / etc.). */
 export function revealPath(path: string): Promise<void> {
   return invoke("reveal_path", { path });
+}
+
+/** Detect the installed GUI editors/IDEs on this machine (a PATH probe plus a
+ *  per-OS install-location scan), for the "Open with" menus. */
+export function editorsDetect(): Promise<DetectedEditor[]> {
+  return invoke<DetectedEditor[]>("editors_detect");
+}
+
+/** The platform's native plain-text editor (Notepad / TextEdit / a Linux editor),
+ *  offered for text files. `null` when none is found. */
+export function nativeTextEditor(): Promise<NativeEditor | null> {
+  return invoke<NativeEditor | null>("native_text_editor");
+}
+
+/** Launch `path` (a folder or file) in an external editor — `command` (a detected
+ *  editor's PATH command or a user-configured one) + `args`, with `path` last. */
+export function openInEditor(
+  command: string,
+  args: string[],
+  path: string,
+): Promise<void> {
+  return invoke("open_in_editor", { command, args, path });
 }
 
 // --- Integrated browser ----------------------------------------------------
