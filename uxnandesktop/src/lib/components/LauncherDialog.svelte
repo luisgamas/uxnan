@@ -9,10 +9,10 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
-  import { Input } from "$lib/components/ui/input";
   import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import MultiSelect from "./MultiSelect.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import WorktreeCreateFields from "./WorktreeCreateFields.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
@@ -75,22 +75,17 @@
   });
 
   // --- New-worktree fields (only when target = NEW) -------------------------
-  let branch = $state("");
-  let base = $state("");
-  let branches = $state<string[]>([]);
-  let loadingBranches = $state(false);
-
-  const baseOptions = $derived(base && !branches.includes(base) ? [base, ...branches] : branches);
-  const baseGroups = $derived<ComboGroup[]>([
-    { items: baseOptions.map((b) => ({ value: b, label: b })) },
-  ]);
-
-  const sep = $derived(repo.path.includes("\\") ? "\\" : "/");
-  const parent = $derived(repo.path.replace(/[\\/]+$/, "").split(/[\\/]/).slice(0, -1).join(sep));
-  const repoFolder = $derived(folderName(repo.path));
-  const previewPath = $derived(
-    branch.trim() ? `${parent}${sep}${repoFolder}--${branch.trim().replace(/[\\/]/g, "-")}` : "",
-  );
+  // The whole worktree-creation form is the shared WorktreeCreateFields; these
+  // are its bound outputs (modes, auto-name, existing-branch, custom location).
+  let wtMode = $state<"new" | "existing">("new");
+  let wtNewBranch = $state("");
+  let wtExistingBranch = $state("");
+  let wtBase = $state("");
+  let wtLocation = $state("");
+  let wtLocationTouched = $state(false);
+  let wtEffectiveBranch = $state("");
+  let wtValid = $state(false);
+  let wtLoading = $state(false);
 
   // --- What to open (multi-select) ------------------------------------------
   // Each openable is an id: `term:default`, `term:<profileId>`, `agent:<id>`,
@@ -130,7 +125,7 @@
   });
 
   const canSubmit = $derived(
-    isNew ? branch.trim().length > 0 : target.length > 0 && selected.length > 0,
+    isNew ? wtValid : target.length > 0 && selected.length > 0,
   );
   let busy = $state(false);
 
@@ -142,31 +137,16 @@
       : i18n.t("launcher.openAction"),
   );
 
-  // Reset + pick a sensible default target every time the dialog opens.
+  // Reset + pick a sensible default target every time the dialog opens. The
+  // worktree-creation fields reset themselves (WorktreeCreateFields, keyed off
+  // `active={isNew}`), so nothing branch-related is touched here.
   $effect(() => {
     if (!open) return;
     const active = projects.activeWorktreePath;
     const belongs = active && worktrees.some((w) => w.path === active);
     target = belongs ? active! : (worktrees[0]?.path ?? repo.path);
     selected = [];
-    branch = "";
-    base = "";
-    branches = [];
     projects.error = null;
-  });
-
-  // Lazily load branches the first time the "new worktree" target is chosen.
-  $effect(() => {
-    if (!open || !isNew || branches.length || loadingBranches) return;
-    loadingBranches = true;
-    projects
-      .branchInfo(repo.id)
-      .then((info) => {
-        branches = info.branches;
-        base = info.defaultBase;
-      })
-      .catch((e) => (projects.error = e instanceof Error ? e.message : String(e)))
-      .finally(() => (loadingBranches = false));
   });
 
   function runActions(path: string) {
@@ -191,7 +171,12 @@
       if (isNew) {
         // `null` = don't auto-launch the default agent; the "what to open"
         // selection is the single source of truth for what starts here.
-        const ok = await projects.createWorktree(repo.id, branch.trim(), base || undefined, null);
+        const ok = await projects.createWorktree(repo.id, wtEffectiveBranch, {
+          base: wtMode === "new" ? wtBase || undefined : undefined,
+          fromExisting: wtMode === "existing",
+          path: wtLocationTouched && wtLocation.trim() ? wtLocation.trim() : undefined,
+          agentId: null,
+        });
         if (!ok) return;
         path = projects.activeWorktreePath ?? path;
       }
@@ -232,37 +217,24 @@
         </Combobox>
       </div>
 
-      <!-- New-worktree extras -->
+      <!-- New-worktree extras — the shared creation form (modes / auto-name /
+           existing branch / optional custom location). -->
       {#if isNew}
-        <div class="flex flex-col gap-4 rounded-lg border border-border/50 bg-card/40 p-3">
-          <div class="flex flex-col gap-1.5">
-            <label for="lx-branch" class={cn("font-medium", text.body)}>{i18n.t("newWorktree.branch")}</label>
-            <Input
-              id="lx-branch"
-              placeholder={i18n.t("newWorktree.branchPlaceholder")}
-              bind:value={branch}
-              autocomplete="off"
-              onkeydown={(e) => e.key === "Enter" && submit()}
-            />
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <span class={cn("font-medium", text.body)}>{i18n.t("newWorktree.base")}</span>
-            <Combobox
-              value={base}
-              groups={baseGroups}
-              placeholder={i18n.t("newWorktree.selectBase")}
-              searchPlaceholder={i18n.t("newWorktree.selectBase")}
-              disabled={loadingBranches}
-              onChange={(v) => (base = v)}
-            />
-            <p class={text.meta}>{i18n.t("newWorktree.baseDesc")}</p>
-          </div>
-          {#if previewPath}
-            <div class="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2">
-              <GitBranchIcon class={cn(icon.decorative, "mt-0.5 shrink-0 text-muted-foreground")} />
-              <code class="break-all text-[11px] text-muted-foreground">{previewPath}</code>
-            </div>
-          {/if}
+        <div class="rounded-lg border border-border/50 bg-card/40 p-3">
+          <WorktreeCreateFields
+            {repo}
+            active={isNew}
+            bind:mode={wtMode}
+            bind:newBranch={wtNewBranch}
+            bind:existingBranch={wtExistingBranch}
+            bind:base={wtBase}
+            bind:location={wtLocation}
+            bind:locationTouched={wtLocationTouched}
+            bind:effectiveBranch={wtEffectiveBranch}
+            bind:canSubmit={wtValid}
+            bind:loading={wtLoading}
+            onEnter={submit}
+          />
         </div>
       {/if}
 
@@ -302,7 +274,7 @@
         <SettingsIcon class={icon.decorative} />
         {i18n.t("agent.configure")}
       </button>
-      <Button onclick={submit} disabled={!canSubmit || busy || (isNew && loadingBranches)}>
+      <Button onclick={submit} disabled={!canSubmit || busy || (isNew && wtLoading)}>
         {#if busy}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {/if}

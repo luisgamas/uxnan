@@ -11,8 +11,11 @@ export const en = {
   "toast.pushed": "Pushed",
   "toast.pulled": "Pulled",
   "toast.worktreeRemoved": "Worktree removed",
-  "toast.worktreeRemovedBranchKept": "Worktree removed · branch kept (unmerged)",
-  "toast.worktreeRemovedSquash": "Worktree removed · squash-merged branch cleaned up",
+  "toast.localBranchDeleted": "local branch deleted",
+  "toast.branchCleanedSquash": "squash-merged branch cleaned up",
+  "toast.localBranchKeptUnmerged": "local branch kept (unmerged)",
+  "toast.remoteBranchDeleted": "remote branch deleted",
+  "toast.remoteBranchError": "remote branch not deleted: {error}",
   "toast.aiCommitGenerated": "Commit message drafted",
   "toast.projectRemoved": "Project removed",
   "toast.projectsAdded": "Added {added} projects",
@@ -144,7 +147,10 @@ export const en = {
   "worktree.removeWorktree": "Remove worktree",
   "worktree.removeTitle": "Remove worktree?",
   "worktree.removeDesc":
-    "Removes the worktree at {path}. Its branch “{branch}” is safe-deleted only if fully merged.",
+    "Removes only the worktree at {path}. Branch “{branch}” is kept unless you tick an option below.",
+  "worktree.deleteLocalBranch": "Delete local branch",
+  "worktree.forceDeleteBranch": "Force — delete even if it has unmerged commits",
+  "worktree.deleteRemoteBranch": "Delete remote branch",
   "worktree.forceRemove": "Force remove",
   "worktree.changeIcon": "Change branch icon…",
   "worktree.branchIconTitle": "Branch icon",
@@ -172,13 +178,30 @@ export const en = {
 
   // New-worktree dialog
   "newWorktree.title": "New worktree",
-  "newWorktree.desc": "Create a worktree on a new branch in {name}.",
+  "newWorktree.desc": "Create a worktree in {name}.",
+  "newWorktree.modeNew": "New branch",
+  "newWorktree.modeExisting": "Existing branch",
   "newWorktree.branch": "Branch name",
   "newWorktree.branchPlaceholder": "feature/login",
+  "newWorktree.generate": "Generate",
   "newWorktree.base": "Base branch",
   "newWorktree.selectBase": "Select base branch…",
   "newWorktree.baseDesc":
     "The new branch starts from here. Defaults to the repo's main branch.",
+  "newWorktree.existingBranch": "Branch",
+  "newWorktree.selectExisting": "Select a branch…",
+  "newWorktree.existingDesc":
+    "Check out an existing local or remote branch into an isolated worktree.",
+  "newWorktree.localBranches": "Local",
+  "newWorktree.remoteBranches": "Remote",
+  "newWorktree.inUse": "in use",
+  "newWorktree.location": "Location (optional)",
+  "newWorktree.locationPlaceholder": "Custom worktree folder…",
+  "newWorktree.locationDesc": "Defaults to a folder beside the repository.",
+  "newWorktree.resetLocation": "Reset to automatic",
+  "newWorktree.browse": "Browse…",
+  "newWorktree.browseTitle": "Choose a location",
+  "newWorktree.browseDesc": "Pick the folder the worktree will be created inside.",
   "newWorktree.create": "Create worktree",
   "newWorktree.preview": "Worktree folder",
   "newWorktree.agent": "Launch agent",
@@ -318,6 +341,7 @@ export const en = {
     "Browse to any folder and add it. Folders tagged “repo” are git repositories; non-git folders work too — they just have no worktrees.",
   "picker.pathPlaceholder": "Type or paste a path, then Enter…",
   "picker.parent": "Parent folder",
+  "picker.refresh": "Refresh",
   "picker.empty": "No sub-folders here.",
   "picker.open": "Open {name}",
   "picker.addFolder": "Add this folder",
@@ -325,6 +349,12 @@ export const en = {
   "picker.bulkHint":
     "{repos} git repos detected here — “Add this folder” lets you add them as separate projects.",
   "picker.hintAdd": "Add folder",
+
+  // Folder-select dialog (choose a location)
+  "folderSelect.title": "Choose a folder",
+  "folderSelect.desc": "Browse to the folder to use.",
+  "folderSelect.select": "Select this folder",
+  "folderSelect.hintSelect": "Select folder",
 
   // Add-project selection dialog (parent vs. sub-folders)
   "addProject.title": "Add project",

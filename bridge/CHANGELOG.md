@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+- Bound the pairing-code service's per-IP rate-limit map (`PairingCodeService`
+  `#rate`) against unbounded memory growth from IP rotation — trivial over an
+  allocated IPv6 /64 — which previously grew the map by one entry per new
+  source address forever, turning the anti-brute-force control into a memory
+  sink. `rateLimited` now sweeps expired entries whenever it opens a new window
+  for an IP, and enforces a hard `rateMaxKeys` cap (default 10,000; oldest
+  entry evicted first) as a backstop against a burst of still-unexpired IPs. A
+  single IP's own throttling budget is unaffected. Covered by 3 new tests in
+  `test/pairing/pairing-code-service.test.ts` (single-IP throttling preserved,
+  the map never exceeds `rateMaxKeys`, expired entries are swept instead of
+  accumulating).
+
 ### Fixed
 - Back off the relay reconnect loop when a session ends almost immediately
   (relay accept-then-close, a bounce, or the session already being taken).

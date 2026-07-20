@@ -8,6 +8,7 @@ import type {
   AgentStateEntry,
   AppData,
   AppSettings,
+  BranchCleanup,
   BranchList,
   AgentHooksStatus,
   CommitInfo,
@@ -244,6 +245,13 @@ export function browseDirs(path?: string): Promise<DirListing> {
   return invoke<DirListing>("browse_dirs", { path: path ?? null });
 }
 
+/** Point (or clear with no `path`) the in-app folder browser's filesystem watch
+ *  at `path`; the backend emits `browse:changed` when a folder is created/removed
+ *  directly inside it, so the picker can live-refresh. */
+export function browseSetWatch(path?: string | null): Promise<void> {
+  return invoke<void>("browse_set_watch", { path: path ?? null });
+}
+
 /** Register a git repository by path. */
 export function repoAdd(path: string): Promise<RepoData> {
   return invoke<RepoData>("repo_add", { path });
@@ -313,34 +321,42 @@ export function branchList(repoId: string): Promise<BranchList> {
   return invoke<BranchList>("branch_list", { repoId });
 }
 
-/** Create a worktree on a new branch in a repo. `base` is the ref to branch
- *  from; omit it to let the backend resolve the repo's default base. */
+/** Create a worktree in a repo. `fromExisting` checks out an existing local/
+ *  remote branch (ignoring `base`); otherwise a new `branch` is created from
+ *  `base` (omit `base` to let the backend resolve the default base). `path` is an
+ *  optional custom worktree directory (absolute, not yet existing); omit it for
+ *  the automatic sibling location. */
 export function worktreeCreate(
   repoId: string,
   branch: string,
-  base?: string,
+  options: { base?: string; fromExisting?: boolean; path?: string } = {},
 ): Promise<WorktreeEntry> {
   return invoke<WorktreeEntry>("worktree_create", {
     repoId,
     branch,
-    base: base ?? null,
+    base: options.base ?? null,
+    fromExisting: options.fromExisting ?? false,
+    path: options.path ?? null,
   });
 }
 
 /** Remove a worktree. Without `force`, the backend refuses when the worktree has
- *  uncommitted changes (surface the error and offer a forced retry). Resolves to
- *  the branch-cleanup outcome (deleted / squash-merged / preserved). */
+ *  uncommitted changes (surface the error and offer a forced retry). Branch
+ *  cleanup is opt-in via `cleanup` (delete local / remote / force); omit it to
+ *  remove only the worktree. Resolves to what happened to each branch. */
 export function worktreeRemove(
   repoId: string,
   path: string,
   branch: string | null,
   force: boolean,
+  cleanup?: BranchCleanup,
 ): Promise<RemoveOutcome> {
   return invoke<RemoveOutcome>("worktree_remove", {
     repoId,
     path,
     branch: branch ?? null,
     force,
+    cleanup: cleanup ?? null,
   });
 }
 
