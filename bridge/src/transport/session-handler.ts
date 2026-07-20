@@ -64,9 +64,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       ...(options.expectedSessionId !== undefined
         ? { expectedSessionId: options.expectedSessionId }
         : {}),
-      ...(options.isPairingArmed !== undefined
-        ? { isPairingArmed: options.isPairingArmed }
-        : {}),
+      ...(options.isPairingArmed !== undefined ? { isPairingArmed: options.isPairingArmed } : {}),
     };
     const result = await performServerHandshake(handshakeOptions);
     phoneDeviceId = result.phoneDeviceId;

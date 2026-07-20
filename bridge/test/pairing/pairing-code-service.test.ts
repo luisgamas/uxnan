@@ -93,6 +93,51 @@ test('arm() re-extends the window from the new now', () => {
   assert.equal(service.isArmed(), true); // window pushed out again
 });
 
+test('a successful resolve arms the window; a failed one does not', () => {
+  const { service } = svc({ codes: ['0123ABCD'] });
+  service.currentCode();
+  assert.equal(service.isArmed(), false); // issuing a code here did not arm
+  assert.equal(service.resolve('9999-9999'), undefined); // wrong code
+  assert.equal(service.isArmed(), false); // …and it must NOT open the window
+  assert.equal(service.resolve('0123-ABCD'), PAYLOAD);
+  assert.equal(service.isArmed(), true); // proving the code IS the operator action
+});
+
+test('an expired code neither resolves nor arms', () => {
+  const { service, advance } = svc({ codes: ['0123ABCD'], ttlMs: 1000 });
+  const code = service.currentCode();
+  advance(1001); // past the code TTL
+  assert.equal(service.resolve(code), undefined);
+  assert.equal(service.isArmed(), false);
+});
+
+test('resolving the shared code arms the daemon that serves it (console-less daemon)', () => {
+  // The real autostart shape: a short-lived `uxnan-bridge code` process issues
+  // the code, and a SEPARATE long-running daemon serves `/pair/resolve`. Only
+  // the code travels between them (via statePath) — arming cannot — so the
+  // daemon must arm itself off the resolve, or the phone can never bootstrap.
+  const dir = mkdtempSync(join(tmpdir(), 'uxnan-paircode-arm-'));
+  const statePath = join(dir, 'pairing-code.json');
+  try {
+    const cli = new PairingCodeService({
+      buildPayload: () => PAYLOAD,
+      generateCode: () => '0123ABCD',
+      statePath,
+    });
+    const daemon = new PairingCodeService({
+      buildPayload: () => PAYLOAD,
+      generateCode: () => 'ZZZZZZZZ', // would differ without the shared file
+      statePath,
+    });
+    const shown = cli.currentCode(); // operator reads this off the PC
+    assert.equal(daemon.isArmed(), false); // the CLI's arming never reached it
+    assert.equal(daemon.resolve(shown), PAYLOAD);
+    assert.equal(daemon.isArmed(), true); // the phone can now bootstrap
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('two instances sharing a statePath agree on the code (cross-process)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'uxnan-paircode-'));
   const statePath = join(dir, 'pairing-code.json');

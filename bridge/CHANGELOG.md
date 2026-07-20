@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+- **Gate the LAN `qr_bootstrap` handshake on an operator-armed pairing window.**
+  Previously, the direct-LAN/Tailscale server accepted a first-time (`qr_bootstrap`)
+  handshake unconditionally: it verified only the phone's own transcript
+  signature (an attacker signs that with their own key) and then trusted the
+  identity, with no check that the operator had actually opened a pairing
+  window. Since the LAN server binds all interfaces (intentional, for
+  Tailscale), any reachable LAN/Tailscale peer could self-enroll as a trusted
+  device and drive `turn/send` and other handlers. Now `PairingCodeService`
+  exposes an `arm()`/`isArmed()` pairing window (3-minute TTL, in-memory), and
+  `server-handshake.ts` rejects a `qr_bootstrap` outside the window, before any
+  `trustStore` mutation and before `ready` is sent. Three operator actions arm
+  it: showing the QR (`generatePairingQr`), showing the manual code
+  (`currentPairingCode`), and a **successful `GET /pair/resolve`** — a caller
+  that produces the current code proved it read the code off the PC, which is
+  the same consent signal (and the only one that reaches a hidden daemon, since
+  `qr`/`code` run in a separate process and share the code through disk while
+  arming stays in-memory). So pairing keeps working exactly as before, including
+  against an autostarted, console-less daemon and at any time after start —
+  what changed is that a peer which never saw the PC screen is now refused.
+  `trusted_reconnect` is unaffected — an already-trusted phone reconnects with
+  no arming required. The relay path is unaffected too (it already scopes
+  bootstrap to one `expectedSessionId` per connection). Two follow-ups are
+  tracked in `FOR-DEV.md`: binding the proof to *this* phone rather than to
+  *some* open window (needs coordinated mobile work), and arming a hidden daemon
+  for the QR-**scan** path (a scanned QR never calls `/pair/resolve`; pair with
+  the manual code there).
+
 ## [0.0.8-alpha.20260719] - 2026-07-19
 
 ### Added — Antigravity (`agy`) wired as the 8th real agent
@@ -79,24 +107,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Security
 - Use constant-time comparisons for LAN approval-hook tokens.
-- **Gate the LAN `qr_bootstrap` handshake on an operator-armed pairing window.**
-  Previously, the direct-LAN/Tailscale server accepted a first-time (`qr_bootstrap`)
-  handshake unconditionally: it verified only the phone's own transcript
-  signature (an attacker signs that with their own key) and then trusted the
-  identity, with no check that the operator had actually opened a pairing
-  window. Since the LAN server binds all interfaces (intentional, for
-  Tailscale), any reachable LAN/Tailscale peer could self-enroll as a trusted
-  device and drive `turn/send` and other handlers. Now `PairingCodeService`
-  exposes an `arm()`/`isArmed()` pairing window (3-minute TTL, in-memory):
-  showing the QR (`generatePairingQr`) or the manual code
-  (`currentPairingCode`) arms it, and `server-handshake.ts` rejects a
-  `qr_bootstrap` outside the window, before any `trustStore` mutation and
-  before `ready` is sent. `trusted_reconnect` is unaffected — an already-trusted
-  phone reconnects with no arming required. The relay path is unaffected too
-  (it already scopes bootstrap to one `expectedSessionId` per connection).
-  A stronger binding — the phone proving it holds the pairing code, not just
-  that *some* window is open — is tracked as a follow-up (see `FOR-DEV.md`);
-  it needs coordinated mobile work that isn't wired yet.
 
 ## [0.0.7-alpha.20260716] - 2026-07-16
 

@@ -113,20 +113,23 @@ push validation (FOR-HUMAN).
       change to embed an equivalent secret in the QR payload too (so QR-scan
       pairing isn't left out), which is its own independently-reviewable change.
       See the `FOR-DEV:` marker in `server-handshake.ts` (`qr_bootstrap` branch).
-- [ ] **Cross-process arming for a headless/autostarted daemon.** The armed
-      window is in-memory and per-`PairingCodeService`-instance by design (a
-      restart re-requires arming). `uxnan-bridge start` arms and serves LAN
-      connections from the SAME process, so the primary flow works as-is. But
-      `uxnan-bridge qr`/`code` run as a **separate**, short-lived process (used to
-      reprint the QR/code for an already-running, console-less autostarted
-      daemon — see the comment on `cmdCode` in `cli.ts`) only arms THEIR OWN
-      ephemeral `PairingCodeService`, not the real daemon's — so a phone that then
-      tries to pair against that daemon is rejected as "pairing is not open" even
-      though the printed QR/code looks valid. Fix by adding an explicit
-      `bridge pair --arm` (or similar) command that signals the running daemon
-      directly (e.g. over its existing local HTTP surface, or a small
-      shared-state file next to `pairing-code.json` that `isArmed()` also
-      consults) rather than silently defaulting the window open.
+- [ ] **Cross-process arming for the QR-reprint path on a headless daemon.** The
+      armed window is in-memory and per-`PairingCodeService`-instance by design (a
+      restart re-requires arming). Two of the three flows are covered: `uxnan-bridge
+      start` arms and serves LAN connections from the SAME process, and the
+      **manual-code** flow works against a separate, console-less daemon because a
+      successful `GET /pair/resolve` arms the daemon that serves it (proving the
+      code was read off the PC is the operator action — see `resolve()` in
+      `pairing-code-service.ts`). Still open: `uxnan-bridge qr` run as a
+      **separate**, short-lived process to reprint the QR for an already-running
+      autostarted daemon (see the comment on `cmdQr` in `cli.ts`) only arms THAT
+      process. A phone that **scans** that QR goes straight to the handshake without
+      ever calling `/pair/resolve`, so the daemon is never armed and the bootstrap is
+      rejected as "pairing is not open". Fix by adding an explicit `bridge pair
+      --arm` (or similar) command that signals the running daemon directly (e.g.
+      over its existing local HTTP surface, or a small shared-state file next to
+      `pairing-code.json` that `isArmed()` also consults) rather than silently
+      defaulting the window open. Workaround today: pair with the manual code.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger. (Seq-based
       catch-up on reconnect is done end-to-end; only key rotation remains.)
 - [ ] **Bind the LAN server to chosen interface(s)** — today it binds all

@@ -10,8 +10,11 @@
  * {@link PairingPayload} (the same data the QR carries), which the phone then runs
  * through the normal E2EE handshake.
  *
- * The code is the **consent gate**: only someone who can read the PC screen learns
- * it, so a random LAN device cannot pull the payload and pair. This is the same
+ * The code is a **consent gate**: only someone who can read the PC screen learns
+ * it, so a random LAN device cannot pull the payload and pair — and, because a
+ * successful {@link resolve} also arms the bootstrap window, proving the code is
+ * what lets the handshake through on a daemon the operator cannot type into. This
+ * is the same
  * trust posture as the QR (whoever sees the screen can pair) — the code adds no
  * new secret beyond what the QR already exposes. Brute force is bounded by the
  * code entropy (40 bits), a short TTL, and per-IP rate limiting.
@@ -29,15 +32,18 @@
  *
  * **Armed pairing window**: the LAN/Tailscale handshake (`server-handshake.ts`)
  * requires this service to be "armed" before it accepts a `qr_bootstrap`
- * bootstrap — see {@link arm}/{@link isArmed}. Showing the QR or the manual
- * code (i.e. calling `Bridge.generatePairingQr`/`currentPairingCode`) arms it;
- * the window confines bootstrap acceptance to the short span right after the
- * operator asked to pair a phone. `trusted_reconnect` never consults this.
+ * bootstrap — see {@link arm}/{@link isArmed}. Three operator actions arm it:
+ * showing the QR or the manual code (`Bridge.generatePairingQr` /
+ * `currentPairingCode`) and a successful {@link resolve} — producing the current
+ * code proves it was read off the PC, and it is the only one of the three that
+ * reaches a separately-running, console-less daemon. The window confines
+ * bootstrap acceptance to the short span right after the operator asked to pair
+ * a phone. `trusted_reconnect` never consults this.
  */
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { PairingPayload } from '@uxnan/shared';
+import { MAX_PAIRING_AGE_MS, type PairingPayload } from '@uxnan/shared';
 
 /** Crockford base32 alphabet (no I, L, O, U — unambiguous when read aloud/typed). */
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -47,12 +53,13 @@ const DEFAULT_RATE_WINDOW_MS = 60 * 1000; // 1 minute
 const DEFAULT_RATE_MAX = 10; // attempts per window per IP
 
 /**
- * How long a LAN `qr_bootstrap` handshake is accepted after the operator shows
- * the QR or the manual code (see {@link PairingCodeService.arm}). Kept short:
- * long enough for a phone to scan/type and connect, short enough that the
- * window is normally closed.
+ * How long a LAN `qr_bootstrap` handshake is accepted after an operator action
+ * opens the window (see {@link PairingCodeService.arm}). Deliberately the SAME
+ * span the phone already applies to a `PairingPayload` (`MAX_PAIRING_AGE_MS`):
+ * a gate that expired before the artifact it gates would leave a dead band where
+ * the phone accepts the QR and the bridge silently refuses the handshake.
  */
-export const PAIRING_WINDOW_MS = 3 * 60 * 1000; // 3 minutes
+export const PAIRING_WINDOW_MS = MAX_PAIRING_AGE_MS;
 
 export interface PairingCodeServiceOptions {
   /** Builds the payload handed out on a valid code (the bridge's pairing data). */
@@ -101,9 +108,10 @@ export class PairingCodeService {
   #expiresAt = 0;
   /**
    * End of the current armed pairing window (epoch ms), or 0 when never armed.
-   * In-memory only and per-instance by design: a bridge restart (or a separate
-   * short-lived `qr`/`code` CLI invocation) re-requires arming rather than
-   * silently reopening the window — see {@link arm}.
+   * In-memory only and per-instance by design: a bridge restart re-requires
+   * arming rather than silently reopening the window. A separate short-lived
+   * `qr`/`code` CLI invocation only arms itself, which is why {@link resolve}
+   * also arms — that is the path a console-less daemon is reached through.
    */
   #armedUntil = 0;
 
@@ -144,7 +152,8 @@ export class PairingCodeService {
   /**
    * Validate a code presented by a phone and, if it matches the active
    * (unexpired) code, return the pairing payload. Comparison is constant-time and
-   * input is normalized (case, grouping, Crockford look-alikes).
+   * input is normalized (case, grouping, Crockford look-alikes). A match also
+   * {@link arm}s the bootstrap window; a miss changes nothing.
    */
   resolve(code: string): PairingPayload | undefined {
     const now = this.#now();
@@ -153,6 +162,13 @@ export class PairingCodeService {
     this.#syncFromDisk(now);
     if (!this.#code || now >= this.#expiresAt) return undefined;
     if (!constantTimeEqual(normalize(code), this.#code)) return undefined;
+    // A caller that produced the current code proved it was read off the PC —
+    // that IS the operator action the bootstrap gate looks for, so a successful
+    // resolve arms the window. Without this, pairing against an autostarted,
+    // console-less daemon is impossible: `qr`/`code` run in a SEPARATE process
+    // and share the code through disk, but cannot arm the daemon that actually
+    // serves the handshake. See {@link arm}.
+    this.arm();
     return this.#buildPayload();
   }
 
@@ -203,11 +219,12 @@ export class PairingCodeService {
 
   /**
    * Open the pairing window: from now, a LAN `qr_bootstrap` handshake is
-   * accepted for {@link PAIRING_WINDOW_MS}. Call this at the operator action
-   * that shows a QR or the manual code on the PC — that is the "I am pairing a
-   * phone right now" signal the LAN handshake gates on (see
-   * `server-handshake.ts`). Idempotent-ish: calling it again just extends the
-   * window from the new `now`.
+   * accepted for {@link PAIRING_WINDOW_MS}. Called at each operator action that
+   * proves "I am pairing a phone right now" — showing a QR or the manual code
+   * on the PC, or a successful {@link resolve} of the current code (which only
+   * a caller that read the code off the PC can produce). That is the signal the
+   * LAN handshake gates on (see `server-handshake.ts`). Idempotent-ish: calling
+   * it again just extends the window from the new `now`.
    */
   arm(): void {
     this.#armedUntil = this.#now() + PAIRING_WINDOW_MS;
