@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/enums/handshake_mode.dart';
 
@@ -28,14 +29,14 @@ class ClientHello {
     required this.phoneIdentityPublicKey,
     required this.phoneEphemeralPublicKey,
     required this.clientNonce,
-    this.protocolVersion = 1,
+    this.protocolVersion = ProtocolConstants.secureProtocolVersion,
     this.lastAppliedBridgeOutboundSeq = 0,
   });
 
   /// Discriminator.
   static const String kind = 'clientHello';
 
-  /// Protocol version (1).
+  /// Protocol version (see [ProtocolConstants.secureProtocolVersion]).
   final int protocolVersion;
 
   /// Session id.
@@ -93,11 +94,13 @@ class ServerHello {
     required this.macSignature,
     required this.clientNonce,
     required this.displayName,
-    this.protocolVersion = 1,
+    this.protocolVersion = ProtocolConstants.secureProtocolVersion,
   });
 
   /// Parses a [ServerHello] from wire JSON.
   factory ServerHello.fromJson(Map<String, dynamic> json) => ServerHello(
+        // A bridge too old to send the field predates versioning: treat it as
+        // v1 so the mismatch is reported rather than silently accepted.
         protocolVersion: json['protocolVersion'] as int? ?? 1,
         sessionId: json['sessionId'] as String,
         macDeviceId: json['macDeviceId'] as String,

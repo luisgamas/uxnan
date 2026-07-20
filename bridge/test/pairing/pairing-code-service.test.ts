@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PairingPayload } from '@uxnan/shared';
-import { PairingCodeService } from '../../src/index.js';
+import { PAIRING_WINDOW_MS, PairingCodeService } from '../../src/index.js';
 
 const PAYLOAD = {
   v: 1,
@@ -15,7 +15,9 @@ const PAYLOAD = {
   displayName: 'PC',
 } as unknown as PairingPayload;
 
-function svc(opts: { codes?: string[]; ttlMs?: number; rateMax?: number } = {}) {
+function svc(
+  opts: { codes?: string[]; ttlMs?: number; rateMax?: number; rateMaxKeys?: number } = {},
+) {
   let clock = 1000;
   let i = 0;
   const codes = opts.codes ?? ['0123ABCD'];
@@ -24,6 +26,7 @@ function svc(opts: { codes?: string[]; ttlMs?: number; rateMax?: number } = {}) 
     now: () => clock,
     ...(opts.ttlMs !== undefined ? { ttlMs: opts.ttlMs } : {}),
     ...(opts.rateMax !== undefined ? { rateMax: opts.rateMax } : {}),
+    ...(opts.rateMaxKeys !== undefined ? { rateMaxKeys: opts.rateMaxKeys } : {}),
     generateCode: () => codes[i++ % codes.length]!,
   });
   return { service, advance: (ms: number) => (clock += ms) };
@@ -65,11 +68,108 @@ test('rate limiting trips after the per-IP cap', () => {
   assert.equal(service.rateLimited('5.6.7.8'), false);
 });
 
+test('a single hammering IP is still rate-limited after bounding the map (behavior preserved)', () => {
+  const { service } = svc({ rateMax: 3, rateMaxKeys: 100 });
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 1
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 2
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 3
+  assert.equal(service.rateLimited('1.2.3.4'), true); // 4 > cap
+});
+
+test('the rate-limit map never exceeds rateMaxKeys under IP rotation', () => {
+  const maxKeys = 20;
+  const { service } = svc({ rateMaxKeys: maxKeys });
+  for (let i = 0; i < maxKeys + 15; i += 1) {
+    service.rateLimited(`10.0.0.${i}`);
+    assert.ok(
+      service.rateEntryCount <= maxKeys,
+      `rateEntryCount ${service.rateEntryCount} exceeded rateMaxKeys ${maxKeys} at i=${i}`,
+    );
+  }
+  assert.equal(service.rateEntryCount, maxKeys);
+});
+
+test('expired rate-limit entries are swept instead of accumulating', () => {
+  const { service, advance } = svc({ rateMaxKeys: 100 });
+  for (let i = 0; i < 10; i += 1) service.rateLimited(`10.0.1.${i}`);
+  assert.equal(service.rateEntryCount, 10);
+
+  advance(60_000 + 1); // past the default 1-minute rate window
+  service.rateLimited('10.0.2.1'); // triggers a sweep before inserting the new entry
+  assert.equal(service.rateEntryCount, 1);
+});
+
 test('the default code generator yields an 8-char unambiguous code', () => {
   const real = new PairingCodeService({ buildPayload: () => PAYLOAD });
   const code = real.currentCode().replace('-', '');
   assert.equal(code.length, 8);
   assert.match(code, /^[0-9A-HJKMNP-TV-Z]+$/); // Crockford base32 (no I, L, O, U)
+});
+
+test('the pairing window is closed until armed, then opens for PAIRING_WINDOW_MS', () => {
+  const { service, advance } = svc();
+  assert.equal(service.isArmed(), false); // never armed
+  service.arm();
+  assert.equal(service.isArmed(), true);
+  advance(PAIRING_WINDOW_MS - 1);
+  assert.equal(service.isArmed(), true); // still inside the window
+  advance(2); // now past PAIRING_WINDOW_MS from arm()
+  assert.equal(service.isArmed(), false);
+});
+
+test('arm() re-extends the window from the new now', () => {
+  const { service, advance } = svc();
+  service.arm();
+  advance(PAIRING_WINDOW_MS - 1);
+  assert.equal(service.isArmed(), true);
+  service.arm(); // re-arm right before expiry
+  advance(PAIRING_WINDOW_MS - 1);
+  assert.equal(service.isArmed(), true); // window pushed out again
+});
+
+test('a successful resolve arms the window; a failed one does not', () => {
+  const { service } = svc({ codes: ['0123ABCD'] });
+  service.currentCode();
+  assert.equal(service.isArmed(), false); // issuing a code here did not arm
+  assert.equal(service.resolve('9999-9999'), undefined); // wrong code
+  assert.equal(service.isArmed(), false); // …and it must NOT open the window
+  assert.equal(service.resolve('0123-ABCD'), PAYLOAD);
+  assert.equal(service.isArmed(), true); // proving the code IS the operator action
+});
+
+test('an expired code neither resolves nor arms', () => {
+  const { service, advance } = svc({ codes: ['0123ABCD'], ttlMs: 1000 });
+  const code = service.currentCode();
+  advance(1001); // past the code TTL
+  assert.equal(service.resolve(code), undefined);
+  assert.equal(service.isArmed(), false);
+});
+
+test('resolving the shared code arms the daemon that serves it (console-less daemon)', () => {
+  // The real autostart shape: a short-lived `uxnan-bridge code` process issues
+  // the code, and a SEPARATE long-running daemon serves `/pair/resolve`. Only
+  // the code travels between them (via statePath) — arming cannot — so the
+  // daemon must arm itself off the resolve, or the phone can never bootstrap.
+  const dir = mkdtempSync(join(tmpdir(), 'uxnan-paircode-arm-'));
+  const statePath = join(dir, 'pairing-code.json');
+  try {
+    const cli = new PairingCodeService({
+      buildPayload: () => PAYLOAD,
+      generateCode: () => '0123ABCD',
+      statePath,
+    });
+    const daemon = new PairingCodeService({
+      buildPayload: () => PAYLOAD,
+      generateCode: () => 'ZZZZZZZZ', // would differ without the shared file
+      statePath,
+    });
+    const shown = cli.currentCode(); // operator reads this off the PC
+    assert.equal(daemon.isArmed(), false); // the CLI's arming never reached it
+    assert.equal(daemon.resolve(shown), PAYLOAD);
+    assert.equal(daemon.isArmed(), true); // the phone can now bootstrap
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('two instances sharing a statePath agree on the code (cross-process)', () => {

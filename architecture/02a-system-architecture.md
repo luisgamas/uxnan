@@ -1178,7 +1178,9 @@ ManualCodeScreen
 ├── GET http://<bridge-host>:<port>/pair/resolve?code=<code>
 │   ├── Dirigido SOLO al host elegido por el usuario (nunca repartido
 │   │   entre candidatos mDNS — el código es un secreto)
-│   ├── Validación constant-time + rate-limit por IP
+│   ├── Validación constant-time + rate-limit por IP (mapa acotado:
+│   │   barrido de entradas expiradas + cap duro `rateMaxKeys`, 10k por
+│   │   defecto, para que la rotación de IPs no agote la memoria)
 │   └── Respuesta: PairingPayload completo (identico al del QR)
 └── Continua igual que QR bootstrap (proceso de handshake E2EE)
 ```
@@ -1949,6 +1951,7 @@ CONSTANTES:
   TRUSTED_RECONNECT_SKEW_MS = 90_000 (90 segundos)
   MAX_BRIDGE_OUTBOUND_MESSAGES = 500
   MAX_BRIDGE_OUTBOUND_BYTES = 10_485_760  (10 MB)
+  PAIRING_WINDOW_MS = 180_000         (3 minutos — ver nota de seguridad abajo)
 ```
 
 **Fase 1 — Bootstrap por QR (solo primera conexion):**
@@ -1958,6 +1961,41 @@ CONSTANTES:
 3. El telefono escanea el QR
 4. El telefono genera su par Ed25519: (`phoneIdentityPrivateKey`, `phoneIdentityPublicKey`)
 5. El telefono persiste `PhoneIdentity` y crea `TrustedDevice`
+
+> **Security — armed pairing window (bridge, implemented):** on the direct-LAN/
+> Tailscale transport the bridge binds all interfaces, so any reachable peer can
+> reach the handshake socket at any time. A `qr_bootstrap` bootstrap is
+> therefore only ACCEPTED while an operator-armed pairing window is open — the
+> bridge's `PairingCodeService.arm()`/`isArmed()` (`PAIRING_WINDOW_MS`, in-memory,
+> per bridge-process instance; set to `MAX_PAIRING_AGE_MS` so the gate lives exactly
+> as long as the `PairingPayload` it gates — a shorter window would leave a band
+> where the phone still accepts the QR and the bridge silently refuses). The window is armed by the exact
+> operator actions that surface a QR/code — `generatePairingQr()` (the `qr`
+> command, and `start`'s own printed QR) and `currentPairingCode()` (the `code`
+> command) — and by a **successful `GET /pair/resolve`**: producing the current
+> code proves the caller read it off the PC, which is the same consent signal.
+> That last one is what keeps pairing working against an autostarted,
+> console-less daemon: `qr`/`code` run in a SEPARATE short-lived process and
+> share the code through `~/.uxnan/pairing-code.json`, but arming is in-memory
+> and does not cross processes, so the daemon that actually serves the handshake
+> can only be armed by the resolve it serves itself. `server-handshake.ts`
+> rejects an unarmed `qr_bootstrap` BEFORE any
+> `trustStore` mutation and before `ready` is sent. This corrects an earlier
+> drift: the manual-pairing-code service documented itself as "the consent
+> gate" for pairing, but that check only guarded `GET /pair/resolve` — the
+> handshake itself accepted a bootstrap unconditionally regardless of whether
+> the code or QR had ever been shown. The window is the actual gate now; the
+> code/QR remain how the phone *learns* the connection details, not (yet) a
+> value the handshake itself verifies. `trusted_reconnect` is NOT gated by the
+> window (an already-trusted phone reconnects at any time), and the relay path
+> is NOT gated by it either (it already scopes a bootstrap to one
+> `expectedSessionId` per connection). **Deferred hardening (see
+> `bridge/FOR-DEV.md`):** (1) binding enrollment to a phone-computed proof that
+> it holds the pairing code — i.e. to *this* phone rather than to *some* open
+> window — needs coordinated mobile work that isn't wired yet; (2) arming a
+> hidden daemon for the QR-**scan** path, which never calls `/pair/resolve` and
+> so is not covered by the resolve-arming above (pair with the manual code
+> there).
 
 **Fase 2 — Handshake criptografico:**
 
@@ -2034,10 +2072,76 @@ SecureEnvelope = {
   sessionId: "<uuid>",
   seq: <integer monotonico>,
   nonce: "<hex 12 bytes random por mensaje>",
-  ciphertext: "<base64 AES-256-GCM(plaintext, derivedKey, nonce)>",
+  ciphertext: "<base64 AES-256-GCM(plaintext, derivedKey, nonce, aad)>",
   tag: "<base64 GCM auth tag 16 bytes>"
 }
 ```
+
+`sessionId` y `seq` viajan en claro en el sobre (el receptor los necesita para
+ubicar la clave *antes* de poder descifrar), pero están **autenticados sin
+estar cifrados**: se vinculan al tag de AES-GCM como *Additional Authenticated
+Data* (AAD), junto con un byte de **dirección** que identifica el sentido del
+mensaje:
+
+```
+AAD = utf8(sessionId) || 0x00 || u64_be(seq) || 0x00 || direction
+
+direction = 0x01  # telefono -> bridge
+direction = 0x02  # bridge -> telefono
+```
+
+Ambos lados deben derivar el AAD **byte a byte idéntico** para una misma
+`(sessionId, seq, direction)`: el bridge (`buildEnvelopeAad` en
+`bridge/src/transport/secure-channel.ts`) y el teléfono (`buildEnvelopeAad` en
+`lib/infrastructure/transport/secure_transport_layer.dart`) implementan
+exactamente esta codificación (UTF-8 para `sessionId`, entero de 64 bits
+big-endian para `seq`, los mismos separadores `0x00`). Vector de referencia:
+para `sessionId="abc"`, `seq=1`, `direction=0x01`, el AAD es
+`61 62 63 00 00 00 00 00 00 00 00 01 00 01` (14 bytes).
+
+> ✅ **Implementado** (bridge + `uxnanmobile`): antes de este cambio, la
+> protección contra replay dependía por completo del campo `seq`
+> **no autenticado** (`envelope.seq <= lastInboundSeq`), lo que permitía a un
+> relay malicioso o a un atacante en la ruta (a) reenviar un sobre capturado
+> con un `seq` manipulado para forzar su re-aplicación, (b) fijar un `seq`
+> enorme para bloquear el canal, o (c) reflejar un sobre bridge→teléfono de
+> vuelta al bridge como si fuera tráfico entrante legítimo (la misma clave se
+> usa en ambos sentidos, sin vinculación de dirección). Vincular
+> `sessionId || seq || direction` como AAD de AES-GCM cierra las tres vías:
+> cualquier alteración de esos campos falla la verificación del tag en lugar
+> de pasar silenciosamente una comprobación de replay no autenticada. El
+> **replay y la reflexión ahora se aplican criptográficamente**, no solo por
+> un contador en memoria. `bridge/src/transport/crypto.ts`
+> (`aesGcmEncrypt`/`aesGcmDecrypt`) y `lib/infrastructure/crypto/envelope_crypto.dart`
+> (`EnvelopeCrypto.encrypt`/`decrypt`) aceptan un `aad` opcional; `nonce`
+> (12 bytes aleatorios por mensaje) y la derivación HKDF de la clave de
+> sesión **no cambian** — el patrón AAD ya existía en el repo para el sellado
+> de métricas (`bridge/src/metrics/metrics-seal.ts`) y aquí se aplica al
+> canal cifrado. Un follow-up considerado y descartado por ahora: claves
+> derivadas por HKDF separadas por dirección (permitiría prescindir del byte
+> de dirección); se documenta como posible trabajo futuro, no como deuda
+> pendiente de este cambio.
+>
+> **Versionado del protocolo (obligatorio con este cambio).** Como la AAD forma
+> parte del cálculo del tag, un peer v1 y uno v2 **no pueden descifrarse
+> mutuamente**. Sin una comprobación de versión el fallo era mudo y muy difícil
+> de diagnosticar: el handshake no cambió, así que el emparejamiento/reconexión
+> se completa y ambos lados muestran "conectado" — y a partir de ahí el bridge
+> descarta cada petición en el `catch { continue; }` de `session-handler.ts` y el
+> correlador RPC del teléfono nunca resuelve, de modo que toda acción expira sin
+> ninguna señal. Por eso `SECURE_PROTOCOL_VERSION` sube a **2** y **ambos lados
+> lo validan en el handshake** (`clientHello` en `server-handshake.ts`,
+> `serverHello` en `_verifyServerHello`), que es el último punto en el que
+> todavía pueden leerse entre sí; el rechazo ocurre antes de derivar clave o
+> tocar el trust store, con un mensaje que nombra ambas versiones. Regla que
+> antes era implícita y ahora está escrita en la constante: **se sube esta
+> versión cuando cambia el formato del *frame cifrado*, no solo el JSON del
+> handshake**. Los bytes de dirección viven en `shared/src/constants.ts`
+> (`ENVELOPE_DIRECTION_*`), única fuente de verdad; el bridge los re-exporta y
+> `ProtocolConstants` del móvil los espeja.
+>
+> **Consecuencia de release:** bridge y `uxnanmobile` deben publicarse en el
+> mismo ciclo (ver `VERSIONS.md`).
 
 **Trusted Reconnect:**
 - Usa `handshakeMode: "trusted_reconnect"`
@@ -2165,6 +2269,9 @@ Relay Server (opcional / self-hosted)
 ├── WebSocket Server (noServer mode)
 │   ├── Upgrade HTTP → WS con rate limiting por IP
 │   │   ├── Rate limits: HTTP 120/min, upgrade 60/min
+│   │   ├── Mapas del limiter acotados: barrido de ventanas expiradas
+│   │   │   + cap duro de 10k claves (evicción oldest-first) para que la
+│   │   │   rotación de IPs no crezca la memoria sin límite
 │   │   ├── Origin check (CSWSH defense): mismo host o allowlist
 │   │   └── Rechaza upgrades en paths no-relay
 │   └── Routing de sesiones por sessionId
@@ -2199,6 +2306,15 @@ socket `mac` se cierre cuando la sesion del telefono deja de ser valida:
   handshake del telefono que reconecta se reenvia al loop de sesion **obsoleto**
   del bridge —que lo descarta como trafico cifrado invalido— y el telefono queda
   atascado en "reconnecting" hasta forzar el cierre de la app.
+
+**Backoff del re-armado.** El re-armado del bridge es inmediato en el caso sano,
+pero **no** es incondicional: si la sesion `mac` muere en menos de 3 s (el relay
+acepta y cierra en el acto, un rebote del relay, o la sesion ya esta tomada), el
+loop `connectRelay` aplica un backoff exponencial acotado — base 2 s, tope 30 s —
+antes de volver a marcar, y vuelve a la base en cuanto una sesion dura lo
+suficiente. Sin el, un relay que rebota empuja al bridge a un bucle de reconexion
+sin pausa. La supersession descrita arriba cierra un socket que normalmente vivio
+mucho mas de 3 s, asi que el teardown sigue re-armando de inmediato.
 
 #### 5.10.2 Flujo de push notification (RUTA PRIMARIA: bridge-direct)
 

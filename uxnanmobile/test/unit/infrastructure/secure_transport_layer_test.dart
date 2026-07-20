@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
@@ -60,6 +61,7 @@ Future<Uint8List> _runBridge(
   required Ed25519KeyPairBytes bridgeIdentity,
   required String macDeviceId,
   required int expiresAtForTranscript,
+  int protocolVersion = ProtocolConstants.secureProtocolVersion,
 }) async {
   final crypto = HandshakeCrypto();
   final keygen = KeyGeneration();
@@ -95,7 +97,7 @@ Future<Uint8List> _runBridge(
         utf8.encode(
           jsonEncode({
             'kind': 'serverHello',
-            'protocolVersion': 1,
+            'protocolVersion': protocolVersion,
             'sessionId': sessionId,
             'macDeviceId': macDeviceId,
             'macIdentityPublicKey': bridgeIdentity.publicKey.toHex(),
@@ -192,6 +194,44 @@ void main() {
       expect(session.phoneOutboundSeq, 1);
     });
 
+    test('rejects a bridge speaking a different secure protocol version',
+        () async {
+      final transports = _pair();
+      final bridgeId = await keygen.generateIdentityKeyPair();
+      final phone = await phoneIdentity();
+
+      unawaited(
+        _runBridge(
+          transports.bridge,
+          bridgeIdentity: bridgeId,
+          macDeviceId: 'mac-1',
+          expiresAtForTranscript: DateTime(2030).millisecondsSinceEpoch,
+          // A bridge from before the AAD binding landed.
+          protocolVersion: ProtocolConstants.secureProtocolVersion - 1,
+        ).catchError((_) => Uint8List(0)),
+      );
+
+      // Must fail HERE, at the handshake, with an actionable message — not by
+      // completing and then silently dropping every encrypted frame.
+      await expectLater(
+        layer.performHandshake(
+          transport: transports.phone,
+          phoneIdentity: phone,
+          device: device(bridgeId.publicKey),
+          mode: HandshakeMode.qrBootstrap,
+        ),
+        throwsA(
+          isA<TransportException>()
+              .having((e) => e.kind, 'kind', TransportErrorKind.handshake)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('Incompatible bridge'),
+              ),
+        ),
+      );
+    });
+
     test('rejects a bridge whose identity key is not trusted', () async {
       final transports = _pair();
       final bridgeId = await keygen.generateIdentityKeyPair();
@@ -238,8 +278,11 @@ void main() {
 
     test('encrypts and decrypts across two channels', () async {
       final shared = session();
+      // sender = phone (default role): tags AAD direction phone->bridge.
+      // receiver = bridge role: expects that same phone->bridge direction on
+      // decrypt (architecture/02a §5.9.1 direction binding).
       final sender = SecureChannel(shared);
-      final receiver = SecureChannel(shared);
+      final receiver = SecureChannel(shared, role: SecureChannelRole.bridge);
 
       final plaintext = Uint8List.fromList(utf8.encode('turn/send payload'));
       final envelope = await sender.encrypt(plaintext);
@@ -252,7 +295,7 @@ void main() {
     test('rejects a replayed envelope', () async {
       final shared = session();
       final sender = SecureChannel(shared);
-      final receiver = SecureChannel(shared);
+      final receiver = SecureChannel(shared, role: SecureChannelRole.bridge);
 
       final e1 = await sender.encrypt(Uint8List.fromList([1, 2, 3]));
       final e2 = await sender.encrypt(Uint8List.fromList([4, 5, 6]));
@@ -289,6 +332,63 @@ void main() {
       final seqs = envelopes.map((e) => e.seq).toList()..sort();
       expect(seqs.toSet().length, 20, reason: 'all seqs must be unique');
       expect(seqs, List<int>.generate(20, (i) => i + 1));
+    });
+
+    test(
+        'buildEnvelopeAad matches the canonical byte layout for the '
+        'reference vector', () {
+      // sessionId="abc", seq=1, direction=phone->bridge (0x01):
+      //   "abc" = 61 62 63; sep 00; u64_be(1) = 00*7 01; sep 00; direction 01.
+      final aad = buildEnvelopeAad('abc', 1, directionPhoneToBridge);
+      expect(aad.length, 14);
+      expect(
+        aad,
+        Uint8List.fromList(
+          [
+            0x61,
+            0x62,
+            0x63,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x00,
+            0x01,
+          ],
+        ),
+      );
+      expect(aad.toHex(), '6162630000000000000000010001');
+    });
+
+    test(
+        'a phone-outbound envelope fed back as inbound (direction reflection) '
+        'fails decryption', () async {
+      final shared = session();
+      // Two independent 'phone'-role channels sharing the same session/key
+      // (the default role): channelA's encrypt() tags AAD direction
+      // phone->bridge; channelB's decrypt() (same default role) expects
+      // INBOUND direction bridge->phone. A malicious relay reflecting
+      // channelA's own outbound envelope back as if it were inbound bridge
+      // traffic must not be accepted.
+      final channelA = SecureChannel(shared);
+      final channelB = SecureChannel(shared);
+      final envelope =
+          await channelA.encrypt(Uint8List.fromList(utf8.encode('reflect me')));
+      await expectLater(
+        channelB.decrypt(envelope),
+        throwsA(
+          isA<TransportException>().having(
+            (e) => e.kind,
+            'kind',
+            TransportErrorKind.decryption,
+          ),
+        ),
+      );
     });
   });
 

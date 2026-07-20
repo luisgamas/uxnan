@@ -63,6 +63,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   through the relay instead of a direct GET, which needs new relay+bridge
   contract work. See `FOR-DEV.md`.
 
+### Security — E2EE envelope `sessionId`/`seq`/direction now authenticated as AES-GCM AAD
+- Closes a gap where replay protection relied entirely on the unauthenticated
+  `seq` field: a malicious relay or on-path attacker could bump a captured
+  envelope's `seq` to re-trigger a non-idempotent handler (e.g. a prior
+  `turn/send`/approval), wedge the channel with an out-of-range `seq`, or
+  reflect a bridge→phone envelope back as if it were inbound phone traffic
+  (the same session key is used both directions with no prior direction
+  binding).
+- `lib/infrastructure/crypto/envelope_crypto.dart`'s `EnvelopeCrypto.encrypt`/
+  `decrypt` now accept an optional `aad` (passed straight through to the
+  `cryptography` package's `AesGcm`). `lib/infrastructure/transport/secure_transport_layer.dart`
+  adds `buildEnvelopeAad(sessionId, seq, direction)` — `sessionId` UTF-8, `seq`
+  as a big-endian 64-bit integer, `0x00` separators, and a direction byte
+  (`0x01` phone→bridge, `0x02` bridge→phone) — and binds it on every
+  `SecureChannel.encrypt`/`decrypt`, so tampering `seq` or reflecting a message
+  from the other direction now fails the GCM tag instead of silently passing
+  the old unauthenticated `seq <= _lastInboundSeq` check.
+- The `SecureEnvelope` wire shape, the 12-byte random nonce, and the HKDF
+  session-key derivation are all unchanged. Ships together with the matching
+  `bridge` change (see its CHANGELOG) — envelopes are not wire-compatible
+  across the version gap.
+- **The handshake now enforces `secureProtocolVersion` (bumped to `2`).** The app
+  and the bridge already exchanged `protocolVersion` but neither checked it, so
+  the change above would have failed as a **silent hang**: the handshake is
+  untouched, so pairing/reconnect completes and the app shows "connected", after
+  which every inbound frame fails its tag and is dropped in
+  `session_coordinator.dart`, the RPC correlator never resolves, and each action
+  just times out with nothing to diagnose. `SecureTransportLayer` now rejects a
+  `serverHello` whose version differs, with a `TransportErrorKind.handshake`
+  error naming both versions and telling the user to update. `ClientHello`/
+  `ServerHello` take their default from `ProtocolConstants` instead of a
+  hard-coded `1`, and the AAD direction bytes are sourced from
+  `ProtocolConstants` too (mirroring `shared/src/constants.ts`, the source of
+  truth for this cross-language contract).
+- **Update the bridge and the app together.** An app on this version cannot talk
+  to an older bridge and vice versa; the mismatch is now reported clearly at
+  connect time instead of looking like a broken session.
+
 ## [0.0.9-alpha.20260719+20260719] - 2026-07-19
 
 ### Added — Antigravity agent (Google's `agy`) rendering

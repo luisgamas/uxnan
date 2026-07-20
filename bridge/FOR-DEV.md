@@ -12,8 +12,8 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 493, shared 36, relay
-27). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
+standalone). It builds clean and the suite is green (bridge 529, shared 36, relay
+30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
 release follow-ups are the post-publish *Packaging* hardening items and real-device
@@ -24,7 +24,11 @@ push validation (FOR-HUMAN).
 - **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
   handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
   background reconnect loop; stable pairing session; mDNS discovery
-  (`_uxnan._tcp.local`); manual-code pairing (`GET /pair/resolve?code=`).
+  (`_uxnan._tcp.local`); manual-code pairing (`GET /pair/resolve?code=`); the LAN
+  `qr_bootstrap` handshake is gated on an operator-armed pairing window
+  (`PairingCodeService.arm`/`isArmed`, 3-minute TTL, in-memory) — showing the QR
+  or the manual code arms it, so a reachable LAN/Tailscale device cannot
+  self-enroll as trusted outside that window; `trusted_reconnect` is unaffected.
 - **OS-keychain identity persistence** + single-instance lock.
 - **Real Git + Workspace handlers** — path-traversal-safe; working-tree
   checkpoints with **true restore** + retention pruning; `git/revert`,
@@ -88,8 +92,61 @@ push validation (FOR-HUMAN).
 
 ## Transport & connectivity
 
+- [ ] **Bind LAN `qr_bootstrap` to a pairing-code proof.** The armed pairing
+      window (`server-handshake.ts`, gated on `PairingCodeService.isArmed`) stops
+      a reachable device from self-enrolling *outside* the window, but during the
+      window any device that reaches the LAN socket still qualifies — it isn't
+      required to prove it actually holds the QR/code. Closing that gap needs a
+      phone-computed `pairingProof` (e.g. `HMAC-SHA256(pairingCode,
+      serverNonce||clientNonce)`) added to `clientAuth`, verified constant-time on
+      the bridge before `trustStore.upsert`. **Not done yet** because the mobile
+      app has no path to carry a pairing code that far: `ManualPairingService`
+      only uses the code to call `GET /pair/resolve` and returns the resulting
+      `PairingPayload` — the code itself is discarded before
+      `SessionCoordinator.processPairingPayload`/`SecureTransportLayer.performHandshake`
+      run, so there's nothing to thread into a proof for the manual-code flow.
+      Worse, the QR-scan flow (the primary pairing path) never carries a code at
+      all — `PairingPayload` has no such field — so a phone that pairs by
+      scanning has no shared secret to compute a proof from under the current
+      wire contract. Landing this needs BOTH: (1) mobile-side plumbing to retain
+      the code past the initial resolve call, and (2) very likely a `shared/`
+      change to embed an equivalent secret in the QR payload too (so QR-scan
+      pairing isn't left out), which is its own independently-reviewable change.
+      See the `FOR-DEV:` marker in `server-handshake.ts` (`qr_bootstrap` branch).
+- [ ] **Cross-process arming for the QR-reprint path on a headless daemon.** The
+      armed window is in-memory and per-`PairingCodeService`-instance by design (a
+      restart re-requires arming). Two of the three flows are covered: `uxnan-bridge
+      start` arms and serves LAN connections from the SAME process, and the
+      **manual-code** flow works against a separate, console-less daemon because a
+      successful `GET /pair/resolve` arms the daemon that serves it (proving the
+      code was read off the PC is the operator action — see `resolve()` in
+      `pairing-code-service.ts`). Still open: `uxnan-bridge qr` run as a
+      **separate**, short-lived process to reprint the QR for an already-running
+      autostarted daemon (see the comment on `cmdQr` in `cli.ts`) only arms THAT
+      process. A phone that **scans** that QR goes straight to the handshake without
+      ever calling `/pair/resolve`, so the daemon is never armed and the bootstrap is
+      rejected as "pairing is not open". Fix by adding an explicit `bridge pair
+      --arm` (or similar) command that signals the running daemon directly (e.g.
+      over its existing local HTTP surface, or a small shared-state file next to
+      `pairing-code.json` that `isArmed()` also consults) rather than silently
+      defaulting the window open. Workaround today: pair with the manual code.
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger. (Seq-based
       catch-up on reconnect is done end-to-end; only key rotation remains.)
+- [ ] **Per-direction HKDF session keys** (would retire the AAD direction byte).
+      Today one derived key serves both directions, and reflection is prevented by
+      binding a direction byte into the envelope AAD (`buildEnvelopeAad`, spec
+      §5.9.1). Deriving a distinct key per direction is the cleaner primitive: it
+      makes reflection impossible by construction instead of by a bound field, and
+      removes the `ChannelRole` parameter that currently exists only so tests can
+      stand up a direction-correct counterparty. Deferred, not forgotten — it
+      changes key derivation on BOTH sides, so it needs a coordinated
+      bridge+mobile change and another `SECURE_PROTOCOL_VERSION` bump.
+- [ ] **Reverse-direction cross-language crypto vector.** The committed AAD interop
+      vector proves **Node-encrypt → Dart-decrypt** only. `EnvelopeCrypto.encrypt`
+      already accepts a fixed `nonce:` for tests, so a Dart test that encrypts the
+      same inputs and asserts the exact ciphertext/tag would close the loop in one
+      test. Low effort, meaningful coverage — the two sides being mutually
+      undecryptable is the single worst failure mode of this transport.
 - [ ] **Bind the LAN server to chosen interface(s)** — today it binds all
       interfaces (good for Tailscale). Advertised hosts already EXCLUDE host-only
       virtual adapters (Hyper-V/WSL/Docker/VirtualBox/VMware) via

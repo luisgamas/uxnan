@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — `SECURE_PROTOCOL_VERSION` bumped to `2` (breaking wire change)
+- The secure transport now binds `sessionId`/`seq`/direction as AES-GCM AAD on
+  every envelope (see the `bridge` and `uxnanmobile` CHANGELOGs), so frames from
+  v1 and v2 peers are mutually undecryptable. The version is bumped so both sides
+  can reject the gap **during the handshake** — the last point they can still
+  read each other — instead of connecting and then silently dropping every frame.
+  Its doc comment now states the rule that was previously implicit: bump this
+  whenever the *encrypted-frame* format changes, not only the handshake JSON.
+
+### Added — `ENVELOPE_DIRECTION_PHONE_TO_BRIDGE` / `ENVELOPE_DIRECTION_BRIDGE_TO_PHONE`
+- The AAD direction bytes (`0x01` / `0x02`) now live here, next to
+  `HKDF_INFO_TAG`, as the single source of truth for a cross-language wire
+  contract. `bridge/src/transport/secure-channel.ts` re-exports them and the
+  mobile `ProtocolConstants` mirrors them, so neither side carries its own magic
+  numbers.
+
 ## [0.0.7-alpha.20260719] - 2026-07-19
 
 ### Added — `antigravity-cli` agent id
