@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Security
 - Use constant-time comparisons for LAN approval-hook tokens.
+- **Authenticate the E2EE envelope's `sessionId`/`seq`/direction as AES-GCM AAD**, closing a gap where replay protection relied entirely on the unauthenticated `seq` field: a malicious relay or on-path attacker could bump a captured envelope's `seq` to re-trigger a non-idempotent handler, wedge the channel with an out-of-range `seq`, or reflect a bridge→phone envelope back as if it were inbound phone traffic (the same session key is used both directions with no prior direction binding). `bridge/src/transport/crypto.ts`'s `aesGcmEncrypt`/`aesGcmDecrypt` now accept an optional `aad` (mirroring the existing `metrics-seal.ts` pattern); `bridge/src/transport/secure-channel.ts` adds `buildEnvelopeAad(sessionId, seq, direction)` and binds it on every seal/decrypt, so tampering `seq` or reflecting a message from the other direction now fails the GCM tag instead of silently passing the old unauthenticated `seq <= lastInboundSeq` check. Nonce generation and HKDF session-key derivation are unchanged. Ships together with the matching `uxnanmobile` change (see its CHANGELOG) — envelopes are not wire-compatible across the version gap.
 
 ## [0.0.7-alpha.20260716] - 2026-07-16
 

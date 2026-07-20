@@ -16,6 +16,40 @@ import 'package:uxnan/infrastructure/crypto/key_generation.dart';
 import 'package:uxnan/infrastructure/transport/handshake_messages.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 
+/// AAD direction byte: an envelope travelling phone → bridge.
+const int directionPhoneToBridge = 0x01;
+
+/// AAD direction byte: an envelope travelling bridge → phone.
+const int directionBridgeToPhone = 0x02;
+
+/// Which physical side a [SecureChannel] instance represents, for AAD
+/// direction binding. Real app code always uses the default [phone] role
+/// (this class is the phone-side implementation); [bridge] exists only so
+/// tests can drive an independent, direction-correct stand-in for the bridge
+/// side without a second implementation of the channel.
+enum SecureChannelRole { phone, bridge }
+
+/// Build the canonical AES-GCM AAD binding `sessionId`, `seq` and the sending
+/// `direction` to the tag (architecture/02a §5.9.1):
+///
+///   AAD = utf8(sessionId) || 0x00 || u64_be(seq) || 0x00 || direction
+///
+/// Both peers must derive byte-identical AAD for a given
+/// `(sessionId, seq, direction)` — the bridge's
+/// `secure-channel.ts` `buildEnvelopeAad` mirrors this exactly (UTF-8
+/// sessionId, big-endian u64 seq, the same `0x00` separators).
+Uint8List buildEnvelopeAad(String sessionId, int seq, int direction) {
+  final sessionIdBytes = utf8.encode(sessionId);
+  final seqBytes = ByteData(8)..setUint64(0, seq, Endian.big);
+  return Uint8List.fromList(<int>[
+    ...sessionIdBytes,
+    0x00,
+    ...seqBytes.buffer.asUint8List(),
+    0x00,
+    direction,
+  ]);
+}
+
 /// Coarse classification of an inbound raw frame.
 enum SecureMessageKind {
   /// A handshake control message.
@@ -238,13 +272,27 @@ class SecureTransportLayer {
 /// applied bridge sequence is rejected (spec 02b §5.3).
 class SecureChannel {
   /// Creates a [SecureChannel] over [session].
-  SecureChannel(this._session, {EnvelopeCrypto? envelopeCrypto})
-      : _envelope = envelopeCrypto ?? EnvelopeCrypto(),
-        _lastInboundSeq = _session.bridgeOutboundSeq;
+  SecureChannel(
+    this._session, {
+    EnvelopeCrypto? envelopeCrypto,
+    SecureChannelRole role = SecureChannelRole.phone,
+  })  : _envelope = envelopeCrypto ?? EnvelopeCrypto(),
+        _lastInboundSeq = _session.bridgeOutboundSeq,
+        _outboundDirection = role == SecureChannelRole.phone
+            ? directionPhoneToBridge
+            : directionBridgeToPhone,
+        _inboundDirection = role == SecureChannelRole.phone
+            ? directionBridgeToPhone
+            : directionPhoneToBridge;
 
   SecureSession _session;
   final EnvelopeCrypto _envelope;
   int _lastInboundSeq;
+  /// AAD direction this instance uses when it encrypts (sends).
+  final int _outboundDirection;
+  /// AAD direction this instance expects on the envelopes it decrypts
+  /// (receives).
+  final int _inboundDirection;
 
   /// The current session (sequence counters advance as traffic flows).
   SecureSession get session => _session;
@@ -260,11 +308,13 @@ class SecureChannel {
     final session = _session;
     final seq = session.phoneOutboundSeq;
     _session = session.withPhoneSeq(seq + 1);
+    final aad = buildEnvelopeAad(session.sessionId, seq, _outboundDirection);
     return _envelope.encrypt(
       plaintext: plaintext,
       key: session.derivedKey,
       sessionId: session.sessionId,
       seq: seq,
+      aad: aad,
     );
   }
 
@@ -282,9 +332,15 @@ class SecureChannel {
         'Envelope seq ${envelope.seq} <= last applied $_lastInboundSeq',
       );
     }
+    final aad = buildEnvelopeAad(
+      envelope.sessionId,
+      envelope.seq,
+      _inboundDirection,
+    );
     final plaintext = await _envelope.decrypt(
       envelope: envelope,
       key: _session.derivedKey,
+      aad: aad,
     );
     _lastInboundSeq = envelope.seq;
     _session = _session.withBridgeSeq(envelope.seq);

@@ -121,7 +121,10 @@ export class FakePhone {
     const ready = await nextJson(queue);
     if (ready['kind'] !== 'ready') throw new Error(`expected ready, got ${String(ready['kind'])}`);
 
-    const channel = new BridgeSecureChannel(sessionKey, options.sessionId);
+    // 'phone' role: this channel's own AAD direction is phone→bridge on
+    // encrypt and it expects bridge→phone on decrypt — the mirror image of
+    // the real bridge's own BridgeSecureChannel (architecture/02a §5.9.1).
+    const channel = new BridgeSecureChannel(sessionKey, options.sessionId, undefined, 'phone');
     return new FakePhone(io, queue, channel, options.sessionId, identity, sessionKey);
   }
 

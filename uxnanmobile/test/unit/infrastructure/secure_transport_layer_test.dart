@@ -238,8 +238,11 @@ void main() {
 
     test('encrypts and decrypts across two channels', () async {
       final shared = session();
+      // sender = phone (default role): tags AAD direction phone->bridge.
+      // receiver = bridge role: expects that same phone->bridge direction on
+      // decrypt (architecture/02a §5.9.1 direction binding).
       final sender = SecureChannel(shared);
-      final receiver = SecureChannel(shared);
+      final receiver = SecureChannel(shared, role: SecureChannelRole.bridge);
 
       final plaintext = Uint8List.fromList(utf8.encode('turn/send payload'));
       final envelope = await sender.encrypt(plaintext);
@@ -252,7 +255,7 @@ void main() {
     test('rejects a replayed envelope', () async {
       final shared = session();
       final sender = SecureChannel(shared);
-      final receiver = SecureChannel(shared);
+      final receiver = SecureChannel(shared, role: SecureChannelRole.bridge);
 
       final e1 = await sender.encrypt(Uint8List.fromList([1, 2, 3]));
       final e2 = await sender.encrypt(Uint8List.fromList([4, 5, 6]));
@@ -289,6 +292,47 @@ void main() {
       final seqs = envelopes.map((e) => e.seq).toList()..sort();
       expect(seqs.toSet().length, 20, reason: 'all seqs must be unique');
       expect(seqs, List<int>.generate(20, (i) => i + 1));
+    });
+
+    test('buildEnvelopeAad matches the canonical byte layout for the '
+        'reference vector', () {
+      // sessionId="abc", seq=1, direction=phone->bridge (0x01):
+      //   "abc" = 61 62 63; sep 00; u64_be(1) = 00*7 01; sep 00; direction 01.
+      final aad = buildEnvelopeAad('abc', 1, directionPhoneToBridge);
+      expect(aad.length, 14);
+      expect(
+        aad,
+        Uint8List.fromList(
+          [0x61, 0x62, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01],
+        ),
+      );
+      expect(aad.toHex(), '6162630000000000000000010001');
+    });
+
+    test(
+        'a phone-outbound envelope fed back as inbound (direction reflection) '
+        'fails decryption', () async {
+      final shared = session();
+      // Two independent 'phone'-role channels sharing the same session/key
+      // (the default role): channelA's encrypt() tags AAD direction
+      // phone->bridge; channelB's decrypt() (same default role) expects
+      // INBOUND direction bridge->phone. A malicious relay reflecting
+      // channelA's own outbound envelope back as if it were inbound bridge
+      // traffic must not be accepted.
+      final channelA = SecureChannel(shared);
+      final channelB = SecureChannel(shared);
+      final envelope =
+          await channelA.encrypt(Uint8List.fromList(utf8.encode('reflect me')));
+      await expectLater(
+        channelB.decrypt(envelope),
+        throwsA(
+          isA<TransportException>().having(
+            (e) => e.kind,
+            'kind',
+            TransportErrorKind.decryption,
+          ),
+        ),
+      );
     });
   });
 

@@ -228,7 +228,14 @@ export {
   type EphemeralKeyPair,
   type AesGcmParts,
 } from './transport/crypto.js';
-export { BridgeSecureChannel, ReplayError } from './transport/secure-channel.js';
+export {
+  BridgeSecureChannel,
+  ReplayError,
+  buildEnvelopeAad,
+  DIRECTION_PHONE_TO_BRIDGE,
+  DIRECTION_BRIDGE_TO_PHONE,
+  type ChannelRole,
+} from './transport/secure-channel.js';
 export {
   performServerHandshake,
   HandshakeError,

@@ -132,6 +132,11 @@ class _FakeBridge {
         clientNonce: clientNonce,
         serverNonce: serverNonce,
       );
+      // role: bridge — this fake plays the BRIDGE side of the wire (it
+      // decrypts inbound phone->bridge requests and encrypts outbound
+      // bridge->phone notifications), the mirror image of the real phone
+      // client under test, so their AAD directions (architecture/02a §5.9.1)
+      // actually agree.
       final channel = SecureChannel(
         SecureSession(
           sessionId: sessionId,
@@ -141,6 +146,7 @@ class _FakeBridge {
           keyEpoch: keyEpoch,
           mode: HandshakeMode.qrBootstrap,
         ),
+        role: SecureChannelRole.bridge,
       );
       _channel = channel;
 

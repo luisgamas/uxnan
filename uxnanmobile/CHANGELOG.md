@@ -6,6 +6,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security — E2EE envelope `sessionId`/`seq`/direction now authenticated as AES-GCM AAD
+- Closes a gap where replay protection relied entirely on the unauthenticated
+  `seq` field: a malicious relay or on-path attacker could bump a captured
+  envelope's `seq` to re-trigger a non-idempotent handler (e.g. a prior
+  `turn/send`/approval), wedge the channel with an out-of-range `seq`, or
+  reflect a bridge→phone envelope back as if it were inbound phone traffic
+  (the same session key is used both directions with no prior direction
+  binding).
+- `lib/infrastructure/crypto/envelope_crypto.dart`'s `EnvelopeCrypto.encrypt`/
+  `decrypt` now accept an optional `aad` (passed straight through to the
+  `cryptography` package's `AesGcm`). `lib/infrastructure/transport/secure_transport_layer.dart`
+  adds `buildEnvelopeAad(sessionId, seq, direction)` — `sessionId` UTF-8, `seq`
+  as a big-endian 64-bit integer, `0x00` separators, and a direction byte
+  (`0x01` phone→bridge, `0x02` bridge→phone) — and binds it on every
+  `SecureChannel.encrypt`/`decrypt`, so tampering `seq` or reflecting a message
+  from the other direction now fails the GCM tag instead of silently passing
+  the old unauthenticated `seq <= _lastInboundSeq` check.
+- The `SecureEnvelope` wire shape, the 12-byte random nonce, and the HKDF
+  session-key derivation are all unchanged. Ships together with the matching
+  `bridge` change (see its CHANGELOG) — envelopes are not wire-compatible
+  across the version gap.
+
 ### Added — smooth thread-delete animation
 - Deleting a conversation now animates the tile out instead of making it vanish
   abruptly. On confirm, the card dims and floats the app's shape-morphing

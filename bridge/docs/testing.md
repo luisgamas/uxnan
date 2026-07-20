@@ -71,7 +71,12 @@ Handshake transcript encoding (`buildHandshakeTranscript` — hex for byte field
 decimal for ints, `sessionId` raw, in order); HKDF salt = raw
 `clientNonce || serverNonce`, info `uxnan-e2ee-v1`; `SecureEnvelope` (`nonce` hex,
 `ciphertext`/`tag` base64; phone `seq` 1-based; replay = reject `seq <= lastApplied`);
-pairing QR = Base64 of the UTF-8 JSON.
+envelope AAD (`buildEnvelopeAad` in `secure-channel.ts` — `sessionId` UTF-8 ||
+`0x00` || `seq` as big-endian u64 || `0x00` || direction byte, `0x01`
+phone→bridge / `0x02` bridge→phone — authenticates `sessionId`/`seq`/direction
+without encrypting them, so tampering any of them or reflecting a message from
+the other direction now fails the GCM tag; see `secure-channel.test.ts` for the
+reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
 
 ## 3. Validating agent adapters
 
