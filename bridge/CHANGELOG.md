@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Tests
+- Add direct unit tests for the workspace path-traversal guard (`resolveWithinRoot` / `isSensitiveName` in `src/workspace/path-guard.ts`), covering every escape branch (parent, multi-level, absolute-outside-root), the `.git` rejection (leading and nested segment) and every `SENSITIVE_PATTERNS` entry — previously only one traversal case was exercised, and only indirectly through a handler test.
+
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 
