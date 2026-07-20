@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import * as Select from "$lib/components/ui/select";
   import { app } from "$lib/state/app.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
@@ -65,6 +66,7 @@
 
   // Custom logo: pick an image, store it inline (data URL) on `agent.icon`.
   let fileInput = $state<HTMLInputElement>();
+  let processingLogo = $state(false);
   const hasCustomLogo = $derived(isCustomLogo(agent.icon));
 
   async function onPickLogo(e: Event) {
@@ -72,11 +74,14 @@
     const file = input.files?.[0];
     input.value = ""; // allow re-picking the same file
     if (!file) return;
+    processingLogo = true;
     try {
       agent.icon = await fileToLogoDataUrl(file);
       onchange();
     } catch {
       // Ignore an unreadable/non-image file.
+    } finally {
+      processingLogo = false;
     }
   }
 
@@ -97,9 +102,14 @@
             type="button"
             class="flex size-7 items-center justify-center rounded-md border border-border/60 hover:bg-accent/50"
             aria-label={i18n.t("agentEditor.chooseLogo")}
+            disabled={processingLogo}
             onclick={() => fileInput?.click()}
           >
-            <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
+            {#if processingLogo}
+              <Spinner aria-label={i18n.t("common.loading")} />
+            {:else}
+              <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
+            {/if}
           </button>
         {/snippet}
       </TooltipSimple>
