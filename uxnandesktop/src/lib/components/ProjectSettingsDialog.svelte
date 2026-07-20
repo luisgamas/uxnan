@@ -6,6 +6,7 @@
   // committed on Save.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
   import { repoRemoteOwner, revealPath } from "$lib/api";
@@ -163,7 +164,12 @@
     </div>
 
     <Dialog.Footer>
-      <Button disabled={busy || !dirty} onclick={saveName}>{i18n.t("common.save")}</Button>
+      <Button disabled={busy || !dirty} onclick={saveName}>
+        {#if busy}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {/if}
+        {i18n.t("common.save")}
+      </Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — asynchronous actions now show in-place progress
+
+- Added the shadcn-svelte `Spinner` primitive and a consistent pending-action
+  pattern: the control that started a longer filesystem, Git, GitHub, agent-hook,
+  theme, or project operation is disabled, keeps a stable compact footprint, and
+  shows an inline spinner with its existing localized progress label.
+- Applied the pattern to shared destructive confirmations and the create, add,
+  rename, save, import, stage/unstage, commit, push/pull, hook-management, and
+  GitHub action surfaces. Multi-action views now retain the pending operation's
+  identity so unrelated disabled controls do not appear to be running too.
+
 ## [0.0.18] - 2026-07-19
 
 ### Fixed — agent session resume now works end-to-end
@@ -207,7 +218,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   risked closing the whole dialog) to dismiss it; reopen the picker to add more.
   Implemented as an opt-in `closeOnSelect` on the shared `MultiSelect` component,
   enabled by `LauncherDialog`.
-
 ### Security — main-window CSP + an http(s)-only integrated browser (defense-in-depth)
 
 Two layered-defense hardenings around the webviews. Neither closes an active

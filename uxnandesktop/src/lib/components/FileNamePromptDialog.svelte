@@ -6,6 +6,7 @@
   // the field re-seeds from `initial` each time it opens.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
@@ -126,7 +127,12 @@
     </div>
 
     <Dialog.Footer>
-      <Button disabled={!canSubmit} onclick={submit}>{submitLabel}</Button>
+      <Button disabled={!canSubmit} onclick={submit}>
+        {#if busy}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {/if}
+        {submitLabel}
+      </Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

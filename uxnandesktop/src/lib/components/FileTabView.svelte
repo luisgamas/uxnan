@@ -14,6 +14,7 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import FileEditor from "./FileEditor.svelte";
@@ -122,7 +123,11 @@
             disabled={!fileState.dirty || fileState.saving}
             onclick={() => void fileState.save(fileState.content)}
           >
-            <SaveIcon data-icon="inline-start" />
+            {#if fileState.saving}
+              <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+            {:else}
+              <SaveIcon data-icon="inline-start" />
+            {/if}
             {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
           </Button>
         {/snippet}
