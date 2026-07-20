@@ -45,7 +45,10 @@ available today are:
 - **Parallel, isolated agents.** Every task gets its own git worktree, its own
   terminal workspace, and its own agent, so one agent's work never collides with
   another's, and switching between them is a single click rather than a `git
-  stash` / `git checkout` cycle.
+  stash` / `git checkout` cycle. Create a worktree on a **new branch** (with an
+  auto-name generator) or by **checking out any existing local or remote branch**,
+  and optionally pick a **custom location** — the automatic sibling folder is used
+  otherwise.
 - **A sidebar you can order your way.** Sort the project cards and the worktree
   rows independently — manually (**drag to reorder**), by name, by most-recent, or
   by **agent activity** (workspaces whose agents are blocked/waiting bubble to the
@@ -58,9 +61,10 @@ available today are:
   `portable-pty` and xterm.js.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
-  diffs, squash-merged branch cleanup on worktree removal, WSL repositories routed
-  through `wsl.exe`, and optional **AI-generated commit messages** drafted by a
-  local CLI agent from your staged diff.
+  diffs, **opt-in local/remote branch cleanup on worktree removal** (worktree-only
+  by default, with a squash-merge safety net), WSL repositories routed through
+  `wsl.exe`, and optional **AI-generated commit messages** drafted by a local CLI
+  agent from your staged diff.
 - **Open with your editor.** An **"Open with →"** entry on the project, worktree and
   file-tree menus launches the folder or file in an external editor or IDE — VS Code,
   Cursor, Windsurf, Zed, Sublime Text, the JetBrains IDEs and more are detected
