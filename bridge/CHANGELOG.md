@@ -32,6 +32,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   *some* open window (needs coordinated mobile work), and arming a hidden daemon
   for the QR-**scan** path (a scanned QR never calls `/pair/resolve`; pair with
   the manual code there).
+- Bound the pairing-code service's per-IP rate-limit map (`PairingCodeService`
+  `#rate`) against unbounded memory growth from IP rotation — trivial over an
+  allocated IPv6 /64 — which previously grew the map by one entry per new
+  source address forever, turning the anti-brute-force control into a memory
+  sink. `rateLimited` now sweeps expired entries whenever it opens a new window
+  for an IP, and enforces a hard `rateMaxKeys` cap (default 10,000; oldest
+  entry evicted first) as a backstop against a burst of still-unexpired IPs. A
+  single IP's own throttling budget is unaffected. Covered by 3 new tests in
+  `test/pairing/pairing-code-service.test.ts` (single-IP throttling preserved,
+  the map never exceeds `rateMaxKeys`, expired entries are swept instead of
+  accumulating).
+
+### Fixed
+- Back off the relay reconnect loop when a session ends almost immediately
+  (relay accept-then-close, a bounce, or the session already being taken).
+  Previously only a `dial()` rejection was delayed (`RELAY_RECONNECT_DELAY_MS`);
+  an accepted-then-closed session re-dialed with zero delay, so a bouncing relay
+  could drive the bridge into a tight, CPU-spinning reconnect loop. The loop now
+  applies a capped exponential backoff (`nextRelayBackoff` in `src/bridge.ts`,
+  base 2s / cap 30s) after any session shorter than 3s, and resets to the base
+  delay once a session actually carries a phone. Covered by
+  `test/transport/relay-backoff.test.ts` (5 tests).
+
+### Tests
+- Add direct unit tests for the workspace path-traversal guard (`resolveWithinRoot` / `isSensitiveName` in `src/workspace/path-guard.ts`), covering every escape branch (parent, multi-level, absolute-outside-root), the `.git` rejection (leading and nested segment) and every `SENSITIVE_PATTERNS` entry — previously only one traversal case was exercised, and only indirectly through a handler test.
 
 ## [0.0.8-alpha.20260719] - 2026-07-19
 

@@ -3,6 +3,7 @@
  */
 export {
   RelayServer,
+  RateLimiter,
   type RelayServerHandle,
   type RelayServerOptions,
   type RelayRateLimits,

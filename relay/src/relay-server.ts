@@ -69,28 +69,66 @@ export interface RelayServerHandle {
   close(): Promise<void>;
 }
 
-/** Fixed-window per-key rate limiter. */
-class RateLimiter {
+/**
+ * Fixed-window per-key rate limiter, bounded against unbounded key growth.
+ *
+ * Keying by source IP (`ipOf`) means an attacker rotating addresses — trivial
+ * over an allocated IPv6 /64 — would otherwise grow `#windows` by one entry
+ * per new address forever, turning an anti-abuse control into a memory sink.
+ * `allow` therefore sweeps expired windows on every new-window insert and
+ * enforces a hard `maxKeys` cap (oldest entry evicted first) as a backstop
+ * against a burst of still-unexpired keys. Neither bound changes the budget
+ * for any single key: a legitimate, unrotated client is throttled exactly as
+ * before.
+ */
+export class RateLimiter {
   readonly #windows = new Map<string, { start: number; count: number }>();
   readonly #limit: number;
   readonly #now: () => number;
   readonly #windowMs: number;
+  readonly #maxKeys: number;
 
-  constructor(limit: number, now: () => number, windowMs = 60_000) {
+  constructor(limit: number, now: () => number, windowMs = 60_000, maxKeys = 10_000) {
     this.#limit = limit;
     this.#now = now;
     this.#windowMs = windowMs;
+    this.#maxKeys = maxKeys;
+  }
+
+  /** Number of keys currently tracked (bounded by `maxKeys`); exposed for tests. */
+  get size(): number {
+    return this.#windows.size;
   }
 
   allow(key: string): boolean {
     const now = this.#now();
-    const window = this.#windows.get(key);
-    if (!window || now - window.start >= this.#windowMs) {
+    const existing = this.#windows.get(key);
+    if (!existing || now - existing.start >= this.#windowMs) {
+      this.#sweep(now);
+      this.#evictIfFull(key);
       this.#windows.set(key, { start: now, count: 1 });
       return true;
     }
-    window.count += 1;
-    return window.count <= this.#limit;
+    existing.count += 1;
+    return existing.count <= this.#limit;
+  }
+
+  /** Drop windows that have already expired — bounds the common case. */
+  #sweep(now: number): void {
+    for (const [k, w] of this.#windows) {
+      if (now - w.start >= this.#windowMs) this.#windows.delete(k);
+    }
+  }
+
+  /**
+   * Hard backstop against a burst of still-unexpired keys (e.g. rapid IP
+   * rotation within a single window): evict the oldest-inserted entry once at
+   * capacity. `Map` preserves insertion order, so the first key is the oldest.
+   */
+  #evictIfFull(nextKey: string): void {
+    if (this.#windows.size < this.#maxKeys || this.#windows.has(nextKey)) return;
+    const oldest = this.#windows.keys().next().value;
+    if (oldest !== undefined) this.#windows.delete(oldest);
   }
 }
 

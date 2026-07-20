@@ -51,6 +51,7 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_RATE_WINDOW_MS = 60 * 1000; // 1 minute
 const DEFAULT_RATE_MAX = 10; // attempts per window per IP
+const DEFAULT_RATE_MAX_KEYS = 10_000; // distinct-IP entries tracked before oldest is evicted
 
 /**
  * How long a LAN `qr_bootstrap` handshake is accepted after an operator action
@@ -73,6 +74,14 @@ export interface PairingCodeServiceOptions {
   /** Per-IP resolve-attempt window + cap (anti-brute-force). */
   rateWindowMs?: number;
   rateMax?: number;
+  /**
+   * Hard cap on distinct-IP rate-limit entries tracked at once. Bounds memory
+   * against an attacker rotating source addresses — trivial over an allocated
+   * IPv6 /64 — which would otherwise grow the rate-limit map by one entry per
+   * new address forever. The oldest entry is evicted once at capacity; a
+   * single IP's own throttling budget is unaffected. Default 10,000.
+   */
+  rateMaxKeys?: number;
   /**
    * Absolute path to persist the current code+expiry (e.g.
    * `~/.uxnan/pairing-code.json`). When set, the code is shared ACROSS processes
@@ -101,6 +110,7 @@ export class PairingCodeService {
   readonly #generateCode: () => string;
   readonly #rateWindowMs: number;
   readonly #rateMax: number;
+  readonly #rateMaxKeys: number;
   readonly #rate = new Map<string, RateEntry>();
   readonly #statePath: string | undefined;
 
@@ -122,7 +132,13 @@ export class PairingCodeService {
     this.#generateCode = options.generateCode ?? defaultGenerateCode;
     this.#rateWindowMs = options.rateWindowMs ?? DEFAULT_RATE_WINDOW_MS;
     this.#rateMax = options.rateMax ?? DEFAULT_RATE_MAX;
+    this.#rateMaxKeys = options.rateMaxKeys ?? DEFAULT_RATE_MAX_KEYS;
     this.#statePath = options.statePath;
+  }
+
+  /** Number of distinct-IP rate-limit entries tracked (bounded by `rateMaxKeys`); exposed for tests. */
+  get rateEntryCount(): number {
+    return this.#rate.size;
   }
 
   /**
@@ -243,11 +259,30 @@ export class PairingCodeService {
     const now = this.#now();
     const entry = this.#rate.get(ip);
     if (!entry || now >= entry.resetAt) {
+      this.#sweepRate(now);
+      this.#evictRateIfFull(ip);
       this.#rate.set(ip, { count: 1, resetAt: now + this.#rateWindowMs });
       return false;
     }
     entry.count += 1;
     return entry.count > this.#rateMax;
+  }
+
+  /** Drop rate-limit entries whose window has already elapsed. */
+  #sweepRate(now: number): void {
+    for (const [ip, entry] of this.#rate) {
+      if (now >= entry.resetAt) this.#rate.delete(ip);
+    }
+  }
+
+  /**
+   * Hard backstop against unbounded growth from IP rotation: evict the
+   * oldest-inserted entry once at capacity. `Map` preserves insertion order.
+   */
+  #evictRateIfFull(nextIp: string): void {
+    if (this.#rate.size < this.#rateMaxKeys || this.#rate.has(nextIp)) return;
+    const oldest = this.#rate.keys().next().value;
+    if (oldest !== undefined) this.#rate.delete(oldest);
   }
 }
 
