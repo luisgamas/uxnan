@@ -13,6 +13,7 @@ mod browse;
 mod browser;
 mod codex_trust;
 mod commands;
+mod editors;
 mod error;
 mod fonts;
 mod fs;
@@ -260,6 +261,9 @@ pub fn run() {
             commands::fs_read_file,
             commands::fs_read_data_url,
             commands::fs_write_file,
+            commands::fs_path_exists,
+            commands::term_buffers_get,
+            commands::term_buffers_set,
             commands::fs_rename,
             commands::fs_create_file,
             commands::fs_create_dir,
@@ -270,6 +274,9 @@ pub fn run() {
             commands::image_fetch_data_url,
             commands::fs_set_watch,
             commands::reveal_path,
+            commands::editors_detect,
+            commands::native_text_editor,
+            commands::open_in_editor,
             fonts::list_system_fonts,
             commands::open_url,
             commands::open_external,

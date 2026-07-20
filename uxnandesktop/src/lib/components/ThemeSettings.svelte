@@ -9,6 +9,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
@@ -203,6 +204,7 @@
   let pasteOpen = $state(false);
   let pasteText = $state("");
   let pasteKind: "theme" | "terminal" = "theme";
+  let importingKind = $state<"theme" | "terminal" | null>(null);
 
   function openPaste(kind: "theme" | "terminal") {
     pasteKind = kind;
@@ -214,6 +216,7 @@
   async function importFile(kind: "theme" | "terminal") {
     error = null;
     notice = null;
+    importingKind = kind;
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       // Multi-select: each file may itself carry one theme or a whole list.
@@ -229,6 +232,8 @@
       importRaws(kind, raws);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
+    } finally {
+      importingKind = null;
     }
   }
   /** Single-source paste import (one text blob that may hold one theme or a list). */
@@ -415,7 +420,14 @@
       <SettingsRow label={i18n.t("appearance.themesLabel")} description={i18n.t("appearance.themesRowDesc")}>
         {#snippet control()}
           <div class="flex flex-wrap items-center justify-end gap-1.5">
-            <Button variant="outline" size="sm" onclick={() => importFile("theme")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
+            <Button variant="outline" size="sm" disabled={importingKind !== null} onclick={() => importFile("theme")}>
+              {#if importingKind === "theme"}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {:else}
+                <UploadIcon data-icon="inline-start" />
+              {/if}
+              {i18n.t("appearance.import")}
+            </Button>
             <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
             <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
           </div>
@@ -475,7 +487,14 @@
       <SettingsRow label={i18n.t("appearance.themesLabel")} description={i18n.t("appearance.termThemesRowDesc")}>
         {#snippet control()}
           <div class="flex flex-wrap items-center justify-end gap-1.5">
-            <Button variant="outline" size="sm" onclick={() => importFile("terminal")}><UploadIcon data-icon="inline-start" />{i18n.t("appearance.import")}</Button>
+            <Button variant="outline" size="sm" disabled={importingKind !== null} onclick={() => importFile("terminal")}>
+              {#if importingKind === "terminal"}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {:else}
+                <UploadIcon data-icon="inline-start" />
+              {/if}
+              {i18n.t("appearance.import")}
+            </Button>
             <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
             <Button size="sm" onclick={newTermTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
           </div>

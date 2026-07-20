@@ -14,12 +14,16 @@
   import { revealPath } from "$lib/api";
   import { agentLogoKey } from "$lib/agentCatalog";
   import { resolveBinding } from "$lib/keybindings";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import KeyChord from "./KeyChord.svelte";
   import AgentLogo from "./AgentLogo.svelte";
+  import OpenWith from "./OpenWith.svelte";
   import AgentStatusDot from "./AgentStatusDot.svelte";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import MoonIcon from "@lucide/svelte/icons/moon";
+  import SunIcon from "@lucide/svelte/icons/sun";
   import BotIcon from "@lucide/svelte/icons/bot";
   import ActivityIcon from "@lucide/svelte/icons/activity";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
@@ -36,6 +40,7 @@
     onRemove,
     onChangeIcon,
     onTogglePin,
+    onSleep,
     pinned = false,
   }: {
     /** The worktree/project folder every action targets. */
@@ -50,6 +55,10 @@
     onChangeIcon?: () => void;
     /** When provided, adds a pin/unpin item (reorderable child worktrees only). */
     onTogglePin?: () => void;
+    /** When provided, adds a "Sleep workspace" item while the workspace has
+     *  live terminals (the caller owns the working-agent confirm). Waking is
+     *  handled here directly — it needs no confirmation. */
+    onSleep?: () => void;
     /** Whether the target is currently pinned (drives the item's label/icon). */
     pinned?: boolean;
   } = $props();
@@ -58,6 +67,9 @@
   const launchable = $derived(app.launchableAgents);
   // Agents currently running in this workspace (for the "Active agents" submenu).
   const activeAgents = $derived(terminals.agentTabs(path));
+  // Live-space state for the sleep/wake item.
+  const termCount = $derived(terminals.terminalCount(path));
+  const asleep = $derived(terminals.isWorkspaceAsleep(path));
 
   function profileLabel(name: string): string {
     return name.trim() || i18n.t("terminal.unnamedProfile");
@@ -137,6 +149,21 @@
 
   <ContextMenu.Separator />
 
+  {#if asleep}
+    <ContextMenu.Item class={text.menu} onclick={() => terminals.wakeWorkspace(path)}>
+      <SunIcon />
+      {i18n.t("workspace.wake")}
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+  {:else if onSleep && termCount > 0}
+    <ContextMenu.Item class={text.menu} onclick={onSleep}>
+      <MoonIcon />
+      {i18n.t("workspace.sleep")}
+      <KeyChord chord={resolveBinding("sleepWorkspace")} class="ml-auto pl-2" />
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+  {/if}
+
   {#if onTogglePin}
     <ContextMenu.Item class={text.menu} onclick={onTogglePin}>
       {#if pinned}
@@ -150,10 +177,7 @@
     <ContextMenu.Separator />
   {/if}
 
-  <!-- FOR-DEV: add an "Open with" submenu (external text editors / IDEs) + a
-       customizable editor list here, once an external-editor registry and a
-       backend "open path in app" command exist. Only reveal-in-file-manager
-       ships today. See FOR-DEV.md → Workspace / context menu. -->
+  <OpenWith menu={ContextMenu} {path} />
   <ContextMenu.Item class={text.menu} onclick={() => void revealPath(path)}>
     <FolderOpenIcon />
     {i18n.t("ctx.reveal")}
@@ -163,7 +187,9 @@
     {i18n.t("common.copyPath")}
   </ContextMenu.Item>
   {#if onChangeIcon}
-    <ContextMenu.Item class={text.menu} onclick={onChangeIcon}>
+    <!-- Defer the dialog open until this context menu has fully closed, so its
+         teardown releases the body pointer-lock before the dialog captures it. -->
+    <ContextMenu.Item class={text.menu} onclick={() => deferModalOpen(onChangeIcon)}>
       <ImageIcon />
       {i18n.t("worktree.changeIcon")}
     </ContextMenu.Item>
@@ -189,7 +215,7 @@
   {#if onRemove}
     <ContextMenu.Separator />
 
-    <ContextMenu.Item variant="destructive" class={text.menu} onclick={onRemove}>
+    <ContextMenu.Item variant="destructive" class={text.menu} onclick={() => deferModalOpen(onRemove)}>
       <Trash2Icon />
       {removeLabel}
     </ContextMenu.Item>

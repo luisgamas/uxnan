@@ -14,6 +14,7 @@ import {
   ping,
   quickCommandsSet,
   setAgentCommands,
+  termBuffersGet,
   updateSettings,
 } from "$lib/api";
 import { i18n } from "$lib/i18n";
@@ -69,7 +70,8 @@ export type SettingsSection =
   | "hooks"
   | "terminal"
   | "updates"
-  | "browser";
+  | "browser"
+  | "openWith";
 
 /** A pane in the GitHub section (also the deep-link target of `openGitHub`). */
 export type GithubSection =
@@ -276,7 +278,15 @@ class AppStore {
       this.quickCommands = data.quickCommands ?? [];
       this.backend = "ready";
       this.errorMessage = null;
-      terminals.restore(data.terminalLayout ?? null);
+      // Load the scrollback sidecar BEFORE restoring the layout, so the first
+      // terminal mounts can replay their previous session's screen.
+      let buffers: Record<string, string> | null = null;
+      try {
+        buffers = await termBuffersGet();
+      } catch {
+        buffers = null;
+      }
+      terminals.restore(data.terminalLayout ?? null, buffers);
       restored = true;
       // Re-attach the orchestration engine to its durable runs (spec 02d §3).
       orchestrationRun.hydrate(data.orchestrationRuns ?? null);
@@ -332,10 +342,19 @@ class AppStore {
         closing = true;
         event.preventDefault(); // hold the close while we flush
         try {
-          await flushAll();
+          // Bound the wait so the window ALWAYS closes: `flushAll` already
+          // contains a *throw* (`allSettled`), but a flush whose backend `invoke`
+          // never resolves would otherwise leave `destroy()` (in the `finally`)
+          // unreached and trap the window open. Race the flush against a short
+          // deadline — the normal case resolves in a few ms; a stalled write
+          // costs at most this wait, never the close.
+          await Promise.race([
+            flushAll(),
+            new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+          ]);
         } finally {
-          // Always close, even if a flush threw — never trap the user in an
-          // unclosable window; the cost is a lost write in that rare case.
+          // Always close, even if a flush threw or stalled — never trap the user
+          // in an unclosable window; the cost is a lost write in that rare case.
           await win.destroy();
         }
       });

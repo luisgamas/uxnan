@@ -44,9 +44,45 @@ function coords() {
   };
 }
 
+// Last session identity seen on any event payload (Pi resumes by session file:
+// `pi --session <path|id>`). Extracted best-effort across the payload spellings
+// Pi has used; rides every subsequent report so the ADE can offer the resume.
+let lastSession = null;
+
+function noteSession(e) {
+  if (!e || typeof e !== "object") return;
+  // Only EXPLICIT session spellings — a generic `.id` on a tool/message payload
+  // must never be mistaken for a session id. `.id`/`.file`/`.path` are trusted
+  // only nested under a dedicated `session` object.
+  const nested = e.session && typeof e.session === "object" ? e.session : null;
+  const id =
+    e.session_id ||
+    e.sessionId ||
+    e.sessionID ||
+    (nested && (nested.session_id || nested.sessionId || nested.sessionID || nested.id));
+  const file =
+    e.session_file ||
+    e.sessionFile ||
+    (nested && (nested.session_file || nested.sessionFile || nested.file || nested.path));
+  if (typeof id === "string" && id) {
+    lastSession = { session_id: id, session_file: typeof file === "string" ? file : undefined };
+  } else if (typeof file === "string" && file) {
+    lastSession = {
+      session_id: lastSession ? lastSession.session_id : undefined,
+      session_file: file,
+    };
+  }
+}
+
 function post(event, source) {
   const { url, token, agentId } = coords();
   if (!url || !agentId || !event) return;
+  if (lastSession) {
+    source = Object.assign({}, source, {
+      session_id: lastSession.session_id,
+      session_file: lastSession.session_file,
+    });
+  }
   let parsed;
   try {
     parsed = new URL(url);
@@ -110,10 +146,27 @@ const HANDLERS = {
 /** Register every handler on the Pi extension API, ignoring events it doesn't offer. */
 function register(pi) {
   if (!pi || typeof pi.on !== "function") return;
+  // Session identity: sniff every payload we see, and also subscribe to the
+  // session lifecycle events (when this Pi version offers them) whose whole
+  // job is announcing the session file/id.
+  for (const ev of ["session_start", "session_switched"]) {
+    try {
+      pi.on(ev, (payload) => {
+        try {
+          noteSession(payload);
+        } catch {
+          /* never break the agent */
+        }
+      });
+    } catch {
+      // Event not offered by this Pi version — skip it.
+    }
+  }
   for (const [event, handler] of Object.entries(HANDLERS)) {
     try {
       pi.on(event, (payload) => {
         try {
+          noteSession(payload);
           handler(payload);
         } catch {
           /* never break the agent */

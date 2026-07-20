@@ -21,6 +21,22 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
+/// Wire ids of agents hidden from the new-conversation picker even when the
+/// connected bridge advertises them via `agent/list`. The bridge is the sole
+/// source of truth for which agents exist; this set is only a client-side
+/// curtain drawn over that list.
+///
+///  * `echo`       — the built-in dev/reference agent, never a real choice.
+///  * `gemini-cli` — Google deprecated the standalone Gemini CLI in favour of
+///    the Antigravity CLI (`agy`). We hide it here instead of ripping the
+///    wiring out, so the whole Gemini stack (the [AgentId] value + wire id, its
+///    logo, label and brand colour) stays in place and can be re-enabled in one
+///    line.
+///
+/// To bring Gemini back into the picker, simply delete the `'gemini-cli'` entry
+/// below — nothing else on the mobile side needs to change.
+const Set<String> _hiddenAgentIds = {'echo', 'gemini-cli'};
+
 /// Full-screen Material 3 dialog to start a new conversation: pick the working
 /// directory, compare the available agents directly, choose an optional model,
 /// and optionally create a worktree. The descriptive headline lives in the
@@ -267,9 +283,12 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                       error: (_, __) =>
                           _Error(message: l10n.newThreadLoadFailed),
                       data: (items) {
-                        // Hide the built-in Echo dev agent — not a real agent.
-                        final visible =
-                            items.where((a) => a.agentId != 'echo').toList();
+                        // Curtain over the bridge's agent list (see
+                        // [_hiddenAgentIds]): hides the Echo dev agent and the
+                        // deprecated Gemini CLI.
+                        final visible = items
+                            .where((a) => !_hiddenAgentIds.contains(a.agentId))
+                            .toList();
                         if (visible.isEmpty) {
                           return _Empty(message: l10n.newThreadNoAgents);
                         }

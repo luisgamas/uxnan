@@ -670,3 +670,60 @@ test('command invocation without an expander: the agent runs the native /name ar
   assert.equal(adapter.lastText, '/compact');
   await rm(baseDir, { recursive: true, force: true });
 });
+
+/** ControlledAdapter that can also stream deltas and (flagged) blocks. */
+class StreamingAdapter extends ControlledAdapter {
+  delta(threadId: string, turnId: string, text: string): void {
+    this.emit({ type: 'delta', threadId, turnId, data: { text } });
+  }
+  block(threadId: string, turnId: string, content: unknown, beforeText?: boolean): void {
+    this.emit({
+      type: 'block',
+      threadId,
+      turnId,
+      data: { content, ...(beforeText ? { beforeText } : {}) },
+    });
+  }
+}
+
+baseTest('a beforeText block is stored before the open run and flagged on the wire', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-btx-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const notifications: { method: string; params?: Record<string, unknown> }[] = [];
+  const manager = new AgentManager({
+    store,
+    notify: (m) => notifications.push(m as { method: string; params?: Record<string, unknown> }),
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new StreamingAdapter();
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'go');
+  adapter.delta(thread.id, turnId, 'y si re');
+  // a parallel-activity block lands while the text run is open…
+  adapter.block(thread.id, turnId, { type: 'tool', name: 'Read' }, true);
+  adapter.delta(thread.id, turnId, 'porta');
+  // …and a sequential one after (no flag)
+  adapter.block(thread.id, turnId, { type: 'tool', name: 'Bash' });
+  adapter.complete(thread.id, turnId, 'y si reporta');
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+
+  // Stored order: the open run stayed whole, the flagged block sits before it.
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'tool', name: 'Read' },
+    { type: 'text', text: 'y si reporta' },
+    { type: 'tool', name: 'Bash' },
+  ]);
+  // Wire: the flag rides only on the flagged block's notification, so the
+  // phone's live buffer applies the identical placement.
+  const blockNotes = notifications.filter((n) => n.method === StreamNotification.ContentBlock);
+  assert.equal(blockNotes.length, 2);
+  assert.equal(blockNotes[0]?.params?.['beforeText'], true);
+  assert.equal('beforeText' in (blockNotes[1]?.params ?? {}), false);
+
+  await rm(baseDir, { recursive: true, force: true });
+});

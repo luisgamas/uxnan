@@ -407,12 +407,25 @@ en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vist
 | `fs_write_file(path, content)` | Sobrescribe un archivo (atómico: temp + rename). |
 | `git_diff_head(path, file)` | Diff working-tree-vs-`HEAD` de un archivo, para el medianil del editor. |
 | `reveal_path(path)` | Revela una ruta en el explorador de archivos del SO (plugin opener). |
+| `editors_detect()` | Detecta los editores/IDEs GUI instalados (sonda `which` en el `PATH` **+** un escaneo por SO de rutas de instalación —Windows: `Program Files`/perfil; macOS: `.app` en `/Applications`), para los menús **«Abrir con»**. |
+| `native_text_editor()` | El editor de texto nativo del SO (Notepad / TextEdit / uno detectado en Linux), ofrecido para archivos de texto. |
+| `open_in_editor(command, args, path)` | Abre una ruta (carpeta o archivo) en un editor externo: `command` + `args` + la ruta al final; en Windows un `.exe` se lanza directo y **sin ventana**, un nombre de CLI (`.cmd`/`.bat`) vía `cmd /C` sin ventana; en macOS `open -a`, directo en el resto. |
 | `fs_set_watch(path?)` | Apunta (o limpia) el watcher de filesystem al worktree activo; emite `fs:changed` al crearse/eliminarse/editarse archivos. |
 | `git_numstat(path)` | Líneas añadidas/eliminadas por archivo vs `HEAD` (`+a −d` en la lista de cambios). |
 
 La barra de la pestaña Archivos ofrece además: **búsqueda/filtro** por nombre,
 **contraer/expandir todas** las carpetas, **abrir en el explorador del SO**
-(`reveal_path`) y actualizar. Los atajos de teclado de la app son configurables
+(`reveal_path`) y actualizar. Los menús de la tarjeta de proyecto (⋯), del
+clic-derecho sobre ramas/worktrees y de cada entrada del árbol —además del menú
+«Más acciones» de la pestaña Archivos— incluyen **«Abrir con»** para lanzar la
+carpeta/archivo en un editor externo: los editores instalados se detectan solos
+(`editors_detect`, incluso sin CLI en el `PATH`) y se lanzan con `open_in_editor`;
+para archivos de **texto** también se ofrece el editor nativo del SO
+(`native_text_editor`). **Configuración → Abrir con** (`AppSettings.openWith`)
+permite ocultar detectados, **explorar** el equipo para añadir cualquier app
+(selector nativo, `@tauri-apps/plugin-dialog`), añadir editores personalizados y
+fijar el **icono** de cada editor (favicon automático o imagen/glifo propio).
+Los atajos de teclado de la app son configurables
 en **Configuración → Atajos de teclado** (`AppSettings.keybindings`,
 `keybindings.ts`); p. ej. `Ctrl/Cmd+W` cierra la pestaña activa del área central
 (con la guarda de cambios sin guardar si es un archivo sucio).

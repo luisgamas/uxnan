@@ -8,6 +8,7 @@
   // (terminals ↔ agents ↔ worktree) is preserved.
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import MultiSelect from "./MultiSelect.svelte";
@@ -277,6 +278,7 @@
           addLabel={i18n.t("launcher.whatAdd")}
           searchPlaceholder={i18n.t("launcher.whatSearch")}
           emptyText={i18n.t("launcher.noResults")}
+          closeOnSelect
           itemPrefix={openPrefix}
         />
         {#if !launchable.length}
@@ -301,6 +303,9 @@
         {i18n.t("agent.configure")}
       </button>
       <Button onclick={submit} disabled={!canSubmit || busy || (isNew && loadingBranches)}>
+        {#if busy}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {/if}
         {busy ? i18n.t("common.creating") : primaryLabel}
       </Button>
     </Dialog.Footer>

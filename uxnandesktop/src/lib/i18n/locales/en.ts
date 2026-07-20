@@ -153,6 +153,22 @@ export const en = {
   "worktree.aheadTooltip": "ahead of upstream",
   "worktree.behindTooltip": "behind upstream",
   "worktree.runningTooltip": "{n} terminal(s) running",
+  "worktree.asleepTooltip": "{n} terminal(s) asleep",
+
+  // Workspace sleep/wake
+  "workspace.sleep": "Sleep workspace",
+  "workspace.wake": "Wake workspace",
+  "workspace.sleepBlockedTitle": "Sleep this workspace?",
+  "workspace.sleepBlockedDesc":
+    "Agents are still working here: {agents}. Sleeping stops their processes; the workspace keeps its tabs and can be woken later.",
+  "workspace.sleepAnyway": "Sleep anyway",
+  "workspace.sleepBlockedToast":
+    "An agent is still working here — sleep it from the worktree's menu to confirm.",
+  "terminal.asleep": "Workspace asleep — processes stopped",
+  "terminal.restoredScrollback": "restored scrollback — shell restarted",
+  "shortcuts.sleepWorkspace": "Sleep workspace",
+  "shortcuts.sleepWorkspaceDesc":
+    "Stop the active workspace's terminals (keeping tabs and scrollback) to free resources.",
 
   // New-worktree dialog
   "newWorktree.title": "New worktree",
@@ -341,6 +357,33 @@ export const en = {
   "settings.browser": "Browser",
   "settings.browserDesc":
     "A lightweight in-app browser to preview and debug what your agents build, and to open the links they create.",
+  "settings.openWith": "Open with",
+  // Open with (external editors/IDEs)
+  "openWith.label": "Open with",
+  "openWith.none": "No editors found",
+  "openWith.detecting": "Detecting editors…",
+  "openWith.manage": "Manage editors…",
+  "openWith.settingsTitle": "Open with",
+  "openWith.settingsDesc":
+    "Choose which external editors and IDEs appear in the “Open with” menus on projects, worktrees and files.",
+  "openWith.settingsHint":
+    "Detected editors are found automatically on your PATH; add any other program below.",
+  "openWith.refresh": "Refresh",
+  "openWith.detected": "Detected editors",
+  "openWith.noneDetected": "No known editors were detected on this machine.",
+  "openWith.custom": "Custom editors",
+  "openWith.addEditor": "Add editor",
+  "openWith.browse": "Browse…",
+  "openWith.browseTitle": "Choose an application",
+  "openWith.applications": "Applications",
+  "openWith.customEmpty": "No custom editors yet.",
+  "openWith.changeIcon": "Change icon",
+  "openWith.iconTitle": "Editor icon",
+  "openWith.namePlaceholder": "Name (e.g. My Editor)",
+  "openWith.commandPlaceholder": "Command (e.g. code)",
+  "openWith.argsPlaceholder": "Arguments (optional)",
+  "openWith.customHint":
+    "The target file or folder is passed as the last argument. Use a command on your PATH or an absolute path.",
   "settings.aiCommit": "AI commit message",
   "settings.aiCommitDesc":
     "Optionally draft commit messages from your staged changes with a local CLI agent. Off by default; nothing runs until you enable it and pick an agent.",

@@ -50,7 +50,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::TcpListener;
 
-use crate::model::{AgentReport, AgentStatus, SubagentEntry};
+use crate::model::{AgentReport, AgentSession, AgentStatus, SubagentEntry};
 use crate::state::{AppState, HookServerInfo};
 
 /// Header carrying the shared secret that authorizes a hook report.
@@ -369,6 +369,11 @@ pub struct AgentStatusEvent {
     pub interrupted: bool,
     pub summary: Option<String>,
     pub subagents: Vec<SubagentEntry>,
+    /// Provider session identity (latest captured) — the frontend stamps it on
+    /// the owning tab so restore/wake can resume the CLI's own session. This
+    /// field MUST mirror the cache: omitting it here is exactly the bug that
+    /// silently disabled resume while the cache captured perfectly.
+    pub session: Option<AgentSession>,
     pub first_seen: i64,
     pub last_update: i64,
 }
@@ -386,6 +391,7 @@ fn emit_agent_status(app: &AppHandle, entry: crate::model::AgentStateEntry) {
             interrupted: entry.interrupted,
             summary: entry.summary,
             subagents: entry.subagents,
+            session: entry.session,
             first_seen: entry.first_seen,
             last_update: entry.last_update,
         },
@@ -724,6 +730,9 @@ async fn handle_hook(
     }
 
     let now = now_secs();
+    // Provider session identity (for resume) — most events repeat it; a miss
+    // never clears an id captured earlier (see `upsert_agent_state`).
+    let session = source.and_then(|s| extract_session(s, now));
     let state = ctx.app.state::<AppState>();
     let entry = {
         let mut data = state.data.write().await;
@@ -736,6 +745,7 @@ async fn handle_hook(
                 tool,
                 interrupted,
                 summary,
+                session,
             },
             now,
         );
@@ -746,6 +756,62 @@ async fn handle_hook(
 
     emit_agent_status(&ctx.app, entry);
     StatusCode::NO_CONTENT
+}
+
+/// Field names providers use for their session id, across the wired agents
+/// (Claude/Gemini: `session_id`; OpenCode plugin: `sessionID`; other spellings
+/// kept for robustness — the value is sanitized regardless of its source).
+const SESSION_ID_KEYS: [&str; 6] = [
+    "session_id",
+    "sessionID",
+    "sessionId",
+    "session-id",
+    "conversation_id",
+    "conversation-id",
+];
+/// Field names carrying a session/transcript FILE path (Pi resumes by file;
+/// Claude's transcript file is named separately from its session id).
+const SESSION_FILE_KEYS: [&str; 3] = ["session_file", "sessionFile", "transcript_path"];
+
+/// Sanitize a provider-supplied session id. The id later reaches a command
+/// line (the resume command is pre-typed into a shell), so it is validated as
+/// hostile input at ingestion: bounded length, no leading dash (option
+/// injection), and a conservative charset covering every observed provider id
+/// format (UUIDs and friends). Anything else is dropped, never "fixed".
+fn sanitize_session_id(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() || s.len() > 256 || s.starts_with('-') {
+        return None;
+    }
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':'))
+    {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// Extract the provider session identity from a raw hook payload, if present
+/// and sane. The file path (when reported) is stored verbatim apart from a
+/// length/control-character bound — it is only ever passed as a single argv
+/// element, never interpolated.
+fn extract_session(source: &serde_json::Value, now: i64) -> Option<AgentSession> {
+    let id = SESSION_ID_KEYS
+        .iter()
+        .find_map(|k| source.get(k).and_then(|v| v.as_str()))
+        .and_then(sanitize_session_id)?;
+    let file = SESSION_FILE_KEYS
+        .iter()
+        .find_map(|k| source.get(k).and_then(|v| v.as_str()))
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 512 && !s.chars().any(char::is_control))
+        .map(String::from);
+    Some(AgentSession {
+        id,
+        file,
+        captured_at: now,
+    })
 }
 
 /// Parse a lifecycle-state string into an [`AgentStatus`] (case-insensitive).
@@ -812,6 +878,97 @@ mod tests {
     #[test]
     fn now_secs_is_positive() {
         assert!(now_secs() > 0);
+    }
+
+    #[test]
+    fn status_event_payload_carries_the_session() {
+        // Regression pin: the broadcast event must mirror the cached entry's
+        // session — dropping it here silently disables resume everywhere while
+        // the backend cache keeps capturing (the frontend stamps tabs from
+        // this event, never from the cache).
+        let event = AgentStatusEvent {
+            agent_id: "a1".into(),
+            status: AgentStatus::Working,
+            agent_type: Some("claude".into()),
+            prompt: None,
+            tool: None,
+            interrupted: false,
+            summary: None,
+            subagents: Vec::new(),
+            session: Some(AgentSession {
+                id: "s-99".into(),
+                file: None,
+                captured_at: 5,
+            }),
+            first_seen: 1,
+            last_update: 5,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"session\""));
+        assert!(json.contains("s-99"));
+    }
+
+    #[test]
+    fn extract_session_reads_each_provider_spelling() {
+        // Claude/Gemini: session_id (+ Claude's separately-named transcript).
+        let claude = json!({
+            "session_id": "3f9a1c2e-1111-2222-3333-444455556666",
+            "transcript_path": "C:/Users/dev/.claude/projects/x/t.jsonl",
+            "hook_event_name": "Stop"
+        });
+        let s = extract_session(&claude, 7).expect("claude session");
+        assert_eq!(s.id, "3f9a1c2e-1111-2222-3333-444455556666");
+        assert_eq!(
+            s.file.as_deref(),
+            Some("C:/Users/dev/.claude/projects/x/t.jsonl")
+        );
+        assert_eq!(s.captured_at, 7);
+        // OpenCode plugin: sessionID, no file.
+        let oc = json!({ "sessionID": "ses_01J0ABC" });
+        assert_eq!(extract_session(&oc, 1).expect("opencode").id, "ses_01J0ABC");
+        // Codex: golden shape captured from a real intercepted hook payload —
+        // `session_id` + rollout `transcript_path` ride every lifecycle event,
+        // so capture needs no Codex-specific wiring (`codex resume <id>`).
+        let codex = json!({
+            "session_id": "019f77df-f3e1-7bd2-91bf-d32de3b44b26",
+            "turn_id": "019f77df-f6d4-7d31-b93a-d2296a3fe117",
+            "transcript_path":
+                "C:\\Users\\dev\\.codex\\sessions\\2026\\07\\18\\rollout-x.jsonl",
+            "cwd": "C:\\Users\\dev\\repo",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "ok"
+        });
+        let cx = extract_session(&codex, 3).expect("codex session");
+        assert_eq!(cx.id, "019f77df-f3e1-7bd2-91bf-d32de3b44b26");
+        assert!(cx
+            .file
+            .as_deref()
+            .unwrap_or("")
+            .ends_with("rollout-x.jsonl"));
+        // No recognized key → None.
+        assert!(extract_session(&json!({ "prompt": "hi" }), 1).is_none());
+    }
+
+    #[test]
+    fn extract_session_rejects_hostile_ids() {
+        // Option injection, shell metacharacters, whitespace, oversized.
+        for bad in [
+            "-rm", "a b", "x;y", "x`y`", "x$(y)", "x|y", "x\"y", "x'y", "", " ",
+        ] {
+            assert!(
+                extract_session(&json!({ "session_id": bad }), 1).is_none(),
+                "id {bad:?} must be rejected"
+            );
+        }
+        let oversized = "a".repeat(257);
+        assert!(extract_session(&json!({ "session_id": oversized }), 1).is_none());
+        // A hostile FILE drops the file but keeps a good id.
+        let s = extract_session(
+            &json!({ "session_id": "ok-1", "session_file": "bad\u{0007}path" }),
+            1,
+        )
+        .expect("id survives");
+        assert_eq!(s.file, None);
     }
 
     #[test]
@@ -984,6 +1141,7 @@ mod tests {
             interrupted: false,
             summary: None,
             subagents: Vec::new(),
+            session: None,
             first_seen: 1,
             last_update: 2,
         };

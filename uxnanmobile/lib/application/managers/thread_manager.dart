@@ -14,6 +14,7 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -45,6 +46,7 @@ class ThreadManager {
     required IMessageRepository messageRepository,
     required Stream<DomainEvent> domainEvents,
     required RpcSend sendRequest,
+    Stream<ConnectionPhase>? connectionPhases,
     String? Function()? foregroundThreadId,
     Uuid? uuid,
     Duration resyncTimeout = const Duration(seconds: 8),
@@ -55,6 +57,7 @@ class ThreadManager {
         _uuid = uuid ?? const Uuid(),
         _resyncTimeout = resyncTimeout {
     _eventsSub = domainEvents.listen(_applyEvent);
+    _phaseSub = connectionPhases?.listen(_onConnectionPhase);
   }
 
   final IThreadRepository _threadRepository;
@@ -138,6 +141,27 @@ class ThreadManager {
   String? _activeThreadId;
   StreamSubscription<List<Message>>? _messagesSub;
   late final StreamSubscription<DomainEvent> _eventsSub;
+  StreamSubscription<ConnectionPhase>? _phaseSub;
+
+  /// Last observed connection phase, to detect transitions INTO connected.
+  ConnectionPhase? _lastPhase;
+
+  /// Re-syncs the active thread every time the channel (re)connects. The
+  /// bridge's catch-up replay is a bounded in-memory window (it evicts old
+  /// frames), so a long disconnection mid-turn can NOT be recovered from the
+  /// stream alone — only a `turn/list` re-pull restores the output produced
+  /// while the phone was away. This also covers the reconnect paths that don't
+  /// go through an app-lifecycle resume (a network blip with the screen on)
+  /// and retries a cold-start resync that timed out while the channel was
+  /// still coming up.
+  void _onConnectionPhase(ConnectionPhase phase) {
+    final was = _lastPhase;
+    _lastPhase = phase;
+    if (phase == ConnectionPhase.connected &&
+        was != ConnectionPhase.connected) {
+      unawaited(resyncActive());
+    }
+  }
 
   /// Reactive list of threads.
   Stream<List<Thread>> get threadsStream => _threadRepository.watchThreads();
@@ -652,15 +676,30 @@ class ThreadManager {
     // message. `activeTurnId` is the bridge's authoritative in-flight state
     // (absent after a bridge restart), so it never resurrects an ended turn.
     final activeTurnId = page.activeTurnId;
-    if (activeTurnId != null && _live[threadId]?.turnId != activeTurnId) {
-      // Seed the live buffer with the partial assistant output the bridge has
-      // already accumulated for this in-flight turn (it stores deltas as they
-      // stream — see AgentManager.#onEvent `appendDelta`), so the text the
-      // agent produced *before* we reconnected isn't lost. Without seeding, the
-      // buffer starts empty and only output that streams *after* the reconnect
-      // shows up — the earlier reply (e.g. "on it, let me check…") silently
-      // vanishes from the bubble even though the bridge still has it.
-      _live[threadId] = _seedLiveTurn(activeTurnId, page.turns);
+    if (activeTurnId != null) {
+      // Rebuild the live buffer from the bridge's accumulated record for this
+      // in-flight turn (it persists every delta/block BEFORE notifying — see
+      // AgentManager.#onEvent — so the snapshot is a superset of everything
+      // already streamed to this phone). Replacing UNCONDITIONALLY — even when
+      // we already track this turnId — is the fix for the reopen race: after a
+      // kill+reopen the first post-reconnect deltas re-create the buffer with
+      // only the new tail, and the old `turnId != activeTurnId` guard then
+      // skipped the seed, silently dropping everything the agent produced
+      // while the app was closed (the bridge's catch-up replay is a bounded
+      // window and cannot cover a long absence). Deltas that arrive after this
+      // snapshot append cleanly to its trailing run; `_finishTurn` +
+      // `_reconcileTurn` converge the final message to the bridge's exact
+      // record either way. The only case that keeps the current buffer is a
+      // snapshot page that doesn't contain the active turn at all (nothing to
+      // seed from).
+      final seeded = _seedLiveTurn(activeTurnId, page.turns);
+      final current = _live[threadId];
+      final tracking = current != null && current.turnId == activeTurnId;
+      if (!tracking ||
+          seeded.segments.isNotEmpty ||
+          seeded.thinking.isNotEmpty) {
+        _live[threadId] = seeded;
+      }
       _setActivity(threadId, ThreadActivity.running);
     }
     await _persistTurns(threadId, page.turns, trackLatestUsage: true);
@@ -1038,6 +1077,7 @@ class ThreadManager {
   Future<void> dispose() async {
     await _eventsSub.cancel();
     await _messagesSub?.cancel();
+    await _phaseSub?.cancel();
     await _timeline.close();
     await _resolvedModels.close();
     await _activity.close();
@@ -1067,7 +1107,13 @@ class ThreadManager {
 
     switch (event) {
       case TurnStartedEvent(:final turnId):
-        _live[threadId] = _LiveTurn(turnId: turnId);
+        // Never wipe a buffer we already hold for this same turn: the bridge
+        // emits `turn/started` once per turn, so a second one can only be the
+        // reconnect catch-up replay re-delivering it — after the re-sync may
+        // have just seeded the buffer with the turn's accumulated output.
+        if (_live[threadId]?.turnId != turnId) {
+          _live[threadId] = _LiveTurn(turnId: turnId);
+        }
         _setActivity(threadId, ThreadActivity.running);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case MessageDeltaEvent(:final turnId, :final delta):
@@ -1076,8 +1122,8 @@ class ThreadManager {
       case ThinkingDeltaEvent(:final turnId, :final delta):
         _ensureLive(threadId, turnId).thinking += delta;
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
-      case ContentBlockEvent(:final turnId, :final content):
-        _ensureLive(threadId, turnId).segments.add(content);
+      case ContentBlockEvent(:final turnId, :final content, :final beforeText):
+        _ensureLive(threadId, turnId).addBlock(content, beforeText: beforeText);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case TurnCompletedEvent(
           :final turnId,
@@ -1095,7 +1141,12 @@ class ThreadManager {
         // A reply landing in a thread the user isn't viewing is unread.
         if (threadId != _foregroundThreadId?.call()) _markUnread(threadId);
         unawaited(
-          _finishTurn(threadId, turnId, failed: false, finalText: text),
+          // After finalizing from the live buffer, reconcile the persisted
+          // message against the bridge's authoritative ordered record — the
+          // live view can be imperfect (a delta in transit during a re-sync, a
+          // re-attach that missed early blocks); the bridge's is not.
+          _finishTurn(threadId, turnId, failed: false, finalText: text)
+              .then((_) => _reconcileTurn(threadId, turnId)),
         );
       case TurnErrorEvent(:final turnId, :final message):
         unawaited(
@@ -1141,26 +1192,40 @@ class ThreadManager {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
     if (live == null) return;
-    // Normally the finalized message is the live buffer's interleaved text +
-    // work-log blocks. But if we re-attached to a turn already in flight
-    // (after reconnecting while backgrounded) the buffer may hold no streamed
-    // text — in that case fall back to the bridge's authoritative final
-    // [finalText] so the bubble is never empty/partial, keeping live blocks.
-    final liveHasText =
-        live.segments.any((c) => c is TextContent && c.text.isNotEmpty);
-    final baseContents =
-        (!liveHasText && finalText != null && finalText.isNotEmpty)
-            ? _assistantContents(
-                finalText,
-                live.thinking,
-                live.segments.where((c) => c is! TextContent).toList(),
-                streaming: false,
-              )
-            : _assistantContentsOrdered(
-                live.thinking,
-                live.segments,
-                streaming: false,
-              );
+    // The finalized message must carry the bridge's AUTHORITATIVE final text
+    // ([finalText], the full answer), never just whatever the live buffer
+    // happened to catch — a buffer rebuilt after a mid-turn reconnect may hold
+    // only the post-reconnect tail. Reconcile the two:
+    //  - buffer text == finalText → the live interleave is complete; keep it.
+    //  - buffer text is a strict PREFIX of finalText → only the tail was
+    //    missed; extend the trailing run so the interleave survives intact.
+    //  - anything else (buffer empty, or it holds only a mid-turn tail) → use
+    //    finalText with the live blocks (blocks-first); `_reconcileTurn` then
+    //    restores the bridge's exact interleave right after.
+    final liveText =
+        live.segments.whereType<TextContent>().map((t) => t.text).join();
+    final List<MessageContent> baseContents;
+    if (finalText == null || finalText.isEmpty || liveText == finalText) {
+      baseContents = _assistantContentsOrdered(
+        live.thinking,
+        live.segments,
+        streaming: false,
+      );
+    } else if (liveText.isNotEmpty && finalText.startsWith(liveText)) {
+      live.appendText(finalText.substring(liveText.length));
+      baseContents = _assistantContentsOrdered(
+        live.thinking,
+        live.segments,
+        streaming: false,
+      );
+    } else {
+      baseContents = _assistantContents(
+        finalText,
+        live.thinking,
+        live.segments.where((c) => c is! TextContent).toList(),
+        streaming: false,
+      );
+    }
     // On a failed turn, surface the bridge's error text as an inline error
     // banner so the user sees *why* the turn ended (e.g. a quota / "usage
     // balance exhausted" error) instead of the "responding…" cue just
@@ -1193,6 +1258,32 @@ class ThreadManager {
       _rebuildActiveTimeline();
     }
     await _messageRepository.saveMessage(finalized);
+  }
+
+  /// Re-pulls one just-completed turn (`turn/read`) and reconciles the locally
+  /// persisted assistant message against the bridge's authoritative record —
+  /// the bridge persists every delta/block in production order BEFORE
+  /// notifying, so its `segments` are exact even when the phone's live view
+  /// was not (output streamed while the app was closed, a delta in transit
+  /// during a re-sync). Runs through [_persistTurns], which rewrites the
+  /// stored message only when content or order actually differs. Best-effort:
+  /// a failure (older bridge, transient drop) keeps the local copy — the next
+  /// thread re-sync repairs it the same way.
+  Future<void> _reconcileTurn(String threadId, String turnId) async {
+    try {
+      final response = await _sendRequest('turn/read', {'turnId': turnId})
+          .timeout(_resyncTimeout);
+      final turn = response.result;
+      if (turn is! Map) return;
+      await _persistTurns(threadId, [turn], trackLatestUsage: false);
+      if (threadId == _activeThreadId) _rebuildActiveTimeline();
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn(
+        'turn/read reconcile failed (kept local)',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   /// Rebuilds the active timeline from persisted messages plus any in-flight
@@ -1436,6 +1527,20 @@ class _LiveTurn {
       segments[segments.length - 1] = TextContent(last.text + delta);
     } else {
       segments.add(TextContent(delta));
+    }
+  }
+
+  /// Adds a structured block. When [beforeText] is set (the block came from a
+  /// parallel/background activity while the main text was still streaming —
+  /// see `ContentBlockEvent.beforeText`) it is inserted BEFORE the trailing
+  /// open text run, so the run is never severed and the next delta keeps
+  /// extending it in place; otherwise it appends in arrival order.
+  void addBlock(MessageContent content, {bool beforeText = false}) {
+    final last = segments.isNotEmpty ? segments.last : null;
+    if (beforeText && last is TextContent) {
+      segments.insert(segments.length - 1, content);
+    } else {
+      segments.add(content);
     }
   }
 }

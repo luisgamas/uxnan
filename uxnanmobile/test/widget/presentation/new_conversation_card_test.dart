@@ -9,35 +9,37 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 
-Widget _wrap({required bool requiresLogin}) {
+Widget _wrap({required bool requiresLogin, List<AgentDescriptor>? agents}) {
   return ProviderScope(
     overrides: [
       projectsProvider.overrideWith(
         (ref) async => const [Project(id: 'p1', name: 'App', cwd: '/app')],
       ),
       agentsProvider.overrideWith(
-        (ref) async => const [
-          AgentDescriptor(
-            agentId: 'codex',
-            displayName: 'Codex',
-            available: true,
-            capabilities: AgentCapabilities(
-              planMode: true,
-              streaming: true,
-              approvals: true,
-              images: true,
-            ),
-          ),
-          AgentDescriptor(
-            agentId: 'claude-code',
-            displayName: 'Claude Code',
-            available: true,
-            capabilities: AgentCapabilities(
-              planMode: true,
-              forking: true,
-            ),
-          ),
-        ],
+        (ref) async =>
+            agents ??
+            const [
+              AgentDescriptor(
+                agentId: 'codex',
+                displayName: 'Codex',
+                available: true,
+                capabilities: AgentCapabilities(
+                  planMode: true,
+                  streaming: true,
+                  approvals: true,
+                  images: true,
+                ),
+              ),
+              AgentDescriptor(
+                agentId: 'claude-code',
+                displayName: 'Claude Code',
+                available: true,
+                capabilities: AgentCapabilities(
+                  planMode: true,
+                  forking: true,
+                ),
+              ),
+            ],
       ),
       agentModelsProvider.overrideWith((ref, id) async => const <AgentModel>[]),
       authStatusProvider.overrideWith(
@@ -155,5 +157,45 @@ void main() {
 
     expect(find.text('Codex'), findsOneWidget);
     expect(find.text('Check sign-in'), findsNothing);
+  });
+
+  testWidgets('deprecated Gemini CLI and the Echo dev agent are hidden', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // The bridge still advertises Gemini and the Echo dev agent, but the
+    // new-conversation picker draws a client-side curtain over both (see
+    // `_hiddenAgentIds`). Only the non-hidden agent must render.
+    await tester.pumpWidget(
+      _wrap(
+        requiresLogin: false,
+        agents: const [
+          AgentDescriptor(
+            agentId: 'codex',
+            displayName: 'Codex',
+            available: true,
+          ),
+          AgentDescriptor(
+            agentId: 'gemini-cli',
+            displayName: 'Gemini CLI',
+            available: true,
+          ),
+          AgentDescriptor(
+            agentId: 'echo',
+            displayName: 'Echo Agent',
+            available: true,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Codex'), findsOneWidget);
+    expect(find.text('Gemini CLI'), findsNothing);
+    expect(find.text('Echo Agent'), findsNothing);
   });
 }

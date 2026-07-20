@@ -18,7 +18,7 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`updater.rs`, `which.rs`); integration tests go in `src-tauri/tests/`. ~239
+`updater.rs`, `which.rs`); integration tests go in `src-tauri/tests/`. ~257
 backend tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including staging, discard, hunk apply
 and commit against throwaway repos), the git2 fast path, the PTY lifecycle,
@@ -44,8 +44,12 @@ normalization), `quickCommands.ts` (quick-command token substitution + scope
 filters), `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration),
 `branchName.ts` (GitHub branch-name slugging), `markdown.ts` (GitHub-flavored
 Markdown: alerts, disclosures, hidden HTML comments), `relTime.ts` (localized
-relative dates) and `state/flushRegistry.ts` (the flush-on-close registry:
-register / unregister + `Promise.allSettled` fan-out) — 192 tests in
+relative dates), `state/flushRegistry.ts` (the flush-on-close registry:
+register / unregister + `Promise.allSettled` fan-out), `utils/pointerLock.ts`
+(the orphaned-body-pointer-lock guard: orphan detection + deferred modal open),
+`pathid.ts` (workspace path identity + the boot reconcile plan) and
+`agentResume.ts` (the per-CLI session-resume command registry + hostile-input
+rejection) — 212 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see

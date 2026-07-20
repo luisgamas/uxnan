@@ -11,9 +11,12 @@
   import { projects } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { terminals } from "$lib/state/terminals.svelte";
+  import { samePath } from "$lib/pathid";
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { icon, iconButton, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -24,6 +27,7 @@
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
   import ProjectSettingsDialog from "./ProjectSettingsDialog.svelte";
+  import OpenWith from "./OpenWith.svelte";
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder, type DragReorder } from "$lib/state/dragReorder.svelte";
   import { isStaticSortMode } from "$lib/sidebar-sort";
@@ -66,6 +70,18 @@
   let expanded = $state(false);
 
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
+
+  // Live-space aggregate for the collapsed card: terminals open across this
+  // project's workspaces (main + every worktree). Keys are matched by path
+  // identity, and each workspace key counts once.
+  const termCount = $derived.by(() => {
+    const paths = [repo.path, ...projects.worktreesOf(repo.id).map((w) => w.path)];
+    let n = 0;
+    for (const key of terminals.openWorkspaceKeys) {
+      if (paths.some((p) => samePath(p, key))) n += terminals.terminalCount(key);
+    }
+    return n;
+  });
 
   // Child worktrees in their effective order — frozen against jumping for the
   // drifting modes — plus the pointer-drag reorder that feeds this project's
@@ -177,6 +193,18 @@
         {/snippet}
       </TooltipSimple>
     {/if}
+    {#if termCount > 0}
+      <TooltipSimple title={i18n.t("project.runningTooltip", { n: termCount })}>
+        {#snippet children(tp2)}
+          <span
+            {...tp2}
+            class={cn("inline-flex shrink-0 items-center gap-0.5 text-muted-foreground", text.indicator)}
+          >
+            <TerminalIcon class="size-3" />{termCount}
+          </span>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
 
     <div class="flex shrink-0 items-center gap-0.5">
       {#if isGit}
@@ -243,11 +271,14 @@
             {/if}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
-          <DropdownMenu.Item class={text.menu} onclick={() => (settingsOpen = true)}>
+          <!-- Defer each dialog open until this menu has fully closed, so its
+               teardown releases the body pointer-lock before the dialog captures
+               it (else the dialog can orphan the lock on close). -->
+          <DropdownMenu.Item class={text.menu} onclick={() => deferModalOpen(() => (settingsOpen = true))}>
             <SettingsIcon class={icon.button} />
             {i18n.t("project.settings")}
           </DropdownMenu.Item>
-          <DropdownMenu.Item class={text.menu} onclick={() => (iconPickerOpen = true)}>
+          <DropdownMenu.Item class={text.menu} onclick={() => deferModalOpen(() => (iconPickerOpen = true))}>
             <ImageIcon class={icon.button} />
             {i18n.t("project.changeIcon")}
           </DropdownMenu.Item>
@@ -262,6 +293,7 @@
             <CopyIcon class={icon.button} />
             {i18n.t("common.copyPath")}
           </DropdownMenu.Item>
+          <OpenWith menu={DropdownMenu} path={mainPath} />
           <DropdownMenu.Sub>
             <DropdownMenu.SubTrigger class={text.menu}>
               <SettingsIcon class={icon.button} />
@@ -284,7 +316,7 @@
           <DropdownMenu.Item
             variant="destructive"
             class={text.menu}
-            onclick={() => (confirmRemoveOpen = true)}
+            onclick={() => deferModalOpen(() => (confirmRemoveOpen = true))}
           >
             <Trash2Icon class={icon.button} />
             {i18n.t("project.removeProject")}
