@@ -24,7 +24,8 @@ const root = resolve(tmpdir(), 'uxnan-path-guard-fixture');
 function assertDenied(fn: () => void): void {
   assert.throws(
     fn,
-    (err: unknown) => err instanceof RpcError && err.code === JsonRpcErrorCode.WorkspaceAccessDenied,
+    (err: unknown) =>
+      err instanceof RpcError && err.code === JsonRpcErrorCode.WorkspaceAccessDenied,
   );
 }
 
