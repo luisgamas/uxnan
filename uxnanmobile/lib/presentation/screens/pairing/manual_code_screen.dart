@@ -23,9 +23,11 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 /// bridge's `GET /pair/resolve` endpoint, then runs the normal pairing
 /// handshake (`SessionCoordinator.processPairingPayload`).
 ///
-/// A **Browse nearby bridges** action runs mDNS discovery
-/// ([BridgeDiscoverySheet]) so the user can pick a bridge instead of typing the
-/// host; manual entry stays the fallback.
+/// The code is resolved against **one** host: the one the user chose. A
+/// **Browse nearby bridges** action ([BridgeDiscoverySheet]) lets them pick a
+/// discovered bridge instead of typing the address, which fills the host field
+/// — an explicit choice either way. The code is deliberately never fanned out
+/// to hosts the user did not name (see `_connect`).
 ///
 /// Chrome follows the Neural Expressive language (guide §4.1–4.3): a
 /// transparent [NeTopBar] with a scroll veil over an [IconSurface] back, an
@@ -79,6 +81,13 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
       _connecting = true;
       _error = null;
     });
+    // The pairing code goes to EXACTLY ONE host: the one the user chose —
+    // typed here, or picked in the discovery sheet (which fills this field).
+    // It must never be fanned out to hosts the user did not name: the code is
+    // a shared secret, mDNS records are unauthenticated and spoofable by any
+    // device on the network, and whoever holds the code can pull the pairing
+    // payload AND arm the bridge's bootstrap window (see the bridge's
+    // `PairingCodeService.resolve`). See `docs/architecture.md`.
     try {
       final payload = await ref
           .read(manualPairingServiceProvider)

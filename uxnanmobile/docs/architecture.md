@@ -61,6 +61,20 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `onboarding/`, `pairing/`. `presentation/router/app_router.dart` is the flat
   GoRouter table. `presentation/theme/` holds the design tokens.
 
+The Devices screen keeps connection feedback scoped to the actual PC card:
+
+- A live session renders `Connected` plus the classified network badge (`LAN`,
+  `Tailscale`, `Direct`, or `Relay`) derived from the winning endpoint.
+- A PC whose connection attempt is in flight renders one `Detecting…` status.
+  The badge is intentionally hidden until the channel is live because the
+  network path is not known yet.
+- A disconnected PC renders no network badge. Its `Connect` button remains
+  disabled with `Connecting…` only while its own attempt is active.
+
+This presentation logic lives in `_StatusLine` within
+`presentation/screens/devices/my_devices_screen.dart`; the underlying
+`networkKindProvider` and session streams remain unchanged.
+
 ## Dependency injection / provider graph
 
 Manual Riverpod. Infrastructure is constructed in `infrastructure_providers.dart`

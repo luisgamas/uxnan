@@ -6,6 +6,63 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Simplified device-card connection feedback: connecting devices show a single
+  `Detecting…` status, while the LAN/Tailscale/direct/relay badge appears only
+  after a live connection is established. The Connect button retains its
+  existing `Connecting…` busy state and behavior.
+
+### Added — network-path badge (LAN / Tailscale / Direct / Relay) on the connected PC
+- The devices screen now labels **how** a live connection actually reaches the
+  PC, not just whether it's "connected": a small animated pill next to the
+  status dot reads **LAN**, **Tailscale**, **Direct** or **Relay**, with a
+  **"Detecting…"** status while a connect attempt is in flight and the path
+  isn't known yet; the network badge itself appears only after connection. A
+  new pure `NetworkKind` classifier
+  (`domain/enums/network_kind.dart`) buckets the live channel's actual
+  endpoint by IP range — `100.64.0.0/10` → Tailscale; `10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` → LAN; any other
+  reachable address → Direct; a host match against the paired device's
+  `relayUrl` → Relay — and is exposed through a new `networkKindProvider`
+  derived from the session coordinator's real `connectedDevice` +
+  `connectedEndpoint` streams. This **replaces** the previous Relay/Direct
+  text, which read the *global* `bridge/status.relayConnected` flag: that
+  field can't distinguish LAN from Tailscale and isn't guaranteed to be scoped
+  to the endpoint actually in use, so the label could misreport during a
+  reconnect. The new `TransportBadge` widget (`presentation/widgets/`)
+  cross-fades between states with `AnimatedSwitcher` (respecting reduced
+  motion) and follows the same type-specific icon + color-pill pattern as the
+  existing `CommitRefChip`. No wire/contract change — the classification is
+  entirely client-side from data the bridge already advertises (`hosts`,
+  `relayUrl`).
+
+### Security — the pairing code is sent to exactly one host, the one you chose
+- Manual pairing resolves the code with a single `GET /pair/resolve?code=`
+  against the host the user named — typed, or picked in the "Browse nearby
+  bridges" sheet (which fills the host field). It is deliberately **never**
+  fanned out across mDNS-discovered candidates. The code is a shared secret
+  read off the PC screen, and a successful resolve both hands out the pairing
+  payload and **arms the bridge's `qr_bootstrap` window** (see the `bridge`
+  CHANGELOG), so disclosing it to an unauthenticated, spoofable mDNS record
+  would let any device on the same network harvest it — or answer first and be
+  trusted as "your PC" with no confirmation. Covered by tests asserting that a
+  second reachable bridge is never dialed, and that an empty host is rejected
+  before any request leaves the device.
+- Discovery is hardened as defense in depth: the mDNS TXT `addr` hint is only
+  honored when it is a literal IP in private / CGNAT / loopback space
+  (`isLocalAddressLiteral`), never a hostname and never a public address; the
+  SRV-resolved address wins otherwise. A discovered bridge is still only ever
+  contacted after the user explicitly picks it.
+- The network-failure copy now guides the user: try the PC's Tailscale `100.x`
+  address, or its LAN IP if on the same Wi-Fi, and notes the connection can
+  fall back to the relay once paired.
+- Deferred: resolving a pairing code with **no direct network path to the PC
+  at all** (e.g. the phone on cellular data, the PC not yet joined to
+  Tailscale) still isn't possible — it would need fetching the payload
+  through the relay instead of a direct GET, which needs new relay+bridge
+  contract work. See `FOR-DEV.md`.
+
 ### Security — E2EE envelope `sessionId`/`seq`/direction now authenticated as AES-GCM AAD
 - Closes a gap where replay protection relied entirely on the unauthenticated
   `seq` field: a malicious relay or on-path attacker could bump a captured

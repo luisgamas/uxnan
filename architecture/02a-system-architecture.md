@@ -1155,12 +1155,29 @@ QrScannerScreen
 > LAN `/trusted-session/resolve` que el whitepaper original proponía — la
 > variante bridge-first cubre el caso LAN; para acceso fuera-de-LAN se usa
 > Tailscale o un relay genérico de WebSocket con la sesión E2EE.
+>
+> **Seguridad (2026-07): el código va a UN solo host, el que el usuario eligió.**
+> El código de emparejamiento es un secreto compartido que se lee de la pantalla
+> del PC, y un `/pair/resolve` exitoso **abre la ventana de bootstrap** del bridge
+> (ver §5.9). Por eso el teléfono lo manda exclusivamente al host que el usuario
+> nombró — tecleado, o elegido en la hoja "Browse nearby bridges", que rellena ese
+> campo. Nunca se reparte entre candidatos descubiertos: los registros mDNS no
+> están autenticados y cualquier dispositivo de la red puede publicarlos, así que
+> repartirlo revelaría el código a quien publicó el registro y permitiría que el
+> primero en responder suplantara al PC. La hoja de descubrimiento sigue
+> existiendo, pero es una **elección explícita** del usuario, y el hint TXT `addr`
+> solo se honra si es una IP literal en rango privado/CGNAT/loopback (el resto de
+> casos usan la dirección resuelta por SRV). El caso totalmente fuera de red (el
+> teléfono sin ruta directa alguna al bridge) sigue sin cubrirse; queda registrado
+> como trabajo pendiente en `uxnanmobile/FOR-DEV.md`.
 
 ```
 ManualCodeScreen
 ├── Campo de texto para el codigo (8 chars Crockford base32, 10 min TTL)
 │   y campo para host:port (autocompletable via mDNS si está disponible)
 ├── GET http://<bridge-host>:<port>/pair/resolve?code=<code>
+│   ├── Dirigido SOLO al host elegido por el usuario (nunca repartido
+│   │   entre candidatos mDNS — el código es un secreto)
 │   ├── Validación constant-time + rate-limit por IP (mapa acotado:
 │   │   barrido de entradas expiradas + cap duro `rateMaxKeys`, 10k por
 │   │   defecto, para que la rotación de IPs no agote la memoria)

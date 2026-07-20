@@ -4,17 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uxnan/domain/entities/bridge_status.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 
+/// The relay host every [_device] advertises, so a test can drive the relay
+/// network-kind badge by passing `connectedEndpoint: kRelayUrl`.
+const kRelayUrl = 'wss://relay.uxnan.dev';
+
 TrustedDevice _device(String id, String name) => TrustedDevice(
       macDeviceId: id,
       displayName: name,
       macIdentityPublicKey: Uint8List(32),
-      relayUrl: 'wss://relay.uxnan.dev',
+      relayUrl: kRelayUrl,
       sessionId: 's-$id',
       pairedAt: DateTime(2026, 6, 3),
       lastSeen: DateTime(2026, 6, 6, 9),
@@ -23,7 +26,7 @@ TrustedDevice _device(String id, String name) => TrustedDevice(
 Widget _wrap({
   required List<TrustedDevice> devices,
   TrustedDevice? connected,
-  BridgeStatus? bridgeStatus,
+  TrustedDevice? connecting,
   String? connectedEndpoint,
 }) {
   final router = GoRouter(
@@ -35,10 +38,9 @@ Widget _wrap({
     overrides: [
       trustedDevicesProvider.overrideWith((ref) => Stream.value(devices)),
       connectedDeviceProvider.overrideWith((ref) => Stream.value(connected)),
-      connectingDeviceProvider.overrideWith((ref) => Stream.value(null)),
+      connectingDeviceProvider.overrideWith((ref) => Stream.value(connecting)),
       connectedEndpointProvider
           .overrideWith((ref) => Stream.value(connectedEndpoint)),
-      bridgeStatusProvider.overrideWith((ref) async => bridgeStatus),
     ],
     child: MaterialApp.router(
       routerConfig: router,
@@ -91,24 +93,25 @@ void main() {
     expect(find.text("Jorge's MacBook"), findsOneWidget);
   });
 
-  testWidgets('shows the transport (relay vs direct) on the connected PC', (
-    tester,
-  ) async {
+  testWidgets(
+      'shows the network-kind badge derived from the actual endpoint, '
+      'not bridge/status', (tester) async {
     final device = _device('mac-1', 'My Mac');
     await tester.pumpWidget(
       _wrap(
         devices: [device],
         connected: device,
-        bridgeStatus: const BridgeStatus(relayConnected: true),
+        // The live channel is served through the device's own relay host.
+        connectedEndpoint: kRelayUrl,
       ),
     );
     await tester.pump();
 
     expect(find.text('Connected'), findsOneWidget);
-    expect(find.text('· Relay'), findsOneWidget);
+    expect(find.text('Relay'), findsOneWidget);
   });
 
-  testWidgets('shows a direct transport when not over the relay', (
+  testWidgets('shows a LAN badge for a private-network endpoint', (
     tester,
   ) async {
     final device = _device('mac-1', 'My Mac');
@@ -116,12 +119,59 @@ void main() {
       _wrap(
         devices: [device],
         connected: device,
-        bridgeStatus: const BridgeStatus(relayConnected: false),
+        connectedEndpoint: 'ws://192.168.1.42:8765',
       ),
     );
     await tester.pump();
 
-    expect(find.text('· Direct'), findsOneWidget);
+    expect(find.text('LAN'), findsOneWidget);
+  });
+
+  testWidgets('shows a Tailscale badge for a 100.64.0.0/10 endpoint', (
+    tester,
+  ) async {
+    final device = _device('mac-1', 'My Mac');
+    await tester.pumpWidget(
+      _wrap(
+        devices: [device],
+        connected: device,
+        connectedEndpoint: 'ws://100.90.10.5:8765',
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Tailscale'), findsOneWidget);
+  });
+
+  testWidgets('shows a Direct badge for a public/other endpoint', (
+    tester,
+  ) async {
+    final device = _device('mac-1', 'My Mac');
+    await tester.pumpWidget(
+      _wrap(
+        devices: [device],
+        connected: device,
+        connectedEndpoint: 'ws://203.0.113.5:8765',
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Direct'), findsOneWidget);
+  });
+
+  testWidgets('shows one detecting status while this PC is connecting', (
+    tester,
+  ) async {
+    final device = _device('mac-1', 'My Mac');
+    await tester.pumpWidget(
+      _wrap(devices: [device], connecting: device),
+    );
+    await tester.pump();
+
+    // The status uses "Detecting…" as the single card-level progress state;
+    // the button keeps its normal busy label and behavior.
+    expect(find.text('Connecting…'), findsOneWidget);
+    expect(find.text('Detecting…'), findsOneWidget);
   });
 
   testWidgets('shows the real connected endpoint, not the advertised host', (
@@ -135,7 +185,6 @@ void main() {
         // The live channel actually won a direct LAN host; the card must show
         // it (host:port) rather than the paired relay host.
         connectedEndpoint: 'ws://192.168.1.42:8765',
-        bridgeStatus: const BridgeStatus(relayConnected: false),
       ),
     );
     await tester.pump();
