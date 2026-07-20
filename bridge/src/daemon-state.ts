@@ -8,7 +8,7 @@
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_DAEMON_CONFIG, resolveDaemonConfig, type DaemonConfig } from './daemon-config.js';
 
@@ -26,6 +26,48 @@ export const DAEMON_FILES = {
   updateCheck: 'update-check.json',
   metrics: 'metrics.json',
 } as const;
+
+/**
+ * Backoff for {@link renameWithRetry}, in ms. Worst case ~410ms before giving up.
+ */
+const RENAME_RETRY_DELAYS_MS = [5, 15, 40, 100, 250];
+
+/**
+ * `rename` over an EXISTING file fails intermittently on Windows with `EPERM`
+ * (also `EBUSY`/`EACCES`) when anything holds a transient handle on the target —
+ * antivirus, the Search indexer, a backup agent, or the handle we just closed
+ * ourselves. POSIX `rename` has no such window, which is why this only ever bit
+ * on Windows. The write is fine; only the swap is momentarily refused, so a
+ * short retry turns a spurious failure into a successful write.
+ *
+ * This matters far beyond a flaky test: `ThreadStore` persists every streamed
+ * turn through {@link DaemonState.writeJson}, and `AgentManager` swallows event
+ * handling errors. A single refused rename on the `turn_completed` write left
+ * the turn stuck at `streaming` forever — the phone sat on "responding…" until
+ * the app was killed, and the bridge test suite hung for its full 120s `waitFor`
+ * budget (the long-standing "Windows CI flake").
+ *
+ * `doRename` is injectable so the retry policy can be unit-tested without
+ * provoking a real EPERM (the ESM namespace object can't be monkey-patched).
+ */
+export async function renameWithRetry(
+  from: string,
+  to: string,
+  doRename: (from: string, to: string) => Promise<void> = rename,
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await doRename(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const transient = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
+      const delay = RENAME_RETRY_DELAYS_MS[attempt];
+      if (!transient || delay === undefined) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 export class DaemonState {
   readonly baseDir: string;
@@ -63,7 +105,13 @@ export class DaemonState {
     const target = this.pathFor(file);
     const tmp = `${target}.${randomUUID()}.tmp`;
     await writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
-    await rename(tmp, target);
+    try {
+      await renameWithRetry(tmp, target);
+    } catch (err) {
+      // Never leave a temp sibling behind next to the real state file.
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw err;
+    }
   }
 
   async readConfig(): Promise<DaemonConfig> {

@@ -21,7 +21,7 @@ export {
 
 export { HandlerRouter, type RpcHandler } from './handler-router.js';
 export type { BridgeContext } from './bridge-context.js';
-export { DaemonState, DAEMON_FILES } from './daemon-state.js';
+export { DaemonState, renameWithRetry, DAEMON_FILES } from './daemon-state.js';
 export {
   DEFAULT_DAEMON_CONFIG,
   resolveDaemonConfig,

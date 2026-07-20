@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
-import { DaemonState, DEFAULT_DAEMON_CONFIG } from '../src/index.js';
+import { DaemonState, DEFAULT_DAEMON_CONFIG, renameWithRetry } from '../src/index.js';
 
 function freshState(): DaemonState {
   return new DaemonState(join(tmpdir(), `uxnan-test-${randomUUID()}`));
@@ -54,5 +54,80 @@ test('initConfig does not freeze the seeded model lists to disk', async () => {
     typeof m === 'string' ? m : m.id,
   );
   assert.ok(ids.includes('claude-sonnet-5'));
+  await rm(state.baseDir, { recursive: true, force: true });
+});
+
+test('renameWithRetry retries a transient EPERM and eventually succeeds', async () => {
+  // `rename` over an existing file is intermittently refused on Windows (EPERM /
+  // EBUSY / EACCES) when anything holds a momentary handle on the target —
+  // antivirus, the Search indexer, a backup agent. Without a retry the error
+  // propagated into `ThreadStore`, `AgentManager` swallowed it, and the turn was
+  // left `streaming` forever (the long-standing "Windows CI flake").
+  let calls = 0;
+  await renameWithRetry('a', 'b', async () => {
+    calls += 1;
+    if (calls <= 3) {
+      const err = new Error('EPERM: operation not permitted, rename') as NodeJS.ErrnoException;
+      err.code = 'EPERM';
+      throw err;
+    }
+  });
+  assert.equal(calls, 4, 'it retried the refused renames rather than giving up');
+});
+
+test('renameWithRetry retries EBUSY and EACCES too', async () => {
+  for (const code of ['EBUSY', 'EACCES']) {
+    let calls = 0;
+    await renameWithRetry('a', 'b', async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new Error(code) as NodeJS.ErrnoException;
+        err.code = code;
+        throw err;
+      }
+    });
+    assert.equal(calls, 2, `${code} must be treated as transient`);
+  }
+});
+
+test('renameWithRetry rethrows a non-transient error immediately', async () => {
+  let calls = 0;
+  await assert.rejects(
+    renameWithRetry('a', 'b', async () => {
+      calls += 1;
+      const err = new Error('ENOSPC: no space left on device') as NodeJS.ErrnoException;
+      err.code = 'ENOSPC';
+      throw err;
+    }),
+    /ENOSPC/,
+  );
+  assert.equal(calls, 1, 'a real failure must not be retried');
+});
+
+test('renameWithRetry gives up after the backoff is exhausted', async () => {
+  let calls = 0;
+  await assert.rejects(
+    renameWithRetry('a', 'b', async () => {
+      calls += 1;
+      const err = new Error('EPERM') as NodeJS.ErrnoException;
+      err.code = 'EPERM';
+      throw err;
+    }),
+    /EPERM/,
+  );
+  // 5 backoff steps → 6 attempts, then the error surfaces rather than looping.
+  assert.equal(calls, 6);
+});
+
+test('writeJson leaves no temp sibling when the rename ultimately fails', async () => {
+  const state = freshState();
+  await state.writeJson('threads.json', { v: 1 });
+  // Point the state dir at a path whose rename target is a directory, so the
+  // rename fails for a real, non-transient reason.
+  await assert.rejects(state.writeJson('.', { v: 2 }));
+  const { readdir } = await import('node:fs/promises');
+  const left = (await readdir(state.baseDir)).filter((f) => f.endsWith('.tmp'));
+  assert.deepEqual(left, [], 'the temp file is cleaned up on failure');
+  assert.deepEqual(await state.readJson('threads.json'), { v: 1 });
   await rm(state.baseDir, { recursive: true, force: true });
 });

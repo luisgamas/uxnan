@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a refused atomic write could hang a turn forever (Windows)
+- **`DaemonState.writeJson` now retries the `rename`.** Renaming over an existing
+  file is intermittently refused on Windows with `EPERM` (also `EBUSY`/`EACCES`)
+  when anything holds a momentary handle on the target — antivirus, the Search
+  indexer, a backup agent. POSIX `rename` has no such window, which is why this
+  only ever bit on Windows. The write itself was fine; only the swap was refused.
+  A short capped backoff (5/15/40/100/250 ms, ~410 ms worst case) turns the
+  spurious failure into a successful write; a non-transient error (e.g. `ENOSPC`)
+  still surfaces immediately, and the temp sibling is cleaned up either way.
+- **Why it mattered beyond a flaky test.** `ThreadStore` persists every streamed
+  turn through `writeJson`, and `AgentManager` swallows event-handling errors, so
+  a single refused rename on the `turn_completed` write left the turn stuck at
+  `streaming` **forever** — the phone sat on "responding…" until the app was
+  killed. It is also the long-standing "Windows CI flake": the bridge suite would
+  burn its full 120 s `waitFor` budget on a different test each run, and it
+  reddened `main` and a release run during the 0.0.9 cycle. Reproduced locally,
+  root-caused from the actual `EPERM` stack, and the previously-hanging file now
+  passes 3/3 consecutive runs (full suite 535/535).
+- **Defense in depth:** if a terminal event (`turn_completed`/`turn_error`/
+  `turn_aborted`) still throws, `AgentManager` now fails the turn and notifies the
+  phone instead of leaving it `streaming` — a visible error beats a silent hang.
+- `renameWithRetry` is exported with an injectable rename so the retry policy is
+  unit-tested without provoking a real `EPERM`.
+
 ## [0.0.9-alpha.20260720] - 2026-07-20
 
 ### Security

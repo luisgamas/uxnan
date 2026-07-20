@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 529, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 535, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -334,11 +334,13 @@ successful run. Remaining post-publish hardening:
 - [ ] **Echo-agent E2E flaky on Windows CI** — the end-to-end turn-routing + approval
       round-trip tests in `bridge/test/handlers/thread-handlers.test.ts` intermittently
       never report `completed` on **Windows CI runners** (time out even at 120s), while
-      passing reliably on Linux CI and on local Windows (the approval test runs in
-      ~33 ms locally). Skipped on Windows CI only via `SKIP_ECHO_E2E_ON_WIN_CI`.
-      Investigate the Windows stdio approval race (`src/agents/`,
-      `ProcessAgentAdapter`'s stdin write + the approval round-trip) and remove the
-      guard once fixed.
+      passing reliably on Linux CI. Skipped on Windows CI only via
+      `SKIP_ECHO_E2E_ON_WIN_CI`. **Note:** a large share of the historical Windows
+      `waitFor timed out` failures — including the ones that hit `agent-manager.test.ts`
+      and reddened a release run — were NOT this: they were a refused atomic-write
+      `rename` (EPERM), now retried in `DaemonState.writeJson`. Re-check whether this
+      guard is still needed before investigating the stdio path further; it may already
+      be fixed.
 
 ## Relay hardening (relay-only)
 
