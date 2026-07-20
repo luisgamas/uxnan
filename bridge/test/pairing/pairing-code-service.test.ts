@@ -15,7 +15,9 @@ const PAYLOAD = {
   displayName: 'PC',
 } as unknown as PairingPayload;
 
-function svc(opts: { codes?: string[]; ttlMs?: number; rateMax?: number } = {}) {
+function svc(
+  opts: { codes?: string[]; ttlMs?: number; rateMax?: number; rateMaxKeys?: number } = {},
+) {
   let clock = 1000;
   let i = 0;
   const codes = opts.codes ?? ['0123ABCD'];
@@ -24,6 +26,7 @@ function svc(opts: { codes?: string[]; ttlMs?: number; rateMax?: number } = {}) 
     now: () => clock,
     ...(opts.ttlMs !== undefined ? { ttlMs: opts.ttlMs } : {}),
     ...(opts.rateMax !== undefined ? { rateMax: opts.rateMax } : {}),
+    ...(opts.rateMaxKeys !== undefined ? { rateMaxKeys: opts.rateMaxKeys } : {}),
     generateCode: () => codes[i++ % codes.length]!,
   });
   return { service, advance: (ms: number) => (clock += ms) };
@@ -63,6 +66,37 @@ test('rate limiting trips after the per-IP cap', () => {
   assert.equal(service.rateLimited('1.2.3.4'), true); // 4 > cap
   // a different IP is independent
   assert.equal(service.rateLimited('5.6.7.8'), false);
+});
+
+test('a single hammering IP is still rate-limited after bounding the map (behavior preserved)', () => {
+  const { service } = svc({ rateMax: 3, rateMaxKeys: 100 });
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 1
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 2
+  assert.equal(service.rateLimited('1.2.3.4'), false); // 3
+  assert.equal(service.rateLimited('1.2.3.4'), true); // 4 > cap
+});
+
+test('the rate-limit map never exceeds rateMaxKeys under IP rotation', () => {
+  const maxKeys = 20;
+  const { service } = svc({ rateMaxKeys: maxKeys });
+  for (let i = 0; i < maxKeys + 15; i += 1) {
+    service.rateLimited(`10.0.0.${i}`);
+    assert.ok(
+      service.rateEntryCount <= maxKeys,
+      `rateEntryCount ${service.rateEntryCount} exceeded rateMaxKeys ${maxKeys} at i=${i}`,
+    );
+  }
+  assert.equal(service.rateEntryCount, maxKeys);
+});
+
+test('expired rate-limit entries are swept instead of accumulating', () => {
+  const { service, advance } = svc({ rateMaxKeys: 100 });
+  for (let i = 0; i < 10; i += 1) service.rateLimited(`10.0.1.${i}`);
+  assert.equal(service.rateEntryCount, 10);
+
+  advance(60_000 + 1); // past the default 1-minute rate window
+  service.rateLimited('10.0.2.1'); // triggers a sweep before inserting the new entry
+  assert.equal(service.rateEntryCount, 1);
 });
 
 test('the default code generator yields an 8-char unambiguous code', () => {
