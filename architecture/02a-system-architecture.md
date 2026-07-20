@@ -1161,7 +1161,9 @@ ManualCodeScreen
 ├── Campo de texto para el codigo (8 chars Crockford base32, 10 min TTL)
 │   y campo para host:port (autocompletable via mDNS si está disponible)
 ├── GET http://<bridge-host>:<port>/pair/resolve?code=<code>
-│   ├── Validación constant-time + rate-limit por IP
+│   ├── Validación constant-time + rate-limit por IP (mapa acotado:
+│   │   barrido de entradas expiradas + cap duro `rateMaxKeys`, 10k por
+│   │   defecto, para que la rotación de IPs no agote la memoria)
 │   └── Respuesta: PairingPayload completo (identico al del QR)
 └── Continua igual que QR bootstrap (proceso de handshake E2EE)
 ```
@@ -2148,6 +2150,9 @@ Relay Server (opcional / self-hosted)
 ├── WebSocket Server (noServer mode)
 │   ├── Upgrade HTTP → WS con rate limiting por IP
 │   │   ├── Rate limits: HTTP 120/min, upgrade 60/min
+│   │   ├── Mapas del limiter acotados: barrido de ventanas expiradas
+│   │   │   + cap duro de 10k claves (evicción oldest-first) para que la
+│   │   │   rotación de IPs no crezca la memoria sin límite
 │   │   ├── Origin check (CSWSH defense): mismo host o allowlist
 │   │   └── Rechaza upgrades en paths no-relay
 │   └── Routing de sesiones por sessionId

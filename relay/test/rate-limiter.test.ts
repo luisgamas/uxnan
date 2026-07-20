@@ -18,7 +18,10 @@ test('the tracked-key count never exceeds maxKeys under IP rotation within one w
   const limiter = new RateLimiter(5, () => clock, 60_000, maxKeys);
   for (let i = 0; i < maxKeys + 20; i += 1) {
     limiter.allow(`10.0.0.${i}`);
-    assert.ok(limiter.size <= maxKeys, `size ${limiter.size} exceeded maxKeys ${maxKeys} at i=${i}`);
+    assert.ok(
+      limiter.size <= maxKeys,
+      `size ${limiter.size} exceeded maxKeys ${maxKeys} at i=${i}`,
+    );
   }
   assert.equal(limiter.size, maxKeys);
 });

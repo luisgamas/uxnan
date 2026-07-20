@@ -11,7 +11,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   unbounded memory growth from IP rotation — trivial over an allocated IPv6
   /64 — which previously grew the `#windows` map by one entry per new source
   address forever, turning the anti-abuse control into a memory sink. `allow`
-  now sweeps expired windows on each access and enforces a hard `maxKeys` cap
+  now sweeps expired windows whenever it opens a new window for a key, and
+  enforces a hard `maxKeys` cap
   (default 10,000; oldest entry evicted first) as a backstop against a burst
   of still-unexpired keys. A single IP's own throttling budget is unaffected.
   Covered by `test/rate-limiter.test.ts` (3 tests: single-key behavior
