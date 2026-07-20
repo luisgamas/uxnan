@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rmrf } from '../helpers/fs.js';
-import { JsonRpcErrorCode } from '@uxnan/shared';
+import { JsonRpcErrorCode, SECURE_PROTOCOL_VERSION } from '@uxnan/shared';
 import {
   InMemorySecretStore,
   createInMemoryIoPair,
@@ -76,6 +76,39 @@ test('the handshake rejects a sessionId that does not match the pairing session'
   });
 
   await assert.rejects(FakePhone.connect(phoneIo, { sessionId: 'wrong-session' }));
+
+  await bridge.stop();
+  await rmrf(baseDir);
+});
+
+test('the handshake rejects a phone speaking a different secure protocol version', async () => {
+  const { bridge, baseDir } = await boot();
+  const [phoneIo, bridgeIo] = createInMemoryIoPair();
+  const sessionId = 'session-version-gap';
+
+  void handleSecureConnection({
+    io: bridgeIo,
+    ctx: bridge.context,
+    router: bridge.router,
+    deviceState: bridge.context.deviceState,
+    trustStore: bridge.trustStore,
+    displayName: 'Test PC',
+    transport: 'direct',
+    expectedSessionId: sessionId,
+  });
+
+  // A phone from before the AAD binding landed. It MUST be turned away here, at
+  // the handshake — the last point both sides can still read each other. If it
+  // got through, every encrypted frame would fail its GCM tag and the session
+  // would look connected while silently dropping all traffic.
+  await assert.rejects(
+    FakePhone.connect(phoneIo, {
+      sessionId,
+      protocolVersion: SECURE_PROTOCOL_VERSION - 1,
+    }),
+  );
+  // …and nothing was trusted along the way.
+  assert.equal((await bridge.trustStore.list()).length, 0);
 
   await bridge.stop();
   await rmrf(baseDir);

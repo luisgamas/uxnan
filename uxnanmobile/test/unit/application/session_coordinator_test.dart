@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
+import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/connection_session.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
@@ -110,7 +111,7 @@ class _FakeBridge {
       await transport.send(
         _jsonBytes({
           'kind': 'serverHello',
-          'protocolVersion': 1,
+          'protocolVersion': ProtocolConstants.secureProtocolVersion,
           'sessionId': sessionId,
           'macDeviceId': 'mac-1',
           'macIdentityPublicKey': identity.publicKey.toHex(),

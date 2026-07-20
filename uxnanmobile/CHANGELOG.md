@@ -27,6 +27,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   session-key derivation are all unchanged. Ships together with the matching
   `bridge` change (see its CHANGELOG) — envelopes are not wire-compatible
   across the version gap.
+- **The handshake now enforces `secureProtocolVersion` (bumped to `2`).** The app
+  and the bridge already exchanged `protocolVersion` but neither checked it, so
+  the change above would have failed as a **silent hang**: the handshake is
+  untouched, so pairing/reconnect completes and the app shows "connected", after
+  which every inbound frame fails its tag and is dropped in
+  `session_coordinator.dart`, the RPC correlator never resolves, and each action
+  just times out with nothing to diagnose. `SecureTransportLayer` now rejects a
+  `serverHello` whose version differs, with a `TransportErrorKind.handshake`
+  error naming both versions and telling the user to update. `ClientHello`/
+  `ServerHello` take their default from `ProtocolConstants` instead of a
+  hard-coded `1`, and the AAD direction bytes are sourced from
+  `ProtocolConstants` too (mirroring `shared/src/constants.ts`, the source of
+  truth for this cross-language contract).
+- **Update the bridge and the app together.** An app on this version cannot talk
+  to an older bridge and vice versa; the mismatch is now reported clearly at
+  connect time instead of looking like a broken session.
+
 ## [0.0.9-alpha.20260719+20260719] - 2026-07-19
 
 ### Added — Antigravity agent (Google's `agy`) rendering

@@ -2066,6 +2066,27 @@ para `sessionId="abc"`, `seq=1`, `direction=0x01`, el AAD es
 > derivadas por HKDF separadas por dirección (permitiría prescindir del byte
 > de dirección); se documenta como posible trabajo futuro, no como deuda
 > pendiente de este cambio.
+>
+> **Versionado del protocolo (obligatorio con este cambio).** Como la AAD forma
+> parte del cálculo del tag, un peer v1 y uno v2 **no pueden descifrarse
+> mutuamente**. Sin una comprobación de versión el fallo era mudo y muy difícil
+> de diagnosticar: el handshake no cambió, así que el emparejamiento/reconexión
+> se completa y ambos lados muestran "conectado" — y a partir de ahí el bridge
+> descarta cada petición en el `catch { continue; }` de `session-handler.ts` y el
+> correlador RPC del teléfono nunca resuelve, de modo que toda acción expira sin
+> ninguna señal. Por eso `SECURE_PROTOCOL_VERSION` sube a **2** y **ambos lados
+> lo validan en el handshake** (`clientHello` en `server-handshake.ts`,
+> `serverHello` en `_verifyServerHello`), que es el último punto en el que
+> todavía pueden leerse entre sí; el rechazo ocurre antes de derivar clave o
+> tocar el trust store, con un mensaje que nombra ambas versiones. Regla que
+> antes era implícita y ahora está escrita en la constante: **se sube esta
+> versión cuando cambia el formato del *frame cifrado*, no solo el JSON del
+> handshake**. Los bytes de dirección viven en `shared/src/constants.ts`
+> (`ENVELOPE_DIRECTION_*`), única fuente de verdad; el bridge los re-exporta y
+> `ProtocolConstants` del móvil los espeja.
+>
+> **Consecuencia de release:** bridge y `uxnanmobile` deben publicarse en el
+> mismo ciclo (ver `VERSIONS.md`).
 
 **Trusted Reconnect:**
 - Usa `handshakeMode: "trusted_reconnect"`

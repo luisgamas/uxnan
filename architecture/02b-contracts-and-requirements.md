@@ -894,7 +894,9 @@ cambia, por lo que interopera byte a byte con el bridge.
 | Relay malicioso intercepta mensajes | Los envelopes son E2EE opacos — relay nunca ve plaintext |
 | QR escaneado por tercero | TTL de 5 minutos; el QR solo es valido una vez (first-connect wins) |
 | MITM en handshake | Firma Ed25519 bilateral; el transcript incluye claves efimeras de ambas partes |
-| Replay de mensajes | `seq` monotonico por lado; mensajes con seq <= lastApplied son rechazados |
+| Replay de mensajes | `seq` monotonico por lado (mensajes con seq <= lastApplied son rechazados) **y** `sessionId`/`seq`/direccion ligados como AAD de AES-GCM: alterar `seq` rompe el tag en vez de pasar un chequeo no autenticado. `lastApplied` solo avanza tras un descifrado exitoso |
+| Reflexion de un frame a su propio emisor | La AAD liga un byte de direccion (`0x01` telefono->bridge, `0x02` bridge->telefono); la clave de sesion es compartida por ambos sentidos, asi que sin esto un envelope capturado podia reinyectarse como trafico entrante legitimo |
+| Version de protocolo incompatible | `SECURE_PROTOCOL_VERSION` se valida en `clientHello`/`serverHello` y ambos lados rechazan el desajuste; sin eso el gap se manifestaba como "conectado pero nada funciona" (cada frame falla su tag en silencio) |
 | Token push exfiltrado | `notificationSecret` validado en cada push; el relay no asocia token con contenido |
 | App comprometida extrae claves | Las claves estan en Keychain/Keystore — no accesibles por codigo fuera de la app |
 | Clock manipulation | Tolerancia explicita de 60/90 segundos; expiracion de QR en Unix ms |

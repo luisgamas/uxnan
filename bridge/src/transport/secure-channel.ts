@@ -12,7 +12,11 @@
  * check. The AAD also binds a `direction` byte so a captured envelope cannot
  * be reflected back at its sender and pass as a legitimate inbound frame.
  */
-import type { SecureEnvelope } from '@uxnan/shared';
+import {
+  ENVELOPE_DIRECTION_BRIDGE_TO_PHONE,
+  ENVELOPE_DIRECTION_PHONE_TO_BRIDGE,
+  type SecureEnvelope,
+} from '@uxnan/shared';
 import { aesGcmDecrypt, aesGcmEncrypt } from './crypto.js';
 import type { OutboundLog } from './outbound-log.js';
 
@@ -23,10 +27,13 @@ export class ReplayError extends Error {
   }
 }
 
-/** AAD direction byte: an envelope travelling phone → bridge. */
-export const DIRECTION_PHONE_TO_BRIDGE = 0x01;
-/** AAD direction byte: an envelope travelling bridge → phone. */
-export const DIRECTION_BRIDGE_TO_PHONE = 0x02;
+/**
+ * AAD direction bytes. Re-exported from `@uxnan/shared`, which is the single
+ * source of truth for this cross-language wire contract (the mobile side
+ * mirrors it in `ProtocolConstants`).
+ */
+export const DIRECTION_PHONE_TO_BRIDGE = ENVELOPE_DIRECTION_PHONE_TO_BRIDGE;
+export const DIRECTION_BRIDGE_TO_PHONE = ENVELOPE_DIRECTION_BRIDGE_TO_PHONE;
 
 /**
  * Which physical side a {@link BridgeSecureChannel} instance represents, for
@@ -83,8 +90,10 @@ export class BridgeSecureChannel {
     this.#log = log;
     this.#fallbackSeq = 1;
     this.#lastInboundSeq = 0;
-    this.#outboundDirection = role === 'bridge' ? DIRECTION_BRIDGE_TO_PHONE : DIRECTION_PHONE_TO_BRIDGE;
-    this.#inboundDirection = role === 'bridge' ? DIRECTION_PHONE_TO_BRIDGE : DIRECTION_BRIDGE_TO_PHONE;
+    this.#outboundDirection =
+      role === 'bridge' ? DIRECTION_BRIDGE_TO_PHONE : DIRECTION_PHONE_TO_BRIDGE;
+    this.#inboundDirection =
+      role === 'bridge' ? DIRECTION_PHONE_TO_BRIDGE : DIRECTION_BRIDGE_TO_PHONE;
   }
 
   get sessionId(): string {

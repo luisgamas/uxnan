@@ -4,7 +4,12 @@
  * the bridge server handshake/transport interoperate end-to-end.
  */
 import { generateKeyPairSync, randomUUID, sign as edSign, type KeyObject } from 'node:crypto';
-import { buildHandshakeTranscript, makeRequest, type JsonRpcResponse } from '@uxnan/shared';
+import {
+  SECURE_PROTOCOL_VERSION,
+  buildHandshakeTranscript,
+  makeRequest,
+  type JsonRpcResponse,
+} from '@uxnan/shared';
 import {
   BridgeSecureChannel,
   deriveSessionKey,
@@ -60,6 +65,8 @@ export class FakePhone {
       identity?: PhoneIdentity;
       /** Sent in clientHello so the bridge replays missed outbound (seq > N). */
       resumeState?: { lastAppliedBridgeOutboundSeq: number };
+      /** Override the advertised protocol version (to test the version guard). */
+      protocolVersion?: number;
     },
   ): Promise<FakePhone> {
     const queue = queueFor(io);
@@ -71,7 +78,7 @@ export class FakePhone {
 
     send({
       kind: 'clientHello',
-      protocolVersion: 1,
+      protocolVersion: options.protocolVersion ?? SECURE_PROTOCOL_VERSION,
       sessionId: options.sessionId,
       handshakeMode: options.mode ?? 'qr_bootstrap',
       phoneDeviceId: identity.deviceId,

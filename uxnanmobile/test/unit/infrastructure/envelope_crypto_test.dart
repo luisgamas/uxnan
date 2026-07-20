@@ -6,7 +6,7 @@ import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/value_objects/secure_envelope.dart';
 import 'package:uxnan/infrastructure/crypto/envelope_crypto.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart'
-    show buildEnvelopeAad, directionPhoneToBridge, directionBridgeToPhone;
+    show buildEnvelopeAad, directionBridgeToPhone, directionPhoneToBridge;
 
 /// Cross-language AES-256-GCM + AAD interop vector.
 ///
@@ -24,7 +24,8 @@ final _vectorNonce = Uint8List(12)..fillRange(0, 12, 0x24);
 const _vectorSessionId = 'abc';
 const _vectorSeq = 1;
 const _vectorPlaintext = 'uxnan-e2ee-aad-vector';
-final _vectorCiphertext = '60e9aa2087eba30c438d0fcbdc56bed00998471fc4'.fromHex();
+final _vectorCiphertext =
+    '60e9aa2087eba30c438d0fcbdc56bed00998471fc4'.fromHex();
 final _vectorTag = '137402451a5fbbea7ed20367742e6339'.fromHex();
 
 void main() {
@@ -146,7 +147,8 @@ void main() {
       expect(decrypted, [1, 2, 3]);
     });
 
-    test('decryption fails when the AAD differs from encrypt (direction '
+    test(
+        'decryption fails when the AAD differs from encrypt (direction '
         'mismatch)', () async {
       final key = Uint8List(32)..[4] = 8;
       final encryptAad = buildEnvelopeAad('sess-1', 1, directionPhoneToBridge);

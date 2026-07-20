@@ -16,11 +16,14 @@ import 'package:uxnan/infrastructure/crypto/key_generation.dart';
 import 'package:uxnan/infrastructure/transport/handshake_messages.dart';
 import 'package:uxnan/infrastructure/transport/websocket_transport.dart';
 
-/// AAD direction byte: an envelope travelling phone → bridge.
-const int directionPhoneToBridge = 0x01;
+/// AAD direction byte: an envelope travelling phone → bridge. Mirrors the
+/// canonical value in `shared/src/constants.ts` via [ProtocolConstants].
+const int directionPhoneToBridge =
+    ProtocolConstants.envelopeDirectionPhoneToBridge;
 
 /// AAD direction byte: an envelope travelling bridge → phone.
-const int directionBridgeToPhone = 0x02;
+const int directionBridgeToPhone =
+    ProtocolConstants.envelopeDirectionBridgeToPhone;
 
 /// Which physical side a [SecureChannel] instance represents, for AAD
 /// direction binding. Real app code always uses the default [phone] role
@@ -40,6 +43,9 @@ enum SecureChannelRole { phone, bridge }
 /// sessionId, big-endian u64 seq, the same `0x00` separators).
 Uint8List buildEnvelopeAad(String sessionId, int seq, int direction) {
   final sessionIdBytes = utf8.encode(sessionId);
+  // Endian.big is `setUint64`'s default, but this is a byte-level contract with
+  // the bridge — state it rather than inherit it.
+  // ignore: avoid_redundant_argument_values
   final seqBytes = ByteData(8)..setUint64(0, seq, Endian.big);
   return Uint8List.fromList(<int>[
     ...sessionIdBytes,
@@ -219,6 +225,18 @@ class SecureTransportLayer {
     TrustedDevice device,
     HandshakeMode mode,
   ) {
+    // Reject a protocol gap while both sides can still read each other's JSON.
+    // Past the handshake every frame is AEAD-sealed with a version-specific
+    // AAD, so a mismatch would look like "connected, but nothing ever works".
+    if (hello.protocolVersion != ProtocolConstants.secureProtocolVersion) {
+      throw TransportException(
+        TransportErrorKind.handshake,
+        'Incompatible bridge: it speaks secure protocol '
+        'v${hello.protocolVersion}, this app speaks '
+        'v${ProtocolConstants.secureProtocolVersion}. Update the '
+        'bridge and the app to matching versions.',
+      );
+    }
     if (!_bytesEqual(hello.clientNonce, clientNonce)) {
       throw const TransportException(
         TransportErrorKind.handshake,
@@ -288,8 +306,10 @@ class SecureChannel {
   SecureSession _session;
   final EnvelopeCrypto _envelope;
   int _lastInboundSeq;
+
   /// AAD direction this instance uses when it encrypts (sends).
   final int _outboundDirection;
+
   /// AAD direction this instance expects on the envelopes it decrypts
   /// (receives).
   final int _inboundDirection;

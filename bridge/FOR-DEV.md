@@ -90,6 +90,21 @@ push validation (FOR-HUMAN).
 
 - [ ] **Key rotation / keyEpoch advance** — blocked on a mobile trigger. (Seq-based
       catch-up on reconnect is done end-to-end; only key rotation remains.)
+- [ ] **Per-direction HKDF session keys** (would retire the AAD direction byte).
+      Today one derived key serves both directions, and reflection is prevented by
+      binding a direction byte into the envelope AAD (`buildEnvelopeAad`, spec
+      §5.9.1). Deriving a distinct key per direction is the cleaner primitive: it
+      makes reflection impossible by construction instead of by a bound field, and
+      removes the `ChannelRole` parameter that currently exists only so tests can
+      stand up a direction-correct counterparty. Deferred, not forgotten — it
+      changes key derivation on BOTH sides, so it needs a coordinated
+      bridge+mobile change and another `SECURE_PROTOCOL_VERSION` bump.
+- [ ] **Reverse-direction cross-language crypto vector.** The committed AAD interop
+      vector proves **Node-encrypt → Dart-decrypt** only. `EnvelopeCrypto.encrypt`
+      already accepts a fixed `nonce:` for tests, so a Dart test that encrypts the
+      same inputs and asserts the exact ciphertext/tag would close the loop in one
+      test. Low effort, meaningful coverage — the two sides being mutually
+      undecryptable is the single worst failure mode of this transport.
 - [ ] **Bind the LAN server to chosen interface(s)** — today it binds all
       interfaces (good for Tailscale). Advertised hosts already EXCLUDE host-only
       virtual adapters (Hyper-V/WSL/Docker/VirtualBox/VMware) via

@@ -99,9 +99,9 @@ test('seq continues across a reconnect (new key, same log) via encryptReplay', (
 test('buildEnvelopeAad matches the canonical byte layout for the reference vector', () => {
   // sessionId="abc", seq=1, direction=phone->bridge (0x01):
   //   "abc" = 61 62 63; sep 00; u64_be(1) = 00*7 01; sep 00; direction 01.
-  const expected = Buffer.from(
-    [0x61, 0x62, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01],
-  );
+  const expected = Buffer.from([
+    0x61, 0x62, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+  ]);
   const aad = buildEnvelopeAad('abc', 1, DIRECTION_PHONE_TO_BRIDGE);
   assert.equal(aad.length, 14);
   assert.deepEqual([...aad], [...expected]);

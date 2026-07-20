@@ -101,7 +101,10 @@ test('cross-language vector: re-encrypting the same inputs reproduces the fixed 
   const aad = buildEnvelopeAad(VECTOR.sessionId, VECTOR.seq, VECTOR.direction);
   const cipher = createCipheriv('aes-256-gcm', VECTOR.key, Buffer.from(VECTOR.nonceHex, 'hex'));
   cipher.setAAD(aad);
-  const ciphertext = Buffer.concat([cipher.update(Buffer.from(VECTOR.plaintext, 'utf-8')), cipher.final()]);
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from(VECTOR.plaintext, 'utf-8')),
+    cipher.final(),
+  ]);
   assert.equal(ciphertext.toString('base64'), VECTOR.ciphertextB64);
   assert.equal(cipher.getAuthTag().toString('base64'), VECTOR.tagB64);
 });

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/phone_identity.dart';
@@ -60,6 +61,7 @@ Future<Uint8List> _runBridge(
   required Ed25519KeyPairBytes bridgeIdentity,
   required String macDeviceId,
   required int expiresAtForTranscript,
+  int protocolVersion = ProtocolConstants.secureProtocolVersion,
 }) async {
   final crypto = HandshakeCrypto();
   final keygen = KeyGeneration();
@@ -95,7 +97,7 @@ Future<Uint8List> _runBridge(
         utf8.encode(
           jsonEncode({
             'kind': 'serverHello',
-            'protocolVersion': 1,
+            'protocolVersion': protocolVersion,
             'sessionId': sessionId,
             'macDeviceId': macDeviceId,
             'macIdentityPublicKey': bridgeIdentity.publicKey.toHex(),
@@ -190,6 +192,44 @@ void main() {
       expect(session.sessionId, 'session-xyz');
       expect(session.macDeviceId, 'mac-1');
       expect(session.phoneOutboundSeq, 1);
+    });
+
+    test('rejects a bridge speaking a different secure protocol version',
+        () async {
+      final transports = _pair();
+      final bridgeId = await keygen.generateIdentityKeyPair();
+      final phone = await phoneIdentity();
+
+      unawaited(
+        _runBridge(
+          transports.bridge,
+          bridgeIdentity: bridgeId,
+          macDeviceId: 'mac-1',
+          expiresAtForTranscript: DateTime(2030).millisecondsSinceEpoch,
+          // A bridge from before the AAD binding landed.
+          protocolVersion: ProtocolConstants.secureProtocolVersion - 1,
+        ).catchError((_) => Uint8List(0)),
+      );
+
+      // Must fail HERE, at the handshake, with an actionable message — not by
+      // completing and then silently dropping every encrypted frame.
+      await expectLater(
+        layer.performHandshake(
+          transport: transports.phone,
+          phoneIdentity: phone,
+          device: device(bridgeId.publicKey),
+          mode: HandshakeMode.qrBootstrap,
+        ),
+        throwsA(
+          isA<TransportException>()
+              .having((e) => e.kind, 'kind', TransportErrorKind.handshake)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('Incompatible bridge'),
+              ),
+        ),
+      );
     });
 
     test('rejects a bridge whose identity key is not trusted', () async {
@@ -294,7 +334,8 @@ void main() {
       expect(seqs, List<int>.generate(20, (i) => i + 1));
     });
 
-    test('buildEnvelopeAad matches the canonical byte layout for the '
+    test(
+        'buildEnvelopeAad matches the canonical byte layout for the '
         'reference vector', () {
       // sessionId="abc", seq=1, direction=phone->bridge (0x01):
       //   "abc" = 61 62 63; sep 00; u64_be(1) = 00*7 01; sep 00; direction 01.
@@ -303,7 +344,22 @@ void main() {
       expect(
         aad,
         Uint8List.fromList(
-          [0x61, 0x62, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01],
+          [
+            0x61,
+            0x62,
+            0x63,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x00,
+            0x01,
+          ],
         ),
       );
       expect(aad.toHex(), '6162630000000000000000010001');
