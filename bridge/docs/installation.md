@@ -47,6 +47,18 @@ uxnan-bridge stop      # signal the running daemon to stop
 Scan the QR with the Uxnan mobile app to pair (once). After pairing, the phone
 reconnects to the trusted device without re-scanning.
 
+> **Pair within 5 minutes of showing the QR or code.** First-time enrollment is
+> only accepted while a pairing window is open, so a device that never saw your
+> screen cannot enroll itself over the LAN. Showing the QR or the code opens the
+> window, and so does a phone successfully looking up the code. If the window
+> lapsed, just run `uxnan-bridge qr` (or `code`) again.
+>
+> **Running as a service?** `install-service` starts the daemon with no console,
+> and `uxnan-bridge qr`/`code` then run in a *separate* process — so **pair with
+> the manual code**, not the QR. Looking the code up reaches the daemon that
+> serves the handshake; a scanned QR does not. Re-pairing an already-trusted
+> phone is never gated.
+
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
   no hosting. (Primary plug-and-play path.)
 - **Remote (off-LAN):** recommended is **Tailscale** (or any mesh VPN) — also no

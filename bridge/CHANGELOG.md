@@ -18,6 +18,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `protocolVersion` differs, before any key derivation or trust mutation, with a
   message naming both versions. Covered by a new test asserting the rejection
   *and* that nothing was trusted on the way.
+- **Gate the LAN `qr_bootstrap` handshake on an operator-armed pairing window.**
+  Previously, the direct-LAN/Tailscale server accepted a first-time (`qr_bootstrap`)
+  handshake unconditionally: it verified only the phone's own transcript
+  signature (an attacker signs that with their own key) and then trusted the
+  identity, with no check that the operator had actually opened a pairing
+  window. Since the LAN server binds all interfaces (intentional, for
+  Tailscale), any reachable LAN/Tailscale peer could self-enroll as a trusted
+  device and drive `turn/send` and other handlers. Now `PairingCodeService`
+  exposes an `arm()`/`isArmed()` pairing window (3-minute TTL, in-memory), and
+  `server-handshake.ts` rejects a `qr_bootstrap` outside the window, before any
+  `trustStore` mutation and before `ready` is sent. Three operator actions arm
+  it: showing the QR (`generatePairingQr`), showing the manual code
+  (`currentPairingCode`), and a **successful `GET /pair/resolve`** — a caller
+  that produces the current code proved it read the code off the PC, which is
+  the same consent signal (and the only one that reaches a hidden daemon, since
+  `qr`/`code` run in a separate process and share the code through disk while
+  arming stays in-memory). So pairing keeps working exactly as before, including
+  against an autostarted, console-less daemon and at any time after start —
+  what changed is that a peer which never saw the PC screen is now refused.
+  `trusted_reconnect` is unaffected — an already-trusted phone reconnects with
+  no arming required. The relay path is unaffected too (it already scopes
+  bootstrap to one `expectedSessionId` per connection). Two follow-ups are
+  tracked in `FOR-DEV.md`: binding the proof to *this* phone rather than to
+  *some* open window (needs coordinated mobile work), and arming a hidden daemon
+  for the QR-**scan** path (a scanned QR never calls `/pair/resolve`; pair with
+  the manual code there).
+- Bound the pairing-code service's per-IP rate-limit map (`PairingCodeService`
+  `#rate`) against unbounded memory growth from IP rotation — trivial over an
+  allocated IPv6 /64 — which previously grew the map by one entry per new
+  source address forever, turning the anti-brute-force control into a memory
+  sink. `rateLimited` now sweeps expired entries whenever it opens a new window
+  for an IP, and enforces a hard `rateMaxKeys` cap (default 10,000; oldest
+  entry evicted first) as a backstop against a burst of still-unexpired IPs. A
+  single IP's own throttling budget is unaffected. Covered by 3 new tests in
+  `test/pairing/pairing-code-service.test.ts` (single-IP throttling preserved,
+  the map never exceeds `rateMaxKeys`, expired entries are swept instead of
+  accumulating).
+
+### Fixed
+- Back off the relay reconnect loop when a session ends almost immediately
+  (relay accept-then-close, a bounce, or the session already being taken).
+  Previously only a `dial()` rejection was delayed (`RELAY_RECONNECT_DELAY_MS`);
+  an accepted-then-closed session re-dialed with zero delay, so a bouncing relay
+  could drive the bridge into a tight, CPU-spinning reconnect loop. The loop now
+  applies a capped exponential backoff (`nextRelayBackoff` in `src/bridge.ts`,
+  base 2s / cap 30s) after any session shorter than 3s, and resets to the base
+  delay once a session actually carries a phone. Covered by
+  `test/transport/relay-backoff.test.ts` (5 tests).
+
+### Tests
+- Add direct unit tests for the workspace path-traversal guard (`resolveWithinRoot` / `isSensitiveName` in `src/workspace/path-guard.ts`), covering every escape branch (parent, multi-level, absolute-outside-root), the `.git` rejection (leading and nested segment) and every `SENSITIVE_PATTERNS` entry — previously only one traversal case was exercised, and only indirectly through a handler test.
 
 ## [0.0.8-alpha.20260719] - 2026-07-19
 
