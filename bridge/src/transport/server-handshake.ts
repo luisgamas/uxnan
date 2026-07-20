@@ -85,6 +85,18 @@ export async function performServerHandshake(
     throw new HandshakeError(`expected clientHello, got ${String(hello['kind'])}`);
   }
 
+  // Reject a protocol gap HERE, while both sides can still read each other's
+  // JSON. Past this point every frame is AEAD-sealed with a version-specific
+  // AAD, so a mismatch would surface as "connected, but every message silently
+  // fails its tag" — indistinguishable from a hang.
+  const helloVersion = hello['protocolVersion'];
+  if (typeof helloVersion === 'number' && helloVersion !== SECURE_PROTOCOL_VERSION) {
+    throw new HandshakeError(
+      `incompatible secure protocol: phone speaks v${helloVersion}, bridge speaks ` +
+        `v${SECURE_PROTOCOL_VERSION} — update the app and the bridge to matching versions`,
+    );
+  }
+
   const sessionId = requireString(hello, 'sessionId');
   if (options.expectedSessionId && sessionId !== options.expectedSessionId) {
     throw new HandshakeError('sessionId does not match the active pairing session');

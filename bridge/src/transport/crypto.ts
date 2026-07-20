@@ -98,9 +98,16 @@ export interface AesGcmParts {
   tagB64: string;
 }
 
-export function aesGcmEncrypt(key: Buffer, plaintext: Buffer): AesGcmParts {
+/**
+ * Encrypt with AES-256-GCM. When [aad] is given, it is bound to the GCM tag
+ * as Additional Authenticated Data (mirrors `metrics-seal.ts`'s `gcmEncrypt`):
+ * any tamper of the authenticated-but-not-encrypted fields it covers (see
+ * {@link buildEnvelopeAad} in `secure-channel.ts`) fails the tag.
+ */
+export function aesGcmEncrypt(key: Buffer, plaintext: Buffer, aad?: Buffer): AesGcmParts {
   const nonce = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
+  if (aad) cipher.setAAD(aad);
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   return {
     nonceHex: nonce.toString('hex'),
@@ -109,8 +116,10 @@ export function aesGcmEncrypt(key: Buffer, plaintext: Buffer): AesGcmParts {
   };
 }
 
-export function aesGcmDecrypt(key: Buffer, parts: AesGcmParts): Buffer {
+/** Decrypt with AES-256-GCM. [aad] must equal what was passed to encrypt. */
+export function aesGcmDecrypt(key: Buffer, parts: AesGcmParts, aad?: Buffer): Buffer {
   const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(parts.nonceHex, 'hex'));
+  if (aad) decipher.setAAD(aad);
   decipher.setAuthTag(Buffer.from(parts.tagB64, 'base64'));
   return Buffer.concat([
     decipher.update(Buffer.from(parts.ciphertextB64, 'base64')),

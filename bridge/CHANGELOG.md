@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ## [Unreleased]
 
 ### Security
+- **Authenticate the E2EE envelope's `sessionId`/`seq`/direction as AES-GCM AAD**, closing a gap where replay protection relied entirely on the unauthenticated `seq` field: a malicious relay or on-path attacker could bump a captured envelope's `seq` to re-trigger a non-idempotent handler, wedge the channel with an out-of-range `seq`, or reflect a bridge→phone envelope back as if it were inbound phone traffic (the same session key is used both directions with no prior direction binding). `bridge/src/transport/crypto.ts`'s `aesGcmEncrypt`/`aesGcmDecrypt` now accept an optional `aad` (mirroring the existing `metrics-seal.ts` pattern); `bridge/src/transport/secure-channel.ts` adds `buildEnvelopeAad(sessionId, seq, direction)` and binds it on every seal/decrypt, so tampering `seq` or reflecting a message from the other direction now fails the GCM tag instead of silently passing the old unauthenticated `seq <= lastInboundSeq` check. Nonce generation and HKDF session-key derivation are unchanged. Ships together with the matching `uxnanmobile` change (see its CHANGELOG) — envelopes are not wire-compatible across the version gap.
+- **Enforce `SECURE_PROTOCOL_VERSION` in the handshake (now `2`).** Both sides
+  already exchanged `protocolVersion` in `clientHello`/`serverHello` but neither
+  validated it, so the AAD change above would have failed as a **silent hang**:
+  the handshake is untouched, so pairing/reconnect completes and both ends report
+  "connected", after which the bridge drops every phone request in
+  `session-handler.ts`'s bare `catch { continue; }` and the phone's RPC
+  correlator never resolves — every action just times out with nothing to
+  diagnose. `server-handshake.ts` now rejects a `clientHello` whose
+  `protocolVersion` differs, before any key derivation or trust mutation, with a
+  message naming both versions. Covered by a new test asserting the rejection
+  *and* that nothing was trusted on the way.
 - **Gate the LAN `qr_bootstrap` handshake on an operator-armed pairing window.**
   Previously, the direct-LAN/Tailscale server accepted a first-time (`qr_bootstrap`)
   handshake unconditionally: it verified only the phone's own transcript

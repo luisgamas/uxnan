@@ -2055,10 +2055,76 @@ SecureEnvelope = {
   sessionId: "<uuid>",
   seq: <integer monotonico>,
   nonce: "<hex 12 bytes random por mensaje>",
-  ciphertext: "<base64 AES-256-GCM(plaintext, derivedKey, nonce)>",
+  ciphertext: "<base64 AES-256-GCM(plaintext, derivedKey, nonce, aad)>",
   tag: "<base64 GCM auth tag 16 bytes>"
 }
 ```
+
+`sessionId` y `seq` viajan en claro en el sobre (el receptor los necesita para
+ubicar la clave *antes* de poder descifrar), pero están **autenticados sin
+estar cifrados**: se vinculan al tag de AES-GCM como *Additional Authenticated
+Data* (AAD), junto con un byte de **dirección** que identifica el sentido del
+mensaje:
+
+```
+AAD = utf8(sessionId) || 0x00 || u64_be(seq) || 0x00 || direction
+
+direction = 0x01  # telefono -> bridge
+direction = 0x02  # bridge -> telefono
+```
+
+Ambos lados deben derivar el AAD **byte a byte idéntico** para una misma
+`(sessionId, seq, direction)`: el bridge (`buildEnvelopeAad` en
+`bridge/src/transport/secure-channel.ts`) y el teléfono (`buildEnvelopeAad` en
+`lib/infrastructure/transport/secure_transport_layer.dart`) implementan
+exactamente esta codificación (UTF-8 para `sessionId`, entero de 64 bits
+big-endian para `seq`, los mismos separadores `0x00`). Vector de referencia:
+para `sessionId="abc"`, `seq=1`, `direction=0x01`, el AAD es
+`61 62 63 00 00 00 00 00 00 00 00 01 00 01` (14 bytes).
+
+> ✅ **Implementado** (bridge + `uxnanmobile`): antes de este cambio, la
+> protección contra replay dependía por completo del campo `seq`
+> **no autenticado** (`envelope.seq <= lastInboundSeq`), lo que permitía a un
+> relay malicioso o a un atacante en la ruta (a) reenviar un sobre capturado
+> con un `seq` manipulado para forzar su re-aplicación, (b) fijar un `seq`
+> enorme para bloquear el canal, o (c) reflejar un sobre bridge→teléfono de
+> vuelta al bridge como si fuera tráfico entrante legítimo (la misma clave se
+> usa en ambos sentidos, sin vinculación de dirección). Vincular
+> `sessionId || seq || direction` como AAD de AES-GCM cierra las tres vías:
+> cualquier alteración de esos campos falla la verificación del tag en lugar
+> de pasar silenciosamente una comprobación de replay no autenticada. El
+> **replay y la reflexión ahora se aplican criptográficamente**, no solo por
+> un contador en memoria. `bridge/src/transport/crypto.ts`
+> (`aesGcmEncrypt`/`aesGcmDecrypt`) y `lib/infrastructure/crypto/envelope_crypto.dart`
+> (`EnvelopeCrypto.encrypt`/`decrypt`) aceptan un `aad` opcional; `nonce`
+> (12 bytes aleatorios por mensaje) y la derivación HKDF de la clave de
+> sesión **no cambian** — el patrón AAD ya existía en el repo para el sellado
+> de métricas (`bridge/src/metrics/metrics-seal.ts`) y aquí se aplica al
+> canal cifrado. Un follow-up considerado y descartado por ahora: claves
+> derivadas por HKDF separadas por dirección (permitiría prescindir del byte
+> de dirección); se documenta como posible trabajo futuro, no como deuda
+> pendiente de este cambio.
+>
+> **Versionado del protocolo (obligatorio con este cambio).** Como la AAD forma
+> parte del cálculo del tag, un peer v1 y uno v2 **no pueden descifrarse
+> mutuamente**. Sin una comprobación de versión el fallo era mudo y muy difícil
+> de diagnosticar: el handshake no cambió, así que el emparejamiento/reconexión
+> se completa y ambos lados muestran "conectado" — y a partir de ahí el bridge
+> descarta cada petición en el `catch { continue; }` de `session-handler.ts` y el
+> correlador RPC del teléfono nunca resuelve, de modo que toda acción expira sin
+> ninguna señal. Por eso `SECURE_PROTOCOL_VERSION` sube a **2** y **ambos lados
+> lo validan en el handshake** (`clientHello` en `server-handshake.ts`,
+> `serverHello` en `_verifyServerHello`), que es el último punto en el que
+> todavía pueden leerse entre sí; el rechazo ocurre antes de derivar clave o
+> tocar el trust store, con un mensaje que nombra ambas versiones. Regla que
+> antes era implícita y ahora está escrita en la constante: **se sube esta
+> versión cuando cambia el formato del *frame cifrado*, no solo el JSON del
+> handshake**. Los bytes de dirección viven en `shared/src/constants.ts`
+> (`ENVELOPE_DIRECTION_*`), única fuente de verdad; el bridge los re-exporta y
+> `ProtocolConstants` del móvil los espeja.
+>
+> **Consecuencia de release:** bridge y `uxnanmobile` deben publicarse en el
+> mismo ciclo (ver `VERSIONS.md`).
 
 **Trusted Reconnect:**
 - Usa `handshakeMode: "trusted_reconnect"`

@@ -7,8 +7,23 @@
 class ProtocolConstants {
   const ProtocolConstants._();
 
-  /// `SECURE_PROTOCOL_VERSION` — version of the E2EE handshake protocol.
-  static const int secureProtocolVersion = 1;
+  /// `SECURE_PROTOCOL_VERSION` — version of the E2EE secure transport. Both
+  /// sides reject a mismatch during the handshake, so an incompatible pair
+  /// fails fast instead of connecting and then dropping every encrypted frame.
+  ///
+  /// Bumped whenever the *encrypted-frame* format changes, not only the
+  /// handshake JSON — the handshake is the last point the two sides can still
+  /// read each other, so it is the only place a gap can be reported.
+  ///
+  /// - `1` — initial: AES-256-GCM over the envelope's ciphertext only.
+  /// - `2` — `sessionId`/`seq`/direction bound as GCM AAD ([buildEnvelopeAad]).
+  static const int secureProtocolVersion = 2;
+
+  /// AAD direction bytes for [secureProtocolVersion] >= 2. The session key is
+  /// shared by both directions, so the direction is bound into the AAD to stop
+  /// a frame being reflected back at its own sender as inbound traffic.
+  static const int envelopeDirectionPhoneToBridge = 0x01;
+  static const int envelopeDirectionBridgeToPhone = 0x02;
 
   /// `PAIRING_QR_VERSION` — version of the QR pairing payload (`v` field).
   static const int pairingQrVersion = 2;

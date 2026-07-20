@@ -7,8 +7,30 @@
  * Source: architecture/02a-system-architecture.md §5.9.1.
  */
 
-/** Secure transport protocol version negotiated in the handshake. */
-export const SECURE_PROTOCOL_VERSION = 1;
+/**
+ * Secure transport protocol version negotiated in the handshake. Both sides
+ * reject a mismatch during `clientHello`/`serverHello`, so an incompatible pair
+ * fails fast and legibly instead of completing the handshake and then dropping
+ * every encrypted frame.
+ *
+ * **Bump this whenever the encrypted-frame format changes** (envelope shape,
+ * AAD layout, key derivation) — not just when the handshake JSON changes. The
+ * handshake is the only place the two sides can still talk, so it is the only
+ * place a version gap can be reported.
+ *
+ * - `1` — initial: AES-256-GCM over the envelope's ciphertext only.
+ * - `2` — `sessionId`/`seq`/direction bound as GCM AAD (`buildEnvelopeAad`).
+ */
+export const SECURE_PROTOCOL_VERSION = 2;
+
+/**
+ * AAD direction bytes for {@link SECURE_PROTOCOL_VERSION} ≥ 2. The session key
+ * is shared by both directions, so the direction is bound into the AAD to stop
+ * a frame being reflected back at its own sender as apparently-inbound traffic.
+ * Mirrored in the mobile `ProtocolConstants`.
+ */
+export const ENVELOPE_DIRECTION_PHONE_TO_BRIDGE = 0x01;
+export const ENVELOPE_DIRECTION_BRIDGE_TO_PHONE = 0x02;
 
 /** Version stamped into the pairing QR payload. */
 export const PAIRING_QR_VERSION = 2;
