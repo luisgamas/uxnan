@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.7-alpha.20260719] - 2026-07-19
+
 ### Added — `antigravity-cli` agent id
 - Added `antigravity-cli` to the `AgentId` union (`agents/agent-capabilities.ts`)
   — Google's Antigravity CLI (`agy`), the successor to the deprecated standalone

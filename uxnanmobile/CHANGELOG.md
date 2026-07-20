@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.9-alpha.20260719+20260719] - 2026-07-19
+
 ### Added — Antigravity agent (Google's `agy`) rendering
 - The app now renders the bridge's new `antigravity-cli` agent as a first-class,
   branded choice — Google's Antigravity CLI, the successor to the deprecated

@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.8-alpha.20260719] - 2026-07-19
+
 ### Added — Antigravity (`agy`) wired as the 8th real agent
 - Wired **Antigravity**, Google's `agy` CLI (the successor to the deprecated
   standalone Gemini CLI; its models are the Gemini family), as a real one-shot
