@@ -159,7 +159,7 @@ void main() {
     expect(find.text('Direct'), findsOneWidget);
   });
 
-  testWidgets('shows a detecting badge while this PC is connecting', (
+  testWidgets('shows one detecting status while this PC is connecting', (
     tester,
   ) async {
     final device = _device('mac-1', 'My Mac');
@@ -168,9 +168,9 @@ void main() {
     );
     await tester.pump();
 
-    // "Connecting…" appears twice (the status label and the Connect button's
-    // busy state); the badge under test is the "Detecting…" pill.
-    expect(find.text('Connecting…'), findsNWidgets(2));
+    // The status uses "Detecting…" as the single card-level progress state;
+    // the button keeps its normal busy label and behavior.
+    expect(find.text('Connecting…'), findsOneWidget);
     expect(find.text('Detecting…'), findsOneWidget);
   });
 

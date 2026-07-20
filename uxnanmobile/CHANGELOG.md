@@ -6,12 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Simplified device-card connection feedback: connecting devices show a single
+  `Detecting…` status, while the LAN/Tailscale/direct/relay badge appears only
+  after a live connection is established. The Connect button retains its
+  existing `Connecting…` busy state and behavior.
+
 ### Added — network-path badge (LAN / Tailscale / Direct / Relay) on the connected PC
 - The devices screen now labels **how** a live connection actually reaches the
   PC, not just whether it's "connected": a small animated pill next to the
   status dot reads **LAN**, **Tailscale**, **Direct** or **Relay**, with a
-  **"Detecting…"** loading state while a connect attempt is in flight and the
-  path isn't known yet. A new pure `NetworkKind` classifier
+  **"Detecting…"** status while a connect attempt is in flight and the path
+  isn't known yet; the network badge itself appears only after connection. A
+  new pure `NetworkKind` classifier
   (`domain/enums/network_kind.dart`) buckets the live channel's actual
   endpoint by IP range — `100.64.0.0/10` → Tailscale; `10.0.0.0/8`,
   `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` → LAN; any other

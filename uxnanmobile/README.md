@@ -47,7 +47,10 @@ this app:
   can also **discover nearby bridges** automatically over mDNS or accept a short
   manual code — no addresses to memorize, no compile-time configuration. A
   transport indicator always tells you whether you are connected **directly** (LAN
-  / Tailscale) or **through the relay**.
+  / Tailscale) or **through the relay**. On the Devices screen, a connection in
+  progress has one `Detecting…` status; the LAN/Tailscale/direct/relay badge is
+  shown only after the live channel is established, while the Connect button
+  keeps its own `Connecting…` busy state.
 - **Parity with the bridge's main capabilities.** Streaming conversations with
   structured agent turns, interactive approvals, model and reasoning-effort
   selection, a live context-usage indicator, a message scroll rail to jump

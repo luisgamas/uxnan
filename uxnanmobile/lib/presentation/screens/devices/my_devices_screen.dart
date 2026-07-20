@@ -605,7 +605,7 @@ class _StatusLine extends StatelessWidget {
     final (label, color) = isConnected
         ? (l10n.connectionConnected, UxnanColors.connected)
         : isConnecting
-            ? (l10n.connectionConnecting, UxnanColors.connecting)
+            ? (l10n.transportDetecting, UxnanColors.connecting)
             : (l10n.connectionDisconnected, UxnanColors.disconnected);
 
     return Row(
@@ -624,16 +624,13 @@ class _StatusLine extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        // The network path badge: LAN / Tailscale / direct / relay while
-        // connected, a "detecting…" loading pill while this PC's own connect
-        // attempt is in flight, and nothing otherwise.
-        if (isConnected || isConnecting) ...[
+        // The network path badge is meaningful only after the live channel has
+        // been established. During detection, the status label above is the
+        // single progress indicator; while disconnected, no network path is
+        // shown.
+        if (isConnected) ...[
           const SizedBox(width: UxnanSpacing.xs),
-          TransportBadge(
-            kind: networkKind,
-            detecting: isConnecting && !isConnected,
-            dense: true,
-          ),
+          TransportBadge(kind: networkKind, dense: true),
         ],
       ],
     );
