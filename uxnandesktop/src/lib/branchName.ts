@@ -36,37 +36,3 @@ export function branchSlug(title: string, maxLength = 50): string {
     .slice(0, maxLength)
     .replace(/-+$/, "");
 }
-
-/** Word lists for a friendly auto-generated branch name (Docker-style
- *  adjective-noun). Small and neutral; all valid branch-name characters. */
-const BRANCH_ADJECTIVES = [
-  "brave", "calm", "clever", "eager", "gentle", "keen",
-  "lively", "mellow", "nimble", "quiet", "swift", "witty",
-];
-const BRANCH_NOUNS = [
-  "otter", "falcon", "maple", "harbor", "cedar", "meadow",
-  "comet", "willow", "pebble", "lantern", "river", "summit",
-];
-
-/**
- * Make `base` unique against `taken` by appending `-2`, `-3`, … until it's free.
- * Pure, so it's unit-tested and drives the auto-generated-name uniqueness.
- */
-export function uniqueBranchName(base: string, taken: Iterable<string>): string {
-  const set = new Set(taken);
-  if (!set.has(base)) return base;
-  let n = 2;
-  while (set.has(`${base}-${n}`)) n += 1;
-  return `${base}-${n}`;
-}
-
-/**
- * A friendly, unique auto-generated branch name (`wt/<adjective>-<noun>`, e.g.
- * `wt/brave-otter`), avoiding any name already in `taken`. The random pair is
- * made collision-proof by [`uniqueBranchName`].
- */
-export function randomBranchName(taken: Iterable<string> = []): string {
-  const pick = (a: readonly string[]) => a[Math.floor(Math.random() * a.length)];
-  const base = `wt/${pick(BRANCH_ADJECTIVES)}-${pick(BRANCH_NOUNS)}`;
-  return uniqueBranchName(base, taken);
-}

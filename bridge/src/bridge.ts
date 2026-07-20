@@ -516,8 +516,18 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         ...(updateState.status?.updateAvailable ? { updateAvailable: true } : {}),
       }),
     updateStatus: () => updateState.status,
-    generatePairingQr: () => buildPairingPayload(),
-    currentPairingCode: () => pairingCodeService.currentCode(),
+    // Showing the QR (or the manual code, below) IS the operator's "pair a
+    // phone now" signal: arm the LAN bootstrap window so the handshake accepts
+    // a qr_bootstrap for the next PAIRING_WINDOW_MS (see the LAN
+    // handleSecureConnection wiring in startLan, and server-handshake.ts).
+    generatePairingQr: () => {
+      pairingCodeService.arm();
+      return buildPairingPayload();
+    },
+    currentPairingCode: () => {
+      pairingCodeService.arm();
+      return pairingCodeService.currentCode();
+    },
     connectRelay: async (sessionId: string) => {
       const dial = (): Promise<RelayConnection> =>
         connectRelayAsMac({
@@ -621,6 +631,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             trustStore,
             displayName: hostname(),
             transport: 'direct',
+            // Consent gate for first-time enrollment (architecture/02a §5.9.1):
+            // a qr_bootstrap is only accepted while the operator recently showed
+            // the QR/code (see generatePairingQr/currentPairingCode above).
+            // trusted_reconnect never consults this.
+            isPairingArmed: () => pairingCodeService.isArmed(),
           });
         },
         // Manual-code pairing: trade a code shown on the PC for the pairing payload.

@@ -65,6 +65,15 @@ VPN on the phone and want an internet-reachable fallback. **To turn it on:**
 
 ## Notes
 
+- **First-time pairing is time-boxed (LAN/Tailscale).** Enrollment of a *new*
+  device is only accepted for 5 minutes after an operator action opens the
+  window — showing the QR, showing the code, or a phone successfully looking the
+  code up. This is what stops any peer that can reach the always-listening LAN
+  port from enrolling itself as trusted. Already-paired devices reconnect at any
+  time, unaffected. Against a console-less daemon (`install-service`), pair with
+  the **manual code**: `uxnan-bridge qr`/`code` run in a separate process, and a
+  scanned QR never contacts the daemon before the handshake.
+
 - All modes are E2EE end-to-end; the relay only ever sees opaque envelopes.
 - `hosts` may include virtual-NIC addresses (Docker/WSL/Hyper-V) the phone can't
   reach — harmless, it just tries the next one (each with a short timeout) and

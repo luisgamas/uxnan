@@ -32,6 +32,13 @@ export interface ServerHandshakeOptions {
   now: () => number;
   /** If set, the clientHello sessionId must match (active pairing session). */
   expectedSessionId?: string;
+  /**
+   * Gate a `qr_bootstrap` handshake on an operator-armed pairing window
+   * (`PairingCodeService.arm`/`isArmed`). When omitted, bootstrap is NOT gated
+   * here (used by the relay path, which already scopes bootstrap to one
+   * `expectedSessionId` per connection). Never affects `trusted_reconnect`.
+   */
+  isPairingArmed?: () => boolean;
   /** Key epoch to advertise (default 1). */
   keyEpoch?: number;
   /**
@@ -151,6 +158,25 @@ export async function performServerHandshake(
   });
 
   if (mode === 'qr_bootstrap') {
+    // Reject a first-time enrollment unless the operator explicitly opened the
+    // pairing window (showed the QR or the manual code) recently. Checked here,
+    // BEFORE any trust mutation and before `ready` is sent, so a reachable
+    // device that never saw the QR/code cannot self-enroll just by reaching the
+    // LAN socket. `options.isPairingArmed` is only wired on the LAN path (the
+    // relay path leaves it unset and stays gated by `expectedSessionId` alone,
+    // as before); `trusted_reconnect` never reaches this branch.
+    //
+    // FOR-DEV: this only proves the operator opened pairing recently, not that
+    // THIS phone is the one they meant to pair (any device that reaches the LAN
+    // socket during the window still qualifies). Binding enrollment to a
+    // phone-computed proof of the pairing code (`pairingProof` on `clientAuth`,
+    // verified constant-time here) would close that gap, but requires the
+    // mobile app to actually retain the pairing code past the initial
+    // `/pair/resolve` call and to embed an equivalent secret in the QR-scan
+    // path too (today neither carries it this far) — see bridge/FOR-DEV.md.
+    if (options.isPairingArmed && !options.isPairingArmed()) {
+      throw new HandshakeError('pairing is not open; ask the PC to show a pairing QR/code');
+    }
     await trustStore.upsert({
       deviceId: phoneDeviceId,
       displayName: phoneDeviceId,

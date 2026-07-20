@@ -121,6 +121,15 @@ uxnan-bridge install-service  # autostart at logon (Task Scheduler / LaunchAgent
 uxnan-bridge uninstall-service
 ```
 
+**Pairing is time-boxed.** A first-time enrollment is only accepted while a
+pairing window is open, so a device that never saw your screen can't enroll
+itself over the LAN. The window opens for 5 minutes whenever you show the QR or
+the code — and also when a phone successfully looks up the code, which is how
+pairing works against a daemon started by `install-service` (there `uxnan-bridge
+qr`/`code` run in a *separate* process, so **use the manual code**: a scanned QR
+never contacts the daemon before the handshake). Already-paired devices
+reconnect at any time and are never affected.
+
 Logs are written to `~/.uxnan/logs/bridge-YYYY-MM-DD.log` (daily rotation, with a
 secret-redaction pass) and to stderr. Autostart at login is configured by the
 platform scripts under `scripts/`.

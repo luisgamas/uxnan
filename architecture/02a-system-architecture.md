@@ -1934,6 +1934,7 @@ CONSTANTES:
   TRUSTED_RECONNECT_SKEW_MS = 90_000 (90 segundos)
   MAX_BRIDGE_OUTBOUND_MESSAGES = 500
   MAX_BRIDGE_OUTBOUND_BYTES = 10_485_760  (10 MB)
+  PAIRING_WINDOW_MS = 180_000         (3 minutos — ver nota de seguridad abajo)
 ```
 
 **Fase 1 — Bootstrap por QR (solo primera conexion):**
@@ -1943,6 +1944,41 @@ CONSTANTES:
 3. El telefono escanea el QR
 4. El telefono genera su par Ed25519: (`phoneIdentityPrivateKey`, `phoneIdentityPublicKey`)
 5. El telefono persiste `PhoneIdentity` y crea `TrustedDevice`
+
+> **Security — armed pairing window (bridge, implemented):** on the direct-LAN/
+> Tailscale transport the bridge binds all interfaces, so any reachable peer can
+> reach the handshake socket at any time. A `qr_bootstrap` bootstrap is
+> therefore only ACCEPTED while an operator-armed pairing window is open — the
+> bridge's `PairingCodeService.arm()`/`isArmed()` (`PAIRING_WINDOW_MS`, in-memory,
+> per bridge-process instance; set to `MAX_PAIRING_AGE_MS` so the gate lives exactly
+> as long as the `PairingPayload` it gates — a shorter window would leave a band
+> where the phone still accepts the QR and the bridge silently refuses). The window is armed by the exact
+> operator actions that surface a QR/code — `generatePairingQr()` (the `qr`
+> command, and `start`'s own printed QR) and `currentPairingCode()` (the `code`
+> command) — and by a **successful `GET /pair/resolve`**: producing the current
+> code proves the caller read it off the PC, which is the same consent signal.
+> That last one is what keeps pairing working against an autostarted,
+> console-less daemon: `qr`/`code` run in a SEPARATE short-lived process and
+> share the code through `~/.uxnan/pairing-code.json`, but arming is in-memory
+> and does not cross processes, so the daemon that actually serves the handshake
+> can only be armed by the resolve it serves itself. `server-handshake.ts`
+> rejects an unarmed `qr_bootstrap` BEFORE any
+> `trustStore` mutation and before `ready` is sent. This corrects an earlier
+> drift: the manual-pairing-code service documented itself as "the consent
+> gate" for pairing, but that check only guarded `GET /pair/resolve` — the
+> handshake itself accepted a bootstrap unconditionally regardless of whether
+> the code or QR had ever been shown. The window is the actual gate now; the
+> code/QR remain how the phone *learns* the connection details, not (yet) a
+> value the handshake itself verifies. `trusted_reconnect` is NOT gated by the
+> window (an already-trusted phone reconnects at any time), and the relay path
+> is NOT gated by it either (it already scopes a bootstrap to one
+> `expectedSessionId` per connection). **Deferred hardening (see
+> `bridge/FOR-DEV.md`):** (1) binding enrollment to a phone-computed proof that
+> it holds the pairing code — i.e. to *this* phone rather than to *some* open
+> window — needs coordinated mobile work that isn't wired yet; (2) arming a
+> hidden daemon for the QR-**scan** path, which never calls `/pair/resolve` and
+> so is not covered by the resolve-arming above (pair with the manual code
+> there).
 
 **Fase 2 — Handshake criptografico:**
 
