@@ -2,35 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 /// A small pill that labels the network path a live connection is using —
 /// LAN, Tailscale, a direct address, or the relay — following the same
 /// "type-specific icon + color pill" pattern as `CommitRefChip`
-/// (`git/widgets/commit_ref_chip.dart`). While a connection attempt is in
-/// flight and the kind isn't known yet, pass [detecting] instead of relying
-/// on [kind] for a loading state; when neither applies ([kind] is
-/// [NetworkKind.unknown] and [detecting] is false), the badge renders nothing.
+/// (`git/widgets/commit_ref_chip.dart`). When the path isn't known ([kind] is
+/// [NetworkKind.unknown] — including while a connection attempt is still in
+/// flight) the badge renders nothing; the in-flight state is carried by the
+/// card's own status line, not by this pill.
 ///
 /// Cross-fades between states with [AnimatedSwitcher] — honoring reduced
 /// motion — so a kind flip mid-session (e.g. a reconnect that falls back from
 /// Tailscale to the relay) reads as a transition, not a jump cut.
 class TransportBadge extends StatelessWidget {
-  /// Creates a [TransportBadge] for [kind], or a loading pill when
-  /// [detecting] is true (in which case [kind] is ignored).
-  const TransportBadge({
-    required this.kind,
-    this.detecting = false,
-    this.dense = false,
-    super.key,
-  });
+  /// Creates a [TransportBadge] for [kind].
+  const TransportBadge({required this.kind, this.dense = false, super.key});
 
-  /// The classified network path. Ignored while [detecting] is true.
+  /// The classified network path.
   final NetworkKind kind;
-
-  /// Shows a spinner + "Detecting…" pill instead of [kind] — for a connection
-  /// attempt in flight whose path isn't resolved yet.
-  final bool detecting;
 
   /// A tighter variant for dense rows.
   final bool dense;
@@ -42,19 +31,7 @@ class TransportBadge extends StatelessWidget {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
     final Widget child;
-    if (detecting) {
-      child = _Pill(
-        key: const ValueKey('detecting'),
-        dense: dense,
-        background: colors.surfaceContainerHigh,
-        foreground: colors.onSurfaceVariant,
-        leading: PolygonLoader(
-          size: dense ? 11 : 13,
-          color: colors.onSurfaceVariant,
-        ),
-        label: l10n.transportDetecting,
-      );
-    } else if (kind == NetworkKind.unknown) {
+    if (kind == NetworkKind.unknown) {
       child = const SizedBox.shrink(key: ValueKey('hidden'));
     } else {
       final (icon, label) = _labelFor(kind, l10n);

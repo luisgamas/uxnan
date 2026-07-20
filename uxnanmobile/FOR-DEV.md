@@ -20,9 +20,10 @@ connected to live bridge data, validated on-device against a real bridge.
   handshake, seq/replay, outbound buffer, reconnect loop).
 - **Pairing & onboarding** — `OnboardingScreen`, `QrScannerScreen`,
   `MyDevicesScreen`, **`ManualCodeScreen`** (bridge-first manual-code pairing,
-  `GET /pair/resolve?code=`, host typed or via mDNS discover; **the resolve
-  itself races the typed host against every mDNS-discovered candidate**,
-  first `2xx` wins). The devices screen shows a **network-path badge** (LAN /
+  `GET /pair/resolve?code=`, host typed or picked from mDNS discovery; the
+  code is sent to **only** the host the user chose — never fanned out to
+  discovered candidates, since it is a shared secret and mDNS records are
+  spoofable). The devices screen shows a **network-path badge** (LAN /
   Tailscale / Direct / Relay, `NetworkKind`) on the connected PC, derived from
   the actual live endpoint rather than the coarser relay/direct
   `bridge/status` flag.
@@ -203,11 +204,10 @@ shipping.
 ## App-side pending work (needs relay/bridge changes to start)
 
 - [ ] **Manual pairing over the relay for a phone with no direct path to the
-      PC at all.** `ManualPairingService.resolveAny`
-      (`infrastructure/pairing/manual_pairing_service.dart`) already races the
-      typed host against every bridge discovered via mDNS, but every
-      candidate still needs a direct HTTP path (LAN or Tailscale) reachable
-      from the phone right now. A phone with neither — cellular data only,
+      PC at all.** `ManualPairingService.resolve`
+      (`infrastructure/pairing/manual_pairing_service.dart`) needs a direct
+      HTTP path (LAN or Tailscale) to the chosen host, reachable from the
+      phone right now. A phone with neither — cellular data only,
       the PC not yet joined to Tailscale — can't resolve a pairing code at
       all. Fetching the payload through the relay instead of the current
       direct `GET /pair/resolve` would remove that requirement entirely, but

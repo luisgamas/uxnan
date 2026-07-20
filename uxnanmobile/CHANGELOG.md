@@ -37,25 +37,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   entirely client-side from data the bridge already advertises (`hosts`,
   `relayUrl`).
 
-### Fixed — manual-code pairing no longer dead-ends on a single unreachable host
-- Manual pairing (`ManualCodeScreen`) used to resolve the pairing code with a
-  single blind HTTP GET against whatever host the user typed. If that one
-  host wasn't reachable on the phone's *current* network — a stale/typo'd LAN
-  IP, or the PC only reachable via Tailscale while the phone types the LAN
-  address shown on screen — pairing failed outright and the (already
-  multi-host-capable) WebSocket connection race never even got a chance to
-  run. `ManualPairingService` gained `resolveAny`, which races the typed host
-  concurrently against every bridge discovered via mDNS in the background
-  (the screen now runs passive `BridgeDiscoveryService` discovery for its
-  whole lifetime, not just while the "Browse nearby bridges" sheet is open) —
-  the first bridge to answer `HTTP 2xx` wins, mirroring how
-  `DirectTransportSelector` already races the paired device's advertised
-  hosts for the live connection. When every candidate fails, the single most
-  actionable error surfaces (a definitive "wrong code" from a bridge that
-  *was* reached always outranks a plain "unreachable" from one that wasn't),
-  and the network-failure copy now actively guides the user: try the PC's
-  Tailscale `100.x` address, or its LAN IP if on the same Wi-Fi, and notes the
-  connection can also fall back to the relay once paired.
+### Security — the pairing code is sent to exactly one host, the one you chose
+- Manual pairing resolves the code with a single `GET /pair/resolve?code=`
+  against the host the user named — typed, or picked in the "Browse nearby
+  bridges" sheet (which fills the host field). It is deliberately **never**
+  fanned out across mDNS-discovered candidates. The code is a shared secret
+  read off the PC screen, and a successful resolve both hands out the pairing
+  payload and **arms the bridge's `qr_bootstrap` window** (see the `bridge`
+  CHANGELOG), so disclosing it to an unauthenticated, spoofable mDNS record
+  would let any device on the same network harvest it — or answer first and be
+  trusted as "your PC" with no confirmation. Covered by tests asserting that a
+  second reachable bridge is never dialed, and that an empty host is rejected
+  before any request leaves the device.
+- Discovery is hardened as defense in depth: the mDNS TXT `addr` hint is only
+  honored when it is a literal IP in private / CGNAT / loopback space
+  (`isLocalAddressLiteral`), never a hostname and never a public address; the
+  SRV-resolved address wins otherwise. A discovered bridge is still only ever
+  contacted after the user explicitly picks it.
+- The network-failure copy now guides the user: try the PC's Tailscale `100.x`
+  address, or its LAN IP if on the same Wi-Fi, and notes the connection can
+  fall back to the relay once paired.
 - Deferred: resolving a pairing code with **no direct network path to the PC
   at all** (e.g. the phone on cellular data, the PC not yet joined to
   Tailscale) still isn't possible — it would need fetching the payload

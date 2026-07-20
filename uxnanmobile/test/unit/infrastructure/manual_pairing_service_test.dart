@@ -7,20 +7,15 @@ import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
 
 /// A canned HTTP response for [_FakeAdapter].
 class _FakeResponse {
-  const _FakeResponse({
-    required this.statusCode,
-    this.body,
-    this.delay = Duration.zero,
-  });
+  const _FakeResponse({required this.statusCode, this.body});
 
   final int statusCode;
   final Object? body;
-  final Duration delay;
 }
 
 /// A minimal [HttpClientAdapter] that answers per-host from [responses] and
-/// counts how many requests each host received, so `resolveAny`'s dedup and
-/// racing can be verified without a real network. A host absent from
+/// counts how many requests each host received, so it can be asserted that the
+/// pairing code goes to exactly one host. A host absent from
 /// [responses] simulates "unreachable" (throws a [DioException]), matching
 /// what a real timed-out/refused connection surfaces to [ManualPairingService].
 class _FakeAdapter implements HttpClientAdapter {
@@ -48,9 +43,6 @@ class _FakeAdapter implements HttpClientAdapter {
         message: 'no fake route for $host',
       );
     }
-    if (response.delay > Duration.zero) {
-      await Future<void>.delayed(response.delay);
-    }
     return ResponseBody.fromBytes(
       utf8.encode(jsonEncode(response.body)),
       response.statusCode,
@@ -62,7 +54,7 @@ class _FakeAdapter implements HttpClientAdapter {
 }
 
 /// A valid decoded `/pair/resolve` body, shared by [parsePairResolveResponse]
-/// and [ManualPairingService.resolveAny] tests below.
+/// and [ManualPairingService.resolve] tests below.
 final validPayload = <String, dynamic>{
   'v': 1,
   'sessionId': 'sess-1',
@@ -181,133 +173,35 @@ void main() {
     });
   });
 
-  group('dedupeResolveHosts', () {
-    test('normalizes, dedupes, and preserves first-seen order', () {
-      expect(
-        dedupeResolveHosts(
-          ['192.168.1.5', '192.168.1.5:19850', '10.0.0.2:8080'],
-        ),
-        ['192.168.1.5:19850', '10.0.0.2:8080'],
-      );
-    });
-
-    test('drops entries that do not normalize to a usable host:port', () {
-      expect(dedupeResolveHosts(['', '   ', 'host:notaport']), isEmpty);
-    });
-  });
-
-  group('resolveErrorPriority', () {
-    test('a definitive answer from a reached bridge outranks "unreachable"',
-        () {
-      expect(
-        resolveErrorPriority(ManualPairingErrorKind.invalidOrExpiredCode),
-        lessThan(resolveErrorPriority(ManualPairingErrorKind.network)),
-      );
-      expect(
-        resolveErrorPriority(ManualPairingErrorKind.rateLimited),
-        lessThan(resolveErrorPriority(ManualPairingErrorKind.network)),
-      );
-      expect(
-        resolveErrorPriority(ManualPairingErrorKind.malformedPayload),
-        lessThan(resolveErrorPriority(ManualPairingErrorKind.network)),
-      );
-      expect(
-        resolveErrorPriority(ManualPairingErrorKind.server),
-        lessThan(resolveErrorPriority(ManualPairingErrorKind.network)),
-      );
-    });
-
-    test('"unreachable" still outranks a caller input error', () {
-      expect(
-        resolveErrorPriority(ManualPairingErrorKind.network),
-        lessThan(resolveErrorPriority(ManualPairingErrorKind.invalidInput)),
-      );
-    });
-  });
-
-  group('ManualPairingService.resolveAny', () {
-    test('an empty candidate list throws invalidInput without any request', () {
-      final service = ManualPairingService(Dio());
-      expect(
-        () => service.resolveAny(hosts: const [], code: 'ABC'),
-        throwsA(
-          isA<ManualPairingException>().having(
-            (e) => e.kind,
-            'kind',
-            ManualPairingErrorKind.invalidInput,
-          ),
-        ),
-      );
-    });
-
-    test('the first host to answer 2xx wins, even over a slower one', () async {
-      final adapter = _FakeAdapter({
-        'slow.local': _FakeResponse(
-          statusCode: 200,
-          body: {...validPayload, 'displayName': 'Slow PC'},
-          delay: const Duration(milliseconds: 150),
-        ),
-        'fast.local': _FakeResponse(
-          statusCode: 200,
-          body: {...validPayload, 'displayName': 'Fast PC'},
-        ),
-      });
-      final service = ManualPairingService(Dio()..httpClientAdapter = adapter);
-      final payload = await service.resolveAny(
-        hosts: ['slow.local:19850', 'fast.local:19850'],
-        code: 'ABC',
-      );
-      expect(payload.displayName, 'Fast PC');
-    });
-
-    test('duplicate candidates that normalize the same are dialed once',
-        () async {
+  group('ManualPairingService.resolve — the code reaches ONE host only', () {
+    test('dials exactly the host it was given, and no other', () async {
       final adapter = _FakeAdapter({
         'pc.local': _FakeResponse(statusCode: 200, body: validPayload),
+        // A second bridge that is reachable and would happily answer. It must
+        // never be dialed: mDNS records are unauthenticated, so fanning the
+        // code out to a discovered host would disclose it to whoever published
+        // that record and let the first responder impersonate the PC.
+        'rogue.local': _FakeResponse(statusCode: 200, body: validPayload),
       });
-      final service = ManualPairingService(Dio()..httpClientAdapter = adapter);
-      await service.resolveAny(
-        // The default-port form and the explicit-port form normalize to the
-        // same `host:port`, so only one dial should ever go out.
-        hosts: ['pc.local', 'pc.local:19850', 'pc.local:19850'],
-        code: 'ABC',
-      );
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      final payload = await ManualPairingService(dio)
+          .resolve(host: 'pc.local', code: '0123-ABCD');
+
+      expect(payload.sessionId, 'sess-1');
       expect(adapter.callCounts['pc.local'], 1);
+      expect(adapter.callCounts.containsKey('rogue.local'), isFalse);
     });
 
-    test(
-        'when every candidate fails, a definitive answer wins over '
-        '"unreachable"', () async {
-      final adapter = _FakeAdapter({
-        'wrong-code.local': const _FakeResponse(statusCode: 403),
-        // 'unreachable.local' is deliberately absent from the response map,
-        // so the fake adapter throws a connection error for it.
-      });
-      final service = ManualPairingService(Dio()..httpClientAdapter = adapter);
-      await expectLater(
-        service.resolveAny(
-          hosts: ['wrong-code.local:19850', 'unreachable.local:19850'],
-          code: 'ABC',
-        ),
-        throwsA(
-          isA<ManualPairingException>().having(
-            (e) => e.kind,
-            'kind',
-            ManualPairingErrorKind.invalidOrExpiredCode,
-          ),
-        ),
-      );
-    });
-
-    test('when nothing is reachable at all, the error kind is network',
+    test('an unreachable host fails as network, without trying anywhere else',
         () async {
-      final adapter = _FakeAdapter(const {});
-      final service = ManualPairingService(Dio()..httpClientAdapter = adapter);
+      final adapter = _FakeAdapter({
+        'rogue.local': _FakeResponse(statusCode: 200, body: validPayload),
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
       await expectLater(
-        service.resolveAny(
-          hosts: ['a.local:19850', 'b.local:19850'],
-          code: 'ABC',
-        ),
+        ManualPairingService(dio).resolve(host: 'pc.local', code: '0123-ABCD'),
         throwsA(
           isA<ManualPairingException>().having(
             (e) => e.kind,
@@ -316,6 +210,26 @@ void main() {
           ),
         ),
       );
+      expect(adapter.callCounts.containsKey('rogue.local'), isFalse);
+    });
+
+    test('an empty host is rejected before any request goes out', () async {
+      final adapter = _FakeAdapter({
+        'rogue.local': _FakeResponse(statusCode: 200, body: validPayload),
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+
+      await expectLater(
+        ManualPairingService(dio).resolve(host: '  ', code: '0123-ABCD'),
+        throwsA(
+          isA<ManualPairingException>().having(
+            (e) => e.kind,
+            'kind',
+            ManualPairingErrorKind.invalidInput,
+          ),
+        ),
+      );
+      expect(adapter.callCounts, isEmpty);
     });
   });
 }

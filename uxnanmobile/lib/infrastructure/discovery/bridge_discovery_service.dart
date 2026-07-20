@@ -89,10 +89,22 @@ DiscoveredBridge? bridgeFromService(Service service) => parseDiscoveredBridge(
       txt: service.txt ?? const <String, Uint8List?>{},
     );
 
-/// Builds a [DiscoveredBridge] from the raw discovery fields. Prefers the TXT
-/// `addr`/`port` hints the bridge advertises, then falls back to the first
-/// resolved IPv4 address and the SRV port. Returns `null` when no usable host
-/// or port can be determined (such a service can't be paired with).
+/// Builds a [DiscoveredBridge] from the raw discovery fields.
+///
+/// Address precedence is deliberately **resolved-address first**: the TXT
+/// `addr` hint is an unsigned string that any device on the network can
+/// publish, so it is only honored when it is a literal IP in a private,
+/// CGNAT/Tailscale or loopback range (see [isLocalAddressLiteral]) — never a
+/// hostname and never a public address. Otherwise the SRV-resolved IPv4 wins.
+/// The port hint is harmless (it only narrows where on that host we knock).
+///
+/// This bounds the damage of a spoofed record: a discovered bridge is still
+/// only ever contacted after the user explicitly picks it, and the pairing
+/// code is only ever sent to that one chosen host
+/// (`ManualPairingService.resolve`).
+///
+/// Returns `null` when no usable host or port can be determined (such a
+/// service can't be paired with).
 DiscoveredBridge? parseDiscoveredBridge({
   String? name,
   String? host,
@@ -109,9 +121,10 @@ DiscoveredBridge? parseDiscoveredBridge({
             addresses.isNotEmpty ? addresses.first : InternetAddress.anyIPv4,
       )
       .address;
-  final resolvedHost = (txtAddr != null && txtAddr.isNotEmpty)
-      ? txtAddr
-      : (addresses.isNotEmpty ? firstV4 : (host ?? '').trim());
+  final trustedTxtAddr =
+      (txtAddr != null && isLocalAddressLiteral(txtAddr)) ? txtAddr : null;
+  final resolvedHost =
+      addresses.isNotEmpty ? firstV4 : (trustedTxtAddr ?? (host ?? '').trim());
   final resolvedPort = txtPort ?? port;
   if (resolvedHost.isEmpty || resolvedPort == null || resolvedPort <= 0) {
     return null;
@@ -136,4 +149,33 @@ String? _txtValue(Map<String, Uint8List?> txt, String key) {
   } on FormatException {
     return null;
   }
+}
+
+/// Whether [value] is a literal IP address on a network the phone could
+/// plausibly share with the PC: RFC 1918 private space, CGNAT/Tailscale
+/// (`100.64/10`), link-local (`169.254/16`) or loopback.
+///
+/// Used to decide whether an mDNS TXT `addr` hint may be honored at all.
+/// Hostnames always fail this check on purpose — resolving one would hand an
+/// attacker who can publish a TXT record an arbitrary destination.
+bool isLocalAddressLiteral(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return false;
+  final parts = trimmed.split('.');
+  if (parts.length != 4) return false;
+  final octets = <int>[];
+  for (final part in parts) {
+    final n = int.tryParse(part);
+    if (n == null || n < 0 || n > 255 || (part.length > 1 && part[0] == '0')) {
+      return false;
+    }
+    octets.add(n);
+  }
+  final [a, b, _, _] = octets;
+  if (a == 10 || a == 127) return true;
+  if (a == 192 && b == 168) return true;
+  if (a == 172 && b >= 16 && b <= 31) return true;
+  if (a == 100 && b >= 64 && b <= 127) return true;
+  if (a == 169 && b == 254) return true;
+  return false;
 }

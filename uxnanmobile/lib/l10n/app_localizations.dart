@@ -170,7 +170,7 @@ abstract class AppLocalizations {
   /// **'Tailscale'**
   String get transportTailscale;
 
-  /// Network-path badge shown while a connection attempt is in flight and its transport isn't known yet.
+  /// Device-card status shown while a connection attempt is in flight and its network path isn't known yet.
   ///
   /// In en, this message translates to:
   /// **'Detecting…'**

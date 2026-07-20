@@ -38,7 +38,7 @@
   },
   "transportDetecting": "Detecting…",
   "@transportDetecting": {
-    "description": "Network-path badge shown while a connection attempt is in flight and its transport isn't known yet."
+    "description": "Device-card status shown while a connection attempt is in flight and its network path isn't known yet."
   },
 
   "onboardingSkip": "Skip",
