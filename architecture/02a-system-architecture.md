@@ -2188,6 +2188,15 @@ socket `mac` se cierre cuando la sesion del telefono deja de ser valida:
   del bridge —que lo descarta como trafico cifrado invalido— y el telefono queda
   atascado en "reconnecting" hasta forzar el cierre de la app.
 
+**Backoff del re-armado.** El re-armado del bridge es inmediato en el caso sano,
+pero **no** es incondicional: si la sesion `mac` muere en menos de 3 s (el relay
+acepta y cierra en el acto, un rebote del relay, o la sesion ya esta tomada), el
+loop `connectRelay` aplica un backoff exponencial acotado — base 2 s, tope 30 s —
+antes de volver a marcar, y vuelve a la base en cuanto una sesion dura lo
+suficiente. Sin el, un relay que rebota empuja al bridge a un bucle de reconexion
+sin pausa. La supersession descrita arriba cierra un socket que normalmente vivio
+mucho mas de 3 s, asi que el teardown sigue re-armando de inmediato.
+
 #### 5.10.2 Flujo de push notification (RUTA PRIMARIA: bridge-direct)
 
 ```

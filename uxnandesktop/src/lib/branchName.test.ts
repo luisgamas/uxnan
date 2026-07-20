@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { branchSlug, worktreeFolderFor } from "./branchName";
+import {
+  branchSlug,
+  randomBranchName,
+  uniqueBranchName,
+  worktreeFolderFor,
+} from "./branchName";
 
 describe("worktreeFolderFor", () => {
   it("puts the worktree beside its repo, named <repo>--<branch>", () => {
@@ -44,5 +49,36 @@ describe("branchSlug", () => {
 
   it("returns empty for a title with nothing sluggable", () => {
     expect(branchSlug("!!! ???")).toBe("");
+  });
+});
+
+describe("uniqueBranchName", () => {
+  it("returns the base untouched when it's free", () => {
+    expect(uniqueBranchName("wt/brave-otter", ["other"])).toBe("wt/brave-otter");
+  });
+
+  it("appends the first free numeric suffix when taken", () => {
+    expect(uniqueBranchName("feature", ["feature"])).toBe("feature-2");
+    expect(uniqueBranchName("feature", ["feature", "feature-2", "feature-3"])).toBe(
+      "feature-4",
+    );
+  });
+});
+
+describe("randomBranchName", () => {
+  it("produces a wt/<adjective>-<noun> name", () => {
+    for (let i = 0; i < 50; i += 1) {
+      expect(randomBranchName()).toMatch(/^wt\/[a-z]+-[a-z]+$/);
+    }
+  });
+
+  it("never returns a name already taken", () => {
+    // Feed back the last result as taken; the suffix guarantees a fresh name.
+    const taken = new Set<string>();
+    for (let i = 0; i < 30; i += 1) {
+      const name = randomBranchName(taken);
+      expect(taken.has(name)).toBe(false);
+      taken.add(name);
+    }
   });
 });
