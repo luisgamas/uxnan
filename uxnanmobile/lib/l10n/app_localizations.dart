@@ -209,7 +209,7 @@ abstract class AppLocalizations {
   /// No description provided for @featureMultiAgentBody.
   ///
   /// In en, this message translates to:
-  /// **'Works with Claude Code, Codex, Gemini, OpenCode and Pi — with more agents on the way. No lock-in.'**
+  /// **'Works with Claude Code, Codex, Antigravity, OpenCode and Pi — with more agents on the way. No lock-in.'**
   String get featureMultiAgentBody;
 
   /// No description provided for @featureE2eeTitle.

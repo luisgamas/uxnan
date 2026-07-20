@@ -1,7 +1,8 @@
 Novedades de esta actualización:
 
-• Renovamos archivos, historial de Git, la bienvenida y el redactor, con una sola animación de carga en toda la app.
-• Tus estadísticas se actualizan al abrir Perfil, y añadimos un botón para hacerlo — ya no hace falta reiniciar la app. Elige automático, cada cierto tiempo o manual en Ajustes.
-• El respaldo de estadísticas vuelve a funcionar sin frase de contraseña, y te dice el motivo real si falla.
+• Nuevo agente: Google Antigravity (sucesor de Gemini CLI) ya es seleccionable al iniciar una conversación — Gemini sale del selector.
+• Corrección: reabrir la app a mitad de una respuesta ya no pierde lo que el agente escribió mientras no estabas — vuelve la respuesta completa.
+• Corrección: las tarjetas de actividad ya no cortan una frase por la mitad.
+• Animación más suave al eliminar una conversación.
 
 ¡Gracias por probar esta alfa!

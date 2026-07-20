@@ -1,7 +1,8 @@
 What's new in this update:
 
-• A fresh look for files, Git history, onboarding and the composer, with one lively loading animation everywhere.
-• Profile stats now refresh whenever you open Profile, plus a refresh button — no more restarting the app to see them move. Pick automatic, timed or manual in Settings.
-• Backing up your stats works again without a passphrase, and tells you the real reason if it fails.
+• New agent: Google Antigravity (the successor to Gemini CLI) is now selectable when you start a conversation — Gemini is retired from the picker.
+• Fix: reopening the app mid-reply no longer loses what the agent wrote while you were away — the full response comes back.
+• Fix: activity cards no longer cut a sentence in half.
+• A smoother animation when you delete a conversation.
 
 Thanks for testing this alpha!

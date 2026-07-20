@@ -451,12 +451,17 @@ export class AgentManager {
     approvalId: string,
     decision: ApprovalDecision,
   ): Promise<{ turnId: string }> {
+    // Capture the in-flight turn id UP FRONT: resolving the approval can drive
+    // the turn straight to completion (the Echo demo does), which clears
+    // `#activeTurnByThread` before we return — so read it while it is still set
+    // and report that regardless of when the completion event lands.
+    const turnId = this.#activeTurnByThread.get(threadId) ?? '';
     const pending = this.#pendingHookApprovals.get(approvalId);
     if (pending) {
       clearTimeout(pending.timer);
       this.#pendingHookApprovals.delete(approvalId);
       pending.resolve(decision);
-      return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
+      return { turnId };
     }
     const agentId = this.#agentByThread.get(threadId);
     const adapter = agentId ? this.#adapters.get(agentId) : undefined;
@@ -473,7 +478,7 @@ export class AgentManager {
       );
     }
     await adapter.respondApproval(threadId, approvalId, decision);
-    return { turnId: this.#activeTurnByThread.get(threadId) ?? '' };
+    return { turnId };
   }
 
   /**
@@ -620,13 +625,20 @@ export class AgentManager {
         case 'block': {
           const content = readContent(event.data);
           if (content !== undefined) {
-            await this.#options.store.appendBlock(threadId, turnId, content, now);
+            // A block flagged `beforeText` came from a parallel/background
+            // activity while the main text was still streaming: the store slots
+            // it before the open text run (never severing it), and the flag
+            // rides on the notification so the phone's live buffer applies the
+            // identical placement — live view and re-sync render the same order.
+            const beforeText = readBeforeText(event.data);
+            await this.#options.store.appendBlock(threadId, turnId, content, now, beforeText);
             this.#options.notify(
               makeNotification(StreamNotification.ContentBlock, {
                 threadId,
                 turnId,
                 messageId,
                 content,
+                ...(beforeText ? { beforeText } : {}),
               }),
             );
           }
@@ -634,6 +646,14 @@ export class AgentManager {
         }
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
+          // Clear the in-flight marker BEFORE persisting the terminal status.
+          // `store.completeTurn` flips the turn's status to `completed` INSIDE
+          // its mutation — observable via `getTurn` before the promise even
+          // resolves — and `turn/list` derives `activeTurnId` from this map.
+          // Clearing it first guarantees no observer (a racing `turn/list`, the
+          // phone's "responding…" indicator) ever sees a turn reported as
+          // `completed` yet still active; the two flip together.
+          this.#activeTurnByThread.delete(threadId);
           await this.#options.store.completeTurn(threadId, turnId, provided, now);
           const text = await this.#assistantText(turnId, provided);
           const usage = readUsage(event.data);
@@ -648,7 +668,6 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
@@ -656,6 +675,10 @@ export class AgentManager {
         }
         case 'turn_error': {
           const message = readOptionalText(event.data) ?? 'agent error';
+          // Clear the in-flight marker before persisting the terminal status
+          // (same race as turn_completed — the status is observable via
+          // `getTurn` before `failTurn` resolves).
+          this.#activeTurnByThread.delete(threadId);
           // Persist the reason as an error content block in the turn's history so
           // a `turn/list` re-sync (e.g. after a bridge restart) still shows *why*
           // the turn failed. NOT broadcast as a `stream/content/block` — the phone
@@ -675,19 +698,20 @@ export class AgentManager {
             }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
           break;
         }
         case 'turn_aborted':
+          // Clear the in-flight marker before persisting the terminal status
+          // (same race as turn_completed).
+          this.#activeTurnByThread.delete(threadId);
           await this.#options.store.abortTurn(threadId, turnId, now);
           this.#options.notify(
             makeNotification(StreamNotification.TurnAborted, { threadId, turnId }),
           );
           this.#assistantByTurn.delete(turnId);
-          this.#activeTurnByThread.delete(threadId);
           void this.#cleanupAttachments(turnId);
           break;
       }
@@ -763,6 +787,20 @@ function readContent(data: unknown): unknown {
     return (data as { content: unknown }).content;
   }
   return undefined;
+}
+
+/**
+ * Extract a block event's `beforeText` marker: `true` when the adapter emitted
+ * the block while the assistant's main text was still streaming (a parallel/
+ * background activity), so it must be ordered before the open text run.
+ */
+function readBeforeText(data: unknown): boolean {
+  return (
+    data !== null &&
+    typeof data === 'object' &&
+    'beforeText' in data &&
+    (data as { beforeText: unknown }).beforeText === true
+  );
 }
 
 function readOptionalText(data: unknown): string | undefined {

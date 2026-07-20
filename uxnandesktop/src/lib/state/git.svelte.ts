@@ -64,6 +64,7 @@ class GitStore {
   loading = $state(false);
   /** A staging/commit action is in flight (disables the action buttons). */
   busy = $state(false);
+  busyAction = $state<{ kind: "stage" | "unstage" | "discard"; file: string } | null>(null);
   error = $state<string | null>(null);
   /** Commit message composer: subject line. */
   message = $state("");
@@ -83,6 +84,7 @@ class GitStore {
   behind = $state(0);
   /** A push/pull is in flight. */
   syncing = $state(false);
+  syncingAction = $state<"push" | "pull" | null>(null);
   private listening = false;
 
   /** Files with a staged change / with a working-tree (or untracked) change. */
@@ -172,10 +174,14 @@ class GitStore {
   }
 
   /** Run a staging action then refresh, surfacing any error. */
-  private async op(fn: (path: string) => Promise<void>): Promise<void> {
+  private async op(
+    action: { kind: "stage" | "unstage" | "discard"; file: string },
+    fn: (path: string) => Promise<void>,
+  ): Promise<void> {
     const path = this.path;
     if (!path) return;
     this.busy = true;
+    this.busyAction = action;
     this.error = null;
     try {
       await fn(path);
@@ -185,23 +191,24 @@ class GitStore {
       toastError(e);
     } finally {
       this.busy = false;
+      this.busyAction = null;
     }
   }
 
   stage(file: string): Promise<void> {
-    return this.op((p) => gitStage(p, file));
+    return this.op({ kind: "stage", file }, (p) => gitStage(p, file));
   }
   unstage(file: string): Promise<void> {
-    return this.op((p) => gitUnstage(p, file));
+    return this.op({ kind: "unstage", file }, (p) => gitUnstage(p, file));
   }
   stageAll(): Promise<void> {
-    return this.op((p) => gitStageAll(p));
+    return this.op({ kind: "stage", file: "*" }, (p) => gitStageAll(p));
   }
   unstageAll(): Promise<void> {
-    return this.op((p) => gitUnstageAll(p));
+    return this.op({ kind: "unstage", file: "*" }, (p) => gitUnstageAll(p));
   }
   discard(file: string, untracked: boolean): Promise<void> {
-    return this.op((p) => gitDiscard(p, file, untracked));
+    return this.op({ kind: "discard", file }, (p) => gitDiscard(p, file, untracked));
   }
 
   /** Reload the status if the panel is currently showing `path` (used by a diff
@@ -288,10 +295,15 @@ class GitStore {
 
   /** Push or pull the current branch, then refresh ahead/behind + status, and
    *  toast `okMsg` on success. */
-  private async sync(fn: (path: string) => Promise<void>, okMsg: string): Promise<void> {
+  private async sync(
+    action: "push" | "pull",
+    fn: (path: string) => Promise<void>,
+    okMsg: string,
+  ): Promise<void> {
     const path = this.path;
     if (!path) return;
     this.syncing = true;
+    this.syncingAction = action;
     this.error = null;
     try {
       await fn(path);
@@ -303,14 +315,15 @@ class GitStore {
       toastError(e);
     } finally {
       this.syncing = false;
+      this.syncingAction = null;
     }
   }
   async push(): Promise<void> {
-    await this.sync((p) => gitPush(p), i18n.t("toast.pushed"));
+    await this.sync("push", (p) => gitPush(p), i18n.t("toast.pushed"));
     await this.offerCreatePr();
   }
   pull(): Promise<void> {
-    return this.sync((p) => gitPull(p), i18n.t("toast.pulled"));
+    return this.sync("pull", (p) => gitPull(p), i18n.t("toast.pulled"));
   }
 
   /** After a push, if the branch is a GitHub repo with no PR yet, offer a "Create

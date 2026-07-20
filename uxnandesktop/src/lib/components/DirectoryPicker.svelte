@@ -2,6 +2,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { browseDirs } from "$lib/api";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
@@ -23,7 +24,7 @@
   let pathInput = $state("");
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let busy = $state(false);
+  let busyPath = $state<string | null>(null);
   /** Highlighted sub-folder index, for keyboard navigation. */
   let activeIdx = $state(0);
   /** The scroll region, so the active row can be kept in view. */
@@ -80,7 +81,7 @@
    *  ↑/↓ move the highlight, Enter opens the highlighted folder (or a typed path),
    *  Mod+Enter runs the primary "add this folder" action. */
   function onDialogKey(e: KeyboardEvent) {
-    if (busy || loading) return;
+    if (busyPath || loading) return;
     const entries = listing?.entries ?? [];
     const mod = e.metaKey || e.ctrlKey;
 
@@ -114,15 +115,15 @@
       if (!listing) void go(undefined);
     } else {
       error = null;
-      busy = false;
+      busyPath = null;
     }
   });
 
   /** Add a single folder as a project (the per-row "Add" action). */
   async function add(path: string) {
-    busy = true;
+    busyPath = path;
     const ok = await projects.addProjectPath(path);
-    busy = false;
+    busyPath = null;
     if (ok) open = false;
     else error = projects.error;
   }
@@ -195,7 +196,10 @@
          flagged with a git-folder icon and a quiet primary tag, plus a hover Add. -->
     <div bind:this={listEl} class="uxnan-scroll h-64 overflow-y-auto p-2">
       {#if loading}
-        <div class={cn("py-10 text-center", text.meta)}>{i18n.t("common.loading")}</div>
+        <div class={cn("flex items-center justify-center gap-2 py-10", text.meta)}>
+          <Spinner aria-label={i18n.t("common.loading")} />
+          {i18n.t("common.loading")}
+        </div>
       {:else if listing && listing.entries.length === 0}
         <div class="flex flex-col items-center gap-2.5 py-10 text-center">
           <FolderIcon class="size-6 text-muted-foreground/40" />
@@ -239,10 +243,15 @@
               variant={entry.isRepo ? "secondary" : "ghost"}
               size="sm"
               class="h-7 shrink-0 px-2.5 text-[11px] opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-              disabled={busy}
+              disabled={busyPath !== null}
               onclick={() => add(entry.path)}
             >
-              {i18n.t("common.add")}
+              {#if busyPath === entry.path}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {i18n.t("common.adding")}
+              {:else}
+                {i18n.t("common.add")}
+              {/if}
             </Button>
           </div>
         {/each}
@@ -277,8 +286,13 @@
         </span>
       </div>
       <div class="flex shrink-0 items-center gap-2">
-        <Button size="sm" disabled={!listing || busy} onclick={addFolder}>
-          {busy ? i18n.t("common.adding") : i18n.t("picker.addFolder")}
+        <Button size="sm" disabled={!listing || busyPath !== null} onclick={addFolder}>
+          {#if listing && busyPath === listing.path}
+            <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+          {/if}
+          {listing && busyPath === listing.path
+            ? i18n.t("common.adding")
+            : i18n.t("picker.addFolder")}
         </Button>
       </div>
     </div>

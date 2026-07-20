@@ -49,6 +49,10 @@ class AgentMonitor {
       await listen<AgentDetected>("agent:detected", (e) => {
         const tab = terminals.findTab(e.payload.ptyId);
         if (!tab || tab.kind !== "terminal") return;
+        // Keep the captured session's liveness current: whether an agent
+        // process is (still) running in this tab decides if a restored/woken
+        // tab AUTO-relaunches its session's TUI or only pre-types the resume.
+        if (tab.agentSession) tab.agentSession.live = !!e.payload.command;
         // A tab launched via uxnan already carries its true identity (set from the
         // agent profile). Process detection can misidentify a wrapper agent by an
         // inner helper it spawns (e.g. OpenClaude→claude, Zero→a child), so never

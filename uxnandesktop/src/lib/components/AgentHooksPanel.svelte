@@ -16,6 +16,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import * as Tabs from "$lib/components/ui/tabs";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Badge } from "$lib/components/ui/badge";
   import { Switch } from "$lib/components/ui/switch";
   import * as Card from "$lib/components/ui/card";
@@ -121,6 +122,7 @@
     pi: null,
   });
   let busy = $state<AgentId | "all" | null>(null);
+  let busyOperation = $state<"install" | "uninstall" | null>(null);
   let activeAgent = $state<AgentId>("claude");
   // Per-agent "show installed config" toggle (JSON for Claude/Gemini/Codex, the
   // plugin/extension source for OpenCode/Pi).
@@ -190,6 +192,7 @@
 
   async function doInstall(id: AgentId) {
     busy = id;
+    busyOperation = "install";
     try {
       statuses = { ...statuses, [id]: await INSTALLERS[id]() };
     } catch (err) {
@@ -204,11 +207,13 @@
       };
     } finally {
       busy = null;
+      busyOperation = null;
     }
   }
 
   async function doUninstall(id: AgentId) {
     busy = id;
+    busyOperation = "uninstall";
     try {
       statuses = { ...statuses, [id]: await UNINSTALLERS[id]() };
     } catch (err) {
@@ -223,6 +228,7 @@
       };
     } finally {
       busy = null;
+      busyOperation = null;
     }
   }
 
@@ -233,10 +239,12 @@
     void app.persistSettings();
     if (on) {
       busy = "all";
+      busyOperation = "install";
       try {
         await installAllHooks();
       } finally {
         busy = null;
+        busyOperation = null;
       }
       await refreshAll();
     } else {
@@ -356,6 +364,7 @@
         </div>
         <div class="flex shrink-0 items-center gap-2 pt-0.5">
           {#if busy === "all"}
+            <Spinner aria-label={i18n.t("common.loading")} />
             <span class={text.meta}>{i18n.t("hooks.installing")}</span>
           {/if}
           <Switch
@@ -416,6 +425,9 @@
                   disabled={busy !== null || !featureOn}
                   onclick={() => doInstall(id)}
                 >
+                  {#if busy === id && busyOperation === "install"}
+                    <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                  {/if}
                   {busy === id ? i18n.t("hooks.installing") : i18n.t("hooks.install")}
                 </Button>
                 <Button
@@ -424,6 +436,9 @@
                   disabled={busy !== null || !statusFor(id)?.installed}
                   onclick={() => doUninstall(id)}
                 >
+                  {#if busy === id && busyOperation === "uninstall"}
+                    <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                  {/if}
                   {i18n.t("hooks.uninstall")}
                 </Button>
                 {#if !featureOn && !degraded}

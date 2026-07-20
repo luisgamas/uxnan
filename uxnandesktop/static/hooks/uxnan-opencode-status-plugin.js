@@ -105,11 +105,18 @@ function classify(evt) {
   const props = (evt && evt.properties) || {};
   const sid = sessionIdOf(props);
 
+  // The ROOT session's id rides every state event we report, so the ADE can
+  // offer `opencode --session <id>` when this tab is restored or woken. A
+  // child (sub-agent) session's id must never overwrite it.
+  const rootSid = sid && !childSessions.has(sid) ? sid : "";
+
   // A prompt needs the user regardless of which session raised it.
   if (type === "permission.asked" || type === "permission.updated") {
-    return { event: "PermissionRequest" };
+    return { event: "PermissionRequest", source: rootSid ? { sessionID: rootSid } : undefined };
   }
-  if (type === "question.asked") return { event: "AskUserQuestion" };
+  if (type === "question.asked") {
+    return { event: "AskUserQuestion", source: rootSid ? { sessionID: rootSid } : undefined };
+  }
 
   // Sub-agent (child session) lifecycle. A child is created with a parentID; its
   // events must never flip the parent's status.
@@ -133,23 +140,30 @@ function classify(evt) {
     return null; // any other child-session event stays off the parent
   }
 
-  // Root / parent-session events.
+  // Root / parent-session events (each carries the root session id, above).
   switch (type) {
     case "session.idle":
-      return { event: "SessionIdle" };
+      return { event: "SessionIdle", source: rootSid ? { sessionID: rootSid } : undefined };
     case "session.error":
-      return { event: "Error", source: { error: String(props.error || props.message || "") } };
+      return {
+        event: "Error",
+        source: {
+          error: String(props.error || props.message || ""),
+          sessionID: rootSid || undefined,
+        },
+      };
     case "session.status": {
       const s = (props.status && props.status.type) || props.status || "";
-      if (s === "idle") return { event: "SessionIdle" };
+      const src = rootSid ? { sessionID: rootSid } : undefined;
+      if (s === "idle") return { event: "SessionIdle", source: src };
       // busy / retry / anything active
-      return { event: "SessionBusy" };
+      return { event: "SessionBusy", source: src };
     }
     case "message.part.updated": {
       const part = props.part || {};
       const role = part.role || props.role;
       const text = typeof part.text === "string" ? part.text : undefined;
-      return { event: "MessagePart", source: { role, text } };
+      return { event: "MessagePart", source: { role, text, sessionID: rootSid || undefined } };
     }
     default:
       return null;

@@ -149,6 +149,9 @@ class UxnanColors {
   /// Brand color for the Gemini CLI agent.
   static const Color geminiCliAgent = Color(0xFF4285F4);
 
+  /// Brand color for the Antigravity agent (azure from its multicolor mark).
+  static const Color antigravityAgent = Color(0xFF3186FF);
+
   /// Brand color for the pi-agent.
   static const Color piAgentColor = Color(0xFF2563EB);
 

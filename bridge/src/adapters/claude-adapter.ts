@@ -175,6 +175,24 @@ export interface ClaudeEvent {
   kind: 'init' | 'delta' | 'thinking' | 'assistant_text' | 'tool_result' | 'result' | 'other';
   sessionId?: string;
   text?: string;
+  /**
+   * The `parent_tool_use_id` of the line, set when the event belongs to a
+   * SUBAGENT (Task-tool) turn running in parallel with the main loop rather
+   * than to the top-level session. Subagent lines arrive interleaved with the
+   * main stream (their tools while the main text is mid-delta), so the adapter
+   * must not fold their text/usage into the main message and must order their
+   * blocks before the open text run (`beforeText`).
+   */
+  parentToolUseId?: string;
+  /**
+   * Only for `stream_event` lines that mark a content-block boundary: the raw
+   * SSE event type, used to track whether a main-loop text run is open.
+   */
+  streamType?: 'content_block_start' | 'content_block_stop';
+  /** Only for `stream_event` lines: the content-block index the event addresses. */
+  blockIndex?: number;
+  /** Only for `content_block_start`: the starting block's type (`text`, `tool_use`, …). */
+  blockType?: string;
   /** Only set for `init`: the concrete model id the run resolved the alias to. */
   model?: string;
   /**
@@ -229,7 +247,14 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
     return null;
   }
   const sessionId = typeof parsed['session_id'] === 'string' ? parsed['session_id'] : undefined;
-  const base = { sessionId } as const;
+  // Lines produced by a parallel SUBAGENT (Task) turn carry the spawning
+  // tool_use id — the adapter keys its main-vs-subagent handling off this.
+  const parentToolUseId =
+    typeof parsed['parent_tool_use_id'] === 'string' ? parsed['parent_tool_use_id'] : undefined;
+  const base = {
+    sessionId,
+    ...(parentToolUseId !== undefined ? { parentToolUseId } : {}),
+  } as const;
   switch (parsed['type']) {
     case 'system': {
       const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined;
@@ -245,16 +270,37 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
     }
     case 'stream_event': {
       const event = isRecord(parsed['event']) ? parsed['event'] : undefined;
+      const blockIndex =
+        event && typeof event['index'] === 'number' ? (event['index'] as number) : undefined;
+      const withIndex = blockIndex !== undefined ? { blockIndex } : {};
       if (event && event['type'] === 'content_block_delta') {
         const delta = isRecord(event['delta']) ? event['delta'] : undefined;
         if (delta && delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
-          return { kind: 'delta', ...base, text: delta['text'] };
+          return { kind: 'delta', ...base, ...withIndex, text: delta['text'] };
         }
         // Extended-thinking output streams as `thinking_delta` blocks (the
         // signature_delta blocks that follow carry no readable text → ignored).
         if (delta && delta['type'] === 'thinking_delta' && typeof delta['thinking'] === 'string') {
-          return { kind: 'thinking', ...base, text: delta['thinking'] };
+          return { kind: 'thinking', ...base, ...withIndex, text: delta['thinking'] };
         }
+      }
+      // Content-block boundaries — surfaced so the adapter can track whether a
+      // main-loop text run is currently open (a parallel subagent block landing
+      // mid-run must be ordered before it, not spliced into it).
+      if (event && event['type'] === 'content_block_start') {
+        const block = isRecord(event['content_block']) ? event['content_block'] : undefined;
+        const blockType =
+          block && typeof block['type'] === 'string' ? (block['type'] as string) : undefined;
+        return {
+          kind: 'other',
+          ...base,
+          streamType: 'content_block_start',
+          ...withIndex,
+          ...(blockType !== undefined ? { blockType } : {}),
+        };
+      }
+      if (event && event['type'] === 'content_block_stop') {
+        return { kind: 'other', ...base, streamType: 'content_block_stop', ...withIndex };
       }
       return { kind: 'other', ...base };
     }
@@ -463,11 +509,22 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // tool_use id → its (complete) invocation, until the matching tool_result
     // arrives and the two are paired into a structured content block.
     const pendingTools = new Map<string, ClaudeToolUse>();
+    // Index of the MAIN-loop text content block currently streaming deltas, or
+    // undefined when no text run is open. Parallel subagent (Task) lines arrive
+    // interleaved with the main stream; a block emitted while a text run is
+    // open is flagged `beforeText` so the store/phone order it BEFORE the run
+    // instead of severing it (which rendered sentences split mid-word by an
+    // activity card). `-1` stands in when the CLI omits the block index.
+    let openTextIndex: number | undefined;
 
     const reader = createInterface({ input: child.stdout });
     reader.on('line', (line) => {
       const event = parseClaudeLine(line);
       if (!event) return;
+      // Lines carrying `parent_tool_use_id` belong to a parallel SUBAGENT turn:
+      // their tool blocks still feed the work log, but their text/usage must
+      // never fold into the main message or close the main text run.
+      const subagent = event.parentToolUseId !== undefined;
       if (event.sessionId) this.#sessionByThread.set(threadId, event.sessionId);
       // Cache the CLI's advertised slash commands for `agent/commands` discovery.
       if (event.slashCommands) this.#slashCommands = event.slashCommands;
@@ -475,12 +532,25 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       if (event.toolUses) {
         for (const tool of event.toolUses) pendingTools.set(tool.id, tool);
       }
-      // Track the latest assistant-message usage as a completion fallback.
-      if (event.kind === 'assistant_text' && event.usage !== undefined) {
+      // Track the latest MAIN assistant-message usage as a completion fallback
+      // (a subagent's usage is its own context, not this conversation's).
+      if (!subagent && event.kind === 'assistant_text' && event.usage !== undefined) {
         lastUsage = event.usage;
       }
+      // Main-loop text-run boundaries: a text block opens on its start (or
+      // defensively on its first delta below); any other block starting, its
+      // stop, or the message envelope closes it.
+      if (!subagent && event.streamType === 'content_block_start') {
+        openTextIndex = event.blockType === 'text' ? (event.blockIndex ?? -1) : undefined;
+      } else if (!subagent && event.streamType === 'content_block_stop') {
+        if (openTextIndex === (event.blockIndex ?? -1)) openTextIndex = undefined;
+      } else if (!subagent && event.kind === 'assistant_text') {
+        openTextIndex = undefined;
+      }
       // A tool_result completes a tool → emit a structured block (command/diff/
-      // tool) for the Work log / Changed files sections.
+      // tool) for the Work log / Changed files sections. When it lands while the
+      // main text is mid-run (only parallel subagent/background activity can),
+      // `beforeText` orders it before the open run.
       if (event.kind === 'tool_result' && event.toolResults) {
         for (const result of event.toolResults) {
           const tool = pendingTools.get(result.toolUseId);
@@ -490,10 +560,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             type: 'block',
             threadId,
             turnId,
-            data: { content: toolUseToBlock(tool, result) },
+            data: {
+              content: toolUseToBlock(tool, result),
+              ...(openTextIndex !== undefined ? { beforeText: true } : {}),
+            },
           });
         }
       }
+      if (subagent) return; // everything below folds into the MAIN message only
       if (event.kind === 'init' && event.model && !sawModel) {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.
@@ -503,6 +577,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       } else if (event.kind === 'delta' && event.text) {
         sawPartial = true;
         full += event.text;
+        openTextIndex = event.blockIndex ?? -1;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
         // Reasoning chunk — streamed to the phone (and persisted) separately from
