@@ -1,8 +1,8 @@
 Novedades de esta actualización:
 
-• Nuevo agente: Google Antigravity (sucesor de Gemini CLI) ya es seleccionable al iniciar una conversación — Gemini sale del selector.
-• Corrección: reabrir la app a mitad de una respuesta ya no pierde lo que el agente escribió mientras no estabas — vuelve la respuesta completa.
-• Corrección: las tarjetas de actividad ya no cortan una frase por la mitad.
-• Animación más suave al eliminar una conversación.
+• Seguridad: los mensajes entre tu teléfono y tu PC van sellados contra manipulación; uno alterado o repetido se rechaza.
+• Seguridad: tu código de emparejamiento solo se envía al PC que elegiste, nunca a otros dispositivos de tu red.
+• Nuevo: la tarjeta del dispositivo muestra cómo estás conectado: LAN, Tailscale, directo o relay.
+• Estado más claro al conectar.
 
-¡Gracias por probar esta alfa!
+Importante: actualiza también el bridge de tu PC.

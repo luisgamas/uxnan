@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.8-alpha.20260720] - 2026-07-20
+
 ### Changed — `SECURE_PROTOCOL_VERSION` bumped to `2` (breaking wire change)
 - The secure transport now binds `sessionId`/`seq`/direction as AES-GCM AAD on
   every envelope (see the `bridge` and `uxnanmobile` CHANGELOGs), so frames from

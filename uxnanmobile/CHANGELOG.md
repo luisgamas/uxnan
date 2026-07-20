@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.10-alpha.20260720+20260720] - 2026-07-20
+
 ### Changed
 
 - Simplified device-card connection feedback: connecting devices show a single

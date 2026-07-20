@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.2-alpha.20260720] - 2026-07-20
+
 ### Security
 - Use constant-time comparisons for push notification secrets.
 - Bound the per-IP `RateLimiter` (`#httpLimiter`/`#upgradeLimiter`) against
