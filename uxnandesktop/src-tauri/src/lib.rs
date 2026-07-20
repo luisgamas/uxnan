@@ -273,6 +273,7 @@ pub fn run() {
             commands::zero_session,
             commands::image_fetch_data_url,
             commands::fs_set_watch,
+            commands::browse_set_watch,
             commands::reveal_path,
             commands::editors_detect,
             commands::native_text_editor,

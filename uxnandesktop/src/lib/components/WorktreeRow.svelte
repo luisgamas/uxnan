@@ -22,6 +22,7 @@
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import RemoveWorktreeDialog from "./RemoveWorktreeDialog.svelte";
   import type { DragReorder } from "$lib/state/dragReorder.svelte";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
@@ -123,20 +124,9 @@
 
   let iconPickerOpen = $state(false);
   let removeOpen = $state(false);
-  let forceNeeded = $state(false);
-  let removeError = $state<string | null>(null);
 
   function openRemove() {
-    forceNeeded = false;
-    removeError = null;
     removeOpen = true;
-  }
-  async function doRemove(force: boolean) {
-    const ok = await projects.removeWorktree(row, force);
-    if (ok) return true;
-    removeError = projects.error;
-    forceNeeded = true;
-    return false;
   }
 </script>
 
@@ -304,15 +294,7 @@
   }}
 />
 
-<ConfirmDialog
-  bind:open={removeOpen}
-  danger
-  title={i18n.t("worktree.removeTitle")}
-  description={i18n.t("worktree.removeDesc", { path: row.path, branch: label })}
-  confirmLabel={forceNeeded ? i18n.t("worktree.forceRemove") : i18n.t("common.remove")}
-  error={removeError}
-  onconfirm={() => doRemove(forceNeeded)}
-/>
+<RemoveWorktreeDialog bind:open={removeOpen} {row} />
 
 <IconPicker
   bind:open={iconPickerOpen}

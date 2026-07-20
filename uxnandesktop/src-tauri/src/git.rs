@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 use crate::error::AppError;
@@ -28,23 +28,46 @@ pub struct WorktreeEntry {
     pub is_main: bool,
 }
 
+/// What the caller wants done with the removed worktree's branch(es). Every
+/// field defaults to `false`: **removing a worktree touches only the worktree**
+/// unless the user explicitly opts in (spec §2.3). Local and remote deletion are
+/// independent; `force_local` upgrades a refused safe delete to a forced one.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BranchCleanup {
+    /// Delete the local branch (safe `git branch -d`, upgraded to `-D` only when
+    /// `force_local` is set or the branch is a confirmed squash-merge).
+    pub delete_local: bool,
+    /// Force the local delete (`-D`) even when the branch has unmerged commits.
+    pub force_local: bool,
+    /// Delete the remote branch on `origin` (`git push origin --delete`).
+    pub delete_remote: bool,
+}
+
 /// Outcome of [`remove_worktree`], so the frontend can tell the user what
-/// happened to the branch. The worktree itself is always removed on success;
-/// these flags only describe the *branch* cleanup (spec §2.3).
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
+/// happened. The worktree itself is always removed on success; these flags only
+/// describe the **opt-in** branch cleanup requested via [`BranchCleanup`] (spec
+/// §2.3). When nothing was opted into, every flag stays `false`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveOutcome {
-    /// The branch was deleted (either a safe `-d` delete of merged work, or a
-    /// forced `-D` of a branch whose changes are already squash-merged).
-    pub branch_deleted: bool,
-    /// The branch was kept because its changes couldn't be confirmed as merged
-    /// (so no work is lost); the user can delete it by hand later.
-    pub branch_preserved: bool,
-    /// The deletion relied on squash-merge (patch-equivalence) detection — the
-    /// branch's commits aren't ancestors of the base, but its net diff already
-    /// is. Surfaced so the toast can say the branch was cleaned up, not just
-    /// "removed".
+    /// The local branch was deleted (a safe `-d`, a forced `-D`, or a `-D` after
+    /// squash-merge detection).
+    pub local_branch_deleted: bool,
+    /// The local delete relied on squash-merge (patch-equivalence) detection —
+    /// the branch's commits aren't ancestors of the base, but its net diff
+    /// already is. Surfaced so the toast can say "cleaned up", not just "deleted".
     pub squash_merged: bool,
+    /// A local delete was requested but refused: the branch has commits that
+    /// aren't merged and no force was given (and it isn't squash-merged). No work
+    /// is lost — the UI can offer a forced retry.
+    pub local_branch_unmerged: bool,
+    /// The remote branch (`origin/<branch>`) was deleted.
+    pub remote_branch_deleted: bool,
+    /// A remote delete was requested but failed (offline, no `origin`, protected
+    /// branch, …); carries a short reason for the toast. `None` when not requested
+    /// or when it succeeded / had nothing to delete.
+    pub remote_error: Option<String>,
 }
 
 /// Working-tree status summary for a worktree card badge.
@@ -262,6 +285,58 @@ pub async fn add_worktree_existing(
         .map(|_| ())
 }
 
+/// Whether a local branch named `branch` exists (`refs/heads/<branch>`).
+async fn local_branch_exists(repo_path: &str, branch: &str) -> bool {
+    git(
+        repo_path,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .await
+    .is_ok()
+}
+
+/// Check out an **already-existing** branch into a new worktree — the "existing
+/// branch" mode of the new-worktree dialog. Two cases:
+/// - a **local** branch is checked out directly (`git worktree add <path> <branch>`);
+/// - a **remote-only** branch (`origin/<branch>`, no local counterpart) gets a
+///   local tracking branch created for it
+///   (`git worktree add --track -b <branch> <path> origin/<branch>`), so the
+///   worktree starts on a real local branch that pushes/pulls against origin.
+///
+/// Git refuses to check a branch out into a second worktree when it's already
+/// checked out elsewhere; that error is surfaced to the user unchanged.
+pub async fn add_worktree_from_existing(
+    repo_path: &str,
+    branch: &str,
+    worktree_path: &str,
+) -> Result<(), AppError> {
+    if local_branch_exists(repo_path, branch).await {
+        return git(repo_path, &["worktree", "add", worktree_path, branch])
+            .await
+            .map(|_| ());
+    }
+    let remote_ref = format!("origin/{branch}");
+    git(
+        repo_path,
+        &[
+            "worktree",
+            "add",
+            "--track",
+            "-b",
+            branch,
+            worktree_path,
+            &remote_ref,
+        ],
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Parse a git remote URL (SSH `git@host:owner/repo.git`, `ssh://…`, or
 /// `https://host/owner/repo.git`, optionally with `user@`/token) into its host +
 /// owner, deriving a known avatar URL where possible. Pure so it's unit-tested.
@@ -327,6 +402,34 @@ pub fn worktree_path_for(repo_path: &str, branch: &str) -> String {
         .join(format!("{name}--{safe_branch}"))
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+/// Normalize a path for comparison only: forward slashes, no trailing slash, and
+/// lowercased on Windows (its filesystem is case-insensitive). Pure so it's
+/// unit-tested. Never returned to callers — used to match two spellings of the
+/// same path.
+pub fn norm_path_for_cmp(path: &str) -> String {
+    let s = path.replace('\\', "/");
+    let s = s.trim_end_matches('/');
+    if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Re-list the repo's worktrees and return the one whose path matches
+/// `worktree_path` (compared via [`norm_path_for_cmp`], so a custom-location or
+/// symlinked path still matches git's own spelling). Used right after creating a
+/// worktree so the returned entry carries git's canonical path/branch/head — the
+/// frontend keys its per-worktree workspace off exactly that spelling.
+pub async fn find_worktree_entry(repo_path: &str, worktree_path: &str) -> Option<WorktreeEntry> {
+    let target = norm_path_for_cmp(worktree_path);
+    list_worktrees(repo_path)
+        .await
+        .ok()?
+        .into_iter()
+        .find(|e| norm_path_for_cmp(&e.path) == target)
 }
 
 /// Create a worktree on a new branch
@@ -535,17 +638,23 @@ pub fn parse_status_porcelain(input: &str) -> WorktreeStatus {
 
 /// Remove a worktree with safeguards (spec §2.3). With `force = false`, refuses
 /// when the worktree has uncommitted changes. After removal it prunes the
-/// administrative files and cleans up the branch: a *safe* delete (`git branch
-/// -d`) for merged work, then — if that's refused — squash-merge detection
-/// ([`is_squash_merged`]) which force-deletes (`git branch -D`) a branch whose
-/// net diff is already in the base, otherwise the branch is **kept** so work is
-/// never lost. The [`RemoveOutcome`] reports which path was taken so the UI can
-/// tell the user.
+/// administrative files, then does **only the branch cleanup the caller opted
+/// into** via `cleanup` — by default a worktree removal touches nothing but the
+/// worktree, so no branch is ever deleted behind the user's back.
+///
+/// When `cleanup.delete_local` is set: a *safe* delete (`git branch -d`) first;
+/// if that's refused for unmerged commits, an explicit `cleanup.force_local`
+/// (`-D`) or a confirmed squash-merge ([`is_squash_merged`], also `-D`) still
+/// deletes it — otherwise the branch is **kept** and reported as unmerged so the
+/// UI can offer a forced retry. When `cleanup.delete_remote` is set, the
+/// `origin/<branch>` branch is deleted (`git push origin --delete`). The
+/// [`RemoveOutcome`] reports what happened to each so the UI can tell the user.
 pub async fn remove_worktree(
     repo_path: &str,
     worktree_path: &str,
     branch: Option<&str>,
     force: bool,
+    cleanup: BranchCleanup,
 ) -> Result<RemoveOutcome, AppError> {
     // Only block on uncommitted changes when the worktree is still a valid,
     // intact checkout. If `status` errors (a half-removed / broken worktree),
@@ -578,30 +687,77 @@ pub async fn remove_worktree(
     remove_dir_with_retry(worktree_path).await;
 
     let mut outcome = RemoveOutcome::default();
-    if let Some(branch) = branch {
+    let Some(branch) = branch else {
+        return Ok(outcome);
+    };
+
+    // Local branch deletion (opt-in). Delete it before the remote so `-d`'s
+    // merge check (which considers the upstream) stays meaningful.
+    if cleanup.delete_local {
         // Safe delete first: succeeds only when the branch's commits are an
         // ancestor of some ref (truly merged), so it can never lose work.
         if git(repo_path, &["branch", "-d", branch]).await.is_ok() {
-            outcome.branch_deleted = true;
+            outcome.local_branch_deleted = true;
+        } else if cleanup.force_local {
+            // The user explicitly asked to force it, unmerged or not.
+            outcome.local_branch_deleted = git(repo_path, &["branch", "-D", branch]).await.is_ok();
         } else {
             // `-d` was refused (unmerged commits). The work may still have landed
             // as a *squash* merge — a single commit on the base carrying the same
             // net diff. If we can confirm that patch-equivalence, force-delete is
-            // safe; otherwise keep the branch.
+            // safe; otherwise keep the branch and report it as unmerged.
             let base = default_base(repo_path).await;
-            if base != branch && is_squash_merged(repo_path, branch, &base).await {
-                if git(repo_path, &["branch", "-D", branch]).await.is_ok() {
-                    outcome.branch_deleted = true;
-                    outcome.squash_merged = true;
-                } else {
-                    outcome.branch_preserved = true;
-                }
+            if base != branch
+                && is_squash_merged(repo_path, branch, &base).await
+                && git(repo_path, &["branch", "-D", branch]).await.is_ok()
+            {
+                outcome.local_branch_deleted = true;
+                outcome.squash_merged = true;
             } else {
-                outcome.branch_preserved = true;
+                outcome.local_branch_unmerged = true;
             }
         }
     }
+
+    // Remote branch deletion (opt-in). A missing remote branch is a no-op; a real
+    // failure (offline, protected, no `origin`) is captured for the toast.
+    if cleanup.delete_remote {
+        match delete_remote_branch(repo_path, branch).await {
+            Ok(_) => outcome.remote_branch_deleted = true,
+            Err(RemoteDeleteError::NoSuchBranch) => {}
+            Err(RemoteDeleteError::Failed(msg)) => outcome.remote_error = Some(msg),
+        }
+    }
+
     Ok(outcome)
+}
+
+/// Why [`delete_remote_branch`] didn't delete anything.
+enum RemoteDeleteError {
+    /// `origin` has no such branch — nothing to delete (treated as success-ish).
+    NoSuchBranch,
+    /// The `git push --delete` failed for a real reason (offline, protected, …).
+    Failed(String),
+}
+
+/// Delete `branch` on `origin` (`git push origin --delete <branch>`). Skips the
+/// push when the remote-tracking ref `origin/<branch>` doesn't exist locally, so
+/// a branch that was never pushed doesn't produce a confusing git error.
+async fn delete_remote_branch(repo_path: &str, branch: &str) -> Result<(), RemoteDeleteError> {
+    let remote_ref = format!("refs/remotes/origin/{branch}");
+    if git(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", &remote_ref],
+    )
+    .await
+    .is_err()
+    {
+        return Err(RemoteDeleteError::NoSuchBranch);
+    }
+    git(repo_path, &["push", "origin", "--delete", branch])
+        .await
+        .map(|_| ())
+        .map_err(|e| RemoteDeleteError::Failed(e.to_string()))
 }
 
 /// Whether `branch`'s net changes are already present in `base` as a squash
@@ -1565,7 +1721,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remove_worktree_force_deletes_squash_merged_branch() {
+    async fn remove_worktree_keeps_branch_by_default() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // A feature worktree — even a fully-merged branch stays untouched when no
+        // cleanup is opted into: removing a worktree removes only the worktree.
+        let wt = worktree_path_for(&repo_path, "feature");
+        add_worktree(&repo_path, "feature", &wt, Some("main"))
+            .await
+            .unwrap();
+
+        let outcome = remove_worktree(
+            &repo_path,
+            &wt,
+            Some("feature"),
+            false,
+            BranchCleanup::default(),
+        )
+        .await
+        .unwrap();
+        assert!(!outcome.local_branch_deleted, "branch is kept by default");
+        assert!(!outcome.remote_branch_deleted);
+        assert!(!outcome.local_branch_unmerged);
+        // The branch is still there; the worktree is gone.
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(branches.iter().any(|b| b == "feature"));
+        assert!(!std::path::Path::new(&wt).exists());
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_deletes_squash_merged_branch_when_requested() {
         let repo = tempfile::tempdir().unwrap();
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
@@ -1584,19 +1771,23 @@ mod tests {
         run_git(&repo_path, &["merge", "--squash", "feature"]).await;
         run_git(&repo_path, &["commit", "-m", "squash feature"]).await;
 
-        let outcome = remove_worktree(&repo_path, &wt, Some("feature"), false)
+        let cleanup = BranchCleanup {
+            delete_local: true,
+            ..Default::default()
+        };
+        let outcome = remove_worktree(&repo_path, &wt, Some("feature"), false, cleanup)
             .await
             .unwrap();
-        assert!(outcome.branch_deleted, "branch should be deleted");
+        assert!(outcome.local_branch_deleted, "branch should be deleted");
         assert!(outcome.squash_merged, "via squash-merge detection");
-        assert!(!outcome.branch_preserved);
+        assert!(!outcome.local_branch_unmerged);
         // The branch is really gone.
         let branches = list_branches(&repo_path).await.unwrap();
         assert!(!branches.iter().any(|b| b == "feature"));
     }
 
     #[tokio::test]
-    async fn remove_worktree_keeps_genuinely_unmerged_branch() {
+    async fn remove_worktree_keeps_unmerged_branch_unless_forced() {
         let repo = tempfile::tempdir().unwrap();
         let repo_path = repo.path().to_string_lossy().replace('\\', "/");
         init_repo(&repo_path).await;
@@ -1609,15 +1800,75 @@ mod tests {
         run_git(&wt, &["add", "-A"]).await;
         run_git(&wt, &["commit", "-m", "wip work"]).await;
 
-        // Never merged anywhere → the branch must be preserved (no work lost).
-        let outcome = remove_worktree(&repo_path, &wt, Some("wip"), false)
+        // Requested a local delete, but the branch is genuinely unmerged and no
+        // force was given → it's kept and reported unmerged (no work lost).
+        let cleanup = BranchCleanup {
+            delete_local: true,
+            ..Default::default()
+        };
+        let outcome = remove_worktree(&repo_path, &wt, Some("wip"), false, cleanup)
             .await
             .unwrap();
-        assert!(outcome.branch_preserved, "unmerged branch is kept");
-        assert!(!outcome.branch_deleted);
+        assert!(outcome.local_branch_unmerged, "unmerged branch is kept");
+        assert!(!outcome.local_branch_deleted);
         assert!(!outcome.squash_merged);
         let branches = list_branches(&repo_path).await.unwrap();
         assert!(branches.iter().any(|b| b == "wip"));
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_force_deletes_unmerged_local_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "wip");
+        add_worktree(&repo_path, "wip", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/wip.txt"), "unmerged\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "wip work"]).await;
+
+        // Explicit force → the unmerged branch is deleted (`-D`).
+        let cleanup = BranchCleanup {
+            delete_local: true,
+            force_local: true,
+            ..Default::default()
+        };
+        let outcome = remove_worktree(&repo_path, &wt, Some("wip"), false, cleanup)
+            .await
+            .unwrap();
+        assert!(outcome.local_branch_deleted, "forced delete removes it");
+        assert!(!outcome.local_branch_unmerged);
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(!branches.iter().any(|b| b == "wip"));
+    }
+
+    #[tokio::test]
+    async fn add_worktree_from_existing_checks_out_local_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        // A local branch that isn't checked out anywhere yet.
+        run_git(&repo_path, &["branch", "existing"]).await;
+
+        let wt = worktree_path_for(&repo_path, "existing");
+        add_worktree_from_existing(&repo_path, "existing", &wt)
+            .await
+            .unwrap();
+
+        // The worktree exists on that exact branch — no new branch was created.
+        let entry = find_worktree_entry(&repo_path, &wt).await.unwrap();
+        assert_eq!(entry.branch.as_deref(), Some("existing"));
+        assert!(!entry.is_main);
+    }
+
+    #[test]
+    fn norm_path_for_cmp_flattens_slashes_and_trailing() {
+        assert_eq!(norm_path_for_cmp("a\\b\\c/"), norm_path_for_cmp("a/b/c"));
+        assert_eq!(norm_path_for_cmp("/x/y/"), "/x/y");
     }
 
     #[test]
