@@ -222,7 +222,13 @@ void main() {
         ),
         throwsA(
           isA<TransportException>()
-              .having((e) => e.kind, 'kind', TransportErrorKind.handshake)
+              .having(
+                (e) => e.kind,
+                'kind',
+                // A dedicated kind, so the UI can say "update both" instead of
+                // blaming the QR/code (which sends the user in circles).
+                TransportErrorKind.incompatibleVersion,
+              )
               .having(
                 (e) => e.message,
                 'message',

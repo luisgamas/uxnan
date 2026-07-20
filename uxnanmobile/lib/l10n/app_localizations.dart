@@ -362,6 +362,12 @@ abstract class AppLocalizations {
   /// **'This QR code has expired. Generate a new one on your PC.'**
   String get qrErrorExpired;
 
+  /// Shown when pairing fails because the bridge and the app speak different secure-protocol versions.
+  ///
+  /// In en, this message translates to:
+  /// **'This PC\'s bridge is a different version than the app. Update the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair again.'**
+  String get pairingErrorIncompatibleVersion;
+
   /// No description provided for @qrErrorMalformed.
   ///
   /// In en, this message translates to:

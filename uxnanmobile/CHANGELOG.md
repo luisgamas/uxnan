@@ -6,6 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a version-mismatched bridge said "invalid QR/code" instead of "update the bridge"
+- Pairing against a bridge older than `SECURE_PROTOCOL_VERSION` 2 correctly
+  fails at the handshake, but both pairing screens funnelled every handshake
+  exception into a generic message — the QR screen showed *"this is not a valid
+  Uxnan pairing code"* and the manual screen *"the bridge could not complete
+  pairing"*. Both blame the code, so the user regenerates it forever while the
+  real problem (an out-of-date bridge) is never mentioned. Reported from a real
+  device after the 0.0.10 release.
+- `TransportErrorKind.incompatibleVersion` is now a distinct kind (not
+  `handshake`), so both screens can recognise it by type rather than by string,
+  and show: *"The bridge on this PC is a different version than the app. Update
+  the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair
+  again."*
+
 ## [0.0.10-alpha.20260720+20260720] - 2026-07-20
 
 ### Changed

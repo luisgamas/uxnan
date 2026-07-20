@@ -46,6 +46,7 @@
   "actionOpenSettings": "Abrir ajustes",
   "qrHint": "Apunta la cámara al código QR en la terminal de tu bridge.",
   "qrErrorExpired": "Este código QR expiró. Genera uno nuevo en tu PC.",
+  "pairingErrorIncompatibleVersion": "El bridge de esta PC es de una versión distinta a la de la app. Actualiza el bridge en tu PC (npm install -g uxnan-bridge) y la app, y vuelve a emparejar.",
   "qrErrorMalformed": "Este no es un código de vinculación de Uxnan válido.",
   "qrCameraErrorTitle": "Cámara no disponible",
   "qrCameraErrorBody": "No se pudo iniciar la cámara para escanear. Puedes emparejar con un código o intentar de nuevo.",

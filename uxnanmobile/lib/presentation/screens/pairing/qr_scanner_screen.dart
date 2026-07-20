@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
@@ -147,7 +148,15 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
       AppLogger.warn('Pairing failed', error, stackTrace);
       if (!mounted) return;
       setState(() => _connecting = false);
-      _showError(AppLocalizations.of(context).qrErrorMalformed);
+      final l10n = AppLocalizations.of(context);
+      // A protocol-version mismatch is NOT a bad QR — blaming the code
+      // sends the user to regenerate it forever. Name the real problem.
+      _showError(
+        (error is TransportException &&
+                error.kind == TransportErrorKind.incompatibleVersion)
+            ? l10n.pairingErrorIncompatibleVersion
+            : l10n.qrErrorMalformed,
+      );
       await _resumeScanning();
     }
   }
