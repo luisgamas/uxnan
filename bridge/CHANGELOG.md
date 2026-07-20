@@ -16,6 +16,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   delay once a session actually carries a phone. Covered by
   `test/transport/relay-backoff.test.ts` (5 tests).
 
+### Tests
+- Add direct unit tests for the workspace path-traversal guard (`resolveWithinRoot` / `isSensitiveName` in `src/workspace/path-guard.ts`), covering every escape branch (parent, multi-level, absolute-outside-root), the `.git` rejection (leading and nested segment) and every `SENSITIVE_PATTERNS` entry — previously only one traversal case was exercised, and only indirectly through a handler test.
+
 ## [0.0.8-alpha.20260719] - 2026-07-19
 
 ### Added — Antigravity (`agy`) wired as the 8th real agent
