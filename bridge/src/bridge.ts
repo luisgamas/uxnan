@@ -591,6 +591,10 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
           const startedAt = now();
           await serve(current);
           current = undefined;
+          // `stop()` closes the relay connection, so the final `serve()` always
+          // returns "unhealthily" fast. Leave before the backoff so shutdown
+          // neither logs a misleading warning nor lingers in a sleep.
+          if (stopping) break;
           const sessionMs = now() - startedAt;
           if (sessionMs < MIN_HEALTHY_SESSION_MS) {
             logger.warn(`relay session ended after ${sessionMs}ms; backing off ${backoffMs}ms`);

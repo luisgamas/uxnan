@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   base 2s / cap 30s) after any session shorter than 3s, and resets to the base
   delay once a session actually carries a phone. Covered by
   `test/transport/relay-backoff.test.ts` (5 tests).
+
 ## [0.0.8-alpha.20260719] - 2026-07-19
 
 ### Added — Antigravity (`agy`) wired as the 8th real agent
