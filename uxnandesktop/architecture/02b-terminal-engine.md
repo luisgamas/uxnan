@@ -125,6 +125,32 @@ historial de output.
   *nudge* de repintado — un resize que rebota el número de filas — para que la
   app en ejecución repinte su pantalla (ConPTY no tiene protocolo de reattach).
 
+### Ciclo de vida del workspace: dormir / despertar + scrollback entre sesiones
+
+Complementando las instancias vivas, un workspace completo puede **dormirse**
+(menú de la fila del worktree, o `Mod+Shift+Z` sobre el activo): cada terminal
+serializa su **pantalla parseada** + últimas 1 000 líneas de scrollback con
+`@xterm/addon-serialize` (celdas + atributos — nunca bytes crudos, así que no
+existe el problema del replay), su PTY se cierra y su instancia xterm se
+destruye; los tabs, splits y títulos permanecen. Despertar (automático al
+activar el workspace, o con el botón del pane) re-lanza cada shell en su `cwd`
+y reproduce el snapshot sobre un divisor tenue. Dormir con un agente `working`
+exige confirmación explícita.
+
+Los snapshots persisten en un sidecar `terminal-buffers.json` junto a
+`state.json` (escritura atómica; comandos `term_buffers_get`/`term_buffers_set`;
+clave = `sid` estable del tab, que sobrevive reinicios), escrito al dormir y al
+cerrar la ventana — nunca en el hot path debounced del estado. Al arrancar, un
+terminal restaurado reproduce la pantalla de su sesión anterior.
+
+Además, el arranque **re-vincula** la sesión restaurada: se cargan primero los
+worktrees y el workspace activo restaurado se selecciona por el mismo camino
+que un clic del sidebar (git panel, watcher, contexto GitHub y lanzamiento de
+agentes apuntan bien sin clics); las claves de workspaces cuyo folder ya no
+existe se purgan, y las que sobreviven se re-escriben a la grafía canónica
+(helper compartido `src/lib/pathid.ts`). Solo el workspace activo monta (y
+lanza shells) al arrancar; los demás montan en su primera activación.
+
 ### Tauri Commands Registrados
 
 El PTY Manager expone las siguientes operaciones como Tauri commands que el frontend puede invocar:

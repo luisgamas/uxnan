@@ -365,6 +365,29 @@ The ADE caches the report (survives restarts, pruned after 7 days; a report
 older than 30 min shows dimmed) and updates the sidebar / tab indicators
 live.
 
+**Provider session capture (resume).** When a provider-event payload carries
+the provider's own session identity, the server also extracts it: the id from
+`session_id` / `sessionID` / `sessionId` / `session-id` / `conversation_id` /
+`conversation-id`, and an optional session/transcript file from
+`session_file` / `sessionFile` / `transcript_path`. The bundled reporters
+forward it themselves: the Claude/Gemini relay passes the raw hook JSON
+through untouched, the OpenCode plugin attaches the ROOT session's
+`sessionID` to every state event (a sub-agent child session never overwrites
+it), and the Pi extension rides the explicit `session_id`/`session_file`
+fields it observes on its event payloads. The broadcast
+`agent:status-changed` event mirrors the cached entry **including** the
+session — the frontend stamps the owning tab from that event. The id is validated as hostile input at ingestion (bounded
+length, conservative charset, no leading `-`) because it later reaches a shell
+command line: a restored or woken terminal tab runs the CLI's own resume
+command (`claude --resume <id>`, `codex resume <id>`, `opencode --session
+<id>`, `pi --session <file|id>`) as its startup command — **auto-run when the
+agent's TUI was still alive at close/sleep** (the workspace comes back with
+its TUIs open), only pre-typed when the agent had already exited (liveness
+tracked by process detection). Captured session **ids are identifiers, not
+credentials**; they
+are cached with the agent state in `state.json` (same 7-day TTL) and persisted
+on the owning tab with the terminal layout.
+
 ---
 
 ## Troubleshooting

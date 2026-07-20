@@ -29,6 +29,8 @@
   import { resolveBinding } from "$lib/keybindings";
   import KeyChord from "./KeyChord.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
+  import MoonIcon from "@lucide/svelte/icons/moon";
+  import { Button } from "$lib/components/ui/button";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
   import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
@@ -473,12 +475,15 @@
 <div class="flex h-full flex-col">
   <!-- Region: Center workspace — the per-region tab strips sit at the very top
        now. The "new terminal" launcher (default + profiles) moved to the left
-       sidebar's Projects header. Each workspace's region tree is rendered (and
-       stays mounted) but only the active workspace is shown, so background
-       worktrees keep streaming. -->
+       sidebar's Projects header. Every *visited* workspace's region tree is
+       rendered (and stays mounted) but only the active one is shown, so
+       background worktrees keep streaming. A workspace restored from the
+       previous session mounts — and spawns its shells — only on its first
+       activation (`mountedWorkspaceKeys`), so boot doesn't respawn the whole
+       saved session at once. -->
   <div class="relative min-h-0 flex-1 overflow-hidden" style:background-color={paneBg}>
     {#if terminals.hydrated}
-      {#each terminals.openWorkspaceKeys as wsKey (wsKey)}
+      {#each terminals.mountedWorkspaceKeys as wsKey (wsKey)}
         {@const wsRoot = terminals.workspaceRoot(wsKey)}
         <div
           data-pane-container
@@ -712,23 +717,42 @@
                           : undefined}
                       >
                         {#if t.kind === "terminal"}
-                          {#if t.exited}
-                            <span
-                              class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
-                              >{i18n.t("terminal.exited")}</span
-                            >
+                          {#if t.asleep}
+                            <!-- Asleep pane: PTY killed, xterm disposed, layout
+                                 kept. Waking remounts the terminal, which
+                                 replays the stored snapshot and respawns the
+                                 shell at the tab's cwd. -->
+                            <div class="flex h-full flex-col items-center justify-center gap-2">
+                              <MoonIcon class="size-5 text-muted-foreground/60" />
+                              <span class={cn(text.meta)}>{i18n.t("terminal.asleep")}</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                class="h-6"
+                                onclick={() => terminals.wakeWorkspace(wsKey)}
+                              >
+                                {i18n.t("workspace.wake")}
+                              </Button>
+                            </div>
+                          {:else}
+                            {#if t.exited}
+                              <span
+                                class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
+                                >{i18n.t("terminal.exited")}</span
+                              >
+                            {/if}
+                            <Terminal
+                              id={t.id}
+                              cwd={t.cwd}
+                              shell={t.shell}
+                              args={t.args}
+                              runCommand={t.runCommand}
+                              runCommandExecute={t.runCommandExecute}
+                              env={t.env}
+                              focused={activeRegion && paneActive}
+                              onexit={() => void terminals.closeTabAnywhere(t.id)}
+                            />
                           {/if}
-                          <Terminal
-                            id={t.id}
-                            cwd={t.cwd}
-                            shell={t.shell}
-                            args={t.args}
-                            runCommand={t.runCommand}
-                            runCommandExecute={t.runCommandExecute}
-                            env={t.env}
-                            focused={activeRegion && paneActive}
-                            onexit={() => void terminals.closeTabAnywhere(t.id)}
-                          />
                         {:else if t.kind === "file"}
                           {@const st = terminals.fileState(t.id)}
                           {#if st}

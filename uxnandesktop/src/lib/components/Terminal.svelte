@@ -605,6 +605,21 @@
       // for divider drags; a hidden pane keeps the default and gets its resize
       // on reveal through `requestPtyResize`.)
       applyFit();
+      // Replay the previous session's screen (workspace wake / boot restore)
+      // before the shell spawns, so live output lands under the divider. This
+      // is the PARSED-screen snapshot (SerializeAddon) — cells + attributes
+      // only, never raw PTY bytes, so it can't desync the parser or trigger
+      // device queries. When an agent-session resume is about to AUTO-run in
+      // this pane, skip the replay entirely: the relaunched TUI redraws its own
+      // conversation, and stacking it under a frozen copy of the same screen
+      // reads as two sessions (the replay stays for plain shells and for
+      // pre-typed-only resumes, where the old screen is the context).
+      const willAutoResume = !!runCommand && runCommandExecute !== false;
+      const snapshot = willAutoResume ? null : terminals.consumeSnapshot(id);
+      if (snapshot) {
+        term.write(snapshot);
+        term.write(`\r\n\x1b[2m── ${i18n.t("terminal.restoredScrollback")} ──\x1b[0m\r\n`);
+      }
       const res = await spawnPty(inst, term.cols || 80, term.rows || 24);
       if (destroyed) {
         // The tab closed while the spawn was in flight; its close path ran

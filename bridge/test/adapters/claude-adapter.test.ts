@@ -632,3 +632,98 @@ test('interactive approvals stay off until the hook URL resolves (LAN not starte
   assert.equal(last().args.includes('--settings'), false);
   assert.equal(last().env, undefined);
 });
+
+test('parseClaudeLine surfaces subagent parentage and content-block boundaries', () => {
+  // subagent lines carry parent_tool_use_id
+  assert.equal(
+    parseClaudeLine(
+      '{"type":"user","session_id":"s","parent_tool_use_id":"task_1","message":{"content":[{"type":"tool_result","tool_use_id":"tu_9","content":"x"}]}}',
+    )?.parentToolUseId,
+    'task_1',
+  );
+  // content_block_start/stop expose the index + block type for text-run tracking
+  assert.deepEqual(
+    parseClaudeLine(
+      '{"type":"stream_event","session_id":"s","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}',
+    ),
+    {
+      kind: 'other',
+      sessionId: 's',
+      streamType: 'content_block_start',
+      blockIndex: 1,
+      blockType: 'text',
+    },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
+      '{"type":"stream_event","session_id":"s","event":{"type":"content_block_stop","index":1}}',
+    ),
+    { kind: 'other', sessionId: 's', streamType: 'content_block_stop', blockIndex: 1 },
+  );
+  // delta events carry their content-block index
+  assert.equal(
+    parseClaudeLine(
+      '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hi"}}}',
+    )?.blockIndex,
+    1,
+  );
+});
+
+test('ClaudeCodeAdapter flags a subagent block landing mid-text as beforeText', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go' });
+  last().feed([
+    // a parallel subagent (Task) registers its own tool_use…
+    '{"type":"assistant","session_id":"s","parent_tool_use_id":"task_1","message":{"content":[{"type":"tool_use","id":"tu_sub","name":"Bash","input":{"command":"ls"}}]}}',
+    // …the main text starts streaming
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}',
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"y si re"}}}',
+    // …and the subagent result arrives MID-RUN (parallel activity)
+    '{"type":"user","session_id":"s","parent_tool_use_id":"task_1","message":{"content":[{"type":"tool_result","tool_use_id":"tu_sub","content":"ok"}]}}',
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"porta"}}}',
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_stop","index":0}}',
+    // a sequential MAIN tool after the text closed keeps plain arrival order
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"y si reporta"},{"type":"tool_use","id":"tu_main","name":"Bash","input":{"command":"pwd"}}]}}',
+    '{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"tu_main","content":"/"}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"y si reporta","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const blocks = events.filter((e) => e.type === 'block');
+  assert.equal(blocks.length, 2);
+  // the subagent block that landed mid-run is flagged beforeText…
+  assert.equal((blocks[0]!.data as { beforeText?: boolean }).beforeText, true);
+  // …the sequential main block is not
+  assert.equal((blocks[1]!.data as { beforeText?: boolean }).beforeText, undefined);
+  // and the main text run streamed whole, never polluted by subagent content
+  const deltas = events
+    .filter((e) => e.type === 'delta')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(deltas, ['y si re', 'porta']);
+});
+
+test('ClaudeCodeAdapter never folds subagent text or usage into the main message', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go' });
+  last().feed([
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"main answer"}],"usage":{"input_tokens":10,"output_tokens":5}}}',
+    // subagent narration + usage after the main message: neither may leak into
+    // the main deltas (the no-partials fallback) or the usage fallback
+    '{"type":"assistant","session_id":"s","parent_tool_use_id":"task_1","message":{"content":[{"type":"text","text":"subagent inner monologue"}],"usage":{"input_tokens":999999}}}',
+    '{"type":"result","subtype":"success","is_error":false,"session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const deltas = events
+    .filter((e) => e.type === 'delta')
+    .map((e) => (e.data as { text: string }).text);
+  assert.deepEqual(deltas, ['main answer']);
+  const completed = events.find((e) => e.type === 'turn_completed');
+  assert.equal((completed?.data as { usage?: { tokens: number } }).usage?.tokens, 15);
+});

@@ -6,6 +6,7 @@
   // open (e.g. a remove that failed and now offers a force option).
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
@@ -84,8 +85,11 @@
     {/if}
 
     <Dialog.Footer class="min-w-0">
-      <Button variant="ghost" onclick={cancel}>{i18n.t("common.cancel")}</Button>
+      <Button variant="ghost" disabled={busy} onclick={cancel}>{i18n.t("common.cancel")}</Button>
       <Button variant={danger ? "destructive" : "default"} disabled={busy} onclick={confirm}>
+        {#if busy}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {/if}
         {confirmLabel}
       </Button>
     </Dialog.Footer>

@@ -10,6 +10,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Spinner } from "$lib/components/ui/spinner";
   import type { Snippet } from "svelte";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
@@ -23,7 +24,6 @@
   import UploadIcon from "@lucide/svelte/icons/upload";
   import LinkIcon from "@lucide/svelte/icons/link";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
-  import Loader2Icon from "@lucide/svelte/icons/loader-circle";
   import BanIcon from "@lucide/svelte/icons/ban";
   import PipetteIcon from "@lucide/svelte/icons/pipette";
 
@@ -54,6 +54,7 @@
   let currentColor = $state<string | null>(null);
   let urlInput = $state("");
   let busy = $state(false);
+  let busySource = $state<"file" | "avatar" | "url" | null>(null);
   let error = $state<string | null>(null);
   // Resolved git-host avatar URL (null until/unless a repo origin resolves one).
   let avatarUrl = $state<string | null>(null);
@@ -73,6 +74,7 @@
     urlInput = "";
     error = null;
     busy = false;
+    busySource = null;
     avatarUrl = null;
     if (repoId) {
       repoRemoteOwner(repoId)
@@ -117,18 +119,21 @@
     if (!file) return;
     error = null;
     busy = true;
+    busySource = "file";
     try {
       pending = await fileToLogoDataUrl(file, PREVIEW_SIZE);
     } catch {
       error = i18n.t("iconPicker.fileError");
     } finally {
       busy = false;
+      busySource = null;
     }
   }
 
-  async function fetchInto(url: string) {
+  async function fetchInto(url: string, source: "avatar" | "url") {
     error = null;
     busy = true;
+    busySource = source;
     try {
       const dataUrl = await imageFetchDataUrl(url);
       pending = await rasterizeToSquarePng(dataUrl, PREVIEW_SIZE);
@@ -136,6 +141,7 @@
       error = e instanceof Error ? e.message : i18n.t("iconPicker.urlError");
     } finally {
       busy = false;
+      busySource = null;
     }
   }
 
@@ -172,9 +178,6 @@
                 : i18n.t("iconPicker.sourceDefault")}
           </div>
         </div>
-        {#if busy}
-          <Loader2Icon class={cn(icon.button, "ml-auto shrink-0 animate-spin text-muted-foreground")} />
-        {/if}
       </div>
 
       <!-- Built-in glyphs + accent color. -->
@@ -264,11 +267,18 @@
         <span class={text.section}>{i18n.t("iconPicker.custom")}</span>
         <div class="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" disabled={busy} onclick={() => fileInput?.click()}>
-            <UploadIcon class={icon.button} />
+            {#if busySource === "file"}
+              <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+            {:else}
+              <UploadIcon data-icon="inline-start" />
+            {/if}
             {i18n.t("iconPicker.fromFile")}
           </Button>
           {#if avatarUrl}
-            <Button variant="outline" size="sm" disabled={busy} onclick={() => fetchInto(avatarUrl!)}>
+            <Button variant="outline" size="sm" disabled={busy} onclick={() => fetchInto(avatarUrl!, "avatar")}>
+              {#if busySource === "avatar"}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {/if}
               {i18n.t("iconPicker.fromAvatar")}
             </Button>
           {/if}
@@ -282,15 +292,18 @@
               bind:value={urlInput}
               autocomplete="off"
               spellcheck={false}
-              onkeydown={(e) => e.key === "Enter" && urlInput.trim() && fetchInto(urlInput.trim())}
+              onkeydown={(e) => e.key === "Enter" && urlInput.trim() && fetchInto(urlInput.trim(), "url")}
             />
           </div>
           <Button
             variant="outline"
             size="sm"
             disabled={busy || !urlInput.trim()}
-            onclick={() => fetchInto(urlInput.trim())}
+            onclick={() => fetchInto(urlInput.trim(), "url")}
           >
+            {#if busySource === "url"}
+              <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+            {/if}
             {i18n.t("iconPicker.fetch")}
           </Button>
         </div>

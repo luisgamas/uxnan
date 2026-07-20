@@ -8,6 +8,7 @@
 
 import {
   branchList,
+  fsPathExists,
   ptyWrite,
   repoAdd,
   repoRemove,
@@ -31,6 +32,7 @@ import type {
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
+import { canonicalFor, reconcilePlan } from "$lib/pathid";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import {
@@ -439,12 +441,53 @@ class ProjectsStore {
     await app.persistSettings();
   }
   private worktreeRefreshInFlight = false;
+  private initPromise: Promise<void> | null = null;
 
-  /** Load every repo's worktrees (called once after the app hydrates). */
-  async init(): Promise<void> {
-    // Force the pending workspace-recency stamp on window close (idempotent id).
-    registerFlush("workspace-last-active", () => this.flushLastActive());
-    await Promise.all(app.repos.map((r) => this.loadWorktrees(r.id)));
+  /** Load every repo's worktrees. Called from the boot sequence and from the
+   *  sidebar's ready-effect; the promise is shared so whoever awaits it gets
+   *  the *completed* first load, never a short-circuited duplicate call. */
+  init(): Promise<void> {
+    this.initPromise ??= (async () => {
+      // Force the pending workspace-recency stamp on window close (idempotent id).
+      registerFlush("workspace-last-active", () => this.flushLastActive());
+      await Promise.all(app.repos.map((r) => this.loadWorktrees(r.id)));
+    })();
+    return this.initPromise;
+  }
+
+  /** One-shot boot pass linking the restored terminal layout back to the
+   *  project/worktree world it belongs to (the persisted layout stores only
+   *  workspace keys):
+   *  - keys that name a known repo/worktree are re-spelled to the canonical
+   *    (git-emitted) path, so exact-match lookups (`activeRepo`, badges,
+   *    agent rows) can't miss over a separator/case difference;
+   *  - the restored **active** workspace, when known, becomes the selected
+   *    worktree through the same path a sidebar click takes — so the git
+   *    panel, fs watcher, GitHub context and launch targeting all follow with
+   *    zero clicks (previously the selection stayed empty until a click,
+   *    leaving a live restored terminal driving a half-selected shell);
+   *  - keys whose folder is gone from disk are dropped (their worktree was
+   *    removed in an earlier session; stale entries used to pile up forever).
+   *    A key whose folder still exists but is unregistered is kept untouched —
+   *    real shells are never destroyed on a guess. */
+  async reconcileRestoredWorkspaces(): Promise<void> {
+    const known: string[] = [];
+    // Worktree spellings first: they are what sidebar clicks use as keys.
+    for (const r of app.repos) for (const w of this.worktreesOf(r.id)) known.push(w.path);
+    for (const r of app.repos) known.push(r.path);
+
+    const plan = reconcilePlan(terminals.workspaceKeys, known);
+    for (const [oldKey, newKey] of plan.rekeys) terminals.rekeyWorkspace(oldKey, newKey);
+    for (const key of plan.unknown) {
+      // On an API failure err on the side of keeping the workspace.
+      const exists = await fsPathExists(key).catch(() => true);
+      if (!exists) terminals.dropWorkspace(key);
+    }
+
+    const active = terminals.activeWorkspace;
+    if (active === GLOBAL_WORKSPACE) return;
+    const canon = canonicalFor(active, known);
+    if (canon !== undefined) this.setActiveWorktree(canon);
   }
 
   /**

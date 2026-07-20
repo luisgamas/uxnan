@@ -19,12 +19,12 @@
   import type { PrBranches } from "$lib/types";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
   import Combobox, { type ComboGroup } from "./Combobox.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import LoaderIcon from "@lucide/svelte/icons/loader-circle";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
 
@@ -232,7 +232,7 @@
         onclick={draftBody}
       >
         {#if aiDrafting}
-          <LoaderIcon class="size-3 animate-spin" />
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {:else}
           <SparklesIcon class="size-3" />
         {/if}
@@ -248,7 +248,12 @@
     {#if onCancel}
       <Button variant="ghost" size="sm" onclick={onCancel}>{i18n.t("common.cancel")}</Button>
     {/if}
-    <Button size="sm" disabled={!canSubmit} onclick={submit}>{i18n.t("github.pr.create")}</Button>
+    <Button size="sm" disabled={!canSubmit} onclick={submit}>
+      {#if busy}
+        <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+      {/if}
+      {i18n.t("github.pr.create")}
+    </Button>
   </div>
 </div>
 

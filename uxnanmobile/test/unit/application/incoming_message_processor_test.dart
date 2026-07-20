@@ -71,6 +71,33 @@ void main() {
       expect(event, isA<UnknownDomainEvent>());
     });
 
+    test('stream/content/block carries the beforeText placement flag', () {
+      final flagged = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'content': {
+            'type': 'command_execution',
+            'command': 'ls',
+            'status': 'completed',
+          },
+          'beforeText': true,
+        }),
+      ) as ContentBlockEvent;
+      expect(flagged.beforeText, isTrue);
+      // Absent (or non-boolean) → false, the sequential default.
+      final plain = processor.classify(
+        note('stream/content/block', {
+          'turnId': 't1',
+          'content': {
+            'type': 'command_execution',
+            'command': 'ls',
+            'status': 'completed',
+          },
+        }),
+      ) as ContentBlockEvent;
+      expect(plain.beforeText, isFalse);
+    });
+
     test('stream/turn/completed', () {
       final event = processor.classify(
         note('stream/turn/completed', {'turnId': 't1'}),

@@ -130,6 +130,18 @@ export {
 } from './adapters/gemini-adapter.js';
 export { resolveGeminiBinary, type ResolvedGemini } from './adapters/resolve-gemini.js';
 export {
+  AntigravityAdapter,
+  antigravityPermissionMode,
+  parseAntigravityModelList,
+  permissionArgs as antigravityPermissionArgs,
+  type AntigravityAdapterOptions,
+  type AntigravityPermissionMode,
+} from './adapters/antigravity-adapter.js';
+export {
+  resolveAntigravityBinary,
+  type ResolvedAntigravity,
+} from './adapters/resolve-antigravity.js';
+export {
   OpenCodeAdapter,
   parseModelList,
   parseOpenCodeModelWindows,

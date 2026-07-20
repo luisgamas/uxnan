@@ -33,8 +33,12 @@ class IncomingMessageProcessor {
           threadId: threadId,
           delta: params['delta'] is String ? params['delta'] as String : '',
         ),
-      'stream/content/block' =>
-        _contentBlock(turnId, threadId, params['content']),
+      'stream/content/block' => _contentBlock(
+          turnId,
+          threadId,
+          params['content'],
+          beforeText: params['beforeText'] == true,
+        ),
       'stream/turn/completed' => TurnCompletedEvent(
           turnId: turnId,
           threadId: threadId,
@@ -72,12 +76,20 @@ class IncomingMessageProcessor {
 
   /// Decodes a `stream/content/block` payload into a [ContentBlockEvent], or an
   /// [UnknownDomainEvent] when the content isn't a decodable block.
-  DomainEvent _contentBlock(String turnId, String? threadId, Object? content) {
+  /// [beforeText] marks a block from a parallel/background activity that must
+  /// be ordered before the open text run (see [ContentBlockEvent.beforeText]).
+  DomainEvent _contentBlock(
+    String turnId,
+    String? threadId,
+    Object? content, {
+    bool beforeText = false,
+  }) {
     if (content is Map) {
       return ContentBlockEvent(
         turnId: turnId,
         threadId: threadId,
         content: MessageContent.fromJson(content.cast<String, dynamic>()),
+        beforeText: beforeText,
       );
     }
     return const UnknownDomainEvent(method: 'stream/content/block');
