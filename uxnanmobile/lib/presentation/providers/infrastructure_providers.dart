@@ -204,15 +204,22 @@ final bridgeDiscoveryProvider =
 });
 
 /// Manual-code pairing service (resolves a typed host + code against the
-/// bridge's `GET /pair/resolve` endpoint). Short timeouts so an unreachable
-/// host fails fast instead of hanging the screen.
+/// bridge's `GET /pair/resolve` endpoint).
+///
+/// `connectTimeout` is deliberately generous: over Tailscale the FIRST request
+/// to a peer has to bring the tunnel up (DERP relay, then an attempted direct
+/// upgrade), which routinely takes longer than a LAN connect. The previous 5s
+/// budget expired during that setup, so manual pairing "always failed on
+/// Tailscale but worked on the same Wi-Fi" — and, because the request never
+/// arrived, the bridge logged nothing to contradict it. Once connected, the
+/// bridge answers immediately, so the read/write budgets stay short.
 final manualPairingServiceProvider = Provider<ManualPairingService>(
   (ref) => ManualPairingService(
     Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 5),
-        sendTimeout: const Duration(seconds: 5),
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 10),
       ),
     ),
   ),

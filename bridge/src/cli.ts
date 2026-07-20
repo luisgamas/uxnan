@@ -49,9 +49,13 @@ Commands:
  * on-disk cache, bounded by a short fetch timeout, and silent when up to date,
  * offline, or the latest version is unknown.
  */
-async function printUpdateNotice(): Promise<void> {
+async function printUpdateNotice(options: { force?: boolean } = {}): Promise<void> {
   try {
-    const status = await ensureUpdateStatus(new DaemonState());
+    // `start` always re-checks: it is the one command a user runs deliberately,
+    // and the 24h cache meant a release published inside that window went
+    // unannounced for up to a day (reported after 0.0.9 shipped). Short-lived
+    // commands keep the cache so they stay fast.
+    const status = await ensureUpdateStatus(new DaemonState(), options.force ? { ttlMs: 0 } : {});
     const message = updateNoticeMessage(status);
     if (message) process.stderr.write(`\n${message}\n`);
   } catch {
@@ -147,7 +151,7 @@ async function cmdStart(): Promise<void> {
     process.stdout.write('Relay disabled; using the direct LAN/Tailscale path only.\n');
   }
 
-  await printUpdateNotice();
+  await printUpdateNotice({ force: true });
   process.stdout.write('Press Ctrl+C to stop.\n');
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {

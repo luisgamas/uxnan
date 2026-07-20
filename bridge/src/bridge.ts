@@ -640,11 +640,20 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         },
         // Manual-code pairing: trade a code shown on the PC for the pairing payload.
         onPairResolve: (code, ip) => {
+          // Log the OUTCOME (never the code — it is a shared secret). Without
+          // this a failed manual pairing is indistinguishable from a request
+          // that never arrived, which is exactly how a Tailscale-only failure
+          // was misread as a rejected code.
           if (pairingCodeService.rateLimited(ip)) {
+            logger.warn(`pair/resolve from ${ip}: rate limited (429)`);
             return { status: 429, json: { error: 'rate_limited' } };
           }
           const payload = pairingCodeService.resolve(code);
-          if (!payload) return { status: 403, json: { error: 'invalid_or_expired_code' } };
+          if (!payload) {
+            logger.warn(`pair/resolve from ${ip}: code did not match or expired (403)`);
+            return { status: 403, json: { error: 'invalid_or_expired_code' } };
+          }
+          logger.info(`pair/resolve from ${ip}: accepted (200); pairing window armed`);
           return { status: 200, json: payload };
         },
         // Claude PreToolUse approval hook: ask the user (on the phone) whether a

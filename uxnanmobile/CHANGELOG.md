@@ -6,6 +6,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — manual pairing failed over Tailscale
+- The manual-pairing HTTP client used a 5s `connectTimeout`. Over Tailscale the
+  first request to a peer must bring the tunnel up (DERP relay, then an attempted
+  direct upgrade), which routinely takes longer — so the request was abandoned
+  before it ever reached the bridge, and pairing "always failed on Tailscale but
+  worked on the same Wi-Fi" even with the `100.x` address typed correctly.
+  `connectTimeout` is now 20s (read/write stay at 10s: once connected the bridge
+  answers immediately).
+
 ### Fixed — a version-mismatched bridge said "invalid QR/code" instead of "update the bridge"
 - Pairing against a bridge older than `SECURE_PROTOCOL_VERSION` 2 correctly
   fails at the handshake, but both pairing screens funnelled every handshake

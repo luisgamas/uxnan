@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — `start` always re-checks for a new bridge version
+- `uxnan-bridge start` now bypasses the 24h update-check cache (`ttlMs: 0`).
+  Reported after 0.0.9 shipped: a bridge that had checked while 0.0.8 was newest
+  stayed silent for up to a day, so the operator never learned an update existed
+  and kept pairing a version-incompatible pair. Short-lived commands
+  (`status`/`qr`/`code`) keep using the cache so they stay fast.
+
+### Added — `/pair/resolve` now logs its outcome
+- The manual-pairing endpoint logs accepted / rejected / rate-limited per client
+  IP (**never the code — it is a shared secret**). Without it, a request that
+  never arrived and a request that was rejected looked identical in the bridge
+  log, which is exactly how a Tailscale connect-timeout was misdiagnosed as a
+  bad pairing code.
+
 ### Fixed — a refused atomic write could hang a turn forever (Windows)
 - **`DaemonState.writeJson` now retries the `rename`.** Renaming over an existing
   file is intermittently refused on Windows with `EPERM` (also `EBUSY`/`EACCES`)
