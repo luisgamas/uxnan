@@ -6,6 +6,54 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — network-path badge (LAN / Tailscale / Direct / Relay) on the connected PC
+- The devices screen now labels **how** a live connection actually reaches the
+  PC, not just whether it's "connected": a small animated pill next to the
+  status dot reads **LAN**, **Tailscale**, **Direct** or **Relay**, with a
+  **"Detecting…"** loading state while a connect attempt is in flight and the
+  path isn't known yet. A new pure `NetworkKind` classifier
+  (`domain/enums/network_kind.dart`) buckets the live channel's actual
+  endpoint by IP range — `100.64.0.0/10` → Tailscale; `10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` → LAN; any other
+  reachable address → Direct; a host match against the paired device's
+  `relayUrl` → Relay — and is exposed through a new `networkKindProvider`
+  derived from the session coordinator's real `connectedDevice` +
+  `connectedEndpoint` streams. This **replaces** the previous Relay/Direct
+  text, which read the *global* `bridge/status.relayConnected` flag: that
+  field can't distinguish LAN from Tailscale and isn't guaranteed to be scoped
+  to the endpoint actually in use, so the label could misreport during a
+  reconnect. The new `TransportBadge` widget (`presentation/widgets/`)
+  cross-fades between states with `AnimatedSwitcher` (respecting reduced
+  motion) and follows the same type-specific icon + color-pill pattern as the
+  existing `CommitRefChip`. No wire/contract change — the classification is
+  entirely client-side from data the bridge already advertises (`hosts`,
+  `relayUrl`).
+
+### Fixed — manual-code pairing no longer dead-ends on a single unreachable host
+- Manual pairing (`ManualCodeScreen`) used to resolve the pairing code with a
+  single blind HTTP GET against whatever host the user typed. If that one
+  host wasn't reachable on the phone's *current* network — a stale/typo'd LAN
+  IP, or the PC only reachable via Tailscale while the phone types the LAN
+  address shown on screen — pairing failed outright and the (already
+  multi-host-capable) WebSocket connection race never even got a chance to
+  run. `ManualPairingService` gained `resolveAny`, which races the typed host
+  concurrently against every bridge discovered via mDNS in the background
+  (the screen now runs passive `BridgeDiscoveryService` discovery for its
+  whole lifetime, not just while the "Browse nearby bridges" sheet is open) —
+  the first bridge to answer `HTTP 2xx` wins, mirroring how
+  `DirectTransportSelector` already races the paired device's advertised
+  hosts for the live connection. When every candidate fails, the single most
+  actionable error surfaces (a definitive "wrong code" from a bridge that
+  *was* reached always outranks a plain "unreachable" from one that wasn't),
+  and the network-failure copy now actively guides the user: try the PC's
+  Tailscale `100.x` address, or its LAN IP if on the same Wi-Fi, and notes the
+  connection can also fall back to the relay once paired.
+- Deferred: resolving a pairing code with **no direct network path to the PC
+  at all** (e.g. the phone on cellular data, the PC not yet joined to
+  Tailscale) still isn't possible — it would need fetching the payload
+  through the relay instead of a direct GET, which needs new relay+bridge
+  contract work. See `FOR-DEV.md`.
+
 ## [0.0.9-alpha.20260719+20260719] - 2026-07-19
 
 ### Added — Antigravity agent (Google's `agy`) rendering

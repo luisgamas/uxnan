@@ -40,6 +40,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get connectionDirect => 'Directa';
 
   @override
+  String get transportLan => 'LAN';
+
+  @override
+  String get transportTailscale => 'Tailscale';
+
+  @override
+  String get transportDetecting => 'Detectando…';
+
+  @override
   String get onboardingSkip => 'Omitir';
 
   @override
@@ -2142,7 +2151,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get manualCodeErrorNetwork =>
-      'No se pudo contactar al bridge. Revisa el host y que el bridge esté corriendo en la misma red.';
+      'No se pudo contactar al bridge en ninguna de las direcciones probadas. Si tu PC está en Tailscale, ingresa su dirección 100.x; si están en la misma red Wi-Fi, usa su IP de red local. Una vez emparejado, la conexión también puede usar el relay como respaldo.';
 
   @override
   String get manualCodeErrorInvalidCode =>

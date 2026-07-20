@@ -20,7 +20,12 @@ connected to live bridge data, validated on-device against a real bridge.
   handshake, seq/replay, outbound buffer, reconnect loop).
 - **Pairing & onboarding** — `OnboardingScreen`, `QrScannerScreen`,
   `MyDevicesScreen`, **`ManualCodeScreen`** (bridge-first manual-code pairing,
-  `GET /pair/resolve?code=`, host typed or via mDNS discover).
+  `GET /pair/resolve?code=`, host typed or via mDNS discover; **the resolve
+  itself races the typed host against every mDNS-discovered candidate**,
+  first `2xx` wins). The devices screen shows a **network-path badge** (LAN /
+  Tailscale / Direct / Relay, `NetworkKind`) on the connected PC, derived from
+  the actual live endpoint rather than the coarser relay/direct
+  `bridge/status` flag.
 - **Direct LAN/Tailscale transport** — `DirectTransportSelector` tries each direct
   `hosts` entry from the QR first, falls back to the relay.
 - **Multi-PC connection-targeting** — all live actions target the PC we actually
@@ -194,6 +199,20 @@ shipping.
       exists for it yet.
 - [ ] **Adopt `freezed`/`json_serializable`** if/when entity boilerplate warrants it.
       Optional.
+
+## App-side pending work (needs relay/bridge changes to start)
+
+- [ ] **Manual pairing over the relay for a phone with no direct path to the
+      PC at all.** `ManualPairingService.resolveAny`
+      (`infrastructure/pairing/manual_pairing_service.dart`) already races the
+      typed host against every bridge discovered via mDNS, but every
+      candidate still needs a direct HTTP path (LAN or Tailscale) reachable
+      from the phone right now. A phone with neither — cellular data only,
+      the PC not yet joined to Tailscale — can't resolve a pairing code at
+      all. Fetching the payload through the relay instead of the current
+      direct `GET /pair/resolve` would remove that requirement entirely, but
+      needs a new relay+bridge+shared contract (the relay has no route to
+      reach an unpaired bridge on the phone's behalf today). Not started.
 
 ## App+bridge seams (need a live bridge to finish/verify)
 

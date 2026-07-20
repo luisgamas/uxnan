@@ -28,6 +28,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
+import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
@@ -124,6 +125,25 @@ final connectingDeviceProvider = StreamProvider<TrustedDevice?>(
 final connectedEndpointProvider = StreamProvider<String?>(
   (ref) => ref.watch(sessionCoordinatorProvider).connectedEndpointStream,
 );
+
+/// The network path the LIVE channel is actually using — LAN, Tailscale, a
+/// direct address, or the relay — classified client-side from
+/// [connectedEndpointProvider] against the connected device's advertised
+/// `relayUrl` (see [classifyEndpoint]). [NetworkKind.unknown] while no device
+/// holds the live channel.
+///
+/// Deliberately NOT derived from [bridgeStatusProvider].relayConnected: that
+/// field only distinguishes relay vs. direct and can't tell LAN from
+/// Tailscale, and it's keyed to whichever PC last answered `bridge/status`
+/// rather than the endpoint actually in use. This is a pure, synchronous
+/// derivation of the two streams that already track the real connection, so
+/// the transport badge never lags or misreports during a reconnect.
+final networkKindProvider = Provider<NetworkKind>((ref) {
+  final device = ref.watch(connectedDeviceProvider).value;
+  if (device == null) return NetworkKind.unknown;
+  final endpoint = ref.watch(connectedEndpointProvider).value;
+  return classifyEndpoint(endpoint, relayUrl: device.relayUrl);
+});
 
 /// The connected bridge's status (`bridge/status`), refreshed whenever the
 /// connected device changes. Null while not connected or against an older

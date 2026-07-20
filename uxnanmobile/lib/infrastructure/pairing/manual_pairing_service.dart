@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -125,13 +126,41 @@ PairingPayload parsePairResolveResponse(int statusCode, Object? data) {
   }
 }
 
+/// Normalizes and de-duplicates candidate hosts for
+/// [ManualPairingService.resolveAny], preserving first-seen order — so the
+/// user's typed host (placed first by the caller) breaks ties over a
+/// rediscovered duplicate. Entries that don't normalize to a usable
+/// `host:port` (per [normalizeHostInput]) are dropped rather than raced.
+List<String> dedupeResolveHosts(Iterable<String> hosts) {
+  final seen = <String>{};
+  final result = <String>[];
+  for (final host in hosts) {
+    final normalized = normalizeHostInput(host);
+    if (normalized != null && seen.add(normalized)) result.add(normalized);
+  }
+  return result;
+}
+
+/// Ranks [ManualPairingErrorKind]s by how actionable they are for
+/// [ManualPairingService.resolveAny] — lower is more useful to show the user.
+/// A definitive answer FROM a reached bridge (wrong/expired code, rate
+/// limited, a malformed/server reply) always outranks a plain "unreachable":
+/// the latter just means *this one candidate* never answered, not that
+/// pairing itself is broken, so it should only surface when nothing reached
+/// any bridge at all.
+int resolveErrorPriority(ManualPairingErrorKind kind) => switch (kind) {
+      ManualPairingErrorKind.invalidOrExpiredCode => 0,
+      ManualPairingErrorKind.rateLimited => 1,
+      ManualPairingErrorKind.malformedPayload => 2,
+      ManualPairingErrorKind.server => 3,
+      ManualPairingErrorKind.network => 4,
+      ManualPairingErrorKind.invalidInput => 5,
+    };
+
 /// Resolves a manual pairing code into a [PairingPayload] by calling the
 /// **bridge** directly (`GET /pair/resolve?code=`), bypassing the QR scan. The
 /// returned payload is fed into the normal pairing handshake
 /// (`SessionCoordinator.processPairingPayload`).
-///
-/// FOR-DEV: discovery is manual (the user types the host shown on the PC).
-/// mDNS browse (`_uxnan._tcp`) to auto-list bridges is a follow-up.
 class ManualPairingService {
   /// Creates a [ManualPairingService] over [_dio].
   ManualPairingService(this._dio);
@@ -161,5 +190,70 @@ class ManualPairingService {
     } on DioException catch (e) {
       throw ManualPairingException(ManualPairingErrorKind.network, e.message);
     }
+  }
+
+  // FOR-DEV: `resolveAny` only reaches hosts directly dialable from the phone
+  // right now (the typed host + LAN mDNS candidates) — a phone with no
+  // LAN/Tailscale path to the PC at all (e.g. cellular data only, PC not yet
+  // joined to Tailscale) still can't resolve a code. Fetching the payload
+  // through the relay instead of this direct GET would let pairing work with
+  // no direct reachability at all, but needs a new relay+bridge+shared
+  // contract (the relay has no route to reach an unpaired bridge on the
+  // phone's behalf today). See FOR-DEV.md.
+  /// Resolves [code] by racing it concurrently against every candidate in
+  /// [hosts] (deduplicated via [dedupeResolveHosts]) — the first `HTTP 2xx`
+  /// wins. Built so a stale or wrong typed host doesn't dead-end pairing: the
+  /// caller mixes in any bridges discovered via mDNS
+  /// (`BridgeDiscoveryService`), and whichever one actually answers wins,
+  /// exactly like [DirectTransportSelector] already races the paired device's
+  /// advertised hosts for the live WS connection.
+  ///
+  /// On failure, throws the single most actionable [ManualPairingException]
+  /// across every attempt (see [resolveErrorPriority]) — so, for example, a
+  /// wrong/expired code reported by one reachable bridge is shown instead of
+  /// a generic "unreachable" from a different candidate that never answered.
+  Future<PairingPayload> resolveAny({
+    required Iterable<String> hosts,
+    required String code,
+  }) async {
+    final candidates = dedupeResolveHosts(hosts);
+    if (candidates.isEmpty) {
+      throw const ManualPairingException(ManualPairingErrorKind.invalidInput);
+    }
+
+    final completer = Completer<PairingPayload>();
+    var pending = candidates.length;
+    ManualPairingException? bestError;
+
+    void fail(ManualPairingException error) {
+      if (bestError == null ||
+          resolveErrorPriority(error.kind) <
+              resolveErrorPriority(bestError!.kind)) {
+        bestError = error;
+      }
+      pending--;
+      if (pending == 0 && !completer.isCompleted) {
+        completer.completeError(
+          bestError ??
+              const ManualPairingException(ManualPairingErrorKind.network),
+        );
+      }
+    }
+
+    for (final host in candidates) {
+      unawaited(
+        resolve(host: host, code: code).then((payload) {
+          if (!completer.isCompleted) completer.complete(payload);
+        }).catchError((Object error) {
+          fail(
+            error is ManualPairingException
+                ? error
+                : const ManualPairingException(ManualPairingErrorKind.network),
+          );
+        }),
+      );
+    }
+
+    return completer.future;
   }
 }

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/core/utils/logger.dart';
+import 'package:uxnan/domain/entities/discovered_bridge.dart';
+import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
@@ -23,9 +27,13 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 /// bridge's `GET /pair/resolve` endpoint, then runs the normal pairing
 /// handshake (`SessionCoordinator.processPairingPayload`).
 ///
-/// A **Browse nearby bridges** action runs mDNS discovery
-/// ([BridgeDiscoverySheet]) so the user can pick a bridge instead of typing the
-/// host; manual entry stays the fallback.
+/// The resolve itself races the typed host against any bridge the screen has
+/// passively discovered via mDNS in the background (`resolveAny`), so a
+/// stale/wrong typed address — or one that just isn't reachable on the
+/// phone's *current* network — doesn't dead-end pairing when the right
+/// bridge is otherwise reachable. A **Browse nearby bridges** action
+/// ([BridgeDiscoverySheet]) additionally lets the user pick a bridge instead
+/// of typing the host at all; manual entry stays the fallback either way.
 ///
 /// Chrome follows the Neural Expressive language (guide §4.1–4.3): a
 /// transparent [NeTopBar] with a scroll veil over an [IconSurface] back, an
@@ -46,10 +54,32 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
   bool _connecting = false;
   String? _error;
 
+  // Passive LAN discovery for the connect-time host race: a private
+  // BridgeDiscoveryService (not the shared, sheet-scoped
+  // bridgeDiscoveryProvider) started as soon as this screen opens, so nearby
+  // bridges are already known by the time the user taps Connect — without
+  // adding latency to the happy path (typing a host + a code takes longer
+  // than mDNS needs to answer). Best-effort: an empty/failed discovery just
+  // leaves the typed host as the only candidate, exactly like before this
+  // feature existed.
+  final BridgeDiscoveryService _discovery = BridgeDiscoveryService();
+  List<DiscoveredBridge> _discovered = const [];
+  StreamSubscription<List<DiscoveredBridge>>? _discoverySub;
+
+  @override
+  void initState() {
+    super.initState();
+    _discoverySub =
+        _discovery.bridges.listen((bridges) => _discovered = bridges);
+    unawaited(_discovery.start());
+  }
+
   @override
   void dispose() {
     _host.dispose();
     _code.dispose();
+    unawaited(_discoverySub?.cancel());
+    unawaited(_discovery.dispose());
     super.dispose();
   }
 
@@ -79,10 +109,18 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
       _connecting = true;
       _error = null;
     });
+    // The typed host first (so it wins ties in `resolveAny`'s dedupe), then
+    // whatever the passive mDNS scan has found by now — so a stale/wrong
+    // typed address doesn't dead-end pairing when the right bridge is
+    // discoverable on the same network.
+    final candidates = <String>[
+      _host.text,
+      for (final bridge in _discovered) bridge.hostPort,
+    ];
     try {
       final payload = await ref
           .read(manualPairingServiceProvider)
-          .resolve(host: _host.text, code: _code.text);
+          .resolveAny(hosts: candidates, code: _code.text);
       await ref.read(sessionCoordinatorProvider).processPairingPayload(payload);
       if (mounted) context.go(AppRoutes.home);
     } on ManualPairingException catch (error, stackTrace) {
