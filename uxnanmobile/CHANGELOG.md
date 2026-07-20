@@ -27,6 +27,71 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   session-key derivation are all unchanged. Ships together with the matching
   `bridge` change (see its CHANGELOG) — envelopes are not wire-compatible
   across the version gap.
+## [0.0.9-alpha.20260719+20260719] - 2026-07-19
+
+### Added — Antigravity agent (Google's `agy`) rendering
+- The app now renders the bridge's new `antigravity-cli` agent as a first-class,
+  branded choice — Google's Antigravity CLI, the successor to the deprecated
+  Gemini CLI (its models are the Gemini family). Added `AgentId.antigravity`
+  (wire id `antigravity-cli`) with its logo, "Antigravity" label and brand colour,
+  so it shows in the new-conversation picker with the same treatment as every
+  other agent instead of falling back to the generic "custom" look. Onboarding
+  copy and the welcome logos now feature Antigravity in place of Gemini. Pairs
+  with the bridge-side adapter that actually drives `agy` (see `bridge/CHANGELOG`).
+
+### Changed — Gemini CLI hidden from the new-conversation agent picker
+- Google deprecated the standalone Gemini CLI in favour of the Antigravity CLI
+  (`agy`), so `gemini-cli` is now hidden from the "available agents" list on the
+  new-conversation screen. The removal is a purely client-side curtain: a single
+  documented `_hiddenAgentIds` set (alongside the existing `echo` dev-agent hide)
+  filters the bridge-advertised `agent/list` before it is rendered. All Gemini
+  wiring — the `AgentId.geminiCli` enum value and `gemini-cli` wire id, its logo,
+  label and brand colour — is left fully intact, so bringing it back is a
+  one-line change (delete the `'gemini-cli'` entry). Existing Gemini threads and
+  the historical agent-activity / metrics breakdown are deliberately untouched.
+
+### Fixed — a session closed and reopened mid-turn recovers the FULL agent reply
+- **The reopen race that silently dropped everything produced while the app was
+  closed is fixed at the root.** On reopen, the first post-reconnect deltas
+  re-created the live buffer for the in-flight turn (with only the new tail),
+  and the re-sync's seed guard (`turnId != activeTurnId`) then saw a match and
+  **skipped seeding** — so the user saw their prompt but none of the output the
+  agent had produced while the app was away, and `_finishTurn` later persisted
+  that truncation for good. `_resyncThread` now **re-seeds unconditionally**
+  from the bridge's accumulated `turn/list` record (which persists every
+  delta/block BEFORE notifying, so the snapshot is a superset of anything the
+  phone already applied — replacing never loses data). Applies to every agent:
+  the recovery path is agent-agnostic (`thread_manager.dart`).
+- **A turn's finalized bubble now always carries the bridge's authoritative
+  final text.** `_finishTurn` previously preferred the live buffer whenever it
+  held ANY text — a tail-only buffer became the permanent message. It now keeps
+  the live interleave when the buffer matches (or is a prefix of) the final
+  text, and otherwise falls back to the authoritative text with the live blocks.
+- **Every completed turn reconciles against the bridge record** (best-effort
+  `turn/read` after `turn/completed`): the persisted message is rewritten to the
+  bridge's exact ordered `segments` whenever the live view diverged (a delta in
+  transit during a re-sync, a re-attach that missed early blocks), so the stored
+  conversation always converges to the bridge's truth.
+- **Re-sync now also runs on every (re)established connection** (new
+  `connectionPhases` wiring): the bridge's catch-up replay is a bounded window
+  (500 frames / 10 MiB), so a long disconnection mid-turn — a network blip with
+  the screen on, a cold start whose first re-sync timed out — is only
+  recoverable through a `turn/list` re-pull.
+- **A replayed `stream/turn/started` no longer wipes the live buffer** for a
+  turn already being tracked (the reconnect replay could re-deliver it right
+  after the seed).
+
+### Fixed — activity cards no longer split a sentence mid-word
+- **Blocks flagged `beforeText` by the bridge** (a parallel/background activity
+  — e.g. a Claude Code subagent's tool — that landed while the main answer was
+  still streaming) are now inserted BEFORE the open text run in the live buffer,
+  so the run keeps extending in place and the Work-log card sits above the
+  paragraph instead of cutting it mid-word. Sequential blocks keep today's
+  arrival-order append (`ContentBlockEvent.beforeText`,
+  `incoming_message_processor.dart`, `_LiveTurn.addBlock`).
+- Tests: +8 → **669** (reopen-race re-seed, replayed turn/started guard,
+  beforeText placement ×2, authoritative finalize ×2, turn/read reconcile,
+  processor flag parsing).
 
 ### Added — smooth thread-delete animation
 - Deleting a conversation now animates the tile out instead of making it vanish

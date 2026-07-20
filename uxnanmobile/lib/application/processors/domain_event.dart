@@ -80,6 +80,7 @@ class ContentBlockEvent extends DomainEvent {
     required this.turnId,
     required this.content,
     this.threadId,
+    this.beforeText = false,
   });
 
   /// The turn that produced the block.
@@ -91,8 +92,17 @@ class ContentBlockEvent extends DomainEvent {
   /// The decoded content block.
   final MessageContent content;
 
+  /// `true` when the block came from a parallel/background activity (e.g. a
+  /// Claude Code subagent's tool run) while the assistant's main text was
+  /// still streaming: it must be inserted BEFORE the open text run instead of
+  /// appended after it, so the run is never severed (appending would render
+  /// the sentence split mid-word by an activity card). Mirrors the order the
+  /// bridge persists in `Message.segments`, keeping live view and re-sync
+  /// identical.
+  final bool beforeText;
+
   @override
-  List<Object?> get props => [turnId, threadId, content];
+  List<Object?> get props => [turnId, threadId, content, beforeText];
 }
 
 /// A turn finished successfully.

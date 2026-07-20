@@ -31,16 +31,17 @@ file is optional; create it to override. Defaults live in
 ### Per-agent overrides (`agents.<id>`)
 
 `<id>` is one of the wired agent ids: `opencode`, `claude-code`, `codex`,
-`gemini-cli`, `pi-agent`. These are the canonical `AgentId` values — note
-`gemini-cli` and `pi-agent` (not `gemini` / `pi`). The same id strings are used
-for `defaultAgent` and `projectAgents[].agentId`.
+`gemini-cli`, `antigravity-cli`, `pi-agent`, `zero`, `grok`. These are the
+canonical `AgentId` values — note `gemini-cli`, `antigravity-cli` and `pi-agent`
+(not `gemini` / `antigravity` / `pi`). The same id strings are used for
+`defaultAgent` and `projectAgents[].agentId`.
 
 | Field | Purpose |
 |---|---|
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
-| `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by agents that enumerate their own models (OpenCode, Codex, pi, Gemini CLI, Zero, Grok). |
-| `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to each CLI's own flags — Claude (`--permission-mode` / `--dangerously-skip-permissions`), Codex (`-s workspace-write` / `read-only` / `--dangerously-bypass-approvals-and-sandbox`), Gemini (`--approval-mode auto_edit` / `plan` / `yolo`), and pi (its built-in tool posture / `--tools` / `--approve`). OpenCode does not gate tools, so it ignores this field. |
+| `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by agents that enumerate their own models (OpenCode, Codex, pi, Gemini CLI, Antigravity, Zero, Grok). |
+| `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to each CLI's own flags — Claude (`--permission-mode` / `--dangerously-skip-permissions`), Codex (`-s workspace-write` / `read-only` / `--dangerously-bypass-approvals-and-sandbox`), Gemini (`--approval-mode auto_edit` / `plan` / `yolo`), pi (its built-in tool posture / `--tools` / `--approve`), and Antigravity (`--dangerously-skip-permissions`; `default` also maps to autonomous, since headless `agy` can only edit with skip-permissions — a read-only `--mode plan` is reachable per-thread via the `requestApproval` access mode). OpenCode does not gate tools, so it ignores this field. |
 | `interactiveApprovals` | Opt-in interactive tool approvals for **Claude Code and Gemini CLI** (default false; requires `lanEnabled`). When true, every tool the agent runs prompts you **on the phone** (Approve / Reject) before it executes: the bridge injects a `PreToolUse` hook for Claude (and a `BeforeTool` hook for Gemini) that holds the tool until you answer (5-min timeout → deny). For Claude it overrides `permissionMode` (forcing `--permission-mode default` so the hook is the gate). Leave it off for unattended runs. |
 
 ### Per-project agent/model pins (`projectAgents`)
@@ -53,7 +54,7 @@ optional default model for it.
 | Field | Purpose |
 |---|---|
 | `cwd` | Absolute project directory the pin applies to (matched by resolved path). |
-| `agentId` | Agent the project defaults to (`opencode` / `claude-code` / `codex` / `gemini-cli` / `pi-agent`). |
+| `agentId` | Agent the project defaults to (`opencode` / `claude-code` / `codex` / `gemini-cli` / `antigravity-cli` / `pi-agent` / `zero` / `grok`). |
 | `model` | Optional default model for that agent. |
 
 When the phone starts a thread (`thread/start`) **without** an explicit

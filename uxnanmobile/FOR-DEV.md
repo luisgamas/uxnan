@@ -52,7 +52,17 @@ connected to live bridge data, validated on-device against a real bridge.
   (per-thread in-memory buffers + `turn/list` re-sync) with a per-thread
   **"Responding…"** activity indicator. Timeline auto-follow yields to manual
   scrolling, stays detached while older content is being read, and resumes at
-  the bottom or through an explicit jump/send action.
+  the bottom or through an explicit jump/send action. **Full mid-turn recovery**:
+  closing/killing the app during a turn and reopening restores everything the
+  agent produced while away — the resync **re-seeds the live buffer
+  unconditionally** from the bridge's accumulated record (which persists before
+  notifying, so replacing never loses data), a resync also fires on **every
+  (re)established connection** (the bridge's catch-up replay window is bounded),
+  the finalized bubble always carries the **authoritative final text**, and every
+  completed turn **reconciles via `turn/read`** so the stored message converges
+  to the bridge's exact text↔work-log interleave. `beforeText`-flagged blocks
+  (parallel/subagent activity) slot before the open text run, never splitting a
+  sentence mid-word.
 - **Message scroll rail** — a reusable, dependency-free right-edge minimap
   (`message_scroll_rail.dart`, one faint tick per user message) that is hidden
   while the timeline sits at the bottom and slides in from the right edge when

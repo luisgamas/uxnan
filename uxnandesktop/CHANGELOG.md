@@ -5,6 +5,219 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — asynchronous actions now show in-place progress
+
+- Added the shadcn-svelte `Spinner` primitive and a consistent pending-action
+  pattern: the control that started a longer filesystem, Git, GitHub, agent-hook,
+  theme, or project operation is disabled, keeps a stable compact footprint, and
+  shows an inline spinner with its existing localized progress label.
+- Applied the pattern to shared destructive confirmations and the create, add,
+  rename, save, import, stage/unstage, commit, push/pull, hook-management, and
+  GitHub action surfaces. Multi-action views now retain the pending operation's
+  identity so unrelated disabled controls do not appear to be running too.
+
+## [0.0.18] - 2026-07-19
+
+### Fixed — agent session resume now works end-to-end
+
+- **The captured session never reached the tabs.** The backend captured every
+  provider session id correctly (verified against the live server), but the
+  `agent:status-changed` event it broadcasts was built field-by-field and
+  omitted `session` — so the frontend never stamped the owning tab, restored
+  tabs had nothing to resume (a dead snapshot over a bare shell), and waking
+  re-fired the tab's **original** launch command, silently starting a
+  brand-new agent conversation. The event now mirrors the cached entry, with
+  a regression test pinning the field.
+- **OpenCode and Pi reporters now forward their session identity.** The
+  OpenCode plugin attaches the ROOT session's `sessionID` to every state event
+  it reports (a sub-agent child session can never overwrite it), enabling
+  `opencode --session <id>` on restore/wake. The Pi extension sniffs explicit
+  session fields (`session_id`/`session_file` spellings, or a dedicated
+  `session` object — never a generic `.id`) from its event payloads and rides
+  them on every report, enabling `pi --session <file|id>`. `conversation-id`
+  joined the server's accepted id spellings.
+- **Waking a tab without a resumable session no longer relaunches the agent
+  fresh.** The leftover one-shot launch command (agent launch / quick command)
+  is cleared on wake instead of re-firing into the new pane.
+- **No more "two sessions stacked" on resume.** When a resume auto-runs, the
+  pane skips the old-screen replay — the relaunched TUI redraws its own
+  conversation. The replay (with its dim divider) remains for plain shells
+  and for pre-typed-only resumes, where the old screen is useful context.
+
+## [0.0.17] - 2026-07-18
+
+### Fixed — a restored session now re-binds to its project at boot
+
+- **Restoring terminals no longer leaves the app half-selected.** The persisted
+  layout's active workspace used to come back on screen (shells respawned at
+  their old cwd) while the sidebar selection stayed empty, so the git panel,
+  fs watcher, GitHub context and agent targeting all ran against nothing until
+  a manual click. On boot the app now loads the worktree world first and
+  re-binds the restored workspace through the same path a sidebar click takes
+  — selection, watchers and launch targeting follow with zero clicks.
+- **Stale terminal workspaces are purged at boot.** Workspace keys whose
+  worktree folder no longer exists on disk (removed in some earlier session)
+  used to pile up in the persisted layout forever; the boot reconciler drops
+  them. Surviving keys are re-spelled to the canonical (git-emitted) path, so
+  a path-separator/case difference can no longer split one folder into two
+  workspaces (`src/lib/pathid.ts` is the shared path-identity helper).
+- **Boot no longer respawns every saved workspace's shells at once.** Only the
+  active workspace mounts (and spawns) at startup; background workspaces mount
+  on first activation. Boot cost scales with the workspace you're looking at,
+  not the whole saved session.
+
+### Added — workspace sleep/wake, live-space indicators, scrollback restore
+
+- **Sleep workspace** (worktree context menu, or `Mod+Shift+Z` on the active
+  workspace): stops every terminal's process and frees its renderer memory
+  while keeping all tabs, splits and titles in place. Each terminal's parsed
+  screen + last 1 000 scrollback lines are serialized first
+  (`@xterm/addon-serialize` — parsed cells, never raw PTY bytes). Sleeping a
+  workspace with a *working* agent asks for explicit confirmation (the
+  keyboard shortcut declines instead and says so). Waking — automatic when the
+  workspace is activated, or via the in-pane button — respawns each shell at
+  its cwd with the previous screen replayed above a dim divider.
+- **Scrollback survives restarts.** On window close (and on every sleep) the
+  serialized screens are written to a `terminal-buffers.json` sidecar next to
+  `state.json` (atomic write; snapshots stay off the debounced state hot
+  path). A restored terminal replays its previous session's screen before the
+  fresh shell prompt.
+- **Live-space indicators**: project cards and worktree rows show a small
+  terminal count while a workspace has open terminals, dimmed with a moon
+  glyph when the workspace is asleep.
+
+### Added — agent CLI sessions can be resumed after a restart or wake
+
+- The local hook server now captures each agent's **provider session id** (and
+  session/transcript file, when reported) from the hook payloads it already
+  receives, sanitized as hostile input at ingestion (bounded length/charset,
+  no option injection) and cached with the agent state (TTL-pruned as before).
+  Session ids are identifiers, not credentials.
+- A terminal tab that hosted an agent session remembers it with the layout.
+  When that tab comes back — app restart or workspace wake — the workspace
+  returns **as it was, TUIs included**: if the agent was still running when
+  the app closed (or the workspace slept), the CLI's resume command
+  **auto-runs** in the respawned shell and the conversation reopens by
+  itself; if the agent had already exited (tracked live via process
+  detection), the command is only **pre-typed** — one Enter reopens it,
+  anything else dismisses it. Verified resume entry points:
+  `claude --resume <id>`, `codex resume <id>`, `opencode --session <id>`,
+  `pi --session <file|id>`. Gemini CLI exposes no session resume today
+  (captured, not offered); Zero is not wired (no verified resume command).
+
+### Fixed — the file editor rendered unstyled (oversized line numbers, invisible content) in packaged builds
+
+- **Opening a file's Edit view in a packaged build showed only giant, stacked
+  line numbers and no content** (Markdown preview and the diff views were fine,
+  and the bug never reproduced under `tauri dev`). Root cause: the main window
+  ships a Content-Security-Policy with `style-src 'self' 'unsafe-inline'`, but
+  `app.security.dangerousDisableAssetCspModification` was unset, so at build time
+  Tauri appended a style **nonce** (and style hashes) to `style-src`. Per the CSP
+  spec, once a `style-src` directive carries a nonce/hash source the browser
+  **ignores `'unsafe-inline'`** — which silently voided the very allowance the app
+  relies on. The file editor is CodeMirror 6, which injects **all** of its
+  structural and theme CSS at runtime as a plain, non-nonced `<style>` tag
+  (`style-mod`), so every editor style was blocked in production: the gutter
+  rendered as oversized stacked line numbers and the content was invisible. The
+  terminal (xterm), Markdown preview and diff views use compiled static CSS served
+  under `'self'`, so they were unaffected; in `tauri dev` no CSP applies, hence it
+  was invisible during development. Fix: `tauri.conf.json` → `app.security` now
+  sets `"dangerousDisableAssetCspModification": ["style-src"]`, exempting **only**
+  `style-src` from Tauri's build-time modification so the declared
+  `'unsafe-inline'` is what actually ships. `script-src` keeps its full nonce
+  hardening (it is not in the exempt list), and no CSP source was widened — the
+  policy shipped is exactly the one authored.
+
+### Fixed — an orphaned modal lock could freeze the whole window to the mouse
+
+- **A modal layer torn down without its cleanup — classically a dialog opened from
+  a dropdown/context-menu item — could leave `document.body` stuck at
+  `pointer-events: none` with no owner.** Every click then died at `<body>` while
+  the keyboard kept working, and only killing the process recovered (losing any
+  un-flushed work and every live agent conversation). This is the well-documented
+  bits-ui/Radix "orphaned body pointer-lock" race: the dialog captures the closing
+  menu's `pointer-events: none` as the body's "initial" style and faithfully
+  restores it forever on close. Two defenses now ship. (1) An **app-level guard**
+  (`$lib/utils/pointerLock`, installed in the root layout) registers a
+  capture-phase `pointerdown` watchdog: on the first click during such a freeze it
+  detects that the body lock has no open-modal (`[data-state="open"]`) owner and —
+  after a short re-check that outlives the library's own ~24 ms cleanup window —
+  clears the inline `pointer-events`, so the first click heals the app and the
+  second lands normally. It never touches any other style (bits-ui still owns the
+  scroll-lock restore) and is idle until an actual freeze. (2) The **menu→dialog
+  flows now defer the dialog open past the menu's close** (project card, worktree
+  and branch row actions, file-tree context menu), and the New-worktree dialog can
+  no longer be unmounted while open — so the race is also prevented at the source.
+
+
+## [0.0.16] - 2026-07-18
+
+### Fixed — the window's Close (✕) button now actually closes the app
+
+- **Clicking Close (or otherwise requesting a window close) left the window open.**
+  The flush-on-close handler (`app.svelte.ts`) calls `getCurrentWindow().destroy()`
+  after flushing pending writes, but the Tauri capability set
+  (`src-tauri/capabilities/default.json`) granted `core:window:allow-close` and
+  **not** `core:window:allow-destroy` — so `destroy()` was rejected by the
+  permission layer and the window stayed open (the `close()` still fired
+  `onCloseRequested`, which `preventDefault()`s, so nothing ever closed it). Added
+  the missing `core:window:allow-destroy` permission. This shipped with the
+  flush-on-close change (whose manual QA was skipped in a headless env); it is now
+  exercised. Additionally hardened the handler: the flush is now bounded by a short
+  deadline (`Promise.race`), so even a persist write that never resolves can no
+  longer keep the window from reaching `destroy()`.
+
+### Added — "Open with" external editors & IDEs
+
+- **Every workspace and file menu now has an "Open with →" submenu** that launches
+  the target folder/file in an external editor or IDE: the project card's ⋯ menu
+  and the right-click menu on branches/worktrees (`RowActionsMenu`), plus the
+  right-panel **Files** tab's "More actions" menu and each file-tree entry's
+  right-click menu (`FileTreeContextMenu`). Installed GUI editors are **detected
+  automatically** on `PATH` (VS Code + Insiders/VSCodium, Cursor, Windsurf, Zed,
+  Sublime Text, Fleet, the JetBrains IDEs, Android Studio, Nova) via a new native
+  `editors_detect` command (`src-tauri/src/editors.rs`, a pure `which` probe over a
+  known catalog **plus a per-OS install-location scan** — so an editor is found
+  even when its CLI isn't on `PATH` (which is the common case): Windows checks the
+  known `Program Files` / per-user install paths, macOS scans `/Applications` +
+  `~/Applications` for the `.app` bundle). Launching goes through a new
+  `open_in_editor` command with **no console flash**: on Windows a native `.exe` is
+  spawned directly and windowless while a bare CLI name (a `.cmd`/`.bat` shim like
+  `code.cmd`) runs under a windowless `cmd /C`; macOS uses `open -a <App>`;
+  elsewhere the command is spawned directly. **Text files** additionally offer the
+  OS's native text editor (Notepad / TextEdit / a detected Linux editor, via
+  `native_text_editor`), and a **Browse…** button in Settings adds any application
+  from a native file picker (`@tauri-apps/plugin-dialog`). A new
+  **Settings → Open with** pane lets the user hide any detected editor and add
+  **custom editors** (name + launch command + optional args), persisted in
+  `AppSettings.openWith` (`OpenWithSettings` / `ExternalEditor`). **Editor icons**:
+  each menu entry shows the editor's **favicon** (best-effort, fetched once from its
+  known website via the existing `image_fetch_data_url` and cached for the session)
+  with a generic glyph fallback, and any editor's icon can be **overridden** with a
+  built-in glyph or an uploaded image / SVG through the shared `IconPicker`
+  (`ExternalEditor.icon` / `OpenWithSettings.detectedIcons`). Shared submenu
+  component `OpenWith.svelte` (works in both dropdown and context menus) + the
+  `openWith` store cache the detected list + favicons for the session. Completes the
+  "Open with" `FOR-DEV` item. 10 backend tests (`editors.rs`) + 2 `openWith`
+  settings serde round-trip tests (`model.rs`); the Rust suite is now **251 tests**.
+
+### Changed — right panel floors at its tab strip, and the launcher "what to open" selector no longer lingers open
+
+- **The right panel can no longer be dragged narrower than its own tab strip.** Its
+  minimum width is now the **measured** intrinsic width of the tab row
+  (Files / Changes / History / GitHub), so the four tabs always fit — no clipping
+  or horizontal scroll — regardless of the UI language or whether the GitHub tab is
+  shown. At exactly that minimum the strip fills the panel edge-to-edge, so the
+  tabs read as centered; dragging the panel wider leaves them left-aligned. The
+  floor is measured live in `RightPanel.svelte` and published through a small
+  `rightPanel` layout store that the shell (`+page.svelte`) reads as the resize
+  minimum (replacing the old fixed `300 px`).
+- **The launcher's ("+") "What to open" picker no longer stays/re-expands after a
+  selection.** Picking a terminal/agent/browser closes the popover instead of
+  keeping it open, so a single-item launch doesn't force a click elsewhere (which
+  risked closing the whole dialog) to dismiss it; reopen the picker to add more.
+  Implemented as an opt-in `closeOnSelect` on the shared `MultiSelect` component,
+  enabled by `LauncherDialog`.
 ### Security — main-window CSP + an http(s)-only integrated browser (defense-in-depth)
 
 Two layered-defense hardenings around the webviews. Neither closes an active

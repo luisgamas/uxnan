@@ -56,6 +56,7 @@
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTimeLong } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
@@ -160,6 +161,7 @@
   }
   let runsBranchOnly = $state(false);
   let busy = $state(false);
+  let busyAction = $state<string | null>(null);
 
   function clearDetail() {
     prDetail = null;
@@ -256,6 +258,7 @@
     const n = kind === "pr" ? prDetail?.number : issueDetail?.number;
     if (!p || n === undefined || !editTitle.trim()) return;
     busy = true;
+    busyAction = "edit";
     try {
       const edit = kind === "pr" ? githubPrEdit : githubIssueEdit;
       await edit(p, String(n), editTitle.trim(), editBody);
@@ -272,6 +275,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
   // The PR timeline (comments + reviews + commits + events). Loaded separately from
@@ -299,6 +303,7 @@
     const p = path();
     if (!p || !prDetail || !commentBody.trim()) return;
     busy = true;
+    busyAction = "pr-comment";
     try {
       await githubPrComment(p, String(prDetail.number), commentBody.trim());
       commentBody = "";
@@ -308,6 +313,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -368,6 +374,7 @@
     const p = path();
     if (!p || !prDetail) return;
     busy = true;
+    busyAction = `pr-review-${verb}`;
     try {
       await githubPrReview(p, String(prDetail.number), verb, reviewBody.trim() || null);
       reviewBody = "";
@@ -377,6 +384,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -454,10 +462,15 @@
    *  the actions whose whole job is to answer something the merge panel says —
    *  "update it before merging", "auto-merge is on", "this is a draft" — so each
    *  one lands back on a panel that reflects the new state. */
-  async function prAction(fn: (p: string, n: string) => Promise<void>, toastKey: MessageKey) {
+  async function prAction(
+    fn: (p: string, n: string) => Promise<void>,
+    toastKey: MessageKey,
+    action: string = toastKey,
+  ) {
     const p = path();
     if (!p || !prDetail) return;
     busy = true;
+    busyAction = action;
     try {
       await fn(p, String(prDetail.number));
       toast.success(i18n.t(toastKey));
@@ -467,6 +480,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -482,6 +496,7 @@
     const p = path();
     if (!p || !prDetail) return false;
     busy = true;
+    busyAction = opts.admin ? "merge-admin" : opts.auto ? "merge-auto" : "merge";
     try {
       await githubPrMerge(p, String(prDetail.number), {
         method: mergeMethod,
@@ -505,6 +520,7 @@
       return false;
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -513,6 +529,7 @@
     const p = path();
     if (!p || !prDetail) return;
     busy = true;
+    busyAction = "pr-state";
     const open = prDetail.state.toUpperCase() === "OPEN";
     try {
       if (open) await githubPrClose(p, String(prDetail.number));
@@ -524,6 +541,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -597,6 +615,7 @@
     const p = path();
     if (!p || !issueDetail || !issueCommentBody.trim()) return;
     busy = true;
+    busyAction = "issue-comment";
     try {
       await githubIssueComment(p, String(issueDetail.number), issueCommentBody.trim());
       issueCommentBody = "";
@@ -606,6 +625,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -614,6 +634,7 @@
     const p = path();
     if (!p || !issueDetail) return;
     busy = true;
+    busyAction = "issue-state";
     const open = issueDetail.state.toUpperCase() === "OPEN";
     try {
       if (open) await githubIssueClose(p, String(issueDetail.number));
@@ -625,6 +646,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -662,6 +684,7 @@
     const p = path();
     if (!p || !newIssueTitle.trim()) return;
     busy = true;
+    busyAction = "issue-create";
     try {
       const url = await githubIssueCreate(
         p,
@@ -682,6 +705,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -698,6 +722,7 @@
       .filter(Boolean);
     if (logins.length === 0) return;
     busy = true;
+    busyAction = "reviewers";
     try {
       await githubPrAddReviewers(p, String(prDetail.number), logins);
       reviewerInput = "";
@@ -707,6 +732,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -739,6 +765,7 @@
     const p = path();
     if (!p) return;
     busy = true;
+    busyAction = failed ? "run-rerun-failed" : "run-rerun";
     try {
       await githubRunRerun(p, String(id), failed);
       toast.success(i18n.t("github.toast.rerun"));
@@ -746,6 +773,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -753,6 +781,7 @@
     const p = path();
     if (!p) return;
     busy = true;
+    busyAction = "run-cancel";
     try {
       await githubRunCancel(p, String(id));
       toast.success(i18n.t("github.toast.cancelled"));
@@ -761,6 +790,7 @@
       toastError(e);
     } finally {
       busy = false;
+      busyAction = null;
     }
   }
 
@@ -1289,6 +1319,9 @@
     <div class="flex justify-end gap-2">
       <Button variant="ghost" size="sm" onclick={() => (editOpen = false)}>{i18n.t("common.cancel")}</Button>
       <Button size="sm" disabled={busy || !editTitle.trim()} onclick={() => saveEdit(kind)}>
+        {#if busyAction === "edit"}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {/if}
         {i18n.t("common.save")}
       </Button>
     </div>
@@ -1725,6 +1758,9 @@
                 onkeydown={(e) => e.key === "Enter" && requestReviewers()}
               />
               <Button variant="outline" size="sm" class="h-7" disabled={busy || !reviewerInput.trim()} onclick={requestReviewers}>
+                {#if busyAction === "reviewers"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {/if}
                 {i18n.t("github.pr.addReviewer")}
               </Button>
             </div>
@@ -1856,7 +1892,12 @@
         <div class="space-y-2">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={commentBody} rows={2} />
           <div class="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>{i18n.t("github.pr.postComment")}</Button>
+            <Button size="sm" disabled={busy || !commentBody.trim()} onclick={postComment}>
+              {#if busyAction === "pr-comment"}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {/if}
+              {i18n.t("github.pr.postComment")}
+            </Button>
             <div class="flex-1"></div>
             <Button variant="outline" size="sm" disabled={busy} onclick={() => requestWorktree("pr", pr.number, pr.title)}>
               <GitBranchIcon class={icon.button} />{i18n.t("github.pr.checkout")}
@@ -1865,20 +1906,40 @@
                  nothing in the app could take it out of draft. -->
             {#if isOpen && pr.isDraft}
               <Button variant="outline" size="sm" disabled={busy} class="gap-1" onclick={() => prAction((p, n) => githubPrReady(p, n, false), "github.toast.prReady")}>
-                <CheckIcon class="size-3.5" />{i18n.t("github.pr.markReady")}
+                {#if busyAction === "github.toast.prReady"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <CheckIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.pr.markReady")}
               </Button>
             {:else if isOpen}
               <Button variant="ghost" size="sm" disabled={busy} class="gap-1" title={i18n.t("github.pr.markDraftTip")} onclick={() => prAction((p, n) => githubPrReady(p, n, true), "github.toast.prDrafted")}>
-                <GitPullRequestDraftIcon class="size-3.5" />{i18n.t("github.pr.markDraft")}
+                {#if busyAction === "github.toast.prDrafted"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <GitPullRequestDraftIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.pr.markDraft")}
               </Button>
             {/if}
             {#if isOpen}
               <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-red-600 dark:text-red-400" onclick={togglePrState}>
-                <CircleSlashIcon class="size-3.5" />{i18n.t("github.pr.close")}
+                {#if busyAction === "pr-state"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <CircleSlashIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.pr.close")}
               </Button>
             {:else if isClosed}
               <Button variant="outline" size="sm" disabled={busy} onclick={togglePrState}>
-                <CircleDotIcon class="size-3.5" />{i18n.t("github.pr.reopen")}
+                {#if busyAction === "pr-state"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <CircleDotIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.pr.reopen")}
               </Button>
             {/if}
           </div>
@@ -1890,12 +1951,25 @@
             <Textarea placeholder={i18n.t("github.pr.reviewBody")} bind:value={reviewBody} rows={2} />
             <div class="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-emerald-600 dark:text-emerald-400" onclick={() => submitReview("approve")}>
-                <CheckIcon class="size-3.5" /> {i18n.t("github.pr.approve")}
+                {#if busyAction === "pr-review-approve"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <CheckIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.pr.approve")}
               </Button>
               <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-red-600 dark:text-red-400" onclick={() => submitReview("request-changes")}>
-                <XIcon class="size-3.5" /> {i18n.t("github.pr.requestChanges")}
+                {#if busyAction === "pr-review-request-changes"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <XIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.pr.requestChanges")}
               </Button>
               <Button variant="outline" size="sm" disabled={busy || !reviewBody.trim()} onclick={() => submitReview("comment")}>
+                {#if busyAction === "pr-review-comment"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {/if}
                 {i18n.t("github.pr.comment")}
               </Button>
             </div>
@@ -1909,6 +1983,9 @@
               <span class="flex-1">{i18n.t("github.merge.autoArmed")}</span>
               <!-- Armed auto-merge was a one-way door: this turns it back off. -->
               <Button variant="ghost" size="sm" class="-my-1 h-6" disabled={busy} onclick={() => prAction(githubPrDisableAutoMerge, "github.toast.autoMergeOff")}>
+                {#if busyAction === "github.toast.autoMergeOff"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {/if}
                 {i18n.t("github.merge.autoDisable")}
               </Button>
             </div>
@@ -1945,10 +2022,18 @@
                    Update-branch button; without this the message was a dead end. -->
               {#if mergeStatus === "BEHIND"}
                 <div class="ml-5 flex gap-2 pt-0.5">
-                  <Button variant="outline" size="sm" class="h-6 gap-1" disabled={busy} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, false), "github.toast.branchUpdated")}>
-                    <RefreshCwIcon class="size-3" />{i18n.t("github.merge.updateBranch")}
+                  <Button variant="outline" size="sm" class="h-6 gap-1" disabled={busy} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, false), "github.toast.branchUpdated", "branch-update")}>
+                    {#if busyAction === "branch-update"}
+                      <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                    {:else}
+                      <RefreshCwIcon data-icon="inline-start" />
+                    {/if}
+                    {i18n.t("github.merge.updateBranch")}
                   </Button>
-                  <Button variant="ghost" size="sm" class="h-6" disabled={busy} title={i18n.t("github.merge.updateRebaseTip")} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, true), "github.toast.branchUpdated")}>
+                  <Button variant="ghost" size="sm" class="h-6" disabled={busy} title={i18n.t("github.merge.updateRebaseTip")} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, true), "github.toast.branchUpdated", "branch-rebase")}>
+                    {#if busyAction === "branch-rebase"}
+                      <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                    {/if}
                     {i18n.t("github.merge.updateRebase")}
                   </Button>
                 </div>
@@ -1972,7 +2057,12 @@
                  (auto-merge) before overriding them (admin bypass). -->
             {#if canAutoMerge}
               <Button variant="outline" size="sm" disabled={busy} class="gap-1" title={i18n.t("github.merge.autoTip")} onclick={() => mergePr({ auto: true })}>
-                <ClockIcon class="size-3.5" />{i18n.t("github.merge.auto")}
+                {#if busyAction === "merge-auto"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <ClockIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.merge.auto")}
               </Button>
             {/if}
             {#if canBypass}
@@ -2094,7 +2184,12 @@
 
             <div class="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onclick={() => (showCreateIssue = false)}>{i18n.t("common.cancel")}</Button>
-              <Button size="sm" disabled={busy || !newIssueTitle.trim()} onclick={createIssue}>{i18n.t("github.issue.create")}</Button>
+              <Button size="sm" disabled={busy || !newIssueTitle.trim()} onclick={createIssue}>
+                {#if busyAction === "issue-create"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {/if}
+                {i18n.t("github.issue.create")}
+              </Button>
             </div>
           </div>
         {/if}
@@ -2206,18 +2301,33 @@
         <div class="space-y-2.5 border-t border-border/50 p-4">
           <Textarea placeholder={i18n.t("github.pr.commentPlaceholder")} bind:value={issueCommentBody} rows={2} />
           <div class="flex flex-wrap items-center gap-2">
-            <Button size="sm" disabled={busy || !issueCommentBody.trim()} onclick={postIssueComment}>{i18n.t("github.pr.postComment")}</Button>
+            <Button size="sm" disabled={busy || !issueCommentBody.trim()} onclick={postIssueComment}>
+              {#if busyAction === "issue-comment"}
+                <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+              {/if}
+              {i18n.t("github.pr.postComment")}
+            </Button>
             <div class="flex-1"></div>
             <Button variant="outline" size="sm" disabled={busy} title={i18n.t("github.issue.startWorkTip")} onclick={() => requestWorktree("issue", issue.number, issue.title)}>
               <GitBranchIcon class={icon.button} />{i18n.t("github.issue.startWork")}
             </Button>
             {#if issueOpen}
               <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-purple-600 dark:text-purple-400" onclick={toggleIssueState}>
-                <CheckCircle2Icon class="size-3.5" />{i18n.t("github.issue.close")}
+                {#if busyAction === "issue-state"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <CheckCircle2Icon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.issue.close")}
               </Button>
             {:else}
               <Button variant="outline" size="sm" disabled={busy} onclick={toggleIssueState}>
-                <CircleDotIcon class="size-3.5" />{i18n.t("github.issue.reopen")}
+                {#if busyAction === "issue-state"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <CircleDotIcon data-icon="inline-start" />
+                {/if}
+                {i18n.t("github.issue.reopen")}
               </Button>
             {/if}
           </div>
@@ -2236,9 +2346,18 @@
       {#if selectedRunTitle}<h2 class={cn(text.subheading, "truncate")}>{selectedRunTitle}</h2>{/if}
       {#if selectedRunId}
         <div class="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" disabled={busy} onclick={() => selectedRunId && rerunRun(selectedRunId, false)}>{i18n.t("github.actions.rerun")}</Button>
-          <Button variant="outline" size="sm" disabled={busy} onclick={() => selectedRunId && rerunRun(selectedRunId, true)}>{i18n.t("github.actions.rerunFailed")}</Button>
-          <Button variant="outline" size="sm" disabled={busy} onclick={() => selectedRunId && cancelRun(selectedRunId)}>{i18n.t("github.actions.cancel")}</Button>
+          <Button variant="outline" size="sm" disabled={busy} onclick={() => selectedRunId && rerunRun(selectedRunId, false)}>
+            {#if busyAction === "run-rerun"}<Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />{/if}
+            {i18n.t("github.actions.rerun")}
+          </Button>
+          <Button variant="outline" size="sm" disabled={busy} onclick={() => selectedRunId && rerunRun(selectedRunId, true)}>
+            {#if busyAction === "run-rerun-failed"}<Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />{/if}
+            {i18n.t("github.actions.rerunFailed")}
+          </Button>
+          <Button variant="outline" size="sm" disabled={busy} onclick={() => selectedRunId && cancelRun(selectedRunId)}>
+            {#if busyAction === "run-cancel"}<Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />{/if}
+            {i18n.t("github.actions.cancel")}
+          </Button>
         </div>
       {/if}
       {#if runLogLoading}

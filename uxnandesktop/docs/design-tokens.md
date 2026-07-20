@@ -103,6 +103,36 @@ on top of the base.
   (`icon.decorative`) is lighter than an icon inside a clickable button
   (`icon.button`).
 
+## Asynchronous action feedback
+
+Actions that wait for filesystem, Git, GitHub, agent, or other backend I/O use
+the shared shadcn-svelte `Spinner` inside the control that started the work:
+
+```svelte
+<script lang="ts">
+  import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
+  import { i18n } from "$lib/i18n";
+</script>
+
+<Button disabled={saving} onclick={save}>
+  {#if saving}
+    <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+  {/if}
+  {saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
+</Button>
+```
+
+- Disable the initiating control while its promise is pending and keep the
+  existing localized action/progress label visible; motion alone is not enough.
+- Track an operation id when several actions share one busy gate, so only the
+  initiating control shows the spinner (`push` vs. `pull`, a specific file, or a
+  specific install/uninstall action).
+- Use `data-icon="inline-start"` in text buttons. In icon-only controls, replace
+  the action glyph with `Spinner` so dimensions stay stable.
+- Keep immediate UI-only actions (selection, navigation, opening a dialog) free
+  of spinners. Loading feedback is for work whose completion the user waits for.
+
 ## Adding/changing a token
 Edit `src/lib/design.ts` (and this table). Because components reference the
 tokens, the change applies everywhere consistently.

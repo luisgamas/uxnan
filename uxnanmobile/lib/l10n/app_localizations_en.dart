@@ -66,7 +66,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get featureMultiAgentBody =>
-      'Works with Claude Code, Codex, Gemini, OpenCode and Pi — with more agents on the way. No lock-in.';
+      'Works with Claude Code, Codex, Antigravity, OpenCode and Pi — with more agents on the way. No lock-in.';
 
   @override
   String get featureE2eeTitle => 'End-to-end encrypted';

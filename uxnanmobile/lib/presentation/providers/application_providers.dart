@@ -644,6 +644,10 @@ final threadManagerProvider = Provider<ThreadManager>((ref) {
     messageRepository: ref.watch(messageRepositoryProvider),
     domainEvents: processor.bind(coordinator.incomingMessages),
     sendRequest: coordinator.sendRequest,
+    // Every (re)established channel re-syncs the active thread: the bridge's
+    // catch-up replay is a bounded window, so a long disconnection mid-turn is
+    // only recoverable through a `turn/list` re-pull.
+    connectionPhases: coordinator.connectionPhaseStream,
     // A reply in a thread the user isn't viewing is marked unread.
     foregroundThreadId: () => ref.read(foregroundThreadProvider),
   );

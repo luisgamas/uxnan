@@ -17,12 +17,14 @@
   import { revealPath } from "$lib/api";
   import { dropPathsIntoTerminal } from "$lib/terminal/terminalDrop";
   import { cn } from "$lib/utils";
+  import { deferModalOpen } from "$lib/utils/pointerLock";
   import { icon, iconButton, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import FileTreeRow from "./FileTreeRow.svelte";
+  import OpenWith from "./OpenWith.svelte";
   import FileNamePromptDialog from "./FileNamePromptDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import FolderIcon from "@lucide/svelte/icons/folder";
@@ -167,15 +169,18 @@
     return i > 0 ? entry.path.slice(0, i) : entry.path;
   }
 
+  // Defer the dialog open until the context menu has fully closed, so the menu's
+  // teardown releases the body pointer-lock before the dialog captures it (else
+  // the dialog can restore `pointer-events: none` on close and freeze the mouse).
   function openPrompt(mode: PromptMode, entry: FsEntry): void {
     promptMode = mode;
     promptEntry = entry;
-    promptOpen = true;
+    deferModalOpen(() => (promptOpen = true));
   }
   function openDelete(entry: FsEntry): void {
     deleteTarget = entry;
     deleteError = null;
-    deleteOpen = true;
+    deferModalOpen(() => (deleteOpen = true));
   }
 
   async function submitPrompt(name: string): Promise<void> {
@@ -411,6 +416,7 @@
               <FolderOpenIcon />
               {i18n.t("fileTree.reveal")}
             </DropdownMenu.Item>
+            <OpenWith menu={DropdownMenu} path={root} />
             <DropdownMenu.Separator />
             <DropdownMenu.CheckboxItem class={text.menu} bind:checked={fileTree.showHidden}>
               {i18n.t("fileTree.showHidden")}

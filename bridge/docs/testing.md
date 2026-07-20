@@ -32,7 +32,7 @@ payload; relay forwarding/rate-limit/health; daemon state, identity (keychain vi
 fake backend), lock file; the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
 the AgentManager + echo agent end-to-end; the OpenCode / Claude Code / Codex / pi /
-Gemini / Zero / Grok adapter parsers + streaming (OpenCode against a fake `opencode serve`
+Gemini / Antigravity / Zero / Grok adapter parsers + streaming (OpenCode against a fake `opencode serve`
 implementing the `IOpenCodeServer` surface incl. the `permission.asked` → approval
 round-trip; Zero against a fake `zero acp` ACP process incl. a
 `session/request_permission` → approval round-trip; the others against fake spawns);
@@ -81,7 +81,7 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
 ## 3. Validating agent adapters
 
 - **Echo:** fully tested; use it for the streaming path with no creds.
-- **OpenCode / Claude Code / Codex / pi / Gemini CLI / Zero / Grok (all wired):** see
+- **OpenCode / Claude Code / Codex / pi / Gemini CLI / Antigravity / Zero / Grok (all wired):** see
   [`agents.md`](./agents.md) for how each is driven. To run for real, set a working
   `model` (and `permissionMode`/`accessMode`) in `agents.<id>` + a real project dir,
   then drive a turn from the app and watch the streamed deltas. Capture a CLI stream

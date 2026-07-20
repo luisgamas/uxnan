@@ -52,6 +52,8 @@ void main() {
   Map<String, dynamic>? turnSendParams;
   // Test-settable `turn/list` result (null → empty, the no-op resync default).
   Object? turnListResult;
+  // Test-settable `turn/read` result (null → empty, the no-op reconcile).
+  Object? turnReadResult;
   late ThreadManager manager;
 
   setUp(() {
@@ -62,6 +64,7 @@ void main() {
     sentMethods = [];
     turnSendParams = null;
     turnListResult = null;
+    turnReadResult = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
       messageRepository: messageRepo,
@@ -71,6 +74,7 @@ void main() {
         if (method == 'turn/send') turnSendParams = params;
         final result = switch (method) {
           'turn/list' => turnListResult ?? <String, dynamic>{},
+          'turn/read' => turnReadResult ?? <String, dynamic>{},
           'thread/list' => [
               {
                 'id': 'th1',
@@ -291,6 +295,307 @@ void main() {
     final finalized =
         manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
     expect(_text(finalized), 'on it, let me check now');
+  });
+
+  test(
+      'resync re-seeds even when the live turn is already tracked '
+      '(reopen race: post-reconnect deltas arrive before turn/list)', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    // After a kill+reopen the first post-reconnect deltas re-create the live
+    // buffer for the in-flight turn — with only the new tail.
+    events
+      ..add(const TurnStartedEvent(turnId: 'turnZ', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnZ',
+          threadId: 'th1',
+          delta: 'tail',
+        ),
+      );
+    await _settle();
+
+    // The turn/list re-sync then lands, carrying the bridge's FULL accumulated
+    // record (it persists every delta before notifying, so the snapshot is a
+    // superset of anything already applied). The old guard skipped the seed
+    // because the turnId matched — silently dropping everything produced while
+    // the app was closed. It must re-seed unconditionally.
+    turnListResult = {
+      'turns': [
+        {
+          'id': 'turnZ',
+          'messages': [
+            {'role': 'assistant', 'content': 'head produced while away. tail'},
+          ],
+        },
+      ],
+      'total': 1,
+      'activeTurnId': 'turnZ',
+    };
+    await manager.resyncActive();
+    await _settle();
+
+    final reattached =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect(_text(reattached), 'head produced while away. tail');
+
+    // Later deltas keep extending the re-seeded run in place.
+    events.add(
+      const MessageDeltaEvent(turnId: 'turnZ', threadId: 'th1', delta: ' end'),
+    );
+    await _settle();
+    final streamed =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect(_text(streamed), 'head produced while away. tail end');
+  });
+
+  test('a replayed turn/started never wipes the tracked live buffer', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turnZ', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnZ',
+          threadId: 'th1',
+          delta: 'kept text',
+        ),
+      );
+    await _settle();
+
+    // The reconnect catch-up replay re-delivers the turn's `turn/started`
+    // (the bridge emits it once live; a duplicate can only be the replay). It
+    // must not reset the buffer that may have just been seeded/streamed.
+    events.add(const TurnStartedEvent(turnId: 'turnZ', threadId: 'th1'));
+    await _settle();
+
+    final streaming =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnZ');
+    expect(_text(streaming), 'kept text');
+  });
+
+  test('a beforeText block lands before the open text run (never severs it)',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turnB', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnB',
+          threadId: 'th1',
+          delta: 'y si re',
+        ),
+      )
+      // A parallel-activity block (e.g. a subagent tool) arrives mid-run,
+      // flagged by the bridge: it must slot BEFORE the open run…
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turnB',
+          threadId: 'th1',
+          content: CommandExecutionContent(
+            command: 'ls',
+            status: CommandStatus.completed,
+          ),
+          beforeText: true,
+        ),
+      )
+      // …so the next delta keeps extending the same run in place.
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnB',
+          threadId: 'th1',
+          delta: 'porta',
+        ),
+      );
+    await _settle();
+
+    final streaming =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnB');
+    expect(streaming.contents.length, 2);
+    expect(streaming.contents[0], isA<CommandExecutionContent>());
+    expect(streaming.contents[1], isA<TextContent>());
+    expect((streaming.contents[1] as TextContent).text, 'y si reporta');
+  });
+
+  test('an unflagged block still breaks the run at a real boundary', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turnB', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnB',
+          threadId: 'th1',
+          delta: 'First.',
+        ),
+      )
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turnB',
+          threadId: 'th1',
+          content: CommandExecutionContent(
+            command: 'ls',
+            status: CommandStatus.completed,
+          ),
+        ),
+      )
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnB',
+          threadId: 'th1',
+          delta: 'Then.',
+        ),
+      );
+    await _settle();
+
+    final streaming =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnB');
+    expect(streaming.contents.length, 3);
+    expect((streaming.contents[0] as TextContent).text, 'First.');
+    expect(streaming.contents[1], isA<CommandExecutionContent>());
+    expect((streaming.contents[2] as TextContent).text, 'Then.');
+  });
+
+  test(
+      'finalizes with the authoritative text when the live buffer holds only '
+      'a mid-turn tail', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    // Re-attached mid-turn without a seed (e.g. the resync failed): the buffer
+    // holds only the post-reconnect tail.
+    events.add(
+      const MessageDeltaEvent(
+        turnId: 'turnT',
+        threadId: 'th1',
+        delta: 'only the tail',
+      ),
+    );
+    await _settle();
+
+    // The completion text is the bridge's FULL answer. The old code preferred
+    // the live buffer whenever it held any text — persisting the truncation
+    // for good. The final bubble must carry the authoritative text.
+    events.add(
+      const TurnCompletedEvent(
+        turnId: 'turnT',
+        threadId: 'th1',
+        text: 'the head the phone never saw, and only the tail',
+      ),
+    );
+    await _settle();
+
+    final finalized =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnT');
+    final text = finalized.contents.whereType<TextContent>().single;
+    expect(text.text, 'the head the phone never saw, and only the tail');
+  });
+
+  test('finalizing extends the trailing run when the final text adds a tail',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turnP', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnP',
+          threadId: 'th1',
+          delta: 'first ',
+        ),
+      )
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turnP',
+          threadId: 'th1',
+          content: CommandExecutionContent(
+            command: 'ls',
+            status: CommandStatus.completed,
+          ),
+        ),
+      )
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turnP',
+          threadId: 'th1',
+          delta: 'second',
+        ),
+      )
+      // The final text carries a tail the deltas never streamed: the
+      // interleave must survive, with the tail folded onto the trailing run.
+      ..add(
+        const TurnCompletedEvent(
+          turnId: 'turnP',
+          threadId: 'th1',
+          text: 'first second and tail',
+        ),
+      );
+    await _settle();
+
+    final finalized =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnP');
+    expect(finalized.contents.length, 3);
+    expect((finalized.contents[0] as TextContent).text, 'first ');
+    expect(finalized.contents[1], isA<CommandExecutionContent>());
+    expect((finalized.contents[2] as TextContent).text, 'second and tail');
+  });
+
+  test(
+      'a completed turn reconciles against the bridge record (turn/read) so '
+      'the stored message converges to the authoritative interleave', () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    // The live view was imperfect: it only caught the tail of the answer.
+    events.add(
+      const MessageDeltaEvent(turnId: 'turnQ', threadId: 'th1', delta: 'Done.'),
+    );
+    await _settle();
+
+    // The bridge's authoritative record for the turn: the full ordered
+    // interleave (text → work log → text).
+    turnReadResult = {
+      'id': 'turnQ',
+      'threadId': 'th1',
+      'status': 'completed',
+      'messages': [
+        {
+          'role': 'assistant',
+          'content': 'Let me check.Done.',
+          'segments': [
+            {'type': 'text', 'text': 'Let me check.'},
+            {
+              'type': 'command_execution',
+              'command': 'ls',
+              'status': 'completed',
+            },
+            {'type': 'text', 'text': 'Done.'},
+          ],
+        },
+      ],
+    };
+    events.add(
+      const TurnCompletedEvent(
+        turnId: 'turnQ',
+        threadId: 'th1',
+        text: 'Let me check.Done.',
+      ),
+    );
+    await _settle();
+
+    expect(sentMethods, contains('turn/read'));
+    final repaired =
+        manager.timeline.messages.firstWhere((m) => m.id == 'stream-turnQ');
+    expect(repaired.contents.length, 3);
+    expect((repaired.contents[0] as TextContent).text, 'Let me check.');
+    expect(repaired.contents[1], isA<CommandExecutionContent>());
+    expect((repaired.contents[2] as TextContent).text, 'Done.');
   });
 
   test('resync renders history segments interleaved (work log inline)',

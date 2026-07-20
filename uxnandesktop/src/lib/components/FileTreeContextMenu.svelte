@@ -11,9 +11,11 @@
   import { fileTree } from "$lib/state/fileTree.svelte";
   import { clipboardWrite } from "$lib/clipboard";
   import { revealPath } from "$lib/api";
+  import { isTextFile } from "$lib/fileType";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { FsEntry } from "$lib/types";
+  import OpenWith from "./OpenWith.svelte";
   import FilePlusIcon from "@lucide/svelte/icons/file-plus";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import CopyIcon from "@lucide/svelte/icons/copy";
@@ -122,6 +124,7 @@
       {i18n.t("fileTree.findInFolder")}
     </ContextMenu.Item>
   {/if}
+  <OpenWith menu={ContextMenu} path={entry.path} textFile={!entry.isDir && isTextFile(entry.name)} />
   <ContextMenu.Item class={text.menu} onclick={() => void revealPath(entry.path)}>
     <FolderOpenIcon />
     {i18n.t("fileTree.reveal")}

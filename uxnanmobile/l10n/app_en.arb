@@ -40,7 +40,7 @@
   "onboardingWelcomeBody": "Uxnan is a secure remote control for the AI coding agents running on your PC.",
   "onboardingFeaturesTitle": "Built for the way you work",
   "featureMultiAgentTitle": "Multi-agent",
-  "featureMultiAgentBody": "Works with Claude Code, Codex, Gemini, OpenCode and Pi — with more agents on the way. No lock-in.",
+  "featureMultiAgentBody": "Works with Claude Code, Codex, Antigravity, OpenCode and Pi — with more agents on the way. No lock-in.",
   "featureE2eeTitle": "End-to-end encrypted",
   "featureE2eeBody": "Messages are encrypted on your devices. The relay only sees opaque envelopes.",
   "featureLocalFirstTitle": "Local-first",

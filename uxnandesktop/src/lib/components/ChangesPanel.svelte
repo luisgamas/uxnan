@@ -3,6 +3,7 @@
   // per-file stage / unstage / discard, a commit composer, push/pull, and a diff
   // viewer. Status updates live via the backend `git:status-changed` event.
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import { Switch } from "$lib/components/ui/switch";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Input } from "$lib/components/ui/input";
@@ -207,7 +208,11 @@
                 void git.unstage(f.path);
               }}
             >
-              <MinusIcon class={icon.button} />
+              {#if git.busyAction?.kind === "unstage" && git.busyAction.file === f.path}
+                <Spinner aria-label={i18n.t("common.loading")} />
+              {:else}
+                <MinusIcon class={icon.button} />
+              {/if}
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -225,7 +230,11 @@
                 void git.stage(f.path);
               }}
             >
-              <PlusIcon class={icon.button} />
+              {#if git.busyAction?.kind === "stage" && git.busyAction.file === f.path}
+                <Spinner aria-label={i18n.t("common.loading")} />
+              {:else}
+                <PlusIcon class={icon.button} />
+              {/if}
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -249,6 +258,9 @@
       disabled={git.busy}
       onclick={() => void (area === "staged" ? git.unstageAll() : git.stageAll())}
     >
+      {#if git.busyAction?.kind === (area === "staged" ? "unstage" : "stage") && git.busyAction.file === "*"}
+        <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+      {/if}
       {area === "staged" ? i18n.t("rightPanel.unstageAll") : i18n.t("rightPanel.stageAll")}
     </Button>
   </div>
@@ -345,10 +357,11 @@
                 disabled={git.aiGenerating || git.committing}
                 onclick={() => void git.generateMessage()}
               >
-                <SparklesIcon
-                  data-icon="inline-start"
-                  class={cn(git.aiGenerating && "animate-pulse")}
-                />
+                {#if git.aiGenerating}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <SparklesIcon data-icon="inline-start" />
+                {/if}
                 {git.aiGenerating ? i18n.t("rightPanel.generating") : i18n.t("rightPanel.generateAi")}
               </Button>
             {/snippet}
@@ -452,7 +465,11 @@
         disabled={!canCommit}
         onclick={() => void git.commit()}
       >
-        <GitCommitIcon data-icon="inline-start" />
+        {#if git.committing}
+          <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+        {:else}
+          <GitCommitIcon data-icon="inline-start" />
+        {/if}
         {git.committing
           ? i18n.t("rightPanel.committing")
           : git.amend
@@ -472,7 +489,11 @@
                 disabled={git.syncing || git.behind === 0}
                 onclick={() => void git.pull()}
               >
-                <ArrowDownIcon data-icon="inline-start" />
+                {#if git.syncingAction === "pull"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <ArrowDownIcon data-icon="inline-start" />
+                {/if}
                 {i18n.t("rightPanel.pull")}
                 {#if git.behind > 0}<span class={text.indicator}>{git.behind}</span>{/if}
               </Button>
@@ -488,7 +509,11 @@
                 disabled={git.syncing || git.ahead === 0}
                 onclick={() => void git.push()}
               >
-                <ArrowUpIcon data-icon="inline-start" />
+                {#if git.syncingAction === "push"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {:else}
+                  <ArrowUpIcon data-icon="inline-start" />
+                {/if}
                 {i18n.t("rightPanel.push")}
                 {#if git.ahead > 0}<span class={text.indicator}>{git.ahead}</span>{/if}
               </Button>

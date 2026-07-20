@@ -28,8 +28,10 @@ deliberately different set of positions, and most of them are felt directly from
 this app:
 
 - **Provider-agnostic, real multi-agent support.** It is not tied to a single
-  vendor. Seven real agents are wired today — OpenCode, Claude Code, Codex, pi,
-  Gemini CLI, Zero and Grok — and you select the agent and model per conversation.
+  vendor. Seven real agents are selectable today — OpenCode, Claude Code, Codex,
+  pi, Antigravity, Zero and Grok — and you select the agent and model per
+  conversation. (Google's Antigravity CLI replaces the now-deprecated Gemini CLI,
+  which the bridge still drives but the app hides from the picker.)
 - **Strong encryption that is never optional.** Every message to and from the PC
   travels through a real end-to-end encrypted channel (X25519 + Ed25519 +
   AES-256-GCM + HKDF). There is no "plaintext mode".
@@ -72,7 +74,7 @@ flowchart LR
     p1["project-a (git)"]
     p2["project-b (git)"]
     p3["notes/ (plain folder)"]
-    a1["agents<br/>opencode · claude · codex · pi · gemini · zero · grok"]
+    a1["agents<br/>opencode · claude · codex · pi · antigravity · zero · grok"]
   end
 
   app -- "QR · mDNS · manual code" --> bridge

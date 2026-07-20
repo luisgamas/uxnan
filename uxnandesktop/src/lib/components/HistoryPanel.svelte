@@ -20,6 +20,7 @@
   import type { CommitInfo } from "$lib/types";
   import VirtualList from "./VirtualList.svelte";
   import { Button } from "$lib/components/ui/button";
+  import { Spinner } from "$lib/components/ui/spinner";
   import * as HoverCard from "$lib/components/ui/hover-card";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import SearchIcon from "@lucide/svelte/icons/search";
@@ -481,6 +482,9 @@
           disabled={history.loadingMore}
           onclick={() => void history.loadMore()}
         >
+          {#if history.loadingMore}
+            <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+          {/if}
           {history.loadingMore ? i18n.t("common.loading") : i18n.t("history.loadMore")}
         </Button>
       </div>
