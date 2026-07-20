@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+- Back off the relay reconnect loop when a session ends almost immediately
+  (relay accept-then-close, a bounce, or the session already being taken).
+  Previously only a `dial()` rejection was delayed (`RELAY_RECONNECT_DELAY_MS`);
+  an accepted-then-closed session re-dialed with zero delay, so a bouncing relay
+  could drive the bridge into a tight, CPU-spinning reconnect loop. The loop now
+  applies a capped exponential backoff (`nextRelayBackoff` in `src/bridge.ts`,
+  base 2s / cap 30s) after any session shorter than 3s, and resets to the base
+  delay once a session actually carries a phone. Covered by
+  `test/transport/relay-backoff.test.ts` (5 tests).
+
 ### Docs
 - Sync the JSON-RPC method-count badges, the AGENTS.md agent roster (add Grok), the npm publish status and the PR-template test count with the code.
 
