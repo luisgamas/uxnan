@@ -49,7 +49,9 @@ register / unregister + `Promise.allSettled` fan-out), `utils/pointerLock.ts`
 (the orphaned-body-pointer-lock guard: orphan detection + deferred modal open),
 `pathid.ts` (workspace path identity + the boot reconcile plan) and
 `agentResume.ts` (the per-CLI session-resume command registry + hostile-input
-rejection) — 212 tests in
+rejection), `terminal/scrollback.ts` (the scrollback clamp) and
+`terminal/windowsJunctionDetector.ts` (the Windows Redirection-Guard failure
+signature detector, incl. chunk-split matching) — 221 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see

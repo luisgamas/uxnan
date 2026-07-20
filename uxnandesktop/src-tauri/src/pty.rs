@@ -106,6 +106,15 @@ impl PtyManager {
         }
         cmd.cwd(spec.cwd.unwrap_or_else(default_cwd));
 
+        // FOR-DEV: Windows redirection-guard structural fix (alternative to the
+        // shipped detection). On Windows this child inherits the app's
+        // redirection-trust enforcement, so a command traversing an "untrusted"
+        // junction/symlink (npm-workspace links, OneDrive placeholders) fails with
+        // `os error 448` where a standalone shell succeeds. The shipped fix detects
+        // + guides the user (`src/lib/terminal/windowsJunctionGuard.ts`). The
+        // structural alternative — spawn PTYs from a separate process off the
+        // WebView2 host so children don't inherit the mitigation — is a large,
+        // cross-platform change; see `FOR-DEV.md` → Terminal.
         let child = pair
             .slave
             .spawn_command(cmd)

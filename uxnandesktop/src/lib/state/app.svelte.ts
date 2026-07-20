@@ -46,6 +46,7 @@ import {
   type TerminalThemePreset,
   type Theme as CustomTheme,
 } from "$lib/theme";
+import { clampScrollback } from "$lib/terminal/scrollback";
 
 /** Whether the OS currently prefers a dark color scheme. */
 function detectSystemDark(): boolean {
@@ -450,6 +451,12 @@ class AppStore {
   /** The configured terminal profiles. */
   get terminalProfiles(): TerminalProfile[] {
     return this.settings.terminalProfiles;
+  }
+
+  /** User-configured retained-output cap (lines) for terminals, clamped to the
+   *  supported range (Settings → Terminal; falls back to the default when unset). */
+  get terminalScrollback(): number {
+    return clampScrollback(this.settings.terminalScrollback);
   }
 
   /** The default profile (or the first one) for new terminals. */
