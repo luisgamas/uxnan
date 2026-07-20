@@ -16,8 +16,23 @@
  * new secret beyond what the QR already exposes. Brute force is bounded by the
  * code entropy (40 bits), a short TTL, and per-IP rate limiting.
  *
- * Security note: the payload is not a secret that grants access on its own — the
- * phone must still complete the identity-keyed E2EE handshake. See bridge/FOR-DEV.md.
+ * Security note: the payload itself is not the only gate — completing the
+ * identity-keyed E2EE handshake also requires the LAN/Tailscale
+ * `qr_bootstrap` bootstrap to happen while this service is **armed** (see
+ * below). Without that additional gate, the handshake alone verifies only the
+ * phone's OWN transcript signature (an attacker signs that with their own
+ * key), so a device that never touched `/pair/resolve` at all — one that
+ * merely reaches the always-listening LAN socket — could otherwise self-enroll
+ * as trusted at any time. See bridge/FOR-DEV.md for the deferred proof-of-code
+ * hardening that would close the remaining gap (any device reachable *during*
+ * the window still qualifies).
+ *
+ * **Armed pairing window**: the LAN/Tailscale handshake (`server-handshake.ts`)
+ * requires this service to be "armed" before it accepts a `qr_bootstrap`
+ * bootstrap — see {@link arm}/{@link isArmed}. Showing the QR or the manual
+ * code (i.e. calling `Bridge.generatePairingQr`/`currentPairingCode`) arms it;
+ * the window confines bootstrap acceptance to the short span right after the
+ * operator asked to pair a phone. `trusted_reconnect` never consults this.
  */
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -30,6 +45,14 @@ const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_RATE_WINDOW_MS = 60 * 1000; // 1 minute
 const DEFAULT_RATE_MAX = 10; // attempts per window per IP
+
+/**
+ * How long a LAN `qr_bootstrap` handshake is accepted after the operator shows
+ * the QR or the manual code (see {@link PairingCodeService.arm}). Kept short:
+ * long enough for a phone to scan/type and connect, short enough that the
+ * window is normally closed.
+ */
+export const PAIRING_WINDOW_MS = 3 * 60 * 1000; // 3 minutes
 
 export interface PairingCodeServiceOptions {
   /** Builds the payload handed out on a valid code (the bridge's pairing data). */
@@ -76,6 +99,13 @@ export class PairingCodeService {
 
   #code: string | undefined;
   #expiresAt = 0;
+  /**
+   * End of the current armed pairing window (epoch ms), or 0 when never armed.
+   * In-memory only and per-instance by design: a bridge restart (or a separate
+   * short-lived `qr`/`code` CLI invocation) re-requires arming rather than
+   * silently reopening the window — see {@link arm}.
+   */
+  #armedUntil = 0;
 
   constructor(options: PairingCodeServiceOptions) {
     this.#buildPayload = options.buildPayload;
@@ -169,6 +199,23 @@ export class PairingCodeService {
     } catch {
       /* best-effort: persistence failure falls back to in-memory */
     }
+  }
+
+  /**
+   * Open the pairing window: from now, a LAN `qr_bootstrap` handshake is
+   * accepted for {@link PAIRING_WINDOW_MS}. Call this at the operator action
+   * that shows a QR or the manual code on the PC — that is the "I am pairing a
+   * phone right now" signal the LAN handshake gates on (see
+   * `server-handshake.ts`). Idempotent-ish: calling it again just extends the
+   * window from the new `now`.
+   */
+  arm(): void {
+    this.#armedUntil = this.#now() + PAIRING_WINDOW_MS;
+  }
+
+  /** Whether a LAN `qr_bootstrap` handshake is currently allowed (see {@link arm}). */
+  isArmed(): boolean {
+    return this.#now() < this.#armedUntil;
   }
 
   /**

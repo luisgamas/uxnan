@@ -51,6 +51,7 @@ export {
 export {
   PairingCodeService,
   type PairingCodeServiceOptions,
+  PAIRING_WINDOW_MS,
 } from './pairing/pairing-code-service.js';
 export {
   MdnsAdvertiser,

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PairingPayload } from '@uxnan/shared';
-import { PairingCodeService } from '../../src/index.js';
+import { PAIRING_WINDOW_MS, PairingCodeService } from '../../src/index.js';
 
 const PAYLOAD = {
   v: 1,
@@ -70,6 +70,27 @@ test('the default code generator yields an 8-char unambiguous code', () => {
   const code = real.currentCode().replace('-', '');
   assert.equal(code.length, 8);
   assert.match(code, /^[0-9A-HJKMNP-TV-Z]+$/); // Crockford base32 (no I, L, O, U)
+});
+
+test('the pairing window is closed until armed, then opens for PAIRING_WINDOW_MS', () => {
+  const { service, advance } = svc();
+  assert.equal(service.isArmed(), false); // never armed
+  service.arm();
+  assert.equal(service.isArmed(), true);
+  advance(PAIRING_WINDOW_MS - 1);
+  assert.equal(service.isArmed(), true); // still inside the window
+  advance(2); // now past PAIRING_WINDOW_MS from arm()
+  assert.equal(service.isArmed(), false);
+});
+
+test('arm() re-extends the window from the new now', () => {
+  const { service, advance } = svc();
+  service.arm();
+  advance(PAIRING_WINDOW_MS - 1);
+  assert.equal(service.isArmed(), true);
+  service.arm(); // re-arm right before expiry
+  advance(PAIRING_WINDOW_MS - 1);
+  assert.equal(service.isArmed(), true); // window pushed out again
 });
 
 test('two instances sharing a statePath agree on the code (cross-process)', () => {

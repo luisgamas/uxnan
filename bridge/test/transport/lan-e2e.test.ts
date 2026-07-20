@@ -26,6 +26,10 @@ test('a phone connects over the real LAN WebSocket and runs encrypted RPC', asyn
     logLevel: 'error',
   });
   const { port } = await bridge.startLan();
+  // The LAN qr_bootstrap handshake now requires an armed pairing window
+  // (see bridge/src/pairing/pairing-code-service.ts); generating the QR is
+  // the operator action that opens it.
+  bridge.generatePairingQr();
 
   const sessionId = randomUUID();
   const ws = new WebSocket(`ws://127.0.0.1:${port}`, {

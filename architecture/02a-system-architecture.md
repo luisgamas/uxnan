@@ -1931,6 +1931,7 @@ CONSTANTES:
   TRUSTED_RECONNECT_SKEW_MS = 90_000 (90 segundos)
   MAX_BRIDGE_OUTBOUND_MESSAGES = 500
   MAX_BRIDGE_OUTBOUND_BYTES = 10_485_760  (10 MB)
+  PAIRING_WINDOW_MS = 180_000         (3 minutos — ver nota de seguridad abajo)
 ```
 
 **Fase 1 — Bootstrap por QR (solo primera conexion):**
@@ -1940,6 +1941,29 @@ CONSTANTES:
 3. El telefono escanea el QR
 4. El telefono genera su par Ed25519: (`phoneIdentityPrivateKey`, `phoneIdentityPublicKey`)
 5. El telefono persiste `PhoneIdentity` y crea `TrustedDevice`
+
+> **Security — armed pairing window (bridge, implemented):** on the direct-LAN/
+> Tailscale transport the bridge binds all interfaces, so any reachable peer can
+> reach the handshake socket at any time. A `qr_bootstrap` bootstrap is
+> therefore only ACCEPTED while an operator-armed pairing window is open — the
+> bridge's `PairingCodeService.arm()`/`isArmed()` (`PAIRING_WINDOW_MS` TTL,
+> in-memory, per bridge-process instance). The window is armed by the exact
+> operator actions that surface a QR/code: `generatePairingQr()` (the `qr`
+> command, and `start`'s own printed QR) and `currentPairingCode()` (the `code`
+> command). `server-handshake.ts` rejects an unarmed `qr_bootstrap` BEFORE any
+> `trustStore` mutation and before `ready` is sent. This corrects an earlier
+> drift: the manual-pairing-code service documented itself as "the consent
+> gate" for pairing, but that check only guarded `GET /pair/resolve` — the
+> handshake itself accepted a bootstrap unconditionally regardless of whether
+> the code or QR had ever been shown. The window is the actual gate now; the
+> code/QR remain how the phone *learns* the connection details, not (yet) a
+> value the handshake itself verifies. `trusted_reconnect` is NOT gated by the
+> window (an already-trusted phone reconnects at any time), and the relay path
+> is NOT gated by it either (it already scopes a bootstrap to one
+> `expectedSessionId` per connection). **Deferred hardening:** binding
+> enrollment to a phone-computed proof that it actually holds the pairing code
+> (not just that *some* window is open) needs coordinated mobile work that
+> isn't wired yet — see `bridge/FOR-DEV.md`.
 
 **Fase 2 — Handshake criptografico:**
 
