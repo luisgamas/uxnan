@@ -1,6 +1,6 @@
 [package]
 name = "uxnan-desktop"
-version = "0.0.18"
+version = "0.0.19"
 description = "Uxnan Desktop — Agent Development Environment (ADE)."
 authors = ["Luis Donaldo Gamas Vazquez"]
 edition = "2021"
