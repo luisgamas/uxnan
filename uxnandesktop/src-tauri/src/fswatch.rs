@@ -112,6 +112,62 @@ impl FsWatcher {
     }
 }
 
+/// Payload of the `browse:changed` event: the single directory the in-app folder
+/// browser is currently viewing (forward-slash). The frontend re-lists it when
+/// this matches the folder it's showing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowseChangedEvent {
+    /// The watched directory (forward-slash normalized).
+    pub path: String,
+}
+
+/// Holds the in-app directory browser's watcher. Unlike [`FsWatcher`] this is a
+/// **non-recursive**, single-directory watch (the browser lists one level at a
+/// time), so a folder created/removed directly inside the browsed directory —
+/// even from outside the app — shows up without a manual refresh. Re-pointing the
+/// watch (navigating) or closing the dialog swaps/drops the inner debouncer.
+#[derive(Default)]
+pub struct BrowseWatcher {
+    inner: Mutex<Option<FsDebouncer>>,
+}
+
+impl BrowseWatcher {
+    /// Watch `dir` non-recursively (or stop watching when `None`). Idempotent: a
+    /// new call always replaces the previous watch.
+    pub async fn set(&self, app: &AppHandle, dir: Option<String>) -> notify::Result<()> {
+        // Drop the previous debouncer first so its thread stops before a new one
+        // starts (mirrors `FsWatcher::set`).
+        *self.inner.lock().await = None;
+        let Some(dir) = dir else {
+            return Ok(());
+        };
+        let dir_norm = dir.replace('\\', "/");
+        let emit_app = app.clone();
+        let emit_dir = dir_norm.clone();
+        let mut debouncer = new_debouncer(
+            Duration::from_millis(250),
+            None,
+            move |result: DebounceEventResult| {
+                if result.is_err() {
+                    return; // watcher errors are non-fatal; skip this batch
+                }
+                let _ = emit_app.emit(
+                    "browse:changed",
+                    BrowseChangedEvent {
+                        path: emit_dir.clone(),
+                    },
+                );
+            },
+        )?;
+        debouncer
+            .watcher()
+            .watch(Path::new(&dir_norm), RecursiveMode::NonRecursive)?;
+        *self.inner.lock().await = Some(debouncer);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

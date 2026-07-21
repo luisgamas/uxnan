@@ -23,6 +23,7 @@ import {
 } from "$lib/api";
 import type {
   AgentProfile,
+  BranchCleanup,
   BranchList,
   QuickCommand,
   RepoData,
@@ -695,19 +696,29 @@ class ProjectsStore {
   }
 
   /** Create a worktree, then refresh its repo's list and reveal the section.
-   *  `agentId` overrides which agent to launch into it: a specific agent id, or
-   *  `null` for none. Omit it (`undefined`) to fall back to the global default
-   *  agent (the legacy behavior). */
+   *  Options mirror the backend command: `base` (new-branch mode's ref to branch
+   *  from), `fromExisting` (check out an existing local/remote branch instead of
+   *  creating one), and a custom `path`. `agentId` overrides which agent to
+   *  launch into it: a specific agent id, or `null` for none. Omit it
+   *  (`undefined`) to fall back to the global default agent. */
   async createWorktree(
     repoId: string,
     branch: string,
-    base?: string,
-    agentId?: string | null,
+    options: {
+      base?: string;
+      fromExisting?: boolean;
+      path?: string;
+      agentId?: string | null;
+    } = {},
   ): Promise<boolean> {
     this.error = null;
     try {
-      const created = await worktreeCreate(repoId, branch, base);
-      await this.adoptWorktree(repoId, created, agentId);
+      const created = await worktreeCreate(repoId, branch, {
+        base: options.base,
+        fromExisting: options.fromExisting,
+        path: options.path,
+      });
+      await this.adoptWorktree(repoId, created, options.agentId);
       return true;
     } catch (e) {
       this.error = msg(e);
@@ -740,9 +751,15 @@ class ProjectsStore {
     if (agent) app.launchAgent(agent, { cwd: created.path, workspace: created.path });
   }
 
-  /** Remove a worktree. Returns false (with `error` set) when it was refused
-   *  for having uncommitted changes and `force` was not set. */
-  async removeWorktree(row: WorktreeRow, force: boolean): Promise<boolean> {
+  /** Remove a worktree. Branch cleanup is opt-in via `cleanup` (delete local /
+   *  remote / force) — omit it to remove only the worktree. Returns false (with
+   *  `error` set) when it was refused for having uncommitted changes and `force`
+   *  was not set. */
+  async removeWorktree(
+    row: WorktreeRow,
+    force: boolean,
+    cleanup?: BranchCleanup,
+  ): Promise<boolean> {
     this.error = null;
     try {
       // Kill the worktree's terminals/agents FIRST: on Windows a process whose
@@ -752,18 +769,36 @@ class ProjectsStore {
       if (this.activeWorktreePath === row.path) this.activeWorktreePath = null;
       // Let the OS release the just-killed processes' directory handles.
       await new Promise((resolve) => setTimeout(resolve, 200));
-      const outcome = await worktreeRemove(row.repoId, row.path, row.branch, force);
+      const outcome = await worktreeRemove(
+        row.repoId,
+        row.path,
+        row.branch,
+        force,
+        cleanup,
+      );
       await this.loadWorktrees(row.repoId);
       // Drop any quick commands scoped to the now-removed worktree.
       app.pruneWorktreeCommands(row.path);
-      // The worktree is gone either way; the message depends on what happened to
-      // the branch (kept because unmerged / cleaned up after a squash merge).
-      if (outcome?.branchPreserved) {
-        toast.success(i18n.t("toast.worktreeRemovedBranchKept"));
-      } else if (outcome?.squashMerged) {
-        toast.success(i18n.t("toast.worktreeRemovedSquash"));
-      } else {
-        toast.success(i18n.t("toast.worktreeRemoved"));
+      // The worktree is always gone; compose a message from what the opt-in
+      // branch cleanup did (deleted / cleaned up / kept unmerged / remote).
+      const parts = [i18n.t("toast.worktreeRemoved")];
+      if (outcome?.localBranchDeleted) {
+        parts.push(
+          outcome.squashMerged
+            ? i18n.t("toast.branchCleanedSquash")
+            : i18n.t("toast.localBranchDeleted"),
+        );
+      } else if (outcome?.localBranchUnmerged) {
+        parts.push(i18n.t("toast.localBranchKeptUnmerged"));
+      }
+      if (outcome?.remoteBranchDeleted) {
+        parts.push(i18n.t("toast.remoteBranchDeleted"));
+      }
+      toast.success(parts.join(" · "));
+      // A requested remote delete that failed is surfaced separately (the local
+      // removal still succeeded, so it's a warning, not a hard failure).
+      if (outcome?.remoteError) {
+        toastError(i18n.t("toast.remoteBranchError", { error: outcome.remoteError }));
       }
       return true;
     } catch (e) {

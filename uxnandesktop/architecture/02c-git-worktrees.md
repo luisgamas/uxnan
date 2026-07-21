@@ -39,7 +39,7 @@ CREACIÓN                  USO ACTIVO               FINALIZACIÓN
 git worktree add    --->  Agente trabaja     --->  Revisión de cambios
 Configurar rama           Cambios en archivos      Commit + Push
 Almacenar metadatos       Monitoring en sidebar    git worktree remove
-Lanzar agente             Diffs en sidebar dcha    Limpiar rama (safe)
+Lanzar agente             Diffs en sidebar dcha    Limpiar rama (opcional)
 ```
 
 ---
@@ -48,11 +48,33 @@ Lanzar agente             Diffs en sidebar dcha    Limpiar rama (safe)
 
 ### 2.1 Creación de Worktree
 
-El flujo de creación es el más complejo y tiene varias garantías:
+La creación se hace desde dos accesos —el **diálogo dedicado** (`NewWorktreeDialog`,
+atajo + estado vacío) y el **lanzador "+"** de la tarjeta de proyecto
+(`LauncherDialog`, opción «Nuevo worktree»)— que comparten **el mismo formulario**
+(`WorktreeCreateFields`), de modo que nunca se desincronizan. Ofrece **dos modos** y
+una **ubicación opcional**:
 
-1. **Resolver la referencia base**: El usuario selecciona una rama base. El ADE la resuelve a una referencia completa, verificando que existe. Se prueba un orden de prioridad: referencia simbólica de HEAD remoto, luego `main`, luego `master`, con fallback a ramas locales.
+- **Rama nueva** (por defecto): el usuario escribe un nombre de rama —o pulsa
+  **generar** para uno automático, amistoso y único (`wt/<adjetivo>-<sustantivo>`,
+  con sufijo numérico si colisiona)— y elige una **rama base**. Se crea con
+  `git worktree add --no-track -b <rama> <ruta> <base>`.
+- **Rama existente**: el usuario elige **cualquier rama local o remota** del
+  repositorio (las que ya están en un worktree se muestran deshabilitadas, porque
+  git rechaza un segundo checkout). Una rama **local** se saca directamente
+  (`git worktree add <ruta> <rama>`); una **remota-solo** (`origin/<rama>` sin
+  contraparte local) obtiene una rama local con tracking
+  (`git worktree add --track -b <rama> <ruta> origin/<rama>`).
+- **Ubicación**: por defecto la carpeta hermana automática `<repo>--<rama>`; el
+  usuario puede **editar la ruta** o **explorar** hasta una carpeta padre (con el
+  explorador in-app compartido). Una ruta personalizada debe ser absoluta y no
+  existir; se normaliza a barras `/`.
 
-2. **Crear el worktree**: Se ejecuta `git worktree add` con la opción de no rastrear upstream automáticamente. Esto evita que la rama nueva herede el estado de tracking de la base, previniendo reportes falsos de "detrás de upstream" antes del primer push.
+El flujo del backend (comando `worktree_create` con `fromExisting` y `path`
+opcionales) tiene varias garantías:
+
+1. **Resolver la referencia base** *(solo modo rama nueva)*: El usuario selecciona una rama base. El ADE la resuelve a una referencia completa, verificando que existe. Se prueba un orden de prioridad: referencia simbólica de HEAD remoto, luego `main`, luego `master`, con fallback a ramas locales.
+
+2. **Crear el worktree**: Se ejecuta `git worktree add` (con `--no-track -b` en modo rama nueva, para que la rama nueva no herede el tracking de la base y no se reporte como "detrás de upstream" antes del primer push; con checkout directo o `--track -b` en modo rama existente). Tras crearlo se **re-lista** con `git worktree list` para devolver la entrada tal como git la reporta (ruta/rama/head canónicas), de modo que incluso una ruta personalizada coincide con la clave de workspace del frontend.
 
 3. **Configurar push automático**: Se establece `push.autoSetupRemote=true` en la configuración del repo (una sola vez) para que `git push` sin argumentos cree automáticamente la rama remota.
 
@@ -82,18 +104,24 @@ GitHub queda registrado, activo y **con su agente lanzado** igual que cualquier 
 
 ### 2.3 Eliminación de Worktree
 
-La eliminación tiene múltiples salvaguardas:
+Eliminar un worktree **solo elimina el worktree** por defecto; la limpieza de
+ramas es **opt-in** (el usuario nunca pierde una rama sin pedirlo). El diálogo de
+confirmación (`RemoveWorktreeDialog`) ofrece dos casillas —desmarcadas por
+defecto— y el backend (`worktree_remove` con un `cleanup`:
+`deleteLocal`/`forceLocal`/`deleteRemote`) actúa así:
 
 1. **Preflight de limpieza**: Se ejecuta `git status` en el worktree. Si hay cambios sin commitear, la eliminación se bloquea (a menos que sea forzada). Si está limpio: se matan los terminales asociados.
 
-2. **Eliminación del worktree**: `git worktree remove` + `git worktree prune`.
+2. **Eliminación del worktree**: `git worktree remove` + `git worktree prune` (+ borrado del directorio con reintentos en Windows).
 
-3. **Limpieza de rama inteligente**:
-   - Se intenta borrar la rama con `git branch -d` (safe delete, falla si hay commits sin mergear).
-   - Si el delete falla pero los cambios fueron mergeados vía squash, se analiza si la rama es "patch-equivalente" a la base. Si lo es, se borra con seguridad.
-   - Si no se puede confirmar que los cambios están mergeados, la rama se preserva y se notifica al usuario.
+3. **Rama local** *(solo si se marca "Eliminar rama local")*:
+   - Se intenta borrar con `git branch -d` (safe delete, falla si hay commits sin mergear).
+   - Si `-d` falla y el usuario marcó **Forzar**, se borra con `git branch -D`.
+   - Si `-d` falla sin forzar, se analiza si la rama es "patch-equivalente" a la base (squash-merge); si lo es, se borra con seguridad (`-D`). Si no, la rama se **conserva** y se reporta como "sin mergear" para que la UI ofrezca forzar.
 
-4. **Verificación post-eliminación**: Se re-lista los worktrees para confirmar que no quedó en un estado inconsistente.
+4. **Rama remota** *(solo si se marca "Eliminar rama remota")*: si `origin/<rama>` existe, se borra con `git push origin --delete <rama>`. Un fallo (offline, protegida, sin `origin`) se reporta como aviso —la eliminación local del worktree ya tuvo éxito—.
+
+El `RemoveOutcome` reporta el destino de cada rama (borrada / squash-merge / conservada-sin-mergear / error remoto) para el toast compuesto.
 
 ---
 
@@ -137,6 +165,8 @@ entradas, para no perturbar el orden estabilizado de las vistas del panel.
 
 - **Nomenclatura**: Las ramas se crean con un prefijo configurable (ej: `usuario/feature-name`, `custom/feature-name`, o sin prefijo). Los nombres se sanitizan para eliminar caracteres no válidos.
 - **Detección de base por defecto**: Al crear una rama, el ADE prueba en orden un conjunto de bases conocidas (HEAD remoto, main, master, etc.) para determinar la base más adecuada.
+- **Listas para los selectores**: `branch_list` devuelve las ramas **locales** (para el selector de base y el de rama existente), las ramas **remotas** de `origin` (short-name, para poder sacar en un worktree una rama que solo existe en remoto) y la base por defecto resuelta.
+- **Limpieza de ramas al eliminar**: es **opt-in** (ver §2.3) — borrar un worktree no borra su rama salvo que el usuario lo pida (local con `-d`/`-D`+squash-safety, y/o remota con `git push origin --delete`).
 
 ---
 

@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 257 Rust backend tests + 221 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+with" external editors/IDEs**). 261 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -38,8 +38,18 @@ mobile pairing) is NOT started.**
   and the user is guided to a fix (`src/lib/terminal/windowsJunctionGuard.ts`;
   `docs/windows-junctions.md`).
 - **Git worktrees** — per-worktree terminal workspaces, hierarchical Projects
-  tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), squash-merged
-  branch cleanup on removal, WSL repos routed through `wsl.exe`. Projects carry a
+  tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), WSL repos routed
+  through `wsl.exe`. **Creation** offers two modes — a **new branch** from a base
+  (with a friendly auto-name generator) or **checking out any existing local /
+  remote branch** into an isolated worktree — plus an **optional custom location**
+  (editable path + an in-app folder browser). **Removal is worktree-only by
+  default**: the branch is kept unless the user opts into **deleting the local
+  branch** (safe `-d`, with a force for unmerged work and the squash-merge
+  safety net preserved) and/or the **remote branch** on `origin`. The **in-app
+  folder browser** (shared by "Add project" and the worktree-location picker) has
+  a **manual refresh** and a **live filesystem watch** (`browse_set_watch` →
+  `browse:changed`) so newly created folders appear without navigating away.
+  Projects carry a
   **⋯ actions menu + per-project settings** (rename the card label without
   touching the folder) and a **custom icon**; branches carry a **per-branch icon**
   (both from a built-in glyph set, a file, a URL, or a git-host account avatar —
@@ -482,7 +492,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 257 Rust + 221 Vitest tests.
+  deferred with Apple). 261 Rust + 225 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

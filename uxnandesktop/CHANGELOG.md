@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — flexible worktree creation & safe, opt-in removal
+
+- **New worktree — two modes.** The creation form now has a **New branch** /
+  **Existing branch** toggle. *New branch* keeps the base-branch picker and adds a
+  **generate** button that fills a friendly, collision-proof name
+  (`wt/<adjective>-<noun>`). *Existing branch* checks out **any local or remote
+  branch** into an isolated worktree (a remote-only branch gets a local tracking
+  branch); branches already checked out elsewhere are shown disabled. The whole
+  form is a **shared `WorktreeCreateFields` component**, so it is identical in the
+  **dedicated New-worktree dialog** and the **project "+" launcher** (they can no
+  longer drift). Backend: `worktree_create` gains `fromExisting`; `branch_list`
+  now returns `remoteBranches`; `git::add_worktree_from_existing` handles both
+  local and remote-only checkout.
+- **New worktree — optional custom location.** A collapsible *Location* section lets
+  you edit the target path or **browse** to a parent folder; left untouched, the
+  worktree still lands in the automatic sibling location. `worktree_create` gains an
+  optional absolute `path` (validated + normalized), and returns git's own listing
+  of the created worktree so a custom path lines up with the workspace key.
+- **Worktree removal is worktree-only by default.** Removing a worktree no longer
+  deletes its branch behind your back. The confirm dialog offers opt-in
+  **Delete local branch** (safe `-d`, with a **Force** for unmerged commits and the
+  squash-merge safety net preserved) and **Delete remote branch** (`origin/<branch>`,
+  shown only when it exists). Backend `worktree_remove` takes a `cleanup`
+  (`deleteLocal` / `forceLocal` / `deleteRemote`); `RemoveOutcome` now reports each
+  branch's fate (deleted / squash-merged / kept-unmerged / remote error).
+- **In-app folder browser — refresh + live change detection.** The shared folder
+  browser (extracted as `DirectoryBrowser`, reused by "Add project" and the new
+  worktree-location picker) gained a **manual refresh** button and a **live
+  filesystem watch** (`browse_set_watch` → `browse:changed`), so a folder created
+  or removed in the browsed directory appears without navigating away and back.
+
 ### Changed — asynchronous actions now show in-place progress
 
 - Added the shadcn-svelte `Spinner` primitive and a consistent pending-action

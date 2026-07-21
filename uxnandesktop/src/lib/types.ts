@@ -575,22 +575,42 @@ export interface WorktreeEntry {
   isMain: boolean;
 }
 
-/** What `worktree_remove` did with the branch (mirror of Rust `RemoveOutcome`).
- *  The worktree itself is always removed on success; these flags describe only
- *  the branch cleanup so the UI can tell the user. */
-export interface RemoveOutcome {
-  /** The branch was deleted (safe `-d`, or `-D` after a confirmed squash merge). */
-  branchDeleted: boolean;
-  /** The branch was kept because its changes couldn't be confirmed as merged. */
-  branchPreserved: boolean;
-  /** The delete relied on squash-merge (patch-equivalence) detection. */
-  squashMerged: boolean;
+/** What the caller wants done with a removed worktree's branch(es) (mirror of
+ *  Rust `BranchCleanup`). All default to false — removing a worktree touches only
+ *  the worktree unless the user opts in. */
+export interface BranchCleanup {
+  /** Delete the local branch (safe `-d`, upgraded to `-D` on force / squash-merge). */
+  deleteLocal: boolean;
+  /** Force the local delete (`-D`) even for an unmerged branch. */
+  forceLocal: boolean;
+  /** Delete the remote branch on `origin` (`git push origin --delete`). */
+  deleteRemote: boolean;
 }
 
-/** A repo's local branches + the resolved default base for the new-worktree
- *  dialog (mirror of the Rust `BranchList` command DTO). */
+/** What `worktree_remove` did (mirror of Rust `RemoveOutcome`). The worktree
+ *  itself is always removed on success; these flags describe only the **opt-in**
+ *  branch cleanup so the UI can tell the user. */
+export interface RemoveOutcome {
+  /** The local branch was deleted (safe `-d`, forced `-D`, or `-D` after squash merge). */
+  localBranchDeleted: boolean;
+  /** The delete relied on squash-merge (patch-equivalence) detection. */
+  squashMerged: boolean;
+  /** A local delete was requested but refused for unmerged commits (no force).
+   *  No work is lost — the UI can offer a forced retry. */
+  localBranchUnmerged: boolean;
+  /** The remote branch (`origin/<branch>`) was deleted. */
+  remoteBranchDeleted: boolean;
+  /** A requested remote delete failed (offline / protected / no origin); a short
+   *  reason for the toast, else null. */
+  remoteError: string | null;
+}
+
+/** A repo's local + remote branches and the resolved default base for the
+ *  new-worktree dialog (mirror of the Rust `BranchList` command DTO). */
 export interface BranchList {
   branches: string[];
+  /** Branches on `origin`, short-named — for the "existing branch" picker. */
+  remoteBranches: string[];
   defaultBase: string;
 }
 
@@ -686,6 +706,13 @@ export interface FileNumstat {
 export interface FsChangedEvent {
   root: string;
   paths: string[];
+}
+
+/** Payload of the `browse:changed` event (mirror of Rust `BrowseChangedEvent`):
+ *  the single directory the in-app folder browser is watching, forward-slash
+ *  normalized. Emitted when a folder is created/removed directly inside it. */
+export interface BrowseChangedEvent {
+  path: string;
 }
 
 /** One commit in the history log (mirror of Rust `CommitInfo`). `parents` powers

@@ -624,14 +624,19 @@ async fn repo_path_of(state: &AppState, repo_id: &str) -> Result<String, Command
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchList {
-    /// Local branch names.
+    /// Local branch names (the base picker + the "existing branch" picker).
     pub branches: Vec<String>,
+    /// Branches that exist on `origin`, short-named (`origin/main` → `main`).
+    /// Powers the "existing branch" mode so a remote-only branch can be checked
+    /// out into a fresh worktree. Empty when the repo has no remote.
+    pub remote_branches: Vec<String>,
     /// The base ref the dialog should preselect (remote HEAD → main → master → HEAD).
     pub default_base: String,
 }
 
-/// List a repo's local branches and the resolved default base ref. Powers the
-/// base-branch picker when creating a worktree.
+/// List a repo's local + remote branches and the resolved default base ref.
+/// Powers both the base-branch picker (new-branch mode) and the existing-branch
+/// picker (check out any local/remote branch) when creating a worktree.
 #[tauri::command]
 pub async fn branch_list(
     state: State<'_, AppState>,
@@ -641,23 +646,36 @@ pub async fn branch_list(
     let branches = git::list_branches(&repo_path)
         .await
         .map_err(CommandError::from)?;
+    // A repo with no remote simply has no remote branches — don't fail the dialog.
+    let remote_branches = git::list_remote_branches(&repo_path)
+        .await
+        .unwrap_or_default();
     let default_base = git::default_base(&repo_path).await;
     Ok(BranchList {
         branches,
+        remote_branches,
         default_base,
     })
 }
 
-/// Create a worktree on a new branch in the given repo, at a sibling directory
-/// named `<repo>--<branch>`. `base` is the ref to branch from; when omitted the
-/// backend resolves the repo's default base (remote HEAD → main → master → HEAD).
-/// Returns the created entry.
+/// Create a worktree in the given repo. Two modes:
+/// - **new branch** (`from_existing = false`): create `branch` from `base` (or
+///   the repo's resolved default base — remote HEAD → main → master → HEAD);
+/// - **existing branch** (`from_existing = true`): check out an already-existing
+///   local or remote-only `branch` (a remote-only one gets a local tracking
+///   branch), ignoring `base`.
+///
+/// `path` is an optional custom worktree directory (must be absolute and not yet
+/// exist); when omitted the backend uses the automatic sibling location
+/// `<repo>--<branch>`. Returns the created entry as git itself lists it.
 #[tauri::command]
 pub async fn worktree_create(
     state: State<'_, AppState>,
     repo_id: String,
     branch: String,
     base: Option<String>,
+    from_existing: Option<bool>,
+    path: Option<String>,
 ) -> Result<WorktreeEntry, CommandError> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
@@ -666,27 +684,62 @@ pub async fn worktree_create(
         )));
     }
     let repo_path = repo_path_of(&state, &repo_id).await?;
-    let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
-        Some(base) => base,
-        None => git::default_base(&repo_path).await,
+    let from_existing = from_existing.unwrap_or(false);
+
+    // Resolve the worktree location: a custom absolute path, or the automatic
+    // sibling. A custom path is normalized to forward slashes (matching git's own
+    // spelling) and must be absolute and not already exist.
+    let worktree_path = match path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
+        Some(custom) => {
+            let normalized = custom.replace('\\', "/");
+            let normalized = normalized.trim_end_matches('/').to_string();
+            if !std::path::Path::new(&normalized).is_absolute() {
+                return Err(CommandError::from(AppError::Invalid(
+                    "custom worktree path must be absolute".to_string(),
+                )));
+            }
+            if std::path::Path::new(&normalized).exists() {
+                return Err(CommandError::from(AppError::Invalid(
+                    "a folder already exists at that path".to_string(),
+                )));
+            }
+            normalized
+        }
+        None => git::worktree_path_for(&repo_path, &branch),
     };
-    let worktree_path = git::worktree_path_for(&repo_path, &branch);
-    git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base))
+
+    if from_existing {
+        git::add_worktree_from_existing(&repo_path, &branch, &worktree_path)
+            .await
+            .map_err(CommandError::from)?;
+    } else {
+        let base = match base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty()) {
+            Some(base) => base,
+            None => git::default_base(&repo_path).await,
+        };
+        git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base))
+            .await
+            .map_err(CommandError::from)?;
+    }
+
+    // Prefer git's own listing of the new worktree (canonical path/branch/head);
+    // fall back to a hand-built entry if the re-list misses it for any reason.
+    Ok(git::find_worktree_entry(&repo_path, &worktree_path)
         .await
-        .map_err(CommandError::from)?;
-    Ok(WorktreeEntry {
-        path: worktree_path,
-        branch: Some(branch),
-        head: None,
-        is_main: false,
-    })
+        .unwrap_or(WorktreeEntry {
+            path: worktree_path,
+            branch: Some(branch),
+            head: None,
+            is_main: false,
+        }))
 }
 
 /// Remove a worktree (spec §2.3). With `force = false` the backend refuses when
 /// the worktree has uncommitted changes; the frontend surfaces this so the user
-/// can confirm a forced removal. Afterwards the branch is cleaned up: a safe
-/// delete for merged work, a force-delete for a confirmed squash merge, or kept
-/// otherwise. The returned [`git::RemoveOutcome`] tells the UI which happened.
+/// can confirm a forced removal. Branch cleanup is **opt-in** via `cleanup`:
+/// by default only the worktree is removed. When asked, the local branch is
+/// deleted (safe, force, or squash-merge) and/or the remote branch on `origin`.
+/// The returned [`git::RemoveOutcome`] tells the UI what happened to each.
 #[tauri::command]
 pub async fn worktree_remove(
     state: State<'_, AppState>,
@@ -694,11 +747,18 @@ pub async fn worktree_remove(
     path: String,
     branch: Option<String>,
     force: bool,
+    cleanup: Option<git::BranchCleanup>,
 ) -> Result<git::RemoveOutcome, CommandError> {
     let repo_path = repo_path_of(&state, &repo_id).await?;
-    git::remove_worktree(&repo_path, &path, branch.as_deref(), force)
-        .await
-        .map_err(CommandError::from)
+    git::remove_worktree(
+        &repo_path,
+        &path,
+        branch.as_deref(),
+        force,
+        cleanup.unwrap_or_default(),
+    )
+    .await
+    .map_err(CommandError::from)
 }
 
 /// List a repo's worktrees (ADE-created and ones made externally by agents).
@@ -993,6 +1053,23 @@ pub async fn fs_set_watch(
         .set(&app, path)
         .await
         .map_err(|e| CommandError::new("FS_WATCH_FAILED", e.to_string()))
+}
+
+/// Set (or clear with `None`) the directory the in-app folder browser watches.
+/// The picker calls this as the user navigates (and clears it on close); the
+/// backend emits `browse:changed` when a folder is created/removed directly in
+/// that directory so the listing refreshes without a manual reload.
+#[tauri::command]
+pub async fn browse_set_watch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> Result<(), CommandError> {
+    state
+        .browse_watcher
+        .set(&app, path)
+        .await
+        .map_err(|e| CommandError::new("BROWSE_WATCH_FAILED", e.to_string()))
 }
 
 /// Reveal a path in the OS file manager (Explorer / Finder / the default file

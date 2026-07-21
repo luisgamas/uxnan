@@ -8,8 +8,11 @@ export const es: Record<MessageKey, string> = {
   "toast.pushed": "Push realizado",
   "toast.pulled": "Pull realizado",
   "toast.worktreeRemoved": "Worktree eliminado",
-  "toast.worktreeRemovedBranchKept": "Worktree eliminado · rama conservada (sin fusionar)",
-  "toast.worktreeRemovedSquash": "Worktree eliminado · rama squash-merged depurada",
+  "toast.localBranchDeleted": "rama local eliminada",
+  "toast.branchCleanedSquash": "rama squash-merged depurada",
+  "toast.localBranchKeptUnmerged": "rama local conservada (sin fusionar)",
+  "toast.remoteBranchDeleted": "rama remota eliminada",
+  "toast.remoteBranchError": "no se eliminó la rama remota: {error}",
   "toast.aiCommitGenerated": "Mensaje de commit redactado",
   "toast.projectRemoved": "Proyecto eliminado",
   "toast.projectsAdded": "Se agregaron {added} proyectos",
@@ -141,7 +144,10 @@ export const es: Record<MessageKey, string> = {
   "worktree.removeWorktree": "Eliminar worktree",
   "worktree.removeTitle": "¿Eliminar worktree?",
   "worktree.removeDesc":
-    "Elimina el worktree en {path}. Su rama “{branch}” solo se borra de forma segura si está totalmente fusionada.",
+    "Elimina solo el worktree en {path}. La rama “{branch}” se conserva salvo que marques una opción abajo.",
+  "worktree.deleteLocalBranch": "Eliminar rama local",
+  "worktree.forceDeleteBranch": "Forzar — eliminar aunque tenga commits sin fusionar",
+  "worktree.deleteRemoteBranch": "Eliminar rama remota",
   "worktree.forceRemove": "Forzar eliminación",
   "worktree.changeIcon": "Cambiar icono de la rama…",
   "worktree.branchIconTitle": "Icono de la rama",
@@ -172,13 +178,30 @@ export const es: Record<MessageKey, string> = {
 
   // New-worktree dialog
   "newWorktree.title": "Nuevo worktree",
-  "newWorktree.desc": "Crea un worktree en una rama nueva en {name}.",
+  "newWorktree.desc": "Crea un worktree en {name}.",
+  "newWorktree.modeNew": "Rama nueva",
+  "newWorktree.modeExisting": "Rama existente",
   "newWorktree.branch": "Nombre de la rama",
   "newWorktree.branchPlaceholder": "feature/login",
+  "newWorktree.generate": "Generar",
   "newWorktree.base": "Rama base",
   "newWorktree.selectBase": "Elegir rama base…",
   "newWorktree.baseDesc":
     "La rama nueva parte de aquí. Por defecto, la rama principal del repo.",
+  "newWorktree.existingBranch": "Rama",
+  "newWorktree.selectExisting": "Elegir una rama…",
+  "newWorktree.existingDesc":
+    "Haz checkout de una rama local o remota existente en un worktree aislado.",
+  "newWorktree.localBranches": "Locales",
+  "newWorktree.remoteBranches": "Remotas",
+  "newWorktree.inUse": "en uso",
+  "newWorktree.location": "Ubicación (opcional)",
+  "newWorktree.locationPlaceholder": "Carpeta del worktree personalizada…",
+  "newWorktree.locationDesc": "Por defecto, una carpeta junto al repositorio.",
+  "newWorktree.resetLocation": "Volver a automática",
+  "newWorktree.browse": "Explorar…",
+  "newWorktree.browseTitle": "Elegir una ubicación",
+  "newWorktree.browseDesc": "Elige la carpeta dentro de la cual se creará el worktree.",
   "newWorktree.create": "Crear worktree",
   "newWorktree.preview": "Carpeta del worktree",
   "newWorktree.agent": "Lanzar agente",
@@ -318,6 +341,7 @@ export const es: Record<MessageKey, string> = {
     "Navega hasta cualquier carpeta y agrégala. Las carpetas con la etiqueta “repo” son repositorios git; las que no lo son también funcionan — solo que sin worktrees.",
   "picker.pathPlaceholder": "Escribe o pega una ruta y presiona Enter…",
   "picker.parent": "Carpeta superior",
+  "picker.refresh": "Actualizar",
   "picker.empty": "No hay subcarpetas aquí.",
   "picker.open": "Abrir {name}",
   "picker.addFolder": "Agregar esta carpeta",
@@ -325,6 +349,12 @@ export const es: Record<MessageKey, string> = {
   "picker.bulkHint":
     "Se detectaron {repos} repos git aquí — con «Agregar esta carpeta» puedes agregarlos como proyectos separados.",
   "picker.hintAdd": "Agregar carpeta",
+
+  // Diálogo de selección de carpeta (elegir una ubicación)
+  "folderSelect.title": "Elegir una carpeta",
+  "folderSelect.desc": "Navega hasta la carpeta que quieres usar.",
+  "folderSelect.select": "Seleccionar esta carpeta",
+  "folderSelect.hintSelect": "Seleccionar carpeta",
 
   // Diálogo de selección al agregar proyecto (carpeta padre vs. subcarpetas)
   "addProject.title": "Agregar proyecto",
