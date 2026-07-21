@@ -1857,7 +1857,10 @@ mod tests {
         // here); it is effectively a no-op on the Linux runner.
         let canon = std::fs::canonicalize(repo.path()).unwrap();
         let repo_path = canon.to_string_lossy().replace('\\', "/");
-        let repo_path = repo_path.strip_prefix("//?/").unwrap_or(&repo_path).to_string();
+        let repo_path = repo_path
+            .strip_prefix("//?/")
+            .unwrap_or(&repo_path)
+            .to_string();
         init_repo(&repo_path).await;
 
         // A local branch that isn't checked out anywhere yet.
