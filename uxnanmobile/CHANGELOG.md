@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.11-alpha.20260721+20260721] - 2026-07-21
+
 ### Fixed — manual pairing failed over Tailscale
 - The manual-pairing HTTP client used a 5s `connectTimeout`. Over Tailscale the
   first request to a peer must bring the tunnel up (DERP relay, then an attempted

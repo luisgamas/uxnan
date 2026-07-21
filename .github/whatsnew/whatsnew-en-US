@@ -1,8 +1,6 @@
 What's new in this update:
 
-• Security: messages between your phone and your PC are now sealed against tampering — an altered or repeated one is rejected.
-• Security: your pairing code is now sent only to the PC you picked, never to other devices on your network.
-• New: the device card shows how you're connected — LAN, Tailscale, direct or relay.
-• Clearer status while connecting.
+• Fixed: manual pairing over Tailscale now works — the app waits long enough for the connection to come up instead of giving up early.
+• Clearer message: if your PC's bridge is a different version than the app, pairing now tells you to update the bridge instead of blaming your pairing code.
 
-Important: update the bridge on your PC too.
+Tip: keep the app and your PC's bridge updated together.

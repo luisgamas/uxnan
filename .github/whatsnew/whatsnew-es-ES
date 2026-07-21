@@ -1,8 +1,6 @@
 Novedades de esta actualización:
 
-• Seguridad: los mensajes entre tu teléfono y tu PC van sellados contra manipulación; uno alterado o repetido se rechaza.
-• Seguridad: tu código de emparejamiento solo se envía al PC que elegiste, nunca a otros dispositivos de tu red.
-• Nuevo: la tarjeta del dispositivo muestra cómo estás conectado: LAN, Tailscale, directo o relay.
-• Estado más claro al conectar.
+• Corregido: el emparejamiento manual por Tailscale ya funciona — la app espera lo suficiente a que se establezca la conexión en vez de rendirse pronto.
+• Mensaje más claro: si el bridge de tu PC tiene otra versión que la app, ahora te pide actualizar el bridge en vez de culpar a tu código de emparejamiento.
 
-Importante: actualiza también el bridge de tu PC.
+Consejo: mantén la app y el bridge de tu PC actualizados juntos.

@@ -7,7 +7,7 @@ publish_to: 'none'
 # The build-number is Play's versionCode and must strictly increase. 0.0.6 (cut
 # earlier today) already took 20260716, so this same-day release borrows the next
 # day — the same thing 0.0.2-alpha.20260628+20260629 did.
-version: 0.0.10-alpha.20260720+20260720
+version: 0.0.11-alpha.20260721+20260721
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
