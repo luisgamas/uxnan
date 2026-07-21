@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.10-alpha.20260721] - 2026-07-21
+
 ### Changed — `start` always re-checks for a new bridge version
 - `uxnan-bridge start` now bypasses the 24h update-check cache (`ttlMs: 0`).
   Reported after 0.0.9 shipped: a bridge that had checked while 0.0.8 was newest
