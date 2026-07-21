@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.11-alpha.20260721] - 2026-07-21
+
 ### Fixed — LAN discovery now works on multi-homed Windows hosts
 
 - The dependency-free mDNS advertiser now joins `224.0.0.251:5353` explicitly
