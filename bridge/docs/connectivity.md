@@ -32,6 +32,50 @@ use and testing.
 uxnan-bridge start        # prints the QR + "Direct addresses (LAN/Tailscale): …"
 ```
 
+### Nearby bridge discovery (mDNS / Bonjour)
+
+The manual-code screen's **Browse nearby bridges** action browses the link-local
+DNS-SD service `_uxnan._tcp.local` over multicast UDP `224.0.0.251:5353`.
+The bridge publishes PTR/SRV/TXT/A records containing only discovery hints:
+display name, bridge id, LAN address and LAN port. It joins and sends through
+each eligible advertised IPv4 explicitly, which matters on PCs with Wi-Fi plus
+lower-metric Ethernet, Tailscale, Hyper-V, WSL, Docker or other adapters.
+
+Discovery and authorization are deliberately separate:
+
+1. An mDNS result is unauthenticated and spoofable; it is treated only as a host
+   suggestion.
+2. The user explicitly selects one result. That action fills the host field; it
+   does not contact every discovered machine and does not trust anything.
+3. The pairing code is never present in mDNS. The phone sends it only to the one
+   selected/typed host through `GET /pair/resolve?code=...`.
+4. A valid code opens the bridge's short-lived enrollment window, after which
+   the documented Ed25519/X25519 E2EE bootstrap authenticates the bridge and
+   creates the trusted-device record. A nearby device cannot self-enroll merely
+   by advertising or discovering the service.
+
+If direct `192.168.x.x:19850` pairing works but the list stays empty, test the
+discovery layer separately from TCP:
+
+```powershell
+# The bridge should own a reusable UDP 5353 endpoint.
+Get-NetUDPEndpoint -LocalPort 5353
+
+# The startup log should include the Wi-Fi IPv4 after "via".
+Select-String "$HOME\.uxnan\logs\bridge-*.log" -Pattern "mDNS advertising"
+
+# Inspect which adapter Windows would otherwise prefer for multicast.
+Get-NetRoute -AddressFamily IPv4 |
+  Where-Object DestinationPrefix -eq '224.0.0.0/4' |
+  Sort-Object InterfaceMetric
+```
+
+Also confirm that both devices are on the same non-guest LAN and that the access
+point does not enable client/AP isolation. Windows Firewall must allow inbound
+UDP 5353 for the bridge on the active network profile; the bridge does not add
+an elevated firewall rule automatically. A blocked/unsupported mDNS path never
+weakens pairing: scan the QR or type the printed host and code instead.
+
 ## 2. Tailscale — remote with no hosting (recommended)
 
 [Tailscale](https://tailscale.com) (or ZeroTier / WireGuard) puts your phone and PC

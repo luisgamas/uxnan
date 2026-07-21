@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 535, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 542, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -24,7 +24,8 @@ push validation (FOR-HUMAN).
 - **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
   handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
   background reconnect loop; stable pairing session; mDNS discovery
-  (`_uxnan._tcp.local`); manual-code pairing (`GET /pair/resolve?code=`); the LAN
+  (`_uxnan._tcp.local`) with explicit per-IPv4 membership/announcements on
+  multi-homed hosts; manual-code pairing (`GET /pair/resolve?code=`); the LAN
   `qr_bootstrap` handshake is gated on an operator-armed pairing window
   (`PairingCodeService.arm`/`isArmed`, 3-minute TTL, in-memory) — showing the QR
   or the manual code arms it, so a reachable LAN/Tailscale device cannot
@@ -86,9 +87,30 @@ push validation (FOR-HUMAN).
   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
   registration), `bridge/trustedDevices`, `bridge/connectedPhones`,
   `bridge/generatePairingQr`.
+- **Durable global profile metrics** — the version-2 `metrics.json` ledger keeps
+  conversations, message/day buckets, reported tokens, sessions and Git actions
+  independently of mutable thread deletion; startup backfills legacy threads,
+  complete same-PC export/import is idempotent, and five rotating local
+  generations recover an unreadable primary.
 - **Autostart** (`install-service` / `uninstall-service` per platform, never
   elevated), file logging with secret redaction, and the
   `start`/`stop`/`status`/`qr`/`code`/`install-service` CLI.
+
+## Profile metrics
+
+- [ ] **Per-phone activity profiles.** The implemented ledger is deliberately
+      global per bridge PC: every authenticated phone receives the same complete
+      PC snapshot. Individual profiles would enable personal stats on a shared PC
+      and clean multi-phone comparisons, but they also require attributing every
+      conversation/turn/token/session/Git row to a stable profile. Implement this
+      in `src/metrics/metrics-store.ts` and the `metrics/*` handlers only after a
+      separate profile identity and explicit recovery/rebinding flow are designed.
+      Do **not** use IMEI/Android ID/IDFV or clone the phone's Ed25519 transport
+      identity: hardware/platform ids are restricted and unstable, while copied
+      trust keys would weaken revocation. The change will need ledger migration,
+      authenticated device-to-profile mapping, lost/reinstalled-phone recovery,
+      revocation behavior, `shared/` contract additions, and mobile UI/aggregation
+      rules. See the inline `FOR-DEV:` marker beside `MetricsEvents`.
 
 ## Transport & connectivity
 

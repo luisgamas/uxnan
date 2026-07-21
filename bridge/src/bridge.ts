@@ -34,6 +34,7 @@ import { SessionRegistry } from './transport/session-registry.js';
 import { constantTimeEqual } from './transport/constant-time.js';
 import { ThreadStore } from './conversation/thread-store.js';
 import { MetricsService } from './metrics/metrics-service.js';
+import { MetricsStore } from './metrics/metrics-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
 import { writeGeminiApprovalHook } from './hooks/gemini-approval-hook.js';
@@ -140,24 +141,25 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   const sessions = new SessionState();
   const sessionRegistry = new SessionRegistry();
   const trustStore = new FileTrustStore(state);
-  const threadStore = new ThreadStore(state);
-  // Bridge-owned profile metrics: aggregates the conversation store + the session
-  // and git-action events the bridge observes itself, and seals/verifies the
+  const metricsStore = new MetricsStore(state);
+  const threadStore = new ThreadStore(state, metricsStore);
+  // Bridge-owned profile metrics: every conversation, turn, token report,
+  // session and Git action is retained in a durable ledger and sealed into the
   // tamper-proof backup file. The phone reads these over `metrics/*`.
   const metrics = new MetricsService({
     state,
     secretStore,
     threadStore,
+    store: metricsStore,
     deviceId: deviceState.identity.macDeviceId,
     now,
   });
-  // Close any session left open by a previous run so a crash never inflates the
-  // connected-time metric (best-effort; never blocks startup).
-  void metrics
-    .closeDanglingSessions()
-    .catch((err: unknown) =>
-      logger.warn(`failed to close dangling metric sessions: ${String(err)}`),
-    );
+  // Close crash-leftover sessions and migrate existing thread history before
+  // accepting connections. Failure is non-fatal because each read/export also
+  // retries the idempotent backfill.
+  await metrics
+    .initialize()
+    .catch((err: unknown) => logger.warn(`failed to initialize metrics ledger: ${String(err)}`));
   // Reads agent on-disk session logs when the store has no turns (§5.8.8).
   const sessionHistory = new SessionHistoryReader();
   // Single source of the pairing payload — shared by the QR and the manual-code

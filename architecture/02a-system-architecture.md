@@ -1,10 +1,19 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.0
-> **Fecha:** 2026-06-17
+> **Version:** 1.2.2
+> **Fecha:** 2026-07-21
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.2.2):** profile activity is owned by a complete,
+> global-per-PC bridge ledger. Conversation deletion never subtracts historical
+> metrics; export/import includes conversations, messages, reported tokens,
+> sessions and Git actions. Phone transport identity remains installation-local
+> and is not used as an activity-profile identity. LAN discovery is an
+> unauthenticated host hint, emitted explicitly on every eligible IPv4 interface;
+> it never carries the pairing code and never bypasses the operator-gated E2EE
+> enrollment.
 
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de la arquitectura del sistema.
@@ -1170,6 +1179,14 @@ QrScannerScreen
 > casos usan la dirección resuelta por SRV). El caso totalmente fuera de red (el
 > teléfono sin ruta directa alguna al bridge) sigue sin cubrirse; queda registrado
 > como trabajo pendiente en `uxnanmobile/FOR-DEV.md`.
+>
+> **Multi-interface discovery (2026-07):** the bridge does not let the OS choose
+> one implicit multicast route. It joins `224.0.0.251:5353` and emits each
+> `_uxnan._tcp.local` announcement/response explicitly through every eligible
+> advertised IPv4. This prevents a lower-metric disconnected Ethernet,
+> Tailscale, Hyper-V or WSL route from hiding a Wi-Fi bridge. Individual
+> membership/send failures are logged without secrets and degrade to QR/typed
+> host pairing. mDNS remains link-local and does not traverse Tailscale.
 
 ```
 ManualCodeScreen
@@ -1619,14 +1636,20 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── daemon-config.json              # configuracion general
 ├── pairing-session.json           # pairing y session payload
 ├── bridge-status.json             # heartbeat y estado
-├── secure-device-state.json       # identidad Ed25519 del bridge
 ├── trusted-phones.json            # telefonos de confianza registrados
 ├── managed-worktrees.json         # worktrees administrados
 ├── push-state.json                # estado de push notifications
-├── push-dedupe-keys.json          # claves de deduplicacion
+├── threads.json                   # historial mutable de conversaciones
+├── metrics.json                   # ledger historico completo (version 2)
+├── metrics.json.bak1..bak5        # generaciones locales del ledger
+├── checkpoints.json               # metadata de checkpoints
+├── update-check.json              # cache de actualizaciones
 └── logs/
     └── bridge-YYYY-MM-DD.log
 ```
+
+The bridge Ed25519 identity and the metrics sealing key live in the OS keychain,
+not in these JSON files.
 
 #### 5.8.4 Autostart del bridge
 
@@ -1881,53 +1904,52 @@ es intrinsecamente por-runtime, asi que se unifica por **contrato**, no por codi
 
 #### 5.8.11 Metricas de perfil (`metrics/*`) — bridge como fuente de verdad
 
-Las metricas del perfil movil (conversaciones, mensajes, agentes/modelos usados,
-tiempo conectado, sesiones, git actions, heatmap de actividad) se derivaban en el
-telefono y **se perdian al desinstalar** la app (no hay login en la nube). Para
-hacerlas durables, el **bridge** pasa a ser la fuente de verdad y las sirve por
-`metrics/*` (contrato `MetricsSnapshot` en `shared/src/models/metrics.ts`; ver 02b
-§1.2). El telefono renderiza un snapshot por PC y suma entre PCs; su store local
-queda como cache. El uso/creditos de proveedores **no** entran aqui (viven en
-`agent/usageStats`, lectura en vivo).
+Mobile profile metrics (conversations, messages, agents/models used, connected
+time, sessions, Git actions, reported tokens and activity heatmaps) are owned by
+the **bridge** and served through `metrics/*` (`MetricsSnapshot` in
+`shared/src/models/metrics.ts`; see 02b §1.2). The phone caches/renders one
+snapshot per PC and sums PCs. Provider quota/credit usage is a separate live
+surface (`agent/usageStats`) and is never written to this ledger.
 
-**Que observa el bridge (nadie puede inflarlo desde el telefono):**
-- **Sesiones de conexion** — `handleSecureConnection` abre/cierra una fila por
-  cada canal (con su transporte relay/directo), en `metrics/metrics-store.ts`
-  (`~/.uxnan/metrics.json`). Una sesion colgada por un crash se cierra al inicio
-  en su `startedAt` (cuenta la sesion, nunca infla el tiempo).
-- **Git actions** — `git-handler` cuenta cada operacion mutante (`git/commit`,
-  `push`, `pull`, `checkout`, `createBranch`, `createWorktree`, `discard`,
-  `createPr`, `undoCommit`, `switchBranch`, `revert`, `deleteBranch`,
-  `removeWorktree`) con su resultado.
-- **Conteos de conversacion** — se computan en vivo desde el `ThreadStore`
-  (`conversationMetrics()`): conversaciones, mensajes (ambos roles), agentes y
-  modelos distintos, por-agente, member-since y buckets de actividad por dia. La
-  clave de dia es **medianoche UTC de la fecha de calendario** (`utcDayKey`),
-  tz-estable: el heatmap del telefono la mapea a la celda correcta en cualquier
-  zona horaria (una medianoche-local absoluta caia en el dia equivocado y no se
-  pintaba nada).
-- **Actividad por agente y dia** (`byAgentDay`): por cada **agente + dia (UTC)**,
-  las conversaciones, los mensajes y los **tokens procesados** (la `usage.tokens`
-  reportada por cada turno del assistant), para la vista unificada de actividad
-  por agente (totales historicos, o de un solo dia al elegir una celda del
-  heatmap). Los agentes que no reportan uso igual cuentan conversaciones/mensajes
-  con tokens 0 (Zero). Es **throughput (tokens procesados), no costo facturado**
-  — el caching y el precio input/output difieren; el dinero exacto sigue en
-  `agent/usageStats`.
+`metrics/metrics-store.ts` persists a version-2 ledger in
+`~/.uxnan/metrics.json`:
 
-Los eventos se guardan **con id** para que importar sea idempotente (union por id).
+- Conversation rows preserve creation time plus the observed agent/model.
+- Turn rows preserve message counts by UTC calendar day and assistant-reported
+  token throughput. Agents without usage reporting still contribute messages
+  with zero tokens. Tokens are throughput, not billed cost.
+- Secure-channel sessions preserve phone device id, relay/direct transport and
+  duration. A crash-left session closes at its own start time on next startup,
+  so it counts without inflating connected time.
+- Mutating Git operations preserve method, thread association, outcome and time.
 
-**Backup a prueba de manipulacion (`metrics-seal.ts`):** `metrics/export` sella el
-log de eventos con **AES-256-GCM bajo una clave de 32 bytes del llavero del SO**
-(la cabecera va como AAD, asi cualquier edicion se detecta). Como la clave es
-secreta del bridge y no sale de la PC, un usuario **no puede fabricar ni editar**
-sus stats, y el archivo es **same-PC only** (otra PC tiene otra clave → lo rechaza,
-error `foreign-device`). Una **passphrase** opcional del usuario añade una segunda
-capa (scrypt) por si el archivo se filtra — no es lo que da la infalsificabilidad
-(esa la da la clave del llavero). `metrics/import` verifica el sello, descifra,
-valida y fusiona por id (reimportar no cambia nada). El auto-restore al
-re-emparejar es transparente: el telefono llama a `metrics/get` y ve el historial
-real del PC sin archivo.
+Rows have stable ids. Conversation/turn projections advance by `updatedAt`;
+sessions and Git rows are append-only. Existing `threads.json` history is
+backfilled idempotently at startup and before snapshot/export. Deleting a thread
+only deletes mutable conversation history — it never deletes ledger rows, so
+activity totals cannot go backwards. Day keys use `utcDayKey` (UTC midnight of
+the host calendar date), which keeps heatmap cells timezone-stable.
+
+Every ledger write is atomic and preserves five rotating local generations
+(`metrics.json.bak1` … `.bak5`). If the primary is missing or malformed, reads
+recover from the newest readable generation.
+
+**Tamper-proof backup (`metrics-seal.ts`):** `metrics/export` seals the complete
+ledger with AES-256-GCM under a 32-byte OS-keychain secret (header as AAD).
+Therefore the file is non-editable and same-PC only; an optional passphrase adds
+scrypt-based confidentiality. `metrics/import` verifies, decrypts, validates and
+idempotently merges every ledger stream. Version-1 partial backups remain
+readable. Any authenticated phone can call `metrics/get` after pairing and
+rehydrate the PC history without restoring a phone-local identity.
+
+The ledger is intentionally global per PC. `phoneDeviceId` and its Ed25519 key
+remain transport/trust identifiers, not user-profile identifiers. The phone
+keeps its metrics provider alive for the application lifetime and calls
+`metrics/get` on every successful (re)connection. Secure identity material does
+not migrate to another device; an installation without the original secret
+generates a fresh identity and re-pairs. Hardware ids are not used. Individual
+per-phone profiles are deferred until explicit profile recovery, rebinding,
+attribution, revocation and migration semantics exist.
 
 ---
 

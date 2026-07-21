@@ -15,7 +15,7 @@ file is optional; create it to override. Defaults live in
 | `relayEnabled` | `false` | **Off by default** — the bridge is LAN/Tailscale-direct (no hosting) and the pairing QR carries only the direct `hosts`. The relay is **optional and self-hosted**: pre-set `relayUrl` to your relay, then flip this to `true` and re-pair (or regenerate the QR) — the QR then carries your `relay` as a fallback after the direct `hosts`. Needed only for off-LAN access without a mesh VPN, and for **background push** (FCM). See [`connectivity.md`](./connectivity.md), [`push-notifications.md`](./push-notifications.md) and [`../../relay/docs/deploy.md`](../../relay/docs/deploy.md). |
 | `lanEnabled` | `true` | Serve the LAN WebSocket so the phone can connect directly. Its non-internal IPv4s (LAN + Tailscale `100.x`) are advertised as `hosts` in the pairing QR. |
 | `lanPort` | built-in default | LAN server port. |
-| `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. Best-effort — a failed bind (UDP 5353 busy) degrades silently; pairing still works by QR or by typing the host. |
+| `mdnsEnabled` | `true` | Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone can **discover** it for manual-code pairing without typing the host. Effective only when `lanEnabled`. On multi-homed hosts, the bridge joins and emits on every eligible advertised IPv4 rather than trusting the OS multicast route. Best-effort — an unavailable UDP 5353 interface is logged and pairing still works by QR or by typing the host. Discovery never advertises the pairing code and never creates trust. |
 | `autoReconnect` | `true` | Keep re-arming the relay session after a phone disconnects. |
 | `maxConcurrentSessions` | `1` | Concurrent phone sessions. |
 | `sessionTimeoutMinutes` | `30` | Idle session timeout. |
@@ -105,3 +105,10 @@ only write-bounded by its `permissionMode` — see
 `threads.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
 `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and the metrics sealing key
 live in the OS keychain, not on disk.
+
+`metrics.json` is a versioned, global-per-PC activity ledger. It retains
+conversation, message/day, reported-token, connection-session and mutating-Git
+rows even after mutable thread history is deleted. Existing `threads.json`
+history is backfilled idempotently at startup and before reads/exports. Five
+local generations (`metrics.json.bak1` … `.bak5`) are rotated on writes and the
+newest readable generation is used if the primary is missing or malformed.

@@ -43,7 +43,10 @@ Uxnan distinct actually live:
   local network over mDNS (`_uxnan._tcp.local`), so the phone can find it without
   typing an address. Pairing is by QR (which carries the bridge's direct
   `host:port` list) or by a short manual code (`GET /pair/resolve?code=`) when a
-  camera is not convenient.
+  camera is not convenient. Multi-homed PCs advertise explicitly through each
+  eligible IPv4 interface instead of trusting the OS multicast route. Discovery
+  is not authorization: the pairing code is never advertised, choosing a result
+  only fills the host, and the normal operator-gated E2EE enrollment still runs.
 - **The transports it brings up.** On start, the bridge runs a direct LAN
   `http + ws` server (which also serves Tailscale addresses transparently) and,
   optionally, maintains a relay pairing session for off-LAN reach. The phone
@@ -168,8 +171,10 @@ Task-focused guides live in [`docs/`](docs/):
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads.json`, `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
-  `logs/`. The Ed25519
-  identity is a secret kept in a `SecretStore`, never written in plaintext.
+  `logs/`. `metrics.json` is the complete historical activity ledger; it keeps
+  five rotating `.bak1` … `.bak5` generations and is not pruned when a thread is
+  deleted. The Ed25519 identity and metrics sealing key are secrets kept in a
+  `SecretStore`, never written in plaintext.
 - **Routing.** `HandlerRouter.dispatchRaw()` validates the envelope and routes to
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32008` +
   standard).

@@ -16,8 +16,10 @@
  *   - TXT  `<instance>._uxnan._tcp.local` → v=1, id=<deviceId>, port=<port>, addr=<ip>
  *   - A    `<host>.local`                 → <ipv4>
  * The TXT carries `addr`/`port` too, so a phone can connect without resolving the
- * `.local` A record. It is best-effort: a failed bind (port 5353 busy, no perms)
- * degrades silently — pairing still works by typing the host.
+ * `.local` A record. On a multi-homed host, multicast membership and announcements
+ * are bound explicitly to every advertised IPv4 so an OS route for a disconnected
+ * or virtual NIC cannot hide the bridge from the phone. It is best-effort: a
+ * failed bind/membership degrades safely — pairing still works by typing the host.
  *
  * Security: the advertisement carries only non-secret discovery hints (name,
  * port, device id). The pairing CODE is never advertised — it stays the consent
@@ -44,7 +46,8 @@ export interface UdpSocketLike {
   on(event: 'message', listener: (msg: Buffer, rinfo: RemoteInfo) => void): void;
   on(event: 'error', listener: (err: Error) => void): void;
   bind(options: { port: number; exclusive?: boolean }, callback?: () => void): void;
-  addMembership(multicastAddress: string): void;
+  addMembership(multicastAddress: string, multicastInterface?: string): void;
+  setMulticastInterface(multicastInterface: string): void;
   setMulticastTTL(ttl: number): void;
   send(msg: Buffer, port: number, address: string, callback?: (err: Error | null) => void): void;
   close(callback?: () => void): void;
@@ -72,6 +75,7 @@ export class MdnsAdvertiser {
   readonly #opts: MdnsAdvertiserOptions;
   readonly #logger: Logger | undefined;
   #socket: UdpSocketLike | undefined;
+  #joinedInterfaces: string[] = [];
   #started = false;
 
   constructor(options: MdnsAdvertiserOptions) {
@@ -91,16 +95,39 @@ export class MdnsAdvertiser {
       });
       socket.on('message', (msg) => this.#onMessage(msg));
       socket.bind({ port: MDNS_PORT, exclusive: false }, () => {
+        const interfaces = [...new Set(this.#opts.addresses)];
+        const joined: string[] = [];
         try {
-          socket.addMembership(MDNS_ADDRESS);
           socket.setMulticastTTL(255);
         } catch (err) {
-          this.#logger?.warn(`mDNS membership failed: ${errMsg(err)}`);
+          this.#logger?.warn(`mDNS multicast TTL failed: ${errMsg(err)}`);
         }
+        // Joining/sending without an explicit interface lets the OS choose one.
+        // On multi-homed Windows hosts the lowest-metric multicast route may be
+        // a disconnected Ethernet NIC, Tailscale, Hyper-V or WSL rather than the
+        // Wi-Fi interface shared with the phone. Join every advertised IPv4 and
+        // emit the packet once through each successful membership instead.
+        for (const address of interfaces) {
+          try {
+            socket.addMembership(MDNS_ADDRESS, address);
+            joined.push(address);
+          } catch (err) {
+            this.#logger?.warn(`mDNS membership failed on ${address}: ${errMsg(err)}`);
+          }
+        }
+        if (joined.length === 0) {
+          try {
+            socket.addMembership(MDNS_ADDRESS);
+          } catch (err) {
+            this.#logger?.warn(`mDNS membership failed on the default interface: ${errMsg(err)}`);
+          }
+        }
+        this.#joinedInterfaces = joined;
+        const route = joined.length > 0 ? joined.join(', ') : 'the OS default interface';
+        this.#logger?.info(`mDNS advertising _uxnan._tcp on :${this.#opts.port} via ${route}`);
         this.#announce();
       });
       this.#started = true;
-      this.#logger?.info(`mDNS advertising _uxnan._tcp on :${this.#opts.port}`);
     } catch (err) {
       this.#logger?.warn(`mDNS advertise disabled: ${errMsg(err)}`);
     }
@@ -112,8 +139,10 @@ export class MdnsAdvertiser {
     if (!socket) return;
     this.#socket = undefined;
     this.#started = false;
+    const joinedInterfaces = this.#joinedInterfaces;
+    this.#joinedInterfaces = [];
     try {
-      socket.send(this.#buildResponse(0), MDNS_PORT, MDNS_ADDRESS, () => socket.close());
+      this.#sendPacket(socket, this.#buildResponse(0), joinedInterfaces, () => socket.close());
     } catch {
       try {
         socket.close();
@@ -152,10 +181,36 @@ export class MdnsAdvertiser {
   #sendResponse(): void {
     const socket = this.#socket;
     if (!socket) return;
-    try {
-      socket.send(this.#buildResponse(DEFAULT_TTL), MDNS_PORT, MDNS_ADDRESS);
-    } catch (err) {
-      this.#logger?.warn(`mDNS send failed: ${errMsg(err)}`);
+    this.#sendPacket(socket, this.#buildResponse(DEFAULT_TTL), this.#joinedInterfaces);
+  }
+
+  #sendPacket(
+    socket: UdpSocketLike,
+    packet: Buffer,
+    interfaces: string[],
+    onComplete?: () => void,
+  ): void {
+    const targets: Array<string | undefined> = interfaces.length > 0 ? interfaces : [undefined];
+    let pending = targets.length;
+    const completeOne = () => {
+      pending -= 1;
+      if (pending === 0) onComplete?.();
+    };
+    for (const address of targets) {
+      try {
+        if (address) socket.setMulticastInterface(address);
+        socket.send(packet, MDNS_PORT, MDNS_ADDRESS, (err) => {
+          if (err) {
+            const route = address ? ` via ${address}` : '';
+            this.#logger?.warn(`mDNS send failed${route}: ${err.message}`);
+          }
+          completeOne();
+        });
+      } catch (err) {
+        const route = address ? ` via ${address}` : '';
+        this.#logger?.warn(`mDNS send failed${route}: ${errMsg(err)}`);
+        completeOne();
+      }
     }
   }
 

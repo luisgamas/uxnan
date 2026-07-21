@@ -23,6 +23,7 @@ import type {
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { utcDayKey } from '../metrics/day.js';
+import type { ConversationMetricEvent, TurnMetricEvent } from '../metrics/metrics-store.js';
 
 interface StoredMessage {
   id: string;
@@ -96,37 +97,6 @@ export interface StartThreadInput {
   cwd?: string;
 }
 
-/**
- * Conversation-derived profile metrics, computed from the store in a single read
- * (for `metrics/get`). Sessions + git actions live elsewhere; this is only what
- * the conversation history yields.
- */
-export interface ConversationMetrics {
-  /** Total threads. */
-  conversations: number;
-  /** Distinct agent ids used. */
-  agents: string[];
-  /** Distinct models used. */
-  models: string[];
-  /** Total messages across all turns (both roles). */
-  messages: number;
-  /** Per-agent conversation tallies (unsorted; the caller ranks them). */
-  byAgent: { agentId: string; conversations: number }[];
-  /** Earliest thread creation (epoch ms), or undefined when there are none. */
-  memberSince?: number;
-  /** Local-day activity buckets (day-start epoch ms → conversation/message counts). */
-  activityByDay: { day: number; conversations: number; messages: number }[];
-  /**
-   * Per-day activity split per agent (UTC-midnight day → agent →
-   * {conversations, messages, tokens}). Drives the per-agent bars; agents whose
-   * turns don't report usage contribute conversations/messages with tokens 0.
-   */
-  byAgentDay: {
-    day: number;
-    byAgent: { agentId: string; conversations: number; messages: number; tokens: number }[];
-  }[];
-}
-
 /** Runtime config the AgentManager needs to drive a thread's turns. */
 export interface ThreadRuntime {
   agentId?: string;
@@ -136,12 +106,23 @@ export interface ThreadRuntime {
   accessMode?: AccessMode;
 }
 
+/** Narrow persistence boundary used to project mutable thread history into the
+ * bridge's durable activity ledger without making ThreadStore own that ledger. */
+export interface ConversationMetricsSink {
+  mergeConversationHistory(
+    conversations: ConversationMetricEvent[],
+    turns: TurnMetricEvent[],
+  ): Promise<number>;
+}
+
 export class ThreadStore {
   readonly #state: DaemonState;
+  readonly #metricsSink: ConversationMetricsSink | undefined;
   #lock: Promise<void> = Promise.resolve();
 
-  constructor(state: DaemonState) {
+  constructor(state: DaemonState, metricsSink?: ConversationMetricsSink) {
     this.#state = state;
+    this.#metricsSink = metricsSink;
   }
 
   async listThreads(projectId?: string): Promise<ThreadList> {
@@ -188,8 +169,8 @@ export class ThreadStore {
     throw notFound(`turn not found: ${turnId}`);
   }
 
-  startThread(input: StartThreadInput, now: number): Promise<Thread> {
-    return this.#mutate(async (threads) => {
+  async startThread(input: StartThreadInput, now: number): Promise<Thread> {
+    const created = await this.#mutate(async (threads) => {
       const thread: StoredThread = {
         id: randomUUID(),
         projectId: input.projectId,
@@ -203,8 +184,10 @@ export class ThreadStore {
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
       };
       threads.push(thread);
-      return toThread(thread);
+      return structuredCloneThread(thread);
     });
+    await this.#captureMetrics(created);
+    return toThread(created);
   }
 
   /** Agent/model/cwd a thread's turns run with (used by `turn/send`). */
@@ -251,12 +234,14 @@ export class ThreadStore {
     });
   }
 
-  setModel(threadId: string, model: string, now: number): Promise<void> {
-    return this.#mutate(async (threads) => {
+  async setModel(threadId: string, model: string, now: number): Promise<void> {
+    const updated = await this.#mutate(async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.model = model;
       thread.updatedAt = now;
+      return structuredCloneThread(thread);
     });
+    await this.#captureMetrics(updated);
   }
 
   /** Renames a thread; returns the updated thread for the phone to echo. */
@@ -299,6 +284,16 @@ export class ThreadStore {
     return this.#mutate(async (threads) => {
       const index = threads.findIndex((t) => t.id === threadId);
       if (index === -1) throw notFound(`thread not found: ${threadId}`);
+      const thread = threads[index];
+      if (thread && this.#metricsSink) {
+        const projection = metricProjection(thread);
+        // This final projection is strict (not best-effort): the mutable source
+        // remains available if the historical ledger cannot be persisted.
+        await this.#metricsSink.mergeConversationHistory(
+          [projection.conversation],
+          projection.turns,
+        );
+      }
       threads.splice(index, 1);
     });
   }
@@ -312,8 +307,8 @@ export class ThreadStore {
     });
   }
 
-  forkThread(threadId: string, now: number): Promise<Thread> {
-    return this.#mutate(async (threads) => {
+  async forkThread(threadId: string, now: number): Promise<Thread> {
+    const fork = await this.#mutate(async (threads) => {
       const source = await this.#requireThread(threads, threadId);
       const copy: StoredThread = {
         ...structuredCloneThread(source),
@@ -323,12 +318,14 @@ export class ThreadStore {
         updatedAt: now,
       };
       threads.push(copy);
-      return toThread(copy);
+      return structuredCloneThread(copy);
     });
+    await this.#captureMetrics(fork);
+    return toThread(fork);
   }
 
-  startTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
-    return this.#mutate(async (threads) => {
+  async startTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
+    const captured = await this.#mutate(async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const turnId = randomUUID();
       const userMessage: StoredMessage = {
@@ -353,8 +350,13 @@ export class ThreadStore {
         createdAt: now,
       });
       thread.updatedAt = now;
-      return { turnId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id };
+      return {
+        result: { turnId, userMessageId: userMessage.id, assistantMessageId: assistantMessage.id },
+        thread: structuredCloneThread(thread),
+      };
     });
+    await this.#captureMetrics(captured.thread);
+    return captured.result;
   }
 
   appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
@@ -408,17 +410,19 @@ export class ThreadStore {
   }
 
   /** Records a turn's token usage on its assistant message (context meter). */
-  setUsage(
+  async setUsage(
     threadId: string,
     turnId: string,
     usage: { tokens: number; contextWindow?: number },
     now: number,
   ): Promise<void> {
-    return this.#mutate(async (threads) => {
+    const updated = await this.#mutate(async (threads) => {
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.usage = usage;
       this.#touch(threads, threadId, now);
+      return structuredCloneThread(await this.#requireThread(threads, threadId));
     });
+    await this.#captureMetrics(updated);
   }
 
   completeTurn(
@@ -484,90 +488,30 @@ export class ThreadStore {
     return thread;
   }
 
-  /**
-   * Compute the conversation-derived profile metrics in one read of the store:
-   * conversation/message counts, distinct agents/models, per-agent tallies,
-   * member-since, per-day activity buckets and the per-day per-agent breakdown
-   * (conversations/messages/tokens). Read-only.
-   */
-  async conversationMetrics(): Promise<ConversationMetrics> {
+  /** Backfills every currently stored thread/turn into the durable activity
+   * ledger. Idempotent and intentionally non-destructive: ledger rows absent
+   * from `threads.json` are historical records and must remain. */
+  async captureAllMetrics(): Promise<number> {
+    if (!this.#metricsSink) return 0;
     const threads = await this.#read();
-    const agents = new Set<string>();
-    const models = new Set<string>();
-    const byAgent = new Map<string, number>();
-    const activity = new Map<number, { conversations: number; messages: number }>();
-    // day → (agentId → { conversations, messages, tokens }) for the per-agent bars.
-    type AgentDay = { conversations: number; messages: number; tokens: number };
-    const byAgentDay = new Map<number, Map<string, AgentDay>>();
-    let messages = 0;
-    let memberSince: number | undefined;
-
-    const bucket = (day: number): { conversations: number; messages: number } => {
-      let entry = activity.get(day);
-      if (!entry) {
-        entry = { conversations: 0, messages: 0 };
-        activity.set(day, entry);
-      }
-      return entry;
-    };
-
-    const agentDay = (day: number, agentId: string): AgentDay => {
-      let m = byAgentDay.get(day);
-      if (!m) {
-        m = new Map();
-        byAgentDay.set(day, m);
-      }
-      let entry = m.get(agentId);
-      if (!entry) {
-        entry = { conversations: 0, messages: 0, tokens: 0 };
-        m.set(agentId, entry);
-      }
-      return entry;
-    };
-
+    const conversations: ConversationMetricEvent[] = [];
+    const turns: TurnMetricEvent[] = [];
     for (const thread of threads) {
-      const agentId = thread.agentId;
-      if (agentId !== undefined) {
-        agents.add(agentId);
-        byAgent.set(agentId, (byAgent.get(agentId) ?? 0) + 1);
-      }
-      if (thread.model !== undefined) models.add(thread.model);
-      if (memberSince === undefined || thread.createdAt < memberSince) {
-        memberSince = thread.createdAt;
-      }
-      const threadDay = utcDayKey(thread.createdAt);
-      bucket(threadDay).conversations += 1;
-      if (agentId !== undefined) agentDay(threadDay, agentId).conversations += 1;
-      for (const turn of thread.turns) {
-        for (const message of turn.messages) {
-          messages += 1;
-          const day = utcDayKey(message.createdAt);
-          bucket(day).messages += 1;
-          if (agentId !== undefined) {
-            const entry = agentDay(day, agentId);
-            entry.messages += 1;
-            const used = message.usage?.tokens;
-            if (message.role === 'assistant' && typeof used === 'number' && used > 0) {
-              entry.tokens += used;
-            }
-          }
-        }
-      }
+      const projection = metricProjection(thread);
+      conversations.push(projection.conversation);
+      turns.push(...projection.turns);
     }
+    return this.#metricsSink.mergeConversationHistory(conversations, turns);
+  }
 
-    return {
-      conversations: threads.length,
-      agents: [...agents],
-      models: [...models],
-      messages,
-      byAgent: [...byAgent].map(([agentId, conversations]) => ({ agentId, conversations })),
-      ...(memberSince !== undefined ? { memberSince } : {}),
-      activityByDay: [...activity].map(([day, counts]) => ({ day, ...counts })),
-      byAgentDay: [...byAgentDay].map(([day, m]) => ({
-        day,
-        byAgent: [...m].map(([agentId, entry]) => ({ agentId, ...entry })),
-      })),
-    };
+  /** Best-effort incremental projection. A later `captureAllMetrics` repairs any
+   * transient ledger-write failure without blocking conversation operations. */
+  async #captureMetrics(thread: StoredThread): Promise<void> {
+    if (!this.#metricsSink) return;
+    const projection = metricProjection(thread);
+    await this.#metricsSink
+      .mergeConversationHistory([projection.conversation], projection.turns)
+      .catch(() => undefined);
   }
 
   async #read(): Promise<StoredThread[]> {
@@ -589,6 +533,45 @@ export class ThreadStore {
     );
     return run;
   }
+}
+
+/** Project one mutable stored thread into stable ledger rows. */
+function metricProjection(thread: StoredThread): {
+  conversation: ConversationMetricEvent;
+  turns: TurnMetricEvent[];
+} {
+  const conversation: ConversationMetricEvent = {
+    id: thread.id,
+    ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
+    ...(thread.model !== undefined ? { model: thread.model } : {}),
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+  };
+  const turns = thread.turns.map((turn): TurnMetricEvent => {
+    const messageDays = new Map<number, number>();
+    let tokens = 0;
+    let tokenDay = utcDayKey(turn.createdAt);
+    for (const message of turn.messages) {
+      const day = utcDayKey(message.createdAt);
+      messageDays.set(day, (messageDays.get(day) ?? 0) + 1);
+      if (message.role === 'assistant') {
+        tokenDay = day;
+        const reported = message.usage?.tokens;
+        if (typeof reported === 'number' && reported > 0) tokens += reported;
+      }
+    }
+    return {
+      id: `${thread.id}:${turn.id}`,
+      threadId: thread.id,
+      ...(thread.agentId !== undefined ? { agentId: thread.agentId } : {}),
+      ...(thread.model !== undefined ? { model: thread.model } : {}),
+      messageDays: [...messageDays].map(([day, messages]) => ({ day, messages })),
+      tokens,
+      tokenDay,
+      updatedAt: thread.updatedAt,
+    };
+  });
+  return { conversation, turns };
 }
 
 function toThread(thread: StoredThread): Thread {

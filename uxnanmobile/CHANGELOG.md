@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security — restored installations cannot clone a trusted phone identity
+
+- Android Auto Backup and device-to-device transfer now exclude both secure
+  storage preference files; iOS Keychain entries use a `this device only`
+  accessibility class. Restoring onto another device therefore cannot silently
+  copy the Ed25519 key and notification secret; an installation without its
+  original secret generates a fresh identity and pairs again. The app now keeps
+  its metrics controller alive from startup, so every successful (re)connection
+  immediately fetches and caches the bridge's complete global activity ledger,
+  even before Profile is opened.
+
 ## [0.0.11-alpha.20260721+20260721] - 2026-07-21
 
 ### Fixed — manual pairing failed over Tailscale

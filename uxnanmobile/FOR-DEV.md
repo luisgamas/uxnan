@@ -42,12 +42,16 @@ connected to live bridge data, validated on-device against a real bridge.
   longest session, agents used, conversations, messages, sessions, git actions,
   most-used transport, models) and a per-agent breakdown — plus a **per-PC
   details** screen (device-card ▸ Statistics) and a customizable name + avatar.
-  The metrics now come from the **bridge** (`metrics/get`), so they **survive an
-  app uninstall** (re-fetched on re-pair); the phone keeps a per-PC snapshot
-  display cache (`MetricsCacheStore`) and falls back to the local drift
-  aggregation only when the cache is empty. A profile **"Backup"** section adds a
-  "local data can be lost" note + **Export / Import** of a bridge-sealed,
-  tamper-proof file (`metrics/export` / `metrics/import`), with EN/ES strings; a
+  The metrics now come from the bridge's complete global ledger (`metrics/get`),
+  so they survive app uninstall, device restore and conversation deletion. The
+  root app shell keeps the controller alive and re-fetches on every connection,
+  before Profile is opened. Android backup excludes secure-storage files and iOS
+  uses a non-migrating Keychain class, preventing a trusted phone identity from
+  being cloned onto another device. The phone keeps a per-PC snapshot display
+  cache (`MetricsCacheStore`) and falls back to local drift aggregation only when
+  the cache is empty. A profile **"Backup"** section adds **Export / Import** of a
+  complete bridge-sealed, tamper-proof ledger (`metrics/export` /
+  `metrics/import`), with EN/ES strings; a
   rejected export surfaces the **bridge's own reason** verbatim. The stats carry
   a **manual refresh** button (always available) and a persisted **refresh mode**
   — automatic (on every profile open, the default), a 5/15/30/60-min poll, or

@@ -1,7 +1,7 @@
 # Uxnan — Documentación Técnica (Especificación Móvil)
 
-> **Versión:** 1.2.0
-> **Fecha:** 2026-06-17
+> **Versión:** 1.2.1
+> **Fecha:** 2026-07-21
 > **Estado:** Definición inicial — borrador técnico completo, sincronizado con código ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod 3.x (manual)
@@ -52,7 +52,7 @@
 | Mecánica de transporte (WebSocket, handshake `performHandshake`, `SecureChannel` seq/replay, correlador, backoff, outbound buffer) | ✅ Hecho | 02a §5.9; handshake de 2 partes probado en memoria |
 | Orquestación `SessionCoordinator` (ConnectionPhase + reconexión + providers Riverpod) + `SecureStore`/`PhoneIdentityStore` + `TransportSelector` (relay, **direct LAN/Tailscale**) | ✅ Hecho | 02a §5.2.1; probado con bridge simulado (connect, RPC, reconexión) y validado on-device en LAN/Tailscale (post-Windows-Firewall) |
 | `IncomingMessageProcessor` + integración WS en vivo contra bridge real | ✅ Hecho | Probado físicamente (móvil ↔ bridge ↔ relay + móvil ↔ bridge directo en LAN/Tailscale) |
-| **Descubrimiento LAN / Tailscale (vía `hosts` en el QR, sin mDNS obligatorio)** | ✅ Hecho (host-first) | El bridge anuncia `hosts: string[]` en el `PairingPayload`; el móvil los prueba primero y cae al relay. mDNS queda como follow-up opcional (FOR-DEV). |
+| **Descubrimiento LAN + direcciones directas LAN/Tailscale** | ✅ Hecho | El bridge anuncia `hosts: string[]` en el `PairingPayload`; el móvil los prueba primero y cae al relay. Para el código manual, `_uxnan._tcp.local` permite elegir un bridge en la LAN: el bridge se une/anuncia explícitamente por cada IPv4 elegible para soportar PCs multi-homed. mDNS solo sugiere el host, nunca publica el código ni crea confianza. |
 | Reconexión robusta: heartbeat `bridge/status`, single-flight, ping WS, "Verificar conexión", sessionId estable | ✅ Hecho | 02c §11 |
 | Pairing — **lógica** (`PairingPayload` v2, `PairingValidator`, `TrustedDevice` repo, `processPairingPayload`) | ✅ Hecho | 02a §5.5; **QR + código manual** (manual es bridge-first, no relay — ver §5.5.3) |
 | Pairing — **UI** (onboarding 4 páginas, `QrScannerScreen`, `UpdatePromptDialog`, `ManualCodeScreen`, `MyDevicesScreen`, rutas) | ✅ Hecho | M3; verificado on-device en Android |

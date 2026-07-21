@@ -80,8 +80,10 @@ export interface DaemonConfig {
   /**
    * Advertise the bridge on the LAN via mDNS/Bonjour (`_uxnan._tcp`) so the phone
    * can discover it for manual-code pairing without typing the host. **Default
-   * `true`**; only effective when {@link lanEnabled}. Best-effort — a failed bind
-   * (port 5353 busy) degrades silently.
+   * `true`**; only effective when {@link lanEnabled}. The advertiser joins and
+   * emits on every eligible IPv4 interface so multi-homed hosts do not depend on
+   * the OS multicast route. Best-effort — a failed bind/membership degrades to
+   * QR or typed-host pairing.
    */
   mdnsEnabled: boolean;
   pushEnabled: boolean;

@@ -23,9 +23,11 @@ function buildQuery(labels: string[], qtype = 12): Buffer {
 
 function fakeSocket() {
   const sends: Buffer[] = [];
+  const sendInterfaces: Array<string | undefined> = [];
   let onMessage: ((m: Buffer, r: RemoteInfo) => void) | undefined;
   let bound = false;
-  let membership: string | undefined;
+  const memberships: Array<{ address: string; interfaceAddress?: string }> = [];
+  let activeInterface: string | undefined;
   const socket: UdpSocketLike = {
     on(event, listener) {
       if (event === 'message') onMessage = listener as (m: Buffer, r: RemoteInfo) => void;
@@ -34,12 +36,16 @@ function fakeSocket() {
       bound = true;
       cb?.();
     },
-    addMembership(addr) {
-      membership = addr;
+    addMembership(addr, interfaceAddress) {
+      memberships.push({ address: addr, interfaceAddress });
+    },
+    setMulticastInterface(interfaceAddress) {
+      activeInterface = interfaceAddress;
     },
     setMulticastTTL() {},
     send(msg, _port, _addr, cb) {
       sends.push(msg);
+      sendInterfaces.push(activeInterface);
       cb?.(null);
     },
     close(cb) {
@@ -49,8 +55,9 @@ function fakeSocket() {
   return {
     socket,
     sends,
+    sendInterfaces,
     isBound: () => bound,
-    membership: () => membership,
+    memberships: () => memberships,
     deliver: (m: Buffer) => onMessage?.(m, { address: '9.9.9.9' } as RemoteInfo),
   };
 }
@@ -87,8 +94,30 @@ test('announces on start and joins the multicast group', () => {
   const fake = fakeSocket();
   advertiser(fake).start();
   assert.equal(fake.isBound(), true);
-  assert.equal(fake.membership(), '224.0.0.251');
+  assert.deepEqual(fake.memberships(), [{ address: '224.0.0.251', interfaceAddress: '10.0.0.5' }]);
   assert.equal(fake.sends.length, 1, 'one unsolicited announcement');
+  assert.deepEqual(fake.sendInterfaces, ['10.0.0.5']);
+});
+
+test('joins and advertises on every explicit IPv4 interface', () => {
+  const fake = fakeSocket();
+  const adv = new MdnsAdvertiser({
+    instanceName: 'Multi-homed PC',
+    hostName: 'multi-homed-pc',
+    port: 8765,
+    addresses: ['192.168.1.5', '100.64.0.8'],
+    announceCount: 1,
+    socketFactory: () => fake.socket,
+  });
+
+  adv.start();
+
+  assert.deepEqual(fake.memberships(), [
+    { address: '224.0.0.251', interfaceAddress: '192.168.1.5' },
+    { address: '224.0.0.251', interfaceAddress: '100.64.0.8' },
+  ]);
+  assert.equal(fake.sends.length, 2, 'one announcement per joined interface');
+  assert.deepEqual(fake.sendInterfaces, ['192.168.1.5', '100.64.0.8']);
 });
 
 test('answers a browse query for our service, ignores others', () => {

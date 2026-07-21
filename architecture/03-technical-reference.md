@@ -1,10 +1,15 @@
 # Uxnan — Guia de Referencia Tecnica
 
-> **Version:** 1.0.0
-> **Fecha:** 2026-06-04
+> **Version:** 1.0.1
+> **Fecha:** 2026-07-21
 > **Estado:** Documento activo — se actualiza con cada cambio arquitectonico relevante
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
+
+> **Executive summary (1.0.1):** platform discovery references now match the
+> implemented `_uxnan._tcp` service. Android uses NsdManager with a multicast
+> lock; iOS declares Bonjour/local-network access. Discovery remains an
+> unauthenticated host hint and cannot enroll a trusted device.
 
 > Este documento forma parte de la documentacion tecnica de Uxnan. Ver tambien: [01-product-vision.md](01-product-vision.md) | [02-technical-specification.md](02-technical-specification.md)
 
@@ -1114,7 +1119,7 @@ SessionCoordinator.checkExistingSession():
 |---|---|---|
 | Almacenamiento seguro | `EncryptedSharedPreferences` + Android Keystore (API 23+) | Keychain Services (iOS 9+) |
 | Push notifications | Firebase Cloud Messaging (FCM) | APNs (directo o via FCM gateway) |
-| Permiso de red local | No requerido (acceso a LAN directo) | Requiere `NSLocalNetworkUsageDescription` + probe nativo |
+| Permiso de red local | `CHANGE_WIFI_MULTICAST_STATE` for NsdManager/mDNS (normal install-time permission; no runtime dialog) | `NSLocalNetworkUsageDescription` + `_uxnan._tcp` in `NSBonjourServices` |
 | QR Scanner | CameraX + ML Kit | AVFoundation + Apple Vision |
 | SSH | dartssh2 (puro Dart) | dartssh2 (puro Dart) |
 | Criptografia acelerada | JCE + Android Keystore | CryptoKit (Swift) via FFI |
@@ -1144,7 +1149,7 @@ La declaracion en `Info.plist`:
 <key>NSLocalNetworkUsageDescription</key>
 <string>Uxnan necesita acceso a la red local para conectarse al bridge instalado en tu PC.</string>
 <key>NSBonjourServices</key>
-<array><string>_uxnan-bridge._tcp</string></array>
+<array><string>_uxnan._tcp</string></array>
 ```
 
 ### 4.3 Background push en Android
