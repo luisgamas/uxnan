@@ -99,8 +99,24 @@ Cada pane visible en la interfaz mantiene su propio proceso PTY. Esto garantiza 
 
 Cada PTY sigue ejecutándose en background aunque su tab esté oculto, y **el
 scrollback vive una sola vez, de forma autoritativa, en el buffer del xterm del
-frontend** (acotado a 5 000 líneas por terminal). El backend no retiene
-historial de output.
+frontend** (acotado a un scrollback **configurable** por el usuario — Settings →
+Terminal, **20 000 líneas por defecto**, rango 1 000–200 000; ver
+`src/lib/terminal/scrollback.ts`). El backend no retiene historial de output. Un
+tope bajo dejaba caer silenciosamente el inicio de una sesión larga de un CLI
+verboso (p. ej. Codex) — de ahí el default alto y la perilla.
+
+> **Nota (solo Windows) — comandos bloqueados por Redirection Guard.** Un comando
+> que atraviesa un *reparse point* "no confiable" (junctions de npm workspaces en
+> `node_modules`, placeholders de OneDrive Files On-Demand) puede fallar **dentro**
+> de una terminal de Uxnan con `os error 448` ("untrusted mount point") / `errno
+> -4094`, aun cuando funciona en una terminal suelta: los procesos hijos de Uxnan
+> heredan el enforcement de redirection-trust de Windows que una terminal estándar
+> no aplica. Uxnan **no** sandboxea la shell (ver `pty.rs`) y **no** relaja la
+> mitigación del SO; en su lugar **detecta** el fallo en la salida y **guía** al
+> usuario (mueve el proyecto a una ruta local fuera de OneDrive) vía un toast único
+> — `src/lib/terminal/windowsJunctionGuard.ts` + `docs/windows-junctions.md`. La
+> alternativa estructural (spawnear los PTYs desde un proceso separado, fuera del
+> host de WebView2) queda documentada como follow-up en `FOR-DEV.md`.
 
 - **Una instancia xterm por tab, viva toda la vida del tab**: el frontend
   mantiene un registro de instancias por id (`src/lib/terminal/instances.ts`) —

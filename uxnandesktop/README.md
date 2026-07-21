@@ -54,8 +54,9 @@ available today are:
   doing (needs you · done · working · idle).
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
   ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
-  WebGL rendering with DOM fallback, and scrollback that survives recreating a pane — built on
-  `portable-pty` and xterm.js.
+  WebGL rendering with DOM fallback, and configurable scrollback (Settings →
+  Terminal) that survives recreating a pane — built on `portable-pty` and
+  xterm.js.
 - **Integrated Git review.** Status, stage, commit, push and pull, with a unified
   or side-by-side diff viewer (CodeMirror 6), **hunk-level staging**, visual image
   diffs, squash-merged branch cleanup on worktree removal, WSL repositories routed
@@ -179,7 +180,8 @@ Detailed docs live in [`docs/`](./docs/):
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·
 [GitHub integration](./docs/github.md) ·
-[updates & release channels](./docs/updates.md).
+[updates & release channels](./docs/updates.md) ·
+[Windows junctions & Redirection Guard](./docs/windows-junctions.md).
 
 The full product/engineering specification is in
 [`architecture/`](architecture/00-index.md).
