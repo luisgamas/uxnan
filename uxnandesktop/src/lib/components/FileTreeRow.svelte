@@ -20,6 +20,7 @@
     depth = 0,
     isExpanded = false,
     isOpen = false,
+    selected = false,
     changed = false,
     color = "",
     ignored = false,
@@ -38,6 +39,8 @@
     depth?: number;
     isExpanded?: boolean;
     isOpen?: boolean;
+    /** The last-clicked row — drives the selection highlight + toolbar create target. */
+    selected?: boolean;
     changed?: boolean;
     /** Git-change color class (empty for an unchanged entry). */
     color?: string;
@@ -71,7 +74,11 @@
             type="button"
             class={cn(
               "flex h-7 w-full items-center gap-1 rounded-md pr-1 text-left",
-              isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
+              isOpen
+                ? "bg-primary/15 ring-1 ring-inset ring-primary/25"
+                : selected
+                  ? "bg-accent ring-1 ring-inset ring-border/60"
+                  : "hover:bg-accent/40",
             )}
             style="padding-left: {depth * 12 + 2}px"
             onpointerdown={(e) => {

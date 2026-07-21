@@ -23,12 +23,16 @@
   import { i18n } from "$lib/i18n";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import * as ContextMenu from "$lib/components/ui/context-menu";
   import FileTreeRow from "./FileTreeRow.svelte";
+  import FileTreeDraftRow from "./FileTreeDraftRow.svelte";
   import OpenWith from "./OpenWith.svelte";
   import FileNamePromptDialog from "./FileNamePromptDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import FileIcon from "@lucide/svelte/icons/file";
+  import FilePlusIcon from "@lucide/svelte/icons/file-plus";
+  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import SearchIcon from "@lucide/svelte/icons/search";
   import FoldVerticalIcon from "@lucide/svelte/icons/fold-vertical";
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
@@ -153,11 +157,11 @@
     return false;
   }
 
-  // --- Context-menu file operations (dialogs mounted once, below) -----------
-  type PromptMode = "file" | "folder" | "rename";
-  let promptOpen = $state(false);
-  let promptMode = $state<PromptMode>("file");
-  let promptEntry = $state<FsEntry | null>(null);
+  // --- Selection + create / rename / delete operations ---------------------
+  // Create is inline (VSCode-style: an editable draft row — see `startCreate`);
+  // rename + delete still use the mounted-once dialogs below.
+  let renameOpen = $state(false);
+  let renameEntry = $state<FsEntry | null>(null);
   let deleteOpen = $state(false);
   let deleteTarget = $state<FsEntry | null>(null);
   let deleteError = $state<string | null>(null);
@@ -169,13 +173,59 @@
     return i > 0 ? entry.path.slice(0, i) : entry.path;
   }
 
+  /** Record the last-clicked row — drives the selection highlight and the target
+   *  folder for a toolbar-triggered create. */
+  function select(entry: FsEntry): void {
+    fileTree.selectedEntry = entry;
+  }
+  /** Clear the selection (VSCode-style): via Esc, or by clicking the empty area
+   *  below the tree — after which a toolbar/background create targets the root. */
+  function clearSelection(): void {
+    fileTree.selectedEntry = null;
+  }
+  /** Esc anywhere in the panel clears the selection. The draft input's own Esc
+   *  stops propagation (so it only cancels the draft), so it never reaches here. */
+  function onPanelKeydown(e: KeyboardEvent): void {
+    if (e.key === "Escape") clearSelection();
+  }
+
+  /** Where a toolbar "New File/Folder" lands: the selected folder (or the selected
+   *  file's parent), else the worktree root — mirroring VSCode. */
+  function toolbarTargetDir(): string | null {
+    const sel = fileTree.selectedEntry;
+    return sel ? dirOf(sel) : root;
+  }
+
+  /** Open an inline draft input inside `dir`. Deferred one macrotask so the menu
+   *  that triggered it closes first; being inline it never touches the bits-ui body
+   *  pointer-lock the modal create dialog had to dance around. Leaves search first so
+   *  the normal tree (where the draft renders) is showing. */
+  function startCreate(kind: "file" | "folder", dir: string | null): void {
+    if (!dir) return;
+    if (queryActive) {
+      fileTree.query = "";
+      fileTree.searchScope = null;
+    }
+    deferModalOpen(() => fileTree.beginDraft(dir, kind));
+  }
+  async function commitDraft(name: string): Promise<void> {
+    const d = fileTree.draft;
+    if (!d) return;
+    const created = await fileTree.createEntry(d.dir, name, d.kind); // throws → inline error
+    fileTree.draft = null;
+    // Opening a brand-new file mirrors an IDE's "New File".
+    if (d.kind === "file") terminals.openFile(created, root);
+  }
+  function cancelDraft(): void {
+    fileTree.draft = null;
+  }
+
   // Defer the dialog open until the context menu has fully closed, so the menu's
   // teardown releases the body pointer-lock before the dialog captures it (else
   // the dialog can restore `pointer-events: none` on close and freeze the mouse).
-  function openPrompt(mode: PromptMode, entry: FsEntry): void {
-    promptMode = mode;
-    promptEntry = entry;
-    deferModalOpen(() => (promptOpen = true));
+  function openRename(entry: FsEntry): void {
+    renameEntry = entry;
+    deferModalOpen(() => (renameOpen = true));
   }
   function openDelete(entry: FsEntry): void {
     deleteTarget = entry;
@@ -183,16 +233,8 @@
     deferModalOpen(() => (deleteOpen = true));
   }
 
-  async function submitPrompt(name: string): Promise<void> {
-    const entry = promptEntry;
-    if (!entry) return;
-    if (promptMode === "rename") {
-      await fileTree.renameEntry(entry, name); // throws → dialog shows the error
-    } else {
-      const created = await fileTree.createEntry(dirOf(entry), name, promptMode);
-      // Opening a brand-new file mirrors an IDE's "New File".
-      if (promptMode === "file") terminals.openFile(created, root);
-    }
+  async function submitRename(name: string): Promise<void> {
+    if (renameEntry) await fileTree.renameEntry(renameEntry, name); // throws → dialog shows the error
   }
 
   async function doDelete(): Promise<boolean> {
@@ -207,18 +249,7 @@
     }
   }
 
-  // Prompt-dialog copy, by mode.
-  const promptTitle = $derived(
-    promptMode === "rename"
-      ? i18n.t("fileTree.renameTitle")
-      : promptMode === "folder"
-        ? i18n.t("fileTree.newFolderTitle")
-        : i18n.t("fileTree.newFileTitle"),
-  );
-  const promptSubmit = $derived(
-    promptMode === "rename" ? i18n.t("common.rename") : i18n.t("common.create"),
-  );
-  const promptInitial = $derived(promptMode === "rename" ? (promptEntry?.name ?? "") : "");
+  const renameInitial = $derived(renameEntry?.name ?? "");
 
   // One flattened row per visible tree node (depth drives indentation). Only
   // already-loaded folders that are expanded are walked; dotfiles are hidden when
@@ -227,12 +258,19 @@
     entry: FsEntry;
     depth: number;
   }
-  const rows = $derived.by<Row[]>(() => {
-    const all: Row[] = [];
+  // A tree row is either a real entry or the inline "New File/Folder" draft, injected
+  // as the first child of its target dir (VSCode-style). `Row` backs the search tree.
+  type TreeRow =
+    | { draft: false; entry: FsEntry; depth: number }
+    | { draft: true; kind: "file" | "folder"; depth: number };
+  const treeRows = $derived.by<TreeRow[]>(() => {
+    const all: TreeRow[] = [];
+    const d = fileTree.draft;
     const walk = (dir: string, depth: number) => {
+      if (d && d.dir === dir) all.push({ draft: true, kind: d.kind, depth });
       for (const e of fileTree.childrenByDir[dir] ?? []) {
         if (!fileTree.showHidden && e.name.startsWith(".")) continue;
-        all.push({ entry: e, depth });
+        all.push({ draft: false, entry: e, depth });
         if (e.isDir && fileTree.expanded.has(e.path)) walk(e.path, depth + 1);
       }
     };
@@ -323,7 +361,8 @@
   }
 </script>
 
-<div class="flex h-full min-h-0 flex-col">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="flex h-full min-h-0 flex-col" onkeydown={onPanelKeydown}>
   <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border/60 px-2">
     {#if searching}
       {#if fileTree.searchScope}
@@ -412,6 +451,23 @@
             {/snippet}
           </DropdownMenu.Trigger>
           <DropdownMenu.Content align="end" class="min-w-48">
+            <!-- New file/folder land in the selected folder (or a selected file's
+                 parent), else the worktree root — see `toolbarTargetDir`. -->
+            <DropdownMenu.Item
+              class={text.menu}
+              onclick={() => startCreate("file", toolbarTargetDir())}
+            >
+              <FilePlusIcon />
+              {i18n.t("fileTree.newFile")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              class={text.menu}
+              onclick={() => startCreate("folder", toolbarTargetDir())}
+            >
+              <FolderPlusIcon />
+              {i18n.t("fileTree.newFolder")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator />
             <DropdownMenu.Item class={text.menu} onclick={reveal}>
               <FolderOpenIcon />
               {i18n.t("fileTree.reveal")}
@@ -458,13 +514,16 @@
               {root}
               isExpanded={r.entry.isDir && !searchCollapsed.has(r.entry.path)}
               isOpen={terminals.isFileOpen(r.entry.path)}
+              selected={fileTree.selectedEntry?.path === r.entry.path}
               {changed}
               {color}
-              onActivate={() =>
-                r.entry.isDir ? toggleSearchFolder(r.entry.path) : openFile(r.entry)}
-              onNewFile={() => openPrompt("file", r.entry)}
-              onNewFolder={() => openPrompt("folder", r.entry)}
-              onRename={() => openPrompt("rename", r.entry)}
+              onActivate={() => {
+                select(r.entry);
+                r.entry.isDir ? toggleSearchFolder(r.entry.path) : openFile(r.entry);
+              }}
+              onNewFile={() => startCreate("file", dirOf(r.entry))}
+              onNewFolder={() => startCreate("folder", dirOf(r.entry))}
+              onRename={() => openRename(r.entry)}
               onDelete={() => openDelete(r.entry)}
               {beginDrag}
               {moveDrag}
@@ -476,40 +535,91 @@
           {/if}
         </div>
       {/if}
-    {:else if rows.length === 0}
+    {:else if treeRows.length === 0}
       <p class={cn("p-3", text.meta)}>
         {fileTree.loadingDir.has(root) ? i18n.t("common.loading") : i18n.t("fileTree.empty")}
       </p>
     {:else}
-      <div class="uxnan-scroll min-h-0 flex-1 overflow-auto px-1 py-1">
-        {#each rows as r (r.entry.path)}
-          {@const rel = relOf(r.entry.path)}
-          {@const changed = r.entry.isDir ? changes.dirs.has(rel) : changes.fileMap.has(rel)}
-          {@const color = r.entry.isDir
-            ? changed
-              ? "text-amber-600 dark:text-amber-400"
-              : ""
-            : fileColor(changes.fileMap.get(rel))}
-          <FileTreeRow
-            entry={r.entry}
-            depth={r.depth}
-            {rel}
-            {root}
-            isExpanded={fileTree.expanded.has(r.entry.path)}
-            isOpen={terminals.isFileOpen(r.entry.path)}
-            {changed}
-            {color}
-            ignored={r.entry.ignored}
-            onActivate={() => (r.entry.isDir ? fileTree.toggle(r.entry) : openFile(r.entry))}
-            onNewFile={() => openPrompt("file", r.entry)}
-            onNewFolder={() => openPrompt("folder", r.entry)}
-            onRename={() => openPrompt("rename", r.entry)}
-            onDelete={() => openDelete(r.entry)}
-            {beginDrag}
-            {moveDrag}
-            {endDrag}
-          />
+      <div class="uxnan-scroll flex min-h-0 flex-1 flex-col overflow-auto px-1 py-1">
+        <div class="shrink-0">
+        {#each treeRows as r (r.draft ? "__draft__" : r.entry.path)}
+          {#if r.draft}
+            <FileTreeDraftRow
+              kind={r.kind}
+              depth={r.depth}
+              oncommit={commitDraft}
+              oncancel={cancelDraft}
+            />
+          {:else}
+            {@const rel = relOf(r.entry.path)}
+            {@const changed = r.entry.isDir ? changes.dirs.has(rel) : changes.fileMap.has(rel)}
+            {@const color = r.entry.isDir
+              ? changed
+                ? "text-amber-600 dark:text-amber-400"
+                : ""
+              : fileColor(changes.fileMap.get(rel))}
+            <FileTreeRow
+              entry={r.entry}
+              depth={r.depth}
+              {rel}
+              {root}
+              isExpanded={fileTree.expanded.has(r.entry.path)}
+              isOpen={terminals.isFileOpen(r.entry.path)}
+              selected={fileTree.selectedEntry?.path === r.entry.path}
+              {changed}
+              {color}
+              ignored={r.entry.ignored}
+              onActivate={() => {
+                select(r.entry);
+                r.entry.isDir ? fileTree.toggle(r.entry) : openFile(r.entry);
+              }}
+              onNewFile={() => startCreate("file", dirOf(r.entry))}
+              onNewFolder={() => startCreate("folder", dirOf(r.entry))}
+              onRename={() => openRename(r.entry)}
+              onDelete={() => openDelete(r.entry)}
+              {beginDrag}
+              {moveDrag}
+              {endDrag}
+            />
+          {/if}
         {/each}
+        </div>
+        <!-- Empty area (VSCode-style): a click clears the selection; a right-click
+             opens the project-root actions (create at the worktree root, reveal,
+             collapse all). `flex-1` gives a large hit target when few rows show; the
+             floor keeps it reachable at the bottom of a long, scrolled tree. -->
+        <ContextMenu.Root>
+          <ContextMenu.Trigger>
+            {#snippet child({ props })}
+              <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+              <div
+                {...props}
+                role="presentation"
+                class="min-h-12 flex-1"
+                onclick={clearSelection}
+              ></div>
+            {/snippet}
+          </ContextMenu.Trigger>
+          <ContextMenu.Content>
+            <ContextMenu.Item class={text.menu} onclick={() => startCreate("file", root)}>
+              <FilePlusIcon />
+              {i18n.t("fileTree.newFile")}
+            </ContextMenu.Item>
+            <ContextMenu.Item class={text.menu} onclick={() => startCreate("folder", root)}>
+              <FolderPlusIcon />
+              {i18n.t("fileTree.newFolder")}
+            </ContextMenu.Item>
+            <ContextMenu.Separator />
+            <ContextMenu.Item class={text.menu} onclick={reveal}>
+              <FolderOpenIcon />
+              {i18n.t("fileTree.reveal")}
+            </ContextMenu.Item>
+            <ContextMenu.Item class={text.menu} onclick={() => fileTree.collapseAll()}>
+              <FoldVerticalIcon />
+              {i18n.t("fileTree.collapseAll")}
+            </ContextMenu.Item>
+          </ContextMenu.Content>
+        </ContextMenu.Root>
       </div>
     {/if}
   {/if}
@@ -533,15 +643,16 @@
   </div>
 {/if}
 
-<!-- Mounted once; driven by the row context-menu actions above. -->
+<!-- Mounted once; rename is driven by the row context-menu action above (create is
+     now inline, and delete uses the confirm dialog below). -->
 <FileNamePromptDialog
-  bind:open={promptOpen}
-  title={promptTitle}
-  submitLabel={promptSubmit}
-  initial={promptInitial}
-  isRename={promptMode === "rename"}
+  bind:open={renameOpen}
+  title={i18n.t("fileTree.renameTitle")}
+  submitLabel={i18n.t("common.rename")}
+  initial={renameInitial}
+  isRename
   placeholder={i18n.t("fileTree.namePlaceholder")}
-  onsubmit={submitPrompt}
+  onsubmit={submitRename}
 />
 
 <ConfirmDialog

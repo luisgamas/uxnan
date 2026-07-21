@@ -419,17 +419,19 @@ export function termBuffersSet(buffers: Record<string, string>): Promise<void> {
   return invoke("term_buffers_set", { buffers });
 }
 
-/** Create a new empty file `name` inside directory `dir` (file tree "New File").
- *  `name` must be a bare name that doesn't already exist. Returns the new
- *  absolute, forward-slash path. */
-export function fsCreateFile(dir: string, name: string): Promise<string> {
-  return invoke<string>("fs_create_file", { dir, name });
+/** Create a new empty file at `path` inside directory `dir` (file tree "New
+ *  File"). `path` is a bare name or a VSCode-style intercalated relative path
+ *  (`sub/dir/file.js`) whose parent segments are created as folders; the leaf
+ *  must not already exist. Returns the new absolute, forward-slash path. */
+export function fsCreateFile(dir: string, path: string): Promise<string> {
+  return invoke<string>("fs_create_file", { dir, path });
 }
 
-/** Create a new empty directory `name` inside `dir` (file tree "New Folder").
- *  Same bare-name / no-clobber guards as {@link fsCreateFile}. */
-export function fsCreateDir(dir: string, name: string): Promise<string> {
-  return invoke<string>("fs_create_dir", { dir, name });
+/** Create a new empty directory at `path` inside `dir` (file tree "New Folder").
+ *  Same intercalated-path / no-clobber guards as {@link fsCreateFile}, with every
+ *  segment created as a folder. */
+export function fsCreateDir(dir: string, path: string): Promise<string> {
+  return invoke<string>("fs_create_dir", { dir, path });
 }
 
 /** Move a file or directory to the OS trash (file tree "Delete") — recoverable,

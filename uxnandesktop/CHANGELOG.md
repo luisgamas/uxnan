@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — VSCode-style inline file/folder creation
+
+- **Inline create in the file tree.** "New file" / "New folder" no longer open a
+  modal: an editable row is inserted at the creation site inside the tree
+  (`FileTreeDraftRow.svelte`) — type the name, Enter confirms, Esc cancels, blur
+  confirms when valid, and a failed create shows the backend error inline. The name
+  may be an **intercalated path** (`folder/file.js`), which creates the intermediate
+  folders (`mkdir -p` style, reusing existing ones) without clobbering the leaf.
+  Being inline, it also sidesteps the bits-ui body pointer-lock the modal dialog had
+  to dance around.
+- **Create from the toolbar.** The header **"…"** menu now offers New file / New
+  folder, so a new entry can be made even when a large tree leaves no empty space to
+  right-click. The target follows VSCode: the selected folder (or a selected file's
+  parent), else the worktree root. The last-clicked row is highlighted
+  (`fileTree.selectedEntry`).
+- **Deselect + root actions (VSCode-style).** Pressing **Esc** clears the file-tree
+  selection, and the **empty area below the tree** is now interactive: a click clears
+  the selection, and a right-click opens **project-root actions** (New file / New
+  folder at the worktree root, Reveal, Collapse all) — so the root is reachable even
+  when a large tree leaves no row-free space to right-click.
+- Backend: `fs_create_file` / `fs_create_dir` now accept a relative intercalated
+  path (creating the intermediate folders; leaf no-clobber; guarded against `..`,
+  empty segments, `\`, and escaping the base directory). Rename keeps the bare-name
+  guard (`validate_bare_name`).
+
 ### Added — flexible worktree creation & safe, opt-in removal
 
 - **New worktree — two modes.** The creation form now has a **New branch** /

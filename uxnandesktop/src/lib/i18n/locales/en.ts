@@ -656,6 +656,8 @@ export const en = {
   "fileTree.newFolderTitle": "New folder",
   "fileTree.renameTitle": "Rename",
   "fileTree.namePlaceholder": "Name…",
+  "fileTree.newFilePlaceholder": "File name — or folder/name…",
+  "fileTree.newFolderPlaceholder": "Folder name — or folder/sub…",
   "fileTree.invalidName": "That name isn't valid.",
   "fileTree.searchProjectPlaceholder": "Search files in project…",
   "fileTree.searchInFolder": "Search in this folder…",

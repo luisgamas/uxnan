@@ -896,21 +896,23 @@ pub async fn fs_rename(path: String, new_name: String) -> Result<String, Command
         .map_err(CommandError::from)
 }
 
-/// Create a new, empty file in `dir` (the file tree's "New File"). `name` must be
-/// a bare name that doesn't already exist (see [`crate::fs::create_file`]). Returns
-/// the new absolute, forward-slash path.
+/// Create a new, empty file in `dir` (the file tree's "New File"). `path` is a bare
+/// name or a VSCode-style intercalated relative path (`sub/dir/file.js`) whose parent
+/// segments are created as folders; the leaf must not already exist (see
+/// [`crate::fs::create_file`]). Returns the new absolute, forward-slash path.
 #[tauri::command]
-pub async fn fs_create_file(dir: String, name: String) -> Result<String, CommandError> {
-    crate::fs::create_file(&dir, &name)
+pub async fn fs_create_file(dir: String, path: String) -> Result<String, CommandError> {
+    crate::fs::create_file(&dir, &path)
         .await
         .map_err(CommandError::from)
 }
 
-/// Create a new empty directory in `dir` (the file tree's "New Folder"). Same bare
-/// name / no-clobber guards as [`fs_create_file`]. Returns the new path.
+/// Create a new empty directory in `dir` (the file tree's "New Folder"). Same
+/// intercalated-path / no-clobber guards as [`fs_create_file`], with every segment
+/// created as a folder. Returns the new path.
 #[tauri::command]
-pub async fn fs_create_dir(dir: String, name: String) -> Result<String, CommandError> {
-    crate::fs::create_dir(&dir, &name)
+pub async fn fs_create_dir(dir: String, path: String) -> Result<String, CommandError> {
+    crate::fs::create_dir(&dir, &path)
         .await
         .map_err(CommandError::from)
 }

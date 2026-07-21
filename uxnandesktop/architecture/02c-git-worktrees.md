@@ -364,14 +364,33 @@ commit/push/pull.
   relativa · Duplicar *(archivo)* · Añadir como proyecto *(carpeta)* · Abrir en
   terminal *(carpeta)* · Ver archivo · Contraer carpeta · Buscar en la carpeta
   *(acota la búsqueda a un subárbol, con chip limpiable)* · Revelar en el
-  explorador · Renombrar · Eliminar. Crear/renombrar pasan por un diálogo de
-  nombre (`FileNamePromptDialog.svelte`) con validación de nombre "desnudo" y
-  aviso de cambio de extensión. **Eliminar mueve a la papelera del SO** (crate
-  `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Backend:
-  `fs_create_file` / `fs_create_dir` / `fs_delete` / `fs_duplicate`, con las
-  mismas guardas de nombre/no-clobber que `fs_rename` (`validate_bare_name`). Las
+  explorador · Renombrar · Eliminar. **Eliminar mueve a la papelera del SO** (crate
+  `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Las
   pestañas de archivo abiertas **siguen un renombrado o se cierran al eliminar**
   (`terminals.repathTabs` / `closeTabsUnder`).
+- **Crear es inline al estilo VSCode**: en vez de un modal, New File / New Folder
+  insertan una **fila de entrada editable** (`FileTreeDraftRow.svelte`) en el sitio
+  de creación del propio árbol — Enter confirma, Esc cancela, blur confirma si el
+  nombre es válido. El nombre puede ser una **ruta intercalada** (`carpeta/archivo.js`)
+  que crea las carpetas intermedias (estilo `mkdir -p`, reutilizando las existentes)
+  sin sobrescribir la hoja. Al ser inline no toca el pointer-lock del `<body>` que el
+  diálogo modal tenía que sortear. Renombrar sí sigue usando el diálogo de nombre
+  (`FileNamePromptDialog.svelte`, validación de nombre "desnudo" + aviso de cambio de
+  extensión).
+- **Crear desde la barra + selección**: además del menú contextual, el menú **"…"**
+  de la cabecera ofrece New File / New Folder — útil cuando el árbol es grande y no
+  hay hueco vacío donde abrir el clic derecho. El destino sigue a VSCode: la **carpeta
+  seleccionada** (o el **padre** de un archivo seleccionado), o la **raíz** si no hay
+  selección. La fila seleccionada (último clic, `fileTree.selectedEntry`) se resalta.
+- **Deseleccionar + acciones de raíz**: **Esc** limpia la selección; el **área vacía
+  bajo el árbol** es clicable (estilo VSCode): un clic limpia la selección y un **clic
+  derecho** abre las acciones de la **raíz del proyecto** (New File / New Folder en la
+  raíz del worktree, Revelar, Contraer todo), alcanzables aunque un árbol grande no
+  deje hueco vacío para el clic derecho.
+- Backend: `fs_create_file` / `fs_create_dir` aceptan una **ruta relativa intercalada**
+  (crean las carpetas intermedias; hoja sin-clobber; guardas contra `..`, segmentos
+  vacíos, `\` y escapes fuera del directorio) · `fs_delete` / `fs_duplicate`.
+  `fs_rename` mantiene la guarda de nombre "desnudo" (`validate_bare_name`).
 
 ### 6.2 Visor de Archivos (panel central)
 
