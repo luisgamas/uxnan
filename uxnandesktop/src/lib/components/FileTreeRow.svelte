@@ -74,11 +74,13 @@
             type="button"
             class={cn(
               "flex h-7 w-full items-center gap-1 rounded-md pr-1 text-left",
-              isOpen
+              // The row background tracks the *selection* (last-clicked row), so Esc /
+              // a click on the empty area clears it — VSCode-style. Being open in a tab
+              // is only a subtle hint (bold text below), never a persistent background,
+              // so every open file no longer reads as "selected".
+              selected
                 ? "bg-primary/15 ring-1 ring-inset ring-primary/25"
-                : selected
-                  ? "bg-accent ring-1 ring-inset ring-border/60"
-                  : "hover:bg-accent/40",
+                : "hover:bg-accent/40",
             )}
             style="padding-left: {depth * 12 + 2}px"
             onpointerdown={(e) => {

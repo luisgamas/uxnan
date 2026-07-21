@@ -270,14 +270,17 @@
   });
 
   // When this tab becomes active (also after a rebuild), the pane went from
-  // hidden (display:none → zero-size) to visible: re-measure so CodeMirror
-  // paints, and take focus for editing.
+  // hidden (display:none → zero-size) to visible: re-measure so CodeMirror paints.
+  // We deliberately do NOT steal focus here (VSCode-style): opening or activating a
+  // file leaves focus where it was — e.g. on the file tree — so Esc/keyboard actions
+  // there keep working; click into the editor to place the cursor and start editing.
+  // Global shortcuts (Ctrl+Tab tab-cycling, Ctrl+W, …) are unaffected: they run from
+  // a window-level handler regardless of whether the editor or the tree has focus.
   $effect(() => {
     void fileState.rev;
     if (!active || !view) return;
     requestAnimationFrame(() => {
       view?.requestMeasure();
-      view?.focus();
     });
   });
 

@@ -381,7 +381,10 @@ commit/push/pull.
   de la cabecera ofrece New File / New Folder — útil cuando el árbol es grande y no
   hay hueco vacío donde abrir el clic derecho. El destino sigue a VSCode: la **carpeta
   seleccionada** (o el **padre** de un archivo seleccionado), o la **raíz** si no hay
-  selección. La fila seleccionada (último clic, `fileTree.selectedEntry`) se resalta.
+  selección. **El resalte de fila lo maneja la selección** (último clic,
+  `fileTree.selectedEntry`), no el estado "abierto en pestaña" — así **Esc** / el clic
+  en vacío lo limpian y varios archivos abiertos ya no se ven todos seleccionados;
+  estar abierto es solo una pista sutil (texto en negrita).
 - **Deseleccionar + acciones de raíz**: **Esc** limpia la selección; el **área vacía
   bajo el árbol** es clicable (estilo VSCode): un clic limpia la selección y un **clic
   derecho** abre las acciones de la **raíz del proyecto** (New File / New Folder en la
@@ -405,7 +408,13 @@ no en el árbol serializado, así CodeMirror/xterm nunca se remontan al dividir/
 y escribir no ensucia el layout persistido. **Cada vista visitada permanece montada**
 (se alterna la visibilidad), de modo que cambiar de vista no remonta el editor ni vuelve
 a leer git. Las pestañas de archivo se restauran al reiniciar (por ruta, con su vista);
-las de commit son transitorias.
+las de commit son transitorias. **Abrir (o activar) una pestaña de archivo no roba el
+foco al editor** (estilo VSCode): el foco se queda donde estaba —p. ej. en el árbol de
+archivos— para que **Esc** y los atajos del árbol sigan operables; se hace clic dentro
+del editor para colocar el cursor. `FileEditor.svelte` solo re-mide CodeMirror al
+hacerse visible (nunca `.focus()`). Los atajos globales (Ctrl+Tab, Ctrl+W…) no se ven
+afectados: los resuelve un manejador a nivel de `window` sin importar qué panel tiene el
+foco.
 
 La pestaña reúne lo que antes eran pestañas separadas: **abrir un archivo y revisar su
 diff ya no crean dos pestañas**. Al hacer clic en un archivo cambiado del panel de

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — VSCode-style file-tree focus & clearable selection
+
+- Opening (or switching to) a file tab no longer auto-focuses the CodeMirror editor;
+  focus stays where it was — e.g. on the file tree — so **Esc** deselects and the tree
+  stays keyboard-operable. Click into the editor to place the cursor and start editing
+  (VSCode-style). Global shortcuts (Ctrl+Tab tab-cycling, Ctrl+W, …) are unaffected:
+  they run from a window-level handler regardless of which pane has focus.
+- The file-tree row highlight now tracks the **selection** (the last-clicked row)
+  rather than "open in a tab", so **Esc** or a click on the empty area actually clears
+  it and several open files no longer all read as selected. Being open in a tab is now
+  only a subtle bold hint, not a persistent background highlight.
+
 ### Added — VSCode-style inline file/folder creation
 
 - **Inline create in the file tree.** "New file" / "New folder" no longer open a
