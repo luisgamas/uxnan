@@ -45,6 +45,12 @@ same tailnet reaches the bridge directly from anywhere, **with no hosted relay**
    (confirm it's listed in the "Direct addresses" line).
 3. Off-LAN, the phone connects over Tailscale exactly like it would on the LAN.
 
+> **"Browse nearby bridges" does not work over Tailscale — type the address.**
+> Discovery is mDNS (`_uxnan._tcp`), which is link-local multicast and does not
+> traverse a tailnet by design. Over Tailscale, enter the PC's `100.x` address
+> (it is printed as a "Direct address" when the bridge starts). This is inherent
+> to mDNS, not a bug — and once paired, reconnecting needs no discovery at all.
+
 No extra config needed: the relay is **off by default**, so this mode is pure
 direct (the QR carries only `hosts`).
 

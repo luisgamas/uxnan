@@ -76,6 +76,10 @@
   "actionOpenSettings": "Open settings",
   "qrHint": "Point the camera at the QR code in your bridge terminal.",
   "qrErrorExpired": "This QR code has expired. Generate a new one on your PC.",
+  "pairingErrorIncompatibleVersion": "This PC's bridge is a different version than the app. Update the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair again.",
+  "@pairingErrorIncompatibleVersion": {
+    "description": "Shown when pairing fails because the bridge and the app speak different secure-protocol versions."
+  },
   "qrErrorMalformed": "This isn't a valid Uxnan pairing code.",
   "qrCameraErrorTitle": "Camera unavailable",
   "qrCameraErrorBody": "Couldn't start the camera to scan. You can pair with a code instead, or try again.",

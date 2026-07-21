@@ -153,6 +153,10 @@ class AppLocalizationsEs extends AppLocalizations {
       'Este código QR expiró. Genera uno nuevo en tu PC.';
 
   @override
+  String get pairingErrorIncompatibleVersion =>
+      'El bridge de esta PC es de una versión distinta a la de la app. Actualiza el bridge en tu PC (npm install -g uxnan-bridge) y la app, y vuelve a emparejar.';
+
+  @override
   String get qrErrorMalformed =>
       'Este no es un código de vinculación de Uxnan válido.';
 

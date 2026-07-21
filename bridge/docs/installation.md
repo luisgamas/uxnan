@@ -81,7 +81,11 @@ Update with: npm install -g uxnan-bridge@latest
 
 The check is best-effort (silent when offline / up to date), cached in
 `~/.uxnan/update-check.json` with a 24h TTL, and the running daemon refreshes it
-in the background. The paired phone learns the same thing via `bridge/status`
+in the background. **`start` always re-checks** (it ignores the cache), so a
+release published inside the 24h window is announced the next time you start the
+bridge instead of up to a day later; the short-lived `status`/`qr`/`code`
+commands keep using the cache so they stay fast. The paired phone learns the
+same thing via `bridge/status`
 (`latestVersion`/`updateAvailable`) and shows an informational hint — see the
 mobile app. Update with `npm install -g uxnan-bridge@latest` (or `git pull` +
 `npm install` for a source checkout).

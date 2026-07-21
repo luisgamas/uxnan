@@ -230,7 +230,7 @@ class SecureTransportLayer {
     // AAD, so a mismatch would look like "connected, but nothing ever works".
     if (hello.protocolVersion != ProtocolConstants.secureProtocolVersion) {
       throw TransportException(
-        TransportErrorKind.handshake,
+        TransportErrorKind.incompatibleVersion,
         'Incompatible bridge: it speaks secure protocol '
         'v${hello.protocolVersion}, this app speaks '
         'v${ProtocolConstants.secureProtocolVersion}. Update the '

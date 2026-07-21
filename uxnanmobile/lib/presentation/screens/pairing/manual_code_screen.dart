@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/core/errors/transport_exception.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -107,7 +108,12 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
       if (!mounted) return;
       setState(() {
         _connecting = false;
-        _error = l10n.manualCodeErrorServer;
+        // A version mismatch is not something retrying can fix — say so, rather
+        // than implying the bridge hiccuped.
+        _error = error is TransportException &&
+                error.kind == TransportErrorKind.incompatibleVersion
+            ? l10n.pairingErrorIncompatibleVersion
+            : l10n.manualCodeErrorServer;
       });
     }
   }
