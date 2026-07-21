@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.9-alpha.20260721] - 2026-07-21
+
 ### Clarified — `metrics/*` backups contain the complete durable ledger
 
 - The unchanged `MetricsSnapshot`/export/import wire shapes now explicitly

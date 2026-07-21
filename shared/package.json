@@ -1,6 +1,6 @@
 {
   "name": "@uxnan/shared",
-  "version": "0.0.8-alpha.20260720",
+  "version": "0.0.9-alpha.20260721",
   "description": "Shared JSON-RPC and E2EE contracts for the Uxnan ecosystem (bridge, relay, mobile).",
   "license": "MPL-2.0",
   "author": "Luis Donaldo Gamas Vazquez",
