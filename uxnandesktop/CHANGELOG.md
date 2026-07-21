@@ -30,6 +30,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   empty segments, `\`, and escaping the base directory). Rename keeps the bare-name
   guard (`validate_bare_name`).
 
+### Fixed — a right-click (or mere focus) no longer switches tabs
+
+- **Right-panel & other bits-ui tabs.** The shared `Tabs` wrapper now defaults to
+  `activationMode="manual"`, so a tab activates only on left-click / Enter / Space —
+  never on focus. On Windows a right-click *focuses* the trigger button, and bits-ui's
+  default "automatic" mode switched the tab on that focus; now it doesn't. This is
+  what made the Files / Changes / History / GitHub right-panel tabs change on
+  right-click. Any tab set can still opt back in via `activationMode`.
+- **Terminal / file (center) tabs.** A right-click on a center tab now only opens its
+  context menu (whose actions target the clicked tab by id) instead of activating the
+  tab first — so right-click + Close on a background tab never flips to it. Selecting
+  a tab is left-click only. Uniform across Windows, Linux and macOS.
+
 ### Added — flexible worktree creation & safe, opt-in removal
 
 - **New worktree — two modes.** The creation form now has a **New branch** /
