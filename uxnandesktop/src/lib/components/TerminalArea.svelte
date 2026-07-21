@@ -266,9 +266,11 @@
   }
 
   // The tab-chip menu, for every tab kind: rename, split (terminals only), close,
-  // and close-all.
+  // and close-all. A right-click only opens the menu (its items target this exact
+  // tab via the captured `tab.id`) — it does not switch the active tab, so
+  // right-clicking a background tab to close it never first flips to it. Selecting a
+  // tab is left-click only, uniformly across Windows/Linux/macOS.
   function tabMenu(e: MouseEvent, groupId: string, tab: GroupTab) {
-    terminals.setActiveTab(groupId, tab.id);
     const items: MenuItem[] = [renameItem(tab), { separator: true }];
     if (tab.kind === "terminal") items.push(...splitItems(groupId), { separator: true });
     items.push(

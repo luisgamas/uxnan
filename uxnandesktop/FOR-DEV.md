@@ -429,10 +429,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
-- [x] File ops from the tree (create / rename / delete / new folder) — **done**: a
-      per-entry right-click context menu (`FileTreeContextMenu` + `FileNamePromptDialog`,
-      `fs_create_file`/`_dir`/`_delete`/`_duplicate`; delete → OS trash via the
-      `trash` crate). Open tabs follow a rename / close on a delete. See `CHANGELOG.md`.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
       worktree only).
 - [ ] Tab/region reorder + drag for the mixed `terminal|file|commit` tabs.

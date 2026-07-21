@@ -364,14 +364,45 @@ commit/push/pull.
   relativa · Duplicar *(archivo)* · Añadir como proyecto *(carpeta)* · Abrir en
   terminal *(carpeta)* · Ver archivo · Contraer carpeta · Buscar en la carpeta
   *(acota la búsqueda a un subárbol, con chip limpiable)* · Revelar en el
-  explorador · Renombrar · Eliminar. Crear/renombrar pasan por un diálogo de
-  nombre (`FileNamePromptDialog.svelte`) con validación de nombre "desnudo" y
-  aviso de cambio de extensión. **Eliminar mueve a la papelera del SO** (crate
-  `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Backend:
-  `fs_create_file` / `fs_create_dir` / `fs_delete` / `fs_duplicate`, con las
-  mismas guardas de nombre/no-clobber que `fs_rename` (`validate_bare_name`). Las
+  explorador · Renombrar · Eliminar. **Eliminar mueve a la papelera del SO** (crate
+  `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Las
   pestañas de archivo abiertas **siguen un renombrado o se cierran al eliminar**
   (`terminals.repathTabs` / `closeTabsUnder`).
+- **Crear y renombrar son inline al estilo VSCode**: en vez de un modal, New File /
+  New Folder insertan una **fila de entrada editable** (`FileTreeDraftRow.svelte`) en
+  el sitio de creación, y **Renombrar** convierte la fila del ítem en un input en el
+  sitio (`FileTreeRow.svelte`, con el basename preseleccionado). Ambos comparten el
+  mismo campo (`TreeInlineInput.svelte`): Enter confirma, Esc cancela, blur confirma si
+  es válido, y un error del backend se muestra inline. En **crear**, el nombre puede ser
+  una **ruta intercalada** (`carpeta/archivo.js`) que crea las carpetas intermedias
+  (estilo `mkdir -p`, reutilizando las existentes) sin sobrescribir la hoja; **renombrar**
+  es un cambio de nombre "desnudo" (`fs_rename` + `validate_bare_name`). Al ser inline no
+  tocan el pointer-lock del `<body>` que el diálogo modal tenía que sortear (el antiguo
+  `FileNamePromptDialog` se eliminó). Solo **eliminar** conserva su `ConfirmDialog`
+  destructivo.
+- **Crear desde la barra + selección**: además del menú contextual, el menú **"…"**
+  de la cabecera ofrece New File / New Folder — útil cuando el árbol es grande y no
+  hay hueco vacío donde abrir el clic derecho. El destino sigue a VSCode: la **carpeta
+  seleccionada** (o el **padre** de un archivo seleccionado), o la **raíz** si no hay
+  selección. **El resalte de fila lo maneja la selección** (último clic,
+  `fileTree.selectedEntry`), no el estado "abierto en pestaña" — así **Esc** / el clic
+  en vacío lo limpian y varios archivos abiertos ya no se ven todos seleccionados;
+  estar abierto es solo una pista sutil (texto en negrita).
+- **Deseleccionar + acciones de raíz**: **Esc** limpia la selección; el **área vacía
+  bajo el árbol** es clicable (estilo VSCode): un clic limpia la selección y un **clic
+  derecho** abre las acciones de la **raíz del proyecto** (New File / New Folder en la
+  raíz del worktree, Revelar, Contraer todo), alcanzables aunque un árbol grande no
+  deje hueco vacío para el clic derecho.
+- **Atajos de teclado** (estilo VSCode, sobre la fila seleccionada; `onPanelKeydown`):
+  **F2** renombra y **Supr** (o **Cmd+Backspace** en macOS) mueve a la papelera del SO —
+  reutilizan el mismo diálogo de renombrado y el `ConfirmDialog` destructivo del menú
+  contextual—; **Enter/Espacio** abren el archivo o pliegan/despliegan la carpeta (nativo
+  del `<button>` de la fila). No se disparan mientras se escribe en la búsqueda ni en un
+  input de creación inline.
+- Backend: `fs_create_file` / `fs_create_dir` aceptan una **ruta relativa intercalada**
+  (crean las carpetas intermedias; hoja sin-clobber; guardas contra `..`, segmentos
+  vacíos, `\` y escapes fuera del directorio) · `fs_delete` / `fs_duplicate`.
+  `fs_rename` mantiene la guarda de nombre "desnudo" (`validate_bare_name`).
 
 ### 6.2 Visor de Archivos (panel central)
 
@@ -386,7 +417,19 @@ no en el árbol serializado, así CodeMirror/xterm nunca se remontan al dividir/
 y escribir no ensucia el layout persistido. **Cada vista visitada permanece montada**
 (se alterna la visibilidad), de modo que cambiar de vista no remonta el editor ni vuelve
 a leer git. Las pestañas de archivo se restauran al reiniciar (por ruta, con su vista);
-las de commit son transitorias.
+las de commit son transitorias. **Abrir (o activar) una pestaña de archivo no roba el
+foco al editor** (estilo VSCode): el foco se queda donde estaba —p. ej. en el árbol de
+archivos— para que **Esc** y los atajos del árbol sigan operables; se hace clic dentro
+del editor para colocar el cursor. `FileEditor.svelte` solo re-mide CodeMirror al
+hacerse visible (nunca `.focus()`). Los atajos globales (Ctrl+Tab, Ctrl+W…) no se ven
+afectados: los resuelve un manejador a nivel de `window` sin importar qué panel tiene el
+foco. **La selección de texto** usa la selección **nativa** (el editor no habilita
+`drawSelection()`), así que tiene **forma de texto** y se corta al final de cada línea
+—como VSCode— en vez de un bloque de ancho completo; se tiñe del **`--primary`** del tema
+a baja opacidad con `color: inherit`, de modo que hereda el color del tema, es translúcida
+y **nunca oculta ni recolorea** el texto seleccionado en ningún tema (mismo criterio en el
+diff y en el `::selection` global de `app.css`; las terminales conservan su propia
+selección). El cursor pasa a ser el nativo, coloreado con `caret-color`.
 
 La pestaña reúne lo que antes eran pestañas separadas: **abrir un archivo y revisar su
 diff ya no crean dos pestañas**. Al hacer clic en un archivo cambiado del panel de

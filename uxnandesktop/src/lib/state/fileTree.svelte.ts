@@ -59,6 +59,16 @@ class FileTreeStore {
   searchLoading = $state(false);
   /** The last search hit the result cap (its list is a prefix). */
   searchTruncated = $state(false);
+  /** The row the user last clicked (file or folder). Drives the selection
+   *  highlight and resolves the target directory for a toolbar-triggered create
+   *  (folder → inside it; file → its parent; nothing selected → the root). */
+  selectedEntry = $state<FsEntry | null>(null);
+  /** An in-progress inline "New File" / "New Folder" (VSCode-style): a draft input
+   *  row renders as the first child of `dir` until the user commits or cancels. */
+  draft = $state<{ dir: string; kind: "file" | "folder" } | null>(null);
+  /** Path of the entry being renamed inline (VSCode-style); its row shows an editable
+   *  input in place of the name until the user commits or cancels. Null = none. */
+  renamingPath = $state<string | null>(null);
   private listening = false;
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   /** Monotonic id so a slow search can't overwrite a newer one's results. */
@@ -105,6 +115,9 @@ class FileTreeStore {
     this.error = null;
     this.query = "";
     this.searchScope = null;
+    this.selectedEntry = null;
+    this.draft = null;
+    this.renamingPath = null;
     this.clearSearch();
     if (root) void this.loadDir(root);
   }
@@ -234,13 +247,61 @@ class FileTreeStore {
   // only for currently-expanded folders and after a debounce). Failures throw so
   // the calling dialog can surface the backend message inline.
 
-  /** Create a new file/folder `name` inside `dir`, then reveal it (expand +
-   *  reload `dir`). Returns the new absolute path. */
-  async createEntry(dir: string, name: string, kind: "file" | "folder"): Promise<string> {
-    const path = kind === "folder" ? await fsCreateDir(dir, name) : await fsCreateFile(dir, name);
-    this.expanded = new Set(this.expanded).add(dir);
-    await this.loadDir(dir, true);
+  /** Create a new file/folder at `rel` inside `dir` (`rel` may be a VSCode-style
+   *  intercalated path — `sub/leaf` — which also creates the intermediate folders),
+   *  then reveal the new entry: expand the whole `dir → parent` chain, reload it,
+   *  and select the leaf. Returns the new absolute path; throws so the caller can
+   *  surface the backend error inline. */
+  async createEntry(dir: string, rel: string, kind: "file" | "folder"): Promise<string> {
+    const path = kind === "folder" ? await fsCreateDir(dir, rel) : await fsCreateFile(dir, rel);
+    await this.revealNewEntry(dir, path);
+    this.selectedEntry = {
+      name: path.split("/").pop() ?? path,
+      path,
+      isDir: kind === "folder",
+      ignored: false,
+    };
     return path;
+  }
+
+  /** Expand + force-reload every folder from `dir` (exclusive) down to the new
+   *  entry's parent (inclusive) — the intermediate folders an intercalated path
+   *  just created — so the leaf becomes visible in the tree. */
+  private async revealNewEntry(dir: string, leaf: string): Promise<void> {
+    const parent = parentOf(leaf);
+    const chain: string[] = [];
+    let cur = parent;
+    while (cur.length > dir.length && cur !== dir) {
+      chain.unshift(cur);
+      const up = parentOf(cur);
+      if (up === cur) break;
+      cur = up;
+    }
+    const exp = new Set(this.expanded).add(dir);
+    for (const d of chain) exp.add(d);
+    this.expanded = exp;
+    await this.loadDir(dir, true);
+    for (const d of chain) await this.loadDir(d, true);
+  }
+
+  /** Start an inline "New File" / "New Folder" draft inside `dir`: expand `dir` and
+   *  every ancestor up to the root (their listings stay cached when collapsed) and
+   *  load `dir`, so the draft input row is always visible as `dir`'s first child. */
+  beginDraft(dir: string, kind: "file" | "folder"): void {
+    if (this.root && dir !== this.root) {
+      const exp = new Set(this.expanded);
+      let cur = dir;
+      while (cur.length >= this.root.length) {
+        exp.add(cur);
+        if (cur === this.root) break;
+        const up = parentOf(cur);
+        if (up === cur) break;
+        cur = up;
+      }
+      this.expanded = exp;
+      void this.loadDir(dir);
+    }
+    this.draft = { dir, kind };
   }
 
   /** Rename an entry (bare name, same folder) and re-point any open tabs. Reloads

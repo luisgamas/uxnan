@@ -153,6 +153,19 @@
     user-select: none;
   }
 
+  /* Text selection: a soft, translucent highlight tinted from the theme's `--primary`
+     (so it inherits a custom theme's colour, staying neutral in the default theme) that
+     never hides the glyphs — on any theme (light / dark / custom). `color: inherit` is
+     the key: it stops the OS/browser default `::selection` from recolouring selected
+     text (the classic "selected text turns invisible" bug), so glyphs keep their own
+     colour under a low-alpha band. The ADE is `user-select: none` by default, so this
+     only applies where selection is enabled — the editor, diffs and inputs. Terminals
+     are unaffected (xterm draws its own selection with the terminal theme). */
+  ::selection {
+    background-color: color-mix(in srgb, var(--primary) 22%, transparent);
+    color: inherit;
+  }
+
   /* Interactive elements show the hand cursor (native buttons default to the
      arrow). Disabled controls show not-allowed; inputs keep their text caret. */
   button:not(:disabled),

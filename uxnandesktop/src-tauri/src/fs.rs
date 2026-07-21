@@ -260,11 +260,38 @@ pub async fn rename_path(path: &str, new_name: &str) -> Result<String, AppError>
     Ok(normalize(&target))
 }
 
-/// Shared preflight for "New File" / "New Folder": validate the bare `name`,
-/// confirm `dir` is an existing directory, and confirm nothing named `name` is
-/// already there. Returns the target path to create.
-async fn prepare_new_entry(dir: &str, name: &str) -> Result<PathBuf, AppError> {
-    let name = validate_bare_name(name)?;
+/// Split a user-entered relative path for VSCode-style intercalated creation
+/// (`sub/dir/file.js`) into its validated segments. Each `/`-separated segment
+/// must be a valid bare name — non-empty after trimming, never `.` / `..`, and
+/// free of `\` — so the joined result can never escape the base directory (no
+/// `..`, no absolute/`\`-rooted segment). A single trailing `/` is tolerated
+/// (the caller may pass a folder path with a trailing separator). Returns at
+/// least one segment.
+fn split_new_entry_path(rel: &str) -> Result<Vec<&str>, AppError> {
+    let rel = rel.trim();
+    let body = rel.strip_suffix('/').unwrap_or(rel);
+    if body.is_empty() {
+        return Err(AppError::Invalid("the name is empty".into()));
+    }
+    let mut segments = Vec::new();
+    for raw in body.split('/') {
+        let seg = raw.trim();
+        if seg.is_empty() || seg == "." || seg == ".." || seg.contains('\\') {
+            return Err(AppError::Invalid(format!("\"{rel}\" is not a valid name")));
+        }
+        segments.push(seg);
+    }
+    Ok(segments)
+}
+
+/// Shared preflight for "New File" / "New Folder": validate `rel` (a bare name or
+/// a VSCode-style intercalated relative path — see [`split_new_entry_path`]),
+/// confirm `dir` is an existing directory, then create any intermediate
+/// directories (mkdir -p style; existing folders are reused, an existing *file*
+/// in the chain errors). The leaf must not already exist (no clobber). Returns
+/// the leaf target path to create.
+async fn prepare_new_entry(dir: &str, rel: &str) -> Result<PathBuf, AppError> {
+    let segments = split_new_entry_path(rel)?;
     let base = PathBuf::from(dir);
     let meta = tokio::fs::metadata(&base)
         .await
@@ -272,29 +299,47 @@ async fn prepare_new_entry(dir: &str, name: &str) -> Result<PathBuf, AppError> {
     if !meta.is_dir() {
         return Err(AppError::Invalid(format!("{dir} is not a directory")));
     }
-    let target = base.join(name);
+    // Create every parent segment (all but the leaf), reusing existing folders.
+    let (leaf, parents) = segments.split_last().expect("at least one segment");
+    let mut cur = base;
+    for seg in parents {
+        cur = cur.join(seg);
+        match tokio::fs::metadata(&cur).await {
+            Ok(m) if m.is_dir() => {}
+            Ok(_) => {
+                return Err(AppError::Invalid(format!(
+                    "\"{seg}\" already exists and is not a folder"
+                )))
+            }
+            Err(_) => tokio::fs::create_dir(&cur).await?,
+        }
+    }
+    let target = cur.join(leaf);
     if tokio::fs::try_exists(&target).await.unwrap_or(false) {
         return Err(AppError::Invalid(format!(
-            "\"{name}\" already exists in this folder"
+            "\"{leaf}\" already exists in this folder"
         )));
     }
     Ok(target)
 }
 
-/// Create a new, empty file `name` inside directory `dir` (the file tree's "New
-/// File"). `name` must be a bare name and must not already exist. Returns the new
-/// absolute, forward-slash-normalized path so the caller can reveal/open it.
-pub async fn create_file(dir: &str, name: &str) -> Result<String, AppError> {
-    let target = prepare_new_entry(dir, name).await?;
+/// Create a new, empty file at `path` inside directory `dir` (the file tree's
+/// "New File"). `path` is a bare name or a VSCode-style intercalated relative path
+/// (`sub/dir/file.js`) whose parent segments are created as folders; the leaf must
+/// not already exist. Returns the new absolute, forward-slash-normalized path so
+/// the caller can reveal/open it.
+pub async fn create_file(dir: &str, path: &str) -> Result<String, AppError> {
+    let target = prepare_new_entry(dir, path).await?;
     tokio::fs::File::create(&target).await?;
     Ok(normalize(&target))
 }
 
-/// Create a new empty directory `name` inside `dir` (the file tree's "New
-/// Folder"). Only the single leaf is created (`name` is a bare name, so no
-/// intermediate components), never clobbering an existing entry.
-pub async fn create_dir(dir: &str, name: &str) -> Result<String, AppError> {
-    let target = prepare_new_entry(dir, name).await?;
+/// Create a new empty directory at `path` inside `dir` (the file tree's "New
+/// Folder"). `path` is a bare name or a VSCode-style intercalated relative path
+/// (`sub/dir/leaf`) whose parent segments are created as folders; the leaf folder
+/// must not already exist. Returns the new path.
+pub async fn create_dir(dir: &str, path: &str) -> Result<String, AppError> {
+    let target = prepare_new_entry(dir, path).await?;
     tokio::fs::create_dir(&target).await?;
     Ok(normalize(&target))
 }
@@ -577,10 +622,31 @@ mod tests {
         assert!(create_file(&dir, "notes.txt").await.is_err());
         assert!(create_dir(&dir, "sub").await.is_err());
 
-        // Path separators / traversal / empties are refused — never escape `dir`.
-        assert!(create_file(&dir, "a/b.txt").await.is_err());
+        // Intercalated paths create intermediate folders (VSCode-style): `a/b.txt`
+        // makes folder `a` + file `b.txt`; `x/y/z` makes the nested folder chain.
+        let nested = create_file(&dir, "a/b.txt").await.unwrap();
+        assert!(nested.ends_with("/a/b.txt"));
+        assert!(tmp.path().join("a").is_dir());
+        assert!(tmp.path().join("a/b.txt").is_file());
+        let deep = create_dir(&dir, "x/y/z").await.unwrap();
+        assert!(deep.ends_with("/x/y/z"));
+        assert!(tmp.path().join("x/y/z").is_dir());
+        // An existing intermediate folder is reused (only the leaf is no-clobber).
+        let reuse = create_file(&dir, "a/c.txt").await.unwrap();
+        assert!(reuse.ends_with("/a/c.txt"));
+        assert!(tmp.path().join("a/c.txt").is_file());
+        // A trailing slash is tolerated (folder path with a separator).
+        assert!(create_dir(&dir, "trailing/").await.is_ok());
+        assert!(tmp.path().join("trailing").is_dir());
+
+        // Traversal / empty segments / backslash are refused — never escape `dir`.
         assert!(create_file(&dir, "..").await.is_err());
+        assert!(create_file(&dir, "../escape.txt").await.is_err());
+        assert!(create_file(&dir, "a/../b.txt").await.is_err());
+        assert!(create_file(&dir, "a//b.txt").await.is_err());
         assert!(create_dir(&dir, "  ").await.is_err());
+        // An intermediate segment that is an existing *file* (not a folder) errors.
+        assert!(create_file(&dir, "notes.txt/inner.txt").await.is_err());
 
         // A missing parent directory errors instead of creating anything.
         let missing = tmp.path().join("nope").to_string_lossy().to_string();

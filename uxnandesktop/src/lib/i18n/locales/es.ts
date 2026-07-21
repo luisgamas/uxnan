@@ -653,6 +653,8 @@ export const es: Record<MessageKey, string> = {
   "fileTree.newFolderTitle": "Nueva carpeta",
   "fileTree.renameTitle": "Renombrar",
   "fileTree.namePlaceholder": "Nombre…",
+  "fileTree.newFilePlaceholder": "Nombre del archivo — o carpeta/nombre…",
+  "fileTree.newFolderPlaceholder": "Nombre de la carpeta — o carpeta/sub…",
   "fileTree.invalidName": "Ese nombre no es válido.",
   "fileTree.searchProjectPlaceholder": "Buscar archivos en el proyecto…",
   "fileTree.searchInFolder": "Buscar en esta carpeta…",

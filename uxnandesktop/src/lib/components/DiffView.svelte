@@ -89,6 +89,16 @@
     },
     ".cm-content": { padding: "4px 0" },
     ".cm-line": { padding: "0 8px" },
+    // Text selection (native — this view has no drawSelection): a soft translucent band
+    // tinted from the theme's `--primary` at low alpha (inherits a custom theme's
+    // colour), with the glyph colour untouched (`color: inherit`), so selected text
+    // stays readable on any theme. `!important` beats the browser/OS default
+    // ::selection. (app.css also sets an app-wide `::selection`; kept explicit here so
+    // the diff is robust regardless of it.)
+    "& .cm-line::selection, & .cm-line ::selection, & .cm-content ::selection": {
+      backgroundColor: "color-mix(in srgb, var(--primary) 24%, transparent) !important",
+      color: "inherit !important",
+    },
   });
 
   function lineHighlighter(classOf: (text: string, n: number) => string | null) {

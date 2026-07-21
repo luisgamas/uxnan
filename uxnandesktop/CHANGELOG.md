@@ -5,6 +5,85 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — theme-tinted, text-shaped editor text selection
+
+- Selecting text in the file editor / diff no longer paints an opaque, full-width block
+  that hid the glyphs. It now uses the **native (text-shaped) selection** that follows
+  the text and wraps at line ends — like VSCode — instead of the full-width rectangles
+  `drawSelection()` drew (which is removed from the editor; the caret is now the native
+  one, coloured via `caret-color`). The band is **tinted from the theme's `--primary`**
+  at low alpha with **`color: inherit`**, so it inherits a custom theme's colour, stays
+  translucent, and never recolours or hides selected text on any theme. Applied to the
+  editor, the diff, and an app-wide `::selection` (inputs, etc.); terminals keep their
+  own selection.
+
+### Changed — rename is inline in the tree too
+
+- Renaming a file/folder (F2 or the context menu) now edits the name **in place** in
+  the tree instead of opening a modal: the row becomes an input with the basename
+  pre-selected — Enter/Esc/blur confirm/cancel and a backend error shows inline. It
+  shares the exact field of the inline create, now extracted as a reusable
+  `TreeInlineInput`; the old `FileNamePromptDialog` is removed. Delete still uses the
+  shared destructive confirm dialog.
+
+### Added — file-tree keyboard shortcuts
+
+- With a file/folder selected in the tree, **F2** renames and **Delete** (or
+  **Cmd+Backspace** on macOS) moves it to the OS trash — reusing the same rename
+  dialog and destructive confirm as the row context menu. **Enter / Space** open a
+  file or toggle a folder (native to the focused row `<button>`). The rename/delete
+  keys never fire while typing in the search box or an inline create draft.
+
+### Changed — VSCode-style file-tree focus & clearable selection
+
+- Opening (or switching to) a file tab no longer auto-focuses the CodeMirror editor;
+  focus stays where it was — e.g. on the file tree — so **Esc** deselects and the tree
+  stays keyboard-operable. Click into the editor to place the cursor and start editing
+  (VSCode-style). Global shortcuts (Ctrl+Tab tab-cycling, Ctrl+W, …) are unaffected:
+  they run from a window-level handler regardless of which pane has focus.
+- The file-tree row highlight now tracks the **selection** (the last-clicked row)
+  rather than "open in a tab", so **Esc** or a click on the empty area actually clears
+  it and several open files no longer all read as selected. Being open in a tab is now
+  only a subtle bold hint, not a persistent background highlight.
+
+### Added — VSCode-style inline file/folder creation
+
+- **Inline create in the file tree.** "New file" / "New folder" no longer open a
+  modal: an editable row is inserted at the creation site inside the tree
+  (`FileTreeDraftRow.svelte`) — type the name, Enter confirms, Esc cancels, blur
+  confirms when valid, and a failed create shows the backend error inline. The name
+  may be an **intercalated path** (`folder/file.js`), which creates the intermediate
+  folders (`mkdir -p` style, reusing existing ones) without clobbering the leaf.
+  Being inline, it also sidesteps the bits-ui body pointer-lock the modal dialog had
+  to dance around.
+- **Create from the toolbar.** The header **"…"** menu now offers New file / New
+  folder, so a new entry can be made even when a large tree leaves no empty space to
+  right-click. The target follows VSCode: the selected folder (or a selected file's
+  parent), else the worktree root. The last-clicked row is highlighted
+  (`fileTree.selectedEntry`).
+- **Deselect + root actions (VSCode-style).** Pressing **Esc** clears the file-tree
+  selection, and the **empty area below the tree** is now interactive: a click clears
+  the selection, and a right-click opens **project-root actions** (New file / New
+  folder at the worktree root, Reveal, Collapse all) — so the root is reachable even
+  when a large tree leaves no row-free space to right-click.
+- Backend: `fs_create_file` / `fs_create_dir` now accept a relative intercalated
+  path (creating the intermediate folders; leaf no-clobber; guarded against `..`,
+  empty segments, `\`, and escaping the base directory). Rename keeps the bare-name
+  guard (`validate_bare_name`).
+
+### Fixed — a right-click (or mere focus) no longer switches tabs
+
+- **Right-panel & other bits-ui tabs.** The shared `Tabs` wrapper now defaults to
+  `activationMode="manual"`, so a tab activates only on left-click / Enter / Space —
+  never on focus. On Windows a right-click *focuses* the trigger button, and bits-ui's
+  default "automatic" mode switched the tab on that focus; now it doesn't. This is
+  what made the Files / Changes / History / GitHub right-panel tabs change on
+  right-click. Any tab set can still opt back in via `activationMode`.
+- **Terminal / file (center) tabs.** A right-click on a center tab now only opens its
+  context menu (whose actions target the clicked tab by id) instead of activating the
+  tab first — so right-click + Close on a background tab never flips to it. Selecting
+  a tab is left-click only. Uniform across Windows, Linux and macOS.
+
 ### Added — flexible worktree creation & safe, opt-in removal
 
 - **New worktree — two modes.** The creation form now has a **New branch** /
