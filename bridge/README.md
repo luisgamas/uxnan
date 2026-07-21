@@ -168,8 +168,10 @@ Task-focused guides live in [`docs/`](docs/):
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads.json`, `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
-  `logs/`. The Ed25519
-  identity is a secret kept in a `SecretStore`, never written in plaintext.
+  `logs/`. `metrics.json` is the complete historical activity ledger; it keeps
+  five rotating `.bak1` … `.bak5` generations and is not pruned when a thread is
+  deleted. The Ed25519 identity and metrics sealing key are secrets kept in a
+  `SecretStore`, never written in plaintext.
 - **Routing.** `HandlerRouter.dispatchRaw()` validates the envelope and routes to
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32008` +
   standard).

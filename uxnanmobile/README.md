@@ -60,7 +60,11 @@ this app:
 - **Your activity, at a glance.** A profile with a GitHub-style contribution
   heatmap and stat tiles — conversations, agents used, time connected, longest
   session and more — aggregated **locally** across every paired PC, plus a
-  per-PC breakdown from each device's menu, and a custom name and avatar.
+  per-PC breakdown from each device's menu, and a custom name and avatar. Each
+  bridge retains its complete activity ledger, so deleting conversations or
+  restoring/reinstalling the app does not erase those statistics. Every
+  successful connection refreshes them from the PC; if the installation no
+  longer has its non-migrating pairing secret, it pairs again first.
 - **Full custom theming.** Beyond system light/dark, a dedicated Theme Manager
   lets you build, preview, import and export your own themes (single- or
   dual-brightness), so the app genuinely looks the way you want.

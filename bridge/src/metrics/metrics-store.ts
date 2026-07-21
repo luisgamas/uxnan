@@ -1,20 +1,24 @@
 /**
  * Persistent metrics event store under `~/.uxnan/metrics.json`.
  *
- * The bridge is the source of truth for the mobile profile metrics (they used to
- * be phone-local and were lost on an app uninstall). This store holds the two
- * event streams the bridge observes itself — connection **sessions** and mutating
- * **git actions** — as append-only rows keyed by a stable id, so a re-imported
- * backup merges idempotently (a union by id). The conversation-derived metrics
- * (conversations/messages/agents/models/member-since) are computed live from the
- * {@link ThreadStore}, not stored here.
+ * The bridge is the source of truth for the mobile profile metrics. This store
+ * holds every activity stream the bridge observes — conversations, turns
+ * (message/day buckets + reported tokens), connection sessions and mutating Git
+ * actions — as rows keyed by stable ids. Conversation/turn rows are upserted
+ * because a turn is first observed with zero tokens and may receive final usage
+ * later; sessions and Git actions are append-only.
  *
- * Mutations are serialized through a mutex so concurrent session/git writes don't
- * corrupt the read-modify-write cycle (same pattern as the ThreadStore).
+ * Deleting mutable conversation history never removes rows from this ledger.
+ * Export/import therefore restores the complete activity history instead of
+ * combining a partial backup with whatever `threads.json` happens to contain.
+ *
+ * Mutations are serialized through a mutex so concurrent writes cannot corrupt
+ * the read-modify-write cycle.
  *
  * Source: architecture/02a-system-architecture.md §5.8.11.
  */
 import { randomUUID } from 'node:crypto';
+import { copyFile } from 'node:fs/promises';
 import type { MetricsTransport } from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 
@@ -32,7 +36,7 @@ export interface SessionEvent {
   endedAt?: number;
 }
 
-/** One observed mutating git action. */
+/** One observed mutating Git action. */
 export interface GitActionEvent {
   /** Unique id (primary key for idempotent merge). */
   id: string;
@@ -46,17 +50,62 @@ export interface GitActionEvent {
   at: number;
 }
 
-/** The two event streams, as persisted and as sealed for export/import. */
+/** One conversation's durable activity record. */
+export interface ConversationMetricEvent {
+  /** Stable id: the bridge thread id. */
+  id: string;
+  /** Agent selected when this conversation record was captured. */
+  agentId?: string;
+  /** Model selected when this conversation record was captured. */
+  model?: string;
+  /** When the conversation was created (epoch ms). */
+  createdAt: number;
+  /** Last time this record was refreshed from authoritative thread state. */
+  updatedAt: number;
+}
+
+/** Message count for one UTC-midnight calendar-day bucket. */
+export interface MetricMessageDay {
+  day: number;
+  messages: number;
+}
+
+/** One turn's durable activity record. */
+export interface TurnMetricEvent {
+  /** Stable id scoped by outer thread: `<threadId>:<turnId>`. */
+  id: string;
+  threadId: string;
+  agentId?: string;
+  model?: string;
+  /** Message counts split by UTC calendar day. */
+  messageDays: MetricMessageDay[];
+  /** Tokens reported by the assistant message (0 when unavailable). */
+  tokens: number;
+  /** UTC day that receives [tokens]. */
+  tokenDay: number;
+  /** Last time this record was refreshed from authoritative thread state. */
+  updatedAt: number;
+}
+
+/** Every event stream persisted and sealed for export/import. */
 export interface MetricsEvents {
+  conversations: ConversationMetricEvent[];
+  turns: TurnMetricEvent[];
   sessions: SessionEvent[];
   gitActions: GitActionEvent[];
 }
+
+// FOR-DEV: Per-phone metrics are intentionally deferred. Add an explicit
+// metrics-profile id and authenticated device attribution here (not a hardware
+// id and not the transport Ed25519 identity); define recovery/rebinding,
+// revocation, migration, shared-contract and mobile aggregation semantics first.
 
 interface MetricsFile extends MetricsEvents {
   version: number;
 }
 
-const FILE_VERSION = 1;
+const FILE_VERSION = 2;
+const BACKUP_GENERATIONS = 5;
 
 export class MetricsStore {
   readonly #state: DaemonState;
@@ -69,7 +118,25 @@ export class MetricsStore {
   /** All persisted events. */
   async readEvents(): Promise<MetricsEvents> {
     const file = await this.#read();
-    return { sessions: file.sessions, gitActions: file.gitActions };
+    return {
+      conversations: file.conversations,
+      turns: file.turns,
+      sessions: file.sessions,
+      gitActions: file.gitActions,
+    };
+  }
+
+  /** Upserts a complete conversation-history projection. Stable ids make this
+   * safe at startup, before export, and after every relevant thread mutation. */
+  mergeConversationHistory(
+    conversations: ConversationMetricEvent[],
+    turns: TurnMetricEvent[],
+  ): Promise<number> {
+    return this.#mutate(async (file) => {
+      const changedConversations = mergeLatest(file.conversations, conversations, true);
+      const changedTurns = mergeLatest(file.turns, turns, true);
+      return changedConversations + changedTurns;
+    });
   }
 
   /** Opens a session row for a freshly established channel; returns its id. */
@@ -81,8 +148,7 @@ export class MetricsStore {
     });
   }
 
-  /** Closes the open session [id] at [now] (a clean teardown). No-op if unknown
-   *  or already closed. */
+  /** Closes the open session [id] at [now]. No-op if unknown/already closed. */
   endSession(id: string, now: number): Promise<void> {
     return this.#mutate(async (file) => {
       const session = file.sessions.find((s) => s.id === id);
@@ -91,12 +157,8 @@ export class MetricsStore {
   }
 
   /**
-   * Closes any session left open by a previous run (the bridge exited without a
-   * clean teardown) at its own `startedAt`, so a crash contributes a session to
-   * the count but never inflates the connected time. Run once at startup.
-   *
-   * A no-op (no write) when there is nothing to close — so a fresh bridge with no
-   * metrics yet does not create `metrics.json` on boot.
+   * Closes sessions left open by a previous run at their own `startedAt`, so a
+   * crash contributes a session but never inflates connected time.
    */
   async closeDanglingSessions(): Promise<void> {
     const current = await this.#read();
@@ -108,7 +170,7 @@ export class MetricsStore {
     });
   }
 
-  /** Records a mutating git action. */
+  /** Records a mutating Git action. */
   recordGitAction(
     method: string,
     threadId: string | undefined,
@@ -127,19 +189,22 @@ export class MetricsStore {
   }
 
   /**
-   * Merges [incoming] events into the store by id (a union): only rows whose id
-   * is not already present are added. Idempotent — re-importing the same backup
-   * adds nothing. Returns how many new rows were merged.
+   * Merges a complete imported ledger. Conversation/turn rows advance when the
+   * incoming `updatedAt` is newer; append-only rows are unioned by id. Returns
+   * the number of inserted or advanced rows. Re-importing is idempotent.
    */
   mergeEvents(incoming: MetricsEvents): Promise<number> {
     return this.#mutate(async (file) => {
-      let added = 0;
+      let changed = 0;
+      changed += mergeLatest(file.conversations, incoming.conversations);
+      changed += mergeLatest(file.turns, incoming.turns);
+
       const sessionIds = new Set(file.sessions.map((s) => s.id));
       for (const session of incoming.sessions) {
         if (!sessionIds.has(session.id)) {
           file.sessions.push(session);
           sessionIds.add(session.id);
-          added += 1;
+          changed += 1;
         }
       }
       const gitIds = new Set(file.gitActions.map((g) => g.id));
@@ -147,17 +212,29 @@ export class MetricsStore {
         if (!gitIds.has(action.id)) {
           file.gitActions.push(action);
           gitIds.add(action.id);
-          added += 1;
+          changed += 1;
         }
       }
-      return added;
+      return changed;
     });
   }
 
   async #read(): Promise<MetricsFile> {
-    const file = await this.#state.readJson<MetricsFile>(DAEMON_FILES.metrics);
+    let file: Partial<MetricsFile> | null = null;
+    let firstError: unknown;
+    for (const candidate of metricFileCandidates()) {
+      try {
+        file = await this.#state.readJson<Partial<MetricsFile>>(candidate);
+        if (file !== null) break;
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+    if (file === null && firstError !== undefined) throw firstError;
     return {
-      version: file?.version ?? FILE_VERSION,
+      version: FILE_VERSION,
+      conversations: Array.isArray(file?.conversations) ? file.conversations : [],
+      turns: Array.isArray(file?.turns) ? file.turns : [],
       sessions: Array.isArray(file?.sessions) ? file.sessions : [],
       gitActions: Array.isArray(file?.gitActions) ? file.gitActions : [],
     };
@@ -169,6 +246,7 @@ export class MetricsStore {
       const file = await this.#read();
       const result = await fn(file);
       file.version = FILE_VERSION;
+      await this.#rotateBackups();
       await this.#state.writeJson(DAEMON_FILES.metrics, file);
       return result;
     });
@@ -178,4 +256,61 @@ export class MetricsStore {
     );
     return run;
   }
+
+  /** Preserve five previous primary generations before replacing the ledger. */
+  async #rotateBackups(): Promise<void> {
+    for (let generation = BACKUP_GENERATIONS; generation >= 1; generation -= 1) {
+      const source =
+        generation === 1
+          ? this.#state.pathFor(DAEMON_FILES.metrics)
+          : this.#state.pathFor(`${DAEMON_FILES.metrics}.bak${generation - 1}`);
+      const target = this.#state.pathFor(`${DAEMON_FILES.metrics}.bak${generation}`);
+      try {
+        await copyFile(source, target);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+  }
+}
+
+function metricFileCandidates(): string[] {
+  return [
+    DAEMON_FILES.metrics,
+    ...Array.from(
+      { length: BACKUP_GENERATIONS },
+      (_, index) => `${DAEMON_FILES.metrics}.bak${index + 1}`,
+    ),
+  ];
+}
+
+/** Merge versioned rows by id, keeping the newest representation. */
+function mergeLatest<T extends { id: string; updatedAt: number }>(
+  target: T[],
+  incoming: T[],
+  replaceDifferentEqualTimestamp = false,
+): number {
+  const index = new Map(target.map((event, i) => [event.id, i]));
+  let changed = 0;
+  for (const event of incoming) {
+    const currentIndex = index.get(event.id);
+    if (currentIndex === undefined) {
+      target.push(event);
+      index.set(event.id, target.length - 1);
+      changed += 1;
+      continue;
+    }
+    const current = target[currentIndex];
+    if (
+      current &&
+      (event.updatedAt > current.updatedAt ||
+        (replaceDifferentEqualTimestamp &&
+          event.updatedAt === current.updatedAt &&
+          JSON.stringify(event) !== JSON.stringify(current)))
+    ) {
+      target[currentIndex] = event;
+      changed += 1;
+    }
+  }
+  return changed;
 }

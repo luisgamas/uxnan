@@ -6,10 +6,10 @@
  * agents/models used, connection time, git actions, an activity heatmap). Those
  * were derived on the phone from local storage and so were lost on an app
  * uninstall (the app has no cloud login). To make them durable, the **bridge**
- * becomes the source of truth: it computes them from its own authoritative data
- * (the conversation store) plus persisted session + git-action event logs it
- * observes itself, and serves them over `metrics/get`. The phone renders one
- * snapshot per PC and sums across PCs.
+ * becomes the source of truth: it persists a complete activity ledger
+ * (conversations, turns/messages, reported tokens, sessions and Git actions)
+ * and serves it over `metrics/get`. Deleting mutable conversation history does
+ * not subtract activity. The phone renders one snapshot per PC and sums PCs.
  *
  * A `metrics/export` produces an opaque, tamper-proof file only the SAME bridge
  * can later verify + decrypt (AES-256-GCM under a secret held in the PC's OS
@@ -82,10 +82,9 @@ export interface MetricsActivityDay {
 
 /**
  * Aggregated metrics for ONE PC (the bridge that returns it), built from the
- * bridge's own authoritative data: the conversation store (threads/turns) plus
- * its persisted session + git-action event logs. The phone renders this per PC
- * and sums across PCs for the all-PCs profile. Every field is a count the phone
- * cannot inflate — the bridge observes it. Source of `metrics/get`.
+ * bridge's durable activity ledger. The phone renders this per PC and sums
+ * across PCs for the all-PCs profile. Every field is a count the phone cannot
+ * inflate — the bridge observes and retains it. Source of `metrics/get`.
  */
 export interface MetricsSnapshot {
   /** Schema version, for forward-compatible parsing. */
@@ -130,7 +129,7 @@ export interface MetricsSnapshot {
 }
 
 /**
- * `metrics/export` request. The bridge seals its metrics event log into an
+ * `metrics/export` request. The bridge seals its complete metrics ledger into an
  * opaque, tamper-proof blob that only THIS same bridge can later verify +
  * decrypt (AES-256-GCM under a secret held in the OS keychain). An optional user
  * [passphrase] adds a second confidentiality layer (scrypt-derived), so a leaked
@@ -154,8 +153,8 @@ export interface MetricsExportResult {
  * `metrics/import` request. The phone sends back a previously exported [blob].
  * The bridge verifies it was sealed by THIS PC — a foreign or edited file is
  * rejected — decrypts it (using [passphrase] when the file was passphrase-locked)
- * and merges its events by id (idempotent: re-importing the same file changes
- * nothing). Returns the refreshed snapshot.
+ * and merges its ledger rows by id (idempotent: re-importing the same file
+ * changes nothing). Returns the refreshed snapshot.
  */
 export interface MetricsImportParams {
   /** The sealed blob produced by a prior `metrics/export` on this PC. */
@@ -165,7 +164,7 @@ export interface MetricsImportParams {
 }
 
 export interface MetricsImportResult {
-  /** How many new session + git-action events were merged in. */
+  /** How many ledger rows were inserted or advanced. */
   imported: number;
   /** The refreshed snapshot after the merge. */
   snapshot: MetricsSnapshot;

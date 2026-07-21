@@ -79,7 +79,9 @@ These need a real device and/or a live bridge+relay; defer until reachable:
 
 - **On-device flows:** pairing QR scan → handshake, push notifications and the
   notification-tap deep-link (needs Firebase native config — see `FOR-HUMAN.md`),
-  camera permission, speech-to-text.
+  camera permission, speech-to-text. Also verify an Android cloud/device-transfer
+  restore and an iOS device restore require re-pairing (the secure phone identity
+  must not migrate), then confirm profile activity rehydrates from the bridge.
 - **Live bridge contracts:** the exact JSON shapes of `thread/list`,
   `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent` payloads
   are decoded with **tolerant** parsers; confirm field names against a real

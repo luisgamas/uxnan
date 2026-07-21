@@ -53,6 +53,11 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   (handshake), `SecureChannel` (AES-256-GCM + seq/replay), `RequestCorrelator`,
   `BackoffCalculator`, `OutboundMessageBuffer`.
 - `infrastructure/storage/local_database.dart` — the drift schema + migrations.
+- `infrastructure/storage/secure_store.dart` — OS-backed secrets. Android backup
+  rules exclude the plugin's encrypted preference files; iOS uses a non-migrating
+  Keychain accessibility class. An installation without its original secret gets
+  a fresh pairing identity, while the root app shell keeps `metricsSnapshotsProvider`
+  alive so every (re)connection rehydrates profile activity from the bridge.
 - `infrastructure/repositories/` — drift implementations of the domain repos.
 - `presentation/providers/` — `infrastructure_providers.dart` (infra DI) and
   `application_providers.dart` (coordinators/managers + derived stream/family

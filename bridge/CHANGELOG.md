@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — profile activity is retained in a complete durable ledger
+
+- `~/.uxnan/metrics.json` is now a version-2 global ledger for conversations,
+  turn message/day buckets, reported tokens, connection sessions and mutating
+  Git actions. Thread creation/turn usage is projected incrementally and an
+  idempotent startup/read/export backfill migrates existing `threads.json` data.
+- Deleting a thread no longer subtracts its conversations, messages or tokens
+  from `metrics/get`. The mutable conversation store and historical activity
+  ledger now have intentionally different retention semantics.
+- `metrics/export` and `metrics/import` now seal and merge the complete ledger,
+  so a same-PC restore recovers conversations, messages and token activity as
+  well as sessions and Git work. Legacy version-1 backups remain importable.
+- Ledger writes remain atomic and now retain five rotating local generations
+  (`metrics.json.bak1` … `.bak5`); reads automatically recover from the newest
+  available generation if the primary file is missing or malformed.
+
 ## [0.0.10-alpha.20260721] - 2026-07-21
 
 ### Changed — `start` always re-checks for a new bridge version

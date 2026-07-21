@@ -1,6 +1,10 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.0 | **Fecha:** 2026-06-17 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.1 | **Fecha:** 2026-07-21 | **Estado:** Sincronizado con codigo ALPHA
+>
+> **Executive summary (1.1.1):** the unchanged `metrics/*` wire shapes now
+> explicitly represent a complete bridge-retained ledger. Export/import includes
+> conversation/message/token history as well as connection and Git rows.
 >
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de los contratos JSON-RPC,
@@ -175,9 +179,9 @@ agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: v
 
 **Metricas de perfil (3):**
 ```
-metrics/get             -> MetricsSnapshot del PC que responde (fuente de verdad = el bridge): conversaciones, agentes/modelos distintos, mensajes, git actions, sesiones, tiempo conectado total/mas largo, split relay-vs-directo, desglose por agente, member-since y buckets de actividad por dia (para el heatmap). El telefono renderiza un snapshot por PC y suma entre PCs. `void` -> MetricsSnapshot.
-metrics/export          -> el bridge sella su log de eventos de metricas en un archivo opaco **a prueba de manipulacion** que solo ESE mismo bridge puede verificar + descifrar (AES-256-GCM bajo un secreto en el llavero del SO → los usuarios no pueden fabricar/editar sus stats). Passphrase opcional = segunda capa de confidencialidad (scrypt). Params { passphrase? } -> { blob, filename, passphraseProtected }.
-metrics/import          -> reingresa un archivo exportado. El bridge rechaza un archivo ajeno/editado, lo descifra (con passphrase si aplica) y fusiona sus eventos **por id** (idempotente: reimportar no cambia nada). Params { blob, passphrase? } -> { imported, snapshot }.
+metrics/get             -> `MetricsSnapshot` for the responding PC, derived from the bridge's durable global ledger: conversations, distinct agents/models, messages, reported token throughput, Git actions, sessions, connected-time totals, relay/direct split, per-agent totals, member-since and daily activity. Thread deletion does not subtract historical rows. The phone renders one snapshot per PC and sums PCs. `void` -> `MetricsSnapshot`.
+metrics/export          -> the bridge seals its **complete ledger** (conversation/turn/message/token + session + Git rows) into an opaque tamper-proof file only that same bridge can verify/decrypt (AES-256-GCM under an OS-keychain secret). An optional passphrase adds scrypt confidentiality. Params `{ passphrase? }` -> `{ blob, filename, passphraseProtected }`.
+metrics/import          -> imports a prior export. The bridge rejects foreign/edited files, decrypts and validates them, then inserts or advances ledger rows **by id** (idempotent; version-1 partial backups remain accepted). `imported` is the number of inserted/advanced rows. Params `{ blob, passphrase? }` -> `{ imported, snapshot }`.
 ```
 > **Alcance:** el uso/creditos de proveedores queda **fuera** de metrics/* — se
 > leen en vivo via `agent/usageStats` y nunca se persisten. El sellado es

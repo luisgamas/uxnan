@@ -251,6 +251,23 @@ test('rename/archive/unarchive/delete reject unknown ids', async () => {
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('delete preserves mutable history if its final metrics projection fails', async () => {
+  const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
+  let rejectWrites = false;
+  const store = new ThreadStore(new DaemonState(baseDir), {
+    mergeConversationHistory: async () => {
+      if (rejectWrites) throw new Error('ledger unavailable');
+      return 0;
+    },
+  });
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  rejectWrites = true;
+
+  await assert.rejects(store.deleteThread(thread.id), /ledger unavailable/);
+  assert.equal((await store.getThread(thread.id)).id, thread.id);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('agent session id: persisted, idempotent, surfaced via getHistorySource', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread(

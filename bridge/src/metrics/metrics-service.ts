@@ -1,13 +1,12 @@
 /**
  * Profile-metrics service: the bridge-owned home of the mobile profile metrics.
  *
- * Composes the {@link MetricsStore} (session + git-action events it observes) with
- * the {@link ThreadStore}'s conversation aggregate into a {@link MetricsSnapshot}
- * for `metrics/get`, and produces / verifies the tamper-proof backup file for
+ * Aggregates the complete {@link MetricsStore} ledger into a
+ * {@link MetricsSnapshot} for `metrics/get`, backfills existing mutable history
+ * through {@link ThreadStore}, and produces/verifies the tamper-proof backup for
  * `metrics/export` / `metrics/import` (sealed under a keychain-held secret; see
- * {@link sealMetrics}). The observation hooks (`startSession`, `endSession`,
- * `recordGitAction`, `closeDanglingSessions`) are called from the transport and
- * git handlers so the phone can never inflate the numbers.
+ * {@link sealMetrics}). Observation hooks are called by bridge-owned transport,
+ * conversation and Git paths so the phone can never inflate the numbers.
  *
  * Source: architecture/02a-system-architecture.md §5.8.11.
  */
@@ -35,6 +34,8 @@ export interface MetricsServiceOptions {
   state: DaemonState;
   secretStore: SecretStore;
   threadStore: ThreadStore;
+  /** Shared ledger instance also injected into ThreadStore for incremental capture. */
+  store?: MetricsStore;
   /** The bridge PC's macDeviceId (snapshot owner + seal binding). */
   deviceId: string;
   now: () => number;
@@ -49,11 +50,18 @@ export class MetricsService {
   #sealKey: Buffer | undefined;
 
   constructor(options: MetricsServiceOptions) {
-    this.#store = new MetricsStore(options.state);
+    this.#store = options.store ?? new MetricsStore(options.state);
     this.#secretStore = options.secretStore;
     this.#threadStore = options.threadStore;
     this.#deviceId = options.deviceId;
     this.#now = options.now;
+  }
+
+  /** Repair crash leftovers and idempotently seed the v2 conversation ledger
+   * from existing `threads.json`. Run before the bridge begins serving. */
+  async initialize(): Promise<void> {
+    await this.#store.closeDanglingSessions();
+    await this.#threadStore.captureAllMetrics();
   }
 
   // --- Observation hooks (called by the transport + git handlers) -----------
@@ -80,12 +88,11 @@ export class MetricsService {
 
   // --- metrics/get ----------------------------------------------------------
 
-  /** Build this PC's aggregated snapshot from the conversation store + events. */
+  /** Build this PC's aggregated snapshot solely from its durable ledger. */
   async getSnapshot(): Promise<MetricsSnapshot> {
-    const [conv, events] = await Promise.all([
-      this.#threadStore.conversationMetrics(),
-      this.#store.readEvents(),
-    ]);
+    // Repairs any best-effort incremental capture that failed transiently.
+    await this.#threadStore.captureAllMetrics();
+    const events = await this.#store.readEvents();
     const now = this.#now();
 
     let totalConnectedMs = 0;
@@ -102,32 +109,86 @@ export class MetricsService {
       else directSessions += 1;
     }
 
-    // Activity heatmap: conversation/message buckets from the conversation store,
-    // plus a "work" bucket per git action, keyed by the same local-day boundary.
+    const agents = new Set<string>();
+    const models = new Set<string>();
+    const byAgentCounts = new Map<string, number>();
+    let memberSince: number | undefined;
+
+    type AgentDay = { conversations: number; messages: number; tokens: number };
+    const byAgentDay = new Map<number, Map<string, AgentDay>>();
+    const agentDay = (day: number, agentId: string): AgentDay => {
+      let agentsForDay = byAgentDay.get(day);
+      if (!agentsForDay) {
+        agentsForDay = new Map();
+        byAgentDay.set(day, agentsForDay);
+      }
+      let entry = agentsForDay.get(agentId);
+      if (!entry) {
+        entry = { conversations: 0, messages: 0, tokens: 0 };
+        agentsForDay.set(agentId, entry);
+      }
+      return entry;
+    };
+
+    // Activity heatmap is built entirely from the durable ledger. Thread
+    // deletion cannot subtract from these buckets.
     const activity = new Map<number, { conversations: number; messages: number; work: number }>();
-    for (const day of conv.activityByDay) {
-      activity.set(day.day, {
-        conversations: day.conversations,
-        messages: day.messages,
-        work: 0,
-      });
+    const activityDay = (
+      day: number,
+    ): { conversations: number; messages: number; work: number } => {
+      let entry = activity.get(day);
+      if (!entry) {
+        entry = { conversations: 0, messages: 0, work: 0 };
+        activity.set(day, entry);
+      }
+      return entry;
+    };
+
+    for (const conversation of events.conversations) {
+      const day = utcDayKey(conversation.createdAt);
+      activityDay(day).conversations += 1;
+      if (memberSince === undefined || conversation.createdAt < memberSince) {
+        memberSince = conversation.createdAt;
+      }
+      if (conversation.agentId !== undefined) {
+        agents.add(conversation.agentId);
+        byAgentCounts.set(conversation.agentId, (byAgentCounts.get(conversation.agentId) ?? 0) + 1);
+        agentDay(day, conversation.agentId).conversations += 1;
+      }
+      if (conversation.model !== undefined) models.add(conversation.model);
+    }
+
+    let messages = 0;
+    for (const turn of events.turns) {
+      if (turn.agentId !== undefined) agents.add(turn.agentId);
+      if (turn.model !== undefined) models.add(turn.model);
+      for (const bucket of turn.messageDays) {
+        messages += bucket.messages;
+        activityDay(bucket.day).messages += bucket.messages;
+        if (turn.agentId !== undefined) {
+          agentDay(bucket.day, turn.agentId).messages += bucket.messages;
+        }
+      }
+      if (turn.tokens > 0 && turn.agentId !== undefined) {
+        agentDay(turn.tokenDay, turn.agentId).tokens += turn.tokens;
+      }
     }
     for (const action of events.gitActions) {
       const day = utcDayKey(action.at);
-      const entry = activity.get(day) ?? { conversations: 0, messages: 0, work: 0 };
-      entry.work += 1;
-      activity.set(day, entry);
+      activityDay(day).work += 1;
     }
 
-    const byAgent = [...conv.byAgent].sort((a, b) => b.conversations - a.conversations);
+    const byAgent = [...byAgentCounts]
+      .map(([agentId, conversations]) => ({ agentId, conversations }))
+      .sort((a, b) => b.conversations - a.conversations);
 
     return {
       version: SNAPSHOT_VERSION,
       deviceId: this.#deviceId,
-      conversations: conv.conversations,
-      agentsUsed: conv.agents.length,
-      modelsUsed: conv.models.length,
-      messages: conv.messages,
+      conversations: events.conversations.length,
+      agentsUsed: agents.size,
+      modelsUsed: models.size,
+      messages,
       gitActions: events.gitActions.length,
       sessions: events.sessions.length,
       totalConnectedMs,
@@ -135,11 +196,16 @@ export class MetricsService {
       relaySessions,
       directSessions,
       byAgent,
-      ...(conv.memberSince !== undefined ? { memberSince: conv.memberSince } : {}),
+      ...(memberSince !== undefined ? { memberSince } : {}),
       activity: [...activity]
         .map(([day, counts]) => ({ day, ...counts }))
         .sort((a, b) => a.day - b.day),
-      byAgentDay: [...conv.byAgentDay].sort((a, b) => a.day - b.day),
+      byAgentDay: [...byAgentDay]
+        .map(([day, entries]) => ({
+          day,
+          byAgent: [...entries].map(([agentId, counts]) => ({ agentId, ...counts })),
+        }))
+        .sort((a, b) => a.day - b.day),
       updatedAt: now,
     };
   }
@@ -148,6 +214,7 @@ export class MetricsService {
 
   /** Seal this PC's metrics event log into a tamper-proof backup file. */
   async exportBackup(passphrase?: string): Promise<MetricsExportResult> {
+    await this.#threadStore.captureAllMetrics();
     const events = await this.#store.readEvents();
     const sealKey = await this.#sealKeyBuffer();
     const now = this.#now();
@@ -228,12 +295,48 @@ function safeHost(): string {
  */
 function parseEvents(raw: unknown): MetricsEvents {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const conversations = Array.isArray(obj['conversations']) ? obj['conversations'] : [];
+  const turns = Array.isArray(obj['turns']) ? obj['turns'] : [];
   const sessions = Array.isArray(obj['sessions']) ? obj['sessions'] : [];
   const gitActions = Array.isArray(obj['gitActions']) ? obj['gitActions'] : [];
   return {
+    conversations: conversations.filter(isConversationMetricEvent),
+    turns: turns.filter(isTurnMetricEvent),
     sessions: sessions.filter(isSessionEvent),
     gitActions: gitActions.filter(isGitActionEvent),
   };
+}
+
+function isConversationMetricEvent(v: unknown): v is MetricsEvents['conversations'][number] {
+  const event = v as Record<string, unknown> | null;
+  return (
+    !!event &&
+    typeof event['id'] === 'string' &&
+    optionalStringField(event, 'agentId') &&
+    optionalStringField(event, 'model') &&
+    isFiniteNumber(event['createdAt']) &&
+    isFiniteNumber(event['updatedAt'])
+  );
+}
+
+function isTurnMetricEvent(v: unknown): v is MetricsEvents['turns'][number] {
+  const event = v as Record<string, unknown> | null;
+  const messageDays = event?.['messageDays'];
+  return (
+    !!event &&
+    typeof event['id'] === 'string' &&
+    typeof event['threadId'] === 'string' &&
+    optionalStringField(event, 'agentId') &&
+    optionalStringField(event, 'model') &&
+    Array.isArray(messageDays) &&
+    messageDays.every((entry) => {
+      const bucket = entry as Record<string, unknown> | null;
+      return !!bucket && isFiniteNumber(bucket['day']) && isNonNegativeInteger(bucket['messages']);
+    }) &&
+    isNonNegativeInteger(event['tokens']) &&
+    isFiniteNumber(event['tokenDay']) &&
+    isFiniteNumber(event['updatedAt'])
+  );
 }
 
 function isSessionEvent(v: unknown): v is MetricsEvents['sessions'][number] {
@@ -258,4 +361,16 @@ function isGitActionEvent(v: unknown): v is MetricsEvents['gitActions'][number] 
     typeof g['at'] === 'number' &&
     (g['threadId'] === undefined || typeof g['threadId'] === 'string')
   );
+}
+
+function optionalStringField(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || typeof value[key] === 'string';
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0 && Number.isInteger(value);
 }

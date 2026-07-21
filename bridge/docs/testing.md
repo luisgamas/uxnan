@@ -31,6 +31,8 @@ Covered: JSON-RPC contracts + validators; E2EE crypto/handshake/replay; pairing
 payload; relay forwarding/rate-limit/health; daemon state, identity (keychain via a
 fake backend), lock file; the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
+the durable metrics ledger (legacy backfill, deletion retention, rotating-file
+recovery, complete same-PC export/import and idempotent merge);
 the AgentManager + echo agent end-to-end; the OpenCode / Claude Code / Codex / pi /
 Gemini / Antigravity / Zero / Grok adapter parsers + streaming (OpenCode against a fake `opencode serve`
 implementing the `IOpenCodeServer` surface incl. the `permission.asked` → approval

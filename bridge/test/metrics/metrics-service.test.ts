@@ -7,6 +7,8 @@ import {
   DaemonState,
   InMemorySecretStore,
   MetricsService,
+  MetricsStore,
+  sealMetrics,
   ThreadStore,
   type SecretStore,
 } from '../../src/index.js';
@@ -26,12 +28,14 @@ function newHarness(
 ): Harness {
   const baseDir = join(tmpdir(), `uxnan-metrics-svc-${randomUUID()}`);
   const state = new DaemonState(baseDir);
-  const threadStore = new ThreadStore(state);
+  const metricsStore = new MetricsStore(state);
+  const threadStore = new ThreadStore(state, metricsStore);
   let clock = 1000;
   const service = new MetricsService({
     state,
     secretStore,
     threadStore,
+    store: metricsStore,
     deviceId,
     now: () => clock,
   });
@@ -140,6 +144,65 @@ test('snapshot byAgentDay splits conversations/messages/tokens per agent', async
   }
 });
 
+test('deleting conversation history never subtracts its activity from the ledger', async () => {
+  const h = newHarness();
+  try {
+    const thread = await h.threadStore.startThread(
+      { projectId: 'p', agentId: 'codex', model: 'gpt-5' },
+      1000,
+    );
+    const turn = await h.threadStore.startTurn(thread.id, 'keep the metric', 1100);
+    await h.threadStore.setUsage(thread.id, turn.turnId, { tokens: 321 }, 1200);
+
+    const before = await h.service.getSnapshot();
+    await h.threadStore.deleteThread(thread.id);
+    const after = await h.service.getSnapshot();
+
+    assert.equal(after.conversations, before.conversations);
+    assert.equal(after.messages, before.messages);
+    assert.equal(
+      after.byAgentDay.flatMap((day) => day.byAgent).reduce((sum, row) => sum + row.tokens, 0),
+      321,
+    );
+  } finally {
+    await rmrf(h.baseDir);
+  }
+});
+
+test('initialize backfills pre-ledger threads idempotently', async () => {
+  const baseDir = join(tmpdir(), `uxnan-metrics-backfill-${randomUUID()}`);
+  try {
+    const state = new DaemonState(baseDir);
+    const legacyThreadStore = new ThreadStore(state);
+    const thread = await legacyThreadStore.startThread(
+      { projectId: 'p', agentId: 'claude-code' },
+      1000,
+    );
+    const turn = await legacyThreadStore.startTurn(thread.id, 'migrate me', 1100);
+    await legacyThreadStore.setUsage(thread.id, turn.turnId, { tokens: 77 }, 1200);
+
+    const metricsStore = new MetricsStore(state);
+    const threadStore = new ThreadStore(state, metricsStore);
+    const service = new MetricsService({
+      state,
+      secretStore: new InMemorySecretStore(),
+      threadStore,
+      store: metricsStore,
+      deviceId: 'pc-1',
+      now: () => 2000,
+    });
+
+    await service.initialize();
+    await service.initialize();
+    const events = await metricsStore.readEvents();
+    assert.equal(events.conversations.length, 1);
+    assert.equal(events.turns.length, 1);
+    assert.equal(events.turns[0]?.tokens, 77);
+  } finally {
+    await rmrf(baseDir);
+  }
+});
+
 test('an open (live) session counts up to now', async () => {
   const h = newHarness();
   try {
@@ -204,27 +267,76 @@ test('passphrase-protected export requires the phrase at import', async () => {
   }
 });
 
-test('imported events from a foreign backup merge into the snapshot', async () => {
+test('imports legacy version-1 backups with session and Git rows only', async () => {
+  const secret = new InMemorySecretStore();
+  const key = Buffer.alloc(32, 7);
+  await secret.set('metrics-seal-key', key.toString('hex'));
+  const h = newHarness('pc-1', secret);
+  try {
+    const legacyPayload = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        sessions: [
+          {
+            id: 'legacy-session',
+            deviceId: 'phone',
+            transport: 'direct',
+            startedAt: 10,
+            endedAt: 20,
+          },
+        ],
+        gitActions: [{ id: 'legacy-git', method: 'git/commit', succeeded: true, at: 15 }],
+      }),
+      'utf8',
+    );
+    const blob = sealMetrics(legacyPayload, { sealKey: key, deviceId: 'pc-1', now: 30 });
+
+    const result = await h.service.importBackup(blob);
+    assert.equal(result.imported, 2);
+    assert.equal(result.snapshot.sessions, 1);
+    assert.equal(result.snapshot.gitActions, 1);
+    assert.equal(result.snapshot.conversations, 0);
+  } finally {
+    await rmrf(h.baseDir);
+  }
+});
+
+test('a complete same-PC backup restores conversation, token, session and git history', async () => {
   // Simulate restoring a backup made earlier on THIS PC (same deviceId + key).
   const secret = new InMemorySecretStore();
   const first = newHarness('pc-1', secret);
   try {
+    const thread = await first.threadStore.startThread(
+      { projectId: 'p', agentId: 'codex', model: 'gpt-5' },
+      500,
+    );
+    const turn = await first.threadStore.startTurn(thread.id, 'restore me', 600);
+    await first.threadStore.setUsage(thread.id, turn.turnId, { tokens: 456 }, 700);
     const s = await first.service.startSession('phone', 'relay');
     await first.service.endSession(s);
-    await first.service.recordGitAction('git/commit', 't', true);
+    await first.service.recordGitAction('git/commit', thread.id, true);
     const exported = await first.service.exportBackup();
 
     // A fresh store on the same PC (e.g. metrics.json was lost) restores them.
     const restored = newHarness('pc-1', secret);
     try {
       const before = await restored.service.getSnapshot();
+      assert.equal(before.conversations, 0);
       assert.equal(before.sessions, 0);
       assert.equal(before.gitActions, 0);
 
       const result = await restored.service.importBackup(exported.blob);
-      assert.equal(result.imported, 2); // 1 session + 1 git action
+      assert.equal(result.imported, 4); // conversation + turn + session + Git action
+      assert.equal(result.snapshot.conversations, 1);
+      assert.equal(result.snapshot.messages, 2);
       assert.equal(result.snapshot.sessions, 1);
       assert.equal(result.snapshot.gitActions, 1);
+      assert.equal(
+        result.snapshot.byAgentDay
+          .flatMap((day) => day.byAgent)
+          .reduce((sum, row) => sum + row.tokens, 0),
+        456,
+      );
     } finally {
       await rmrf(restored.baseDir);
     }

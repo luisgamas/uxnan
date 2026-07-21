@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Clarified — `metrics/*` backups contain the complete durable ledger
+
+- The unchanged `MetricsSnapshot`/export/import wire shapes now explicitly
+  define conversations, messages, reported tokens, sessions and Git actions as
+  bridge-retained history. `MetricsImportResult.imported` counts every inserted
+  or advanced ledger row, not only session/Git rows. This is a semantic
+  clarification; method names and JSON shapes are unchanged.
+
 ## [0.0.8-alpha.20260720] - 2026-07-20
 
 ### Changed — `SECURE_PROTOCOL_VERSION` bumped to `2` (breaking wire change)

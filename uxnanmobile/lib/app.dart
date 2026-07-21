@@ -217,6 +217,11 @@ class _PushHostState extends ConsumerState<_PushHost>
   Widget build(BuildContext context) {
     // Instantiate and keep the registrar alive for the app's lifetime.
     final registrar = ref.watch(pushRegistrarProvider);
+    // Keep the bridge-owned metrics controller alive from startup. It watches
+    // connectedDeviceProvider, so every successful (re)connection immediately
+    // rehydrates and persists that PC's complete ledger snapshot even when the
+    // user has not opened Profile yet.
+    ref.watch(metricsSnapshotsProvider);
     final l10n = AppLocalizations.of(context);
     registrar.strings = PushNotificationStrings(
       turnCompletedBody: l10n.pushTurnCompletedBody,

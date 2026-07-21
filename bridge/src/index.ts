@@ -211,6 +211,9 @@ export { MetricsService, type MetricsServiceOptions } from './metrics/metrics-se
 export {
   MetricsStore,
   type MetricsEvents,
+  type ConversationMetricEvent,
+  type MetricMessageDay,
+  type TurnMetricEvent,
   type SessionEvent,
   type GitActionEvent,
 } from './metrics/metrics-store.js';
