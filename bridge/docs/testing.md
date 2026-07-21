@@ -28,7 +28,9 @@ Runner: Node's built-in `node:test` over the compiled output (`dist/test`), with
 (developed/tested on Node 24, Windows).
 
 Covered: JSON-RPC contracts + validators; E2EE crypto/handshake/replay; pairing
-payload; relay forwarding/rate-limit/health; daemon state, identity (keychain via a
+payload; mDNS wire encoding/query handling plus explicit per-IPv4
+membership/announcements for multi-homed hosts; relay forwarding/rate-limit/health;
+daemon state, identity (keychain via a
 fake backend), lock file; the **autostart** plan per platform; git + workspace +
 **directory browsing** + checkpoints (real git in temp repos); conversation store;
 the durable metrics ledger (legacy backfill, deletion retention, rotating-file
@@ -67,6 +69,13 @@ release, validate against the real Flutter app (`uxnanmobile` branch):
    works without re-scan; a JSON-RPC round-trip (Git panel → `git/status`);
    streaming (`stream/message/delta` + `stream/turn/completed`, using the `echo`
    agent until a real CLI is configured); and the LAN path (same Wi-Fi, no relay).
+5. Open manual pairing → **Browse nearby bridges** while the phone and PC share
+   the LAN. Confirm the bridge appears and selecting it only fills the host field:
+   no code is exposed, no request is sent until the user supplies the code, and no
+   trusted device is created before the normal E2EE bootstrap. On a multi-homed
+   Windows PC, the `mDNS advertising ... via ...` log must include the Wi-Fi IPv4.
+   Android's `adb shell dumpsys servicediscovery` should show
+   `_uxnan._tcp.local` queries followed by a discovered/resolved service.
 
 ### Byte contracts to re-check if either side changes
 Handshake transcript encoding (`buildHandshakeTranscript` — hex for byte fields,

@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 541, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 542, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -24,7 +24,8 @@ push validation (FOR-HUMAN).
 - **E2EE transport** — relay `mac` client + direct-LAN `http+ws` server,
   handshake, AES-256-GCM channel, byte-for-byte compatible with the mobile app;
   background reconnect loop; stable pairing session; mDNS discovery
-  (`_uxnan._tcp.local`); manual-code pairing (`GET /pair/resolve?code=`); the LAN
+  (`_uxnan._tcp.local`) with explicit per-IPv4 membership/announcements on
+  multi-homed hosts; manual-code pairing (`GET /pair/resolve?code=`); the LAN
   `qr_bootstrap` handshake is gated on an operator-armed pairing window
   (`PairingCodeService.arm`/`isArmed`, 3-minute TTL, in-memory) — showing the QR
   or the manual code arms it, so a reachable LAN/Tailscale device cannot

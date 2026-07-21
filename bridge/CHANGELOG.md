@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — LAN discovery now works on multi-homed Windows hosts
+
+- The dependency-free mDNS advertiser now joins `224.0.0.251:5353` explicitly
+  on every eligible advertised IPv4 and sends each announcement/response once
+  through every successfully joined interface. Previously it called
+  `addMembership()` without an interface and never set the outbound multicast
+  interface, so Windows could choose a lower-metric disconnected Ethernet,
+  Tailscale, Hyper-V or WSL route instead of the Wi-Fi shared with the phone.
+  Direct TCP pairing still worked while Android sent `_uxnan._tcp.local`
+  queries forever with no answer.
+- Startup logs now name the IPv4 interfaces used for mDNS and report individual
+  membership/send failures, making UDP 5353 routing/firewall faults observable
+  without logging any pairing secret. The fallback remains QR or a typed host.
+- Security is unchanged: mDNS advertises only untrusted discovery hints
+  (display name, bridge id, address and port), never the pairing code. Choosing
+  a result only fills one host field; the user must still enter the code, that
+  code is sent only to the chosen host, and trust is created only after the
+  operator-gated E2EE bootstrap.
+
 ### Changed — profile activity is retained in a complete durable ledger
 
 - `~/.uxnan/metrics.json` is now a version-2 global ledger for conversations,

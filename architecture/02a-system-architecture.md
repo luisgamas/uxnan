@@ -1,16 +1,19 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.1
+> **Version:** 1.2.2
 > **Fecha:** 2026-07-21
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
-> **Executive summary (1.2.1):** profile activity is owned by a complete,
+> **Executive summary (1.2.2):** profile activity is owned by a complete,
 > global-per-PC bridge ledger. Conversation deletion never subtracts historical
 > metrics; export/import includes conversations, messages, reported tokens,
 > sessions and Git actions. Phone transport identity remains installation-local
-> and is not used as an activity-profile identity.
+> and is not used as an activity-profile identity. LAN discovery is an
+> unauthenticated host hint, emitted explicitly on every eligible IPv4 interface;
+> it never carries the pairing code and never bypasses the operator-gated E2EE
+> enrollment.
 
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de la arquitectura del sistema.
@@ -1176,6 +1179,14 @@ QrScannerScreen
 > casos usan la dirección resuelta por SRV). El caso totalmente fuera de red (el
 > teléfono sin ruta directa alguna al bridge) sigue sin cubrirse; queda registrado
 > como trabajo pendiente en `uxnanmobile/FOR-DEV.md`.
+>
+> **Multi-interface discovery (2026-07):** the bridge does not let the OS choose
+> one implicit multicast route. It joins `224.0.0.251:5353` and emits each
+> `_uxnan._tcp.local` announcement/response explicitly through every eligible
+> advertised IPv4. This prevents a lower-metric disconnected Ethernet,
+> Tailscale, Hyper-V or WSL route from hiding a Wi-Fi bridge. Individual
+> membership/send failures are logged without secrets and degrade to QR/typed
+> host pairing. mDNS remains link-local and does not traverse Tailscale.
 
 ```
 ManualCodeScreen

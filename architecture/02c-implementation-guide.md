@@ -1,8 +1,12 @@
 # Uxnan — Guia de Implementacion
 
-> **Version:** 1.0.0  
-> **Fecha:** 2026-06-04  
-> **Estado:** En desarrollo  
+> **Version:** 1.0.1
+> **Fecha:** 2026-07-21
+> **Estado:** En desarrollo
+> **Executive summary (1.0.1):** the platform setup now matches the implemented
+> `_uxnan._tcp` DNS-SD discovery path, including Android's multicast permission
+> and iOS Bonjour declaration. Discovery only fills a host and never authorizes
+> or trusts a device.
 > Este documento forma parte de la documentacion tecnica de Uxnan. Ver tambien: [01-product-vision.md](01-product-vision.md) | [02a-system-architecture.md](02a-system-architecture.md) | [02b-contracts-and-requirements.md](02b-contracts-and-requirements.md) | [03-technical-reference.md](03-technical-reference.md)
 
 ---
@@ -1975,6 +1979,8 @@ preferred-supported-locales: [es, en]
 ```xml
 <!-- Permisos obligatorios -->
 <uses-permission android:name="android.permission.INTERNET" />
+<!-- NsdManager/mDNS browse; normal install-time permission, no runtime dialog. -->
+<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -2002,7 +2008,7 @@ preferred-supported-locales: [es, en]
 <string>Uxnan necesita acceso a la red local para conectarse directamente al bridge instalado en tu PC cuando ambos estan en la misma red Wi-Fi.</string>
 <key>NSBonjourServices</key>
 <array>
-    <string>_uxnan-bridge._tcp</string>
+    <string>_uxnan._tcp</string>
 </array>
 
 <!-- Microfono — para voice input (feature post-MVP) -->
@@ -3617,8 +3623,8 @@ abstract final class ProtocolConstants {
   static const int maxPushDedupeKeys = 10000;
 
   // LAN discovery
-  static const String bonjourServiceType = '_uxnan-bridge._tcp';
-  static const int bridgeDefaultPort = 51420;
+  static const String bonjourServiceType = '_uxnan._tcp';
+  static const int bridgeDefaultPort = 19850;
 }
 ```
 

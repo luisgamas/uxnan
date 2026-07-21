@@ -1,10 +1,12 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.1 | **Fecha:** 2026-07-21 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.2 | **Fecha:** 2026-07-21 | **Estado:** Sincronizado con codigo ALPHA
 >
-> **Executive summary (1.1.1):** the unchanged `metrics/*` wire shapes now
+> **Executive summary (1.1.2):** the unchanged `metrics/*` wire shapes now
 > explicitly represent a complete bridge-retained ledger. Export/import includes
-> conversation/message/token history as well as connection and Git rows.
+> conversation/message/token history as well as connection and Git rows. The LAN
+> discovery boundary is explicit: mDNS is an untrusted host hint, not a shared
+> contract, secret-delivery path or trust decision.
 >
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de los contratos JSON-RPC,
@@ -369,6 +371,16 @@ interface PairingPayload {
 // QR encoding: Base64(utf8(JSON)).
 // Validacion: al menos uno de `relay` o `hosts` es obligatorio (error `missing_transport`).
 ```
+
+**LAN discovery is intentionally outside `PairingPayload` and JSON-RPC.** The
+bridge advertises `_uxnan._tcp.local` over link-local mDNS with PTR/SRV/TXT/A
+records. TXT may contain only `v`, `id`, `port` and `addr`; it MUST NOT contain
+the pairing code, identity private key, notification secret or any credential.
+The records are unauthenticated and MUST be treated as host suggestions. The
+client MUST require an explicit selection, send the pairing code to only that
+selected/typed host, validate the returned `PairingPayload`, and complete the
+normal operator-gated E2EE bootstrap before persisting trust. Discovery alone
+MUST NOT create, refresh or upgrade a trusted-device record.
 
 **`TurnSendParams`** (parametros de `turn/send`):
 ```typescript
