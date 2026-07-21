@@ -13,7 +13,6 @@
     EditorView,
     GutterMarker,
     WidgetType,
-    drawSelection,
     gutter,
     keymap,
     lineNumbers,
@@ -186,17 +185,22 @@
       lineHeight: "1.5",
       overflow: "auto",
     },
+    // A firm, theme-aware caret (the native caret, coloured via `caret-color`) so the
+    // cursor is clearly visible in both light and dark — never a black caret lost on a
+    // dark background.
     ".cm-content": { padding: "4px 0", caretColor: "var(--foreground)" },
     ".cm-gutters": { backgroundColor: "transparent", border: "none" },
-    // A firm, theme-aware caret (drawn by `drawSelection`) so the cursor is
-    // clearly visible in both light and dark — never a black caret lost on a dark
-    // background.
-    ".cm-cursor, .cm-cursor-primary": {
-      borderLeftColor: "var(--foreground)",
-      borderLeftWidth: "2px",
+    // Text selection uses the *native* browser selection (drawSelection() is
+    // intentionally NOT enabled) so it follows the shape of the actual text and wraps
+    // at line ends — like VSCode — instead of painting a full-width block per line. It's
+    // tinted from the theme's `--primary` at low alpha (so it inherits a custom theme's
+    // colour, staying neutral in the default theme) — a soft translucent band
+    // (`!important` beats the browser/OS default ::selection) with the glyph colour
+    // untouched (`color: inherit`), so selected code stays readable on any theme.
+    "& .cm-line::selection, & .cm-line ::selection, & .cm-content ::selection": {
+      backgroundColor: "color-mix(in srgb, var(--primary) 24%, transparent) !important",
+      color: "inherit !important",
     },
-    ".cm-selectionBackground": { backgroundColor: "rgba(128,128,128,0.3)" },
-    "&.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(128,128,128,0.42)" },
   });
 
   let host = $state<HTMLDivElement>();
@@ -221,7 +225,6 @@
       doc: content,
       extensions: [
         lineNumbers(),
-        drawSelection(),
         history(),
         keymap.of([
           ...(saveKey

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — theme-tinted, text-shaped editor text selection
+
+- Selecting text in the file editor / diff no longer paints an opaque, full-width block
+  that hid the glyphs. It now uses the **native (text-shaped) selection** that follows
+  the text and wraps at line ends — like VSCode — instead of the full-width rectangles
+  `drawSelection()` drew (which is removed from the editor; the caret is now the native
+  one, coloured via `caret-color`). The band is **tinted from the theme's `--primary`**
+  at low alpha with **`color: inherit`**, so it inherits a custom theme's colour, stays
+  translucent, and never recolours or hides selected text on any theme. Applied to the
+  editor, the diff, and an app-wide `::selection` (inputs, etc.); terminals keep their
+  own selection.
+
 ### Changed — rename is inline in the tree too
 
 - Renaming a file/folder (F2 or the context menu) now edits the name **in place** in

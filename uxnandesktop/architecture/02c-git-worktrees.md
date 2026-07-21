@@ -423,7 +423,13 @@ archivos— para que **Esc** y los atajos del árbol sigan operables; se hace cl
 del editor para colocar el cursor. `FileEditor.svelte` solo re-mide CodeMirror al
 hacerse visible (nunca `.focus()`). Los atajos globales (Ctrl+Tab, Ctrl+W…) no se ven
 afectados: los resuelve un manejador a nivel de `window` sin importar qué panel tiene el
-foco.
+foco. **La selección de texto** usa la selección **nativa** (el editor no habilita
+`drawSelection()`), así que tiene **forma de texto** y se corta al final de cada línea
+—como VSCode— en vez de un bloque de ancho completo; se tiñe del **`--primary`** del tema
+a baja opacidad con `color: inherit`, de modo que hereda el color del tema, es translúcida
+y **nunca oculta ni recolorea** el texto seleccionado en ningún tema (mismo criterio en el
+diff y en el `::selection` global de `app.css`; las terminales conservan su propia
+selección). El cursor pasa a ser el nativo, coloreado con `caret-color`.
 
 La pestaña reúne lo que antes eran pestañas separadas: **abrir un archivo y revisar su
 diff ya no crean dos pestañas**. Al hacer clic en un archivo cambiado del panel de
