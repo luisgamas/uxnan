@@ -28,6 +28,18 @@
   "@connectionDirect": {
     "description": "Transport indicator: the live connection is a direct LAN/Tailscale link."
   },
+  "transportLan": "LAN",
+  "@transportLan": {
+    "description": "Network-path badge: the live connection is a direct address on the same local network (Wi-Fi/Ethernet) as the PC."
+  },
+  "transportTailscale": "Tailscale",
+  "@transportTailscale": {
+    "description": "Network-path badge: the live connection is a Tailscale (or compatible virtual-network) address."
+  },
+  "transportDetecting": "Detecting…",
+  "@transportDetecting": {
+    "description": "Device-card status shown while a connection attempt is in flight and its network path isn't known yet."
+  },
 
   "onboardingSkip": "Skip",
   "onboardingNext": "Next",
@@ -64,6 +76,10 @@
   "actionOpenSettings": "Open settings",
   "qrHint": "Point the camera at the QR code in your bridge terminal.",
   "qrErrorExpired": "This QR code has expired. Generate a new one on your PC.",
+  "pairingErrorIncompatibleVersion": "This PC's bridge is a different version than the app. Update the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair again.",
+  "@pairingErrorIncompatibleVersion": {
+    "description": "Shown when pairing fails because the bridge and the app speak different secure-protocol versions."
+  },
   "qrErrorMalformed": "This isn't a valid Uxnan pairing code.",
   "qrCameraErrorTitle": "Camera unavailable",
   "qrCameraErrorBody": "Couldn't start the camera to scan. You can pair with a code instead, or try again.",
@@ -1058,7 +1074,7 @@
   "bridgeDiscoverySearching": "Searching your network…",
   "bridgeDiscoveryEmpty": "No bridges found yet. Make sure the bridge is running on the same Wi-Fi, or type the host below.",
   "manualCodeErrorInvalidInput": "Enter the bridge host and the pairing code.",
-  "manualCodeErrorNetwork": "Couldn't reach the bridge. Check the host and that the bridge is running on the same network.",
+  "manualCodeErrorNetwork": "Couldn't reach the bridge at any of the tried addresses. If the PC is on Tailscale, enter its 100.x address; if you're on the same Wi-Fi, use its local network IP. Once paired, the connection can also fall back to the relay.",
   "manualCodeErrorInvalidCode": "That code is wrong or has expired. Generate a new one on your PC.",
   "manualCodeErrorRateLimited": "Too many attempts. Wait a moment and try again.",
   "manualCodeErrorServer": "The bridge couldn't complete pairing. Try again.",

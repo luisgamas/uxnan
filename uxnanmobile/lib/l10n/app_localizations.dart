@@ -158,6 +158,24 @@ abstract class AppLocalizations {
   /// **'Direct'**
   String get connectionDirect;
 
+  /// Network-path badge: the live connection is a direct address on the same local network (Wi-Fi/Ethernet) as the PC.
+  ///
+  /// In en, this message translates to:
+  /// **'LAN'**
+  String get transportLan;
+
+  /// Network-path badge: the live connection is a Tailscale (or compatible virtual-network) address.
+  ///
+  /// In en, this message translates to:
+  /// **'Tailscale'**
+  String get transportTailscale;
+
+  /// Device-card status shown while a connection attempt is in flight and its network path isn't known yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Detecting…'**
+  String get transportDetecting;
+
   /// No description provided for @onboardingSkip.
   ///
   /// In en, this message translates to:
@@ -343,6 +361,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This QR code has expired. Generate a new one on your PC.'**
   String get qrErrorExpired;
+
+  /// Shown when pairing fails because the bridge and the app speak different secure-protocol versions.
+  ///
+  /// In en, this message translates to:
+  /// **'This PC\'s bridge is a different version than the app. Update the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair again.'**
+  String get pairingErrorIncompatibleVersion;
 
   /// No description provided for @qrErrorMalformed.
   ///
@@ -3983,7 +4007,7 @@ abstract class AppLocalizations {
   /// No description provided for @manualCodeErrorNetwork.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t reach the bridge. Check the host and that the bridge is running on the same network.'**
+  /// **'Couldn\'t reach the bridge at any of the tried addresses. If the PC is on Tailscale, enter its 100.x address; if you\'re on the same Wi-Fi, use its local network IP. Once paired, the connection can also fall back to the relay.'**
   String get manualCodeErrorNetwork;
 
   /// No description provided for @manualCodeErrorInvalidCode.

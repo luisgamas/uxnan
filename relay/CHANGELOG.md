@@ -5,8 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.2-alpha.20260720] - 2026-07-20
+
 ### Security
 - Use constant-time comparisons for push notification secrets.
+- Bound the per-IP `RateLimiter` (`#httpLimiter`/`#upgradeLimiter`) against
+  unbounded memory growth from IP rotation — trivial over an allocated IPv6
+  /64 — which previously grew the `#windows` map by one entry per new source
+  address forever, turning the anti-abuse control into a memory sink. `allow`
+  now sweeps expired windows whenever it opens a new window for a key, and
+  enforces a hard `maxKeys` cap
+  (default 10,000; oldest entry evicted first) as a backstop against a burst
+  of still-unexpired keys. A single IP's own throttling budget is unaffected.
+  Covered by `test/rate-limiter.test.ts` (3 tests: single-key behavior
+  preserved, the tracked-key count never exceeds `maxKeys`, expired windows
+  are swept instead of accumulating).
 
 ## [0.0.1-alpha.20260627] - 2026-06-27
 

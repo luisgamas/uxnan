@@ -47,6 +47,18 @@ uxnan-bridge stop      # signal the running daemon to stop
 Scan the QR with the Uxnan mobile app to pair (once). After pairing, the phone
 reconnects to the trusted device without re-scanning.
 
+> **Pair within 5 minutes of showing the QR or code.** First-time enrollment is
+> only accepted while a pairing window is open, so a device that never saw your
+> screen cannot enroll itself over the LAN. Showing the QR or the code opens the
+> window, and so does a phone successfully looking up the code. If the window
+> lapsed, just run `uxnan-bridge qr` (or `code`) again.
+>
+> **Running as a service?** `install-service` starts the daemon with no console,
+> and `uxnan-bridge qr`/`code` then run in a *separate* process — so **pair with
+> the manual code**, not the QR. Looking the code up reaches the daemon that
+> serves the handshake; a scanned QR does not. Re-pairing an already-trusted
+> phone is never gated.
+
 - **Same network (LAN):** the phone connects **directly** to the bridge — no relay,
   no hosting. (Primary plug-and-play path.)
 - **Remote (off-LAN):** recommended is **Tailscale** (or any mesh VPN) — also no
@@ -69,7 +81,11 @@ Update with: npm install -g uxnan-bridge@latest
 
 The check is best-effort (silent when offline / up to date), cached in
 `~/.uxnan/update-check.json` with a 24h TTL, and the running daemon refreshes it
-in the background. The paired phone learns the same thing via `bridge/status`
+in the background. **`start` always re-checks** (it ignores the cache), so a
+release published inside the 24h window is announced the next time you start the
+bridge instead of up to a day later; the short-lived `status`/`qr`/`code`
+commands keep using the cache so they stay fast. The paired phone learns the
+same thing via `bridge/status`
 (`latestVersion`/`updateAvailable`) and shows an informational hint — see the
 mobile app. Update with `npm install -g uxnan-bridge@latest` (or `git pull` +
 `npm install` for a source checkout).

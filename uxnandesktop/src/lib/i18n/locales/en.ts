@@ -172,6 +172,9 @@ export const en = {
     "An agent is still working here — sleep it from the worktree's menu to confirm.",
   "terminal.asleep": "Workspace asleep — processes stopped",
   "terminal.restoredScrollback": "restored scrollback — shell restarted",
+  "terminal.junctionBlockTitle": "Windows blocked a linked path here",
+  "terminal.junctionBlockDesc":
+    "A command couldn't follow a symlink or junction in this folder (Windows Redirection Guard). Move the project to a local path outside OneDrive — e.g. C:\\dev\\… — to run it inside Uxnan.",
   "shortcuts.sleepWorkspace": "Sleep workspace",
   "shortcuts.sleepWorkspaceDesc":
     "Stop the active workspace's terminals (keeping tabs and scrollback) to free resources.",
@@ -919,6 +922,9 @@ export const en = {
   "settings.defaultProfile": "Default profile",
   "settings.defaultProfileDesc":
     "Used for new terminals unless you pick another from the “+” menu.",
+  "settings.scrollback": "Scrollback",
+  "settings.scrollbackDesc":
+    "How many lines of past output each terminal keeps. Higher values retain more history but use more memory.",
   "settings.profiles": "Profiles",
   "settings.addProfile": "Add profile",
   "settings.addDetectedShells": "Add detected shells",

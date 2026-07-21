@@ -404,6 +404,9 @@
         fontWeight: t.fontWeight as never,
         fontFamily: t.fontFamily,
         theme: { ...t.theme },
+        // Retained-output cap (Settings → Terminal). A live effect below keeps an
+        // already-open terminal in sync when the setting changes.
+        scrollback: app.terminalScrollback,
       },
       ligatures: t.ligatures,
       webLinks: app.settings.browser?.terminalLinks ?? true,
@@ -725,6 +728,14 @@
     if (!term) return;
     applyAppearance();
     fitToPane();
+  });
+
+  // Live-apply the scrollback setting to an already-open terminal. xterm supports
+  // changing this at runtime (a lower value trims the buffer, a higher one allows
+  // more retained output); new terminals get it at creation.
+  $effect(() => {
+    const lines = app.terminalScrollback;
+    if (term) term.options.scrollback = lines;
   });
 
   onDestroy(() => {

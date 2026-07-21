@@ -47,6 +47,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   GitHub action surfaces. Multi-action views now retain the pending operation's
   identity so unrelated disabled controls do not appear to be running too.
 
+### Added — configurable terminal scrollback
+
+- Per-terminal scrollback (retained, scrollable output) is now a setting
+  (**Settings → Terminal → Scrollback**, 1,000–200,000 lines) instead of a fixed
+  5,000-line cap, and the default is raised to **20,000**. Verbose agent CLIs
+  (e.g. Codex) could silently drop the start of a long session once past the old
+  cap — you'd switch tab/app and come back to find the top of the transcript
+  gone; the higher default plus the knob fix that. Changing it applies to new
+  terminals and live-updates open ones, and the sleep/wake scrollback snapshot
+  grew to match (`src/lib/terminal/scrollback.ts`).
+
+### Added — Windows junction / Redirection-Guard guidance
+
+- A command that traverses a symlink/junction (npm-workspace links in
+  `node_modules`, OneDrive Files On-Demand placeholders) can fail *inside* a
+  Uxnan terminal with `os error 448` ("untrusted mount point") / `errno -4094`
+  while it works in a standalone shell — Windows' redirection-trust mitigation,
+  inherited by the app's child processes. Uxnan now **detects** the failure and
+  shows a one-time toast guiding you to the fix (move the project to a local path
+  outside OneDrive, e.g. `C:\dev\…`). Uxnan does **not** sandbox the shell and does
+  **not** relax the OS mitigation (`src/lib/terminal/windowsJunctionGuard.ts`); see
+  [`docs/windows-junctions.md`](docs/windows-junctions.md). A structural
+  alternative (spawning PTYs off the WebView2 host) is tracked in `FOR-DEV.md`.
+
 ## [0.0.18] - 2026-07-19
 
 ### Fixed — agent session resume now works end-to-end

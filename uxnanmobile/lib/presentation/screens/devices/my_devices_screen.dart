@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
+import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
@@ -16,6 +17,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/transport_badge.dart';
 
 /// The app's home: the list of paired PCs (trusted bridges). The app keeps one
 /// active connection at a time; tapping a PC opens its threads and "Connect"
@@ -129,11 +131,12 @@ class MyDevicesScreen extends ConsumerWidget {
     // never makes it appear connected when it isn't reachable.
     final connectedId = ref.watch(connectedDeviceProvider).value?.macDeviceId;
     final connectingId = ref.watch(connectingDeviceProvider).value?.macDeviceId;
-    // Whether the live connection runs over the relay (vs direct LAN/Tailscale),
-    // as reported by `bridge/status`. Null until known; only the connected PC
-    // shows it.
-    final relayConnected =
-        ref.watch(bridgeStatusProvider).value?.relayConnected;
+    // The classified network path of the LIVE channel — LAN, Tailscale, a
+    // direct address, or the relay — derived client-side from the actual
+    // connected endpoint (never from `bridge/status.relayConnected`, which
+    // can't tell LAN from Tailscale and lags the real per-session transport).
+    // Only the connected PC shows it.
+    final networkKind = ref.watch(networkKindProvider);
     // The endpoint the live channel is ACTUALLY served through (the winning
     // direct host, or the relay), so the connected card shows the real address
     // in use — not the first advertised host (a lexicographic guess that is
@@ -201,8 +204,9 @@ class MyDevicesScreen extends ConsumerWidget {
                 device: device,
                 isConnected: device.macDeviceId == connectedId,
                 isConnecting: device.macDeviceId == connectingId,
-                relayConnected:
-                    device.macDeviceId == connectedId ? relayConnected : null,
+                networkKind: device.macDeviceId == connectedId
+                    ? networkKind
+                    : NetworkKind.unknown,
                 connectedEndpoint: device.macDeviceId == connectedId
                     ? connectedEndpoint
                     : null,
@@ -237,7 +241,7 @@ class _DeviceCard extends StatelessWidget {
     required this.device,
     required this.isConnected,
     required this.isConnecting,
-    required this.relayConnected,
+    required this.networkKind,
     required this.connectedEndpoint,
     required this.onStats,
     required this.onOpen,
@@ -251,9 +255,10 @@ class _DeviceCard extends StatelessWidget {
   final bool isConnected;
   final bool isConnecting;
 
-  /// For the connected PC: whether the live channel runs over the relay (true)
-  /// or direct LAN/Tailscale (false); null when unknown / not connected.
-  final bool? relayConnected;
+  /// For the connected PC: the classified network path of the live channel
+  /// (LAN / Tailscale / direct / relay); [NetworkKind.unknown] when not this
+  /// card's connected PC.
+  final NetworkKind networkKind;
 
   /// For the connected PC: the URL the live channel is actually served through
   /// (the winning direct host, or the relay); null when unknown / not connected.
@@ -397,7 +402,7 @@ class _DeviceCard extends StatelessWidget {
                 child: _StatusLine(
                   isConnected: isConnected,
                   isConnecting: isConnecting,
-                  relayConnected: relayConnected,
+                  networkKind: networkKind,
                 ),
               ),
               if (!isConnected)
@@ -583,16 +588,15 @@ class _StatusLine extends StatelessWidget {
   const _StatusLine({
     required this.isConnected,
     required this.isConnecting,
-    this.relayConnected,
+    required this.networkKind,
   });
   final bool isConnected;
   final bool isConnecting;
-  final bool? relayConnected;
+  final NetworkKind networkKind;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
     // Truthful per-device status: connected only when this PC holds the live
@@ -601,7 +605,7 @@ class _StatusLine extends StatelessWidget {
     final (label, color) = isConnected
         ? (l10n.connectionConnected, UxnanColors.connected)
         : isConnecting
-            ? (l10n.connectionConnecting, UxnanColors.connecting)
+            ? (l10n.transportDetecting, UxnanColors.connecting)
             : (l10n.connectionDisconnected, UxnanColors.disconnected);
 
     return Row(
@@ -620,16 +624,13 @@ class _StatusLine extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        // How we're connected: relay vs direct LAN/Tailscale (connected only).
-        if (isConnected && relayConnected != null) ...[
+        // The network path badge is meaningful only after the live channel has
+        // been established. During detection, the status label above is the
+        // single progress indicator; while disconnected, no network path is
+        // shown.
+        if (isConnected) ...[
           const SizedBox(width: UxnanSpacing.xs),
-          Text(
-            '· '
-            '${relayConnected! ? l10n.connectionRelay : l10n.connectionDirect}',
-            style: textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
-            ),
-          ),
+          TransportBadge(kind: networkKind, dense: true),
         ],
       ],
     );

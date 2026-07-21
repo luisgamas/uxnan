@@ -1,8 +1,8 @@
 What's new in this update:
 
-• New agent: Google Antigravity (the successor to Gemini CLI) is now selectable when you start a conversation — Gemini is retired from the picker.
-• Fix: reopening the app mid-reply no longer loses what the agent wrote while you were away — the full response comes back.
-• Fix: activity cards no longer cut a sentence in half.
-• A smoother animation when you delete a conversation.
+• Security: messages between your phone and your PC are now sealed against tampering — an altered or repeated one is rejected.
+• Security: your pairing code is now sent only to the PC you picked, never to other devices on your network.
+• New: the device card shows how you're connected — LAN, Tailscale, direct or relay.
+• Clearer status while connecting.
 
-Thanks for testing this alpha!
+Important: update the bridge on your PC too.

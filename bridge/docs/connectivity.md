@@ -45,6 +45,12 @@ same tailnet reaches the bridge directly from anywhere, **with no hosted relay**
    (confirm it's listed in the "Direct addresses" line).
 3. Off-LAN, the phone connects over Tailscale exactly like it would on the LAN.
 
+> **"Browse nearby bridges" does not work over Tailscale — type the address.**
+> Discovery is mDNS (`_uxnan._tcp`), which is link-local multicast and does not
+> traverse a tailnet by design. Over Tailscale, enter the PC's `100.x` address
+> (it is printed as a "Direct address" when the bridge starts). This is inherent
+> to mDNS, not a bug — and once paired, reconnecting needs no discovery at all.
+
 No extra config needed: the relay is **off by default**, so this mode is pure
 direct (the QR carries only `hosts`).
 
@@ -64,6 +70,15 @@ VPN on the phone and want an internet-reachable fallback. **To turn it on:**
    the direct `hosts`.
 
 ## Notes
+
+- **First-time pairing is time-boxed (LAN/Tailscale).** Enrollment of a *new*
+  device is only accepted for 5 minutes after an operator action opens the
+  window — showing the QR, showing the code, or a phone successfully looking the
+  code up. This is what stops any peer that can reach the always-listening LAN
+  port from enrolling itself as trusted. Already-paired devices reconnect at any
+  time, unaffected. Against a console-less daemon (`install-service`), pair with
+  the **manual code**: `uxnan-bridge qr`/`code` run in a separate process, and a
+  scanned QR never contacts the daemon before the handshake.
 
 - All modes are E2EE end-to-end; the relay only ever sees opaque envelopes.
 - `hosts` may include virtual-NIC addresses (Docker/WSL/Hyper-V) the phone can't

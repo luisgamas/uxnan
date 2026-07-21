@@ -49,9 +49,13 @@ Commands:
  * on-disk cache, bounded by a short fetch timeout, and silent when up to date,
  * offline, or the latest version is unknown.
  */
-async function printUpdateNotice(): Promise<void> {
+async function printUpdateNotice(options: { force?: boolean } = {}): Promise<void> {
   try {
-    const status = await ensureUpdateStatus(new DaemonState());
+    // `start` always re-checks: it is the one command a user runs deliberately,
+    // and the 24h cache meant a release published inside that window went
+    // unannounced for up to a day (reported after 0.0.9 shipped). Short-lived
+    // commands keep the cache so they stay fast.
+    const status = await ensureUpdateStatus(new DaemonState(), options.force ? { ttlMs: 0 } : {});
     const message = updateNoticeMessage(status);
     if (message) process.stderr.write(`\n${message}\n`);
   } catch {
@@ -60,6 +64,13 @@ async function printUpdateNotice(): Promise<void> {
 }
 
 async function cmdQr(): Promise<void> {
+  // Note: this arms the PAIRING WINDOW on THIS short-lived process's own
+  // PairingCodeService instance (see bridge.ts `generatePairingQr`), not on a
+  // separately-running autostarted daemon — and a phone that SCANS this QR goes
+  // straight to the handshake without calling `/pair/resolve`, so nothing arms
+  // that daemon either. Against a hidden daemon, pair with the manual code
+  // instead (`uxnan-bridge code`): resolving it arms the daemon that serves it.
+  // See the "Cross-process arming" item in FOR-DEV.md.
   const bridge = await startBridge();
   const payload = bridge.generatePairingQr();
   const qr = await renderPairingQr(payload);
@@ -76,6 +87,10 @@ async function cmdCode(): Promise<void> {
   // Prints the current manual-pairing code. Shares the code with a running
   // daemon via `~/.uxnan/pairing-code.json`, so this matches what the daemon
   // serving `/pair/resolve` accepts — handy when the daemon runs hidden (autostart).
+  // This is the flow that works against a hidden daemon: arming is NOT
+  // cross-process, but the phone resolving this code over `/pair/resolve` arms
+  // the daemon that serves it (proving the code was read off the PC is the
+  // operator action the bootstrap gate looks for).
   const bridge = await startBridge();
   process.stdout.write(`${bridge.currentPairingCode()}\n`);
   await bridge.stop();
@@ -136,7 +151,7 @@ async function cmdStart(): Promise<void> {
     process.stdout.write('Relay disabled; using the direct LAN/Tailscale path only.\n');
   }
 
-  await printUpdateNotice();
+  await printUpdateNotice({ force: true });
   process.stdout.write('Press Ctrl+C to stop.\n');
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {

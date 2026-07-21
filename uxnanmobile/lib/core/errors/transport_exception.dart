@@ -28,6 +28,12 @@ enum TransportErrorKind {
   /// The E2EE handshake did not complete successfully.
   handshake,
 
+  /// The bridge speaks a different `SECURE_PROTOCOL_VERSION` than this app, so
+  /// the two cannot exchange encrypted frames at all. Distinct from
+  /// [handshake] because it is not a failure the user can retry — both sides
+  /// must be updated — and blaming the QR/code instead sends them in circles.
+  incompatibleVersion,
+
   /// An envelope failed authenticated decryption (AES-256-GCM tag mismatch).
   decryption,
 

@@ -65,7 +65,13 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
   "bridge" peer to exercise the handshake, RPC round-trips, notifications and
   reconnect without a network.
 - **Crypto vectors.** The E2EE primitives are checked against RFC 8032/7748/5869
-  and NIST AES-GCM vectors.
+  and NIST AES-GCM vectors. Plus a **cross-language interop vector** for the
+  envelope AAD: a fixed key/nonce/AAD/plaintext whose ciphertext+tag are produced
+  by the bridge's Node `crypto` and decrypted by the app's `AesGcm` (the same
+  bytes are asserted from the bridge side in `bridge/test/transport/crypto.test.ts`).
+  This is the artifact that proves the two `buildEnvelopeAad` implementations
+  agree byte-for-byte — a mismatch would make the app and the bridge mutually
+  undecryptable.
 
 ## What automated tests do NOT cover (verify manually)
 

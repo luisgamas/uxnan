@@ -55,6 +55,7 @@
   import OpenWithSettings from "./OpenWithSettings.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
+  import { TERMINAL_SCROLLBACK_PRESETS } from "$lib/terminal/scrollback";
   import {
     SHORTCUT_GROUPS,
     eventToChord,
@@ -385,6 +386,17 @@
         { value: "60", label: i18n.t("providers.every60m") },
         { value: "0", label: i18n.t("providers.refreshManual") },
       ],
+    },
+  ];
+
+  // Terminal scrollback (retained-output) presets, shown as a select like the
+  // usage refresh interval. Values are localized numbers.
+  const scrollbackGroups: ComboGroup[] = [
+    {
+      items: TERMINAL_SCROLLBACK_PRESETS.map((n) => ({
+        value: String(n),
+        label: n.toLocaleString(),
+      })),
     },
   ];
 
@@ -1612,6 +1624,16 @@
                     triggerClass="w-56"
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => { app.settings.defaultProfileId = v; persistNow(); }}
+                  />
+                {/snippet}
+              </SettingsRow>
+              <SettingsRow label={i18n.t("settings.scrollback")} description={i18n.t("settings.scrollbackDesc")}>
+                {#snippet control()}
+                  <Combobox
+                    value={String(app.terminalScrollback)}
+                    groups={scrollbackGroups}
+                    triggerClass="w-44"
+                    onChange={(v) => { app.settings.terminalScrollback = Number(v); persistNow(); }}
                   />
                 {/snippet}
               </SettingsRow>

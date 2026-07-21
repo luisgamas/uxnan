@@ -121,6 +121,15 @@ uxnan-bridge install-service  # autostart at logon (Task Scheduler / LaunchAgent
 uxnan-bridge uninstall-service
 ```
 
+**Pairing is time-boxed.** A first-time enrollment is only accepted while a
+pairing window is open, so a device that never saw your screen can't enroll
+itself over the LAN. The window opens for 5 minutes whenever you show the QR or
+the code — and also when a phone successfully looks up the code, which is how
+pairing works against a daemon started by `install-service` (there `uxnan-bridge
+qr`/`code` run in a *separate* process, so **use the manual code**: a scanned QR
+never contacts the daemon before the handshake). Already-paired devices
+reconnect at any time and are never affected.
+
 Logs are written to `~/.uxnan/logs/bridge-YYYY-MM-DD.log` (daily rotation, with a
 secret-redaction pass) and to stderr. Autostart at login is configured by the
 platform scripts under `scripts/`.
@@ -128,8 +137,10 @@ platform scripts under `scripts/`.
 The bridge is the ecosystem's core engine, so `start`/`status`/`qr`/`code` also
 print a one-line **"a newer bridge is available"** notice to stderr when the
 running version is behind the latest published to npm (`latest` dist-tag). The
-check is best-effort and cached in `~/.uxnan/update-check.json` (24h TTL), and
-the result is also exposed to the phone via `bridge/status`
+check is best-effort and cached in `~/.uxnan/update-check.json` (24h TTL);
+**`start` always re-checks** (it bypasses the cache), so a release published
+inside that window is announced the next time you start the bridge rather than
+up to a day later. The result is also exposed to the phone via `bridge/status`
 (`latestVersion`/`updateAvailable`).
 
 The Ed25519 identity is stored in the OS keychain (Windows Credential Manager /

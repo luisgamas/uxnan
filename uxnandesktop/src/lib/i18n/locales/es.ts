@@ -169,6 +169,9 @@ export const es: Record<MessageKey, string> = {
     "Un agente sigue trabajando aquí — duérmelo desde el menú del worktree para confirmar.",
   "terminal.asleep": "Espacio dormido — procesos detenidos",
   "terminal.restoredScrollback": "historial restaurado — shell reiniciado",
+  "terminal.junctionBlockTitle": "Windows bloqueó un enlace de esta ruta",
+  "terminal.junctionBlockDesc":
+    "Un comando no pudo seguir un symlink o junction en esta carpeta (Redirection Guard de Windows). Mueve el proyecto a una ruta local fuera de OneDrive — p. ej. C:\\dev\\… — para ejecutarlo dentro de Uxnan.",
   "shortcuts.sleepWorkspace": "Dormir espacio",
   "shortcuts.sleepWorkspaceDesc":
     "Detiene las terminales del espacio activo (conservando pestañas e historial) para liberar recursos.",
@@ -916,6 +919,9 @@ export const es: Record<MessageKey, string> = {
   "settings.defaultProfile": "Perfil predeterminado",
   "settings.defaultProfileDesc":
     "Se usa para nuevas terminales salvo que elijas otro desde el menú “+”.",
+  "settings.scrollback": "Historial (scrollback)",
+  "settings.scrollbackDesc":
+    "Cuántas líneas de salida pasada conserva cada terminal. Más líneas retienen más historial pero usan más memoria.",
   "settings.profiles": "Perfiles",
   "settings.addProfile": "Agregar perfil",
   "settings.addDetectedShells": "Agregar shells detectados",

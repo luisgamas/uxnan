@@ -21,7 +21,7 @@ export {
 
 export { HandlerRouter, type RpcHandler } from './handler-router.js';
 export type { BridgeContext } from './bridge-context.js';
-export { DaemonState, DAEMON_FILES } from './daemon-state.js';
+export { DaemonState, renameWithRetry, DAEMON_FILES } from './daemon-state.js';
 export {
   DEFAULT_DAEMON_CONFIG,
   resolveDaemonConfig,
@@ -51,6 +51,7 @@ export {
 export {
   PairingCodeService,
   type PairingCodeServiceOptions,
+  PAIRING_WINDOW_MS,
 } from './pairing/pairing-code-service.js';
 export {
   MdnsAdvertiser,
@@ -240,7 +241,14 @@ export {
   type EphemeralKeyPair,
   type AesGcmParts,
 } from './transport/crypto.js';
-export { BridgeSecureChannel, ReplayError } from './transport/secure-channel.js';
+export {
+  BridgeSecureChannel,
+  ReplayError,
+  buildEnvelopeAad,
+  DIRECTION_PHONE_TO_BRIDGE,
+  DIRECTION_BRIDGE_TO_PHONE,
+  type ChannelRole,
+} from './transport/secure-channel.js';
 export {
   performServerHandshake,
   HandshakeError,

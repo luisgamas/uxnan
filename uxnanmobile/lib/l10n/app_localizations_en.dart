@@ -40,6 +40,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionDirect => 'Direct';
 
   @override
+  String get transportLan => 'LAN';
+
+  @override
+  String get transportTailscale => 'Tailscale';
+
+  @override
+  String get transportDetecting => 'Detecting…';
+
+  @override
   String get onboardingSkip => 'Skip';
 
   @override
@@ -142,6 +151,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get qrErrorExpired =>
       'This QR code has expired. Generate a new one on your PC.';
+
+  @override
+  String get pairingErrorIncompatibleVersion =>
+      'This PC\'s bridge is a different version than the app. Update the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair again.';
 
   @override
   String get qrErrorMalformed => 'This isn\'t a valid Uxnan pairing code.';
@@ -2131,7 +2144,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get manualCodeErrorNetwork =>
-      'Couldn\'t reach the bridge. Check the host and that the bridge is running on the same network.';
+      'Couldn\'t reach the bridge at any of the tried addresses. If the PC is on Tailscale, enter its 100.x address; if you\'re on the same Wi-Fi, use its local network IP. Once paired, the connection can also fall back to the relay.';
 
   @override
   String get manualCodeErrorInvalidCode =>

@@ -596,9 +596,10 @@ class TerminalStore {
    *  `restore`; written on sleep and window close (never on the debounced
    *  layout hot path). */
   private snapshots: Record<string, string> = {};
-  /** Per-tab snapshot cap — a serialized 1000-line scrollback stays far under
-   *  this; the cap only guards against pathological cell attributes. */
-  private static readonly SNAPSHOT_MAX = 512_000;
+  /** Per-tab snapshot cap — a serialized `SNAPSHOT_SCROLLBACK`-line scrollback
+   *  stays under this; the cap only guards against pathological cell attributes
+   *  (and keeps the atomic sidecar bounded). */
+  private static readonly SNAPSHOT_MAX = 2_000_000;
 
   /** Whether every terminal tab of a workspace is asleep (and there is at
    *  least one) — drives the dimmed indicator + the wake affordances. */

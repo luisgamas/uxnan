@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 261 Rust backend tests + 216 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
+with" external editors/IDEs**). 261 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
 (developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
 mobile pairing) is NOT started.**
 
@@ -32,7 +32,11 @@ mobile pairing) is NOT started.**
   `Ctrl+Tab` MRU cycling, and the Kitty/CSI-u keyboard protocol. Tabs can be
   **renamed** (free-form label for terminals/diffs, persisted; on-disk rename for
   file tabs via `fs_rename`, with an extension-change warning) and **closed all at
-  once** per active workspace.
+  once** per active workspace. Scrollback is **user-configurable** (Settings →
+  Terminal, default 20,000 lines; `src/lib/terminal/scrollback.ts`). On Windows, a
+  command blocked by **Redirection Guard** on a junction/OneDrive path is detected
+  and the user is guided to a fix (`src/lib/terminal/windowsJunctionGuard.ts`;
+  `docs/windows-junctions.md`).
 - **Git worktrees** — per-worktree terminal workspaces, hierarchical Projects
   tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), WSL repos routed
   through `wsl.exe`. **Creation** offers two modes — a **new branch** from a base
@@ -367,6 +371,23 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       sleep→wake). Follow-ups: Gemini CLI/Zero resume when their CLIs expose a
       verifiable entry point (capture already works for Gemini); bridge/mobile
       parity rides Phase 6 (the backend capture half is reusable as-is).
+- [ ] **Windows junction / Redirection-Guard — structural fix (alternative to the
+      shipped detection).** A command that traverses an "untrusted" reparse point
+      (npm-workspace junctions in `node_modules`, OneDrive Files On-Demand
+      placeholders) can fail *inside* a terminal with `os error 448` / `errno -4094`
+      while it works in a standalone shell, because the app's child processes
+      inherit Windows' redirection-trust enforcement. The **shipped** fix DETECTS
+      this and GUIDES the user to move the repo to a local path
+      (`src/lib/terminal/windowsJunctionGuard.ts` + `docs/windows-junctions.md`),
+      preserving Uxnan's posture — the shell is never sandboxed and the OS
+      mitigation is never relaxed. The **structural alternative** — spawn PTYs from
+      a **separate process off the WebView2 host** so terminal children don't
+      inherit the enforcement — would let junction traversal work without moving the
+      repo, but it's a large, cross-platform change (Windows/macOS/Linux) needing
+      validation on OSes not available here, so it stays a documented alternative.
+      A `2C` diagnostic (read `GetProcessMitigationPolicy` for the host + a child
+      shell, confirm the enforcement source is inherited-and-clearable) should gate
+      any attempt. Marker: `src-tauri/src/pty.rs`.
 
 **Agents** — env vars per agent, shell-aware quoting, the configurable Windows
 launch shell (cmd by default), auto-launch on worktree create, and multi-agent
@@ -471,7 +492,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 261 Rust + 216 Vitest tests.
+  deferred with Apple). 261 Rust + 225 Vitest tests.
 - ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
   → draft GitHub Release, **and signs the updater artifacts** when the signing
   secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**

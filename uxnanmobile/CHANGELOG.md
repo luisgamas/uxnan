@@ -6,6 +6,126 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — manual pairing failed over Tailscale
+- The manual-pairing HTTP client used a 5s `connectTimeout`. Over Tailscale the
+  first request to a peer must bring the tunnel up (DERP relay, then an attempted
+  direct upgrade), which routinely takes longer — so the request was abandoned
+  before it ever reached the bridge, and pairing "always failed on Tailscale but
+  worked on the same Wi-Fi" even with the `100.x` address typed correctly.
+  `connectTimeout` is now 20s (read/write stay at 10s: once connected the bridge
+  answers immediately).
+
+### Fixed — a version-mismatched bridge said "invalid QR/code" instead of "update the bridge"
+- Pairing against a bridge older than `SECURE_PROTOCOL_VERSION` 2 correctly
+  fails at the handshake, but both pairing screens funnelled every handshake
+  exception into a generic message — the QR screen showed *"this is not a valid
+  Uxnan pairing code"* and the manual screen *"the bridge could not complete
+  pairing"*. Both blame the code, so the user regenerates it forever while the
+  real problem (an out-of-date bridge) is never mentioned. Reported from a real
+  device after the 0.0.10 release.
+- `TransportErrorKind.incompatibleVersion` is now a distinct kind (not
+  `handshake`), so both screens can recognise it by type rather than by string,
+  and show: *"The bridge on this PC is a different version than the app. Update
+  the bridge on your PC (npm install -g uxnan-bridge) and the app, then pair
+  again."*
+
+## [0.0.10-alpha.20260720+20260720] - 2026-07-20
+
+### Changed
+
+- Simplified device-card connection feedback: connecting devices show a single
+  `Detecting…` status, while the LAN/Tailscale/direct/relay badge appears only
+  after a live connection is established. The Connect button retains its
+  existing `Connecting…` busy state and behavior.
+
+### Added — network-path badge (LAN / Tailscale / Direct / Relay) on the connected PC
+- The devices screen now labels **how** a live connection actually reaches the
+  PC, not just whether it's "connected": a small animated pill next to the
+  status dot reads **LAN**, **Tailscale**, **Direct** or **Relay**, with a
+  **"Detecting…"** status while a connect attempt is in flight and the path
+  isn't known yet; the network badge itself appears only after connection. A
+  new pure `NetworkKind` classifier
+  (`domain/enums/network_kind.dart`) buckets the live channel's actual
+  endpoint by IP range — `100.64.0.0/10` → Tailscale; `10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` → LAN; any other
+  reachable address → Direct; a host match against the paired device's
+  `relayUrl` → Relay — and is exposed through a new `networkKindProvider`
+  derived from the session coordinator's real `connectedDevice` +
+  `connectedEndpoint` streams. This **replaces** the previous Relay/Direct
+  text, which read the *global* `bridge/status.relayConnected` flag: that
+  field can't distinguish LAN from Tailscale and isn't guaranteed to be scoped
+  to the endpoint actually in use, so the label could misreport during a
+  reconnect. The new `TransportBadge` widget (`presentation/widgets/`)
+  cross-fades between states with `AnimatedSwitcher` (respecting reduced
+  motion) and follows the same type-specific icon + color-pill pattern as the
+  existing `CommitRefChip`. No wire/contract change — the classification is
+  entirely client-side from data the bridge already advertises (`hosts`,
+  `relayUrl`).
+
+### Security — the pairing code is sent to exactly one host, the one you chose
+- Manual pairing resolves the code with a single `GET /pair/resolve?code=`
+  against the host the user named — typed, or picked in the "Browse nearby
+  bridges" sheet (which fills the host field). It is deliberately **never**
+  fanned out across mDNS-discovered candidates. The code is a shared secret
+  read off the PC screen, and a successful resolve both hands out the pairing
+  payload and **arms the bridge's `qr_bootstrap` window** (see the `bridge`
+  CHANGELOG), so disclosing it to an unauthenticated, spoofable mDNS record
+  would let any device on the same network harvest it — or answer first and be
+  trusted as "your PC" with no confirmation. Covered by tests asserting that a
+  second reachable bridge is never dialed, and that an empty host is rejected
+  before any request leaves the device.
+- Discovery is hardened as defense in depth: the mDNS TXT `addr` hint is only
+  honored when it is a literal IP in private / CGNAT / loopback space
+  (`isLocalAddressLiteral`), never a hostname and never a public address; the
+  SRV-resolved address wins otherwise. A discovered bridge is still only ever
+  contacted after the user explicitly picks it.
+- The network-failure copy now guides the user: try the PC's Tailscale `100.x`
+  address, or its LAN IP if on the same Wi-Fi, and notes the connection can
+  fall back to the relay once paired.
+- Deferred: resolving a pairing code with **no direct network path to the PC
+  at all** (e.g. the phone on cellular data, the PC not yet joined to
+  Tailscale) still isn't possible — it would need fetching the payload
+  through the relay instead of a direct GET, which needs new relay+bridge
+  contract work. See `FOR-DEV.md`.
+
+### Security — E2EE envelope `sessionId`/`seq`/direction now authenticated as AES-GCM AAD
+- Closes a gap where replay protection relied entirely on the unauthenticated
+  `seq` field: a malicious relay or on-path attacker could bump a captured
+  envelope's `seq` to re-trigger a non-idempotent handler (e.g. a prior
+  `turn/send`/approval), wedge the channel with an out-of-range `seq`, or
+  reflect a bridge→phone envelope back as if it were inbound phone traffic
+  (the same session key is used both directions with no prior direction
+  binding).
+- `lib/infrastructure/crypto/envelope_crypto.dart`'s `EnvelopeCrypto.encrypt`/
+  `decrypt` now accept an optional `aad` (passed straight through to the
+  `cryptography` package's `AesGcm`). `lib/infrastructure/transport/secure_transport_layer.dart`
+  adds `buildEnvelopeAad(sessionId, seq, direction)` — `sessionId` UTF-8, `seq`
+  as a big-endian 64-bit integer, `0x00` separators, and a direction byte
+  (`0x01` phone→bridge, `0x02` bridge→phone) — and binds it on every
+  `SecureChannel.encrypt`/`decrypt`, so tampering `seq` or reflecting a message
+  from the other direction now fails the GCM tag instead of silently passing
+  the old unauthenticated `seq <= _lastInboundSeq` check.
+- The `SecureEnvelope` wire shape, the 12-byte random nonce, and the HKDF
+  session-key derivation are all unchanged. Ships together with the matching
+  `bridge` change (see its CHANGELOG) — envelopes are not wire-compatible
+  across the version gap.
+- **The handshake now enforces `secureProtocolVersion` (bumped to `2`).** The app
+  and the bridge already exchanged `protocolVersion` but neither checked it, so
+  the change above would have failed as a **silent hang**: the handshake is
+  untouched, so pairing/reconnect completes and the app shows "connected", after
+  which every inbound frame fails its tag and is dropped in
+  `session_coordinator.dart`, the RPC correlator never resolves, and each action
+  just times out with nothing to diagnose. `SecureTransportLayer` now rejects a
+  `serverHello` whose version differs, with a `TransportErrorKind.handshake`
+  error naming both versions and telling the user to update. `ClientHello`/
+  `ServerHello` take their default from `ProtocolConstants` instead of a
+  hard-coded `1`, and the AAD direction bytes are sourced from
+  `ProtocolConstants` too (mirroring `shared/src/constants.ts`, the source of
+  truth for this cross-language contract).
+- **Update the bridge and the app together.** An app on this version cannot talk
+  to an older bridge and vice versa; the mismatch is now reported clearly at
+  connect time instead of looking like a broken session.
+
 ## [0.0.9-alpha.20260719+20260719] - 2026-07-19
 
 ### Added — Antigravity agent (Google's `agy`) rendering

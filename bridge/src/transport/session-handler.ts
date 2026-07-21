@@ -25,6 +25,13 @@ export interface SecureConnectionOptions {
   /** Which transport this connection runs over, for the connection metrics. */
   transport: MetricsTransport;
   expectedSessionId?: string;
+  /**
+   * Gate a `qr_bootstrap` handshake on an operator-armed pairing window (LAN
+   * only — see `PairingCodeService.arm`/`isArmed`). Omitted on the relay path,
+   * which is left ungated here: it already scopes bootstrap to one
+   * `expectedSessionId` per connection.
+   */
+  isPairingArmed?: () => boolean;
 }
 
 /**
@@ -57,6 +64,7 @@ export async function handleSecureConnection(options: SecureConnectionOptions): 
       ...(options.expectedSessionId !== undefined
         ? { expectedSessionId: options.expectedSessionId }
         : {}),
+      ...(options.isPairingArmed !== undefined ? { isPairingArmed: options.isPairingArmed } : {}),
     };
     const result = await performServerHandshake(handshakeOptions);
     phoneDeviceId = result.phoneDeviceId;

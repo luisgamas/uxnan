@@ -93,6 +93,25 @@ export interface Bridge {
   stop(): Promise<void>;
 }
 
+/**
+ * Pure decision for the relay reconnect backoff: given how long the last relay
+ * session lasted and the current backoff, return the delay to use for the
+ * *next* reconnect attempt. A session shorter than `minHealthyMs` never really
+ * carried a phone (the relay accepted the socket and closed it again — the
+ * session was already taken, a relay error, a relay bounce), so the backoff
+ * doubles (capped at `maxMs`); a session that reached `minHealthyMs` resets
+ * the backoff to `baseMs`. Exported standalone so the reconnect loop's timing
+ * decision can be unit-tested without a live relay.
+ */
+export function nextRelayBackoff(
+  sessionMs: number,
+  currentBackoffMs: number,
+  opts: { minHealthyMs: number; baseMs: number; maxMs: number },
+): number {
+  if (sessionMs >= opts.minHealthyMs) return opts.baseMs;
+  return Math.min(currentBackoffMs * 2, opts.maxMs);
+}
+
 export async function startBridge(options: StartBridgeOptions = {}): Promise<Bridge> {
   const now = options.now ?? (() => Date.now());
   const state = new DaemonState(options.baseDir);
@@ -466,6 +485,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   let mdns: MdnsAdvertiser | undefined;
   let stopping = false;
   const RELAY_RECONNECT_DELAY_MS = 2000;
+  // A relay session shorter than this never really carried a phone (see
+  // `nextRelayBackoff`); the reconnect loop backs off exponentially up to this
+  // cap instead of hot-looping against a relay that accepts and closes.
+  const MIN_HEALTHY_SESSION_MS = 3000;
+  const MAX_RECONNECT_DELAY_MS = 30_000;
   const delay = (ms: number): Promise<void> =>
     new Promise((resolve) => {
       const timer = setTimeout(resolve, ms);
@@ -492,8 +516,18 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
         ...(updateState.status?.updateAvailable ? { updateAvailable: true } : {}),
       }),
     updateStatus: () => updateState.status,
-    generatePairingQr: () => buildPairingPayload(),
-    currentPairingCode: () => pairingCodeService.currentCode(),
+    // Showing the QR (or the manual code, below) IS the operator's "pair a
+    // phone now" signal: arm the LAN bootstrap window so the handshake accepts
+    // a qr_bootstrap for the next PAIRING_WINDOW_MS (see the LAN
+    // handleSecureConnection wiring in startLan, and server-handshake.ts).
+    generatePairingQr: () => {
+      pairingCodeService.arm();
+      return buildPairingPayload();
+    },
+    currentPairingCode: () => {
+      pairingCodeService.arm();
+      return pairingCodeService.currentCode();
+    },
     connectRelay: async (sessionId: string) => {
       const dial = (): Promise<RelayConnection> =>
         connectRelayAsMac({
@@ -541,6 +575,11 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       // traffic and dropped it.
       void (async () => {
         let current: RelayConnection | undefined = initial;
+        // Backs off after a session that ends almost immediately (relay
+        // accept-then-close, a bounce, or the session already being taken) so
+        // a misbehaving relay can't drive this into a tight, CPU-spinning
+        // reconnect loop; a session that actually carries a phone resets it.
+        let backoffMs = RELAY_RECONNECT_DELAY_MS;
         while (!stopping) {
           if (!current) {
             try {
@@ -549,14 +588,33 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
               logger.warn(
                 `relay reconnect failed: ${err instanceof Error ? err.message : String(err)}`,
               );
-              await delay(RELAY_RECONNECT_DELAY_MS);
+              await delay(backoffMs);
+              backoffMs = nextRelayBackoff(0, backoffMs, {
+                minHealthyMs: MIN_HEALTHY_SESSION_MS,
+                baseMs: RELAY_RECONNECT_DELAY_MS,
+                maxMs: MAX_RECONNECT_DELAY_MS,
+              });
               continue;
             }
           }
-          // Serve one phone session, then immediately re-arm on the relay (no
-          // delay) so a reconnecting phone always finds the bridge paired.
+          // Serve one phone session, then re-arm on the relay.
+          const startedAt = now();
           await serve(current);
           current = undefined;
+          // `stop()` closes the relay connection, so the final `serve()` always
+          // returns "unhealthily" fast. Leave before the backoff so shutdown
+          // neither logs a misleading warning nor lingers in a sleep.
+          if (stopping) break;
+          const sessionMs = now() - startedAt;
+          if (sessionMs < MIN_HEALTHY_SESSION_MS) {
+            logger.warn(`relay session ended after ${sessionMs}ms; backing off ${backoffMs}ms`);
+            await delay(backoffMs);
+          }
+          backoffMs = nextRelayBackoff(sessionMs, backoffMs, {
+            minHealthyMs: MIN_HEALTHY_SESSION_MS,
+            baseMs: RELAY_RECONNECT_DELAY_MS,
+            maxMs: MAX_RECONNECT_DELAY_MS,
+          });
         }
       })();
     },
@@ -573,15 +631,29 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
             trustStore,
             displayName: hostname(),
             transport: 'direct',
+            // Consent gate for first-time enrollment (architecture/02a §5.9.1):
+            // a qr_bootstrap is only accepted while the operator recently showed
+            // the QR/code (see generatePairingQr/currentPairingCode above).
+            // trusted_reconnect never consults this.
+            isPairingArmed: () => pairingCodeService.isArmed(),
           });
         },
         // Manual-code pairing: trade a code shown on the PC for the pairing payload.
         onPairResolve: (code, ip) => {
+          // Log the OUTCOME (never the code — it is a shared secret). Without
+          // this a failed manual pairing is indistinguishable from a request
+          // that never arrived, which is exactly how a Tailscale-only failure
+          // was misread as a rejected code.
           if (pairingCodeService.rateLimited(ip)) {
+            logger.warn(`pair/resolve from ${ip}: rate limited (429)`);
             return { status: 429, json: { error: 'rate_limited' } };
           }
           const payload = pairingCodeService.resolve(code);
-          if (!payload) return { status: 403, json: { error: 'invalid_or_expired_code' } };
+          if (!payload) {
+            logger.warn(`pair/resolve from ${ip}: code did not match or expired (403)`);
+            return { status: 403, json: { error: 'invalid_or_expired_code' } };
+          }
+          logger.info(`pair/resolve from ${ip}: accepted (200); pairing window armed`);
           return { status: 200, json: payload };
         },
         // Claude PreToolUse approval hook: ask the user (on the phone) whether a

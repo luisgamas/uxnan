@@ -245,6 +245,9 @@ export interface AppSettings {
   terminalProfiles: TerminalProfile[];
   /** Id of the profile used for new terminals unless one is picked explicitly. */
   defaultProfileId: string | null;
+  /** Lines of retained (scrollable) output each terminal keeps; unset → the
+   *  default (see `clampScrollback`). Higher keeps more history, uses more memory. */
+  terminalScrollback?: number;
   /** Registered CLI coding agents, launchable into any worktree. */
   agentProfiles: AgentProfile[];
   /** Agent auto-launched when a worktree is created; null = off (default). */

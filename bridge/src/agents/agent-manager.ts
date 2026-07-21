@@ -716,9 +716,41 @@ export class AgentManager {
           break;
       }
     } catch (err) {
-      this.#options.logger.warn(
-        `agent event handling failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      this.#options.logger.warn(`agent event handling failed: ${message}`);
+      // A non-terminal event failing is survivable — the turn keeps streaming
+      // and the next event can still finish it. A TERMINAL one failing is not:
+      // nothing else will ever move this turn out of `streaming`, so the phone
+      // would sit on "responding…" until the app is killed. Persistence is
+      // already retried where it is flaky (`DaemonState.writeJson`); this is the
+      // last resort when it fails anyway — surface it instead of hanging.
+      if (
+        event.type === 'turn_completed' ||
+        event.type === 'turn_error' ||
+        event.type === 'turn_aborted'
+      ) {
+        this.#activeTurnByThread.delete(threadId);
+        this.#assistantByTurn.delete(turnId);
+        try {
+          await this.#options.store.failTurn(threadId, turnId, now);
+          this.#options.notify(
+            makeNotification(StreamNotification.TurnError, {
+              threadId,
+              turnId,
+              error: {
+                code: JsonRpcErrorCode.BridgeError,
+                message: `the turn ended but could not be finalized: ${message}`,
+              },
+            }),
+          );
+        } catch (failErr) {
+          this.#options.logger.error(
+            `could not fail a turn whose terminal event threw: ${
+              failErr instanceof Error ? failErr.message : String(failErr)
+            }`,
+          );
+        }
+      }
     }
   }
 

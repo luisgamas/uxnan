@@ -35,6 +35,8 @@ import type { WebglAddon } from "@xterm/addon-webgl";
 import { openUrl } from "$lib/api";
 import { agentMonitor } from "$lib/state/agentMonitor.svelte";
 import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
+import { DEFAULT_TERMINAL_SCROLLBACK, SNAPSHOT_SCROLLBACK } from "$lib/terminal/scrollback";
+import { scanForJunctionBlock, forgetJunctionBlock } from "$lib/terminal/windowsJunctionGuard";
 
 /** Read CSI parameter `i` as a non-negative integer, or `def` when absent.
  *  (xterm hands sub-parameters as `number[]`; the keyboard sequences handled
@@ -142,7 +144,7 @@ export function getInstance(id: string): TerminalInstance | undefined {
 /** Serialize a live instance's parsed screen + last `scrollback` lines as ANSI
  *  (for workspace sleep and the close-time snapshot). `null` when the instance
  *  doesn't exist or serialization throws. */
-export function serializeInstance(id: string, scrollback = 1000): string | null {
+export function serializeInstance(id: string, scrollback = SNAPSHOT_SCROLLBACK): string | null {
   const inst = registry.get(id);
   if (!inst) return null;
   try {
@@ -213,6 +215,7 @@ export function disposeInstance(id: string): void {
   const inst = registry.get(id);
   if (!inst) return;
   registry.delete(id);
+  forgetJunctionBlock(id);
   if (inst.launchTimer) clearTimeout(inst.launchTimer);
   for (const dispose of inst.disposables.splice(0)) {
     try {
@@ -364,8 +367,10 @@ async function createInstance(
   const term = new Terminal({
     ...opts.options,
     // Bounded scrollback caps per-terminal memory (instances stay alive for the
-    // tab's whole life, so this is the effective limit on retained output).
-    scrollback: 5000,
+    // tab's whole life, so this is the effective limit on retained output). The
+    // value is user-configurable (Settings → Terminal, passed in via
+    // `opts.options.scrollback`); the fallback covers callers that don't set it.
+    scrollback: opts.options.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -478,9 +483,13 @@ async function createInstance(
   // (plain web preview) `listen` rejects — the xterm still works locally.
   try {
     const unOutput = await listen<number[]>(`pty:output:${id}`, (e) => {
-      inst.term.write(new Uint8Array(e.payload), () => inst.hooks.onOutput?.());
+      const bytes = new Uint8Array(e.payload);
+      inst.term.write(bytes, () => inst.hooks.onOutput?.());
       agentMonitor.noteOutput(id);
       scheduleAgentLaunch(inst);
+      // Windows only: guide the user when a command trips the OS redirection-trust
+      // mitigation on a junction/symlink in this path (see `windowsJunctionGuard`).
+      scanForJunctionBlock(id, bytes);
     });
     const unExit = await listen(`pty:exit:${id}`, () => {
       if (inst.hooks.onExit) inst.hooks.onExit();

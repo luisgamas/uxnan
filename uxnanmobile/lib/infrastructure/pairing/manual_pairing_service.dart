@@ -130,8 +130,13 @@ PairingPayload parsePairResolveResponse(int statusCode, Object? data) {
 /// returned payload is fed into the normal pairing handshake
 /// (`SessionCoordinator.processPairingPayload`).
 ///
-/// FOR-DEV: discovery is manual (the user types the host shown on the PC).
-/// mDNS browse (`_uxnan._tcp`) to auto-list bridges is a follow-up.
+/// The code is a shared secret read off the PC screen, and a successful
+/// resolve both hands out the pairing payload and arms the bridge's
+/// `qr_bootstrap` window. So it is sent to exactly ONE host — the one the user
+/// named — and never fanned out across candidates: mDNS records are
+/// unauthenticated and spoofable by any device on the network, so racing
+/// discovered hosts would disclose the code to them and let the first
+/// responder impersonate the PC.
 class ManualPairingService {
   /// Creates a [ManualPairingService] over [_dio].
   ManualPairingService(this._dio);

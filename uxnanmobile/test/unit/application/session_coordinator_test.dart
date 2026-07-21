@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:async/async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/coordinators/session_coordinator.dart';
+import 'package:uxnan/core/constants/protocol_constants.dart';
 import 'package:uxnan/core/extensions/uint8list_ext.dart';
 import 'package:uxnan/domain/entities/connection_session.dart';
 import 'package:uxnan/domain/entities/pairing_payload.dart';
@@ -110,7 +111,7 @@ class _FakeBridge {
       await transport.send(
         _jsonBytes({
           'kind': 'serverHello',
-          'protocolVersion': 1,
+          'protocolVersion': ProtocolConstants.secureProtocolVersion,
           'sessionId': sessionId,
           'macDeviceId': 'mac-1',
           'macIdentityPublicKey': identity.publicKey.toHex(),
@@ -132,6 +133,11 @@ class _FakeBridge {
         clientNonce: clientNonce,
         serverNonce: serverNonce,
       );
+      // role: bridge — this fake plays the BRIDGE side of the wire (it
+      // decrypts inbound phone->bridge requests and encrypts outbound
+      // bridge->phone notifications), the mirror image of the real phone
+      // client under test, so their AAD directions (architecture/02a §5.9.1)
+      // actually agree.
       final channel = SecureChannel(
         SecureSession(
           sessionId: sessionId,
@@ -141,6 +147,7 @@ class _FakeBridge {
           keyEpoch: keyEpoch,
           mode: HandshakeMode.qrBootstrap,
         ),
+        role: SecureChannelRole.bridge,
       );
       _channel = channel;
 
