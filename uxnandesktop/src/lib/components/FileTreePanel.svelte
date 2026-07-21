@@ -6,9 +6,12 @@
   // Clicking a file opens it in the center editor; dragging a row onto a terminal
   // inserts its path. Search runs project-wide (backend `fs_search_files`) and shows
   // a flat match list. Toolbar: search · collapse · reveal · refresh, plus a "…"
-  // menu (show/hide hidden files). Each row has a context menu (`FileTreeContextMenu`)
-  // with full file operations; create/rename use `FileNamePromptDialog`, delete the
-  // shared destructive `ConfirmDialog`.
+  // menu (show/hide hidden files) that also creates New File/Folder at the selected
+  // folder or the root, plus Esc/empty-area to clear the selection. Each row has a
+  // context menu (`FileTreeContextMenu`) with full file operations, and F2/Delete
+  // shortcuts on the selection. Create + rename are inline in the tree
+  // (`FileTreeDraftRow` / `FileTreeRow` via the shared `TreeInlineInput`); delete uses
+  // the shared destructive `ConfirmDialog`.
   import type { FsEntry } from "$lib/types";
   import { projects } from "$lib/state/projects.svelte";
   import { git, type FileEntry } from "$lib/state/git.svelte";
@@ -27,7 +30,6 @@
   import FileTreeRow from "./FileTreeRow.svelte";
   import FileTreeDraftRow from "./FileTreeDraftRow.svelte";
   import OpenWith from "./OpenWith.svelte";
-  import FileNamePromptDialog from "./FileNamePromptDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import FileIcon from "@lucide/svelte/icons/file";
@@ -158,10 +160,8 @@
   }
 
   // --- Selection + create / rename / delete operations ---------------------
-  // Create is inline (VSCode-style: an editable draft row — see `startCreate`);
-  // rename + delete still use the mounted-once dialogs below.
-  let renameOpen = $state(false);
-  let renameEntry = $state<FsEntry | null>(null);
+  // Create + rename are inline (VSCode-style: an editable row — see `startCreate` /
+  // `openRename`); delete still uses the mounted-once confirm dialog below.
   let deleteOpen = $state(false);
   let deleteTarget = $state<FsEntry | null>(null);
   let deleteError = $state<string | null>(null);
@@ -250,21 +250,25 @@
     fileTree.draft = null;
   }
 
-  // Defer the dialog open until the context menu has fully closed, so the menu's
-  // teardown releases the body pointer-lock before the dialog captures it (else
-  // the dialog can restore `pointer-events: none` on close and freeze the mouse).
+  // Rename is inline (VSCode-style: the row shows an editable input in place of its
+  // name). Delete opens the confirm dialog. Both are deferred one macrotask so the
+  // context menu that triggered them fully closes first — for the dialog this also lets
+  // bits-ui release the body pointer-lock before it snapshots the style (F2 has no menu
+  // open, so the defer is simply harmless there).
   function openRename(entry: FsEntry): void {
-    renameEntry = entry;
-    deferModalOpen(() => (renameOpen = true));
+    deferModalOpen(() => (fileTree.renamingPath = entry.path));
+  }
+  async function commitRename(entry: FsEntry, name: string): Promise<void> {
+    await fileTree.renameEntry(entry, name); // throws → the inline input shows the error
+    fileTree.renamingPath = null;
+  }
+  function cancelRename(): void {
+    fileTree.renamingPath = null;
   }
   function openDelete(entry: FsEntry): void {
     deleteTarget = entry;
     deleteError = null;
     deferModalOpen(() => (deleteOpen = true));
-  }
-
-  async function submitRename(name: string): Promise<void> {
-    if (renameEntry) await fileTree.renameEntry(renameEntry, name); // throws → dialog shows the error
   }
 
   async function doDelete(): Promise<boolean> {
@@ -278,8 +282,6 @@
       return false; // keep the dialog open to show the error
     }
   }
-
-  const renameInitial = $derived(renameEntry?.name ?? "");
 
   // One flattened row per visible tree node (depth drives indentation). Only
   // already-loaded folders that are expanded are walked; dotfiles are hidden when
@@ -545,6 +547,7 @@
               isExpanded={r.entry.isDir && !searchCollapsed.has(r.entry.path)}
               isOpen={terminals.isFileOpen(r.entry.path)}
               selected={fileTree.selectedEntry?.path === r.entry.path}
+              renaming={fileTree.renamingPath === r.entry.path}
               {changed}
               {color}
               onActivate={() => {
@@ -555,6 +558,8 @@
               onNewFolder={() => startCreate("folder", dirOf(r.entry))}
               onRename={() => openRename(r.entry)}
               onDelete={() => openDelete(r.entry)}
+              onRenameCommit={(name) => commitRename(r.entry, name)}
+              onRenameCancel={cancelRename}
               {beginDrag}
               {moveDrag}
               {endDrag}
@@ -596,6 +601,7 @@
               isExpanded={fileTree.expanded.has(r.entry.path)}
               isOpen={terminals.isFileOpen(r.entry.path)}
               selected={fileTree.selectedEntry?.path === r.entry.path}
+              renaming={fileTree.renamingPath === r.entry.path}
               {changed}
               {color}
               ignored={r.entry.ignored}
@@ -607,6 +613,8 @@
               onNewFolder={() => startCreate("folder", dirOf(r.entry))}
               onRename={() => openRename(r.entry)}
               onDelete={() => openDelete(r.entry)}
+              onRenameCommit={(name) => commitRename(r.entry, name)}
+              onRenameCancel={cancelRename}
               {beginDrag}
               {moveDrag}
               {endDrag}
@@ -673,18 +681,7 @@
   </div>
 {/if}
 
-<!-- Mounted once; rename is driven by the row context-menu action above (create is
-     now inline, and delete uses the confirm dialog below). -->
-<FileNamePromptDialog
-  bind:open={renameOpen}
-  title={i18n.t("fileTree.renameTitle")}
-  submitLabel={i18n.t("common.rename")}
-  initial={renameInitial}
-  isRename
-  placeholder={i18n.t("fileTree.namePlaceholder")}
-  onsubmit={submitRename}
-/>
-
+<!-- Delete confirm, mounted once (rename + create are inline in the tree). -->
 <ConfirmDialog
   bind:open={deleteOpen}
   danger

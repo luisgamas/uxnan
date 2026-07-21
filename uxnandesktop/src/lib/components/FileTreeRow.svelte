@@ -7,9 +7,11 @@
   import type { FsEntry } from "$lib/types";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
+  import { i18n } from "$lib/i18n";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import FileTreeContextMenu from "./FileTreeContextMenu.svelte";
+  import TreeInlineInput from "./TreeInlineInput.svelte";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import FolderIcon from "@lucide/svelte/icons/folder";
@@ -21,6 +23,7 @@
     isExpanded = false,
     isOpen = false,
     selected = false,
+    renaming = false,
     changed = false,
     color = "",
     ignored = false,
@@ -31,6 +34,8 @@
     onNewFolder,
     onRename,
     onDelete,
+    onRenameCommit,
+    onRenameCancel,
     beginDrag,
     moveDrag,
     endDrag,
@@ -41,6 +46,8 @@
     isOpen?: boolean;
     /** The last-clicked row — drives the selection highlight + toolbar create target. */
     selected?: boolean;
+    /** When true, the row shows an inline rename input in place of the name. */
+    renaming?: boolean;
     changed?: boolean;
     /** Git-change color class (empty for an unchanged entry). */
     color?: string;
@@ -53,6 +60,9 @@
     onNewFolder: () => void;
     onRename: () => void;
     onDelete: () => void;
+    /** Persist the inline rename (new bare name). Throw to show the error inline. */
+    onRenameCommit: (name: string) => Promise<void>;
+    onRenameCancel: () => void;
     beginDrag: (e: PointerEvent, entry: FsEntry) => void;
     moveDrag: (e: PointerEvent) => void;
     /** Ends the gesture; returns true when it was a drag (suppress the click). */
@@ -63,6 +73,30 @@
   let dragged = false;
 </script>
 
+{#if renaming}
+  {#snippet renameIcon()}
+    {#if entry.isDir}
+      {#if isExpanded}
+        <ChevronDownIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      {:else}
+        <ChevronRightIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      {/if}
+      <FolderIcon class={cn(icon.decorative, "shrink-0", changed ? color : "text-muted-foreground")} />
+    {:else}
+      <span class="w-3 shrink-0"></span>
+      <FileIcon class={cn(icon.decorative, "shrink-0", color || "text-muted-foreground")} />
+    {/if}
+  {/snippet}
+  <TreeInlineInput
+    indent={depth * 12 + 2}
+    icon={renameIcon}
+    initial={entry.name}
+    select="basename"
+    ariaLabel={i18n.t("fileTree.renameTitle")}
+    oncommit={onRenameCommit}
+    oncancel={onRenameCancel}
+  />
+{:else}
 <ContextMenu.Root>
   <ContextMenu.Trigger>
     {#snippet child({ props })}
@@ -131,3 +165,4 @@
   </ContextMenu.Trigger>
   <FileTreeContextMenu {entry} {rel} {isExpanded} {root} {onNewFile} {onNewFolder} {onRename} {onDelete} />
 </ContextMenu.Root>
+{/if}

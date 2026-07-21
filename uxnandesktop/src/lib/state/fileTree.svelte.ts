@@ -66,6 +66,9 @@ class FileTreeStore {
   /** An in-progress inline "New File" / "New Folder" (VSCode-style): a draft input
    *  row renders as the first child of `dir` until the user commits or cancels. */
   draft = $state<{ dir: string; kind: "file" | "folder" } | null>(null);
+  /** Path of the entry being renamed inline (VSCode-style); its row shows an editable
+   *  input in place of the name until the user commits or cancels. Null = none. */
+  renamingPath = $state<string | null>(null);
   private listening = false;
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   /** Monotonic id so a slow search can't overwrite a newer one's results. */
@@ -114,6 +117,7 @@ class FileTreeStore {
     this.searchScope = null;
     this.selectedEntry = null;
     this.draft = null;
+    this.renamingPath = null;
     this.clearSearch();
     if (root) void this.loadDir(root);
   }

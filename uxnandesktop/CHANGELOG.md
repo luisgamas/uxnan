@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — rename is inline in the tree too
+
+- Renaming a file/folder (F2 or the context menu) now edits the name **in place** in
+  the tree instead of opening a modal: the row becomes an input with the basename
+  pre-selected — Enter/Esc/blur confirm/cancel and a backend error shows inline. It
+  shares the exact field of the inline create, now extracted as a reusable
+  `TreeInlineInput`; the old `FileNamePromptDialog` is removed. Delete still uses the
+  shared destructive confirm dialog.
+
 ### Added — file-tree keyboard shortcuts
 
 - With a file/folder selected in the tree, **F2** renames and **Delete** (or

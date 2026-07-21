@@ -368,15 +368,18 @@ commit/push/pull.
   `trash`, recuperable) tras el `ConfirmDialog` destructivo compartido. Las
   pestañas de archivo abiertas **siguen un renombrado o se cierran al eliminar**
   (`terminals.repathTabs` / `closeTabsUnder`).
-- **Crear es inline al estilo VSCode**: en vez de un modal, New File / New Folder
-  insertan una **fila de entrada editable** (`FileTreeDraftRow.svelte`) en el sitio
-  de creación del propio árbol — Enter confirma, Esc cancela, blur confirma si el
-  nombre es válido. El nombre puede ser una **ruta intercalada** (`carpeta/archivo.js`)
-  que crea las carpetas intermedias (estilo `mkdir -p`, reutilizando las existentes)
-  sin sobrescribir la hoja. Al ser inline no toca el pointer-lock del `<body>` que el
-  diálogo modal tenía que sortear. Renombrar sí sigue usando el diálogo de nombre
-  (`FileNamePromptDialog.svelte`, validación de nombre "desnudo" + aviso de cambio de
-  extensión).
+- **Crear y renombrar son inline al estilo VSCode**: en vez de un modal, New File /
+  New Folder insertan una **fila de entrada editable** (`FileTreeDraftRow.svelte`) en
+  el sitio de creación, y **Renombrar** convierte la fila del ítem en un input en el
+  sitio (`FileTreeRow.svelte`, con el basename preseleccionado). Ambos comparten el
+  mismo campo (`TreeInlineInput.svelte`): Enter confirma, Esc cancela, blur confirma si
+  es válido, y un error del backend se muestra inline. En **crear**, el nombre puede ser
+  una **ruta intercalada** (`carpeta/archivo.js`) que crea las carpetas intermedias
+  (estilo `mkdir -p`, reutilizando las existentes) sin sobrescribir la hoja; **renombrar**
+  es un cambio de nombre "desnudo" (`fs_rename` + `validate_bare_name`). Al ser inline no
+  tocan el pointer-lock del `<body>` que el diálogo modal tenía que sortear (el antiguo
+  `FileNamePromptDialog` se eliminó). Solo **eliminar** conserva su `ConfirmDialog`
+  destructivo.
 - **Crear desde la barra + selección**: además del menú contextual, el menú **"…"**
   de la cabecera ofrece New File / New Folder — útil cuando el árbol es grande y no
   hay hueco vacío donde abrir el clic derecho. El destino sigue a VSCode: la **carpeta
