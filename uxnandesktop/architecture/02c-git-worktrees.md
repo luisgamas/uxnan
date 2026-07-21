@@ -390,6 +390,12 @@ commit/push/pull.
   derecho** abre las acciones de la **raíz del proyecto** (New File / New Folder en la
   raíz del worktree, Revelar, Contraer todo), alcanzables aunque un árbol grande no
   deje hueco vacío para el clic derecho.
+- **Atajos de teclado** (estilo VSCode, sobre la fila seleccionada; `onPanelKeydown`):
+  **F2** renombra y **Supr** (o **Cmd+Backspace** en macOS) mueve a la papelera del SO —
+  reutilizan el mismo diálogo de renombrado y el `ConfirmDialog` destructivo del menú
+  contextual—; **Enter/Espacio** abren el archivo o pliegan/despliegan la carpeta (nativo
+  del `<button>` de la fila). No se disparan mientras se escribe en la búsqueda ni en un
+  input de creación inline.
 - Backend: `fs_create_file` / `fs_create_dir` aceptan una **ruta relativa intercalada**
   (crean las carpetas intermedias; hoja sin-clobber; guardas contra `..`, segmentos
   vacíos, `\` y escapes fuera del directorio) · `fs_delete` / `fs_duplicate`.

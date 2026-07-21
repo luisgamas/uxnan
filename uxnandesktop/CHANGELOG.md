@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — file-tree keyboard shortcuts
+
+- With a file/folder selected in the tree, **F2** renames and **Delete** (or
+  **Cmd+Backspace** on macOS) moves it to the OS trash — reusing the same rename
+  dialog and destructive confirm as the row context menu. **Enter / Space** open a
+  file or toggle a folder (native to the focused row `<button>`). The rename/delete
+  keys never fire while typing in the search box or an inline create draft.
+
 ### Changed — VSCode-style file-tree focus & clearable selection
 
 - Opening (or switching to) a file tab no longer auto-focuses the CodeMirror editor;

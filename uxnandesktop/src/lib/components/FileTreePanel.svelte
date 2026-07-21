@@ -183,10 +183,40 @@
   function clearSelection(): void {
     fileTree.selectedEntry = null;
   }
-  /** Esc anywhere in the panel clears the selection. The draft input's own Esc
-   *  stops propagation (so it only cancels the draft), so it never reaches here. */
+  /** Whether a keydown originated in a text field (the search box or an inline draft
+   *  input), where the rename/delete shortcuts must not fire. */
+  function isEditableTarget(e: Event): boolean {
+    const el = e.target as HTMLElement | null;
+    return (
+      !!el &&
+      (el.tagName === "INPUT" ||
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "SELECT" ||
+        el.isContentEditable)
+    );
+  }
+
+  /** File-tree keyboard shortcuts on the selected row (VSCode-style): Esc clears the
+   *  selection; F2 renames; Delete (or Cmd+Backspace on macOS) moves it to the OS
+   *  trash — reusing the same dialogs as the row context menu. Enter / Space are
+   *  handled natively by the focused row `<button>` (open file / toggle folder). The
+   *  rename/delete keys never fire while typing in the search box or an inline draft;
+   *  the draft's own Esc stops propagation so it only cancels the draft, not here. */
   function onPanelKeydown(e: KeyboardEvent): void {
-    if (e.key === "Escape") clearSelection();
+    if (e.key === "Escape") {
+      clearSelection();
+      return;
+    }
+    if (isEditableTarget(e)) return;
+    const sel = fileTree.selectedEntry;
+    if (!sel) return;
+    if (e.key === "F2") {
+      e.preventDefault();
+      openRename(sel);
+    } else if (e.key === "Delete" || (e.key === "Backspace" && e.metaKey)) {
+      e.preventDefault();
+      openDelete(sel);
+    }
   }
 
   /** Where a toolbar "New File/Folder" lands: the selected folder (or the selected
