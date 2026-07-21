@@ -1,6 +1,4 @@
 What's new in this update:
 
-• Fixed: manual pairing over Tailscale now works — the app waits long enough for the connection to come up instead of giving up early.
-• Clearer message: if your PC's bridge is a different version than the app, pairing now tells you to update the bridge instead of blaming your pairing code.
-
-Tip: keep the app and your PC's bridge updated together.
+• More private by design: your phone's pairing identity is no longer copied into device backups or phone-to-phone transfers. A restored phone simply pairs again — it can't clone a trusted device.
+• Your activity stats now start loading the moment you connect, so your Profile is ready without the wait.

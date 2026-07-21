@@ -1,6 +1,4 @@
 Novedades de esta actualización:
 
-• Corregido: el emparejamiento manual por Tailscale ya funciona — la app espera lo suficiente a que se establezca la conexión en vez de rendirse pronto.
-• Mensaje más claro: si el bridge de tu PC tiene otra versión que la app, ahora te pide actualizar el bridge en vez de culpar a tu código de emparejamiento.
-
-Consejo: mantén la app y el bridge de tu PC actualizados juntos.
+• Más privado por diseño: la identidad de emparejamiento de tu teléfono ya no se copia en las copias de seguridad ni en las transferencias entre teléfonos. Un teléfono restaurado simplemente se vuelve a emparejar — no puede clonar un dispositivo de confianza.
+• Tus estadísticas de actividad empiezan a cargarse en cuanto conectas, así tu Perfil está listo sin esperas.

@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.12-alpha.20260721+20260722] - 2026-07-21
+
 ### Security — restored installations cannot clone a trusted phone identity
 
 - Android Auto Backup and device-to-device transfer now exclude both secure
