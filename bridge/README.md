@@ -137,8 +137,10 @@ platform scripts under `scripts/`.
 The bridge is the ecosystem's core engine, so `start`/`status`/`qr`/`code` also
 print a one-line **"a newer bridge is available"** notice to stderr when the
 running version is behind the latest published to npm (`latest` dist-tag). The
-check is best-effort and cached in `~/.uxnan/update-check.json` (24h TTL), and
-the result is also exposed to the phone via `bridge/status`
+check is best-effort and cached in `~/.uxnan/update-check.json` (24h TTL);
+**`start` always re-checks** (it bypasses the cache), so a release published
+inside that window is announced the next time you start the bridge rather than
+up to a day later. The result is also exposed to the phone via `bridge/status`
 (`latestVersion`/`updateAvailable`).
 
 The Ed25519 identity is stored in the OS keychain (Windows Credential Manager /
