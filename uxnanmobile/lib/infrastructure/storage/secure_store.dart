@@ -35,16 +35,15 @@ abstract class SecureStore {
 class FlutterSecureStore implements SecureStore {
   /// Creates a [FlutterSecureStore], optionally injecting [storage].
   FlutterSecureStore({FlutterSecureStorage? storage})
-    : _storage =
-          storage ??
-          const FlutterSecureStorage(
-            aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            // Pairing identity is installation-local. A restored phone gets a
-            // fresh identity and re-pairs instead of cloning a trusted key.
-            iOptions: IOSOptions(
-              accessibility: KeychainAccessibility.first_unlock_this_device,
-            ),
-          );
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+              // Pairing identity is installation-local. A restored phone gets a
+              // fresh identity and re-pairs instead of cloning a trusted key.
+              iOptions: IOSOptions(
+                accessibility: KeychainAccessibility.first_unlock_this_device,
+              ),
+            );
 
   final FlutterSecureStorage _storage;
 
