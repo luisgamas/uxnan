@@ -1848,7 +1848,16 @@ mod tests {
     #[tokio::test]
     async fn add_worktree_from_existing_checks_out_local_branch() {
         let repo = tempfile::tempdir().unwrap();
-        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        // Resolve to the real (long) path before deriving the worktree path: on a
+        // Windows CI runner the temp dir is an 8.3 short path (`RUNNER~1`) that git
+        // echoes back expanded (`runneradmin`) in `git worktree list`. Since
+        // `find_worktree_entry` compares path spellings, the short-vs-long mismatch
+        // made the lookup miss and the `.unwrap()` below panic. `canonicalize`
+        // yields the long form (a `\\?\` verbatim prefix on Windows, stripped
+        // here); it is effectively a no-op on the Linux runner.
+        let canon = std::fs::canonicalize(repo.path()).unwrap();
+        let repo_path = canon.to_string_lossy().replace('\\', "/");
+        let repo_path = repo_path.strip_prefix("//?/").unwrap_or(&repo_path).to_string();
         init_repo(&repo_path).await;
 
         // A local branch that isn't checked out anywhere yet.
