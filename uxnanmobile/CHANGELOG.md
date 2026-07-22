@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- New threads now keep the bridge-provided title and, while it remains a
+  placeholder, derive a concise title from the first user prompt and sync it
+  through `thread/rename`. Explicit manual titles and later renames are never
+  replaced by this automatic naming path.
+- The in-conversation responding cue now shimmers its waiting label before the
+  first response token. Once text starts streaming, the label disappears and
+  the expressive loader behaves as a trailing cursor immediately after the
+  latest streamed token.
+
 ## [0.0.12-alpha.20260721+20260722] - 2026-07-21
 
 ### Security — restored installations cannot clone a trusted phone identity
