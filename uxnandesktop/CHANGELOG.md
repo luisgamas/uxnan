@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — experimental macOS installer (Intel + Apple Silicon)
+
+- The release pipeline now builds an **experimental, unsigned macOS build**: two
+  separate DMGs, one per architecture (`aarch64-apple-darwin` Apple Silicon,
+  `x86_64-apple-darwin` Intel), each **ad-hoc-signed**
+  (`bundle.macOS.signingIdentity "-"`, `hardenedRuntime false`,
+  `minimumSystemVersion 11.0`) so the Apple Silicon binary runs at all — **no Apple
+  Developer account needed**. It is **not notarized**, so users clear Gatekeeper
+  once by hand; a new [macOS install guide](docs/install-macos.md) documents the
+  non-technical / technical / advanced paths, and the root + desktop READMEs flag
+  it as experimental and invite issues/PRs (self-build stays supported).
+
+### Fixed — macOS CLI detection under a Finder/Dock launch
+
+- A macOS app launched from Finder inherits `launchd`'s minimal `PATH`, so Homebrew
+  (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel), npm globals, node
+  version managers and `~/.local/bin` were invisible — agent CLIs, `gh`, `git` and
+  CLI editors all reported "not installed" although present. A new `path_env` module
+  enriches the process `PATH` once at startup (macOS only) from the user's
+  login+interactive shell (time-bounded so a slow rc can't hang launch) plus
+  well-known directories, so detection and every PTY shell find the user's tools.
+  The seeded terminal profile is now a real login shell (`-l`) and `default_shell()`
+  falls back to `zsh` on macOS instead of `/bin/bash`.
+
+### Changed — CI verifies macOS; the release builds it
+
+- `verify-desktop.yml` is parameterized with an `os-list` input; desktop CI now also
+  verifies on the two macOS runners (Apple Silicon `macos-14` + Intel `macos-13`) so
+  a Mac-only regression surfaces on PRs, while the **release gate stays on Linux +
+  Windows**. The release build matrix adds both macOS legs with `fail-fast: false`,
+  so a failing mac leg never drops the Windows/Linux artifacts. +5 Rust tests (266
+  total).
+
 ### Fixed — theme-tinted, text-shaped editor text selection
 
 - Selecting text in the file editor / diff no longer paints an opaque, full-width block

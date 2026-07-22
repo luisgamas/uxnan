@@ -357,8 +357,14 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
   banner fijo superior) + acciones de **descargar/instalar dentro de
   Settings → Updates** (coherentes con la política de instalación); store
   `state/updater.svelte.ts`; i18n EN/ES. Firma minisign gratuita (`pubkey` en
-  `tauri.conf.json`), independiente del code-signing del SO. Detalle operativo
-  en `docs/updates.md`; clave de firma en `FOR-HUMAN.md`.
+  `tauri.conf.json`), independiente del code-signing del SO. **Distribucion macOS
+  EXPERIMENTAL:** el CI genera dos DMG por arquitectura (Intel `x86_64` + Apple
+  Silicon `aarch64`) con **firma ad-hoc** (`bundle.macOS.signingIdentity "-"`,
+  `hardenedRuntime false`, `minimumSystemVersion 11.0`) — sin cuenta Apple; el
+  usuario autoriza Gatekeeper a mano (`docs/install-macos.md`), y el `PATH` de un
+  arranque desde Finder se enriquece al inicio (`path_env.rs`) para detectar los CLI
+  de Homebrew/npm. La notarizacion con Apple Developer ID queda como via opcional
+  futura. Detalle operativo en `docs/updates.md`; clave de firma en `FOR-HUMAN.md`.
 
 #### Entregable
 

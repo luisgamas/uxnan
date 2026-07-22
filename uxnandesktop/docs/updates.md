@@ -71,6 +71,11 @@ quitting the app), so nothing is killed mid-write.
   `src-tauri/tauri.conf.json`. This is a **free minisign key**, unrelated to OS
   code-signing (the paid Authenticode/Apple cert that removes "unknown publisher"
   warnings — see `FOR-HUMAN.md`).
+  - **macOS is experimental** (unsigned, ad-hoc-signed). The updater downloads
+    inside the app rather than through a browser, so the replacement bundle is
+    **not re-quarantined** and self-updates generally apply without repeating the
+    Gatekeeper authorization. First-time install still needs it — see
+    [`install-macos.md`](install-macos.md).
 - **Channel = the release tag, enforced by CI.** A
   `desktop-stable-v0.0.PATCH` tag creates a normal Release and feeds `stable`.
   A `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` tag creates a GitHub

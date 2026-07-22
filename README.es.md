@@ -119,6 +119,14 @@ funciona sin modificación.
   <img alt="Descargar desde GitHub Releases" src="https://img.shields.io/badge/Descargar-GitHub_Releases-24292e?style=for-the-badge&logo=github&logoColor=white"/>
 </a>
 
+> **La compilación de macOS es EXPERIMENTAL y sin firma** (DMGs separados para
+> Intel y Apple Silicon): macOS la marca como de un "desarrollador no
+> identificado", así que la autorizas a mano una sola vez
+> ([guía de instalación en macOS](uxnandesktop/docs/install-macos.md)). También
+> puedes [compilarla en tu propia Mac](uxnandesktop/docs/build.md); los issues/PRs
+> que mejoren los instaladores de macOS — o ayuden a usuarios no técnicos — son
+> muy bienvenidos.
+
 → **[Lee el README de la app de escritorio](uxnandesktop/README.md)**
 
 ---

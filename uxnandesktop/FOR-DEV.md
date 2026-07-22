@@ -17,9 +17,10 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 261 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS is **unvalidated**
-(developed on Windows; CI is `{ubuntu, windows}`). **Phase 6 (embedded bridge /
-mobile pairing) is NOT started.**
+with" external editors/IDEs**). 266 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+**experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
+windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
+on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
 
 **Built (DONE), in detail:**
 
@@ -471,7 +472,12 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 ## Platform validation
 
-- [ ] **macOS** is unvalidated end-to-end (no macOS CI; developed on Windows).
+- [ ] **macOS** — an **experimental, unsigned** build now ships (two ad-hoc-signed
+      DMGs, Intel + Apple Silicon; `docs/install-macos.md`), CI compiles + tests it on
+      both arch runners, and the Finder/Dock `PATH` gap is fixed (`path_env.rs`).
+      Still **not validated on real hardware** by the maintainer — needs a smoke test
+      of launch, agent/`gh`/editor detection, notifications, keep-awake and a
+      self-update on both architectures.
 - [ ] **keep-awake** is implemented for macOS/Linux but **untested** there
       (`power.rs`); Windows works.
 - [ ] **Update UI (pinned sonner toast + in-Settings download/install) — visual +
@@ -480,18 +486,21 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       download/install actions were surfaced inline in **Settings → Updates**.
       `svelte-check` + Vitest pass, but the toast's on-screen appearance and the
       end-to-end download → install flow haven't been exercised in a running build
-      yet (blocked on a real update to appear — see the private-repo 404 item under
-      *CI/CD — release*). Validate the toast look/feel and the Settings actions in
-      the next update.
+      yet. The repo is now **public** and updates flow (the maintainer has verified
+      stable + nightly on each release), so this is no longer blocked — validate the
+      toast look/feel and the Settings actions in the next update.
 
 ## CI/CD — release
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
-  (Vitest) + vite build + cargo fmt/clippy/test on `{ubuntu, windows}` (macOS
-  deferred with Apple). 261 Rust + 225 Vitest tests.
-- ✅ **`release-desktop.yml`** — exists: `tauri-action` bundles on a `desktop-v*` tag
-  → draft GitHub Release, **and signs the updater artifacts** when the signing
-  secrets are set. **Windows ships without OS code-signing for now; macOS deferred.**
+  (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
+  macos-14, macos-13}` (via `verify-desktop.yml`'s `os-list` input); the release
+  gate keeps the default `{ubuntu, windows}`. 266 Rust + 225 Vitest tests.
+- ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
+  draft GitHub Release, **and signs the updater artifacts** when the signing secrets
+  are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
+  DMGs, Intel `macos-13` + Apple Silicon `macos-14`, `fail-fast: false`). Windows and
+  macOS ship without OS code-signing (SmartScreen / Gatekeeper warnings).
 - ✅ **Auto-updater** — `tauri-plugin-updater` wired end-to-end in the app
   (`src-tauri/src/updater.rs` + Settings → Updates with inline download/install +
   a pinned sonner toast `UpdateToast.svelte`; stable/nightly channels via GitHub's
@@ -499,15 +508,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   `release-desktop-manifest.yml`. The signing keypair is configured and
   `desktop-v0.0.1-alpha.20260627` shipped signed installers + a `latest.json`
   on the `desktop-updater-stable` channel. See [`docs/updates.md`](docs/updates.md).
-- [ ] **Public distribution while the repo is PRIVATE (blocker for end users)** —
-      the GitHub-Releases download URLs and the updater endpoint
-      (`…/releases/download/desktop-updater-<channel>/latest.json`) return **404**
-      to anonymous clients while `luisgamas/uxnan` is private, so the in-app
-      updater and public installer downloads only work for authenticated
-      collaborators. Decision (2026-06-27): **keep the repo private for now.**
-      Revisit when going public, or move desktop binaries to a dedicated **public**
-      releases repo (then update `tauri.conf.json → plugins.updater.endpoints` +
-      `release-desktop*.yml`). npm and Play distribution are unaffected.
 - [ ] **Manifest workflow needs `contents: write` for first-time channel creation** —
       `release-desktop-manifest.yml`'s `gh release create` of a channel's rolling
       release 403'd because the repo's `default_workflow_permissions` is `read`
@@ -517,9 +517,11 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       Settings → Actions → Workflow permissions to **Read and write**
       (`gh api -X PUT repos/luisgamas/uxnan/actions/permissions/workflow -f default_workflow_permissions=write`).
 - [ ] **Code-signing (OS)** — Windows Authenticode + macOS Developer ID +
-      notarization (human-provided **paid** certs — see `FOR-HUMAN.md`).
-      Independent of the (free) updater signature above; the build runs unsigned
-      without them (OS "unknown publisher" warnings).
+      notarization (human-provided **paid** certs — see `FOR-HUMAN.md`). Independent
+      of the (free) updater signature above; without them Windows ships unsigned
+      (SmartScreen) and macOS ships the **experimental ad-hoc** build (Gatekeeper
+      "unidentified developer", cleared per `docs/install-macos.md`). Apple Developer
+      ID + notarization is the optional path to a warning-free macOS install.
 
 ## Cross-cutting / standing rules
 

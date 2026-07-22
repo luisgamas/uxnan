@@ -115,6 +115,12 @@ without modification.
   <img alt="Download from GitHub Releases" src="https://img.shields.io/badge/Download-GitHub_Releases-24292e?style=for-the-badge&logo=github&logoColor=white"/>
 </a>
 
+> **macOS is an EXPERIMENTAL, unsigned build** (separate Intel & Apple Silicon
+> DMGs) — macOS flags it as from an "unidentified developer", so you authorize it
+> by hand once ([macOS install guide](uxnandesktop/docs/install-macos.md)). You can
+> also [build it on your own Mac](uxnandesktop/docs/build.md); issues/PRs that
+> improve the macOS installers — or help non-technical users — are very welcome.
+
 → **[Read the desktop app README](uxnandesktop/README.md)**
 
 ---
