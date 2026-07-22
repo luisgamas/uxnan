@@ -4,10 +4,9 @@ description: "Uxnan - remote control for AI coding agents (E2EE mobile client)"
 publish_to: 'none'
 
 # version: <build-name>+<build-number>
-# The build-number is Play's versionCode and must strictly increase. 0.0.6 (cut
-# earlier today) already took 20260716, so this same-day release borrows the next
-# day — the same thing 0.0.2-alpha.20260628+20260629 did.
-version: 0.0.12-alpha.20260721+20260722
+# The build-number is Play's versionCode and must strictly increase. The previous
+# release used 20260722, so this same-day release borrows the next calendar day.
+version: 0.0.13-alpha.20260722+20260723
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.13-alpha.20260722+20260723] - 2026-07-22
+
 ### Changed
 
 - The no-devices state now lives inside the standard Devices screen instead of
