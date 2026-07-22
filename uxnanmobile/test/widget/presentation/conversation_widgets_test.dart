@@ -59,7 +59,27 @@ void main() {
     expect(find.byType(HighlightView), findsOneWidget);
   });
 
-  testWidgets('streaming assistant turn shows a compact responding cue',
+  testWidgets('waiting assistant turn shows the responding label and loader',
+      (tester) async {
+    final message = Message(
+      id: 'streaming',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [TextContent('', isStreaming: true)],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pump();
+
+    expect(find.byType(PolygonLoader), findsOneWidget);
+    expect(find.text('Agent responding…'), findsOneWidget);
+  });
+
+  testWidgets('streaming text keeps the loader after the latest token',
       (tester) async {
     final message = Message(
       id: 'streaming',
@@ -76,7 +96,13 @@ void main() {
     await tester.pump();
 
     expect(find.byType(PolygonLoader), findsOneWidget);
-    expect(find.text('Agent responding…'), findsOneWidget);
+    expect(find.text('Agent responding…'), findsNothing);
+    final streamingText = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+    final children = streamingText.textSpan!.children!;
+    expect((children.first as TextSpan).text, 'Working');
+    expect(children.last, isA<WidgetSpan>());
   });
 
   testWidgets('renders approval, plan and subagent cards', (tester) async {

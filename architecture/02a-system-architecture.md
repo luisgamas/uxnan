@@ -281,7 +281,7 @@ La capa de dominio define el vocabulario del sistema. No depende de Flutter, de 
 // lib/domain/entities/thread.dart
 class Thread {
   final String id;
-  final String title;
+  final String title;             // bridge title; first prompt replaces only a placeholder
   final String? projectId;
   final String? cwd;
   final String? worktreePath;

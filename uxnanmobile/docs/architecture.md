@@ -108,6 +108,13 @@ and composed in `application_providers.dart`. The important ones:
    `BehaviorSubject` stream.
 4. The UI watches the derived stream providers and rebuilds reactively.
 
+For a new thread, `ThreadManager` preserves the bridge-provided title. When the
+first textual user message is sent and that title is still empty, the thread id,
+or the bridge's `New` / `New thread` placeholder, the manager normalizes and
+truncates that prompt into the conversation title and syncs it with
+`thread/rename`. It checks for an existing user message first, so subsequent
+prompts cannot overwrite either the automatic title or a manual rename.
+
 ## Patterns worth knowing
 
 - **Streams over `ValueNotifier`.** Managers expose `rxdart` `BehaviorSubject`

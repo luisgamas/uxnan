@@ -425,8 +425,12 @@ shrinking layout region: the composer veil is translucent, so translated chrome
 must never remain painted below the pill. Run-option popup menus retain composer
 focus and use a live position builder so keyboard geometry changes cannot leave
 the menu detached from its control.
-While a turn is active, its response begins with a 14 dp circular progress
-indicator and an italic on-surface-variant "Agent responding…" label.
+While a turn is active but has no response text yet, it begins with a 14 dp
+expressive progress indicator and an italic on-surface-variant
+"Agent responding…" label. A semantic-color skeleton sweep moves across the
+label and freezes under reduced motion. As soon as response text exists, the
+label disappears and the loader moves inline immediately after the latest
+token, acting as the response's trailing writing cursor.
 
 **Pill Input states:**
 ```text

@@ -1701,6 +1701,7 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final segments = <Widget>[];
     final pendingCommands = <MessageContent>[];
     final pendingText = StringBuffer();
+    var pendingTextIsStreaming = false;
     var workLogIndex = 0;
 
     void gap() {
@@ -1714,7 +1715,12 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       final text = pendingText.toString();
       pendingText.clear();
       gap();
-      segments.add(MessageContentView(content: TextContent(text)));
+      segments.add(
+        pendingTextIsStreaming
+            ? _StreamingProse(text: text)
+            : MessageContentView(content: TextContent(text)),
+      );
+      pendingTextIsStreaming = false;
     }
 
     void flushCommands() {
@@ -1749,6 +1755,7 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
             if (prose.isNotEmpty) prose.write('\n\n');
             prose.write(text.text);
           }
+          pendingTextIsStreaming = text.isStreaming;
         default:
           flushCommands();
           flushText();
@@ -1766,7 +1773,7 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (message.isStreaming) ...[
+          if (message.isStreaming && prose.isEmpty) ...[
             _AgentRespondingStatus(
               label: AppLocalizations.of(context).conversationAgentResponding,
             ),
@@ -1813,7 +1820,7 @@ class _AgentRespondingStatus extends StatelessWidget {
       children: [
         PolygonLoader(size: 14, color: colors.onSurfaceVariant),
         const SizedBox(width: UxnanSpacing.sm),
-        Text(
+        _SkeletonText(
           label,
           key: const ValueKey('agent-responding-status'),
           style: textTheme.labelMedium?.copyWith(
@@ -1822,6 +1829,90 @@ class _AgentRespondingStatus extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Keeps the active loader inline after the latest streamed character.
+class _StreamingProse extends StatelessWidget {
+  const _StreamingProse({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SelectableText.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: text),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(left: UxnanSpacing.xs),
+              child: PolygonLoader(
+                size: 14,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+      style: textTheme.bodyMedium?.copyWith(color: colors.onSurface),
+    );
+  }
+}
+
+/// A quiet shimmer across the waiting label before the first response token.
+class _SkeletonText extends StatefulWidget {
+  const _SkeletonText(this.text, {required this.style, super.key});
+
+  final String text;
+  final TextStyle? style;
+
+  @override
+  State<_SkeletonText> createState() => _SkeletonTextState();
+}
+
+class _SkeletonTextState extends State<_SkeletonText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final text = Text(widget.text, style: widget.style);
+    if (reduceMotion) return text;
+
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        child: text,
+        builder: (context, child) => ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) => LinearGradient(
+            begin: Alignment(-2 + (_controller.value * 4), 0),
+            end: Alignment(-1 + (_controller.value * 4), 0),
+            colors: [
+              colors.onSurfaceVariant.withValues(alpha: 0.42),
+              colors.onSurfaceVariant,
+              colors.onSurfaceVariant.withValues(alpha: 0.42),
+            ],
+          ).createShader(bounds),
+          child: child,
+        ),
+      ),
     );
   }
 }
