@@ -249,12 +249,19 @@ impl PtyManager {
 }
 
 /// Default shell per platform: honor the user's configured shell, else a sane
-/// built-in (PowerShell on Windows, `/bin/bash` elsewhere).
+/// built-in (PowerShell on Windows, the user's `$SHELL`, then `zsh` on macOS —
+/// its modern default — or `/bin/bash` elsewhere).
 fn default_shell() -> String {
     if cfg!(windows) {
         std::env::var("UXNAN_SHELL").unwrap_or_else(|_| "powershell.exe".to_string())
     } else {
-        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+        std::env::var("SHELL").unwrap_or_else(|_| {
+            if cfg!(target_os = "macos") {
+                "/bin/zsh".to_string()
+            } else {
+                "/bin/bash".to_string()
+            }
+        })
     }
 }
 

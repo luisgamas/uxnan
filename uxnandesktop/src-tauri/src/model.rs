@@ -283,7 +283,13 @@ pub fn default_terminal_profiles() -> Vec<TerminalProfile> {
             },
         ]
     } else {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+            if cfg!(target_os = "macos") {
+                "/bin/zsh".to_string()
+            } else {
+                "/bin/bash".to_string()
+            }
+        });
         let name = std::path::Path::new(&shell)
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
@@ -293,7 +299,10 @@ pub fn default_terminal_profiles() -> Vec<TerminalProfile> {
                 id: "login".to_string(),
                 name: format!("{name} (login shell)"),
                 command: shell,
-                args: Vec::new(),
+                // A real login shell (`-l`) so it sources the user's login files
+                // (Homebrew `PATH`, aliases) — matching Terminal.app and the
+                // profile's own name.
+                args: vec!["-l".to_string()],
             },
             TerminalProfile {
                 id: "bash".to_string(),

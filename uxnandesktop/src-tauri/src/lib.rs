@@ -25,6 +25,7 @@ mod hooks;
 mod mcp;
 mod mcpinject;
 mod model;
+mod path_env;
 mod persistence;
 mod power;
 mod procscan;
@@ -49,6 +50,12 @@ use crate::state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Enrich `PATH` for a macOS GUI launch (Finder/Dock omit the login-shell
+    // `PATH`, so Homebrew/npm/version-manager CLIs would otherwise be invisible
+    // to agent/`gh`/editor detection and to PTY shells). Must run first, before
+    // any child is spawned or any thread reads `PATH`. A no-op off macOS.
+    crate::path_env::enrich_for_gui_launch();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
