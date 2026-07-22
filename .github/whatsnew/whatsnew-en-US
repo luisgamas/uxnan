@@ -1,4 +1,5 @@
 What's new in this update:
 
-• More private by design: your phone's pairing identity is no longer copied into device backups or phone-to-phone transfers. A restored phone simply pairs again — it can't clone a trusted device.
-• Your activity stats now start loading the moment you connect, so your Profile is ready without the wait.
+• Conversation lists now get useful automatic titles while keeping your manual renames.
+• The response indicator shimmers while waiting, then follows streamed text like a live cursor.
+• The Devices screen keeps its navigation visible when empty and now features the Uxnan logo.
