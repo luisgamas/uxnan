@@ -182,59 +182,59 @@ class MyDevicesScreen extends ConsumerWidget {
           onPressed: () => context.push(AppRoutes.settings),
         ),
       ],
-      slivers: devices.isEmpty
-          ? const [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _PairEmptyState(),
-              ),
-            ]
-          : [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(
-            UxnanSpacing.lg,
-            UxnanSpacing.sm,
-            UxnanSpacing.lg,
-            UxnanSpacing.lg,
+      slivers: [
+        if (devices.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _PairEmptyState(),
+          )
+        else ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              UxnanSpacing.lg,
+            ),
+            sliver: SliverList.separated(
+              itemCount: devices.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: UxnanSpacing.md),
+              itemBuilder: (context, index) {
+                final device = devices[index];
+                return _DeviceCard(
+                  device: device,
+                  isConnected: device.macDeviceId == connectedId,
+                  isConnecting: device.macDeviceId == connectingId,
+                  networkKind: device.macDeviceId == connectedId
+                      ? networkKind
+                      : NetworkKind.unknown,
+                  connectedEndpoint: device.macDeviceId == connectedId
+                      ? connectedEndpoint
+                      : null,
+                  onStats: () =>
+                      context.push(AppRoutes.deviceStats(device.macDeviceId)),
+                  onOpen: () => _open(context, device),
+                  onConnect: () => _connect(ref, context, device),
+                  onRename: () => _rename(ref, context, device),
+                  onVerify: () => _verify(ref, context, device),
+                  onRemove: () => _remove(ref, context, device),
+                );
+              },
+            ),
           ),
-          sliver: SliverList.separated(
-            itemCount: devices.length,
-            separatorBuilder: (_, __) =>
-                const SizedBox(height: UxnanSpacing.md),
-            itemBuilder: (context, index) {
-              final device = devices[index];
-              return _DeviceCard(
-                device: device,
-                isConnected: device.macDeviceId == connectedId,
-                isConnecting: device.macDeviceId == connectingId,
-                networkKind: device.macDeviceId == connectedId
-                    ? networkKind
-                    : NetworkKind.unknown,
-                connectedEndpoint: device.macDeviceId == connectedId
-                    ? connectedEndpoint
-                    : null,
-                onStats: () =>
-                    context.push(AppRoutes.deviceStats(device.macDeviceId)),
-                onOpen: () => _open(context, device),
-                onConnect: () => _connect(ref, context, device),
-                onRename: () => _rename(ref, context, device),
-                onVerify: () => _verify(ref, context, device),
-                onRemove: () => _remove(ref, context, device),
-              );
-            },
+          // Pinned footer (app name + ALPHA stage pill). `SliverFillRemaining`
+          // with `hasScrollBody: false` gives the child the remaining viewport
+          // space when the list is short (the inner `Spacer` then pushes the
+          // content to the bottom of the screen), and the child's natural size
+          // when the list overflows — so the footer always sits right after
+          // the last card and never leaves a screen-sized white gap to scroll.
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _BrandingFooter(),
           ),
-        ),
-        // Pinned footer (app name + ALPHA stage pill). `SliverFillRemaining`
-        // with `hasScrollBody: false` gives the child the remaining viewport
-        // space when the list is short (the inner `Spacer` then pushes the
-        // content to the bottom of the screen), and the child's natural size
-        // when the list overflows — so the footer always sits right after
-        // the last card and never leaves a screen-sized white gap to scroll.
-        const SliverFillRemaining(
-          hasScrollBody: false,
-          child: _BrandingFooter(),
-        ),
-            ],
+        ],
+      ],
     );
   }
 }
