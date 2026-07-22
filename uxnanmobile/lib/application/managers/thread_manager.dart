@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:rxdart/rxdart.dart';
 import 'package:uuid/uuid.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
+import 'package:uxnan/core/extensions/string_ext.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
@@ -59,6 +60,8 @@ class ThreadManager {
     _eventsSub = domainEvents.listen(_applyEvent);
     _phaseSub = connectionPhases?.listen(_onConnectionPhase);
   }
+
+  static const int _automaticTitleMaxLength = 72;
 
   final IThreadRepository _threadRepository;
   final IMessageRepository _messageRepository;
@@ -279,10 +282,14 @@ class ThreadManager {
     if (thread != null) {
       await _threadRepository.saveThread(thread.copyWith(title: trimmed));
     }
+    await _syncThreadTitle(threadId, trimmed);
+  }
+
+  Future<void> _syncThreadTitle(String threadId, String title) async {
     try {
       await _sendRequest('thread/rename', {
         'threadId': threadId,
-        'title': trimmed,
+        'title': title,
       });
     } on Object catch (error, stackTrace) {
       AppLogger.warn(
@@ -557,13 +564,9 @@ class ThreadManager {
       throw StateError('thread/start returned no thread');
     }
     final base = _parseThread(result.cast<String, dynamic>());
-    // Auto-title: when the user did not name the thread, default its title to
-    // the thread's own id so it is identifiable in the list and resumable from
-    // the CLI on the PC. The user can rename it afterwards.
-    final hasUserTitle = title != null && title.trim().isNotEmpty;
-    final titled = hasUserTitle ? base : base.copyWith(title: base.id);
-    var thread =
-        deviceId != null ? titled.copyWith(deviceId: deviceId) : titled;
+    // Keep the bridge title. If it is still a placeholder, the first user
+    // prompt becomes a concise conversation title in [sendUserMessage].
+    var thread = deviceId != null ? base.copyWith(deviceId: deviceId) : base;
     // The bridge doesn't track the worktree, so persist the path the app
     // created it at — this surfaces the "Remove worktree" action.
     if (worktreePath != null && worktreePath.isNotEmpty) {
@@ -944,6 +947,7 @@ class ThreadManager {
       ...images,
     ];
     if (contents.isEmpty) return;
+    await _titleFromFirstPrompt(threadId, text);
     final message = Message(
       id: _uuid.v4(),
       threadId: threadId,
@@ -995,6 +999,29 @@ class ThreadManager {
       );
       AppLogger.warn('turn/send failed', error, stackTrace);
     }
+  }
+
+  Future<void> _titleFromFirstPrompt(String threadId, String text) async {
+    final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.isEmpty) return;
+
+    final thread = await _threadRepository.getThread(threadId);
+    if (thread == null || !_hasPlaceholderTitle(thread)) return;
+
+    final messages = await _messageRepository.getMessages(threadId);
+    if (messages.any((message) => message.role == MessageRole.user)) return;
+
+    final title = normalized.truncate(_automaticTitleMaxLength);
+    await _threadRepository.saveThread(thread.copyWith(title: title));
+    unawaited(_syncThreadTitle(threadId, title));
+  }
+
+  static bool _hasPlaceholderTitle(Thread thread) {
+    final title = thread.title.trim();
+    return title.isEmpty ||
+        title == thread.id ||
+        title == 'New' ||
+        title == 'New thread';
   }
 
   /// Responds to a pending approval ([approvalId]) on [threadId] with

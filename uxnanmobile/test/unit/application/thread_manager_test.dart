@@ -1069,14 +1069,13 @@ void main() {
     expect(sentMethods, contains('thread/unarchive'));
   });
 
-  test('startThread defaults the title to the thread id when unnamed',
-      () async {
+  test('startThread keeps the bridge title when unnamed', () async {
     final thread = await manager.startThread(projectId: 'p1', agentId: 'codex');
 
     expect(thread.id, 'th-new');
-    expect(thread.title, 'th-new');
+    expect(thread.title, 'New');
     final persisted = await threadRepo.getThread('th-new');
-    expect(persisted!.title, 'th-new');
+    expect(persisted!.title, 'New');
   });
 
   test('startThread keeps an explicit user title', () async {
@@ -1103,6 +1102,64 @@ void main() {
     );
     expect(user, isNotNull);
     expect(_text(user!), 'hola');
+  });
+
+  test('first prompt replaces an id placeholder with a conversation title',
+      () async {
+    await manager.loadThreads();
+    await threadRepo.saveThread(
+      (await threadRepo.getThread('th1'))!.copyWith(title: 'th1'),
+    );
+
+    await manager.sendUserMessage(
+      'th1',
+      '  Explain   how the streaming timeline works.  ',
+    );
+
+    expect(
+      (await threadRepo.getThread('th1'))!.title,
+      'Explain how the streaming timeline works.',
+    );
+    expect(
+      sentMethods.where((method) => method == 'thread/rename'),
+      hasLength(1),
+    );
+  });
+
+  test('first prompt preserves an explicit thread title', () async {
+    await manager.loadThreads();
+    await manager.renameThread('th1', 'Manual title');
+    sentMethods.clear();
+
+    await manager.sendUserMessage('th1', 'First prompt');
+
+    expect((await threadRepo.getThread('th1'))!.title, 'Manual title');
+    expect(sentMethods, isNot(contains('thread/rename')));
+  });
+
+  test('later prompts never replace an existing placeholder title', () async {
+    await manager.loadThreads();
+    await threadRepo.saveThread(
+      (await threadRepo.getThread('th1'))!.copyWith(title: 'th1'),
+    );
+    await messageRepo.saveMessage(
+      Message(
+        id: 'existing-user',
+        threadId: 'th1',
+        turnId: 'turn-existing',
+        role: MessageRole.user,
+        contents: const [TextContent('Earlier prompt')],
+        deliveryState: MessageDeliveryState.delivered,
+        orderIndex: 0,
+        createdAt: DateTime(2026),
+      ),
+    );
+    sentMethods.clear();
+
+    await manager.sendUserMessage('th1', 'Later prompt');
+
+    expect((await threadRepo.getThread('th1'))!.title, 'th1');
+    expect(sentMethods, isNot(contains('thread/rename')));
   });
 
   test('sendUserMessage forwards chosen run options on turn/send', () async {
