@@ -6,6 +6,16 @@ name: _verify-desktop (reusable)
 
 on:
   workflow_call:
+    inputs:
+      os-list:
+        description: >-
+          JSON array of runner labels to verify on. Defaults to the
+          release-gating pair (Linux + Windows); CI passes the experimental
+          macOS runners too so a Mac regression is caught on PRs without
+          blocking the release build.
+        required: false
+        type: string
+        default: '["ubuntu-latest", "windows-latest"]'
 
 defaults:
   run:
@@ -19,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: ${{ fromJSON(inputs.os-list) }}
 
     steps:
       - name: Checkout
