@@ -23,11 +23,14 @@ concurrency:
 jobs:
   verify:
     uses: ./.github/workflows/verify-desktop.yml
-    # CI also verifies the EXPERIMENTAL macOS targets (Apple Silicon macos-14 +
-    # Intel macos-13), so a Mac-only regression surfaces on the PR. The release
-    # workflow keeps its gate on the default Linux + Windows pair.
+    # CI also verifies the EXPERIMENTAL macOS build on Apple Silicon (macos-14),
+    # so a Mac-only regression surfaces on the PR. One mac leg is enough — the code
+    # paths are identical across architectures, and GitHub's Intel (macos-13)
+    # runners are being retired / queue unpredictably, so the Intel DMG is
+    # cross-compiled in the release rather than verified on its own runner. The
+    # release workflow keeps its gate on the default Linux + Windows pair.
     with:
-      os-list: '["ubuntu-latest", "windows-latest", "macos-14", "macos-13"]'
+      os-list: '["ubuntu-latest", "windows-latest", "macos-14"]'
 
   pr-comment-on-failure:
     needs: verify

@@ -32,11 +32,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 ### Changed — CI verifies macOS; the release builds it
 
 - `verify-desktop.yml` is parameterized with an `os-list` input; desktop CI now also
-  verifies on the two macOS runners (Apple Silicon `macos-14` + Intel `macos-13`) so
-  a Mac-only regression surfaces on PRs, while the **release gate stays on Linux +
-  Windows**. The release build matrix adds both macOS legs with `fail-fast: false`,
-  so a failing mac leg never drops the Windows/Linux artifacts. +5 Rust tests (266
-  total).
+  verifies on the Apple Silicon runner (`macos-14`) so a Mac-only regression surfaces
+  on PRs, while the **release gate stays on Linux + Windows**. The release build
+  matrix adds both macOS legs on Apple Silicon runners — the Intel (`x86_64`) DMG is
+  **cross-compiled** since GitHub's Intel runners are being retired — with
+  `fail-fast: false`, so a failing mac leg never drops the Windows/Linux artifacts.
+  +5 Rust tests (266 total).
 
 ### Fixed — theme-tinted, text-shaped editor text selection
 

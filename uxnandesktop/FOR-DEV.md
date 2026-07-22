@@ -494,13 +494,15 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 
 - ✅ **Verify** — `.github/workflows/ci-desktop.yml` runs svelte-check + `npm test`
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
-  macos-14, macos-13}` (via `verify-desktop.yml`'s `os-list` input); the release
-  gate keeps the default `{ubuntu, windows}`. 266 Rust + 225 Vitest tests.
+  macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
+  Intel runners are being retired and the code is arch-identical); the release gate
+  keeps the default `{ubuntu, windows}`. 266 Rust + 225 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
-  DMGs, Intel `macos-13` + Apple Silicon `macos-14`, `fail-fast: false`). Windows and
-  macOS ship without OS code-signing (SmartScreen / Gatekeeper warnings).
+  DMGs, both built on Apple Silicon `macos-14` with the Intel `x86_64` DMG
+  **cross-compiled**, `fail-fast: false`). Windows and macOS ship without OS
+  code-signing (SmartScreen / Gatekeeper warnings).
 - ✅ **Auto-updater** — `tauri-plugin-updater` wired end-to-end in the app
   (`src-tauri/src/updater.rs` + Settings → Updates with inline download/install +
   a pinned sonner toast `UpdateToast.svelte`; stable/nightly channels via GitHub's
