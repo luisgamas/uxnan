@@ -1706,6 +1706,12 @@ Before marking a widget as "complete" in your design system:
 
 ### 7.5 Onboarding and Connection Entry Points
 
+The no-devices state is the body of the standard Devices screen, not a separate
+bare scaffold. It retains the transparent Devices app bar and its pairing,
+profile, and settings actions. Its centered hero uses the bundled Uxnan mark
+(`logo_fg.svg`) in the semantic `onSurface` color instead of a generic device
+or network glyph.
+
 Onboarding uses a calm, solid `surface` backdrop. Do not place a persistent
 grid, glow, or full-screen decorative gradient behind the entire flow: those
 patterns compete with changing page content and make setup feel disconnected

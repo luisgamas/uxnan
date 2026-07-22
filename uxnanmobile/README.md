@@ -51,6 +51,9 @@ this app:
   progress has one `Detecting…` status; the LAN/Tailscale/direct/relay badge is
   shown only after the live channel is established, while the Connect button
   keeps its own `Connecting…` busy state.
+  With no paired PCs, this guidance remains inside the full Devices screen —
+  including its app bar and account/settings actions — and uses the Uxnan logo
+  as the empty-state hero.
 - **Parity with the bridge's main capabilities.** Streaming conversations with
   structured agent turns, interactive approvals, model and reasoning-effort
   selection, a live context-usage indicator, a message scroll rail to jump

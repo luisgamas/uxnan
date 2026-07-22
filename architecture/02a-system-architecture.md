@@ -1266,7 +1266,9 @@ SessionCoordinator.connect()
 El usuario puede tener N Macs registradas y cambiar entre ellas:
 
 ```dart
-// MyDevicesScreen → DeviceCard → CTA "Conectar"
+// MyDevicesScreen → Devices AppBar + (PairEmptyState | DeviceCard list)
+// PairEmptyState keeps the screen chrome and uses the Uxnan logo as its hero.
+// DeviceCard → CTA "Conectar"
 SessionCoordinator.switchMac(device)
 ├── Desconecta sesion actual
 ├── Actualiza activeMac

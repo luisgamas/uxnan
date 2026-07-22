@@ -8,6 +8,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The no-devices state now lives inside the standard Devices screen instead of
+  replacing it with a bare scaffold, so the Devices app bar and its pairing,
+  profile, and settings actions remain available. The generic hub icon was
+  replaced with the bundled Uxnan mobile logo.
 - New threads now keep the bridge-provided title and, while it remains a
   placeholder, derive a concise title from the first user prompt and sync it
   through `thread/rename`. Explicit manual titles and later renames are never
