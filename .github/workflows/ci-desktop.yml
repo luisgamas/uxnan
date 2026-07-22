@@ -23,6 +23,11 @@ concurrency:
 jobs:
   verify:
     uses: ./.github/workflows/verify-desktop.yml
+    # CI also verifies the EXPERIMENTAL macOS targets (Apple Silicon macos-14 +
+    # Intel macos-13), so a Mac-only regression surfaces on the PR. The release
+    # workflow keeps its gate on the default Linux + Windows pair.
+    with:
+      os-list: '["ubuntu-latest", "windows-latest", "macos-14", "macos-13"]'
 
   pr-comment-on-failure:
     needs: verify

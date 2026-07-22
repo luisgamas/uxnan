@@ -12,7 +12,12 @@ name: Release — Desktop (Tauri installers)
 #
 # Windows ships without OS code-signing for now (SmartScreen warning) — that is a
 # SEPARATE, paid certificate, unrelated to the free updater signature below.
-# macOS is deferred with the rest of Apple — add `macos-latest` when it resumes.
+# macOS ships as an EXPERIMENTAL, UNSIGNED build: two separate DMGs (Apple Silicon
+# aarch64 + Intel x86_64) carrying an ad-hoc signature (tauri.conf.json →
+# bundle.macOS, signingIdentity "-" — free, no Apple secrets). It has NO Apple
+# Developer ID / notarization, so users clear Gatekeeper by hand (see
+# uxnandesktop/docs/install-macos.md). A mac leg failing never blocks the
+# win/linux artifacts (fail-fast: false).
 #
 # FOR-HUMAN: the updater signature needs two repo secrets (free; generate with
 # `npx tauri signer generate`). Without them the build still succeeds, just
@@ -39,11 +44,26 @@ jobs:
   build:
     needs: verify
     strategy:
-      fail-fast: false
+      fail-fast: false # a failing mac leg must not drop the win/linux artifacts
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            args: ''
+            rust-target: ''
+          - os: windows-latest
+            args: ''
+            rust-target: ''
+          # EXPERIMENTAL macOS — two separate DMGs, one per architecture. Native
+          # runners (macos-14 = Apple Silicon, macos-13 = Intel) build their own
+          # target; the explicit --target keeps the bundle + artifact names clear.
+          - os: macos-14
+            args: '--target aarch64-apple-darwin'
+            rust-target: 'aarch64-apple-darwin'
+          - os: macos-13
+            args: '--target x86_64-apple-darwin'
+            rust-target: 'x86_64-apple-darwin'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60 # building installers for two OSes is the slow case
+    timeout-minutes: 60 # building installers for four targets is the slow case
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,6 +91,8 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }} # the Apple target on mac; empty otherwise
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -114,3 +136,4 @@ jobs:
           releaseName: 'Uxnan Desktop ${{ steps.meta.outputs.version }}'
           releaseDraft: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
+          args: ${{ matrix.args }} # per-arch --target on macOS; empty on win/linux
