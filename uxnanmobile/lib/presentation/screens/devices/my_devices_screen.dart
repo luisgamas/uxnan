@@ -144,10 +144,6 @@ class MyDevicesScreen extends ConsumerWidget {
     // known; only the connected PC uses it.
     final connectedEndpoint = ref.watch(connectedEndpointProvider).value;
 
-    if (devices.isEmpty) {
-      return const Scaffold(body: _PairEmptyState());
-    }
-
     return NeScaffold(
       title: l10n.devicesTitle,
       actions: [
@@ -186,7 +182,14 @@ class MyDevicesScreen extends ConsumerWidget {
           onPressed: () => context.push(AppRoutes.settings),
         ),
       ],
-      slivers: [
+      slivers: devices.isEmpty
+          ? const [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _PairEmptyState(),
+              ),
+            ]
+          : [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(
             UxnanSpacing.lg,
@@ -231,7 +234,7 @@ class MyDevicesScreen extends ConsumerWidget {
           hasScrollBody: false,
           child: _BrandingFooter(),
         ),
-      ],
+            ],
     );
   }
 }
@@ -703,10 +706,15 @@ class _PairEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.hub_outlined,
-              size: 56,
-              color: UxnanColors.onSurfaceMuted,
+            SvgPicture.asset(
+              'assets/images/logo_fg.svg',
+              key: const ValueKey('devices-empty-logo'),
+              width: 96,
+              height: 96,
+              colorFilter: ColorFilter.mode(
+                colors.onSurface,
+                BlendMode.srcIn,
+              ),
             ),
             const SizedBox(height: UxnanSpacing.lg),
             Text(

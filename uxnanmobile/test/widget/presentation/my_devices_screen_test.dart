@@ -219,5 +219,10 @@ void main() {
 
     expect(find.text('No active sessions'), findsOneWidget);
     expect(find.text('Pair a device'), findsOneWidget);
+    expect(find.text('Devices'), findsOneWidget);
+    expect(find.byKey(const ValueKey('devices-empty-logo')), findsOneWidget);
+    expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.hub_outlined), findsNothing);
   });
 }

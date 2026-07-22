@@ -6,6 +6,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The no-devices state now lives inside the standard Devices screen instead of
+  replacing it with a bare scaffold, so the Devices app bar and its pairing,
+  profile, and settings actions remain available. The generic hub icon was
+  replaced with the bundled Uxnan mobile logo.
+
 ## [0.0.12-alpha.20260721+20260722] - 2026-07-21
 
 ### Security — restored installations cannot clone a trusted phone identity
