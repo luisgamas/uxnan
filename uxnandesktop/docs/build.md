@@ -33,7 +33,7 @@ Per platform, `bundle/` contains:
 | Platform | Formats | Notes |
 |---|---|---|
 | **Windows** | `.msi` (WiX), `.exe` (NSIS) | Tauri downloads WiX/NSIS automatically on first bundle. |
-| **macOS** | `.app`, `.dmg` | Requires Xcode Command Line Tools. |
+| **macOS** | `.app`, `.dmg` (one per architecture) | Requires Xcode Command Line Tools. CI ships an **experimental, unsigned** build, ad-hoc-signed per arch (`aarch64` + `x86_64`) — see [install-macos.md](install-macos.md). |
 | **Linux** | `.deb`, `.AppImage`, `.rpm` | AppImage is the most portable. |
 
 ## Useful variants
@@ -47,6 +47,10 @@ npm run tauri build -- --bundles msi
 
 # Debug-optimized build (keeps debug assertions; for profiling a "release-ish" run):
 npm run tauri build -- --debug
+
+# macOS: build a specific architecture (CI builds both, one DMG each):
+npm run tauri build -- --target aarch64-apple-darwin   # Apple Silicon
+npm run tauri build -- --target x86_64-apple-darwin    # Intel
 ```
 
 ## Quick local verification before bundling
@@ -66,7 +70,12 @@ distribution. They depend on assets only a human can provide — tracked in
 [`../FOR-HUMAN.md`](../FOR-HUMAN.md):
 
 - **Windows** — code-signing certificate (SignTool) to avoid SmartScreen warnings.
-- **macOS** — Apple Developer ID + notarization (mandatory since macOS 10.15).
+- **macOS** — the maintainer ships an **experimental, unsigned** build that is only
+  **ad-hoc-signed** (`bundle.macOS.signingIdentity: "-"` in `tauri.conf.json`), so it
+  needs **no Apple account**; users clear Gatekeeper by hand
+  ([install-macos.md](install-macos.md)). An **Apple Developer ID + notarization**
+  (paid) is the *optional* path to a warning-free install — it removes the manual
+  step but is **not** required to run, and is not configured.
 - **Linux** — optional GPG signing for `.deb`/`.rpm`.
 - **Auto-updater** — `pubkey` + `endpoints` for `tauri-plugin-updater` in
   `tauri.conf.json` (see the spec, `architecture/03-implementation-guide.md` §5.2).

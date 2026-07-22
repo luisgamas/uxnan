@@ -157,10 +157,13 @@ and Linux — but **all current testing has been carried out directly on Windows
   by the maintainer. If you run it on Linux, your feedback and recommendations are
   genuinely welcome; please open an issue or a discussion so the experience can be
   hardened.
-- **macOS** — supported by the toolchain, but no maintainer builds are produced
-  yet and the platform is unvalidated. Until a signed build exists, macOS users
-  can build it themselves by following
-  [release builds & packaging](docs/build.md).
+- **macOS** — **experimental, unsigned builds are now produced** (separate Intel
+  and Apple Silicon `.dmg`s, ad-hoc-signed). Because they aren't notarized, macOS
+  flags them as from an "unidentified developer", so you authorize the app once by
+  hand — see the [macOS install guide](docs/install-macos.md). It hasn't been
+  validated on real hardware by the maintainer yet, so treat it as experimental;
+  you can also [build it yourself](docs/build.md), and issues/PRs that improve the
+  macOS installers (or help non-technical users) are very welcome.
 
 The only remaining roadmap phase is **Phase 6 (bridge integration / mobile
 pairing)**, which is *optional for standalone use* — required only if you want the
@@ -173,6 +176,7 @@ in [`FOR-DEV.md`](FOR-DEV.md).
 Detailed docs live in [`docs/`](./docs/):
 [development & running in debug](./docs/development.md) ·
 [release builds & packaging](./docs/build.md) ·
+[installing on macOS (experimental)](./docs/install-macos.md) ·
 [testing & verification](./docs/testing.md) ·
 [architecture orientation](./docs/architecture.md) ·
 [design tokens](./docs/design-tokens.md) ·

@@ -31,12 +31,18 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 > warnings). They're required for a clean, signed, auto-updating release. Supply
 > each as a **GitHub Actions repository secret** consumed by `release-desktop.yml`.
 
-- [ ] **Code-signing identities (OS — paid)** (release) — Windows code-signing cert
-      (SignTool / `WINDOWS_CERTIFICATE` + password), Apple Developer ID +
-      notarization (`APPLE_CERTIFICATE`, `APPLE_ID`, team id, app-specific
-      password), optional GPG for Linux packages (spec §5.1). This removes the OS
-      "unknown publisher" warning. **Unrelated to the updater key** (which is free
-      and already configured).
+- [ ] **Code-signing identities (OS — paid, OPTIONAL)** (release) — to remove the OS
+      "unidentified developer" / SmartScreen warnings on distributed builds. Supply
+      each as a GitHub Actions secret consumed by `release-desktop.yml`:
+      - **Windows** — code-signing cert (SignTool / `WINDOWS_CERTIFICATE` + password).
+      - **macOS** — Apple Developer ID + notarization (`APPLE_CERTIFICATE`, `APPLE_ID`,
+        team id, app-specific password). **Not required to ship macOS today:** CI
+        already produces an **experimental, ad-hoc-signed** build (no Apple account
+        needed), which users authorize by hand (see `docs/install-macos.md`); this
+        cert is the *optional* upgrade to a warning-free, notarized install.
+      - **Linux** — optional GPG for `.deb`/`.rpm` (spec §5.1).
+
+      **Unrelated to the updater key** (free, already configured).
 
 ## Deferred until later phases (no action needed yet)
 
