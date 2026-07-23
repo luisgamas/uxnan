@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — "Check remote" (fetch) button in the Changes panel
+
+- The Changes tab header gains a **fetch button** (cloud-download icon) next to the
+  existing local **refresh**. Local refresh only re-reads the working tree, so the
+  push/pull bar's *behind* count was stale until something else fetched. The new
+  button runs `git fetch` for the current branch's remote and re-reads ahead/behind:
+  if the remote has new commits it toasts how many and the **Pull** button appears
+  (via the ahead/behind sync bar), otherwise it toasts **"Everything is up to date"**.
+  Read-only — it never touches the working tree. New Tauri command `git_fetch`
+  (`git::fetch_remote` → refreshed `WorktreeStatus`), `gitFetch` API wrapper, a
+  `git.fetching` store flag (also gating the live status listener), and EN/ES strings
+  (`rightPanel.fetchRemote`, `toast.fetchUpToDate`, `toast.fetchBehind*`).
+
 ### Added — experimental macOS installer (Intel + Apple Silicon)
 
 - The release pipeline now builds an **experimental, unsigned macOS build**: two

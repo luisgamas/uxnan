@@ -1194,6 +1194,15 @@ pub async fn staged_diff(worktree_path: &str) -> Result<String, AppError> {
     git(worktree_path, &["diff", "--staged"]).await
 }
 
+/// Fetch updates for the current branch's remote (`git fetch`) so the local
+/// remote-tracking refs — and therefore ahead/behind — reflect the server. A
+/// read-only network op that never touches the working tree; it just lets the
+/// user check whether there are new upstream commits to pull. Errors (offline, no
+/// remote configured) surface to the caller.
+pub async fn fetch_remote(worktree_path: &str) -> Result<(), AppError> {
+    git(worktree_path, &["fetch"]).await.map(|_| ())
+}
+
 /// Push the current branch (`git push`). Never retried (not idempotent).
 pub async fn push(worktree_path: &str) -> Result<(), AppError> {
     git(worktree_path, &["push"]).await.map(|_| ())

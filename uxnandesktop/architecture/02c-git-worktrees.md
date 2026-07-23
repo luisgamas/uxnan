@@ -225,6 +225,16 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   configurada. El comando backend `git_commit(path, message, amend, signOff)`.
 - **Botón de acción primaria** contextual: Commit / Amend commit según el estado
   del composer; Push / Pull aparecen cuando hay ahead/behind.
+- **Comprobar el remoto (fetch)**: junto al botón de **actualizar** (que solo
+  relee el working tree local), la cabecera ofrece un botón de **fetch**
+  (icono cloud-download) que ejecuta `git fetch` del remoto de la rama actual y
+  recalcula ahead/behind. Es de **solo lectura** (nunca toca el working tree): si
+  el remoto trae commits nuevos, avisa cuántos y el botón **Pull** aparece (vía la
+  barra ahead/behind); si no, avisa que **«todo está actualizado»**. El comando
+  backend `git_fetch(path)` (`git::fetch_remote` → `WorktreeStatus` refrescado);
+  el frontend actualiza ahead/behind con el resultado (`git.svelte.ts →
+  fetchRemote`, flag `git.fetching` que además silencia el listener de estado en
+  vivo mientras corre).
 - **Generación AI del mensaje** (opcional, opt-in): cuando se activa en
   **Configuración → Mensaje de commit con IA**, aparece un botón **Generar** en el
   composer que redacta el mensaje a partir del diff staged. La configuración es

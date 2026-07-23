@@ -94,6 +94,7 @@ Cada command es una funcion async de Rust que recibe parametros tipados, ejecuta
 - `git_commit` - Crear un commit con los archivos staged y un mensaje
 - `git_status` - Obtener el estado actual del worktree (archivos modificados/staged/untracked)
 - `git_diff` - Obtener el diff de un archivo especifico (hunks y lineas)
+- `git_fetch` - Fetch del remoto de la rama actual; devuelve el `WorktreeStatus` refrescado (ahead/behind) sin tocar el working tree
 - `git_push` - Push de la rama actual al remoto
 - `git_pull` - Pull de cambios del remoto
 

@@ -698,6 +698,13 @@ export function gitSetWatch(path: string | null): Promise<void> {
   return invoke("git_set_watch", { path });
 }
 
+/** Fetch the current branch's remote and return the refreshed working-tree
+ *  status (ahead/behind now reflect the server), so the user can see whether
+ *  there are new upstream commits to pull. */
+export function gitFetch(path: string): Promise<WorktreeStatus> {
+  return invoke<WorktreeStatus>("git_fetch", { path });
+}
+
 /** Push the current branch. */
 export function gitPush(path: string): Promise<void> {
   return invoke("git_push", { path });

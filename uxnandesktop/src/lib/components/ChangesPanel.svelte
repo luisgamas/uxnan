@@ -18,6 +18,7 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import VirtualList from "./VirtualList.svelte";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import CloudDownloadIcon from "@lucide/svelte/icons/cloud-download";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import MinusIcon from "@lucide/svelte/icons/minus";
   import SearchIcon from "@lucide/svelte/icons/search";
@@ -267,7 +268,7 @@
 {/snippet}
 
 <div class="flex h-full min-h-0 flex-col">
-  <!-- Header: stage-all (highlighted, first) · changed-file count · search · refresh -->
+  <!-- Header: changed-file count · search · refresh (local status) · fetch (check remote) -->
   <header class="flex h-9 shrink-0 items-center gap-0.5 border-b border-sidebar-border/60 px-2">
     {#if searching}
       <!-- svelte-ignore a11y_autofocus -->
@@ -313,6 +314,24 @@
               onclick={() => void git.refresh()}
             >
               <RefreshCwIcon class={cn(icon.action, git.loading && "animate-spin")} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <TooltipSimple title={i18n.t("rightPanel.fetchRemote")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              disabled={git.fetching}
+              onclick={() => void git.fetchRemote()}
+            >
+              {#if git.fetching}
+                <Spinner aria-label={i18n.t("common.loading")} />
+              {:else}
+                <CloudDownloadIcon class={icon.action} />
+              {/if}
             </Button>
           {/snippet}
         </TooltipSimple>

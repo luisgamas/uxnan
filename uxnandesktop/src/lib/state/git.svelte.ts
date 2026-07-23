@@ -13,6 +13,7 @@ import {
   gitDiff,
   gitImageDiff,
   gitDiscard,
+  gitFetch,
   gitNumstat,
   gitPull,
   gitPush,
@@ -85,6 +86,8 @@ class GitStore {
   /** A push/pull is in flight. */
   syncing = $state(false);
   syncingAction = $state<"push" | "pull" | null>(null);
+  /** A remote fetch (checking for new upstream commits) is in flight. */
+  fetching = $state(false);
   private listening = false;
 
   /** Files with a staged change / with a working-tree (or untracked) change. */
@@ -100,7 +103,13 @@ class GitStore {
     try {
       await listen<GitStatusEvent>("git:status-changed", (e) => {
         const ev = e.payload;
-        if (ev.path !== this.path || this.busy || this.committing || this.syncing)
+        if (
+          ev.path !== this.path ||
+          this.busy ||
+          this.committing ||
+          this.syncing ||
+          this.fetching
+        )
           return;
         this.files = ev.files.map(classify);
         this.ahead = ev.ahead;
@@ -324,6 +333,37 @@ class GitStore {
   }
   pull(): Promise<void> {
     return this.sync("pull", (p) => gitPull(p), i18n.t("toast.pulled"));
+  }
+
+  /** Fetch the current worktree's remote and refresh ahead/behind so the user can
+   *  see whether there are new upstream commits to pull. On success, toasts either
+   *  how many new commits are waiting (the pull button then appears via the
+   *  ahead/behind sync bar) or that everything is already up to date. Read-only:
+   *  never touches the working tree. */
+  async fetchRemote(): Promise<void> {
+    const path = this.path;
+    if (!path || this.fetching) return;
+    this.fetching = true;
+    this.error = null;
+    try {
+      const st = await gitFetch(path);
+      if (this.path === path) {
+        this.ahead = st.ahead;
+        this.behind = st.behind;
+        // Keep the project card badge in sync with the freshly fetched state.
+        projects.setStatus(path, st);
+      }
+      if (st.behind > 0) {
+        toast.success(i18n.plural(st.behind, "toast.fetchBehindOne", "toast.fetchBehindOther"));
+      } else {
+        toast.success(i18n.t("toast.fetchUpToDate"));
+      }
+    } catch (e) {
+      this.error = msg(e);
+      toastError(e);
+    } finally {
+      this.fetching = false;
+    }
   }
 
   /** After a push, if the branch is a GitHub repo with no PR yet, offer a "Create
