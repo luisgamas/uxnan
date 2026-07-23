@@ -39,6 +39,27 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- FCM display defaults for notifications the system builds itself
+             (a "notification" payload delivered while the app is backgrounded or
+             killed, before Dart runs). Without these, FCM falls back to the full
+             colour launcher icon, which Android renders as a white square in the
+             status bar. The small icon is a white silhouette on transparency
+             (ic_stat_uxnan, res/drawable-*/); notification_color tints it (and
+             the app label) in the shade. The foreground path — built in Dart via
+             flutter_local_notifications — sets the same icon/colour explicitly in
+             PushNotificationService, so both paths look identical. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_uxnan" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
+        <!-- Route FCM notifications to the app's high-importance channel (created
+             in PushNotificationService) so background pushes match the foreground
+             ones instead of landing on FCM's silent fallback channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="uxnan_turns" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
