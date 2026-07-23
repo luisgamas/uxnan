@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Accent applied to the (white) push notification small icon and the app
+         label in the notification shade. Brand primary (UxnanColors.brandPrimary,
+         lib/presentation/theme/colors.dart). Referenced by the FCM
+         default_notification_color meta-data in AndroidManifest.xml. -->
+    <color name="notification_color">#1B6EF3</color>
 </resources>

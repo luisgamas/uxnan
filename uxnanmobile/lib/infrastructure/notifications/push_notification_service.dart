@@ -1,9 +1,28 @@
 import 'dart:async';
+import 'dart:ui' show Color;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:uxnan/core/utils/logger.dart';
+
+/// Monochrome status-bar (small) notification icon: a white silhouette of the
+/// brand mark on transparency
+/// (`android/app/src/main/res/drawable-*/ic_stat_uxnan.png`). Passed as a
+/// **bare** drawable name — the plugin resolves it via
+/// `getIdentifier(name, "drawable", pkg)`, so a `@drawable/` or `@mipmap/`
+/// prefix would not resolve. A full-colour launcher icon here is the classic
+/// cause of a blank white square in the status bar (Android keeps only a
+/// small icon's alpha channel). The FCM background path uses the same
+/// drawable via the `default_notification_icon` manifest meta-data.
+const String _kNotificationIcon = 'ic_stat_uxnan';
+
+/// Accent that tints the (white) small icon and the app label in the
+/// notification shade. Mirrors the brand primary (`UxnanColors.brandPrimary`,
+/// `lib/presentation/theme/colors.dart`) and the `@color/notification_color`
+/// resource the FCM background path reads; kept as a literal so this
+/// infrastructure-layer file doesn't depend on the presentation layer.
+const Color _kNotificationColor = Color(0xFF1B6EF3);
 
 /// Top-level FCM background message handler.
 ///
@@ -167,6 +186,8 @@ class PushNotificationService {
                 'Turn completions and errors from your coding agents.',
             importance: Importance.high,
             priority: Priority.high,
+            icon: _kNotificationIcon,
+            color: _kNotificationColor,
           ),
           iOS: DarwinNotificationDetails(),
         ),
@@ -220,7 +241,7 @@ class PushNotificationService {
 
   Future<void> _initLocalNotifications() async {
     const initSettings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings(_kNotificationIcon),
       iOS: DarwinInitializationSettings(),
     );
     await _localNotifications.initialize(

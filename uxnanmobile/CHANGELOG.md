@@ -6,6 +6,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — push notifications now show the Uxnan mark instead of a white square
+
+- Added a dedicated **monochrome status-bar icon** (`ic_stat_uxnan`, a white
+  silhouette of the brand mark on transparency, at all five densities
+  `drawable-mdpi…xxxhdpi`). Android keeps only a small icon's alpha channel, so
+  the previous full-colour launcher icon rendered as a blank white square. Both
+  notification paths now use it: the **foreground** path
+  (`flutter_local_notifications`) passes the bare drawable name plus a brand
+  accent, and the **background/killed** path gets new FCM manifest meta-data
+  (`default_notification_icon`, `default_notification_color` →
+  `@color/notification_color` `#1B6EF3`, `default_notification_channel_id` →
+  `uxnan_turns`) so system-built pushes match the in-app ones and route to the
+  high-importance channel. The Dart default icon also no longer points at
+  `@mipmap/ic_launcher` (which the plugin cannot resolve as a drawable).
+- Source vector + a regenerator live in
+  [`tool/notification_icon/`](tool/notification_icon/README.md).
+
 ## [0.0.13-alpha.20260722+20260723] - 2026-07-22
 
 ### Changed
