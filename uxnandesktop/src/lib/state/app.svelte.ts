@@ -27,6 +27,7 @@ import {
   type HookInstall,
   type QuickCommand,
   type RepoData,
+  type SidebarProfile,
   type TerminalProfile,
 } from "$lib/types";
 import { terminals, GLOBAL_WORKSPACE, type SplitDir } from "$lib/state/terminals.svelte";
@@ -371,6 +372,22 @@ class AppStore {
     } catch (err) {
       this.errorMessage = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  // --- Sidebar profile -----------------------------------------------------
+
+  /** The left-sidebar footer profile (avatar, name, description). Always an
+   *  object so the UI can read fields without null-checking. (Named
+   *  `sidebarProfile` to avoid clashing with the terminal-`profile(id)` lookup.) */
+  get sidebarProfile(): SidebarProfile {
+    return this.settings.profile ?? {};
+  }
+
+  /** Merge a partial profile update into settings and persist. Used by the
+   *  profile editor (name/description on save, avatar the moment it's picked). */
+  updateSidebarProfile(patch: Partial<SidebarProfile>): void {
+    this.settings.profile = { ...(this.settings.profile ?? {}), ...patch };
+    void this.persistSettings();
   }
 
   // --- Quick commands ------------------------------------------------------

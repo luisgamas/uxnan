@@ -18,8 +18,9 @@ identical manual path** — GitHub keeps working even with zero AI-agent quota.
 
 ## The GitHub section
 
-Open it from the **GitHub** button in the left sidebar (or the status bar), or with
-**`Ctrl/Cmd+G`** (rebindable in Settings → Keyboard shortcuts). It's a full-screen
+Open it from the **profile card** at the bottom of the left sidebar (click it →
+**GitHub**), from the status bar, or with **`Ctrl/Cmd+G`** (rebindable in
+Settings → Keyboard shortcuts). It's a full-screen
 overlay (like Settings). A **repository selector** at the top of the section's left nav
 chooses which of your registered projects the section acts on — it does
 **not** require an active worktree

@@ -488,6 +488,11 @@ pub struct AppSettings {
     /// not persisted. Default empty.
     #[serde(default)]
     pub open_with: OpenWithSettings,
+    /// Left-sidebar footer profile card (avatar, name, description); clicking it
+    /// opens the Settings / GitHub sections. Frontend-owned shape
+    /// (`SidebarProfile`), persisted opaquely. Absent by default.
+    #[serde(default)]
+    pub profile: Option<serde_json::Value>,
 }
 
 /// "Open with" configuration: user-added editors + hidden auto-detected ones.
@@ -915,6 +920,7 @@ impl Default for AppSettings {
             sidebar_collapsed_lanes: Vec::new(),
             github: GithubSettings::default(),
             open_with: OpenWithSettings::default(),
+            profile: None,
         }
     }
 }

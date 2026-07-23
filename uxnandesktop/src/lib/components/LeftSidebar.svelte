@@ -1,12 +1,12 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
-  import { github } from "$lib/state/github.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import KeyChord from "./KeyChord.svelte";
+  import SidebarProfile from "./SidebarProfile.svelte";
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder } from "$lib/state/dragReorder.svelte";
   import { isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
@@ -18,8 +18,6 @@
   import { i18n } from "$lib/i18n";
   import { formatChord, resolveBinding } from "$lib/keybindings";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
-  import GithubIcon from "@lucide/svelte/icons/git-pull-request";
   import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -41,8 +39,6 @@
   // (for tooltips / presence guards) for the shortcut hints on the quick actions.
   const searchBinding = $derived(resolveBinding("worktreePalette"));
   const addBinding = $derived(resolveBinding("addProject"));
-  const settingsBinding = $derived(resolveBinding("openSettings"));
-  const githubBinding = $derived(resolveBinding("openGitHub"));
   const addChord = $derived(formatChord(addBinding));
 
   // Borderless nav button (mirrors the Settings section nav): no chrome until
@@ -50,7 +46,6 @@
   const navBase =
     "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
   const navIdle = "text-muted-foreground hover:bg-accent/60 hover:text-foreground";
-  const navActive = "bg-accent text-accent-foreground";
 
   /** Shell/args for a region-level new terminal (blank command → backend default). */
   function profileLabel(name: string): string {
@@ -144,7 +139,8 @@
     </TooltipSimple>
   </div>
 
-  <!-- Region: Quick actions — borderless nav buttons (search + settings). -->
+  <!-- Region: Quick actions — just Search now; GitHub & Settings moved to the
+       profile footer at the bottom. -->
   <div class="flex shrink-0 flex-col gap-px px-2 pb-1 pt-2">
     <TooltipSimple title={i18n.t("sidebar.search")}>
       {#snippet children(props)}
@@ -157,42 +153,6 @@
           <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
           {#if searchBinding}
             <KeyChord chord={searchBinding} />
-          {/if}
-        </button>
-      {/snippet}
-    </TooltipSimple>
-    <TooltipSimple title={i18n.t("github.open")}>
-      {#snippet children(props)}
-        <button
-          {...props}
-          class={cn(navBase, app.githubOpen ? navActive : navIdle)}
-          onclick={() => (app.githubOpen = true)}
-        >
-          <GithubIcon class={icon.button} />
-          <span class="flex-1 truncate text-left">{i18n.t("github.title")}</span>
-          {#if github.notifications > 0}
-            <span
-              class="inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
-            >
-              {github.notifications}
-            </span>
-          {:else if githubBinding}
-            <KeyChord chord={githubBinding} />
-          {/if}
-        </button>
-      {/snippet}
-    </TooltipSimple>
-    <TooltipSimple title={i18n.t("settings.title")}>
-      {#snippet children(props)}
-        <button
-          {...props}
-          class={cn(navBase, app.settingsOpen ? navActive : navIdle)}
-          onclick={() => (app.settingsOpen = true)}
-        >
-          <SettingsIcon class={icon.button} />
-          <span class="flex-1 truncate text-left">{i18n.t("settings.title")}</span>
-          {#if settingsBinding}
-            <KeyChord chord={settingsBinding} />
           {/if}
         </button>
       {/snippet}
@@ -371,6 +331,10 @@
       </div>
     {/if}
   </div>
+
+  <!-- Region: Profile footer — avatar + name + description; opens GitHub &
+       Settings (moved here from the quick actions) and the profile editor. -->
+  <SidebarProfile />
 </div>
 
 <!-- Floating label that follows the pointer while dragging a project card. -->

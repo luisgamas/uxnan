@@ -111,6 +111,20 @@ export const en = {
   "sidebar.empty": "No projects yet.",
   "sidebar.addRepo": "Add a folder",
 
+  // Sidebar profile (footer card → GitHub / Settings / edit)
+  "sidebarProfile.defaultName": "Uxnan",
+  "sidebarProfile.defaultTagline": "Local workspace",
+  "sidebarProfile.edit": "Edit profile",
+  "sidebarProfile.editTitle": "Edit profile",
+  "sidebarProfile.editDesc": "Customize the avatar, name and description shown at the bottom of the sidebar.",
+  "sidebarProfile.name": "Name",
+  "sidebarProfile.namePlaceholder": "Your name",
+  "sidebarProfile.description": "Description",
+  "sidebarProfile.descriptionPlaceholder": "A short line under the name",
+  "sidebarProfile.descriptionHint": "Shown under the name — a role, status or tagline.",
+  "sidebarProfile.changeIcon": "Change avatar",
+  "sidebarProfile.iconTitle": "Profile avatar",
+
   // Project card
   "project.expand": "Expand",
   "project.collapse": "Collapse",

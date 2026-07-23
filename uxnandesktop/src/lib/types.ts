@@ -335,6 +335,23 @@ export interface AppSettings {
   github?: GithubSettings;
   /** "Open with" external editors/IDEs (custom list + hidden auto-detected). */
   openWith?: OpenWithSettings;
+  /** Left-sidebar footer profile card (avatar, name, description); clicking it
+   *  opens the Settings / GitHub sections. All fields optional. */
+  profile?: SidebarProfile;
+}
+
+/** The configurable identity card in the left sidebar's footer: an avatar, a
+ *  name and a short line under it. Clicking the card reveals the Settings and
+ *  GitHub sections (moved out of the quick-actions row). */
+export interface SidebarProfile {
+  /** Display name (blank/absent → the default label). */
+  name?: string;
+  /** Avatar icon value — the **same shape as `RepoData.icon`** (a `builtin:<name>`
+   *  key or an image data URL), so it reuses the shared IconPicker/EntityIcon.
+   *  null/absent = the default user glyph. */
+  icon?: string | null;
+  /** A short line shown under the name (role, tagline, status…). */
+  description?: string;
 }
 
 /** GitHub integration preferences (mirror of Rust `GithubSettings`). The token is

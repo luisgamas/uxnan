@@ -198,6 +198,31 @@ Campos adicionales del estado:
 
 La sidebar izquierda es el **centro de navegacion y organizacion** del ADE. Permite al usuario gestionar multiples repositorios y multiples worktrees dentro de cada repositorio, con visibilidad inmediata del estado de cada agente.
 
+Se organiza en **cuatro regiones verticales** (`LeftSidebar.svelte`):
+
+1. **Cabecera de marca**: logo, nombre de la app y el distintivo *Alpha*; es
+   ademas el area de arrastre de la ventana (no hay barra de titulo nativa).
+2. **Acciones rapidas**: unicamente **Buscar** (abre la paleta de
+   proyectos/worktrees).
+3. **Proyectos**: la cabecera con sus acciones (agregar, refrescar, ordenar,
+   nueva terminal) y el arbol proyectos → worktrees (o las calles por estado).
+4. **Pie de perfil** (`SidebarProfile.svelte`): una tarjeta de identidad
+   configurable —avatar, nombre y una linea de descripcion debajo— al estilo del
+   *sidebar footer* de shadcn. Al pulsarla despliega **hacia la derecha**
+   (anclada por abajo, para no salirse del borde inferior) un menu con
+   **GitHub** y **Configuracion** —cuyos accesos vivian antes en las acciones
+   rapidas— mas **Editar perfil**. El badge de notificaciones de GitHub se
+   muestra aqui: un punto sobre el avatar y el contador en el item del menu.
+
+   El perfil se persiste en `AppSettings.profile` (`SidebarProfile`: `name`,
+   `icon`, `description`; forma propiedad del frontend, guardada de forma opaca
+   en el backend, ausente por defecto). El **avatar reutiliza el mismo
+   `IconPicker` / `EntityIcon` que los iconos de las tarjetas de proyecto**, por
+   lo que admite un glifo integrado (con color de acento) o una imagen propia
+   (archivo o URL) rasterizada a un `data:` URL. Se edita en
+   `SidebarProfileDialog.svelte`: el icono se aplica al instante y el
+   nombre/descripcion al guardar (`app.updateSidebarProfile`).
+
 ### 3.1 Tarjetas de Worktree
 
 Cada worktree se muestra como una tarjeta compacta que presenta:

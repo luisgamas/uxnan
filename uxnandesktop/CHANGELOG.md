@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — left sidebar: a configurable profile card replaces the GitHub/Settings nav buttons
+
+- The left sidebar's **quick actions** row is now just **Search**. **GitHub** and
+  **Settings** moved into a new **profile card pinned to the sidebar footer**
+  (`SidebarProfile.svelte`), shadcn-sidebar-footer style: an **avatar, a name and a
+  description line**. Clicking it opens a menu **to the right** (bottom-anchored, so it
+  never runs off the window) with GitHub · Settings — both keeping their shortcut hints
+  — plus **Edit profile**. The GitHub notifications badge moved here too (a dot on the
+  avatar + the count on the menu item); the global `Ctrl/Cmd+,` / `Ctrl/Cmd+G` shortcuts
+  are unchanged.
+- The card is **user-configurable** and persists in `AppSettings.profile`
+  (`SidebarProfile`: `name` / `icon` / `description`; frontend-owned shape stored
+  opaquely by the backend, absent by default). The **avatar reuses the shared
+  `IconPicker` / `EntityIcon`** already used for project-card icons, so it accepts a
+  built-in glyph (with an accent color) or a custom image (file or URL). Edited from
+  `SidebarProfileDialog.svelte` — the icon applies immediately, name/description on
+  save. EN/ES strings under `sidebarProfile.*`.
+
 ### Added — "Check remote" (fetch) button in the Changes panel
 
 - The Changes tab header gains a **fetch button** (cloud-download icon) next to the

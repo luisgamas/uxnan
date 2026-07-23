@@ -108,6 +108,20 @@ export const es: Record<MessageKey, string> = {
   "sidebar.empty": "Aún no hay proyectos.",
   "sidebar.addRepo": "Agregar una carpeta",
 
+  // Sidebar profile (tarjeta del footer → GitHub / Configuración / editar)
+  "sidebarProfile.defaultName": "Uxnan",
+  "sidebarProfile.defaultTagline": "Espacio de trabajo local",
+  "sidebarProfile.edit": "Editar perfil",
+  "sidebarProfile.editTitle": "Editar perfil",
+  "sidebarProfile.editDesc": "Personaliza el avatar, el nombre y la descripción que se muestran al final de la barra lateral.",
+  "sidebarProfile.name": "Nombre",
+  "sidebarProfile.namePlaceholder": "Tu nombre",
+  "sidebarProfile.description": "Descripción",
+  "sidebarProfile.descriptionPlaceholder": "Una línea breve bajo el nombre",
+  "sidebarProfile.descriptionHint": "Se muestra bajo el nombre — un rol, estado o eslogan.",
+  "sidebarProfile.changeIcon": "Cambiar avatar",
+  "sidebarProfile.iconTitle": "Avatar del perfil",
+
   // Project card
   "project.expand": "Expandir",
   "project.collapse": "Contraer",
