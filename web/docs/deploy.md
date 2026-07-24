@@ -118,10 +118,19 @@ it exists.
   and `/robots.txt` (allows everything, points at the sitemap) are generated at
   build time. Submit `https://uxnan.pages.dev/sitemap.xml` in **Google Search
   Console → Sitemaps** once the property is verified.
-- **Verifying the property.** The simplest method on Cloudflare is **DNS** (add
-  the TXT record Search Console gives you), which needs no code. If you prefer the
-  HTML-tag method, set a repository **variable** `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`
-  to the token and it is emitted as a `<meta>` tag on the next deploy.
+- **Verifying the property.** The site lives on a `*.pages.dev` subdomain, which
+  you do not own the DNS zone for — so the **DNS / Domain-property method is not
+  available**. Add a **URL-prefix property** for `https://uxnan.pages.dev/` and
+  use the **HTML-tag** method: copy the token from the `content="…"` value Search
+  Console shows, then add it as a repository **variable**
+  `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` (Settings → Secrets and variables →
+  Actions → **Variables**). The deploy build injects it as a
+  `<meta name="google-site-verification">` tag — so the token stays out of this
+  public repo's source and only appears in the built HTML, which is public by
+  design. Trigger a deploy (push to `web/**` or *Run workflow*), then click
+  **Verify**. Do **not** commit Google's HTML verification *file* — the variable
+  keeps the repo clean and achieves the same thing. (The token is not a secret:
+  it cannot be used to claim your property from any other domain.)
 - **Canonicals & structured data.** Each route is a server component that exports
   its own canonical URL; the home page also carries schema.org JSON-LD describing
   Uxnan and both apps, so a result can be built without scraping prose.

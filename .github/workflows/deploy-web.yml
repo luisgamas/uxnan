@@ -64,10 +64,16 @@ jobs:
         run: npm ci
 
       - name: Build the static export
-        # Baked into the export at build time, so the OG/canonical URLs are
-        # absolute. Falls back to the Pages subdomain until a domain is set.
+        # Baked into the export at build time.
+        #   SITE_URL — makes the OG/canonical URLs absolute; falls back to the
+        #     Pages subdomain until a custom domain is set.
+        #   GOOGLE_SITE_VERIFICATION — optional Search Console token, kept as a
+        #     repo *variable* (Settings → Secrets and variables → Actions →
+        #     Variables) so it never lives in this public repo's source; it is
+        #     only emitted into the built HTML, where it is public by design.
         env:
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://uxnan.pages.dev' }}
+          NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${{ vars.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }}
         run: npm run build
 
       - name: Deploy to Cloudflare Pages
