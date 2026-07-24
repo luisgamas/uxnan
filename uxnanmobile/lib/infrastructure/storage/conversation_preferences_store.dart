@@ -90,8 +90,9 @@ class ConversationPreferencesStore {
     await prefs.setBool(_confirmPrKey, value);
   }
 
-  /// Whether Claude Code's "latest" alias models (`opus`/`sonnet`/`haiku`) are
-  /// shown in the model picker, or `null` if never set (keep the default).
+  /// Whether Claude Code's "latest" alias models
+  /// (`fable`/`opus`/`sonnet`/`haiku`) are shown in the model picker, or `null`
+  /// if never set (keep the default).
   Future<bool?> readShowClaudeLatest() async {
     final prefs = await _prefs;
     if (!prefs.containsKey(_showClaudeLatestKey)) return null;

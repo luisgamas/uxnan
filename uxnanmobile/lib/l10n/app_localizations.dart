@@ -3206,7 +3206,7 @@ abstract class AppLocalizations {
   /// **'Models'**
   String get settingsModelsSection;
 
-  /// Title of the toggle that shows/hides Claude Code's opus/sonnet/haiku “latest” alias models in the model picker.
+  /// Title of the toggle that shows/hides Claude Code's fable/opus/sonnet/haiku “latest” alias models in the model picker.
   ///
   /// In en, this message translates to:
   /// **'Show Claude Code “latest” models'**
@@ -3215,7 +3215,7 @@ abstract class AppLocalizations {
   /// Subtitle of the Claude Code latest-models toggle.
   ///
   /// In en, this message translates to:
-  /// **'List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.'**
+  /// **'List the Fable, Opus, Sonnet and Haiku “(latest)” aliases in the model picker.'**
   String get settingsClaudeLatestSubtitle;
 
   /// Explanatory note under the Claude Code latest-models toggle, describing what the latest aliases do.

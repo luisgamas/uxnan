@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the Claude "latest" toggle now covers four aliases, not three
+
+- The bridge advertises a new `fable` alias (`Fable (latest)`) alongside
+  `opus`/`sonnet`/`haiku`, so the Settings → Models toggle copy was updated in
+  **EN and ES**: *"List the **Fable**, Opus, Sonnet and Haiku “(latest)” aliases
+  in the model picker."* / *"Muestra los alias «(latest)» de **Fable**, Opus,
+  Sonnet y Haiku…"*. No logic changed — the picker renders `agent/models`
+  generically and the toggle still filters on `isLatestAlias`, so the new alias
+  and the newly seeded concrete models (Opus 5, Opus 4.6/4.5, Sonnet 4.5) appear
+  with no app update. Doc comments naming the alias set were corrected to match.
+
 ## [0.0.13-alpha.20260722+20260723] - 2026-07-22
 
 ### Changed
