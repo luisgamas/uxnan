@@ -814,6 +814,9 @@ class ProjectsStore {
     terminals.setWorkspace(path);
     unread.clear(path);
     this.stampActive(path);
+    // Activating a workspace (a worktree/project click) returns to the normal
+    // terminal view: close the inline GitHub view if it was open.
+    app.closeGithub();
   }
 
   /** Open a terminal in `path`'s workspace (and switch to it). An optional

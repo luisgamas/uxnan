@@ -376,7 +376,13 @@ class GitStore {
         toast(i18n.t("github.toast.createPrPrompt"), {
           action: {
             label: i18n.t("github.pr.create"),
-            onClick: () => app.openGitHub("pulls"),
+            onClick: () => {
+              // Open the inline GitHub view (Pull Requests) for the active repo.
+              const p = projects.activeRepo?.path;
+              if (!p) return;
+              void github.selectSectionRepo(p);
+              app.openGithubInline("pulls");
+            },
           },
         });
       }

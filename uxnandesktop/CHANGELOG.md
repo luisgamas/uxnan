@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — GitHub: a per-project inline view replaces the full-screen section
+
+- The full-screen GitHub overlay is gone. GitHub now opens **per project** from each
+  project card's **⋯ menu → GitHub → Pull Requests / Issues / Actions**, as an **inline
+  view that replaces the center + right panels** (`GitHub.svelte`, gated on
+  `app.githubInline`) — the **left sidebar and the browser panel stay visible**. It's
+  scoped to the opened project (no repo selector), shows only the chosen section, and
+  its **close (left) / section switcher / refresh (right)** live in the view's own
+  toolbar (not a window-height header). **Activating any worktree closes it** and opens
+  the terminal as usual — centralized so every terminal/agent open (`app.openTerminal` /
+  `app.launchAgent`, hence the sidebar +, quick commands, agent launch and PR→worktree)
+  leaves the view rather than opening a terminal hidden behind it.
+- **Overview** was removed. **Account / Session + the GitHub preferences moved to
+  Settings → GitHub** (`GithubSettings.svelte`, in the "Workspace" group above Updates).
+  The **status-bar GitHub button is now a passive indicator** (notifications + rate-limit
+  tooltip, no navigation); the profile-menu "GitHub" item and the **`Ctrl/Cmd+G`**
+  shortcut were removed (GitHub is reached from the cards). The right-panel per-worktree
+  GitHub tab and all review/merge/protection logic are unchanged; its "big view" buttons
+  now open the inline view for the active repo. New state `app.githubInline` /
+  `openGithubInline` / `closeGithub`, `SettingsSection` gains `"github"`, `GithubSection`
+  is now `pulls | issues | actions`. Docs: `docs/github.md`, `architecture/02a` §3 +
+  `02c` §6 + `04`.
+
 ### Changed — left sidebar: a configurable profile card replaces the GitHub/Settings nav buttons
 
 - The left sidebar's **quick actions** row is now just **Search**. **GitHub** and

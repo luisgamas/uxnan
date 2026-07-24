@@ -58,8 +58,12 @@
     return "bg-amber-500 animate-pulse";
   }
 
+  /** Open the inline GitHub view for the active worktree's repo, on `section`. */
   function openSection(section: "pulls" | "actions") {
-    app.openGitHub(section);
+    const p = projects.activeRepo?.path;
+    if (!p) return;
+    void github.selectSectionRepo(p);
+    app.openGithubInline(section);
   }
 </script>
 
@@ -71,8 +75,8 @@
       <p class={cn("text-muted-foreground", text.meta)}>
         {github.status && !github.status.ghInstalled ? i18n.t("github.notInstalled") : i18n.t("github.notSignedIn")}
       </p>
-      <Button variant="outline" size="sm" onclick={() => app.openGitHub("settings")}>
-        {i18n.t("github.open")}
+      <Button variant="outline" size="sm" onclick={() => app.openSettings("github")}>
+        {i18n.t("github.account.title")}
       </Button>
     </div>
   {:else if !projects.activeWorktreePath}
@@ -81,7 +85,6 @@
     <div class="flex flex-col items-center gap-2 px-3 py-10 text-center">
       <GitPullRequestIcon class="size-6 text-muted-foreground/50" />
       <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.panel.noWorktree")}</p>
-      <Button variant="outline" size="sm" onclick={() => app.openGitHub()}>{i18n.t("github.open")}</Button>
     </div>
   {:else if !ctx}
     <div class="px-3 py-8 text-center">

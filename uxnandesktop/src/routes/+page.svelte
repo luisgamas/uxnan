@@ -221,8 +221,10 @@
   // focused (it arbitrates app-shortcut vs TUI per action); here we only run the
   // matched action via the shared dispatcher when a terminal is *not* focused.
   function onKeyDown(e: KeyboardEvent) {
-    // Settings / the GitHub section (full-screen) own their own keys.
-    if (app.settingsOpen || app.githubOpen) return;
+    // Settings owns its own keys (full-screen overlay). The inline GitHub view
+    // does not — the left sidebar stays active — so global shortcuts keep working;
+    // GitHub handles its own Escape.
+    if (app.settingsOpen) return;
     // Never steal keys while typing in a terminal — the shell owns Ctrl+W/J/etc.
     const el = e.target as HTMLElement | null;
     if (el?.closest(".xterm")) return;
@@ -311,23 +313,31 @@
         {@render resizeHandle("left")}
       {/if}
 
-      <!-- Region: Center workspace (Pane area) — a tree of regions whose tabs are
-           terminals, file editors or diffs (TerminalArea). Every tab stays mounted
-           (id-keyed) so no PTY/xterm/CodeMirror is torn down on split or tab switch. -->
-      <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <TerminalArea />
-      </main>
+      {#if app.githubInline}
+        <!-- Region: inline GitHub view — replaces the center + right panels for the
+             project opened from a card's ⋯ menu. The left sidebar (above) and the
+             browser panel (below) stay in place; a close button or activating a
+             worktree returns to the terminal view. -->
+        <GitHub />
+      {:else}
+        <!-- Region: Center workspace (Pane area) — a tree of regions whose tabs are
+             terminals, file editors or diffs (TerminalArea). Every tab stays mounted
+             (id-keyed) so no PTY/xterm/CodeMirror is torn down on split or tab switch. -->
+        <main class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <TerminalArea />
+        </main>
 
-      {#if app.settings.rightSidebarOpen}
-        <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
-        {@render resizeHandle("right")}
+        {#if app.settings.rightSidebarOpen}
+          <!-- Region: Right panel — window-controls header · Files/Changes/History. -->
+          {@render resizeHandle("right")}
 
-        <aside
-          class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
-          style="width: {clamp(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
-        >
-          <RightPanel />
-        </aside>
+          <aside
+            class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+            style="width: {clamp(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
+          >
+            <RightPanel />
+          </aside>
+        {/if}
       {/if}
 
       {#if app.browserOpen}
@@ -492,13 +502,6 @@
     {#if app.settingsOpen}
       <div class="absolute inset-0 z-30">
         <Settings />
-      </div>
-    {/if}
-
-    <!-- The GitHub section overlays the body the same way (its own full screen). -->
-    {#if app.githubOpen}
-      <div class="absolute inset-0 z-30">
-        <GitHub />
       </div>
     {/if}
   </div>

@@ -9,25 +9,24 @@ issues, watching CI, and tying both to worktrees — all backed by the local
 - Install the **GitHub CLI** (`gh`) and sign in once: `gh auth login`.
 - That's it — the app **never stores or reads your token**. `gh` owns the OAuth token
   in your OS keychain; Uxnan only reads sanitized status (login / scopes / host) via
-  `gh auth status`. Check it in **GitHub → Settings → Account / Session**.
+  `gh auth status`. Check it in **Settings → GitHub → Account / Session**.
 - When `gh` is missing or logged-out, GitHub features show a clear "connect" state and
   every action still offers **Open on GitHub**.
 
 Because everything routes through `gh`, **every agent-automatable action has an
 identical manual path** — GitHub keeps working even with zero AI-agent quota.
 
-## The GitHub section
+## The GitHub view (per project)
 
-Open it from the **profile card** at the bottom of the left sidebar (click it →
-**GitHub**), from the status bar, or with **`Ctrl/Cmd+G`** (rebindable in
-Settings → Keyboard shortcuts). It's a full-screen
-overlay (like Settings). A **repository selector** at the top of the section's left nav
-chooses which of your registered projects the section acts on — it does
-**not** require an active worktree
-(it defaults to the active worktree's repo, then the active project, then the first
-registered git repo). Panes:
+Open it **per project**: each project card's **⋯ menu → GitHub → Pull Requests /
+Issues / Actions**. It opens **in place of the center + right panels** — the left
+sidebar (projects) and the browser panel stay visible — scoped to that project, so
+there's no repository selector. A **section switcher** (Pull Requests / Issues /
+Actions) sits next to a **close** button (left) and a **refresh** button (right), all
+inside the view's own toolbar. **Close** it with that button or by activating any
+worktree — clicking a worktree/project opens its terminal as usual and returns to the
+workspace. Sections:
 
-- **Overview** — the active repo, its branch, and that branch's PR at a glance.
 - **Pull Requests** — a **search bar** (`gh pr list --search`) + a `open / closed /
   merged / all` filter (defaults to **open**; an empty open list offers a **View all**
   shortcut). Each row shows a colored **status icon** (open / merged / closed / draft),
@@ -62,9 +61,10 @@ registered git repo). Panes:
   the assignees API), so one filed here lands as triaged as one filed on github.com.
 - **Actions** — recent workflow runs; open a run's **log**, and **re-run**,
   **re-run failed**, or **cancel**.
-- **Settings** — an **Account / Session** block (signed-in user, host, token scopes,
-  CLI presence, API rate-limit — no token is ever shown) followed by the GitHub
-  preferences (see below).
+
+The **Account / Session** panel (signed-in user, host, token scopes, CLI presence, API
+rate-limit — no token is ever shown) and the GitHub preferences live in **Settings →
+GitHub** (see *Settings* below), not in this view.
 
 ## The right-panel GitHub tab
 
@@ -72,17 +72,19 @@ A 4th tab in the right panel (next to Files / Changes / History), scoped to the
 **active worktree**: its PR (with a colored checks roll-up + quick actions), this
 branch's CI runs, and a full **create-PR form** (base ← head, title + body, manual or
 AI-drafted; the head is pinned to this worktree's branch — see *Creating a PR* below).
-Unlike the section (which has its own repo selector), this tab **is** bound to the
-**active worktree** — when no worktree is selected it shows an empty state (like the
-Files / Changes / History tabs). It stays visible whenever enabled (toggle in **GitHub →
-Settings → Right-panel GitHub tab**), showing a "connect" / "no active worktree" /
-"not a GitHub repo" state rather than appearing and disappearing. The right-panel **tab
-strip scrolls horizontally** when it's narrow, and the panel has a minimum width that
-keeps all four tabs visible. Big views (review, diff, logs) open in the GitHub section.
+Unlike the per-project GitHub view (scoped to the card you opened), this tab **is** bound
+to the **active worktree** — when no worktree is selected it shows an empty state (like
+the Files / Changes / History tabs). It stays visible whenever enabled (toggle in
+**Settings → GitHub → Right-panel GitHub tab**), showing a "connect" / "no active
+worktree" / "not a GitHub repo" state rather than appearing and disappearing. The
+right-panel **tab strip scrolls horizontally** when it's narrow, and the panel has a
+minimum width that keeps all four tabs visible. Big views (review, diff, logs) open in
+the per-project GitHub view (its **View PR** / **View Actions** buttons open it for the
+active worktree's repo).
 
 ## Creating a PR
 
-The create-PR form (in the section's **Pull Requests** pane and in the right-panel tab)
+The create-PR form (in the GitHub view's **Pull Requests** section and in the right-panel tab)
 opens with a **`base ← head`** row: where the PR goes, and where it comes from. Both are
 always visible, even when they can't be changed — a PR silently opened from whatever
 branch happened to be checked out is exactly the mistake this row prevents.
@@ -183,23 +185,28 @@ left-panel Projects tree identically.
 ## Elsewhere in the UI
 
 - **Sidebar cards** show a PR icon on worktrees whose branch has a PR, colored by CI.
-- The **status-bar GitHub button** opens the section and shows the API rate-limit
-  remaining (and, if enabled, the unread-notifications count).
-- After a **push** on a GitHub branch with no PR yet, a **"Create PR"** toast appears.
+- The **status-bar GitHub indicator** is passive — it shows the API rate-limit remaining
+  (and, if enabled, the unread-notifications count) in a tooltip, but no longer opens
+  anything (GitHub opens per project from each card's ⋯ menu).
+- After a **push** on a GitHub branch with no PR yet, a **"Create PR"** toast appears
+  (its action opens the per-project GitHub view on Pull Requests for the active repo).
 
-## Settings (GitHub → Settings)
+## Settings (Settings → GitHub)
+
+The GitHub preferences and the **Account / Session** panel live in **Settings → GitHub**
+(the "Workspace" group, above Updates).
 
 | Setting | What it does |
 |---|---|
 | **Right-panel GitHub tab** | Show/hide the contextual right-panel tab (GitHub repos only). |
-| **Status-bar button** | Show/hide the status-bar GitHub button + rate-limit gauge. |
+| **Status-bar indicator** | Show/hide the passive status-bar GitHub indicator + rate-limit gauge. |
 | **Refresh interval** | How often (seconds) the active worktree's PR/CI status refreshes while focused. `0` = manual only. |
 | **Notifications badge** | Poll your unread notifications count for the status bar (an extra request). |
-| **Confirm PR actions** | Ask before creating or merging a PR (both the section and the right-panel tab). On by default. |
+| **Confirm PR actions** | Ask before creating or merging a PR (both the GitHub view and the right-panel tab). On by default. |
 
 ### AI PR authoring
 
-Its own section in **GitHub → Settings**, built like **Settings → AI commit messages**
+Its own block in **Settings → GitHub**, built like **Settings → AI commit messages**
 (same agent catalog, same model picker, same install-awareness) — it drafts the PR body
 from the branch diff by running an **installed local CLI agent**, so there are no API
 keys and no provider SDK.

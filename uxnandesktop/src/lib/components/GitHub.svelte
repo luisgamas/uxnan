@@ -38,12 +38,9 @@
     githubRunLog,
     githubRunRerun,
     githubRunCancel,
-    aiCommitAgents,
-    aiCommitModels,
     openExternal,
   } from "$lib/api";
   import type {
-    AgentModel,
     PrDetail,
     IssueDetail,
     Label,
@@ -52,19 +49,16 @@
     CheckSummary,
     MergeInfo,
   } from "$lib/types";
-  import { AI_COMMIT_AGENTS } from "$lib/aiCommitPresets";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTimeLong } from "$lib/relTime";
   import { Button } from "$lib/components/ui/button";
+  import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
-  import Combobox, { type ComboGroup } from "$lib/components/Combobox.svelte";
-  import AiModelPicker from "$lib/components/AiModelPicker.svelte";
-  import AgentLogo from "$lib/components/AgentLogo.svelte";
+  import Combobox from "$lib/components/Combobox.svelte";
   import SettingsSection from "$lib/components/SettingsSection.svelte";
-  import SettingsRow from "$lib/components/SettingsRow.svelte";
   import DiffView from "$lib/components/DiffView.svelte";
   import CreatePrForm from "$lib/components/CreatePrForm.svelte";
   import GithubWorktreeDialog from "$lib/components/GithubWorktreeDialog.svelte";
@@ -81,8 +75,6 @@
   import XCircleIcon from "@lucide/svelte/icons/circle-x";
   import CircleDashedIcon from "@lucide/svelte/icons/circle-dashed";
   import PlayIcon from "@lucide/svelte/icons/play";
-  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
   import CheckIcon from "@lucide/svelte/icons/check";
   import XIcon from "@lucide/svelte/icons/x";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -107,34 +99,18 @@
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import SearchIcon from "@lucide/svelte/icons/search";
 
-  // The section acts on the explicitly-SELECTED repo (not the active worktree).
+  // The inline view acts on the repo opened from the project card (stored in the
+  // github store as the selected section repo).
   const path = () => github.sectionRepoPath;
-  // A "data" pane (needs a repo) vs Settings (works without one).
-  const dataPane = $derived(app.githubSection !== "settings");
-
-  /** Switch the section's repo (clearing any open detail from the old repo). */
-  function switchRepo(p: string) {
-    clearDetail();
-    void github.selectSectionRepo(p);
-  }
   /** The registered repo id for the selected repo (for worktree-creating actions). */
   const selectedRepoId = () =>
     app.repos.find((r) => r.path === github.sectionRepoPath)?.id ?? null;
 
-  // Section nav — one item per pane (Account/Session lives inside Settings now).
-  const navItems = [
-    { id: "overview", key: "github.nav.overview", icon: LayoutDashboardIcon },
-    { id: "pulls", key: "github.nav.pulls", icon: GitPullRequestIcon },
-    { id: "issues", key: "github.nav.issues", icon: CircleDotIcon },
-    { id: "actions", key: "github.nav.actions", icon: PlayIcon },
-    { id: "settings", key: "github.nav.settings", icon: SettingsIcon },
-  ] as const;
-
   function close() {
-    app.githubOpen = false;
+    app.closeGithub();
   }
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape" && app.githubOpen) {
+    if (e.key === "Escape" && app.githubInline) {
       e.preventDefault();
       // If a detail view is open, go back to its list first.
       if (prDetail || issueDetail || runLog !== null || prError || issueError) {
@@ -176,31 +152,50 @@
     editOpen = false;
   }
 
-  /** Navigate to a pane: clear any open detail first, then switch. */
-  function goto(section: GithubSection) {
-    clearDetail();
-    app.githubSection = section;
-  }
-
   function loadPane(pane: GithubSection) {
     if (pane === "pulls") void github.loadPrs(prState);
     else if (pane === "issues") void github.loadIssues(issueState);
     else if (pane === "actions") void github.loadRuns(runsBranchOnly);
   }
 
-  // Refresh status + pick a default repo when the section opens (once).
+  // Section switcher (the toolbar Combobox): change the pane in place, keeping the
+  // same project — the loadPane effect reloads the new pane's list.
+  const sectionGroups = $derived([
+    {
+      items: [
+        { value: "pulls", label: i18n.t("github.nav.pulls") },
+        { value: "issues", label: i18n.t("github.nav.issues") },
+        { value: "actions", label: i18n.t("github.nav.actions") },
+      ],
+    },
+  ]);
+  function setSection(section: GithubSection) {
+    if (section === app.githubSection) return;
+    clearDetail();
+    app.githubSection = section;
+  }
+
+  // Keep the view synced to the selected project. Re-runs when the inline view
+  // opens, the scoped repo changes (switching from one project's GitHub to
+  // another's while it stays open), or sign-in becomes available: it resets any
+  // open detail and (re)loads the repo's context so the header + panes reflect
+  // that project. `ensureSectionRepo` only picks a default if the card didn't set
+  // one; the pane's list is loaded by the effect below.
   $effect(() => {
-    if (!app.githubOpen) return;
+    if (!app.githubInline) return;
+    void github.available;
+    void github.sectionRepoPath;
     clearDetail();
     void github.refreshStatus();
     void github.refreshRateLimit();
     github.ensureSectionRepo();
+    void github.loadSectionContext();
   });
   // Load the active pane's list when the pane, the SELECTED REPO, availability or a
   // filter changes. NOTE: no `clearDetail()` here — detail state is owned by
   // `goto()` / the item handlers, so a poll can never wipe an open detail.
   $effect(() => {
-    if (!app.githubOpen || !github.available) return;
+    if (!app.githubInline || !github.available) return;
     void app.githubSection;
     void github.sectionRepoPath;
     void prState;
@@ -801,107 +796,6 @@
       !!runError,
   );
 
-  // --- Settings pane: AI PR authoring ---------------------------------------
-  // Mirrors Settings → AI commit messages (same agent catalog, same AiModelPicker,
-  // same install-awareness), so the two AI features are configured the same way.
-
-  /** Installed agents (null = not detected yet), so uninstalled ones can be shown
-   *  disabled rather than silently missing. */
-  let aiAgentsInstalled = $state<Set<string> | null>(null);
-  let aiModels = $state<AgentModel[]>([]);
-  let aiModelsFor = $state(""); // which agent aiModels belongs to
-  let aiModelsLoading = $state(false);
-  /** Why discovery failed, if it did. Distinct from an empty list: a broken or
-   *  logged-out CLI is not the same as an agent with no models, and showing both
-   *  as "no matches" is what made a broken OpenCode impossible to diagnose. */
-  let aiModelsError = $state<string | null>(null);
-
-  const aiAgentInstalled = (id: string) => aiAgentsInstalled?.has(id) ?? false;
-
-  const aiAgentGroups = $derived<ComboGroup[]>([
-    {
-      items: [
-        { value: "", label: i18n.t("github.settings.aiNone") },
-        ...AI_COMMIT_AGENTS.map((a) => ({
-          value: a.id,
-          label: a.name,
-          // Uninstalled agents stay visible but unselectable, so the list explains
-          // itself instead of silently omitting an agent the user expects.
-          disabled: aiAgentsInstalled !== null && !aiAgentInstalled(a.id),
-          meta:
-            aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
-              ? i18n.t("settings.agentNotFound")
-              : undefined,
-        })),
-      ],
-    },
-  ]);
-
-  async function detectAiAgents() {
-    try {
-      aiAgentsInstalled = new Set(await aiCommitAgents());
-    } catch {
-      aiAgentsInstalled = new Set();
-    }
-  }
-
-  async function loadAiModels(agent: string) {
-    if (!agent) {
-      aiModels = [];
-      aiModelsFor = "";
-      aiModelsError = null;
-      return;
-    }
-    aiModelsLoading = true;
-    aiModelsError = null;
-    try {
-      aiModels = await aiCommitModels(agent);
-    } catch (e) {
-      aiModels = [];
-      aiModelsError = errText(e);
-    } finally {
-      aiModelsFor = agent;
-      aiModelsLoading = false;
-    }
-  }
-
-  function selectAiAgent(id: string) {
-    ensureGithub().aiAgentId = id || undefined;
-    ensureGithub().aiModel = undefined; // model ids are agent-specific
-    persist();
-    void loadAiModels(id);
-  }
-
-  // Language: "auto" + each app locale. Stored as the English language NAME, since
-  // the backend prompt states it verbatim ("Write the description in Spanish").
-  // Same values as AI commit, so the two features can't disagree.
-  const aiLanguageGroups = $derived<ComboGroup[]>([
-    {
-      items: [
-        { value: "auto", label: i18n.t("settings.aiCommitLanguageAuto") },
-        { value: "English", label: i18n.t("settings.aiCommitLanguageEn") },
-        { value: "Spanish", label: i18n.t("settings.aiCommitLanguageEs") },
-      ],
-    },
-  ]);
-
-  // On opening the pane: detect installed agents, then load the current agent's
-  // models once (the load stamps aiModelsFor, so this doesn't loop).
-  $effect(() => {
-    if (!(app.githubOpen && app.githubSection === "settings")) return;
-    if (aiAgentsInstalled === null) void detectAiAgents();
-    const agent = app.settings.github?.aiAgentId ?? "";
-    if (agent && aiModelsFor !== agent && !aiModelsLoading) void loadAiModels(agent);
-  });
-
-  function ensureGithub() {
-    if (!app.settings.github) app.settings.github = {};
-    return app.settings.github;
-  }
-  function persist() {
-    void app.persistSettings();
-  }
-
   function stateFilterGroups(kind: "pr" | "issue") {
     const base =
       kind === "pr"
@@ -920,12 +814,6 @@
   }
 
   // --- shared visual helpers ------------------------------------------------
-  function checkDotClass(state: string): string {
-    if (state === "success") return "bg-emerald-500";
-    if (state === "failure") return "bg-red-500";
-    if (state === "pending") return "bg-amber-500";
-    return "bg-muted-foreground/50";
-  }
   /** The CI status icon for a roll-up state (matches GitHub's ✓ / ✕ / • / dot). */
   function ciIcon(state: string) {
     if (state === "success") return CheckCircle2Icon;
@@ -1199,101 +1087,92 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
-{#if app.githubOpen}
-  <div class="flex h-full w-full flex-col bg-background text-foreground">
-    <!-- Header: back + title, mirroring Settings (no leading icon). Right padding
-         reserves the floating window controls' zone. -->
-    <header
+{#if app.githubInline}
+  <!-- Inline GitHub view: fills the center + right panels (the left sidebar and
+       the browser panel stay in place), scoped to the project opened from a card's
+       ⋯ menu. It shows ONLY the chosen section — no nav switcher — and the close
+       (left) / refresh (right) actions live inside the section's own toolbar, not
+       in a window-height header bar. -->
+  <section class="flex h-full min-w-0 flex-1 flex-col bg-background text-foreground">
+    <!-- Slim drag strip: lets the window be dragged and clears the floating window
+         controls' zone (right). Repo name for context; no actions. -->
+    <div
       data-tauri-drag-region
-      class={cn("flex h-9 shrink-0 items-center gap-2 pl-3 pr-[140px]", divider.bottom)}
+      class={cn("flex h-9 shrink-0 items-center px-4 pr-[140px]", divider.bottom)}
     >
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class={iconButton.action}
-        aria-label={i18n.t("common.close")}
-        onclick={close}
+      <span
+        data-tauri-drag-region
+        class="min-w-0 truncate text-[13px] font-medium tracking-tight text-muted-foreground"
       >
-        <ArrowLeftIcon class={icon.button} />
-      </Button>
-      <h1 class="text-sm font-semibold tracking-tight">{i18n.t("github.title")}</h1>
-    </header>
-
-    <div class="flex min-h-0 flex-1">
-      <!-- Section nav: one persistent repository selector at the top (the scope for
-           the whole section), then the panes. -->
-      <nav
-        class="scrollbar-sleek flex w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border/60 p-2"
-        aria-label={i18n.t("github.title")}
-      >
-        {#if github.available && github.sectionRepoOptions.length > 0}
-          <div class="mb-2 flex flex-col gap-1 px-1">
-            <div class="flex items-center justify-between px-1">
-              <span class={cn(text.section)}>{i18n.t("github.repo")}</span>
-              <button
-                class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-                aria-label={i18n.t("github.refresh")}
-                onclick={doRefresh}
-              >
-                <RefreshCwIcon class={cn("size-3", github.sectionContextLoading && "animate-spin")} />
-              </button>
-            </div>
-            <Combobox
-              value={github.sectionRepoPath ?? ""}
-              groups={[{ items: github.sectionRepoOptions.map((r) => ({ value: r.path, label: r.name, keywords: [r.path] })) }]}
-              triggerClass="w-full"
-              searchPlaceholder={i18n.t("common.search")}
-              onChange={switchRepo}
-            />
-          </div>
-          <div class={cn("mb-1", divider.bottom)}></div>
-        {/if}
-        {#each navItems as item (item.id)}
-          {@const Icon = item.icon}
-          <button
-            class={cn(
-              "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
-              app.githubSection === item.id
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-            )}
-            onclick={() => goto(item.id)}
-          >
-            <Icon class={icon.button} />
-            <span class="flex-1">{i18n.t(item.key)}</span>
-            {#if item.id === "pulls" && github.sectionContext?.pr}
-              <span class={cn("size-1.5 rounded-full", checkDotClass(github.sectionContext.pr.checks.state))}></span>
-            {/if}
-          </button>
-        {/each}
-      </nav>
-
-      <!-- Content -->
-      <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto">
-        {#if !github.available && dataPane}
-          {@render gatePane()}
-        {:else if github.available && dataPane && !github.sectionRepoPath}
-          {@render noReposPane()}
-        {:else}
-          <div class="px-8 py-7">
-            <div class="mx-auto w-full max-w-4xl pb-16">
-              {#if app.githubSection === "overview"}
-                {@render overviewPane()}
-              {:else if app.githubSection === "pulls"}
-                {@render pullsPane()}
-              {:else if app.githubSection === "issues"}
-                {@render issuesPane()}
-              {:else if app.githubSection === "actions"}
-                {@render actionsPane()}
-              {:else if app.githubSection === "settings"}
-                {@render settingsPane()}
-              {/if}
-            </div>
-          </div>
-        {/if}
-      </div>
+        {github.sectionContext?.nameWithOwner ?? i18n.t("github.title")}
+      </span>
     </div>
-  </div>
+
+    <div class="scrollbar-sleek min-h-0 flex-1 overflow-y-auto">
+      <!-- Section toolbar (inside the section): close on the left, then a
+           section switcher (PR / Issues / Actions — same project, no card round
+           trip), and refresh on the right. Always shown, so the view can be
+           closed even when not signed in. -->
+      <div class="flex items-center gap-2 px-8 pt-6">
+        <TooltipSimple title={i18n.t("common.close")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon-sm"
+              class={iconButton.action}
+              aria-label={i18n.t("common.close")}
+              onclick={close}
+            >
+              <ArrowLeftIcon class={icon.button} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+        <Combobox
+          value={app.githubSection}
+          groups={sectionGroups}
+          triggerClass="w-44"
+          align="start"
+          searchPlaceholder={i18n.t("common.search")}
+          itemPrefix={sectionPrefix}
+          onChange={(v) => setSection(v as GithubSection)}
+        />
+        <div class="flex-1"></div>
+        <TooltipSimple title={i18n.t("github.refresh")}>
+          {#snippet children(tp)}
+            <Button
+              {...tp}
+              variant="ghost"
+              size="icon-sm"
+              class={iconButton.action}
+              aria-label={i18n.t("github.refresh")}
+              onclick={doRefresh}
+            >
+              <RefreshCwIcon class={cn(icon.button, github.sectionContextLoading && "animate-spin")} />
+            </Button>
+          {/snippet}
+        </TooltipSimple>
+      </div>
+
+      {#if !github.available}
+        {@render gatePane()}
+      {:else if !github.sectionRepoPath}
+        {@render noReposPane()}
+      {:else}
+        <div class="px-8 pb-16 pt-4">
+          <div class="mx-auto w-full max-w-4xl">
+            {#if app.githubSection === "pulls"}
+              {@render pullsPane()}
+            {:else if app.githubSection === "issues"}
+              {@render issuesPane()}
+            {:else if app.githubSection === "actions"}
+              {@render actionsPane()}
+            {/if}
+          </div>
+        </div>
+      {/if}
+    </div>
+  </section>
 
   <!-- PR/issue → worktree. Mounted once at the section root (not per row) so the
        PR and issue panes share one instance, and it survives a pane switch. -->
@@ -1328,12 +1207,14 @@
   </div>
 {/snippet}
 
-<!-- The AI-agent picker's logo, matched back from the row's value (same catalog
-     and logo keys as Settings → AI commit messages). -->
-{#snippet aiAgentPrefix(item: { value: string })}
-  {@const a = AI_COMMIT_AGENTS.find((x) => x.id === item.value)}
-  {#if a}
-    <AgentLogo logo={a.logo} class="size-4 shrink-0" />
+<!-- Leading icon for the section switcher (shown on each row and on the trigger). -->
+{#snippet sectionPrefix(item: { value: string })}
+  {#if item.value === "pulls"}
+    <GitPullRequestIcon class="size-4 shrink-0" />
+  {:else if item.value === "issues"}
+    <CircleDotIcon class="size-4 shrink-0" />
+  {:else if item.value === "actions"}
+    <PlayIcon class="size-4 shrink-0" />
   {/if}
 {/snippet}
 
@@ -1540,77 +1421,6 @@
       <p class={cn("text-muted-foreground", text.body)}>{i18n.t("github.noReposDesc")}</p>
     </div>
   </div>
-{/snippet}
-
-{#snippet overviewPane()}
-  <SettingsSection bare title={i18n.t("github.overview.title")} description={i18n.t("github.overview.desc")}>
-    <div class="space-y-5">
-      <!-- Active repository card -->
-      <div class={cn("p-4", panel.card)}>
-        <div class={cn("mb-3 flex items-center gap-1.5", text.section)}>
-          <GitBranchIcon class="size-3.5" />
-          {i18n.t("github.overview.repo")}
-        </div>
-        {#if github.sectionContext}
-          <div class="flex items-center gap-2">
-            <span class={cn("min-w-0 flex-1 truncate", text.title)}>{github.sectionContext.nameWithOwner}</span>
-            {#if github.sectionContext.branch}
-              <span class="inline-flex items-center gap-1 rounded-md bg-muted/70 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                <GitBranchIcon class="size-3" />{github.sectionContext.branch}
-              </span>
-            {/if}
-          </div>
-          {#if github.sectionContext.pr}
-            {@const pr = github.sectionContext.pr}
-            <button
-              class={cn("mt-3 flex w-full items-center gap-2.5 rounded-lg border border-border/50 p-3 text-left transition-colors hover:bg-accent/50")}
-              onclick={() => { app.githubSection = "pulls"; void selectPr(pr.number); }}
-            >
-              <GitPullRequestIcon class={cn("size-4 shrink-0", pr.isDraft ? "text-muted-foreground" : "text-emerald-500")} />
-              <div class="min-w-0 flex-1">
-                <div class={cn("truncate", text.bodyStrong)}>{pr.title}</div>
-                <div class={cn("truncate text-muted-foreground", text.meta)}>{i18n.t("github.panel.openPr", { n: pr.number })} · {pr.state}</div>
-              </div>
-              {#if pr.checks.total > 0}
-                <span class={cn("inline-flex shrink-0 items-center gap-1.5", text.indicator, checkTextClass(pr.checks.state))}>
-                  <span class={cn("size-2 rounded-full", checkDotClass(pr.checks.state))}></span>
-                  {i18n.t("github.panel.checksPass", { passed: pr.checks.passed, total: pr.checks.total })}
-                </span>
-              {/if}
-              <ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/60" />
-            </button>
-          {:else}
-            <div class="mt-3 flex items-center justify-between rounded-lg border border-dashed border-border/60 p-3">
-              <span class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.panel.noPr")}</span>
-              <Button size="sm" variant="outline" onclick={() => goto("pulls")}>{i18n.t("github.panel.createPr")}</Button>
-            </div>
-          {/if}
-        {:else}
-          <div class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.notARepo")}</div>
-        {/if}
-      </div>
-
-      <!-- Quick nav -->
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {@render navCard(GitPullRequestIcon, i18n.t("github.nav.pulls"), () => goto("pulls"))}
-        {@render navCard(CircleDotIcon, i18n.t("github.nav.issues"), () => goto("issues"))}
-        {@render navCard(PlayIcon, i18n.t("github.nav.actions"), () => goto("actions"))}
-      </div>
-    </div>
-  </SettingsSection>
-{/snippet}
-
-{#snippet navCard(Icon: typeof PlayIcon, label: string, onClick: () => void)}
-  <button
-    class={cn("group flex items-center gap-3 p-3.5 text-left transition-colors hover:bg-accent/50", panel.card)}
-    onclick={onClick}
-  >
-    <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:text-foreground">
-      <Icon class="size-[18px]" />
-    </div>
-    <span class={cn("flex-1", text.bodyStrong)}>{label}</span>
-    <ChevronRightIcon class="size-4 text-muted-foreground/50" />
-  </button>
 {/snippet}
 
 {#snippet pullsPane()}
@@ -2405,187 +2215,4 @@
       </div>
     </SettingsSection>
   {/if}
-{/snippet}
-
-{#snippet settingsPane()}
-  <div class="space-y-8">
-    <!-- Account / Session (folded in from its own tab). -->
-    <SettingsSection title={i18n.t("github.account.title")} description={i18n.t("github.account.desc")}>
-    <SettingsRow label={i18n.t("github.account.status")}>
-      {#snippet control()}
-        <span class={cn("inline-flex items-center gap-1.5", text.body)}>
-          <span class={cn("size-2 rounded-full", github.available ? "bg-emerald-500" : "bg-muted-foreground/50")}></span>
-          {github.available ? i18n.t("github.account.connected") : i18n.t("github.account.disconnected")}
-        </span>
-      {/snippet}
-    </SettingsRow>
-    <SettingsRow label={i18n.t("github.account.cli")}>
-      {#snippet control()}
-        <span class={cn(text.body)}>{github.status?.ghInstalled ? i18n.t("github.account.installed") : i18n.t("github.account.missing")}</span>
-      {/snippet}
-    </SettingsRow>
-    {#if github.status?.login}
-      <SettingsRow label={i18n.t("github.account.signedInAs")}>
-        {#snippet control()}
-          <span class={cn("font-medium", text.body)}>{github.status?.login}</span>
-        {/snippet}
-      </SettingsRow>
-    {/if}
-    {#if github.status?.host}
-      <SettingsRow label={i18n.t("github.account.host")}>
-        {#snippet control()}
-          <span class={cn("font-mono", text.body)}>{github.status?.host}</span>
-        {/snippet}
-      </SettingsRow>
-    {/if}
-    {#if github.status && github.status.scopes.length > 0}
-      <SettingsRow label={i18n.t("github.account.scopes")}>
-        {#snippet control()}
-          <div class="flex flex-wrap justify-end gap-1">
-            {#each github.status?.scopes ?? [] as scope (scope)}{@render pill(scope, "muted")}{/each}
-          </div>
-        {/snippet}
-      </SettingsRow>
-    {/if}
-    {#if github.rateLimit}
-      <SettingsRow label={i18n.t("github.account.rateLimit")}>
-        {#snippet control()}
-          <span class={cn(text.body)}>{i18n.t("github.account.rateLimitValue", { remaining: github.rateLimit?.remaining ?? 0, limit: github.rateLimit?.limit ?? 0 })}</span>
-        {/snippet}
-      </SettingsRow>
-    {/if}
-    {#if !github.available}
-      <SettingsRow label={i18n.t("github.notSignedIn")}>
-        {#snippet control()}
-          <span class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.account.signInHint")}</span>
-        {/snippet}
-      </SettingsRow>
-    {/if}
-    </SettingsSection>
-
-    <SettingsSection title={i18n.t("github.settings.title")} description={i18n.t("github.settings.aiDesc")}>
-    <SettingsRow label={i18n.t("github.settings.rightPanelTab")} description={i18n.t("github.settings.rightPanelTabDesc")}>
-      {#snippet control()}
-        <Switch
-          checked={app.settings.github?.rightPanelTab ?? true}
-          onCheckedChange={(v) => { ensureGithub().rightPanelTab = v; persist(); }}
-        />
-      {/snippet}
-    </SettingsRow>
-    <SettingsRow label={i18n.t("github.settings.statusBar")} description={i18n.t("github.settings.statusBarDesc")}>
-      {#snippet control()}
-        <Switch
-          checked={app.settings.github?.statusBarEnabled ?? true}
-          onCheckedChange={(v) => { ensureGithub().statusBarEnabled = v; persist(); }}
-        />
-      {/snippet}
-    </SettingsRow>
-    <SettingsRow label={i18n.t("github.settings.poll")} description={i18n.t("github.settings.pollDesc")}>
-      {#snippet control()}
-        <Input
-          type="number"
-          class="w-24"
-          value={String(app.settings.github?.pollSeconds ?? 45)}
-          onchange={(e) => { ensureGithub().pollSeconds = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0); persist(); github.startPolling(); }}
-        />
-      {/snippet}
-    </SettingsRow>
-    <SettingsRow label={i18n.t("github.settings.notifications")} description={i18n.t("github.settings.notificationsDesc")}>
-      {#snippet control()}
-        <Switch
-          checked={app.settings.github?.notificationsEnabled ?? false}
-          onCheckedChange={(v) => { ensureGithub().notificationsEnabled = v; persist(); if (v) void github.refreshNotifications(); }}
-        />
-      {/snippet}
-    </SettingsRow>
-    <SettingsRow label={i18n.t("github.settings.confirmPr")} description={i18n.t("github.settings.confirmPrDesc")}>
-      {#snippet control()}
-        <Switch
-          checked={app.settings.github?.confirmPr ?? true}
-          onCheckedChange={(v) => { ensureGithub().confirmPr = v; persist(); }}
-        />
-      {/snippet}
-    </SettingsRow>
-    </SettingsSection>
-
-    <!-- AI PR authoring — the sibling of Settings → AI commit messages. -->
-    <SettingsSection title={i18n.t("github.settings.ai")} description={i18n.t("github.settings.aiDesc")}>
-      <div class="divide-y divide-border/60">
-        <SettingsRow label={i18n.t("github.settings.aiEnabled")} description={i18n.t("github.settings.aiEnabledDesc")}>
-          {#snippet control()}
-            <Switch
-              checked={app.settings.github?.aiEnabled ?? false}
-              onCheckedChange={(v) => { ensureGithub().aiEnabled = v; persist(); }}
-            />
-          {/snippet}
-        </SettingsRow>
-
-        <SettingsRow
-          label={i18n.t("github.settings.aiAgent")}
-          description={aiAgentsInstalled !== null && aiAgentsInstalled.size === 0
-            ? i18n.t("settings.aiCommitNoAgents")
-            : i18n.t("github.settings.aiAgentDesc")}
-        >
-          {#snippet control()}
-            <Combobox
-              value={app.settings.github?.aiAgentId ?? ""}
-              groups={aiAgentGroups}
-              placeholder={i18n.t("github.settings.aiNone")}
-              searchPlaceholder={i18n.t("common.search")}
-              triggerClass="w-56"
-              itemPrefix={aiAgentPrefix}
-              onChange={selectAiAgent}
-            />
-          {/snippet}
-        </SettingsRow>
-
-        {#if app.settings.github?.aiAgentId && aiAgentInstalled(app.settings.github.aiAgentId)}
-          <SettingsRow label={i18n.t("github.settings.aiModel")} description={i18n.t("settings.aiCommitModelDesc")}>
-            {#snippet control()}
-              <AiModelPicker
-                models={aiModels}
-                value={app.settings.github?.aiModel ?? ""}
-                loading={aiModelsLoading}
-                onSelect={(id) => { ensureGithub().aiModel = id || undefined; persist(); }}
-              />
-            {/snippet}
-          </SettingsRow>
-          <!-- A failed discovery is reported with the CLI's own message: "this CLI
-               is broken / not signed in" and "this agent has no models" are
-               different problems, and they used to look identical. -->
-          {#if aiModelsError}
-            <SettingsRow label={i18n.t("github.settings.aiModelsFailed")}>
-              {#snippet children()}
-                <p class={cn("mt-1 whitespace-pre-wrap text-destructive", text.meta)}>{aiModelsError}</p>
-              {/snippet}
-            </SettingsRow>
-          {/if}
-        {/if}
-
-        <SettingsRow label={i18n.t("settings.aiCommitLanguage")} description={i18n.t("github.settings.aiLanguageDesc")}>
-          {#snippet control()}
-            <Combobox
-              value={app.settings.github?.aiLanguage ?? "auto"}
-              groups={aiLanguageGroups}
-              triggerClass="w-56"
-              searchPlaceholder={i18n.t("common.search")}
-              onChange={(v) => { ensureGithub().aiLanguage = v; persist(); }}
-            />
-          {/snippet}
-        </SettingsRow>
-
-        <SettingsRow label={i18n.t("settings.aiCommitInstructions")} description={i18n.t("github.settings.aiInstructionsDesc")}>
-          {#snippet children()}
-            <Textarea
-              class="mt-1 min-h-0 resize-none text-xs"
-              rows={2}
-              placeholder={i18n.t("github.settings.aiInstructionsPlaceholder")}
-              value={app.settings.github?.aiInstructions ?? ""}
-              onchange={(e) => { ensureGithub().aiInstructions = (e.currentTarget as HTMLTextAreaElement).value; persist(); }}
-            />
-          {/snippet}
-        </SettingsRow>
-      </div>
-    </SettingsSection>
-  </div>
 {/snippet}

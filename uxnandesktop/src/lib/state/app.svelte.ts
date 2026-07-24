@@ -71,17 +71,15 @@ export type SettingsSection =
   | "aicommit"
   | "hooks"
   | "terminal"
-  | "updates"
   | "browser"
-  | "openWith";
+  | "openWith"
+  | "github"
+  | "updates";
 
-/** A pane in the GitHub section (also the deep-link target of `openGitHub`). */
-export type GithubSection =
-  | "overview"
-  | "pulls"
-  | "issues"
-  | "actions"
-  | "settings";
+/** A pane in the inline GitHub view (opened per-project from a project card).
+ *  Overview + Settings were removed: Settings moved to the main Settings dialog
+ *  (the `"github"` section) and Overview is gone. */
+export type GithubSection = "pulls" | "issues" | "actions";
 
 class AppStore {
   /** Registered repositories (and their worktrees). */
@@ -110,10 +108,13 @@ class AppStore {
   browserUrl = $state("");
   /** Which Settings pane is shown (deep-linked via `openSettings`). */
   settingsSection = $state<SettingsSection>("appearance");
-  /** Whether the GitHub section (full-screen overlay) is open. */
-  githubOpen = $state(false);
-  /** Which GitHub pane is shown (deep-linked via `openGitHub`). */
-  githubSection = $state<GithubSection>("overview");
+  /** Whether the inline GitHub view is showing (it replaces the center + right
+   *  panels for the project selected in `github.sectionRepoPath`, leaving the left
+   *  sidebar and the browser panel in place). Opened per-project from a project
+   *  card's ⋯ menu; closed by its close button or by activating a workspace. */
+  githubInline = $state(false);
+  /** Which GitHub pane the inline view shows (pulls / issues / actions). */
+  githubSection = $state<GithubSection>("pulls");
   /** Live OS dark-mode preference (kept in sync via a matchMedia listener), so
    *  the "System" theme reacts to the OS switching light/dark at runtime. */
   systemDark = $state(detectSystemDark());
@@ -170,10 +171,18 @@ class AppStore {
     this.settingsOpen = true;
   }
 
-  /** Open the GitHub section (full-screen overlay), optionally jumping to a pane. */
-  openGitHub(section: GithubSection = "overview"): void {
+  /** Open the inline GitHub view on `section` (pulls / issues / actions). The repo
+   *  it acts on is whatever the caller has selected via `github.selectSectionRepo`
+   *  (the project card does this before calling), so this stays free of a direct
+   *  github-store import. */
+  openGithubInline(section: GithubSection = "pulls"): void {
     this.githubSection = section;
-    this.githubOpen = true;
+    this.githubInline = true;
+  }
+
+  /** Close the inline GitHub view, returning to the center + right panels. */
+  closeGithub(): void {
+    this.githubInline = false;
   }
 
   /** Open the integrated browser panel at `url` (or the configured homepage, or a
@@ -500,6 +509,11 @@ class AppStore {
     /** Workspace to open in (worktree path, or "" for Global). */
     workspace?: string;
   }): void {
+    // A terminal is being shown → leave the inline GitHub view (it replaces the
+    // center pane, so a new terminal would otherwise open hidden behind it). This
+    // is the single choke point for every terminal open (sidebar +, worktree
+    // activation, quick commands…).
+    this.closeGithub();
     const profile = this.profile(opts?.profileId);
     const command = profile?.command?.trim();
     const name = profile?.name?.trim();
@@ -609,6 +623,8 @@ class AppStore {
   ): void {
     const command = agent.command.trim();
     if (!command) return;
+    // Launching an agent opens its terminal → leave the inline GitHub view.
+    this.closeGithub();
     // Ask for notification permission now (focused, user-initiated) so an
     // agent-idle alert later isn't lost waiting on the OS prompt.
     primeNotifications();

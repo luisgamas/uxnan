@@ -210,9 +210,9 @@ Se organiza en **cuatro regiones verticales** (`LeftSidebar.svelte`):
    configurable —avatar, nombre y una linea de descripcion debajo— al estilo del
    *sidebar footer* de shadcn. Al pulsarla despliega **hacia la derecha**
    (anclada por abajo, para no salirse del borde inferior) un menu con
-   **GitHub** y **Configuracion** —cuyos accesos vivian antes en las acciones
-   rapidas— mas **Editar perfil**. El badge de notificaciones de GitHub se
-   muestra aqui: un punto sobre el avatar y el contador en el item del menu.
+   **Configuracion** —cuyo acceso vivia antes en las acciones rapidas— mas
+   **Editar perfil**. (GitHub ya no se abre desde aqui: ahora se abre por
+   proyecto desde el menu ⋯ de cada tarjeta; ver §6 del `02c`.)
 
    El perfil se persiste en `AppSettings.profile` (`SidebarProfile`: `name`,
    `icon`, `description`; forma propiedad del frontend, guardada de forma opaca

@@ -320,8 +320,13 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    con el PR de su rama (resumen de checks + acciones rápidas) y los runs de CI de
    esa rama. Solo aparece cuando el repo es de GitHub y el tab está habilitado
    (`AppSettings.github.rightPanelTab`). Las vistas grandes (review/diff/logs) se
-   abren en la **sección GitHub** de pantalla completa (integración `gh`-backed; ver
-   `docs/github.md`).
+   abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
+   centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se
+   abre desde el menú **⋯** de cada tarjeta de proyecto (**GitHub → Pull Requests /
+   Issues / Actions**), muestra solo la sección elegida con un selector de sección +
+   cerrar/actualizar en su propia barra, y se cierra al activar cualquier worktree
+   (`app.githubInline`; integración `gh`-backed; ver `docs/github.md`). La sección de
+   ajustes/cuenta de GitHub vive en **Configuración → GitHub** (`GithubSettings.svelte`).
 
 El estado git del worktree activo se carga en el padre `RightPanel` (siempre
 montado), de modo que la pestaña Archivos colorea su árbol aunque la pestaña

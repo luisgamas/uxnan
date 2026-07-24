@@ -53,6 +53,7 @@
   import ThemeSettings from "./ThemeSettings.svelte";
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import OpenWithSettings from "./OpenWithSettings.svelte";
+  import GithubSettings from "./GithubSettings.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import { TERMINAL_SCROLLBACK_PRESETS } from "$lib/terminal/scrollback";
@@ -85,6 +86,7 @@
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import GlobeIcon from "@lucide/svelte/icons/globe";
   import AppWindowIcon from "@lucide/svelte/icons/app-window";
+  import GithubIcon from "@lucide/svelte/icons/git-pull-request";
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CheckIcon from "@lucide/svelte/icons/check";
@@ -744,6 +746,7 @@
       items: [
         { id: "terminal", key: "settings.terminal", icon: TerminalIcon },
         { id: "browser", key: "settings.browser", icon: GlobeIcon },
+        { id: "github", key: "settings.github", icon: GithubIcon },
         { id: "openWith", key: "settings.openWith", icon: AppWindowIcon },
       ],
     },
@@ -1611,6 +1614,8 @@
           </SettingsSection>
         {:else if app.settingsSection === "openWith"}
           <OpenWithSettings />
+        {:else if app.settingsSection === "github"}
+          <GithubSettings />
         {:else}
           <div class="flex flex-col gap-6">
           <SettingsSection title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>
