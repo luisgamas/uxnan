@@ -472,7 +472,7 @@ interface AgentModel {
   isDefault?: boolean;
   options?: AgentModelOption[];               // per-model run-option knobs
   contextWindow?: number;                     // ventana del modelo cuando el CLI la reporta (p.ej. pi --list-models)
-  isLatestAlias?: boolean;                    // alias movil "(latest)" (Claude opus/sonnet/haiku); ausente en versiones fijas
+  isLatestAlias?: boolean;                    // alias movil "(latest)" (Claude fable/opus/sonnet/haiku); ausente en versiones fijas
 }
 type AgentModelOption =
   | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }

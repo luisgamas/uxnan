@@ -392,10 +392,12 @@ Keep the two audiences separate so neither doc rots:
   When a model ships or is retired, edit **both halves of the pair in the same
   change set** (updating one silently leaves the other app a version behind), with
   the **same ids, labels and order** — newest/most capable first. Use canonical ids
-  only: no date suffixes, no routing variants (`…[1m]`, `…-fast`), and no bare
-  `opus`/`sonnet`/`haiku` alias inside a table (the bridge advertises those aliases
-  separately, from `claude-adapter.ts`). A model in an existing tier needs no
-  context-window edit — `claudeContextWindow()` maps by tier. Full rules:
+  only: no date suffixes, no routing variants (`…[1m]`, `…-fast`), no
+  invitation-only models, and no bare `fable`/`opus`/`sonnet`/`haiku` alias inside
+  a table (the bridge advertises those aliases separately, from
+  `claude-adapter.ts` — that set is hand-kept too, verified against
+  `claude --help`). A model in an existing tier needs no context-window edit —
+  `claudeContextWindow()` maps by tier. Full rules:
   [`bridge/docs/agents.md`](bridge/docs/agents.md) and
   [`uxnandesktop/docs/agent-launch.md`](uxnandesktop/docs/agent-launch.md).
 

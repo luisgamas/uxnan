@@ -102,8 +102,8 @@ export interface AgentModelOption {
  * A selectable model an agent reports, returned by `agent/models`.
  *
  * `id` is the wire value passed back to the agent for routing — a stable alias
- * for Claude Code (`opus`/`sonnet`/`haiku`), a `provider/model` id for OpenCode,
- * or a concrete model id for Codex. `displayName`, `description`, `version` and
+ * for Claude Code (`fable`/`opus`/`sonnet`/`haiku`), a `provider/model` id for
+ * OpenCode, or a concrete model id for Codex. `displayName`, `description`, `version` and
  * `isDefault` are presentation hints; consumers must tolerate any of them being
  * absent (older bridges report bare id strings).
  */
@@ -116,7 +116,7 @@ export interface AgentModel {
   description?: string;
   /**
    * Concrete underlying version when `id` is an alias that resolves to a
-   * moving target — e.g. Claude Code's `opus` → `claude-opus-4-8`. Surfaced so
+   * moving target — e.g. Claude Code's `opus` → `claude-opus-5`. Surfaced so
    * the user can see which exact model an alias currently maps to.
    */
   version?: string;
@@ -136,11 +136,12 @@ export interface AgentModel {
    */
   contextWindow?: number;
   /**
-   * Marks a moving-target "latest" alias (Claude Code's `opus`/`sonnet`/`haiku`,
-   * each of which always routes to the newest version of that tier the account
-   * can use — see {@link version} for the resolved concrete id). Concrete/pinned
-   * models leave this absent. Presentation-only: lets a client offer to
-   * hide the aliases and show exact versions only, without hardcoding ids.
+   * Marks a moving-target "latest" alias (Claude Code's
+   * `fable`/`opus`/`sonnet`/`haiku`, each of which always routes to the newest
+   * version of that tier the account can use — see {@link version} for the
+   * resolved concrete id). Concrete/pinned models leave this absent.
+   * Presentation-only: lets a client offer to hide the aliases and show exact
+   * versions only, without hardcoding ids.
    */
   isLatestAlias?: boolean;
 }
