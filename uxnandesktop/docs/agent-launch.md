@@ -152,9 +152,9 @@ in the same change set — updating one leaves the other surface a version behin
 
 Keep the **same ids, labels and order** across a pair, newest/most capable first.
 Use canonical ids only: never append a date suffix or a routing variant (`…[1m]`,
-`…-fast`) to a concrete id, and never put a bare `opus`/`sonnet`/`haiku` alias in
-a desktop table — it pins an exact version so a generated commit message stays
-reproducible. The bridge documents the same rule from its side in
+`…-fast`) to a concrete id, and never put a bare `fable`/`opus`/`sonnet`/`haiku`
+alias in a desktop table — it pins an exact version so a generated commit message
+stays reproducible. The bridge documents the same rule from its side in
 [`bridge/docs/agents.md`](../../bridge/docs/agents.md).
 
 ---

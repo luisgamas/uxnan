@@ -12,7 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   lists newest/most capable first (Fable 5 had drifted to the bottom of the array).
   Claude Code has no list-models command, so this table is hand-kept — and it is a
   **twin** of the bridge's curated list, which had gained Sonnet 5 while this one
-  had not. Both now hold the same eight models in the same order.
+  had not. **Opus 4.5** and **Sonnet 4.5** were added on top (both still accepted
+  by the CLI), so the two lists now hold the same ten models in the same order.
 - The rule that the two lists must be updated **together** is now written down at
   every site that matters: the `CLAUDE_MODELS` doc comment, a new *"Curated model
   lists (Claude & Gemini)"* section in [`docs/agent-launch.md`](docs/agent-launch.md)
