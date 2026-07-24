@@ -337,11 +337,11 @@ test('ClaudeCodeAdapter lists the stable aliases as "latest" labelled models', a
   const models = await adapter.listModels();
   assert.deepEqual(
     models.map((m) => m.id),
-    ['opus', 'sonnet', 'haiku'],
+    ['fable', 'opus', 'sonnet', 'haiku'],
   );
   assert.deepEqual(
     models.map((m) => m.displayName),
-    ['Opus (latest)', 'Sonnet (latest)', 'Haiku (latest)'],
+    ['Fable (latest)', 'Opus (latest)', 'Sonnet (latest)', 'Haiku (latest)'],
   );
   assert.equal(models.find((m) => m.id === 'sonnet')?.isDefault, true);
   assert.equal(models.find((m) => m.id === 'opus')?.isDefault, false);
@@ -364,7 +364,7 @@ test('ClaudeCodeAdapter appends pinned concrete models after the aliases', async
   const models = await adapter.listModels();
   assert.deepEqual(
     models.map((m) => m.id),
-    ['opus', 'sonnet', 'haiku', 'claude-opus-4-8', 'claude-opus-4-7'],
+    ['fable', 'opus', 'sonnet', 'haiku', 'claude-opus-4-8', 'claude-opus-4-7'],
   );
   // explicit displayName kept; missing one falls back to the id
   assert.equal(models.find((m) => m.id === 'claude-opus-4-8')?.displayName, 'Opus 4.8');

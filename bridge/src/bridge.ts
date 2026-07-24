@@ -257,7 +257,7 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   }
   // Normalize the configured extra models (bare id strings or {id,...} specs)
   // into the adapter's spec shape; they appear in the picker alongside the
-  // auto-updating opus/sonnet/haiku aliases. See docs/agents.md.
+  // auto-updating fable/opus/sonnet/haiku aliases. See docs/agents.md.
   const claudePinnedModels = (claudeSettings.models ?? []).map((m) =>
     typeof m === 'string' ? { id: m } : m,
   );

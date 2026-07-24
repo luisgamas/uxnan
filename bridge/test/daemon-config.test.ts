@@ -22,8 +22,15 @@ test('resolveDaemonConfig seeds Claude Code with concrete pinned models', () => 
   assert.ok(ids.includes('claude-opus-5'));
   assert.ok(ids.includes('claude-opus-4-8'));
   assert.ok(ids.includes('claude-opus-4-6'));
+  assert.ok(ids.includes('claude-opus-4-5'));
   assert.ok(ids.includes('claude-sonnet-5'));
   assert.ok(ids.includes('claude-sonnet-4-6'));
+  assert.ok(ids.includes('claude-sonnet-4-5'));
+  // only ids `claude --model` accepts: no aliases, no date-suffixed snapshots,
+  // no routing variants (`…[1m]`, `…-fast`)
+  assert.ok(ids.every((id) => id.startsWith('claude-')));
+  assert.ok(ids.every((id) => !id.includes('[') && !id.endsWith('-fast')));
+  assert.ok(ids.every((id) => !/-\d{8}$/.test(id)));
   // Newest/most capable first — the phone renders the seed order verbatim, and
   // the desktop's twin list (agentcli.rs CLAUDE_MODELS) mirrors it.
   assert.equal(ids[0], 'claude-fable-5');

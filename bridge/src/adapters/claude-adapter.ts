@@ -86,16 +86,19 @@ const CLAUDE_EXCLUDED_COMMANDS = new Set(['config', 'login', 'logout', 'doctor']
 
 /**
  * Stable `--model` aliases Claude Code accepts. Claude Code has no enumerate
- * command (verified against `claude` 2.x `--help`): `--model` takes an alias or
- * a full id, and the alias is the plug-and-play routing key — it always resolves
- * to the latest model of that tier the account can use. The concrete version a
- * run resolved to is reported in the `system/init` event and surfaced via the
- * `model_resolved` stream event (so the user can see e.g. `opus → claude-opus-4-8`).
+ * command (verified against `claude` 2.1.x `--help`, which names `fable`, `opus`
+ * and `sonnet`): `--model` takes an alias or a full id, and the alias is the
+ * plug-and-play routing key — it always resolves to the latest model of that
+ * tier the account can use. The concrete version a run resolved to is reported
+ * in the `system/init` event and surfaced via the `model_resolved` stream event
+ * (so the user can see e.g. `opus → claude-opus-5`). Ordered most capable first;
+ * the phone renders this order verbatim.
  */
-const CLAUDE_MODEL_ALIASES = ['opus', 'sonnet', 'haiku'] as const;
+const CLAUDE_MODEL_ALIASES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
 
 /** Human-facing labels for the stable aliases. */
 const CLAUDE_ALIAS_LABELS: Record<string, string> = {
+  fable: 'Fable',
   opus: 'Opus',
   sonnet: 'Sonnet',
   haiku: 'Haiku',

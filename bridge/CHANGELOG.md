@@ -15,9 +15,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   load time, existing `~/.uxnan/daemon-config.json` installs pick it up with no
   edit. `claudeContextWindow` already reports 1M tokens for any `opus` id, so the
   phone's context-usage indicator shows a percentage for it out of the box.
-- `claude-opus-4-6` ("Opus 4.6") is seeded too, so the bridge list and the
-  desktop app's hand-kept twin (`uxnandesktop/src-tauri/src/agentcli.rs`
-  `CLAUDE_MODELS`) now hold exactly the same models in the same order.
+- `claude-opus-4-6`, `claude-opus-4-5` and `claude-sonnet-4-5` are seeded too:
+  every concrete model the installed `claude` CLI still accepts and that the
+  account can reasonably pick, ten in total. Invitation-only models
+  (`claude-mythos-*`), date-suffixed snapshots and routing variants
+  (`…[1m]`, `…-fast`) are deliberately excluded, and a test now enforces that.
+  The bridge list and the desktop app's hand-kept twin
+  (`uxnandesktop/src-tauri/src/agentcli.rs` `CLAUDE_MODELS`) hold exactly the
+  same ten models in the same order.
+
+### Added — the `fable` "latest" alias was missing from the picker
+
+- `CLAUDE_MODEL_ALIASES` now advertises **`fable`** alongside `opus`/`sonnet`/
+  `haiku`, shown as `Fable (latest)`. `claude --help` (2.1.x) documents `fable`
+  as a valid `--model` alias, so the phone was missing the only auto-updating
+  entry for the top tier — Fable was selectable solely as a pinned version.
+  Aliases are ordered most capable first and are still flagged `isLatestAlias`,
+  so the phone's "show latest models" toggle hides all four together.
 
 ### Changed — the curated Claude model list is documented as a two-place edit
 

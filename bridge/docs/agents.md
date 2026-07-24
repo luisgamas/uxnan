@@ -35,7 +35,7 @@ prompts travel in the request body / session request, never argv).
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
-| **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
+| **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` (+ `interactive` via `codex app-server`) | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | **Gemini CLI** | `gemini -p --output-format stream-json --approval-mode <mode> --skip-trust` | `--resume <uuid>` | `permissionMode` → `--approval-mode auto_edit` / `plan` / `yolo` (+ `interactive` via a `BeforeTool` hook) | curated set (the `auto` alias + the CLI's `VALID_GEMINI_MODELS`) |
@@ -104,15 +104,16 @@ discovery to a project's own custom commands.
 ## Claude Code models: latest aliases + pinned versions
 
 Claude Code has **no enumerate command** — `--model` accepts either a stable
-alias (`opus`/`sonnet`/`haiku`) or a full id (e.g. `claude-opus-4-8`). The bridge
-exposes both, so users get plug-and-play "latest" *and* explicit version control:
+alias (`fable`/`opus`/`sonnet`/`haiku`) or a full id (e.g. `claude-opus-5`). The
+bridge exposes both, so users get plug-and-play "latest" *and* explicit version
+control:
 
-- **Aliases (always present):** `opus`/`sonnet`/`haiku` are shown as
-  `Opus (latest)` / `Sonnet (latest)` / `Haiku (latest)`. They auto-track the
-  newest model of that tier the account can use — nothing to maintain. After a
-  turn runs, the concrete version the alias resolved to (e.g. `claude-opus-4-8`)
-  is reported via the `model_resolved` event and shown in the phone's session
-  status sheet.
+- **Aliases (always present):** `fable`/`opus`/`sonnet`/`haiku` are shown as
+  `Fable (latest)` / `Opus (latest)` / `Sonnet (latest)` / `Haiku (latest)`. They
+  auto-track the newest model of that tier the account can use — nothing to
+  maintain. After a turn runs, the concrete version the alias resolved to (e.g.
+  `claude-opus-5`) is reported via the `model_resolved` event and shown in the
+  phone's session status sheet.
 - **Pinned concrete versions (built-in baseline + your extras):** the bridge
   ships a curated list of concrete versions in code (`DEFAULT_DAEMON_CONFIG`) and
   **unions** it with anything you add in `agents.claude-code.models`, deduped by
@@ -135,8 +136,10 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
         { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
         { "id": "claude-opus-4-6",  "displayName": "Opus 4.6" },
+        { "id": "claude-opus-4-5",  "displayName": "Opus 4.5" },
         { "id": "claude-sonnet-5",  "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
+        { "id": "claude-sonnet-4-5","displayName": "Sonnet 4.5" },
         { "id": "claude-haiku-4-5", "displayName": "Haiku 4.5" },
         "claude-opus-4-1"               // bare id — displayName falls back to the id
       ]
