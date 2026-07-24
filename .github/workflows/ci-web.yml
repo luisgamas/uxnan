@@ -1,0 +1,21 @@
+name: CI — Web (marketing site)
+
+# The pull-request gate for the marketing site: typecheck, lint and the static
+# export must pass before a change can merge. Deployment on push to main is a
+# SEPARATE workflow (deploy-web.yml), which re-runs this same verification before
+# publishing — so main is verified once and deployed, not verified twice.
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/ci-web.yml"
+      - ".github/workflows/verify-web.yml"
+
+concurrency:
+  group: ci-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify-web.yml
