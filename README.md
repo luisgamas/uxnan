@@ -65,7 +65,8 @@ end-to-end encrypted; the relay only ever sees sealed envelopes.
 
 ## What each component does
 
-Uxnan is a single repository with five projects. Each one has its own README with
+Uxnan is a single repository with five projects — plus the public website in
+[`web/`](web/README.md), which ships no artifact. Each one has its own README with
 the full story; here's the short version and where to go next.
 
 ### 📱 `Uxnanmobile` — the mobile app
@@ -253,7 +254,7 @@ the README so the documentation above stays focused:
 - **Per-project docs** — each project keeps task-focused guides in its own
   `docs/` and a `CHANGELOG.md`: [`bridge/docs/`](bridge/docs/) ·
   [`relay/docs/`](relay/docs/) · [`uxnanmobile/docs/`](uxnanmobile/docs/) ·
-  [`uxnandesktop/docs/`](uxnandesktop/docs/).
+  [`uxnandesktop/docs/`](uxnandesktop/docs/) · [`web/docs/`](web/docs/).
 - **The specification** — the architecture documents are the source of truth for
   cross-component behavior: [`architecture/`](architecture/00-index.md) (mobile,
   bridge, relay, shared) and

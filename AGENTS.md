@@ -41,6 +41,7 @@ uxnan/
 ├── bridge/                        # Node.js daemon for PC
 ├── relay/                         # Node.js relay server
 ├── shared/                        # Shared contracts (types, JSON-RPC schemas)
+├── web/                           # Marketing website (Next.js 15, static export)
 ├── AGENTS.md                      # This file — the single source of truth
 ├── CLAUDE.md                      # Claude Code entry point — imports this file via `@AGENTS.md`
 ├── GEMINI.md                      # Gemini CLI entry point — imports this file via `@AGENTS.md`
@@ -137,6 +138,7 @@ Before writing code in any component, you MUST read the corresponding architectu
 | `bridge/` | `architecture/02a-system-architecture.md` (section 5.8) + `uxnandesktop/architecture/02e-bridge-integration.md` |
 | `relay/` | `architecture/02a-system-architecture.md` (section 5.10) |
 | `shared/` | `architecture/02b-contracts-and-requirements.md` (JSON-RPC contracts) |
+| `web/` | `web/README.md` + `web/docs/content.md` — the site has no `architecture/` page of its own; the products it describes are the source of truth, and `web/src/lib/site.ts` is where every claim it makes is centralized |
 
 Do not implement based on assumptions. If something is unclear in the documentation, ask before assuming.
 
@@ -155,6 +157,8 @@ relay/CHANGELOG.md
 relay/README.md
 shared/CHANGELOG.md
 shared/README.md
+web/CHANGELOG.md
+web/README.md
 ```
 
 #### `docs/` per component (required)
@@ -209,6 +213,22 @@ If it affects contracts in `shared/`, all consuming components must be updated i
 - Node.js
 - JSON-RPC 2.0 over WebSocket
 - Contracts defined in `shared/`
+
+**Web (web/):**
+- Next.js 15 (App Router) with `output: "export"` — a fully static site, no server
+  runtime. React 19 + TypeScript + Tailwind CSS v4.
+- Standalone npm package: **not** part of the root `workspaces`. Install and run
+  everything from inside `web/`.
+- **Every factual claim the page makes lives in `src/lib/site.ts`** (agent counts,
+  RAM figures, method counts, commands, links). When one of those facts changes in
+  another component, update that file in the same change set — see
+  `web/docs/content.md` for the claim-to-source table.
+- Interface visuals are DOM recreations, never screenshots, so they follow the
+  theme and stay sharp. Scroll animation is CSS driven by a single custom property
+  written by a scroll handler; React does not re-render per frame.
+- The site is **not tag-versioned** — it has no release artifact. A push to `main`
+  runs `deploy-web.yml`, which builds it on GitHub's runners and uploads the static
+  export to Cloudflare Pages (Direct Upload). See `web/docs/deploy.md`.
 
 **Contracts (shared/):**
 - TypeScript for type definitions
@@ -529,6 +549,7 @@ If the documentation says one thing but the existing code does another:
   - Bridge: `bridge`, `adapter`, `handler`
   - Relay: `relay`, `push`, `ws`
   - Shared: `contracts`, `schemas`
+  - Web: `web`
   - Docs: `docs`
 - Messages in English, imperative mood, lowercase first letter.
 - One commit per logical change. Do not mix features, fixes, or refactors in a single commit.

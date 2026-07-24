@@ -1,0 +1,556 @@
+@import "tailwindcss";
+
+/* Dark mode is driven by a `.dark` class on <html>, set before paint by the
+   inline script in `layout.tsx` so the first frame is never the wrong theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+/* Apply only where a real pointer can hover, so hover-reveal never sticks on touch. */
+@custom-variant can-hover (@media (hover: hover));
+
+/* ---------------------------------------------------------------------------
+   Palette.
+
+   Light is the primary theme. Neutrals carry a faint blue cast (chroma ~0.01 at
+   hue 262) so white surfaces read as "cool paper" rather than clinical grey, and
+   the single accent hue is shared by the desktop app's blue.
+   --------------------------------------------------------------------------- */
+:root {
+  --radius: 0.875rem;
+
+  --background: oklch(1 0 0);
+  --surface: oklch(0.988 0.003 262);
+  --surface-raised: oklch(1 0 0);
+  --surface-sunken: oklch(0.972 0.005 262);
+
+  --foreground: oklch(0.21 0.014 265);
+  --muted-foreground: oklch(0.53 0.017 263);
+  --faint-foreground: oklch(0.66 0.014 263);
+
+  --border: oklch(0.918 0.006 264);
+  --border-strong: oklch(0.862 0.009 264);
+
+  --accent: oklch(0.548 0.196 262);
+  --accent-hover: oklch(0.495 0.198 262);
+  --accent-foreground: oklch(0.995 0 0);
+  --accent-soft: oklch(0.955 0.028 258);
+  --accent-tint: oklch(0.972 0.016 258);
+
+  --positive: oklch(0.62 0.15 155);
+  --warning: oklch(0.72 0.16 72);
+  --danger: oklch(0.58 0.21 27);
+
+  /* Selection inside the interface recreations. The desktop app deliberately
+     selects with a quiet neutral fill rather than a saturated colour field, so
+     the mockups mirror that instead of painting rows blue. */
+  --sidebar-accent: color-mix(in oklab, var(--foreground) 8%, var(--surface));
+
+  /* Hero glyph field — tuned per theme so the rain never fights the text. */
+  --glyph: 148 152 168;
+  --glyph-hot: 47 107 255;
+
+  /* Flat UI — no elevation. Tokens kept so existing utilities resolve cleanly. */
+  --shadow-ambient: none;
+  --shadow-lifted: none;
+}
+
+.dark {
+  --background: oklch(0.168 0.012 265);
+  --surface: oklch(0.196 0.013 265);
+  --surface-raised: oklch(0.228 0.014 265);
+  --surface-sunken: oklch(0.146 0.011 265);
+
+  --foreground: oklch(0.968 0.004 264);
+  --muted-foreground: oklch(0.712 0.014 264);
+  --faint-foreground: oklch(0.56 0.014 264);
+
+  --border: oklch(0.3 0.014 265);
+  --border-strong: oklch(0.38 0.016 265);
+
+  --accent: oklch(0.68 0.17 260);
+  --accent-hover: oklch(0.74 0.16 260);
+  --accent-foreground: oklch(0.16 0.02 265);
+  --accent-soft: oklch(0.28 0.05 260);
+  --accent-tint: oklch(0.23 0.03 262);
+
+  --positive: oklch(0.72 0.16 155);
+  --warning: oklch(0.79 0.15 72);
+  --danger: oklch(0.68 0.19 25);
+
+  --glyph: 120 128 152;
+  --glyph-hot: 122 162 255;
+
+  --shadow-ambient: none;
+  --shadow-lifted: none;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", Menlo,
+    Consolas, monospace;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-tint: var(--accent-tint);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-positive: var(--positive);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+  --radius-2xl: calc(var(--radius) + 12px);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* The sticky header must never cover the target of an in-page anchor. */
+    scroll-padding-top: 6rem;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    /* Roomy by default: 17px body copy is the baseline this site is drawn to. */
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.022em;
+    line-height: 1.12;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* One page width, one set of gutters — every section aligns to this. */
+  .shell {
+    width: 100%;
+    max-width: 78rem;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+  @media (min-width: 768px) {
+    .shell {
+      padding-inline: 2.5rem;
+    }
+  }
+
+  /* Generous vertical rhythm. Sections breathe; nothing feels packed. */
+  .section {
+    padding-block: 6rem;
+  }
+  @media (min-width: 768px) {
+    .section {
+      padding-block: 8.5rem;
+    }
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /* The soft blue wash used by feature cards and the two-app panels. */
+  .card-wash {
+    background-image: linear-gradient(
+      160deg,
+      color-mix(in oklab, var(--accent) 7%, var(--surface-raised)) 0%,
+      var(--surface-raised) 46%,
+      var(--surface-raised) 100%
+    );
+  }
+
+  .hairline {
+    border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Fades a scrolling strip out at both edges instead of cutting it hard. */
+  .mask-edges {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      black 8%,
+      black 92%,
+      transparent
+    );
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  }
+
+  .text-gradient {
+    background-image: linear-gradient(
+      100deg,
+      var(--accent) 0%,
+      color-mix(in oklab, var(--accent) 62%, var(--foreground)) 62%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+/* --- Motion primitives ----------------------------------------------------- */
+
+@keyframes ux-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ux-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Pause feature marquee while hovering a row so a card can be read. */
+.mask-edges:has(.feature-marquee):hover .feature-marquee {
+  animation-play-state: paused;
+}
+
+@keyframes ux-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes ux-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes ux-sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+
+/* A meter filling from the left — used by the usage and memory gauges. */
+@keyframes ux-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* A file-tree row travelling to the terminal and dropping its path in. */
+@keyframes ux-drag {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.96);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  58% {
+    opacity: 1;
+    transform: translate(112px, -14px) scale(1);
+  }
+  70% {
+    opacity: 0;
+    transform: translate(120px, -14px) scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.96);
+  }
+}
+
+@keyframes ux-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* --- Hero scroll stage -----------------------------------------------------
+
+   `useScrollProgress` writes the section's scroll position into `--p` (0 → 1)
+   and nothing else; every movement below is derived from it in CSS, so the
+   choreography runs on the compositor instead of re-rendering React 60 times a
+   second.
+
+   The whole sequence is desktop-only. Below 1024px the section is a normal,
+   unpinned block: the window sits still and the satellites are not rendered,
+   because pinning a viewport-tall stage on a phone is a worse experience than
+   simply scrolling past it.
+   --------------------------------------------------------------------------- */
+
+.stage {
+  --p: 0;
+}
+
+/* Keeps the window a window at every width — the panel recreation inside it is
+   sized with `h-full`, so it needs its container to have a real height. Taller
+   than the desktop ratio on purpose: on a phone the width is what is scarce, so
+   the extra height is what keeps the terminal readable rather than clipped. */
+.stage-window {
+  aspect-ratio: 5 / 4;
+  animation: ux-float 9s ease-in-out infinite;
+}
+@media (min-width: 1024px) {
+  .stage-window {
+    /* The scroll choreography owns the transform from here up. */
+    animation: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .stage {
+    /* The headline clears out first… */
+    --fade: max(0, min(1, calc(var(--p) / 0.2)));
+    /* …the window rises and widens across the first half… */
+    --lift: max(0, min(1, calc(var(--p) / 0.46)));
+    /* …and the surrounding panels arrive once it has settled. */
+    --wings: max(0, min(1, calc((var(--p) - 0.34) / 0.42)));
+  }
+
+  .stage-copy {
+    opacity: calc(1 - var(--fade));
+    transform: translateY(calc(var(--fade) * -56px));
+    filter: blur(calc(var(--fade) * 5px));
+  }
+
+  /* Once the copy is fully out, take it out of the tab order too. */
+  .stage[data-stage="far"] .stage-copy {
+    visibility: hidden;
+  }
+
+  .stage-glyphs {
+    opacity: calc(1 - var(--fade) * 0.72);
+  }
+
+  /* Both the window and the rail around it are centred on the same point and
+     nudged down by the header's half-height, so the finished composition sits
+     balanced in the viewport instead of hugging the bottom edge on a tall
+     display. The rise is then a plain offset from that resting place. */
+  .stage-window,
+  .stage-rail {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    margin-top: 2.25rem;
+  }
+
+  .stage-window {
+    /* Grows with the scroll, but never taller than the viewport allows. */
+    width: min(
+      94vw,
+      calc(42rem + var(--lift) * 14rem),
+      calc((100svh - 11rem) * 1.6)
+    );
+    aspect-ratio: 16 / 10;
+    transform: translateY(calc((1 - var(--lift)) * 56vh));
+  }
+
+  /* Sized to the settled window, so each satellite keeps the same overlap at
+     every viewport width and height. */
+  .stage-rail {
+    width: 80rem;
+    height: 37rem;
+  }
+
+  .stage-sat {
+    --in: max(0, min(1, calc((var(--wings) - var(--d, 0)) / 0.5)));
+    position: absolute;
+    opacity: var(--in);
+    transform: translate(
+        calc((1 - var(--in)) * var(--fx, 0px)),
+        calc((1 - var(--in)) * var(--fy, 0px))
+      )
+      scale(calc(0.9 + var(--in) * 0.1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Drop the pin entirely and fall back to the plain stacked layout: headline,
+     then the window underneath it, with no satellites flying anywhere. */
+  .stage {
+    height: auto;
+  }
+  .stage-pin {
+    position: relative;
+    height: auto;
+  }
+  .stage-copy,
+  .stage-glyphs {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    visibility: visible;
+  }
+  .stage-window {
+    position: static;
+    translate: none;
+    transform: none;
+    width: min(94%, 60rem);
+    margin: 3.5rem auto 0;
+    aspect-ratio: 16 / 10;
+  }
+  .stage-rail {
+    display: none;
+  }
+}
+
+/* --- Footer reveal ---------------------------------------------------------
+
+   The page body is opaque and paints over a fixed footer sitting behind it, so
+   the last scroll of the page uncovers the footer rather than pushing it. `--fp`
+   (written by `Footer`) is how much of it is showing, and drives a very light
+   zoom so it reads as arriving from underneath instead of simply appearing.
+   --------------------------------------------------------------------------- */
+
+.footer-runway {
+  height: 0;
+  /* It sits over the fixed footer once uncovered — without this it would swallow
+     every click meant for the footer's links. */
+  pointer-events: none;
+}
+
+@media (min-width: 1024px) {
+  .footer-panel {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    /* Below `main` (which is z-10) but still a *positioned* element, so it stays
+       above the page canvas in hit testing. A negative z-index would paint it
+       behind the body's own content box, and every link in it would silently
+       stop being clickable. */
+    z-index: 0;
+    transform-origin: bottom center;
+    transform: scale(calc(0.94 + var(--fp, 1) * 0.06));
+    opacity: calc(0.4 + var(--fp, 1) * 0.6);
+    will-change: transform;
+  }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .footer-panel {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* --- FAQ answer typography -------------------------------------------------- */
+
+.prose-faq a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.prose-faq a:hover {
+  text-decoration-color: var(--accent);
+}
+.prose-faq code {
+  border-radius: 6px;
+  background-color: var(--surface-sunken);
+  padding: 0.1rem 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  color: var(--foreground);
+}
+
+/* Revealed by an IntersectionObserver adding [data-visible] — see `useReveal`. */
+/* Gated on `.js`, which the inline script in `layout.tsx` adds: with scripting
+   off nothing observes these elements, so they must never start hidden. */
+.js [data-reveal] {
+  opacity: 0;
+}
+.js [data-reveal][data-visible="true"] {
+  animation: ux-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .js [data-reveal] {
+    opacity: 1;
+  }
+}
