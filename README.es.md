@@ -67,7 +67,8 @@ a extremo; el relay solo ve sobres sellados.
 
 ## Qué hace cada componente
 
-Uxnan es un solo repositorio con cinco proyectos. Cada uno tiene su propio README
+Uxnan es un solo repositorio con cinco proyectos — más el sitio web público en
+[`web/`](web/README.md), que no publica ningún artefacto. Cada uno tiene su propio README
 con la historia completa; aquí va la versión corta y a dónde ir después.
 
 ### 📱 `Uxnanmobile` — la app móvil
@@ -261,7 +262,7 @@ fuera del README para que la documentación de arriba se mantenga enfocada:
 - **Docs por proyecto** — cada proyecto guarda guías enfocadas en su propio
   `docs/` y un `CHANGELOG.md`: [`bridge/docs/`](bridge/docs/) ·
   [`relay/docs/`](relay/docs/) · [`uxnanmobile/docs/`](uxnanmobile/docs/) ·
-  [`uxnandesktop/docs/`](uxnandesktop/docs/).
+  [`uxnandesktop/docs/`](uxnandesktop/docs/) · [`web/docs/`](web/docs/).
 - **La especificación** — los documentos de arquitectura son la fuente de verdad
   del comportamiento entre componentes:
   [`architecture/`](architecture/00-index.md) (móvil, bridge, relay, shared) y
