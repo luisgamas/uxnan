@@ -383,6 +383,7 @@ test('claudeContextWindow maps tiers and ids to window sizes', () => {
   assert.equal(claudeContextWindow('sonnet'), 1_000_000);
   assert.equal(claudeContextWindow('haiku'), 200_000);
   assert.equal(claudeContextWindow('claude-fable-5'), 1_000_000);
+  assert.equal(claudeContextWindow('claude-opus-5'), 1_000_000);
   assert.equal(claudeContextWindow('claude-opus-4-8'), 1_000_000);
   assert.equal(claudeContextWindow('claude-haiku-4-5'), 200_000);
   assert.equal(claudeContextWindow('mystery'), undefined);

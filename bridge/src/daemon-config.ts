@@ -152,13 +152,22 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   // Seed Claude Code with a few concrete, currently-available versions so the
   // picker shows exact models out of the box, alongside the auto-updating
   // `opus`/`sonnet`/`haiku` aliases. Curate this list as models are released or
-  // retired — the aliases always cover "latest" regardless. See docs/agents.md.
+  // retired — the aliases always cover "latest" regardless. Newest/most capable
+  // first (that's the picker order). See docs/agents.md.
+  //
+  // TWIN LIST — KEEP IN SYNC. The desktop app ships its own hand-kept copy of
+  // this table in `uxnandesktop/src-tauri/src/agentcli.rs` (`CLAUDE_MODELS`,
+  // used by AI commit messages / PR bodies). Claude Code has no enumerate
+  // command, so both are maintained by hand: every new Claude model must be
+  // added to BOTH lists, with the same ids, labels and order.
   agents: {
     'claude-code': {
       models: [
         { id: 'claude-fable-5', displayName: 'Fable 5' },
+        { id: 'claude-opus-5', displayName: 'Opus 5' },
         { id: 'claude-opus-4-8', displayName: 'Opus 4.8' },
         { id: 'claude-opus-4-7', displayName: 'Opus 4.7' },
+        { id: 'claude-opus-4-6', displayName: 'Opus 4.6' },
         { id: 'claude-sonnet-5', displayName: 'Sonnet 5' },
         { id: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' },
         { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },

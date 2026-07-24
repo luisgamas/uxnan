@@ -131,8 +131,10 @@ exposes both, so users get plug-and-play "latest" *and* explicit version control
       "model": "opus",                 // default: the latest Opus alias
       "models": [                       // extra concrete versions in the picker
         { "id": "claude-fable-5",   "displayName": "Fable 5" },
+        { "id": "claude-opus-5",    "displayName": "Opus 5" },
         { "id": "claude-opus-4-8",  "displayName": "Opus 4.8" },
         { "id": "claude-opus-4-7",  "displayName": "Opus 4.7" },
+        { "id": "claude-opus-4-6",  "displayName": "Opus 4.6" },
         { "id": "claude-sonnet-5",  "displayName": "Sonnet 5" },
         { "id": "claude-sonnet-4-6","displayName": "Sonnet 4.6" },
         { "id": "claude-haiku-4-5", "displayName": "Haiku 4.5" },
@@ -155,6 +157,24 @@ aliases cover "latest" regardless, so pinning is purely for explicit/older-versi
 selection. Use only ids Claude Code accepts (`claude --model <id>` validates
 them). The same `models` field works for any agent the adapter honors it for;
 today that's Claude Code (OpenCode and Codex enumerate their own models).
+
+### Maintaining the built-in list — it has a twin in the desktop app
+
+Claude Code cannot enumerate its models, so the concrete versions are hand-kept
+in **two** places. **Both must be updated whenever Anthropic ships or retires a
+model** — updating only one silently leaves that surface a version behind:
+
+| List | Where | Feeds |
+|---|---|---|
+| Bridge seed | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the phone's model picker (`agent/models`) |
+| Desktop table | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the desktop's AI commit-message / PR-body drafting picker |
+
+Keep the **same ids, labels and order** in both (newest/most capable first). Use
+canonical ids only: never append a date suffix or a routing variant (`…[1m]`,
+`…-fast`) to a concrete id, and never put a bare alias in either list. Context
+windows need no edit for a model in an existing tier — `claudeContextWindow()`
+(`src/adapters/claude-adapter.ts`) maps by tier (`fable`/`opus`/`sonnet` → 1M,
+`haiku` → 200K), which is what drives the phone's context-usage percentage.
 
 ## Adding a new agent
 

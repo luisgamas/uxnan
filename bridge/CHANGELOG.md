@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Claude Opus 5 in the built-in Claude Code model list
+
+- `DEFAULT_DAEMON_CONFIG` now seeds `claude-opus-5` ("Opus 5") among the pinned
+  concrete Claude Code versions, right after Fable 5. Claude Code has no
+  enumerate command, so this curated seed is the only way a concrete version
+  reaches the phone's model picker (the `opus`/`sonnet`/`haiku` aliases stay the
+  moving "latest" entries). Because the seed is a live baseline unioned in at
+  load time, existing `~/.uxnan/daemon-config.json` installs pick it up with no
+  edit. `claudeContextWindow` already reports 1M tokens for any `opus` id, so the
+  phone's context-usage indicator shows a percentage for it out of the box.
+- `claude-opus-4-6` ("Opus 4.6") is seeded too, so the bridge list and the
+  desktop app's hand-kept twin (`uxnandesktop/src-tauri/src/agentcli.rs`
+  `CLAUDE_MODELS`) now hold exactly the same models in the same order.
+
+### Changed — the curated Claude model list is documented as a two-place edit
+
+- `docs/agents.md` gains a *"Maintaining the built-in list — it has a twin in the
+  desktop app"* section: a table naming both hand-kept lists and what each one
+  feeds, the id rules (canonical ids only — no date suffixes, no `…[1m]`/`…-fast`
+  routing variants, no bare aliases), and a note that a model in an existing tier
+  needs no `claudeContextWindow` edit. The seed's own comment in
+  `src/daemon-config.ts` now points at the desktop twin as well.
+
 ## [0.0.11-alpha.20260721] - 2026-07-21
 
 ### Fixed — LAN discovery now works on multi-homed Windows hosts
