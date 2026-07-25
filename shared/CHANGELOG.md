@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.10-alpha.20260724] - 2026-07-24
+
 ### Clarified — `AgentModel` doc comments name the current Claude alias set
 
 - `id` and `isLatestAlias` (`agents/agent-capabilities.ts`) documented Claude

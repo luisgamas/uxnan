@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.12-alpha.20260724] - 2026-07-24
+
 ### Added — Claude Opus 5 in the built-in Claude Code model list
 
 - `DEFAULT_DAEMON_CONFIG` now seeds `claude-opus-5` ("Opus 5") among the pinned
