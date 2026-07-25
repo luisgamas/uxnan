@@ -26,7 +26,9 @@
 //! outputs between steps, `store` owns the on-disk layout, `graph` executes, and
 //! `runner` is the `--automation-run` entry point.
 
+pub mod commands;
 pub mod graph;
+pub mod oscheduler;
 pub mod runner;
 pub mod schedule;
 pub mod store;
