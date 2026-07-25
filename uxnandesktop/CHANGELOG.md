@@ -5,6 +5,61 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — GitHub: a per-project inline view replaces the full-screen section
+
+- The full-screen GitHub overlay is gone. GitHub now opens **per project** from each
+  project card's **⋯ menu → GitHub → Pull Requests / Issues / Actions**, as an **inline
+  view that replaces the center + right panels** (`GitHub.svelte`, gated on
+  `app.githubInline`) — the **left sidebar and the browser panel stay visible**. It's
+  scoped to the opened project (no repo selector), shows only the chosen section, and
+  its **close (left) / section switcher / refresh (right)** live in the view's own
+  toolbar (not a window-height header). **Activating any worktree closes it** and opens
+  the terminal as usual — centralized so every terminal/agent open (`app.openTerminal` /
+  `app.launchAgent`, hence the sidebar +, quick commands, agent launch and PR→worktree)
+  leaves the view rather than opening a terminal hidden behind it.
+- **Overview** was removed. **Account / Session + the GitHub preferences moved to
+  Settings → GitHub** (`GithubSettings.svelte`, in the "Workspace" group above Updates).
+  The **status-bar GitHub button is now a passive indicator** (notifications + rate-limit
+  tooltip, no navigation); the profile-menu "GitHub" item and the **`Ctrl/Cmd+G`**
+  shortcut were removed (GitHub is reached from the cards). The right-panel per-worktree
+  GitHub tab and all review/merge/protection logic are unchanged; its "big view" buttons
+  now open the inline view for the active repo. New state `app.githubInline` /
+  `openGithubInline` / `closeGithub`, `SettingsSection` gains `"github"`, `GithubSection`
+  is now `pulls | issues | actions`. Docs: `docs/github.md`, `architecture/02a` §3 +
+  `02c` §6 + `04`, plus the `FOR-DEV.md` `## Status` entry and the monorepo
+  `AGENTS.md` status note (both still described the removed full-screen section).
+
+### Changed — left sidebar: a configurable profile card replaces the GitHub/Settings nav buttons
+
+- The left sidebar's **quick actions** row is now just **Search**. **GitHub** and
+  **Settings** moved into a new **profile card pinned to the sidebar footer**
+  (`SidebarProfile.svelte`), shadcn-sidebar-footer style: an **avatar, a name and a
+  description line**. Clicking it opens a menu **to the right** (bottom-anchored, so it
+  never runs off the window) with GitHub · Settings — both keeping their shortcut hints
+  — plus **Edit profile**. The GitHub notifications badge moved here too (a dot on the
+  avatar + the count on the menu item); the global `Ctrl/Cmd+,` / `Ctrl/Cmd+G` shortcuts
+  are unchanged.
+- The card is **user-configurable** and persists in `AppSettings.profile`
+  (`SidebarProfile`: `name` / `icon` / `description`; frontend-owned shape stored
+  opaquely by the backend, absent by default). The **avatar reuses the shared
+  `IconPicker` / `EntityIcon`** already used for project-card icons, so it accepts a
+  built-in glyph (with an accent color) or a custom image (file or URL). Edited from
+  `SidebarProfileDialog.svelte` — the icon applies immediately, name/description on
+  save. EN/ES strings under `sidebarProfile.*`.
+
+### Added — "Check remote" (fetch) button in the Changes panel
+
+- The Changes tab header gains a **fetch button** (cloud-download icon) next to the
+  existing local **refresh**. Local refresh only re-reads the working tree, so the
+  push/pull bar's *behind* count was stale until something else fetched. The new
+  button runs `git fetch` for the current branch's remote and re-reads ahead/behind:
+  if the remote has new commits it toasts how many and the **Pull** button appears
+  (via the ahead/behind sync bar), otherwise it toasts **"Everything is up to date"**.
+  Read-only — it never touches the working tree. New Tauri command `git_fetch`
+  (`git::fetch_remote` → refreshed `WorktreeStatus`), `gitFetch` API wrapper, a
+  `git.fetching` store flag (also gating the live status listener), and EN/ES strings
+  (`rightPanel.fetchRemote`, `toast.fetchUpToDate`, `toast.fetchBehind*`).
+
 ### Fixed — the curated Claude model list had drifted behind the bridge's
 
 - `CLAUDE_MODELS` (`src-tauri/src/agentcli.rs`), which fills the model pickers for

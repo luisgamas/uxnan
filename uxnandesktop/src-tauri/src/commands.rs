@@ -1300,6 +1300,18 @@ pub async fn git_set_watch(
     Ok(())
 }
 
+/// Fetch the current branch's remote (`git fetch`) and return the refreshed
+/// working-tree status, so ahead/behind now reflect the server. Lets the user
+/// check for new upstream commits to pull without touching the working tree.
+/// Errors (offline, no remote) surface to the caller.
+#[tauri::command]
+pub async fn git_fetch(path: String) -> Result<git::WorktreeStatus, CommandError> {
+    git::fetch_remote(&path).await.map_err(CommandError::from)?;
+    git::worktree_status(&path)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Push the current branch (`git push`). Not retried.
 #[tauri::command]
 pub async fn git_push(path: String) -> Result<(), CommandError> {

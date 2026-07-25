@@ -316,6 +316,7 @@ pub fn run() {
             commands::git_log,
             commands::git_show,
             commands::git_set_watch,
+            commands::git_fetch,
             commands::git_push,
             commands::git_pull,
             commands::git_generate_commit_message,

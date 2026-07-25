@@ -7,6 +7,9 @@ export const es: Record<MessageKey, string> = {
   "toast.committed": "Commit creado",
   "toast.pushed": "Push realizado",
   "toast.pulled": "Pull realizado",
+  "toast.fetchUpToDate": "Todo está actualizado",
+  "toast.fetchBehindOne": "{n} commit nuevo en el remoto — haz pull para traerlo",
+  "toast.fetchBehindOther": "{n} commits nuevos en el remoto — haz pull para traerlos",
   "toast.worktreeRemoved": "Worktree eliminado",
   "toast.localBranchDeleted": "rama local eliminada",
   "toast.branchCleanedSquash": "rama squash-merged depurada",
@@ -104,6 +107,20 @@ export const es: Record<MessageKey, string> = {
   "sidebar.noMatch": "Ningún proyecto coincide con tu búsqueda.",
   "sidebar.empty": "Aún no hay proyectos.",
   "sidebar.addRepo": "Agregar una carpeta",
+
+  // Sidebar profile (tarjeta del footer → GitHub / Configuración / editar)
+  "sidebarProfile.defaultName": "Uxnan",
+  "sidebarProfile.defaultTagline": "Espacio de trabajo local",
+  "sidebarProfile.edit": "Editar perfil",
+  "sidebarProfile.editTitle": "Editar perfil",
+  "sidebarProfile.editDesc": "Personaliza el avatar, el nombre y la descripción que se muestran al final de la barra lateral.",
+  "sidebarProfile.name": "Nombre",
+  "sidebarProfile.namePlaceholder": "Tu nombre",
+  "sidebarProfile.description": "Descripción",
+  "sidebarProfile.descriptionPlaceholder": "Una línea breve bajo el nombre",
+  "sidebarProfile.descriptionHint": "Se muestra bajo el nombre — un rol, estado o eslogan.",
+  "sidebarProfile.changeIcon": "Cambiar avatar",
+  "sidebarProfile.iconTitle": "Avatar del perfil",
 
   // Project card
   "project.expand": "Expandir",
@@ -388,6 +405,7 @@ export const es: Record<MessageKey, string> = {
   "settings.browserDesc":
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",
   "settings.openWith": "Abrir con",
+  "settings.github": "GitHub",
   // Abrir con (editores/IDEs externos)
   "openWith.label": "Abrir con",
   "openWith.none": "No se encontraron editores",
@@ -543,6 +561,7 @@ export const es: Record<MessageKey, string> = {
   "rightPanel.changes": "Cambios",
   "rightPanel.selectWorktree": "Selecciona un proyecto o worktree para ver sus cambios.",
   "rightPanel.refresh": "Actualizar cambios",
+  "rightPanel.fetchRemote": "Buscar cambios nuevos en el remoto",
   "rightPanel.staged": "Preparados",
   "rightPanel.noChanges": "Sin cambios.",
   "rightPanel.stageAll": "Preparar todo",
@@ -718,8 +737,6 @@ export const es: Record<MessageKey, string> = {
   "shortcuts.newWorktreeDesc": "Crea un worktree en el repo del espacio de trabajo activo (no hace nada fuera de un repo).",
   "shortcuts.openSettings": "Abrir configuración",
   "shortcuts.openSettingsDesc": "Abre esta vista de configuración.",
-  "shortcuts.openGitHub": "Abrir GitHub",
-  "shortcuts.openGitHubDesc": "Abre la sección de GitHub.",
   "shortcuts.openQuickCommands": "Abrir comandos rápidos",
   "shortcuts.openQuickCommandsDesc": "Abre el lanzador de comandos rápidos de la barra superior.",
   "shortcuts.toggleLeftSidebar": "Alternar barra izquierda",
@@ -1285,15 +1302,9 @@ export const es: Record<MessageKey, string> = {
 
   // Integración con GitHub
   "github.title": "GitHub",
-  "github.open": "Abrir GitHub",
-  "github.nav.overview": "Resumen",
   "github.nav.pulls": "Pull Requests",
   "github.nav.issues": "Issues",
   "github.nav.actions": "Actions",
-  "github.nav.account": "Cuenta",
-  "github.nav.settings": "Ajustes",
-  "github.nav.group": "GitHub",
-  "github.repo": "Repositorio",
   "github.noRepos": "Sin repositorios",
   "github.noReposDesc": "Añade un proyecto (un repositorio git local con un remoto de GitHub) para ver aquí sus pull requests, issues y Actions.",
   "github.notInstalled": "No se encontró el CLI de GitHub",
@@ -1322,12 +1333,6 @@ export const es: Record<MessageKey, string> = {
   "github.account.rateLimitValue": "{remaining} / {limit} restantes",
   "github.account.resetsAt": "Se reinicia {time}",
   "github.account.signInHint": "Inicia sesión con `gh auth login` para conectar.",
-  "github.overview.title": "Resumen",
-  "github.overview.desc": "Tus pull requests y peticiones de review de un vistazo.",
-  "github.overview.needsReview": "Necesitan tu review",
-  "github.overview.yours": "Tus PRs abiertos",
-  "github.overview.repo": "Repositorio activo",
-  "github.overview.branch": "Rama",
   "github.pr.title": "Pull Requests",
   "github.pr.desc": "Pull requests del repositorio del worktree activo.",
   "github.pr.empty": "Sin pull requests.",
@@ -1506,6 +1511,8 @@ export const es: Record<MessageKey, string> = {
   "github.panel.branch": "Rama",
   "github.panel.checksPass": "{passed}/{total} checks",
   "github.settings.title": "Ajustes de GitHub",
+  "github.settings.desc":
+    "Cómo aparece GitHub en la app — la pestaña del panel derecho, el indicador de la barra de estado, el sondeo, las notificaciones y las confirmaciones. Todo pasa por el CLI local `gh`.",
   "github.settings.rightPanelTab": "Tab de GitHub en el panel derecho",
   "github.settings.rightPanelTabDesc":
     "Muestra un tab contextual de GitHub en el panel derecho (PR y CI por worktree). Solo aparece en repos de GitHub.",

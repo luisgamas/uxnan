@@ -11,6 +11,8 @@
   import { projects } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { github } from "$lib/state/github.svelte";
+  import type { GithubSection } from "$lib/state/app.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { samePath } from "$lib/pathid";
   import { clipboardWrite } from "$lib/clipboard";
@@ -43,6 +45,9 @@
   import CopyIcon from "@lucide/svelte/icons/copy";
   import BotIcon from "@lucide/svelte/icons/bot";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
+  import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
+  import PlayIcon from "@lucide/svelte/icons/play";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import PinIcon from "@lucide/svelte/icons/pin";
   import PinOffIcon from "@lucide/svelte/icons/pin-off";
@@ -70,6 +75,14 @@
   let expanded = $state(false);
 
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
+
+  /** Open the inline GitHub view (center + right panels) scoped to this project.
+   *  Points the section at this repo, then opens the requested pane — the left
+   *  sidebar and browser panel stay in place; a worktree click closes it. */
+  function openGithub(section: GithubSection) {
+    void github.selectSectionRepo(mainPath);
+    app.openGithubInline(section);
+  }
 
   // Live-space aggregate for the collapsed card: terminals open across this
   // project's workspaces (main + every worktree). Keys are matched by path
@@ -310,6 +323,31 @@
               </DropdownMenu.Item>
             </DropdownMenu.SubContent>
           </DropdownMenu.Sub>
+
+          {#if isGit}
+            <!-- GitHub for this project: opens the inline view (center + right
+                 panels) on the chosen pane, scoped to this repo. -->
+            <DropdownMenu.Sub>
+              <DropdownMenu.SubTrigger class={text.menu}>
+                <GitPullRequestIcon class={icon.button} />
+                {i18n.t("github.title")}
+              </DropdownMenu.SubTrigger>
+              <DropdownMenu.SubContent>
+                <DropdownMenu.Item class={text.menu} onclick={() => openGithub("pulls")}>
+                  <GitPullRequestIcon class={icon.button} />
+                  {i18n.t("github.nav.pulls")}
+                </DropdownMenu.Item>
+                <DropdownMenu.Item class={text.menu} onclick={() => openGithub("issues")}>
+                  <CircleDotIcon class={icon.button} />
+                  {i18n.t("github.nav.issues")}
+                </DropdownMenu.Item>
+                <DropdownMenu.Item class={text.menu} onclick={() => openGithub("actions")}>
+                  <PlayIcon class={icon.button} />
+                  {i18n.t("github.nav.actions")}
+                </DropdownMenu.Item>
+              </DropdownMenu.SubContent>
+            </DropdownMenu.Sub>
+          {/if}
 
           <DropdownMenu.Separator />
 

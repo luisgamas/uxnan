@@ -10,6 +10,9 @@ export const en = {
   "toast.committed": "Committed",
   "toast.pushed": "Pushed",
   "toast.pulled": "Pulled",
+  "toast.fetchUpToDate": "Everything is up to date",
+  "toast.fetchBehindOne": "{n} new commit on the remote — pull to bring it in",
+  "toast.fetchBehindOther": "{n} new commits on the remote — pull to bring them in",
   "toast.worktreeRemoved": "Worktree removed",
   "toast.localBranchDeleted": "local branch deleted",
   "toast.branchCleanedSquash": "squash-merged branch cleaned up",
@@ -107,6 +110,20 @@ export const en = {
   "sidebar.noMatch": "No projects match your search.",
   "sidebar.empty": "No projects yet.",
   "sidebar.addRepo": "Add a folder",
+
+  // Sidebar profile (footer card → GitHub / Settings / edit)
+  "sidebarProfile.defaultName": "Uxnan",
+  "sidebarProfile.defaultTagline": "Local workspace",
+  "sidebarProfile.edit": "Edit profile",
+  "sidebarProfile.editTitle": "Edit profile",
+  "sidebarProfile.editDesc": "Customize the avatar, name and description shown at the bottom of the sidebar.",
+  "sidebarProfile.name": "Name",
+  "sidebarProfile.namePlaceholder": "Your name",
+  "sidebarProfile.description": "Description",
+  "sidebarProfile.descriptionPlaceholder": "A short line under the name",
+  "sidebarProfile.descriptionHint": "Shown under the name — a role, status or tagline.",
+  "sidebarProfile.changeIcon": "Change avatar",
+  "sidebarProfile.iconTitle": "Profile avatar",
 
   // Project card
   "project.expand": "Expand",
@@ -391,6 +408,7 @@ export const en = {
   "settings.browserDesc":
     "A lightweight in-app browser to preview and debug what your agents build, and to open the links they create.",
   "settings.openWith": "Open with",
+  "settings.github": "GitHub",
   // Open with (external editors/IDEs)
   "openWith.label": "Open with",
   "openWith.none": "No editors found",
@@ -546,6 +564,7 @@ export const en = {
   "rightPanel.changes": "Changes",
   "rightPanel.selectWorktree": "Select a project or worktree to see its changes.",
   "rightPanel.refresh": "Refresh changes",
+  "rightPanel.fetchRemote": "Check the remote for new changes",
   "rightPanel.staged": "Staged",
   "rightPanel.noChanges": "No changes.",
   "rightPanel.stageAll": "Stage all",
@@ -721,8 +740,6 @@ export const en = {
   "shortcuts.newWorktreeDesc": "Create a worktree in the active workspace's repo (does nothing outside a repo).",
   "shortcuts.openSettings": "Open settings",
   "shortcuts.openSettingsDesc": "Open this settings view.",
-  "shortcuts.openGitHub": "Open GitHub",
-  "shortcuts.openGitHubDesc": "Open the GitHub section.",
   "shortcuts.openQuickCommands": "Open quick commands",
   "shortcuts.openQuickCommandsDesc": "Open the top-bar quick-commands launcher.",
   "shortcuts.toggleLeftSidebar": "Toggle left sidebar",
@@ -1284,15 +1301,9 @@ export const en = {
 
   // GitHub integration
   "github.title": "GitHub",
-  "github.open": "Open GitHub",
-  "github.nav.overview": "Overview",
   "github.nav.pulls": "Pull Requests",
   "github.nav.issues": "Issues",
   "github.nav.actions": "Actions",
-  "github.nav.account": "Account",
-  "github.nav.settings": "Settings",
-  "github.nav.group": "GitHub",
-  "github.repo": "Repository",
   "github.noRepos": "No repositories",
   "github.noReposDesc": "Add a project (a local git repository with a GitHub remote) to browse its pull requests, issues and Actions here.",
   // Gate / auth states
@@ -1323,13 +1334,6 @@ export const en = {
   "github.account.rateLimitValue": "{remaining} / {limit} remaining",
   "github.account.resetsAt": "Resets {time}",
   "github.account.signInHint": "Sign in with `gh auth login` to connect.",
-  // Overview / dashboard
-  "github.overview.title": "Overview",
-  "github.overview.desc": "Your pull requests and review requests at a glance.",
-  "github.overview.needsReview": "Needs your review",
-  "github.overview.yours": "Your open PRs",
-  "github.overview.repo": "Active repository",
-  "github.overview.branch": "Branch",
   // Pull requests
   "github.pr.title": "Pull Requests",
   "github.pr.desc": "Pull requests for the active worktree's repository.",
@@ -1513,6 +1517,8 @@ export const en = {
   "github.panel.checksPass": "{passed}/{total} checks",
   // Settings pane
   "github.settings.title": "GitHub settings",
+  "github.settings.desc":
+    "How GitHub surfaces in the app — the right-panel tab, the status-bar indicator, polling, notifications and confirmations. Everything routes through the local `gh` CLI.",
   "github.settings.rightPanelTab": "Right-panel GitHub tab",
   "github.settings.rightPanelTabDesc":
     "Show a contextual GitHub tab in the right panel (per-worktree PR & CI). Appears only for GitHub repos.",
