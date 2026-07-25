@@ -52,6 +52,91 @@ pub async fn quick_commands_set(
     state.persistence.save(&data).map_err(CommandError::from)
 }
 
+// ---------------------------------------------------------------------- pets
+//
+// Installed pets live under `<app-data>/pets/`, one folder per pet, in the same
+// `pet.json` + spritesheet format the Codex CLI uses (so community packs load
+// unmodified). uxnan bundles only its own pet — see `pets.rs`.
+
+/// Resolve `<app-data>`, the root every pet path hangs off.
+fn pets_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, CommandError> {
+    app.path()
+        .app_data_dir()
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))
+}
+
+/// Every installed pet (metadata only — sheets are fetched lazily by
+/// [`pets_sheet`] so listing a large library stays cheap).
+#[tauri::command]
+pub async fn pets_list(app: AppHandle) -> Result<Vec<crate::pets::InstalledPet>, CommandError> {
+    let dir = pets_data_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::pets::list(&dir))
+        .await
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
+        .map_err(CommandError::from)
+}
+
+/// One installed pet's spritesheet as an inline `data:<mime>;base64,…` URL.
+#[tauri::command]
+pub async fn pets_sheet(app: AppHandle, id: String) -> Result<String, CommandError> {
+    let dir = pets_data_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::pets::read_sheet(&dir, &id))
+        .await
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
+        .map_err(CommandError::from)
+}
+
+/// List the pets available for import in `source` — either a folder of pets
+/// (e.g. `~/.codex/pets`) or a single pet folder.
+#[tauri::command]
+pub async fn pets_scan(
+    app: AppHandle,
+    source: String,
+) -> Result<Vec<crate::pets::ImportablePet>, CommandError> {
+    let dir = pets_data_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::pets::scan(&dir, std::path::Path::new(&source)))
+        .await
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
+        .map_err(CommandError::from)
+}
+
+/// Where the Codex CLI keeps its pets, when that folder exists on this machine.
+/// `None` simply means "nothing to offer" — the UI hides the shortcut.
+#[tauri::command]
+pub fn pets_codex_dir() -> Option<String> {
+    crate::pets::codex_pets_dir()
+        .filter(|p| p.is_dir())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+}
+
+/// Import one pet folder. Copies only the manifest and its spritesheet (never a
+/// blind directory clone) and records `origin` so the UI can attribute it.
+#[tauri::command]
+pub async fn pets_import(
+    app: AppHandle,
+    source: String,
+    origin: String,
+    overwrite: bool,
+) -> Result<crate::pets::InstalledPet, CommandError> {
+    let dir = pets_data_dir(&app)?;
+    tokio::task::spawn_blocking(move || {
+        crate::pets::import(&dir, std::path::Path::new(&source), &origin, overwrite)
+    })
+    .await
+    .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
+    .map_err(CommandError::from)
+}
+
+/// Delete an installed pet (idempotent).
+#[tauri::command]
+pub async fn pets_delete(app: AppHandle, id: String) -> Result<(), CommandError> {
+    let dir = pets_data_dir(&app)?;
+    tokio::task::spawn_blocking(move || crate::pets::delete(&dir, &id))
+        .await
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
+        .map_err(CommandError::from)
+}
+
 /// Lightweight liveness probe. Used by the frontend at startup to confirm the
 /// Rust backend is reachable before issuing real commands.
 #[tauri::command]

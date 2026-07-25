@@ -27,6 +27,7 @@ mod mcpinject;
 mod model;
 mod path_env;
 mod persistence;
+mod pets;
 mod power;
 mod procscan;
 mod pty;
@@ -240,6 +241,12 @@ pub fn run() {
             commands::get_app_state,
             commands::update_settings,
             commands::quick_commands_set,
+            commands::pets_list,
+            commands::pets_sheet,
+            commands::pets_scan,
+            commands::pets_codex_dir,
+            commands::pets_import,
+            commands::pets_delete,
             commands::ping,
             commands::usage_read,
             commands::usage_detect,

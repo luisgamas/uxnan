@@ -431,6 +431,11 @@ pub struct AppSettings {
     /// Width (px) of the integrated browser panel (the right-side "4th panel").
     #[serde(default = "default_browser_panel_width")]
     pub browser_panel_width: u32,
+    /// Sprite-animated companions that mirror agent state (Settings → Pets, and
+    /// the sidebar profile menu's toggle). Off by default, so nothing ever
+    /// appears unasked. All fields default, so older state loads unchanged.
+    #[serde(default)]
+    pub pets: PetSettings,
     /// AI providers whose usage stats the user activated (Settings → Providers).
     /// Frontend-owned shape (`UsageProviderConfig`), persisted opaquely. Only the
     /// providers listed here are ever polled by `usage_read`.
@@ -804,6 +809,89 @@ impl Default for BrowserSettings {
     }
 }
 
+/// How many pets are on screen at once.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PetMode {
+    /// One pet for the whole app, reflecting the highest-priority agent state
+    /// across every workspace (what the Codex CLI does).
+    #[default]
+    Global,
+    /// One pet per agent that is currently reporting — a colony, each following
+    /// its own agent. Only possible because the ADE tracks agents individually.
+    Colony,
+}
+
+/// Sprite-animated companions that mirror agent state (`pets.rs`).
+///
+/// Deliberately opt-in: `enabled` is false by default, so a user who never asks
+/// for a pet never gets one. The bundled pet is uxnan's own; every other pet is
+/// imported by the user from a folder they already have (typically
+/// `~/.codex/pets`), and its artwork stays its author's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PetSettings {
+    /// Master switch, also toggled from the sidebar profile menu. Default off.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Id of the active pet. Empty = the bundled default.
+    #[serde(default)]
+    pub active_pet_id: String,
+    /// One pet, or one per reporting agent (see [`PetMode`]).
+    #[serde(default)]
+    pub mode: PetMode,
+    /// Rendered pet height in px (the sprite scales to it). Default 96.
+    #[serde(default = "default_pet_size")]
+    pub size: u32,
+    /// Which screen corner the pet rests in: `"bottom-right"`, `"bottom-left"`,
+    /// `"top-right"`, `"top-left"`. Frontend-owned enum; unknown values fall back
+    /// to bottom-right there.
+    #[serde(default = "default_pet_corner")]
+    pub corner: String,
+    /// Manual offset (px) from that corner, set by dragging the pet. Persisted so
+    /// it stays where the user parked it.
+    #[serde(default)]
+    pub offset_x: i32,
+    #[serde(default)]
+    pub offset_y: i32,
+    /// Play animations. Off renders a single still frame — the same escape hatch
+    /// the OS "reduce motion" preference triggers automatically. Default on.
+    #[serde(default = "default_true")]
+    pub animate: bool,
+    /// Clicking the pet focuses the agent whose state it is showing. Default on.
+    #[serde(default = "default_true")]
+    pub click_to_focus: bool,
+    /// Provenance notices the user dismissed in the import UI (by key), so a
+    /// one-time explanation doesn't nag on every visit.
+    #[serde(default)]
+    pub dismissed_notices: Vec<String>,
+}
+
+fn default_pet_size() -> u32 {
+    96
+}
+
+fn default_pet_corner() -> String {
+    "bottom-right".into()
+}
+
+impl Default for PetSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            active_pet_id: String::new(),
+            mode: PetMode::Global,
+            size: default_pet_size(),
+            corner: default_pet_corner(),
+            offset_x: 0,
+            offset_y: 0,
+            animate: true,
+            click_to_focus: true,
+            dismissed_notices: Vec::new(),
+        }
+    }
+}
+
 /// Configuration for the optional AI commit-message generator (spec `02c` §4.5).
 /// The user picks a known **agent** and a **model**; the backend resolves the CLI
 /// (`crate::agentcli`) and runs it one-shot with the built prompt. All fields
@@ -908,6 +996,7 @@ impl Default for AppSettings {
             updater: UpdaterSettings::default(),
             browser: BrowserSettings::default(),
             browser_panel_width: default_browser_panel_width(),
+            pets: PetSettings::default(),
             usage_providers: Vec::new(),
             usage_refresh_minutes: default_usage_refresh_minutes(),
             usage_status_bar_enabled: true,
