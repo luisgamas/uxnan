@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **pets**). 274 Rust backend tests + 273 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **pets**). 275 Rust backend tests + 280 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -180,7 +180,15 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   `blocked`→`failed`, else `idle`; reports older than 30 min are stale and ignored).
   **One pet**, showing the most urgent agent state (needs-you → blocked → ready →
   working). Clicking it reveals that agent's
-  terminal; the pet drags anywhere. It renders as a layer inside the uxnan window. On top of the state's base
+  terminal; the pet drags anywhere. It renders as a layer inside the uxnan window
+  or — opt-in (`pets.overlay`) — in its **own borderless, transparent,
+  always-on-top desktop window** (visible over other apps and with uxnan
+  minimized; native window drag, position persisted + validated against live
+  monitors, its own `capabilities/pet.json`, loaded via `index.html?window=pet`,
+  a thin stateless renderer fed by the main window over events). The pet is
+  **interactive**: while resting it watches the cursor (the v2 sheet's rows 9-10
+  are 16 clockwise look poses, 0° = up, front = deadzone), a click pokes it (jump
+  reaction), and dragging holds the looking-down carry pose. On top of the state's base
   animation it plays occasional one-shots (look around while resting, wave while
   waiting on you, turn around while running) so the whole sheet is used and the
   pet doesn't read as a spinner — `pets/personality.ts`, pure and tested. The on-disk
@@ -206,24 +214,13 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
 
 ## Pets — follow-ups ☐
 
-- [ ] **Always-on-top desktop pet window** — the pet is currently a layer inside
-      the uxnan window, so it disappears when uxnan is minimized or covered. It
-      should be able to live in its own borderless, transparent, always-on-top
-      window like the Codex desktop pet. **Attempted and reverted** (2026-07-25):
-      it repeatedly broke Settings → Pets on the user's machine and none of it
-      reproduces in a browser, which is the only thing CI and local checks can
-      exercise. Land it only with interactive testing on a real packaged build.
-      Two findings worth keeping from the attempt:
-      - **Tauri capabilities are scoped per window.** `capabilities/default.json`
-        lists `"windows": ["main"]`, so a new window gets **no** permissions at
-        all and `listen`/`emitTo`/`invoke` fail silently inside it — it renders as
-        an empty transparent rectangle. It needs its own capability file.
-      - **A second window must not be a SvelteKit route.** The static build emits
-        only `index.html` (no per-route files), so `WebviewUrl::App("pet")`
-        resolves in dev via Vite's fallback and **404s in a packaged build**. Load
-        `index.html?window=pet` and branch in the root layout instead.
-      **Where:** a `pet` window built in `commands.rs`, a component rendered by
-      the root layout, and state pushed from the main window over Tauri events.
+- [ ] **Pin the desktop pet across virtual desktops (Windows)** — the overlay
+      window stays on the virtual desktop it was created on; switching desktops
+      leaves it behind, while the Codex desktop pet follows. Tauri's
+      `visible_on_all_workspaces` covers only macOS/Linux; on Windows this needs
+      the `IVirtualDesktopManager` COM pinning dance (as PowerToys does).
+      **Where:** `pet_window_show` in `src-tauri/src/commands.rs`, after the
+      window is built.
 
 - [ ] **AI pet generation ("hatch")** — create a pet from a text description instead
       of importing one. The blocker is image generation: a usable pack needs ~72
@@ -577,7 +574,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 274 Rust + 273 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 275 Rust + 280 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

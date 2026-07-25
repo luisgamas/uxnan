@@ -411,6 +411,9 @@ export const en = {
   "pets.choose": "Choose pet",
   "pets.enable": "Show a pet",
   "pets.enableDesc": "Off by default. The pet floats over the app and follows your agents' state.",
+  "pets.overlay": "Float over the desktop",
+  "pets.overlayDesc":
+    "The pet lives in its own always-on-top window: visible over other apps, even with uxnan minimized. Drag it anywhere on screen.",
   "pets.corner": "Corner",
   "pets.cornerDesc": "Where the pet rests. You can also drag it anywhere and it snaps to the nearest corner.",
   "pets.corner.bottomRight": "Bottom right",

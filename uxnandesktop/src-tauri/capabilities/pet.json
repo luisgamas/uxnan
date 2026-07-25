@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "pet",
+  "description": "Capability for the desktop pet overlay window. Capabilities are scoped per window, so without this file the pet window would get no permissions at all — listen/emitTo fail silently and it renders as an empty transparent rectangle.",
+  "windows": ["pet"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-cursor-position"
+  ]
+}

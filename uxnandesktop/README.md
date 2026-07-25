@@ -107,7 +107,9 @@ available today are:
   shell. Opens with `Ctrl/⌘+Shift+P`.
 - **Pets.** An optional animated companion that mirrors what your agents are
   doing — working, needs you, ready, blocked — and jumps you to that agent's
-  terminal when clicked. One pet for the whole app, or one per running agent.
+  terminal when clicked. It watches your cursor while resting, reacts to pokes
+  and being carried, and can float over the whole desktop in its own
+  always-on-top window (or stay a layer inside the app, the default).
   uxnan bundles its own; you can import more from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).

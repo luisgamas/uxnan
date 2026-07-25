@@ -821,6 +821,20 @@ pub struct PetSettings {
     /// Master switch, also toggled from the sidebar profile menu. Default off.
     #[serde(default)]
     pub enabled: bool,
+    /// Show the pet in its own borderless, transparent, always-on-top desktop
+    /// window (visible over other apps and while uxnan is minimized), like the
+    /// Codex desktop pet. Opt-in: the in-window layer stays the default,
+    /// verified presentation.
+    #[serde(default)]
+    pub overlay: bool,
+    /// Last position of the desktop pet window (physical px, top-left corner).
+    /// `None` until first dragged; the window then rests near the primary
+    /// monitor's bottom-right corner. A saved spot on a monitor that is no
+    /// longer attached is ignored at creation (see `pet_window_show`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen_x: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen_y: Option<i32>,
     /// Id of the active pet. Empty = the bundled default.
     #[serde(default)]
     pub active_pet_id: String,
@@ -865,6 +879,9 @@ impl Default for PetSettings {
     fn default() -> Self {
         Self {
             enabled: false,
+            overlay: false,
+            screen_x: None,
+            screen_y: None,
             active_pet_id: String::new(),
             size: default_pet_size(),
             corner: default_pet_corner(),

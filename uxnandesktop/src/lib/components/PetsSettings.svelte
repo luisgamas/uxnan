@@ -143,12 +143,24 @@
         {/snippet}
       </SettingsRow>
 
+      <SettingsRow label={i18n.t("pets.overlay")} description={i18n.t("pets.overlayDesc")}>
+        {#snippet control()}
+          <Switch
+            checked={settings.overlay === true}
+            disabled={settings.enabled !== true}
+            onCheckedChange={(c) => set({ overlay: c })}
+          />
+        {/snippet}
+      </SettingsRow>
+
+      <!-- Corner applies to the in-window layer only; the desktop window is
+           parked by dragging it and remembers its own spot. -->
       <SettingsRow label={i18n.t("pets.corner")} description={i18n.t("pets.cornerDesc")}>
         {#snippet control()}
           <Combobox
             value={settings.corner ?? "bottom-right"}
             groups={cornerGroups}
-            disabled={settings.enabled !== true}
+            disabled={settings.enabled !== true || settings.overlay === true}
             triggerClass="w-56"
             searchPlaceholder={i18n.t("common.search")}
             onChange={(v) => set({ corner: v as PetCorner, offsetX: 16, offsetY: 16 })}

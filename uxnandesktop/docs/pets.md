@@ -3,9 +3,10 @@
 An optional, purely cosmetic companion that floats over the ADE and animates
 according to what your agents are doing. It never changes how an agent works.
 
-> The pet lives **inside the uxnan window**. Giving it its own always-on-top
-> desktop window (visible over other apps and while uxnan is minimized) is
-> planned but not shipped — see `FOR-DEV.md`.
+By default the pet lives **inside the uxnan window**. Flip **Settings → Pets →
+Float over the desktop** and it moves into its **own borderless, transparent,
+always-on-top window** — visible over other apps and while uxnan is minimized,
+draggable anywhere on any monitor, exactly like the Codex desktop pet.
 
 Pets are **off by default**. Turn them on from the sidebar **profile menu →
 Show pet**, or in **Settings → Pets**.
@@ -277,16 +278,44 @@ name in the library.
 | Setting | Default | Notes |
 |---|---|---|
 | Show a pet | off | Master switch; also in the profile menu |
-| Corner | Bottom right | The pet can also be dragged anywhere |
+| Float over the desktop | off | The pet moves into its own always-on-top window |
+| Corner | Bottom right | In-window layer only; the desktop window parks by dragging |
 | Size | Medium (144 px) | 96 / 144 / 200 / 260 px — the height of the sprite, which a generated pack nearly fills |
 | Animate | on | Off shows a single still frame |
 | Click to jump to the agent | on | Clicking opens that agent's terminal |
 
 All of it persists in `AppSettings.pets` (`state.json`).
 
-**Dragging:** press and drag the pet anywhere; on release it snaps to the nearest
-corner and remembers its exact offset from it. Dragging is pointer-based because
-Tauri suppresses HTML5 drag-and-drop in the webview.
+**Dragging (in-window):** press and drag the pet anywhere; on release it snaps to
+the nearest corner and remembers its exact offset from it. Dragging is
+pointer-based because Tauri suppresses HTML5 drag-and-drop in the webview.
+
+### The desktop window
+
+With *Float over the desktop* on, the pet gets a window of its own (label
+`pet`): borderless, transparent, always on top, skipped from the taskbar, sized
+to the sprite. What that means in practice:
+
+- **Drag it anywhere** — dragging hands off to the OS-native window drag, which
+  stays correct across monitors and DPI scales. The parked position persists,
+  and a spot on a monitor that is no longer attached falls back to resting near
+  the primary monitor's bottom-right corner.
+- **Clicking still jumps to the agent**, bringing the uxnan window to the front
+  first.
+- **Closing uxnan closes the pet.** The window cannot be closed on its own
+  (the Settings switch is the way to dismiss it), and it is destroyed with the
+  main window so the app never keeps running as nothing but a pet.
+- The window is a **thin renderer**: the main window parses packs, measures
+  sheets and derives agent state, then pushes everything over Tauri events
+  (`pet:config` / `pet:state`), and applies what comes back (`pet:moved`,
+  `pet:focus`). It never boots the app shell.
+
+Two implementation constraints worth knowing (each cost a broken round once):
+Tauri **capabilities are per window** — the `pet` label has its own
+`capabilities/pet.json`, without which `listen`/`emitTo` fail silently and the
+window renders empty — and the static build has **no per-route files**, so the
+window loads `index.html?window=pet` and the root layout branches on the query
+(a SvelteKit route URL would 404 in a packaged build).
 
 ---
 
@@ -321,7 +350,10 @@ Tauri suppresses HTML5 drag-and-drop in the webview.
 | Pointer-interaction constants | `src/lib/pets/interactions.ts` |
 | Library + live state | `src/lib/state/pets.svelte.ts` |
 | Rendering | `src/lib/components/PetSprite.svelte` |
-| The floating layer | `src/lib/components/PetLayer.svelte` |
+| The floating layer + desktop-window controller | `src/lib/components/PetLayer.svelte` |
+| The desktop window's renderer | `src/lib/components/PetWindow.svelte` |
+| Desktop window commands | `src-tauri/src/commands.rs` (`pet_window_*`, `pet_focus_main`) |
+| Desktop window capability | `src-tauri/capabilities/pet.json` |
 | Settings section | `src/lib/components/PetsSettings.svelte` |
 | Bundled pet | `static/pets/uxni/` |
 

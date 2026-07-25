@@ -137,6 +137,144 @@ pub async fn pets_delete(app: AppHandle, id: String) -> Result<(), CommandError>
         .map_err(CommandError::from)
 }
 
+// ---------------------------------------------------------------- pet window
+//
+// The optional desktop presentation: a borderless, transparent, always-on-top
+// window of its own, so the pet stays visible over other apps and while uxnan
+// is minimized — like the Codex desktop pet. Opt-in (`PetSettings.overlay`);
+// the in-window layer stays the default.
+//
+// Two hard-won constraints shape this code (both cost a broken round once):
+//   • **Capabilities are per window.** The new label needs its own capability
+//     file (`capabilities/pet.json`) or `listen`/`emitTo` fail silently inside
+//     it and it renders as an empty transparent rectangle.
+//   • **The static build has no per-route files.** The window must load
+//     `index.html?window=pet` (branched in the root layout), because a
+//     SvelteKit route URL resolves in dev via Vite's fallback and 404s in a
+//     packaged build.
+
+/// Label of the desktop pet overlay window (also the capability's scope).
+pub const PET_WINDOW_LABEL: &str = "pet";
+
+/// Show the desktop pet window, creating it on first use.
+///
+/// `width`/`height` are logical px (the sprite box plus a little padding);
+/// `x`/`y` the last saved position in physical px, used only at creation. A
+/// saved position is validated against the live monitors first — a spot on an
+/// unplugged display falls back to resting near the primary monitor's
+/// bottom-right corner, so the pet can never come back stranded off-screen.
+#[tauri::command]
+pub async fn pet_window_show(
+    app: AppHandle,
+    width: f64,
+    height: f64,
+    x: Option<i32>,
+    y: Option<i32>,
+) -> Result<(), CommandError> {
+    use tauri::{PhysicalPosition, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+    if let Some(win) = app.get_webview_window(PET_WINDOW_LABEL) {
+        let _ = win.set_size(tauri::LogicalSize::new(width, height));
+        let _ = win.show();
+        return Ok(());
+    }
+
+    // The URL differs by mode and both halves matter: the packaged build has no
+    // per-route files, only `index.html` (a route URL 404s there) — while the
+    // SvelteKit dev server serves routes only at `/` (`/index.html` 404s there).
+    let url = if tauri::is_dev() {
+        "/?window=pet"
+    } else {
+        "index.html?window=pet"
+    };
+    let win = WebviewWindowBuilder::new(&app, PET_WINDOW_LABEL, WebviewUrl::App(url.into()))
+        .title("Uxnan Pet")
+        .inner_size(width, height)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .focused(false)
+        .visible(false)
+        .build()
+        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?;
+
+    // Alt+F4 on the pet must not half-close the feature (the setting would stay
+    // on with nothing on screen). The Settings switch is the way to dismiss it;
+    // app exit destroys the window regardless (see the main-window handler).
+    win.on_window_event(|event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+        }
+    });
+
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let (w, h) = ((width * scale) as i32, (height * scale) as i32);
+    let saved = match (x, y) {
+        (Some(x), Some(y)) => Some(PhysicalPosition::new(x, y)),
+        _ => None,
+    };
+    let on_screen = |p: &PhysicalPosition<i32>| {
+        app.available_monitors()
+            .ok()
+            .into_iter()
+            .flatten()
+            .any(|m| {
+                let mp = m.position();
+                let ms = m.size();
+                p.x + w > mp.x
+                    && p.x < mp.x + ms.width as i32
+                    && p.y + h > mp.y
+                    && p.y < mp.y + ms.height as i32
+            })
+    };
+    let pos = saved.filter(on_screen).or_else(|| {
+        let m = app.primary_monitor().ok().flatten()?;
+        let mp = m.position();
+        let ms = m.size();
+        // Rest above the bottom-right corner; the extra vertical margin keeps
+        // the pet clear of a conventionally-placed taskbar (the monitor API
+        // reports full bounds, not the work area).
+        let margin = (24.0 * m.scale_factor()) as i32;
+        let taskbar = (48.0 * m.scale_factor()) as i32;
+        Some(PhysicalPosition::new(
+            mp.x + ms.width as i32 - w - margin,
+            mp.y + ms.height as i32 - h - margin - taskbar,
+        ))
+    });
+    if let Some(pos) = pos {
+        let _ = win.set_position(pos);
+    }
+    let _ = win.show();
+    Ok(())
+}
+
+/// Tear the desktop pet window down (the overlay switch was turned off).
+/// `destroy` rather than `close`: close would be swallowed by the
+/// prevent-close guard above.
+#[tauri::command]
+pub fn pet_window_hide(app: AppHandle) {
+    if let Some(win) = app.get_webview_window(PET_WINDOW_LABEL) {
+        let _ = win.destroy();
+    }
+}
+
+/// Bring the main window to the front. The pet window asks for this when its
+/// pet is clicked, right before the main window reveals the agent's terminal —
+/// a shortcut is no shortcut if the app stays buried.
+#[tauri::command]
+pub fn pet_focus_main(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 /// Lightweight liveness probe. Used by the frontend at startup to confirm the
 /// Rust backend is reachable before issuing real commands.
 #[tauri::command]

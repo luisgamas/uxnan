@@ -134,13 +134,25 @@ pub fn run() {
                 }
             }
 
-            // Pause the git watcher while the window is unfocused.
+            // Pause the git watcher while the window is unfocused, and take the
+            // desktop pet window down with the main window — with the pet still
+            // open the app would keep running, headless but for the pet, after
+            // the main window is gone.
             if let Some(window) = app.get_webview_window("main") {
                 let focused_for_event = focused.clone();
-                window.on_window_event(move |event| {
-                    if let WindowEvent::Focused(is_focused) = event {
+                let handle_for_close = app.handle().clone();
+                window.on_window_event(move |event| match event {
+                    WindowEvent::Focused(is_focused) => {
                         focused_for_event.store(*is_focused, Ordering::Relaxed);
                     }
+                    WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed => {
+                        if let Some(pet) =
+                            handle_for_close.get_webview_window(crate::commands::PET_WINDOW_LABEL)
+                        {
+                            let _ = pet.destroy();
+                        }
+                    }
+                    _ => {}
                 });
             }
 
@@ -247,6 +259,9 @@ pub fn run() {
             commands::pets_codex_dir,
             commands::pets_import,
             commands::pets_delete,
+            commands::pet_window_show,
+            commands::pet_window_hide,
+            commands::pet_focus_main,
             commands::ping,
             commands::usage_read,
             commands::usage_detect,

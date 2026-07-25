@@ -18,7 +18,7 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`updater.rs`, `which.rs`, `pets.rs`); integration tests go in `src-tauri/tests/`. ~274
+`updater.rs`, `which.rs`, `pets.rs`); integration tests go in `src-tauri/tests/`. ~275
 backend tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
@@ -58,7 +58,7 @@ rejection), `terminal/scrollback.ts` (the scrollback clamp) and
 `terminal/windowsJunctionDetector.ts` (the Windows Redirection-Guard failure
 signature detector, incl. chunk-split matching) and `pets/` (the Codex-compatible
 manifest parser, frame timing, and the agent-state → animation mapping +
-priority) — 273 tests in
+priority, plus the v2 look-pose maths) — 280 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see

@@ -409,6 +409,9 @@ export const es: Record<MessageKey, string> = {
   "pets.enable": "Mostrar una mascota",
   "pets.enableDesc":
     "Desactivado por defecto. La mascota flota sobre la app y sigue el estado de tus agentes.",
+  "pets.overlay": "Flotar sobre el escritorio",
+  "pets.overlayDesc":
+    "La mascota vive en su propia ventana siempre visible: se ve sobre otras aplicaciones, incluso con uxnan minimizado. Arrástrala a cualquier parte de la pantalla.",
   "pets.corner": "Esquina",
   "pets.cornerDesc":
     "Dónde descansa la mascota. También puedes arrastrarla y se acomoda en la esquina más cercana.",

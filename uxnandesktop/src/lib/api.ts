@@ -108,6 +108,29 @@ export function petsDelete(id: string): Promise<void> {
   return invoke<void>("pets_delete", { id });
 }
 
+/** Show (creating on first use) the always-on-top desktop pet window.
+ *  `width`/`height` in logical px; `x`/`y` the saved position in physical px,
+ *  honored only at creation and only while still on a live monitor. */
+export function petWindowShow(
+  width: number,
+  height: number,
+  x: number | null,
+  y: number | null,
+): Promise<void> {
+  return invoke<void>("pet_window_show", { width, height, x, y });
+}
+
+/** Tear the desktop pet window down (the overlay switch went off). */
+export function petWindowHide(): Promise<void> {
+  return invoke<void>("pet_window_hide");
+}
+
+/** Bring the main window to the front (the pet window asks for this when its
+ *  pet is clicked, before the terminal is revealed). */
+export function petFocusMain(): Promise<void> {
+  return invoke<void>("pet_focus_main");
+}
+
 /** Write raw bytes to a PTY's stdin (used to type a quick command into the
  *  currently-focused terminal). */
 export function ptyWrite(id: string, data: string): Promise<void> {

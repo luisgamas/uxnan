@@ -713,6 +713,11 @@ export type PetCorner = "bottom-right" | "bottom-left" | "top-right" | "top-left
 export interface PetSettings {
   /** Master switch, also toggled from the sidebar profile menu. Default off. */
   enabled?: boolean;
+  /** Show the pet in its own always-on-top desktop window (opt-in). */
+  overlay?: boolean;
+  /** Last desktop-window position (physical px), set by dragging it. */
+  screenX?: number | null;
+  screenY?: number | null;
   /** Id of the active pet. Empty = the bundled default. */
   activePetId?: string;
   /** Rendered pet height in px. Default 144 (see `PET_SIZES`). */

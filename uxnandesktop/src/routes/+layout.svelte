@@ -13,8 +13,18 @@
   import { setPreventSleep } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
+  import PetWindow from "$lib/components/PetWindow.svelte";
 
   let { children } = $props();
+
+  // The desktop pet window loads the same `index.html` with `?window=pet` —
+  // the static build emits no per-route files (`fallback: index.html`), so a
+  // second window MUST be a query branch here, never a SvelteKit route: a
+  // route URL resolves in dev via Vite's fallback and 404s in the packaged
+  // build. In pet mode the shell (and its whole boot sequence) never runs.
+  const petWindow =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("window") === "pet";
 
   // Hydrate from the Rust backend once the webview is mounted. After the layout
   // restore, load the worktree world and reconcile the two: the restored active
@@ -22,6 +32,15 @@
   // keys for deleted worktrees are dropped, and alternate path spellings are
   // re-keyed — see `projects.reconcileRestoredWorkspaces`.
   onMount(() => {
+    if (petWindow) {
+      // A transparent window must stay transparent: kill the brand splash
+      // outright (its opaque background would flash a white rectangle over the
+      // desktop) and clear the app background the theme normally paints.
+      document.getElementById("uxnan-splash")?.remove();
+      document.documentElement.style.background = "transparent";
+      document.body.style.background = "transparent";
+      return;
+    }
     void (async () => {
       await app.init();
       if (app.backend === "ready") {
@@ -58,6 +77,7 @@
 
   // Re-sync the agent commands to detect whenever the configured agents change.
   $effect(() => {
+    if (petWindow) return;
     void app.agentProfiles.length;
     app.syncAgentCommands();
   });
@@ -65,12 +85,14 @@
   // Pets are opt-in, so the library (and its spritesheet) is only loaded once the
   // user actually enables them — a disabled companion costs nothing at boot.
   $effect(() => {
+    if (petWindow) return;
     if (app.settings.pets?.enabled === true && !pets.loaded) void pets.load();
   });
 
   // Apply the active theme (CSS variables + fonts + .dark class). Re-runs when
   // the selected theme, the custom themes, or the OS dark preference change.
   $effect(() => {
+    if (petWindow) return;
     void app.settings.activeThemeId;
     void app.settings.customThemes;
     void app.settings.fonts;
@@ -82,11 +104,16 @@
   // Opt-in keep-awake: while enabled and an agent is working, ask the OS not to
   // sleep (the backend auto-releases after 2 h). Re-runs when either changes.
   $effect(() => {
+    if (petWindow) return;
     const active = app.settings.preventSleep === true && anyAgentWorking();
     void setPreventSleep(active).catch(() => {});
   });
 </script>
 
-<TooltipProvider>
-  {@render children()}
-</TooltipProvider>
+{#if petWindow}
+  <PetWindow />
+{:else}
+  <TooltipProvider>
+    {@render children()}
+  </TooltipProvider>
+{/if}

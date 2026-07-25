@@ -14,8 +14,17 @@
   // The pet is also *interactive*, the way the desktop reference is: while
   // resting it watches the cursor (the v2 look rows), clicking it makes it
   // jump, and while carried it looks down at the ground.
+  //
+  // It is also the **controller of the desktop pet window** (opt-in
+  // `pets.overlay`): it creates/destroys the `pet` window, pushes it the parsed
+  // pet + sheet + live state over Tauri events, and applies what comes back
+  // (position to persist, the click-to-focus jump). The pet window itself is a
+  // thin renderer with no state — see `PetWindow.svelte`.
+  import { untrack } from "svelte";
+  import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { app } from "$lib/state/app.svelte";
   import { pets } from "$lib/state/pets.svelte";
+  import { petFocusMain, petWindowHide, petWindowShow } from "$lib/api";
   import { animationFor, type PetState } from "$lib/pets/status";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
@@ -81,7 +90,9 @@
   // to breathing inside the deadzone. Listener-driven — no polling.
   $effect(() => {
     const p = pet;
-    if (!p || !resting || settings.animate === false || !hasLookPoses(p)) {
+    // `overlayOn`: while the desktop window shows the pet, this layer renders
+    // nothing — the pet window runs its own cursor watch.
+    if (!p || !resting || overlayOn || settings.animate === false || !hasLookPoses(p)) {
       lookFrame = null;
       return;
     }
@@ -183,11 +194,111 @@
     return label ? `${s} — ${label}` : s;
   }
 
+  // ------------------------------------------------------- desktop pet window
+
+  /** Only a real Tauri runtime has windows to manage (not the browser preview). */
+  const tauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const overlayOn = $derived(tauri && pets.enabled && settings.overlay === true);
+
+  /** Push the pet window everything it renders from. Split in two so the heavy
+   *  half (the pet + its sheet, possibly a multi-MB data URL) is only sent when
+   *  it actually changes, while state updates stay tiny. */
+  function sendConfig(): void {
+    const p = pets.active;
+    const s = p ? pets.sheet(p.id) : undefined;
+    if (!p || !s) return;
+    void emitTo("pet", "pet:config", {
+      pet: $state.snapshot(p),
+      sheet: s,
+      size,
+      animate: settings.animate !== false,
+      clickToFocus: settings.clickToFocus !== false,
+    });
+  }
+
+  function sendState(): void {
+    const inst = pets.instance;
+    if (!inst) return;
+    void emitTo("pet", "pet:state", {
+      state: inst.state,
+      tabId: inst.tabId,
+      label: inst.label,
+      stateLabel: stateLabel(inst.state),
+    });
+  }
+
+  // Window lifecycle: create (or resize) while the overlay is on, destroy when
+  // it goes off. The saved position is only honored at creation; while the
+  // window lives, resizes leave it where the user parked it.
+  $effect(() => {
+    if (!tauri) return;
+    if (!overlayOn) {
+      void petWindowHide();
+      return;
+    }
+    const p = pet;
+    if (!p || !sheet) return;
+    const w = Math.ceil((p.frame.width / p.frame.height) * size) + 16;
+    const h = size + 8;
+    // Untracked: the saved spot matters only at creation, and tracking it would
+    // re-run this effect after every drag the pet window reports back.
+    const sx = untrack(() => settings.screenX ?? null);
+    const sy = untrack(() => settings.screenY ?? null);
+    void petWindowShow(w, h, sx, sy).catch(() => {});
+  });
+
+  /** Serialized last-sent payloads, so effects that re-run on unrelated
+   *  reactivity (the shared clock re-derives the instance every tick) only
+   *  cross the IPC boundary when something actually changed. */
+  let sentConfig = "";
+  let sentState = "";
+
+  $effect(() => {
+    if (!overlayOn || !pet || !sheet) return;
+    const snapshot = JSON.stringify([pet && $state.snapshot(pet), sheet, size, settings.animate, settings.clickToFocus]);
+    if (snapshot === sentConfig) return;
+    sentConfig = snapshot;
+    sendConfig();
+  });
+
+  $effect(() => {
+    if (!overlayOn) return;
+    const inst = instance;
+    const snapshot = JSON.stringify(inst);
+    if (snapshot === sentState) return;
+    sentState = snapshot;
+    sendState();
+  });
+
+  // What comes back from the pet window: readiness (answer with everything),
+  // a parked position (persist it), a click (jump to the agent, raising the
+  // main window first — a shortcut is no shortcut if the app stays buried).
+  $effect(() => {
+    if (!overlayOn) return;
+    const unsubs: Promise<UnlistenFn>[] = [
+      listen("pet:ready", () => {
+        sendConfig();
+        sendState();
+      }),
+      listen<{ x: number; y: number }>("pet:moved", (e) =>
+        app.updatePets({ screenX: e.payload.x, screenY: e.payload.y }),
+      ),
+      listen<{ tabId?: string }>("pet:focus", (e) => {
+        void petFocusMain().catch(() => {});
+        pets.focus(e.payload.tabId);
+      }),
+    ];
+    return () => {
+      for (const u of unsubs) void u.then((f) => f());
+    };
+  });
+
 </script>
 
-<!-- Hidden while Settings is open: it overlays the whole content region, and the
-     Pets section carries its own live preview. -->
-{#if pets.enabled && !app.settingsOpen && pet && sheet && instance}
+<!-- Hidden while Settings is open (it overlays the whole content region, and the
+     Pets section carries its own live preview) and while the desktop window
+     shows the pet instead. -->
+{#if pets.enabled && !overlayOn && !app.settingsOpen && pet && sheet && instance}
   <!-- The layer itself never intercepts pointer events; only the pets do. -->
   <div
     bind:this={root}
