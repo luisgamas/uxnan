@@ -3,46 +3,87 @@
 //
 // Kept pure (no rAF, no clock of its own) so the renderer owns the loop and the
 // maths stay unit-testable. The renderer passes elapsed milliseconds; this
-// answers with a frame index into the spritesheet.
+// answers with a sprite index.
+//
+// Two properties of the format shape everything here:
+//
+//   • every frame carries its **own** duration — a resting pose is held for
+//     nearly two seconds while an in-between passes in half of one;
+//   • an animation has a **loop point**: frames before it play once, the rest
+//     repeat forever. A state animation puts its own row before that point and
+//     the idle frames after it, so the pet reacts a few times and then settles.
 
 import type { PetAnimation } from "./manifest";
 
+/** Total run time of one full pass (prefix + one turn of the loop), in ms. */
+export function durationMs(anim: PetAnimation): number {
+  let total = 0;
+  for (const frame of anim.frames) total += frame.ms;
+  return total;
+}
+
+/** Run time of the play-once prefix, in ms. */
+function prefixMs(anim: PetAnimation): number {
+  let total = 0;
+  for (let i = 0; i < Math.min(anim.loopStart, anim.frames.length); i++) {
+    total += anim.frames[i].ms;
+  }
+  return total;
+}
+
+/** The frame slot showing at `t` ms, where `t` is already inside the timeline. */
+function slotAt(anim: PetAnimation, t: number): number {
+  let acc = 0;
+  for (let i = 0; i < anim.frames.length; i++) {
+    acc += anim.frames[i].ms;
+    if (t < acc) return i;
+  }
+  return anim.frames.length - 1;
+}
+
 /**
- * The frame to display `elapsedMs` into `anim`.
+ * Map elapsed time onto a position in the timeline, folding the looping tail
+ * back on itself. Returns `null` once an animation with nothing to loop has
+ * finished — it then holds its last frame forever.
+ */
+function positionAt(anim: PetAnimation, elapsedMs: number): number | null {
+  const total = durationMs(anim);
+  const t = Math.max(0, elapsedMs);
+  if (t < total) return t;
+
+  const prefix = prefixMs(anim);
+  const loopMs = total - prefix;
+  if (loopMs <= 0) return null;
+  return prefix + ((t - prefix) % loopMs);
+}
+
+/**
+ * The sprite to display `elapsedMs` into `anim`.
  *
- * A looping animation cycles forever; a non-looping one holds its last frame,
- * which is what makes a one-shot reaction (a wave, a hop) settle instead of
- * snapping back. Returns `0` for an empty animation rather than `undefined`, so
- * a malformed pack still renders the sheet's first frame.
+ * Returns `0` for an empty animation rather than `undefined`, so a malformed
+ * pack still renders the sheet's first frame.
  */
 export function frameAt(anim: PetAnimation, elapsedMs: number): number {
-  const count = anim.frames.length;
-  if (count === 0) return 0;
-  const fps = anim.fps > 0 ? anim.fps : 1;
-  const step = 1000 / fps;
-  const raw = Math.floor(Math.max(0, elapsedMs) / step);
-  const i = anim.loop ? ((raw % count) + count) % count : Math.min(raw, count - 1);
-  return anim.frames[i];
+  if (anim.frames.length === 0) return 0;
+  const t = positionAt(anim, elapsedMs);
+  if (t === null) return anim.frames[anim.frames.length - 1].index;
+  return anim.frames[slotAt(anim, t)].index;
 }
 
 /**
- * Milliseconds until the displayed frame changes, or `null` when it never will
- * (a finished one-shot, or a single-frame animation). The renderer uses this to
- * idle instead of spinning: with reduced motion, or once a one-shot has landed,
- * there is nothing left to schedule.
+ * Milliseconds until the displayed sprite changes, or `null` when it never will
+ * (a settled play-once animation, or a single frame). The renderer uses this to
+ * sleep exactly until the next change instead of polling.
  */
 export function msUntilNextFrame(anim: PetAnimation, elapsedMs: number): number | null {
-  const count = anim.frames.length;
-  if (count <= 1) return null;
-  const fps = anim.fps > 0 ? anim.fps : 1;
-  const step = 1000 / fps;
-  const e = Math.max(0, elapsedMs);
-  if (!anim.loop && Math.floor(e / step) >= count - 1) return null;
-  return step - (e % step);
-}
+  if (anim.frames.length <= 1) return null;
+  const t = positionAt(anim, elapsedMs);
+  if (t === null) return null;
 
-/** Total run time of one pass, in ms (useful for scheduling one-shots). */
-export function durationMs(anim: PetAnimation): number {
-  const fps = anim.fps > 0 ? anim.fps : 1;
-  return (anim.frames.length * 1000) / fps;
+  let acc = 0;
+  for (const frame of anim.frames) {
+    acc += frame.ms;
+    if (t < acc) return acc - t;
+  }
+  return null;
 }

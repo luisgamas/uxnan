@@ -26,11 +26,34 @@ export interface PetFrameSpec {
   rows: number;
 }
 
-/** One named animation. */
+/** One sprite shown for a while. */
+export interface PetFrame {
+  /** Index into the spritesheet, row-major. */
+  index: number;
+  /** How long this frame is held, in ms. */
+  ms: number;
+}
+
+/**
+ * One named animation: frames with **individual** durations, plus the point the
+ * loop returns to.
+ *
+ * Both details are load-bearing, and both come from the reference implementation
+ * rather than being invented here:
+ *
+ * - **Per-frame durations.** A flat frame rate makes a pet twitch. The reference
+ *   idle holds its resting poses for 1.7 s and 1.9 s while passing through the
+ *   in-betweens in 0.66 s — 6.6 s for one breath, where a uniform 8 fps loop over
+ *   the same frames takes 0.75 s.
+ * - **`loopStart`.** Frames before it play once; from there the animation repeats
+ *   forever. A state animation is its row three times *followed by the idle
+ *   frames*, with `loopStart` at the idle part — so the pet reacts a few times
+ *   and then settles, instead of miming a state for as long as it lasts.
+ */
 export interface PetAnimation {
-  frames: number[];
-  fps: number;
-  loop: boolean;
+  frames: PetFrame[];
+  /** Index into `frames` where the loop restarts. `frames.length` = play once. */
+  loopStart: number;
   /** Animation to use instead when this one has no frames. */
   fallback: string;
 }
@@ -65,8 +88,34 @@ export const DEFAULT_FRAME: PetFrameSpec = {
   rows: 9,
 };
 
-/** Frame rate used when a pack doesn't specify one. */
-export const DEFAULT_FPS = 8;
+/** Frame duration used when a pack specifies neither `fps` nor a default. */
+export const DEFAULT_FRAME_MS = 125; // 8 fps, the format's documented default
+
+/**
+ * Rendered pet heights offered in Settings, in px.
+ *
+ * These are the height of the **sprite cell**, and a generated pack fills nearly
+ * all of it (the reference art leaves ~6 px of padding top and bottom), so the
+ * number is close to the character's real height. The ladder is deliberately
+ * generous: the reference desktop pet at its middle setting stands around 200 px,
+ * and an earlier ladder topping out at 160 made every option look small beside it.
+ */
+export const PET_SIZES = [96, 144, 200, 260] as const;
+
+/** Smallest / largest height accepted, whatever is persisted. */
+export const PET_SIZE_MIN = 40;
+export const PET_SIZE_MAX = 320;
+
+/**
+ * The ladder entry closest to `size`, so a value persisted before the ladder
+ * changed still selects a sensible option instead of showing an empty picker.
+ */
+export function nearestPetSize(size: number | undefined): number {
+  const target = size ?? PET_SIZES[1];
+  return PET_SIZES.reduce((best, option) =>
+    Math.abs(option - target) < Math.abs(best - target) ? option : best,
+  );
+}
 
 /** The animation every fallback chain ultimately resolves to. */
 export const BASE_ANIMATION = "idle";
@@ -108,11 +157,13 @@ function parseAnimation(raw: unknown, total: number): PetAnimation {
         .map((n) => (typeof n === "number" ? Math.floor(n) : Number.NaN))
         .filter((n) => Number.isFinite(n) && n >= 0 && n < total)
     : [];
-  const fps = typeof a.fps === "number" && Number.isFinite(a.fps) && a.fps > 0 ? a.fps : DEFAULT_FPS;
+  const fps = typeof a.fps === "number" && Number.isFinite(a.fps) && a.fps > 0 ? a.fps : 0;
+  const ms = fps > 0 ? Math.max(1000 / 60, 1000 / fps) : DEFAULT_FRAME_MS;
+  const timed = frames.map((index) => ({ index, ms }));
   return {
-    frames,
-    fps: Math.min(fps, 60),
-    loop: a.loop !== false,
+    frames: timed,
+    // A manifest declaring `loop: false` plays once and holds its last frame.
+    loopStart: a.loop === false ? timed.length : 0,
     fallback: str(a.fallback),
   };
 }
@@ -185,11 +236,112 @@ export function resolveAnimation(pet: Pet, name: string): PetAnimation {
   if (base && base.frames.length > 0) return base;
   const total = pet.frame.columns * pet.frame.rows;
   return {
-    frames: Array.from({ length: Math.max(1, total) }, (_, i) => i),
-    fps: DEFAULT_FPS,
-    loop: true,
+    frames: Array.from({ length: Math.max(1, total) }, (_, i) => ({
+      index: i,
+      ms: DEFAULT_FRAME_MS,
+    })),
+    loopStart: 0,
     fallback: "",
   };
+}
+
+/**
+ * The idle animation's per-frame durations, in ms.
+ *
+ * Not a frame rate: the resting poses are held for well over a second while the
+ * in-betweens pass quickly, which is what reads as breathing. One cycle is 6.6 s
+ * — a uniform loop over the same frames would take under a second and look
+ * frantic. Taken from the reference implementation.
+ */
+const IDLE_FRAME_MS = [1680, 660, 660, 840, 840, 1920];
+
+/**
+ * The conventional animation set of a generated pack.
+ *
+ * Packs produced by `hatch-pet` (and the community galleries built on it) ship
+ * *only* an id, a description and a sheet path — no `frame`, no `animations` —
+ * because the layout is the format's convention rather than per-pack data. A
+ * reader without these defaults renders one endless walk over every frame,
+ * sweeping rows nothing is supposed to use.
+ *
+ * Rows, **frame counts**, durations and aliases all mirror the reference
+ * implementation. The counts matter as much as the rows: a row is not
+ * necessarily full (a generated wave is 4 frames in an 8-wide grid) and playing
+ * the blank remainder makes the pet flicker out of existence. They are declared
+ * here rather than detected from the image, which keeps this pure — and avoids
+ * reading pixels back from a canvas, which a webview may refuse outright.
+ *
+ * Note that **`running` is row 7, not row 1**: rows 1 and 2 are `running-right` /
+ * `running-left`, a run that *travels*, for a pet that walks across a desktop.
+ * The busy state is row 7, animated in place — wiring it to row 1 makes the pet
+ * sprint for as long as a task lasts.
+ */
+interface DefaultAnimationSpec {
+  row: number;
+  count: number;
+  frameMs: number;
+  finalFrameMs: number;
+}
+
+const DEFAULT_ANIMATION_SPECS: Record<string, DefaultAnimationSpec> = {
+  "running-right": { row: 1, count: 8, frameMs: 120, finalFrameMs: 220 },
+  "running-left": { row: 2, count: 8, frameMs: 120, finalFrameMs: 220 },
+  waving: { row: 3, count: 4, frameMs: 140, finalFrameMs: 280 },
+  jumping: { row: 4, count: 5, frameMs: 140, finalFrameMs: 280 },
+  failed: { row: 5, count: 8, frameMs: 140, finalFrameMs: 240 },
+  waiting: { row: 6, count: 6, frameMs: 150, finalFrameMs: 260 },
+  running: { row: 7, count: 6, frameMs: 120, finalFrameMs: 220 },
+  review: { row: 8, count: 6, frameMs: 150, finalFrameMs: 280 },
+  // Aliases the format also recognises, sharing a row with the above.
+  move_right: { row: 1, count: 8, frameMs: 120, finalFrameMs: 220 },
+  move_left: { row: 2, count: 8, frameMs: 120, finalFrameMs: 220 },
+  wave: { row: 3, count: 4, frameMs: 140, finalFrameMs: 280 },
+  bounce: { row: 4, count: 5, frameMs: 140, finalFrameMs: 280 },
+  sad: { row: 5, count: 8, frameMs: 140, finalFrameMs: 240 },
+};
+
+/** The animation names a generated pack is assumed to provide. */
+export const DEFAULT_ANIMATION_NAMES = [BASE_ANIMATION, ...Object.keys(DEFAULT_ANIMATION_SPECS)];
+
+/** How many times a state animation plays before the pet settles into idle. */
+export const STATE_REPEATS = 3;
+
+/**
+ * Build the conventional animation set for a sheet `columns` frames wide.
+ *
+ * Every state animation is its row repeated [`STATE_REPEATS`] times **followed by
+ * the idle frames**, looping from where idle begins — so the pet reacts to a
+ * state a few times and then calms down, rather than performing it for as long as
+ * the state lasts. A row that would not fit in the grid is skipped.
+ */
+export function defaultAnimations(columns: number, rows: number): Record<string, PetAnimation> {
+  const out: Record<string, PetAnimation> = {};
+  const cols = Math.max(1, Math.floor(columns));
+
+  const idleFrames: PetFrame[] =
+    rows >= 1
+      ? IDLE_FRAME_MS.slice(0, cols).map((ms, i) => ({ index: i, ms }))
+      : [];
+  if (idleFrames.length > 0) out[BASE_ANIMATION] = { frames: idleFrames, loopStart: 0, fallback: "" };
+
+  for (const [name, spec] of Object.entries(DEFAULT_ANIMATION_SPECS)) {
+    if (spec.row >= rows || spec.count > cols) continue;
+    const primary: PetFrame[] = Array.from({ length: spec.count }, (_, i) => ({
+      index: spec.row * cols + i,
+      ms: i === spec.count - 1 ? spec.finalFrameMs : spec.frameMs,
+    }));
+    const frames: PetFrame[] = [];
+    for (let i = 0; i < STATE_REPEATS; i++) frames.push(...primary.map((f) => ({ ...f })));
+    const loopStart = frames.length;
+    frames.push(...idleFrames.map((f) => ({ ...f })));
+    out[name] = {
+      frames,
+      // With no idle to settle into, the state itself simply loops.
+      loopStart: idleFrames.length > 0 ? loopStart : 0,
+      fallback: BASE_ANIMATION,
+    };
+  }
+  return out;
 }
 
 /**

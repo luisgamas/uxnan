@@ -809,19 +809,6 @@ impl Default for BrowserSettings {
     }
 }
 
-/// How many pets are on screen at once.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PetMode {
-    /// One pet for the whole app, reflecting the highest-priority agent state
-    /// across every workspace (what the Codex CLI does).
-    #[default]
-    Global,
-    /// One pet per agent that is currently reporting — a colony, each following
-    /// its own agent. Only possible because the ADE tracks agents individually.
-    Colony,
-}
-
 /// Sprite-animated companions that mirror agent state (`pets.rs`).
 ///
 /// Deliberately opt-in: `enabled` is false by default, so a user who never asks
@@ -837,10 +824,9 @@ pub struct PetSettings {
     /// Id of the active pet. Empty = the bundled default.
     #[serde(default)]
     pub active_pet_id: String,
-    /// One pet, or one per reporting agent (see [`PetMode`]).
-    #[serde(default)]
-    pub mode: PetMode,
-    /// Rendered pet height in px (the sprite scales to it). Default 96.
+    /// Rendered pet height in px (the sprite scales to it). Default 144 — the
+    /// middle of the ladder offered in Settings; see `PET_SIZES` in
+    /// `src/lib/pets/manifest.ts`.
     #[serde(default = "default_pet_size")]
     pub size: u32,
     /// Which screen corner the pet rests in: `"bottom-right"`, `"bottom-left"`,
@@ -868,7 +854,7 @@ pub struct PetSettings {
 }
 
 fn default_pet_size() -> u32 {
-    96
+    144
 }
 
 fn default_pet_corner() -> String {
@@ -880,7 +866,6 @@ impl Default for PetSettings {
         Self {
             enabled: false,
             active_pet_id: String::new(),
-            mode: PetMode::Global,
             size: default_pet_size(),
             corner: default_pet_corner(),
             offset_x: 0,

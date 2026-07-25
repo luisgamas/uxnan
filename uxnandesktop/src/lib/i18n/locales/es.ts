@@ -409,11 +409,6 @@ export const es: Record<MessageKey, string> = {
   "pets.enable": "Mostrar una mascota",
   "pets.enableDesc":
     "Desactivado por defecto. La mascota flota sobre la app y sigue el estado de tus agentes.",
-  "pets.mode": "Cuántas",
-  "pets.modeDesc":
-    "Una mascota para todo, o una por cada agente que reporta, cada una siguiendo su propio trabajo.",
-  "pets.mode.global": "Una mascota",
-  "pets.mode.colony": "Una por agente",
   "pets.corner": "Esquina",
   "pets.cornerDesc":
     "Dónde descansa la mascota. También puedes arrastrarla y se acomoda en la esquina más cercana.",

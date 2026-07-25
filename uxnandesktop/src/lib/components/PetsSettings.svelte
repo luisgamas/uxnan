@@ -11,7 +11,8 @@
   import { pets } from "$lib/state/pets.svelte";
   import { petsCodexDir, petsScan } from "$lib/api";
   import { animationFor } from "$lib/pets/status";
-  import type { ImportablePet, PetCorner, PetMode } from "$lib/types";
+  import { PET_SIZES, nearestPetSize } from "$lib/pets/manifest";
+  import type { ImportablePet, PetCorner } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
@@ -70,15 +71,6 @@
     set({ dismissedNotices: [...(settings.dismissedNotices ?? []), NOTICE_KEY] });
   }
 
-  const modeGroups: ComboGroup[] = $derived([
-    {
-      items: [
-        { value: "global", label: i18n.t("pets.mode.global") },
-        { value: "colony", label: i18n.t("pets.mode.colony") },
-      ],
-    },
-  ]);
-
   const cornerGroups: ComboGroup[] = $derived([
     {
       items: [
@@ -90,14 +82,10 @@
     },
   ]);
 
+  const SIZE_LABELS = ["pets.size.small", "pets.size.medium", "pets.size.large", "pets.size.huge"] as const;
   const sizeGroups: ComboGroup[] = $derived([
     {
-      items: [
-        { value: "64", label: i18n.t("pets.size.small") },
-        { value: "96", label: i18n.t("pets.size.medium") },
-        { value: "128", label: i18n.t("pets.size.large") },
-        { value: "160", label: i18n.t("pets.size.huge") },
-      ],
+      items: PET_SIZES.map((px, i) => ({ value: String(px), label: i18n.t(SIZE_LABELS[i]) })),
     },
   ]);
 
@@ -155,19 +143,6 @@
         {/snippet}
       </SettingsRow>
 
-      <SettingsRow label={i18n.t("pets.mode")} description={i18n.t("pets.modeDesc")}>
-        {#snippet control()}
-          <Combobox
-            value={settings.mode ?? "global"}
-            groups={modeGroups}
-            disabled={settings.enabled !== true}
-            triggerClass="w-56"
-            searchPlaceholder={i18n.t("common.search")}
-            onChange={(v) => set({ mode: v as PetMode })}
-          />
-        {/snippet}
-      </SettingsRow>
-
       <SettingsRow label={i18n.t("pets.corner")} description={i18n.t("pets.cornerDesc")}>
         {#snippet control()}
           <Combobox
@@ -184,7 +159,7 @@
       <SettingsRow label={i18n.t("pets.size")} description={i18n.t("pets.sizeDesc")}>
         {#snippet control()}
           <Combobox
-            value={String(settings.size ?? 96)}
+            value={String(nearestPetSize(settings.size))}
             groups={sizeGroups}
             disabled={settings.enabled !== true}
             triggerClass="w-56"
@@ -291,6 +266,7 @@
                     animation={animationFor(previewState)}
                     size={72}
                     animate={settings.animate !== false}
+                    flavour={false}
                   />
                 {:else}
                   <PawPrintIcon class="size-8 text-muted-foreground/40" />

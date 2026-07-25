@@ -2,9 +2,9 @@
   // The floating pet overlay.
   //
   // Sits above the app content (below dialogs) and shows what the agents are
-  // doing: one pet in `global` mode, or one per reporting agent in `colony`.
-  // Clicking a pet jumps to the terminal it is reflecting, which makes the
-  // companion a shortcut rather than only decoration.
+  // doing — one pet, reflecting the most urgent agent state. Clicking it jumps
+  // to the terminal it is reflecting, which makes the companion a shortcut
+  // rather than only decoration.
   //
   // The pet is parked in a corner and can be dragged anywhere; on release it
   // snaps to the nearest corner and remembers its exact offset. Dragging is
@@ -12,17 +12,23 @@
   // (same reason the file tree drags with pointer events).
   import { app } from "$lib/state/app.svelte";
   import { pets } from "$lib/state/pets.svelte";
-  import { wantsAttention, animationFor, type PetState } from "$lib/pets/status";
+  import { animationFor, type PetState } from "$lib/pets/status";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
+  import { PET_SIZE_MAX, PET_SIZE_MIN, nearestPetSize } from "$lib/pets/manifest";
   import PetSprite from "./PetSprite.svelte";
   import type { PetCorner } from "$lib/types";
 
   const settings = $derived(app.petSettings);
   const pet = $derived(pets.active);
-  const size = $derived(Math.min(240, Math.max(40, settings.size ?? 96)));
+  // Snap to the ladder Settings offers, so what the picker shows and what is
+  // drawn can never disagree (a value persisted before the ladder changed still
+  // renders as its nearest option).
+  const size = $derived(
+    Math.min(PET_SIZE_MAX, Math.max(PET_SIZE_MIN, nearestPetSize(settings.size))),
+  );
   const corner = $derived((settings.corner ?? "bottom-right") as PetCorner);
-  const instances = $derived(pets.instances);
+  const instance = $derived(pets.instance);
   /** Resolved lazily; until it arrives there is simply nothing to paint. The
    *  request is made from an effect (never from markup — see `pets.sheet`). */
   const sheet = $derived(pet ? pets.sheet(pet.id) : undefined);
@@ -112,7 +118,7 @@
 
 <!-- Hidden while Settings is open: it overlays the whole content region, and the
      Pets section carries its own live preview. -->
-{#if pets.enabled && !app.settingsOpen && pet && sheet && instances.length > 0}
+{#if pets.enabled && !app.settingsOpen && pet && sheet && instance}
   <!-- The layer itself never intercepts pointer events; only the pets do. -->
   <div
     bind:this={root}
@@ -122,7 +128,6 @@
     style:right={!dragAt && !left ? `${settings.offsetX ?? 16}px` : "auto"}
     style:bottom={!dragAt && !top ? `${settings.offsetY ?? 16}px` : "auto"}
   >
-    {#each instances as instance (instance.key)}
       <button
         type="button"
         title={title(instance.state, instance.label)}
@@ -138,20 +143,6 @@
         onpointercancel={onPointerUp}
         onclick={() => onClick(instance.tabId)}
       >
-        <!-- A soft halo when the agent needs the user; never while it's just
-             working, so the pet stays calm during long runs. -->
-        {#if wantsAttention(instance.state)}
-          <span
-            class={cn(
-              "absolute inset-x-2 bottom-1 top-2 -z-10 rounded-full blur-lg",
-              instance.state === "blocked"
-                ? "bg-destructive/25"
-                : instance.state === "waiting"
-                  ? "bg-amber-500/30"
-                  : "bg-emerald-500/25",
-            )}
-          ></span>
-        {/if}
         <PetSprite
           {pet}
           {sheet}
@@ -160,6 +151,5 @@
           animate={settings.animate !== false}
         />
       </button>
-    {/each}
   </div>
 {/if}

@@ -1,14 +1,34 @@
 import { describe, it, expect } from "vitest";
 import {
   dedupeById,
+  defaultAnimations,
+  DEFAULT_ANIMATION_NAMES,
+  STATE_REPEATS,
   parsePet,
   resolveAnimation,
   framePosition,
   DEFAULT_FRAME,
-  DEFAULT_FPS,
+  DEFAULT_FRAME_MS,
+  type PetAnimation,
 } from "./manifest";
 import { frameAt, msUntilNextFrame, durationMs } from "./animator";
-import { animationFor, aggregateState, wantsAttention } from "./status";
+import {
+  animationFor,
+  aggregateState,
+  hasDecayed,
+  STATE_LIFETIME_MS,
+} from "./status";
+import { planFlavour, hasFlavour, FLAVOUR_SLOWDOWN } from "./personality";
+
+/** Sprite indices of an animation, ignoring timing. */
+const idx = (anim: PetAnimation) => anim.frames.map((f) => f.index);
+
+/** A hand-rolled animation, for the timing tests. */
+const anim = (frames: [number, number][], loopStart = 0): PetAnimation => ({
+  frames: frames.map(([index, ms]) => ({ index, ms })),
+  loopStart,
+  fallback: "",
+});
 
 /** A manifest in the exact shape the ecosystem's packs ship. */
 const CODEX_MANIFEST = {
@@ -29,13 +49,18 @@ describe("parsePet", () => {
     const pet = parsePet(CODEX_MANIFEST, "folder-name", { source: "imported", origin: "Codex" });
     expect(pet.id).toBe("stacky");
     expect(pet.displayName).toBe("Stacky");
-    expect(pet.description).toBe("A balanced stack for deep work");
     expect(pet.spritesheetPath).toBe("spritesheet.webp");
     expect(pet.frame).toEqual({ width: 192, height: 208, columns: 8, rows: 9 });
-    expect(pet.animations.running.frames).toEqual([8, 9, 10, 11]);
-    expect(pet.animations.running.fps).toBe(12);
-    expect(pet.animations.waving.loop).toBe(false);
+    expect(idx(pet.animations.running)).toEqual([8, 9, 10, 11]);
+    expect(pet.animations.running.frames[0].ms).toBeCloseTo(1000 / 12);
     expect(pet.origin).toBe("Codex");
+  });
+
+  it("turns `loop: false` into an animation that plays once", () => {
+    const pet = parsePet(CODEX_MANIFEST, "stacky");
+    // Nothing to return to: the loop point sits past the end.
+    expect(pet.animations.waving.loopStart).toBe(pet.animations.waving.frames.length);
+    expect(pet.animations.running.loopStart).toBe(0);
   });
 
   it("falls back to the folder name when the manifest declares no id", () => {
@@ -58,7 +83,7 @@ describe("parsePet", () => {
       },
       "small",
     );
-    expect(pet.animations.idle.frames).toEqual([0, 1]);
+    expect(idx(pet.animations.idle)).toEqual([0, 1]);
     // An animation left with nothing valid is dropped rather than kept empty.
     expect(pet.animations.broken).toBeUndefined();
   });
@@ -72,7 +97,6 @@ describe("parsePet", () => {
     );
     expect(minimal.frameExplicit).toBe(false);
     expect(minimal.frame).toEqual(DEFAULT_FRAME);
-
     expect(parsePet(CODEX_MANIFEST, "stacky").frameExplicit).toBe(true);
   });
 
@@ -81,25 +105,21 @@ describe("parsePet", () => {
     // every frame past 71 before the real size is known.
     const pet = parsePet({ animations: { idle: { frames: [0, 80, 87] } } }, "tall");
     expect(pet.frameExplicit).toBe(false);
-    expect(pet.animations.idle.frames).toEqual([0, 80, 87]);
+    expect(idx(pet.animations.idle)).toEqual([0, 80, 87]);
   });
 
   it("clamps an absurd grid instead of trusting it", () => {
-    const pet = parsePet(
-      { frame: { width: 99999, height: -4, columns: 100000, rows: 0 } },
-      "hostile",
-    );
+    const pet = parsePet({ frame: { width: 99999, height: -4, columns: 100000, rows: 0 } }, "x");
     expect(pet.frame.width).toBeLessThanOrEqual(2048);
     expect(pet.frame.columns).toBeLessThanOrEqual(256);
-    // Non-positive values fall back to the defaults rather than breaking layout.
     expect(pet.frame.height).toBe(DEFAULT_FRAME.height);
     expect(pet.frame.rows).toBe(DEFAULT_FRAME.rows);
   });
 
-  it("defaults fps and loop when a pack leaves them out", () => {
+  it("defaults the frame duration when a pack leaves it out", () => {
     const pet = parsePet({ animations: { idle: { frames: [0, 1] } } }, "x");
-    expect(pet.animations.idle.fps).toBe(DEFAULT_FPS);
-    expect(pet.animations.idle.loop).toBe(true);
+    expect(pet.animations.idle.frames[0].ms).toBe(DEFAULT_FRAME_MS);
+    expect(pet.animations.idle.loopStart).toBe(0);
   });
 
   it("survives junk input without throwing", () => {
@@ -107,6 +127,80 @@ describe("parsePet", () => {
     expect(() => parsePet("nonsense", "b")).not.toThrow();
     expect(parsePet({ animations: "not-an-object" }, "c").animations).toEqual({});
     expect(parsePet({ animations: { idle: { frames: "nope" } } }, "d").animations).toEqual({});
+  });
+});
+
+describe("defaultAnimations", () => {
+  /** The real v2 layout: 8 columns, 11 rows. */
+  const ANIMS = defaultAnimations(8, 11);
+
+  it("puts the busy state on the in-place row, not the travelling run", () => {
+    // Rows 1 and 2 are a run that travels; the working state is row 7, in place.
+    // Wiring `running` to row 1 is what makes a pet sprint for a whole task.
+    expect(idx(ANIMS.running)[0]).toBe(56); // row 7
+    expect(idx(ANIMS["running-right"])[0]).toBe(8); // row 1
+    expect(idx(ANIMS["running-left"])[0]).toBe(16); // row 2
+  });
+
+  it("names each row of the conventional layout, aliases included", () => {
+    expect(idx(ANIMS.idle)[0]).toBe(0);
+    expect(idx(ANIMS.waving)[0]).toBe(24); // row 3
+    expect(idx(ANIMS.jumping)[0]).toBe(32); // row 4
+    expect(idx(ANIMS.failed)[0]).toBe(40); // row 5
+    expect(idx(ANIMS.waiting)[0]).toBe(48); // row 6
+    expect(idx(ANIMS.review)[0]).toBe(64); // row 8
+    expect(idx(ANIMS.sad)).toEqual(idx(ANIMS.failed));
+    expect(idx(ANIMS.bounce)).toEqual(idx(ANIMS.jumping));
+    expect(idx(ANIMS.wave)).toEqual(idx(ANIMS.waving));
+  });
+
+  it("plays a state a few times and then settles into idle", () => {
+    // The heart of it: a state is not performed for as long as it lasts. Its row
+    // runs three times, then the timeline continues into idle — and that is
+    // where the loop returns to.
+    const waving = ANIMS.waving;
+    const row = [24, 25, 26, 27];
+    expect(waving.loopStart).toBe(row.length * STATE_REPEATS);
+    expect(idx(waving).slice(0, row.length)).toEqual(row);
+    expect(idx(waving).slice(waving.loopStart)).toEqual(idx(ANIMS.idle));
+  });
+
+  it("holds resting poses far longer than the in-betweens", () => {
+    // A flat frame rate is what makes a pet twitch; one breath is over 6 seconds.
+    const ms = ANIMS.idle.frames.map((f) => f.ms);
+    expect(ms).toEqual([1680, 660, 660, 840, 840, 1920]);
+    expect(durationMs(ANIMS.idle)).toBe(6600);
+  });
+
+  it("closes each state's row on a longer frame, at the reference pace", () => {
+    const running = ANIMS.running.frames;
+    expect(running[0].ms).toBe(120);
+    expect(running[5].ms).toBe(220); // row 7 has 6 frames; the last is held
+    expect(ANIMS.waiting.frames[0].ms).toBe(150);
+  });
+
+  it("skips rows the grid does not have", () => {
+    // An older 8x9 sheet still has every state; a 3-row one clearly does not.
+    const short = defaultAnimations(8, 3);
+    expect(idx(short.idle)[0]).toBe(0);
+    expect(short["running-left"]).toBeDefined(); // row 2 exists
+    expect(short.review).toBeUndefined(); // row 8 does not
+    expect(Object.keys(short).length).toBeLessThanOrEqual(DEFAULT_ANIMATION_NAMES.length);
+  });
+
+  it("never reaches past the rows the reference layout defines", () => {
+    // Rows 9 and 10 are not part of the conventional set; playing them is the
+    // signature of having fallen back to walking the whole sheet.
+    const every = Object.values(ANIMS).flatMap(idx);
+    expect(Math.max(...every)).toBeLessThan(9 * 8);
+  });
+
+  it("uses only the frames each row actually paints", () => {
+    // Row 3 (waving) is 4 frames of an 8-wide grid; playing the blank tail would
+    // make the pet vanish for part of the loop.
+    expect(idx(ANIMS.waving).slice(0, 4)).toEqual([24, 25, 26, 27]);
+    expect(idx(ANIMS.jumping).slice(0, 5)).toEqual([32, 33, 34, 35, 36]);
+    expect(idx(ANIMS.idle)).toHaveLength(6);
   });
 });
 
@@ -136,12 +230,11 @@ describe("resolveAnimation", () => {
   const pet = parsePet(CODEX_MANIFEST, "stacky");
 
   it("returns the requested animation when the pack has it", () => {
-    expect(resolveAnimation(pet, "running").frames).toEqual([8, 9, 10, 11]);
+    expect(idx(resolveAnimation(pet, "running"))).toEqual([8, 9, 10, 11]);
   });
 
   it("falls back to idle for a state the pack never defined", () => {
-    // No "failed" animation in this pack — the pet still renders.
-    expect(resolveAnimation(pet, "failed").frames).toEqual([0, 1, 2, 3]);
+    expect(idx(resolveAnimation(pet, "failed"))).toEqual([0, 1, 2, 3]);
   });
 
   it("follows an explicit fallback chain", () => {
@@ -155,11 +248,10 @@ describe("resolveAnimation", () => {
       },
       "chain",
     );
-    expect(resolveAnimation(chained, "failed").frames).toEqual([6]);
+    expect(idx(resolveAnimation(chained, "failed"))).toEqual([6]);
   });
 
   it("terminates on a circular fallback chain", () => {
-    // `a → b → a` must resolve, not hang.
     const looped = parsePet(
       {
         frame: { width: 8, height: 8, columns: 2, rows: 1 },
@@ -170,13 +262,12 @@ describe("resolveAnimation", () => {
       },
       "loop",
     );
-    const anim = resolveAnimation(looped, "a");
-    expect(anim.frames.length).toBeGreaterThan(0);
+    expect(resolveAnimation(looped, "a").frames.length).toBeGreaterThan(0);
   });
 
   it("synthesizes a walk of the whole sheet for a pack with no animations", () => {
     const bare = parsePet({ frame: { width: 8, height: 8, columns: 2, rows: 2 } }, "bare");
-    expect(resolveAnimation(bare, "idle").frames).toEqual([0, 1, 2, 3]);
+    expect(idx(resolveAnimation(bare, "idle"))).toEqual([0, 1, 2, 3]);
   });
 });
 
@@ -195,49 +286,179 @@ describe("framePosition", () => {
 });
 
 describe("frameAt", () => {
-  const looping = { frames: [4, 5, 6, 7], fps: 10, loop: true, fallback: "" };
-  const once = { frames: [4, 5, 6], fps: 10, loop: false, fallback: "" };
-
-  it("advances one frame per 1/fps and cycles when looping", () => {
-    expect(frameAt(looping, 0)).toBe(4);
-    expect(frameAt(looping, 99)).toBe(4);
-    expect(frameAt(looping, 100)).toBe(5);
-    expect(frameAt(looping, 350)).toBe(7);
-    expect(frameAt(looping, 400)).toBe(4); // wrapped
-    // Several cycles in: 920ms = 9 steps, 9 % 4 = 1 → the second frame.
-    expect(frameAt(looping, 920)).toBe(5);
+  it("holds each frame for its own duration", () => {
+    const a = anim([
+      [0, 1000],
+      [1, 200],
+      [2, 200],
+    ]);
+    expect(frameAt(a, 0)).toBe(0);
+    expect(frameAt(a, 999)).toBe(0); // the long resting pose
+    expect(frameAt(a, 1000)).toBe(1);
+    expect(frameAt(a, 1199)).toBe(1);
+    expect(frameAt(a, 1200)).toBe(2);
   });
 
-  it("holds the last frame of a one-shot", () => {
-    expect(frameAt(once, 200)).toBe(6);
-    expect(frameAt(once, 10_000)).toBe(6);
+  it("loops from the loop point, not from the beginning", () => {
+    // Two lead-in frames that play once, then a two-frame loop.
+    const a = anim(
+      [
+        [0, 100],
+        [1, 100],
+        [8, 100],
+        [9, 100],
+      ],
+      2,
+    );
+    expect(frameAt(a, 0)).toBe(0);
+    expect(frameAt(a, 150)).toBe(1);
+    expect(frameAt(a, 250)).toBe(8);
+    expect(frameAt(a, 350)).toBe(9);
+    // Past the end it returns to the loop point — never to the lead-in.
+    expect(frameAt(a, 450)).toBe(8);
+    expect(frameAt(a, 550)).toBe(9);
+    expect(frameAt(a, 10_000)).not.toBe(0);
+    expect(frameAt(a, 10_050)).not.toBe(1);
+  });
+
+  it("holds the last frame when there is nothing to loop", () => {
+    const once = anim(
+      [
+        [4, 100],
+        [5, 100],
+      ],
+      2,
+    );
+    expect(frameAt(once, 150)).toBe(5);
+    expect(frameAt(once, 10_000)).toBe(5);
   });
 
   it("is safe on empty and negative input", () => {
-    expect(frameAt({ frames: [], fps: 8, loop: true, fallback: "" }, 500)).toBe(0);
-    expect(frameAt(looping, -50)).toBe(4);
+    expect(frameAt(anim([]), 500)).toBe(0);
+    expect(frameAt(anim([[7, 100]]), -50)).toBe(7);
   });
 });
 
 describe("msUntilNextFrame", () => {
-  const looping = { frames: [0, 1, 2], fps: 10, loop: true, fallback: "" };
-
   it("reports the time left on the current frame", () => {
-    expect(msUntilNextFrame(looping, 0)).toBe(100);
-    expect(msUntilNextFrame(looping, 40)).toBeCloseTo(60);
+    const a = anim([
+      [0, 1000],
+      [1, 200],
+    ]);
+    expect(msUntilNextFrame(a, 0)).toBe(1000);
+    expect(msUntilNextFrame(a, 400)).toBe(600);
+    expect(msUntilNextFrame(a, 1000)).toBe(200);
+  });
+
+  it("keeps scheduling across the loop point", () => {
+    const a = anim(
+      [
+        [0, 100],
+        [8, 100],
+        [9, 100],
+      ],
+      1,
+    );
+    expect(msUntilNextFrame(a, 350)).toBe(50); // well past the lead-in
   });
 
   it("returns null when nothing more will change", () => {
-    // Single frame: never changes.
-    expect(msUntilNextFrame({ frames: [3], fps: 8, loop: true, fallback: "" }, 0)).toBeNull();
-    // Finished one-shot: settled on its last frame.
-    const once = { frames: [0, 1], fps: 10, loop: false, fallback: "" };
+    expect(msUntilNextFrame(anim([[3, 125]]), 0)).toBeNull();
+    const once = anim(
+      [
+        [0, 100],
+        [1, 100],
+      ],
+      2,
+    );
     expect(msUntilNextFrame(once, 500)).toBeNull();
     expect(msUntilNextFrame(once, 50)).toBe(50);
   });
 
   it("computes a full pass duration", () => {
-    expect(durationMs(looping)).toBe(300);
+    expect(
+      durationMs(
+        anim([
+          [0, 100],
+          [1, 250],
+        ]),
+      ),
+    ).toBe(350);
+  });
+});
+
+describe("state decay", () => {
+  const MIN = 60_000;
+
+  it("stops showing 'working' once it stops being news", () => {
+    expect(hasDecayed("working", 0, 2 * MIN)).toBe(false);
+    expect(hasDecayed("working", 0, 3 * MIN)).toBe(true);
+  });
+
+  it("keeps states that are waiting on the user alive far longer", () => {
+    for (const state of ["waiting", "blocked", "done"] as const) {
+      expect(hasDecayed(state, 0, 29 * MIN)).toBe(false);
+      expect(hasDecayed(state, 0, 30 * MIN)).toBe(true);
+    }
+    expect(STATE_LIFETIME_MS.working).toBeLessThan(STATE_LIFETIME_MS.waiting);
+  });
+
+  it("never decays resting", () => {
+    expect(hasDecayed("idle", 0, 10 * 24 * 60 * MIN)).toBe(false);
+  });
+});
+
+describe("planFlavour", () => {
+  /** Deterministic `random` that walks a fixed sequence. */
+  const seq = (...values: number[]) => {
+    let i = 0;
+    return () => values[i++ % values.length];
+  };
+
+  it("keeps a resting pet alive with occasional one-shots", () => {
+    const plan = planFlavour("idle", seq(0, 0));
+    expect(plan).not.toBeNull();
+    expect(plan!.animation).toBe("waving");
+    expect(plan!.delayMs).toBe(14_000);
+  });
+
+  it("picks across the whole candidate list", () => {
+    expect(planFlavour("idle", seq(0.5, 0.99))!.animation).toBe("jumping");
+  });
+
+  it("offers each resting flavour a distinct animation", () => {
+    // `bounce` is an alias of `jumping` (both row 4); listing both would quietly
+    // make the hop twice as likely as the wave.
+    const picks = [0, 0.5, 0.99].map((r) => planFlavour("idle", seq(0.5, r))!.animation);
+    expect(new Set(picks)).toEqual(new Set(["waving", "jumping"]));
+  });
+
+  it("plays decoration slower than the same animation would when a state fires it", () => {
+    // A wave is 140 ms a frame beside a resting pose of 660–1920 ms; unprompted,
+    // that reads as a twitch. Anything at or below 1 would defeat the point.
+    expect(FLAVOUR_SLOWDOWN).toBeGreaterThan(2);
+    expect(140 * FLAVOUR_SLOWDOWN).toBeGreaterThan(300);
+  });
+
+  it("nags sooner when the agent needs you than when it is resting", () => {
+    const waiting = planFlavour("waiting", seq(1, 0))!;
+    const idle = planFlavour("idle", seq(1, 0))!;
+    expect(waiting.animation).toBe("waving");
+    expect(waiting.delayMs).toBeLessThan(idle.delayMs);
+  });
+
+  it("has nothing to add for an animation it doesn't know", () => {
+    expect(planFlavour("waving")).toBeNull();
+    expect(hasFlavour("idle")).toBe(true);
+    expect(hasFlavour("nonsense")).toBe(false);
+  });
+
+  it("stays inside its declared delay window", () => {
+    for (const r of [0, 0.25, 0.5, 0.75, 0.999]) {
+      const plan = planFlavour("idle", seq(r, 0))!;
+      expect(plan.delayMs).toBeGreaterThanOrEqual(14_000);
+      expect(plan.delayMs).toBeLessThanOrEqual(34_000);
+    }
   });
 });
 
@@ -256,19 +477,10 @@ describe("agent state → pet animation", () => {
   });
 
   it("prefers whatever needs the human first", () => {
-    // needs input > blocked > ready > working
     expect(aggregateState(["working", "waiting"])).toBe("waiting");
     expect(aggregateState(["working", "blocked", "done"])).toBe("blocked");
     expect(aggregateState(["working", "done"])).toBe("done");
     expect(aggregateState(["working", "idle"])).toBe("working");
     expect(aggregateState(["done", "blocked", "waiting", "working"])).toBe("waiting");
-  });
-
-  it("knows which states should draw the eye", () => {
-    expect(wantsAttention("waiting")).toBe(true);
-    expect(wantsAttention("blocked")).toBe(true);
-    expect(wantsAttention("done")).toBe(true);
-    expect(wantsAttention("working")).toBe(false);
-    expect(wantsAttention("idle")).toBe(false);
   });
 });

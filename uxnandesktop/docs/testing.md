@@ -58,7 +58,7 @@ rejection), `terminal/scrollback.ts` (the scrollback clamp) and
 `terminal/windowsJunctionDetector.ts` (the Windows Redirection-Guard failure
 signature detector, incl. chunk-split matching) and `pets/` (the Codex-compatible
 manifest parser, frame timing, and the agent-state → animation mapping +
-priority) — 249 tests in
+priority) — 273 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see

@@ -39,6 +39,37 @@ const PRIORITY: Record<PetState, number> = {
   idle: 4,
 };
 
+/**
+ * How long a reported state is worth *showing*, measured from when the agent
+ * entered it — not from the last time it was refreshed.
+ *
+ * A pet is not a status mirror. Mirroring `working` literally means a pet that
+ * runs without pause for as long as a task takes, which reads as a spinner and
+ * drowns out the states that actually need a human. Codex solves this by making
+ * pet states **notifications that expire** (`RUNNING_LIFETIME = 3 min`), falling
+ * back to idle while the work continues; the same idea is used here.
+ *
+ * The asymmetry is the point: "busy" is not actionable, so it fades quickly,
+ * while anything waiting on the user persists — matching the app's own rule that
+ * an attention state goes neutral once it has gone stale (spec `02d` §1.5).
+ */
+export const STATE_LIFETIME_MS: Record<PetState, number> = {
+  working: 3 * 60_000,
+  waiting: 30 * 60_000,
+  blocked: 30 * 60_000,
+  done: 30 * 60_000,
+  idle: Number.POSITIVE_INFINITY,
+};
+
+/**
+ * Whether a state entered at `since` has outlived its usefulness by `now`, and
+ * the pet should drop back to resting.
+ */
+export function hasDecayed(state: PetState, since: number, now: number): boolean {
+  const lifetime = STATE_LIFETIME_MS[state] ?? Number.POSITIVE_INFINITY;
+  return now - since >= lifetime;
+}
+
 /** The animation name for a state (what the renderer asks the pet for). */
 export function animationFor(state: PetState): string {
   return ANIMATION[state] ?? ANIMATION.idle;
@@ -54,13 +85,4 @@ export function aggregateState(states: readonly PetState[]): PetState {
     if (PRIORITY[s] < PRIORITY[best]) best = s;
   }
   return best;
-}
-
-/**
- * Whether a state is one the user should act on. The pet uses this to decide
- * whether it may draw attention to itself (a subtle pulse) rather than just
- * animating quietly in the corner.
- */
-export function wantsAttention(state: PetState): boolean {
-  return state === "waiting" || state === "blocked" || state === "done";
 }

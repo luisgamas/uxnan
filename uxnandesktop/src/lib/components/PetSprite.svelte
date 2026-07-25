@@ -12,6 +12,7 @@
   // to a single frame under `prefers-reduced-motion`.
   import { resolveAnimation, framePosition, type Pet } from "$lib/pets/manifest";
   import { frameAt, msUntilNextFrame } from "$lib/pets/animator";
+  import { planFlavour, FLAVOUR_SLOWDOWN } from "$lib/pets/personality";
 
   interface Props {
     pet: Pet;
@@ -23,6 +24,10 @@
     size?: number;
     /** Master motion switch (the user's setting). */
     animate?: boolean;
+    /** Let the pet occasionally break its loop with a short one-shot (look
+     *  around while resting, wave when it needs you). Off for previews, where
+     *  the point is to show one state exactly as chosen. */
+    flavour?: boolean;
     class?: string;
   }
 
@@ -32,10 +37,59 @@
     animation,
     size = 96,
     animate = true,
+    flavour = true,
     class: className = "",
   }: Props = $props();
 
-  const anim = $derived(resolveAnimation(pet, animation));
+  /** A short one-shot currently interrupting the base loop, if any. */
+  let flavourAnim = $state<string | null>(null);
+
+  // Schedule flavour one-shots for as long as the base animation holds. The
+  // cycle restarts whenever the state (and so the base animation) changes, so a
+  // real state change always wins over a decorative one.
+  $effect(() => {
+    const base = animation;
+    flavourAnim = null;
+    if (!flavour || !animate || reduced || !visible) return;
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cycle = () => {
+      if (stopped) return;
+      const plan = planFlavour(base);
+      if (!plan) return;
+      timer = setTimeout(() => {
+        if (stopped) return;
+        flavourAnim = plan.animation;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          flavourAnim = null;
+          cycle();
+        }, plan.holdMs);
+      }, plan.delayMs);
+    };
+    cycle();
+
+    return () => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  });
+
+  const resolved = $derived(resolveAnimation(pet, flavourAnim ?? animation));
+
+  // A flavour is decoration, so it plays slower than the very same animation
+  // would when a real state triggers it — see `FLAVOUR_SLOWDOWN`. State-driven
+  // animations are never stretched: there, the pace is the message.
+  const anim = $derived(
+    flavourAnim
+      ? {
+          ...resolved,
+          frames: resolved.frames.map((f) => ({ ...f, ms: f.ms * FLAVOUR_SLOWDOWN })),
+        }
+      : resolved,
+  );
 
   /** Frame index currently displayed (an index into the sheet, not the list). */
   let frame = $state(0);
@@ -64,7 +118,7 @@
   // first frame rather than joining the new cycle part-way through.
   $effect(() => {
     const a = anim;
-    frame = a.frames[0] ?? 0;
+    frame = a.frames[0]?.index ?? 0;
     if (reduced || !animate || !visible) return;
 
     const startedAt = performance.now();

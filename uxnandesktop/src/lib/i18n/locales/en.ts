@@ -411,11 +411,6 @@ export const en = {
   "pets.choose": "Choose pet",
   "pets.enable": "Show a pet",
   "pets.enableDesc": "Off by default. The pet floats over the app and follows your agents' state.",
-  "pets.mode": "How many",
-  "pets.modeDesc":
-    "One pet for everything, or one per agent that's reporting — each following its own work.",
-  "pets.mode.global": "One pet",
-  "pets.mode.colony": "One per agent",
   "pets.corner": "Corner",
   "pets.cornerDesc": "Where the pet rests. You can also drag it anywhere and it snaps to the nearest corner.",
   "pets.corner.bottomRight": "Bottom right",

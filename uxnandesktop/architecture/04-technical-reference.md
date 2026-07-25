@@ -178,8 +178,9 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       preciso de los agentes: `working`→`running`, `waiting`→`waiting`,
       `done`→`review`, `blocked`→`failed`, nadie reportando→`idle`; los reportes
       stale (§1.5) se ignoran.
-- [x] **Una mascota global** (gana el mas urgente: `waiting` → `blocked` → `done`
-      → `working`) **o una por agente que reporta** (modo colonia).
+- [x] **Una sola mascota**, con el estado mas urgente ganando (`waiting` →
+      `blocked` → `done` → `working`). El modo colonia (una por agente) se
+      construyo y se retiro por no aportar sobre la barra lateral.
 - [ ] **Ventana propia de escritorio** (siempre encima, visible sobre otras apps y
       con uxnan minimizado) — intentada y revertida; requiere pruebas interactivas
       sobre un build empaquetado (`FOR-DEV.md`).

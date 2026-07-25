@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **pets**). 274 Rust backend tests + 249 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **pets**). 274 Rust backend tests + 273 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -178,9 +178,12 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
 - **Pets** — an opt-in animated companion that mirrors agent state, driven off the
   precise hook layer (`working`→`running`, `waiting`→`waiting`, `done`→`review`,
   `blocked`→`failed`, else `idle`; reports older than 30 min are stale and ignored).
-  **One global pet** (most urgent agent wins: needs-you → blocked → ready → working)
-  **or one per reporting agent** (colony). Clicking a pet reveals its agent's
-  terminal; the pet drags anywhere. It renders as a layer inside the uxnan window. The on-disk
+  **One pet**, showing the most urgent agent state (needs-you → blocked → ready →
+  working). Clicking it reveals that agent's
+  terminal; the pet drags anywhere. It renders as a layer inside the uxnan window. On top of the state's base
+  animation it plays occasional one-shots (look around while resting, wave while
+  waiting on you, turn around while running) so the whole sheet is used and the
+  pet doesn't read as a spinner — `pets/personality.ts`, pure and tested. The on-disk
   format is **Codex-compatible** (`pet.json`/`avatar.json` + one spritesheet, 8 × 9
   frames of 192 × 208 by default, `fallback` chains), so community packs load
   unmodified; import from `~/.codex/pets` or any folder is a **validating copy**
@@ -193,9 +196,13 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   `state/pets.svelte.ts` + `PetSprite`/`PetLayer`/`PetsSettings`. See
   [`docs/pets.md`](docs/pets.md). The bundled pet is a normal pack in
   `static/pets/uxni/` (8 x 11 sheet, one animation per row) — swapped by replacing
-  the files, not regenerated. A manifest without a `frame` has its grid **measured
-  from the decoded sheet**, since `hatch-pet` packs omit it and are not all the
-  same height.
+  the files, not regenerated. A generated pack declares neither `frame` nor
+  `animations`, so both are recovered from the image — grid from its dimensions,
+  animations from the conventional row order with its declared per-row frame counts (the
+  reference map: `running` is the in-place row 7, not the travelling run on row 1;
+  each state animation is its row three times followed by the idle frames, looping from idle; frames carry individual durations, idle breathing once every 6.6 s). States **expire** rather
+  than mirror — busy 3 min, anything waiting on the user 30 min, from when the
+  agent entered the state.
 
 ## Pets — follow-ups ☐
 
@@ -570,7 +577,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 274 Rust + 249 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 274 Rust + 273 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

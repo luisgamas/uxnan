@@ -705,9 +705,6 @@ export interface FileChange {
 // rendering live in `$lib/pets/`, the trust-boundary validation in
 // `src-tauri/src/pets.rs`.
 
-/** How many pets are on screen at once (mirror of Rust `PetMode`). */
-export type PetMode = "global" | "colony";
-
 /** Which screen corner the pet rests in. */
 export type PetCorner = "bottom-right" | "bottom-left" | "top-right" | "top-left";
 
@@ -718,9 +715,7 @@ export interface PetSettings {
   enabled?: boolean;
   /** Id of the active pet. Empty = the bundled default. */
   activePetId?: string;
-  /** One pet, or one per reporting agent. */
-  mode?: PetMode;
-  /** Rendered pet height in px. Default 96. */
+  /** Rendered pet height in px. Default 144 (see `PET_SIZES`). */
   size?: number;
   corner?: PetCorner;
   /** Manual offset (px) from that corner, set by dragging the pet. */
@@ -1042,6 +1037,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalProfiles: [],
   defaultProfileId: null,
   agentProfiles: [],
+  pets: { enabled: true },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,

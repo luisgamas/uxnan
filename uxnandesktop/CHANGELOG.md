@@ -14,9 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the pet rests instead of miming work that already ended. **Clicking the pet reveals
   the terminal of the agent it is showing**, so it doubles as a shortcut to whatever
   needs you.
-- **One pet or a colony.** The default is a single companion for the whole app, with
-  the most urgent agent winning (**needs you → blocked → ready → working**). Opt into
-  **one pet per reporting agent** — each following its own work — in Settings.
+- **One pet**, showing the most urgent agent state when several report at once
+  (**needs you → blocked → ready → working**).
 - **Codex-compatible pet format**, so packs built for that ecosystem (including the
   community galleries) load unmodified: a folder holding `pet.json` (or `avatar.json`)
   plus one spritesheet, with `frame` (default 8 × 9 frames of 192 × 208) and named
@@ -36,7 +35,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   its name.
 - **Toggle in the sidebar profile menu** ("Show pet", plus a "Choose pet" submenu once
   more than one is installed) and a full **Settings → Pets** section in the General
-  group: master switch, one-vs-colony, corner, size, animate, click-to-focus, the
+  group: master switch, corner, size, animate, click-to-focus, the
   library grid with a live preview you can step through each state, and the import
   flow. The pet can also be **dragged anywhere** and snaps to the nearest corner,
   remembering its offset.
@@ -45,17 +44,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   window is hidden, renders a single still frame under `prefers-reduced-motion` (or
   with *Animate* off), hides itself while Settings is open, and **loads nothing at all
   until pets are enabled**.
+- **Fixed: the pet ran non-stop.** The working state was wired to the sheet's
+  *travelling* run (row 1) instead of the in-place busy animation (row 7), so the
+  pet sprinted for as long as a task lasted. The conventional row map now matches
+  the reference implementation exactly, including the `sad`/`bounce`/`wave`/
+  `move_*` aliases.
+- **Animations settle instead of repeating, and run at the reference pace.**
+  Each state animation is now its row played three times *followed by the idle
+  frames*, looping from where idle begins — so the pet reacts and then calms down
+  rather than performing a state for as long as it lasts. Timing moved from a flat
+  frame rate to **per-frame durations**: idle holds its resting poses for 1.68 s
+  and 1.92 s while passing through the in-betweens in 0.66 s, one breath every
+  **6.6 s**, where the previous flat loop took 1.2 s and read as frantic. State
+  rows keep a longer closing frame (120 ms per frame, 220 ms on the last).
+- **Pet states expire instead of mirroring.** A state is shown for a lifetime
+  measured from when the agent *entered* it (busy: 3 min; anything waiting on the
+  user: 30 min), so a hook firing on every tool call can't renew it and a long
+  task no longer pins the pet to one animation. Same idea as the reference
+  implementation's `RUNNING_LIFETIME`.
+- **Bigger sizes.** The ladder was 64/96/128/160 px, which left even "extra
+  large" smaller than the reference desktop pet at its *middle* setting (~200 px).
+  It is now 96/144/200/260 with the default at 144, and the rendered size snaps to
+  the ladder so the picker and the pet can never disagree.
+- **Idle decoration no longer twitches.** The occasional resting one-shot reused
+  the format's timings, which are tuned for animations that fire because something
+  happened — 140 ms a frame against 660–1920 ms for a resting pose, so a wave with
+  no reason behind it ran 4.7–13.7× faster than the idle it interrupted. Flavour
+  frames are now stretched 2.4× (140 → 336 ms); a state-driven animation is never
+  stretched. `bounce` also left the resting pool: it is an alias of `jumping`
+  (both row 4), so listing both quietly made the hop twice as likely as the wave.
+- The attention halo behind the pet is gone — the animation carries the state.
+- **Idle personality.** The five-state map alone leaves a pet that only ever
+  stands or runs — and a pack ships more than five animations (the bundled one
+  has eleven). On top of the state's base loop the pet now plays short one-shots
+  and returns: it looks around, bounces or hops while resting, **waves for
+  attention while it needs you**, turns around while running, sags while blocked.
+  A real state change always cancels the flavour, so texture never hides a
+  signal; it is disabled in the Settings preview, under `prefers-reduced-motion`
+  and with *Animate* off. Scheduling is a pure, unit-tested module
+  (`src/lib/pets/personality.ts`).
 - The bundled pet is **Uxni**, the real mascot, shipped as an ordinary pack in
   `static/pets/uxni/` — an 8 x 11 sheet with one animation per row, drawn per
   state (idle, running, waving, jumping, sad, waiting, blocked, celebrating).
   It is data, not generated art: swapping the mascot means replacing the files in
   that folder.
-- **A pack's grid is measured when its manifest omits `frame`.** Sheets are not
-  all the same height — `hatch-pet` v2 packs are 8 x 11 (1536 x 2288), older ones
-  8 x 9 — and those manifests routinely ship only an id and a sheet path, so
-  assuming the conventional grid sliced every frame at the wrong offset. The real
-  columns/rows are now derived from the decoded spritesheet; a pack that declares
-  its grid is trusted as-is.
+- **Generated packs work without hand-editing.** A `hatch-pet` pack — which is
+  what Codex's `/hatch` and the community galleries produce — ships only an id, a
+  description and a sheet path: no `frame`, no `animations`, because the layout is
+  the format's convention rather than per-pack data. Both are now recovered from
+  the image: the grid from its dimensions (sheets differ — v2 is 8 x 11 =
+  1536 x 2288, older ones 8 x 9, and assuming would slice every frame at the wrong
+  offset), and the animations from the conventional row order with its declared
+  per-row frame counts — a row is often partly used (a generated wave is 4 frames
+  in an 8-wide grid) and playing the blank remainder makes the pet flicker out of
+  existence. A pack that declares either is trusted as-is.
 - **Fixed: the pet window had no permissions.** Tauri capabilities are scoped per
   window and the shipped one covers only `main`, so the companion window got no
   core permissions at all — `listen`/`emitTo` failed silently and it rendered as
