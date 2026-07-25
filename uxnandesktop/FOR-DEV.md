@@ -108,11 +108,16 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   opened from the sidebar profile menu or `Mod+Shift+A`, with a section rail
   (Overview / Automations / Runs / Templates / Settings), a list groupable by lead
   agent / task type / frequency / folder / status, an **inline** editor with a
-  next-runs preview and a graph editor that catches a prompt referencing a step it
-  does not wait for, run history showing the **prompt as actually sent**, ready-made
-  multi-agent templates, and the honest scheduling badge. `src-tauri/src/automations/`,
-  `src/lib/automations/`, `src/lib/components/automations/`,
-  [`docs/automations.md`](docs/automations.md).
+  next-runs preview, run history showing the **prompt as actually sent**, and the
+  honest scheduling badge. Two things make it usable by someone who has not read
+  the docs: **four example automations are seeded on a first visit** (all paused,
+  all multi-agent, restorable from Templates under their own ids) so no section is
+  an empty page, and under every prompt field the editor **lists the values that
+  prompt can carry** — an earlier step's answer, what a step answered in the
+  previous run, the working folder — each explained in plain language and inserted
+  at the cursor, with an earlier step's answer also making the step wait for it.
+  `src-tauri/src/automations/`, `src/lib/automations/`,
+  `src/lib/components/automations/`, [`docs/automations.md`](docs/automations.md).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
