@@ -288,9 +288,17 @@ pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<Strin
             a.push(prompt.to_string());
             a
         }
-        // codex exec [--model M] <prompt>
+        // codex exec --skip-git-repo-check [--model M] <prompt>
+        //
+        // Codex refuses to start outside a Git repository and asks the human to
+        // confirm — a prompt nothing can answer in print mode, so the run just
+        // fails. Every invocation here is programmatic, in a directory the user
+        // picked (an AI-commit repo, an orchestration workspace, an automation's
+        // working folder, which may deliberately not be a repo at all), so the
+        // interactive guard has nothing to protect and is waived. Folder *trust*
+        // is a separate decision and is left untouched.
         "codex" => {
-            let mut a = vec!["exec".to_string()];
+            let mut a = vec!["exec".to_string(), "--skip-git-repo-check".to_string()];
             a.extend(model_flag("--model"));
             a.push(prompt.to_string());
             a
@@ -504,7 +512,10 @@ mod tests {
     #[test]
     fn build_args_default_omits_model_flag() {
         assert_eq!(build_args("claude", "", "hi").unwrap(), vec!["-p", "hi"]);
-        assert_eq!(build_args("codex", "  ", "hi").unwrap(), vec!["exec", "hi"]);
+        assert_eq!(
+            build_args("codex", "  ", "hi").unwrap(),
+            vec!["exec", "--skip-git-repo-check", "hi"]
+        );
         assert_eq!(build_args("gemini", "", "hi").unwrap(), vec!["-p", "hi"]);
         assert_eq!(build_args("opencode", "", "hi").unwrap(), vec!["run", "hi"]);
         assert_eq!(build_args("pi", "", "hi").unwrap(), vec!["-p", "hi"]);
@@ -518,7 +529,7 @@ mod tests {
         );
         assert_eq!(
             build_args("codex", "gpt-5", "hi").unwrap(),
-            vec!["exec", "--model", "gpt-5", "hi"]
+            vec!["exec", "--skip-git-repo-check", "--model", "gpt-5", "hi"]
         );
         // Gemini: -m before -p, and -p takes the prompt as its value.
         assert_eq!(
