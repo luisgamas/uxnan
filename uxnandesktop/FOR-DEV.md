@@ -59,7 +59,9 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
 - **Full git review** — status / diff / stage / commit / push / pull with a 3 s
   focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level staging,
   side-by-side toggle, visual image diffs, and optional AI commit-message
-  generation via a local CLI agent.
+  generation via a local CLI agent. The Changes header also offers **Check remote**
+  (`git_fetch` → refreshed ahead/behind, read-only), so the *behind* count and the
+  **Pull** button stop waiting on some other fetch.
 - **Agent monitoring (Phase 4)** — Layer 1 local HTTP hook server (`axum`, precise
   `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
   (OSC, path/word-boundary-hardened) + Layer 3 process-tree detection; colored
@@ -89,7 +91,11 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
   launch shell (Command Prompt by default on Windows), virtualized lists
-  (`@tanstack/svelte-virtual`), opt-in keep-awake (Windows).
+  (`@tanstack/svelte-virtual`), opt-in keep-awake (Windows). The left sidebar's
+  quick actions are just **Search**: Settings moved into a configurable **profile
+  card pinned to the sidebar footer** (`SidebarProfile.svelte` — avatar via the
+  shared `IconPicker`/`EntityIcon`, name, description; persisted in
+  `AppSettings.profile`, edited from `SidebarProfileDialog.svelte`).
 - **In-app auto-updater** (`tauri-plugin-updater`) — Settings → Updates with
   stable/nightly channels (mapped to GitHub's pre-release flag), background
   download + agent-idle-guarded install (a restart stops agents, so the install
@@ -114,11 +120,15 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   `{repoName}`/`{path}` tokens, resolves the shell (a terminal profile) + cwd, and
   dispatches to a **new tab** or the **focused terminal** (`pty_write`), running
   immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
-- **GitHub integration (`gh`-backed)** — a full-screen **GitHub section** (Overview /
-  Pull Requests / Issues / Actions / Account / Settings), a configurable **right-panel
-  GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR badges**, a
-  **status-bar button** (rate-limit gauge + optional notifications), and a post-push
-  **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
+- **GitHub integration (`gh`-backed)** — a **per-project inline GitHub view**
+  (Pull Requests / Issues / Actions, opened from each project card's **⋯ menu →
+  GitHub**; it replaces the center + right panels, leaving the left sidebar and the
+  browser panel in place, and closes when any worktree is activated —
+  `app.githubInline`), with the **Account / Session** panel and every GitHub
+  preference in **Settings → GitHub** (`GithubSettings.svelte`); a configurable
+  **right-panel GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR
+  badges**, a passive **status-bar indicator** (rate-limit gauge + optional
+  notifications; it no longer navigates), and a post-push **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
   **close/reopen** + the unified **diff** (**split per file**, collapsed by default +
   expand/collapse-all); a **GitHub-style timeline** (a chronological vertical rail
   interleaving description + comments + review verdicts + commits + events —
@@ -209,7 +219,8 @@ Deferred:
       need `glab` or a native API layer. Out of scope for now (the remote parser already
       recognizes GitLab hosts).
 - [ ] **PR review as a dockable center tab.** Today review/diff/issue/log open as a
-      master-detail inside the GitHub section (full-screen). Making them **center tabs**
+      master-detail inside the inline GitHub view (which itself replaces the center +
+      right panels while it is open). Making them **center tabs**
       that coexist with terminals needs a new tab kind across the terminals tab system
       (`terminals.svelte.ts` + `TerminalArea.svelte` rendering + serialization) — a
       larger, riskier change deferred as a UX refinement.
@@ -219,7 +230,7 @@ Deferred:
 - [ ] **"Clone from GitHub" UI entry.** The backend command + api wrapper exist
       (`github_clone` / `githubClone`, `gh repo clone`), but no UI surface calls them
       yet. Wire a small entry (a repo field + destination dir → clone → `repo_add`),
-      e.g. from the Add-project dialog or the GitHub section.
+      e.g. from the Add-project dialog or the GitHub view.
 - [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
       worktrees (context cache), not eagerly for every worktree (that would poll a PR
       per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.

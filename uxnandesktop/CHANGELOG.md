@@ -26,7 +26,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   now open the inline view for the active repo. New state `app.githubInline` /
   `openGithubInline` / `closeGithub`, `SettingsSection` gains `"github"`, `GithubSection`
   is now `pulls | issues | actions`. Docs: `docs/github.md`, `architecture/02a` §3 +
-  `02c` §6 + `04`.
+  `02c` §6 + `04`, plus the `FOR-DEV.md` `## Status` entry and the monorepo
+  `AGENTS.md` status note (both still described the removed full-screen section).
 
 ### Changed — left sidebar: a configurable profile card replaces the GitHub/Settings nav buttons
 

@@ -7,7 +7,6 @@
   import { app } from "$lib/state/app.svelte";
   import { github } from "$lib/state/github.svelte";
   import { i18n } from "$lib/i18n";
-  import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { aiCommitAgents, aiCommitModels } from "$lib/api";
