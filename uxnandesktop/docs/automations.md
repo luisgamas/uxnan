@@ -58,9 +58,13 @@ The **scheduling badge** never flatters: if the task is not registered it says s
 and if the OS refused it, it shows the operating system's own message rather than a
 friendlier one that hides what to fix.
 
-In the graph editor, a prompt that references a step it does not wait for is
-flagged — that is the exact mistake that makes a hand-off arrive empty — with a
-one-click fix.
+Under every prompt field, the graph editor lists **the values that prompt can
+carry** — what an earlier step will answer, what a step answered in the previous
+run, the working folder — each explained in plain language and inserted at the
+cursor with one click. Inserting an earlier step's answer also makes the step
+wait for it, and says so first. A prompt that references a step it does *not*
+wait for is flagged separately, with a one-click fix; that is the exact mistake
+that makes a hand-off arrive empty.
 
 ## How it runs
 

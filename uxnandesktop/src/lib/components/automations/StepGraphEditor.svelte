@@ -11,6 +11,7 @@
   import { cn } from "$lib/utils";
   import { icon, iconButton, panel, text } from "$lib/design";
   import { nextStepId, newStep, type Step } from "$lib/automations/types";
+  import { insertToken } from "$lib/automations/insert";
   import Combobox, { type ComboGroup } from "$lib/components/Combobox.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { app } from "$lib/state/app.svelte";
@@ -19,9 +20,9 @@
   import { Textarea } from "$lib/components/ui/textarea";
   import { Switch } from "$lib/components/ui/switch";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import StepVariablePicker from "./StepVariablePicker.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import ArrowDownToLineIcon from "@lucide/svelte/icons/arrow-down-to-line";
 
   let {
     steps = $bindable(),
@@ -59,14 +60,26 @@
     steps = steps.map((s) => (s.id === step.id ? { ...s, dependsOn } : s));
   }
 
-  /** Insert a reference to another step's output at the end of a prompt. */
-  function insertRef(step: Step, depId: string) {
-    const token = `{{steps.${depId}.output}}`;
-    const prompt = step.prompt ? `${step.prompt}\n\n${token}` : token;
-    const dependsOn = step.dependsOn.includes(depId)
-      ? step.dependsOn
-      : [...step.dependsOn, depId];
-    steps = steps.map((s) => (s.id === step.id ? { ...s, prompt, dependsOn } : s));
+  // Each step's textarea, so an inserted value lands **at the cursor** rather
+  // than tacked onto the end — the value usually belongs mid-sentence.
+  const fields = new Map<string, HTMLTextAreaElement>();
+
+  /** Insert `token` into `step`'s prompt at the cursor, and start waiting for
+   *  `dependsOn` when the value comes from an earlier step in this run. The
+   *  fiddly part is pure and unit-tested in `$lib/automations/insert`. */
+  function insertValue(step: Step, token: string, dependsOn?: string) {
+    const el = fields.get(step.id);
+    const start = el?.selectionStart ?? step.prompt.length;
+    const end = el?.selectionEnd ?? step.prompt.length;
+    const result = insertToken(step, token, start, end, dependsOn);
+
+    steps = steps.map((s) => (s.id === step.id ? result.step : s));
+
+    // Put the caret after what was just inserted, so typing continues naturally.
+    queueMicrotask(() => {
+      el?.focus();
+      el?.setSelectionRange(result.caret, result.caret);
+    });
   }
 
   /** Steps a given step may depend on: everything declared before it, so the
@@ -142,6 +155,13 @@
 
       <Textarea
         rows={3}
+        bind:ref={
+          () => fields.get(step.id) ?? null,
+          (el) => {
+            if (el) fields.set(step.id, el);
+            else fields.delete(step.id);
+          }
+        }
         placeholder={i18n.t("automations.promptPlaceholder")}
         value={step.prompt}
         oninput={(e) =>
@@ -170,25 +190,18 @@
               {dep.id}
             </button>
           {/each}
-          <span class="flex-1"></span>
-          {#each deps as dep (dep.id)}
-            <TooltipSimple title={i18n.t("automations.insertOutput", { id: dep.id })}>
-              {#snippet children(tp)}
-                <Button
-                  {...tp}
-                  variant="ghost"
-                  size="icon-sm"
-                  class={iconButton.xs}
-                  aria-label={i18n.t("automations.insertOutput", { id: dep.id })}
-                  onclick={() => insertRef(step, dep.id)}
-                >
-                  <ArrowDownToLineIcon class="size-3" />
-                </Button>
-              {/snippet}
-            </TooltipSimple>
-          {/each}
         </div>
       {/if}
+
+      <!-- Every value this prompt can carry, explained and one click away. The
+           tokens are invisible knowledge otherwise: nobody discovers
+           `{{steps.s1.output}}` by looking at a text box. -->
+      <StepVariablePicker
+        {step}
+        earlier={deps}
+        all={steps}
+        oninsert={(token, dependsOn) => insertValue(step, token, dependsOn)}
+      />
 
       <!-- Autonomy is per step and off by default. A headless agent cannot ask
            a human, so without this several CLIs auto-deny their tools and the

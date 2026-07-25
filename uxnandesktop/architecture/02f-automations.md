@@ -365,7 +365,31 @@ selector de carpeta, que es modal por naturaleza.
 | Plantillas | Los cuatro ejemplos que se envian (§6.3); restaurar uno lo repone bajo su mismo id |
 | Ajustes | Diagnostico del programador del SO (cuantas activas estan realmente registradas, con re-comprobacion) y donde viven las corridas |
 
-### 6.1 El indicador de programacion
+### 6.1 El selector de valores
+
+`{{steps.s1.output}}` es **conocimiento invisible**: nadie lo descubre mirando una
+caja de texto, y quien no leyo la documentacion no tiene forma de saber que una
+automatizacion puede pasarle la respuesta de un agente al siguiente. Por eso, bajo
+cada campo de prompt, el editor lista **todos los valores que ese prompt puede
+llevar**, en lenguaje llano y a un clic — la misma idea que el selector de contexto
+de la consola de orquestacion, con las variables que existen de este lado.
+
+Tres grupos, cada uno explicado: **de un paso anterior de esta corrida** (su
+respuesta, su nombre), **de la corrida anterior** (lo que ese paso respondio la vez
+pasada, para retomar donde se quedo) y **sobre esta corrida** (la carpeta de trabajo).
+
+Insertar el valor de un paso anterior **tambien hace que este paso lo espere**, y lo
+dice antes de que hagas clic: un prompt que cita un paso del que no depende es la
+forma clasica de acabar con un traspaso vacio, asi que el camino comun ya no puede
+producirlo.
+
+El valor cae **en el cursor** y reemplaza la seleccion — un valor casi siempre va a
+mitad de la frase, no al final — y el cursor queda despues de lo insertado. Esa
+logica es pura y esta unit-testeada (`$lib/automations/insert`), incluida una
+seleccion al reves, un cursor obsoleto mas alla del final del texto, y un paso al
+que se le pediria esperarse a si mismo.
+
+### 6.2 El indicador de programacion
 
 `SchedulerBadge` es la valvula de honestidad de §5.3 hecha pixel: dice el estado
 en los cuatro casos y, cuando el registro fallo, muestra **el mensaje del sistema
@@ -373,7 +397,7 @@ operativo tal cual**. El Resumen levanta esas automatizaciones a lo alto de la
 pantalla, porque "activa pero el SO no la va a disparar" es el modo de fallo que
 mas importa ver.
 
-### 6.2 Ejemplos sembrados
+### 6.3 Ejemplos sembrados
 
 La primera vez que se abre la pantalla, uxnan siembra **cuatro automatizaciones de
 ejemplo**. La razon es tanto pedagogica como de interfaz: con la lista vacia, el
@@ -400,7 +424,7 @@ Reglas que las hacen seguras de enviar:
 Las definiciones viven en un solo sitio (`$lib/automations/examples.ts`) y las usan
 tanto el sembrado como Plantillas, de modo que no pueden desfasarse.
 
-### 6.3 La matematica de calendario vive aqui
+### 6.4 La matematica de calendario vive aqui
 
 La vista previa de proximas ejecuciones y el `startBoundary` que se manda al
 backend se calculan en `automations/schedule.ts` (puro, unit-testeado), no en

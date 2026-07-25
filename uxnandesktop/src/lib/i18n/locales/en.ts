@@ -1656,7 +1656,6 @@ export const en = {
   "automations.promptPlaceholder": "What to ask the agent...",
   "automations.pickAgent": "Agent",
   "automations.runsAfter": "Runs after",
-  "automations.insertOutput": "Insert the output of {id}",
   "automations.unlinkedRefs": "This prompt quotes {ids} but does not wait for it, so the output would arrive empty.",
   "automations.linkThem": "Wait for it",
   "automations.catchUp": "Recover missed runs",
@@ -1755,6 +1754,19 @@ export const en = {
   "automations.tplWatchS1Prompt": "Summarize the commits from the last 30 minutes in this repository. One line each. If there are none, reply with exactly: nothing new.",
   "automations.tplWatchS2": "Flag anything risky",
   "automations.tplWatchS2Prompt": "Read this summary of recent commits and say whether any of it looks risky enough to look at today. Be brief, and say so plainly if nothing does.\n\n{{steps.s1.output}}",
+  "automations.varTitle": "Values you can drop into this prompt",
+  "automations.varIntro": "An automation can pass what one agent answered into the next one's prompt. Click a value to insert it where your cursor is.",
+  "automations.varFromStep": "From an earlier step in this run",
+  "automations.varFromPrev": "From the previous run",
+  "automations.varAboutRun": "About this run",
+  "automations.varStepOutputDesc": "Whatever “{title}” answers when it runs.",
+  "automations.varWillWait": "Inserting this also makes this step wait for {id}, so the answer is ready when it arrives.",
+  "automations.varItsAnswer": "Its answer",
+  "automations.varItsName": "Its name",
+  "automations.varPrevIntro": "The last time this automation ran. Useful for picking up where it left off instead of starting over.",
+  "automations.varPrevOutputDesc": "What “{title}” answered the previous time this automation ran.",
+  "automations.varWorkingDirDesc": "The folder this automation runs in.",
+  "automations.varInsert": "Insert",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

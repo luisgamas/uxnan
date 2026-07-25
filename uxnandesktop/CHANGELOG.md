@@ -61,6 +61,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Added — the values a prompt can carry are now offered where the prompt is written
+
+- `{{steps.s1.output}}` was invisible knowledge: nobody discovers it by looking at a
+  text box, and someone who has not read the docs has no way to know an automation can
+  pass one agent's answer to the next. Every value a step can plant is now listed under
+  its prompt field, **in plain language**, one click away — the same idea as the
+  orchestration console's context picker, with the variables that exist on this side.
+- Three groups, each explained: **from an earlier step in this run** (its answer, its
+  name), **from the previous run** (what that step answered last time, for picking up
+  where it left off), and **about this run** (the working folder).
+- Inserting a value from an earlier step also makes the step **wait** for it, and says
+  so before you click. A prompt quoting a step it does not depend on is the classic way
+  to end up with an empty hand-off; now the common path cannot produce one.
+- The value lands **at the cursor** and replaces a selection, because a value usually
+  belongs mid-sentence rather than appended; the caret ends up after it so typing
+  continues naturally. That logic is pure and unit-tested (`$lib/automations/insert`),
+  including a backwards selection, a stale caret past the end of the text, and a step
+  that would otherwise be made to wait for itself.
+- Replaces the bare "insert output" chips, which showed a token without ever saying
+  what it was.
+- 10 new Vitest tests (285).
+
 ### Added — Automations ship with four working examples
 
 - A machine that has never seen them is offered **four example automations** the first

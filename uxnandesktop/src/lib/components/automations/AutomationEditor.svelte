@@ -2,6 +2,7 @@
   // The editor — a full page inside the section, never a dialog. Editing an
   // automation means reading its whole shape at once (folder, cadence, graph,
   // policy); a modal that covers the thing being edited would fight that.
+  import { untrack } from "svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, panel, text } from "$lib/design";
@@ -26,8 +27,12 @@
     onback,
   }: { automation: Automation; onback: () => void } = $props();
 
-  // A working copy, so an abandoned edit changes nothing.
-  let draft = $state<Automation>(structuredClone($state.snapshot(automation)));
+  // A working copy, so an abandoned edit changes nothing. Deliberately taken
+  // once: the draft is the user's in-progress edit, and re-syncing it to the
+  // stored automation mid-edit would throw their typing away.
+  let draft = $state<Automation>(
+    untrack(() => structuredClone($state.snapshot(automation))),
+  );
   let saving = $state(false);
   let folderOpen = $state(false);
   let tagsText = $state(draft.tags.join(", "));
