@@ -736,6 +736,8 @@ export interface PetManifestData {
   displayName?: string;
   description?: string;
   spritesheetPath?: string;
+  /** 2 marks the 8x11 layout whose last two rows are look-direction poses. */
+  spriteVersionNumber?: number;
   frame?: { width: number; height: number; columns: number; rows: number };
   animations?: Record<
     string,

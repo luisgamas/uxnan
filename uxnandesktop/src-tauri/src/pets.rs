@@ -96,6 +96,15 @@ pub struct PetManifest {
     pub frame: Option<FrameSpec>,
     #[serde(default)]
     pub animations: HashMap<String, AnimationSpec>,
+    /// Every field this app does not interpret, preserved verbatim. The import
+    /// re-writes the manifest it parsed (so what's stored is the sanitized one),
+    /// and dropping unknown fields there would corrupt real packs: v2 packs
+    /// declare `spriteVersionNumber: 2`, without which Codex rejects their
+    /// 11-row sheet — an imported pet copied back to `~/.codex/pets` must stay
+    /// exactly as valid as it arrived. The frontend reads the version from here
+    /// too (look-direction rows exist only in v2 sheets).
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// An installed pet, as handed to the frontend. The sheet itself is *not*
@@ -659,6 +668,36 @@ mod tests {
         assert!(read_sheet(&data, "stacky")
             .unwrap()
             .starts_with("data:image/webp;base64,"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// v2 packs carry fields this app doesn't interpret (`spriteVersionNumber`);
+    /// the validating re-write on import must preserve them — a pack copied back
+    /// to `~/.codex/pets` would otherwise be rejected by Codex, which refuses an
+    /// 11-row sheet whose manifest lacks the version field.
+    #[test]
+    fn import_preserves_fields_it_does_not_interpret() {
+        let root = tmp();
+        let src = write_pet(
+            &root,
+            "uxni",
+            r#"{"id":"uxni","displayName":"Uxni","spriteVersionNumber":2,
+                "spritesheetPath":"spritesheet.png"}"#,
+        );
+        let data = root.join("appdata");
+        import(&data, &src, "", false).unwrap();
+        let stored: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(pets_root(&data).join("uxni").join("pet.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(stored["spriteVersionNumber"], 2);
+        // Listing exposes it to the frontend as part of the manifest as well —
+        // the renderer keys the look-direction rows off it.
+        let listed = list(&data).unwrap();
+        assert_eq!(
+            serde_json::to_value(&listed[0].manifest).unwrap()["spriteVersionNumber"],
+            2
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
