@@ -83,11 +83,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   signal; it is disabled in the Settings preview, under `prefers-reduced-motion`
   and with *Animate* off. Scheduling is a pure, unit-tested module
   (`src/lib/pets/personality.ts`).
-- The bundled pet is **Uxni**, the real mascot, shipped as an ordinary pack in
-  `static/pets/uxni/` — an 8 x 11 sheet with one animation per row, drawn per
-  state (idle, running, waving, jumping, sad, waiting, blocked, celebrating).
-  It is data, not generated art: swapping the mascot means replacing the files in
-  that folder.
+- The bundled pet is **Uxni**, the real mascot, shipped as an ordinary v2 pack in
+  `static/pets/uxni/` — an 8 x 11 sheet whose rows 0–8 hold one animation per
+  state (idle, running, waving, jumping, sad, waiting, blocked, celebrating) and
+  whose rows 9–10 hold the 16 look-direction poses. It is data, not generated
+  art: swapping the mascot means replacing the files in that folder.
+- **The pet answers the mouse**, the way the desktop reference does. While
+  resting, a v2 pack **watches the cursor**: rows 9–10 of the sheet are a
+  16-pose clockwise look loop (22.5° steps, 0° = looking up; neutral/front is
+  the pointer deadzone, which rests on idle), and the pet holds the pose facing
+  the pointer, lingering a few seconds after it stops. **Clicking pokes it** — a
+  jump reaction, on top of the existing jump-to-the-agent click. **Dragging
+  carries it**: it holds the v2 looking-down pose (or wiggles through `jumping`
+  for packs without look rows) until released. Look maths are a pure,
+  unit-tested module (`src/lib/pets/look.ts`).
+- **Fixed: any import or delete broke every generated pack's animations.** The
+  library is rebuilt on each reload but the spritesheet cache is not, and the
+  sheet loader skipped re-deriving the grid and animations for a cached sheet —
+  leaving the freshly-parsed pets animation-less, so the renderer fell back to
+  **sweeping the entire sheet at 125 ms a frame** (an 11-second flicker through
+  every row, look poses included, fast enough that individual poses barely
+  registered). A pet now records when its layout is final and the loader
+  re-measures fresh objects even when their sheet is cached.
+- **Imported packs keep the fields uxnan doesn't interpret.** The validating
+  re-write on import dropped unknown manifest fields, including
+  `spriteVersionNumber` — without which Codex rejects a v2 pack's 11-row sheet,
+  so a pet imported here and copied back to `~/.codex/pets` stopped loading
+  there. Unknown fields now round-trip verbatim.
 - **Generated packs work without hand-editing.** A `hatch-pet` pack — which is
   what Codex's `/hatch` and the community galleries produce — ships only an id, a
   description and a sheet path: no `frame`, no `animations`, because the layout is

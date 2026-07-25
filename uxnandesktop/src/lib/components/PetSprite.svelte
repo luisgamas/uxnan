@@ -10,7 +10,12 @@
   // of 60, and a settled one-shot or a still frame schedules nothing at all.
   // The animation is also fully parked while the window is hidden, and reduced
   // to a single frame under `prefers-reduced-motion`.
-  import { resolveAnimation, framePosition, type Pet } from "$lib/pets/manifest";
+  import {
+    BASE_ANIMATION,
+    resolveAnimation,
+    framePosition,
+    type Pet,
+  } from "$lib/pets/manifest";
   import { frameAt, msUntilNextFrame } from "$lib/pets/animator";
   import { planFlavour, FLAVOUR_SLOWDOWN } from "$lib/pets/personality";
 
@@ -28,6 +33,17 @@
      *  around while resting, wave when it needs you). Off for previews, where
      *  the point is to show one state exactly as chosen. */
     flavour?: boolean;
+    /** Interaction one-shot (e.g. the click reaction): an animation played at
+     *  full pace, winning over flavour, look and the base loop. The caller owns
+     *  its lifetime — set it, then clear it to resume. */
+    override?: string | null;
+    /** Static pose held while the pet is being carried. Wins over everything,
+     *  including `override` — a dragged pet is busy being dragged. */
+    holdFrame?: number | null;
+    /** Static look pose (a sheet index from the v2 look rows). Only honored
+     *  while the pet is resting on its idle loop — a pet mid-state keeps
+     *  playing that state. */
+    lookFrame?: number | null;
     class?: string;
   }
 
@@ -38,6 +54,9 @@
     size = 96,
     animate = true,
     flavour = true,
+    override = null,
+    holdFrame = null,
+    lookFrame = null,
     class: className = "",
   }: Props = $props();
 
@@ -50,7 +69,9 @@
   $effect(() => {
     const base = animation;
     flavourAnim = null;
-    if (!flavour || !animate || reduced || !visible) return;
+    // No decoration while an interaction plays: the user's poke owns the stage,
+    // and the cycle restarts cleanly once the override clears.
+    if (!flavour || !animate || reduced || !visible || override) return;
 
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -77,13 +98,14 @@
     };
   });
 
-  const resolved = $derived(resolveAnimation(pet, flavourAnim ?? animation));
+  const resolved = $derived(resolveAnimation(pet, override ?? flavourAnim ?? animation));
 
   // A flavour is decoration, so it plays slower than the very same animation
   // would when a real state triggers it — see `FLAVOUR_SLOWDOWN`. State-driven
-  // animations are never stretched: there, the pace is the message.
+  // animations and interaction overrides are never stretched: there, the pace
+  // is the message.
   const anim = $derived(
-    flavourAnim
+    flavourAnim && !override
       ? {
           ...resolved,
           frames: resolved.frames.map((f) => ({ ...f, ms: f.ms * FLAVOUR_SLOWDOWN })),
@@ -97,6 +119,22 @@
   let reduced = $state(false);
   /** Park the animation entirely while the window is hidden (zero wakeups). */
   let visible = $state(true);
+
+  /** Static pose to hold instead of animating, when an interaction asks for
+   *  one. Carried (`holdFrame`) wins outright; a look pose only applies while
+   *  the pet is genuinely resting. Reduced motion keeps its still frame. */
+  const staticFrame = $derived(
+    reduced || !animate
+      ? null
+      : holdFrame != null
+        ? holdFrame
+        : override == null &&
+            flavourAnim == null &&
+            animation === BASE_ANIMATION &&
+            lookFrame != null
+          ? lookFrame
+          : null,
+  );
 
   $effect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -118,6 +156,11 @@
   // first frame rather than joining the new cycle part-way through.
   $effect(() => {
     const a = anim;
+    // A held pose is a single frame: show it and schedule nothing.
+    if (staticFrame !== null) {
+      frame = staticFrame;
+      return;
+    }
     frame = a.frames[0]?.index ?? 0;
     if (reduced || !animate || !visible) return;
 

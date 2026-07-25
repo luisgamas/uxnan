@@ -10,12 +10,25 @@
   // snaps to the nearest corner and remembers its exact offset. Dragging is
   // pointer-based because Tauri suppresses HTML5 drag-and-drop in the webview
   // (same reason the file tree drags with pointer events).
+  //
+  // The pet is also *interactive*, the way the desktop reference is: while
+  // resting it watches the cursor (the v2 look rows), clicking it makes it
+  // jump, and while carried it looks down at the ground.
   import { app } from "$lib/state/app.svelte";
   import { pets } from "$lib/state/pets.svelte";
   import { animationFor, type PetState } from "$lib/pets/status";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { PET_SIZE_MAX, PET_SIZE_MIN, nearestPetSize } from "$lib/pets/manifest";
+  import {
+    hasLookPoses,
+    lookAngle,
+    lookFrameIndex,
+    LOOK_DEADZONE_PX,
+    LOOK_DOWN_DEG,
+    LOOK_LINGER_MS,
+  } from "$lib/pets/look";
+  import { DRAG_ANIMATION, REACTION_ANIMATION, REACTION_MS } from "$lib/pets/interactions";
   import PetSprite from "./PetSprite.svelte";
   import type { PetCorner } from "$lib/types";
 
@@ -44,9 +57,55 @@
   let origin = { x: 0, y: 0 };
   /** Distinguishes a click (focus the agent) from a drag (reposition). Only set
    *  once the pointer travels past [`DRAG_SLOP`], so the hand-shake in an
-   *  ordinary click doesn't swallow it. */
-  let moved = false;
+   *  ordinary click doesn't swallow it. Reactive: the carried pose keys off it. */
+  let moved = $state(false);
   let root = $state<HTMLDivElement | null>(null);
+
+  /** Look pose currently held toward the cursor (a sheet index), if any. */
+  let lookFrame = $state<number | null>(null);
+  /** Click reaction currently playing, if any. */
+  let reaction = $state<string | null>(null);
+  let reactionTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** True while the pet is actually being carried (pointer down + past slop). */
+  const dragging = $derived(dragAt !== null && moved);
+  /** The carried pose: looking straight down at the ground, when the pack has
+   *  the v2 look rows. Packs without them wiggle through [`DRAG_ANIMATION`]. */
+  const dragPose = $derived(pet ? lookFrameIndex(pet, LOOK_DOWN_DEG) : null);
+  /** Whether the pet is resting (memoized so the cursor-watch effect doesn't
+   *  re-subscribe on every clock tick that re-derives the instance). */
+  const resting = $derived(instance?.state === "idle");
+
+  // Watch the cursor while resting: the pet turns toward it (16 poses, v2
+  // packs), holds the glance for a while after the cursor stops, and goes back
+  // to breathing inside the deadzone. Listener-driven — no polling.
+  $effect(() => {
+    const p = pet;
+    if (!p || !resting || settings.animate === false || !hasLookPoses(p)) {
+      lookFrame = null;
+      return;
+    }
+    let linger: ReturnType<typeof setTimeout> | undefined;
+    const onMove = (e: MouseEvent) => {
+      if (dragAt) return; // carried: the drag pose owns the eyes
+      const rect = root?.getBoundingClientRect();
+      if (!rect) return;
+      const dx = e.clientX - (rect.left + rect.width / 2);
+      const dy = e.clientY - (rect.top + rect.height / 2);
+      // The deadzone scales with the pet so a large sprite isn't cross-eyed
+      // about a cursor brushing its own feet.
+      const dead = Math.max(LOOK_DEADZONE_PX, rect.height * 0.45);
+      lookFrame = Math.hypot(dx, dy) <= dead ? null : lookFrameIndex(p, lookAngle(dx, dy));
+      clearTimeout(linger);
+      linger = setTimeout(() => (lookFrame = null), LOOK_LINGER_MS);
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      clearTimeout(linger);
+      lookFrame = null;
+    };
+  });
 
   /** Pointer travel (px) before a press counts as a drag rather than a click. */
   const DRAG_SLOP = 4;
@@ -100,9 +159,19 @@
 
   function onClick(instanceTabId: string | undefined) {
     // A drag that ended over the pet must not also count as a click.
-    if (moved || settings.clickToFocus === false) return;
+    if (moved) return;
+    // A poke always gets an answer, even when there is no agent to jump to.
+    if (settings.animate !== false) {
+      reaction = REACTION_ANIMATION;
+      clearTimeout(reactionTimer);
+      reactionTimer = setTimeout(() => (reaction = null), REACTION_MS);
+    }
+    if (settings.clickToFocus === false) return;
     pets.focus(instanceTabId);
   }
+
+  // Clear a pending reaction timer when the layer unmounts.
+  $effect(() => () => clearTimeout(reactionTimer));
 
   /** Human-readable state, reused for the tooltip and the accessible label. */
   function stateLabel(state: PetState): string {
@@ -149,6 +218,9 @@
           animation={animationFor(instance.state)}
           {size}
           animate={settings.animate !== false}
+          override={dragging && dragPose === null ? DRAG_ANIMATION : reaction}
+          holdFrame={dragging ? dragPose : null}
+          {lookFrame}
         />
       </button>
   </div>

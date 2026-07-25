@@ -19,6 +19,13 @@ import {
   STATE_LIFETIME_MS,
 } from "./status";
 import { planFlavour, hasFlavour, FLAVOUR_SLOWDOWN } from "./personality";
+import {
+  hasLookPoses,
+  lookAngle,
+  lookFrameIndex,
+  LOOK_DOWN_DEG,
+  LOOK_POSES,
+} from "./look";
 
 /** Sprite indices of an animation, ignoring timing. */
 const idx = (anim: PetAnimation) => anim.frames.map((f) => f.index);
@@ -201,6 +208,80 @@ describe("defaultAnimations", () => {
     expect(idx(ANIMS.waving).slice(0, 4)).toEqual([24, 25, 26, 27]);
     expect(idx(ANIMS.jumping).slice(0, 5)).toEqual([32, 33, 34, 35, 36]);
     expect(idx(ANIMS.idle)).toHaveLength(6);
+  });
+});
+
+describe("look poses (v2 rows 9–10)", () => {
+  /** A v2 pack the way `/hatch` writes it: version declared, layout derived. */
+  const v2 = () => {
+    const pet = parsePet({ id: "uxni", spriteVersionNumber: 2 }, "uxni");
+    pet.frame = { ...pet.frame, columns: 8, rows: 11 }; // as measured from the sheet
+    return pet;
+  };
+
+  it("reads the declared sprite version, defaulting to none", () => {
+    expect(parsePet({ spriteVersionNumber: 2 }, "x").spriteVersion).toBe(2);
+    expect(parsePet(CODEX_MANIFEST, "x").spriteVersion).toBe(0);
+  });
+
+  it("offers look poses only for sheets that actually have the rows", () => {
+    expect(hasLookPoses(v2())).toBe(true);
+    // A v1 sheet (9 rows) has no look rows, declared version or not.
+    expect(hasLookPoses(parsePet({ spriteVersionNumber: 2 }, "x"))).toBe(false);
+    // A pack that declared its own 11-row layout and animations knows better
+    // than the convention — no look rows unless it declares the version.
+    const explicit = parsePet(
+      {
+        frame: { width: 192, height: 208, columns: 8, rows: 11 },
+        animations: { idle: { frames: [0, 1] } },
+      },
+      "x",
+    );
+    expect(hasLookPoses(explicit)).toBe(false);
+    // A stripped pack (version lost by an older import) still qualifies once
+    // the sheet measures 11 rows.
+    const stripped = parsePet({ id: "uxni" }, "uxni");
+    stripped.frame = { ...stripped.frame, rows: 11 };
+    expect(hasLookPoses(stripped)).toBe(true);
+  });
+
+  it("measures angles clockwise from 12 o'clock", () => {
+    expect(lookAngle(0, -1)).toBe(0); // up
+    expect(lookAngle(1, 0)).toBe(90); // right
+    expect(lookAngle(0, 1)).toBe(180); // down
+    expect(lookAngle(-1, 0)).toBe(270); // left
+  });
+
+  it("maps each of the 16 directions onto rows 9 and 10", () => {
+    const pet = v2();
+    // Row 9 starts at index 72 (9 * 8): 0° is its first cell.
+    expect(lookFrameIndex(pet, 0)).toBe(72);
+    expect(lookFrameIndex(pet, 90)).toBe(76);
+    // Row 10 continues the loop: 180° (looking down) is its first cell.
+    expect(lookFrameIndex(pet, LOOK_DOWN_DEG)).toBe(80);
+    expect(lookFrameIndex(pet, 270)).toBe(84);
+    expect(lookFrameIndex(pet, 337.5)).toBe(87);
+  });
+
+  it("snaps to the nearest pose and wraps past the last one", () => {
+    const pet = v2();
+    expect(lookFrameIndex(pet, 10)).toBe(72); // closer to 0° than 22.5°
+    expect(lookFrameIndex(pet, 12)).toBe(73); // closer to 22.5°
+    expect(lookFrameIndex(pet, 355)).toBe(72); // wraps back to pose 0
+    expect(lookFrameIndex(pet, -90)).toBe(84); // negative = 270°
+  });
+
+  it("covers every pose exactly once across a full turn", () => {
+    const pet = v2();
+    const seen = new Set<number>();
+    for (let i = 0; i < LOOK_POSES; i++) seen.add(lookFrameIndex(pet, i * 22.5) ?? -1);
+    expect(seen.size).toBe(LOOK_POSES);
+    expect(Math.min(...seen)).toBe(72);
+    expect(Math.max(...seen)).toBe(87);
+  });
+
+  it("declines packs without look rows", () => {
+    expect(lookFrameIndex(parsePet(CODEX_MANIFEST, "x"), 90)).toBeNull();
   });
 });
 

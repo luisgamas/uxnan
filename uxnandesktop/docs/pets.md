@@ -72,6 +72,27 @@ breaking. Flavour is off in the Settings preview, where the point is to see one
 state exactly as chosen, and off entirely under reduced motion or with *Animate*
 off. Scheduling lives in `src/lib/pets/personality.ts` (pure, unit-tested).
 
+### Interactions
+
+The pet answers the mouse the way the desktop reference does:
+
+- **It watches the cursor.** While resting, a v2 pack turns toward the pointer
+  using the 16 look poses on rows 9–10 (see *The format*), snapping to the
+  nearest 22.5° step. Inside the deadzone around the pet (or once the cursor has
+  been still for a few seconds) it goes back to breathing. Listener-driven — no
+  polling — and only while the pet is genuinely resting: a pet mid-state keeps
+  playing that state.
+- **Clicking pokes it.** A click plays the jump reaction (falling back through
+  the pack's chain for packs without one), *and* still jumps to the agent's
+  terminal when *Click to jump to the agent* is on.
+- **Dragging carries it.** While carried the pet holds the v2 looking-down pose —
+  watching the ground go by — or wiggles through `jumping` for packs without the
+  look rows.
+
+All of it obeys *Animate* and the OS reduced-motion preference: with either off,
+the pet stays a still frame. Pure maths in `src/lib/pets/look.ts` and constants
+in `src/lib/pets/interactions.ts`, both unit-tested.
+
 ### One pet
 
 There is exactly one pet. When several agents report at once it shows the most
@@ -147,6 +168,7 @@ that ecosystem — including community galleries — load here unmodified.
   | 6 | `waiting` | 150 ms | 260 ms |
   | 7 | **`running`** (the busy state) | 120 ms | 220 ms |
   | 8 | `review` | 150 ms | 280 ms |
+  | 9–10 | **look poses** (v2 only, not an animation) | held | — |
 
   Three details are easy to get wrong and all three are visible immediately:
 
@@ -163,30 +185,14 @@ that ecosystem — including community galleries — load here unmodified.
     0.66 s — `[1680, 660, 660, 840, 840, 1920]`, one breath every **6.6 s**. The
     same frames at a flat 8 fps take 0.75 s and look frantic. Every state row
     likewise closes on a longer frame than it runs.
-
-  A pack that declares either itself is trusted as-is.
-
-  | Row | Animation | Per frame | Closing frame |
-  |---|---|---|---|
-  | 0 | `idle` | 150 ms | 300 ms |
-  | 1 | `running-right` · `move_right` | 120 ms | 220 ms |
-  | 2 | `running-left` · `move_left` | 120 ms | 220 ms |
-  | 3 | `waving` · `wave` | 140 ms | 280 ms |
-  | 4 | `jumping` · `bounce` | 140 ms | 280 ms |
-  | 5 | `failed` · `sad` | 140 ms | 240 ms |
-  | 6 | `waiting` | 150 ms | 260 ms |
-  | 7 | **`running`** (the busy state) | 120 ms | 220 ms |
-  | 8 | `review` | 150 ms | 280 ms |
-
-  Two details are easy to get wrong and both are visible immediately:
-
-  - **`running` is row 7, not row 1.** Rows 1–2 are a run that *travels* — for a
-    pet that walks across a desktop. The busy state is row 7, animated in place.
-    Wiring the working state to row 1 makes the pet sprint for as long as a task
-    lasts.
-  - **Every animation closes on a longer frame** than it runs (120 ms per frame,
-    220 ms on the last). That beat is the difference between a pet that breathes
-    and one that twitches.
+- **The v2 look rows are poses, never an animation.** A pack declaring
+  `spriteVersionNumber: 2` (the 8 × 11 layout) reserves its last two rows for a
+  single continuous 16-pose clockwise "look" loop: row 9 holds 0°–157.5°, row 10
+  holds 180°–337.5°, in 22.5° steps, where **0° means looking up** (12 o'clock).
+  One pose is *held* at a time, facing the cursor (see *Interactions* below);
+  playing them in sequence is exactly the full-sheet sweep that makes a pet look
+  broken. Neutral/front has no pose — it is the pointer deadzone, where the pet
+  simply rests on `idle`.
 - **`frames`** are indices into the sheet, counted **row-major** from 0.
 - **`fps`** defaults to 8 and is capped at 60. **`loop`** defaults to true; a
   non-looping animation holds its last frame.
@@ -310,6 +316,9 @@ Tauri suppresses HTML5 drag-and-drop in the webview.
 | Manifest parsing | `src/lib/pets/manifest.ts` |
 | Frame timing | `src/lib/pets/animator.ts` |
 | Agent state → animation | `src/lib/pets/status.ts` |
+| Idle personality | `src/lib/pets/personality.ts` |
+| Look poses (v2 rows 9–10) | `src/lib/pets/look.ts` |
+| Pointer-interaction constants | `src/lib/pets/interactions.ts` |
 | Library + live state | `src/lib/state/pets.svelte.ts` |
 | Rendering | `src/lib/components/PetSprite.svelte` |
 | The floating layer | `src/lib/components/PetLayer.svelte` |
