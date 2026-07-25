@@ -50,7 +50,7 @@ Rust backend (Tauri core)  ──Tauri commands (invoke) + events (emit/listen)�
 
 Later phases add the runtime modules that are all present today — `pty.rs`,
 `git.rs` / `gitfast.rs`, `hooks.rs` / `agent_hooks.rs`, `procscan.rs`, `browse.rs`,
-`fs.rs` / `fswatch.rs`, `power.rs` and `which.rs`. The full file-by-file layout is
+`fs.rs` / `fswatch.rs`, `power.rs`, `pets.rs` and `which.rs`. The full file-by-file layout is
 in [`../README.md`](../README.md); remaining work is in [`../FOR-DEV.md`](../FOR-DEV.md).
 
 ## Frontend (`src/`)

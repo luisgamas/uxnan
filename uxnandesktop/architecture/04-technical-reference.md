@@ -172,6 +172,32 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 - [ ] Conexion movil desde la interfaz de escritorio.
 - [ ] Emparejamiento QR desde la GUI del ADE.
 
+#### T3.6 - Mascotas (pets) — ✅ Hecho (`02d` §1.7)
+
+- [x] Companero animado opcional (apagado por defecto) que refleja el estado
+      preciso de los agentes: `working`→`running`, `waiting`→`waiting`,
+      `done`→`review`, `blocked`→`failed`, nadie reportando→`idle`; los reportes
+      stale (§1.5) se ignoran.
+- [x] **Una mascota global** (gana el mas urgente: `waiting` → `blocked` → `done`
+      → `working`) **o una por agente que reporta** (modo colonia).
+- [ ] **Ventana propia de escritorio** (siempre encima, visible sobre otras apps y
+      con uxnan minimizado) — intentada y revertida; requiere pruebas interactivas
+      sobre un build empaquetado (`FOR-DEV.md`).
+- [x] Clic en la mascota revela la terminal de su agente; arrastrable, se acomoda
+      en la esquina mas cercana.
+- [x] Formato en disco **compatible con Codex** (`pet.json`/`avatar.json` + hoja
+      de sprites), asi que los paquetes de la comunidad cargan sin cambios;
+      importacion desde `~/.codex/pets` o cualquier carpeta como **copia
+      validante** (solo manifiesto + hoja referenciada).
+- [x] uxnan incluye **solo su propia mascota**; el resto lo importa el usuario y
+      su arte sigue siendo de su autor (avisos de procedencia + `ORIGIN` por
+      mascota).
+- [x] Interruptor en el menu de perfil de la sidebar + seccion **Settings → Pets**
+      (grupo General). `src-tauri/src/pets.rs`, `src/lib/pets/`,
+      [`docs/pets.md`](../docs/pets.md).
+- [ ] Generacion de mascotas con IA ("hatch") — pendiente, requiere generacion de
+      imagenes consistente en ~72 cuadros (`FOR-DEV.md → "Pets — follow-ups"`).
+
 ---
 
 ## 2. Fases de Implementacion

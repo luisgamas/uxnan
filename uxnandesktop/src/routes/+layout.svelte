@@ -9,6 +9,7 @@
   import { updater } from "$lib/state/updater.svelte";
   import { anyAgentWorking } from "$lib/state/agentDisplay";
   import { unread } from "$lib/state/unread.svelte";
+  import { pets } from "$lib/state/pets.svelte";
   import { setPreventSleep } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
@@ -59,6 +60,12 @@
   $effect(() => {
     void app.agentProfiles.length;
     app.syncAgentCommands();
+  });
+
+  // Pets are opt-in, so the library (and its spritesheet) is only loaded once the
+  // user actually enables them — a disabled companion costs nothing at boot.
+  $effect(() => {
+    if (app.settings.pets?.enabled === true && !pets.loaded) void pets.load();
   });
 
   // Apply the active theme (CSS variables + fonts + .dark class). Re-runs when

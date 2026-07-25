@@ -311,6 +311,53 @@ El merge preserva el resto de la configuracion del usuario (JSON via `serde_json
 
 ---
 
+### 1.7 Mascotas (pets): estado de agente como companero animado
+
+Una superficie **puramente cosmetica y opcional** (apagada por defecto) que consume el mismo estado preciso de la Capa 1 y lo representa como un companero animado que flota sobre el ADE. No cambia en nada como trabaja un agente.
+
+**Mapeo de estado → animacion** (1:1 con `AgentStatus`, §1.2):
+
+| Estado del agente | La mascota muestra | Animacion |
+|---|---|---|
+| `working` | Trabajando | `running` |
+| `waiting` | Te necesita | `waiting` |
+| `done` | Lista | `review` |
+| `blocked` | Bloqueada | `failed` |
+| *(nadie reportando)* | Descansando | `idle` |
+
+Un reporte **stale** (§1.5, 30 min) se ignora, de modo que la mascota vuelve a descansar en vez de seguir mimando trabajo que ya termino.
+
+**Cuantas mascotas.** Dos modos, en `AppSettings.pets.mode`:
+
+- **`global`** (default): una sola mascota para toda la app. Cuando varios agentes reportan a la vez gana el mas urgente — **`waiting` → `blocked` → `done` → `working`**.
+- **`colony`**: una mascota **por agente que reporta**, cada una siguiendo su propio trabajo. Solo es posible porque el ADE rastrea agentes individualmente (a diferencia de un CLI de sesion unica).
+
+**Clic = atajo.** Hacer clic en una mascota revela la terminal del agente que esta representando (`terminals.revealTab`), asi que el companero tambien navega, no solo decora. Se puede arrastrar a cualquier lado y se acomoda en la esquina mas cercana conservando su desplazamiento. Una ventana de escritorio propia (siempre encima) queda como pendiente en `FOR-DEV.md`.
+
+**Formato en disco (compatible con Codex).** Una mascota es una carpeta con un manifiesto (`pet.json`, o `avatar.json`) y una hoja de sprites; los paquetes hechos para ese ecosistema cargan sin modificaciones:
+
+```json
+{ "id": "…", "displayName": "…", "spritesheetPath": "spritesheet.webp",
+  "frame": { "width": 192, "height": 208, "columns": 8, "rows": 9 },
+  "animations": { "idle": { "frames": [0,1], "fps": 8, "loop": true, "fallback": "idle" } } }
+```
+
+Todos los campos son opcionales (una hoja suelta ya anima, con rejilla convencional 8 × 9 de 192 × 208 y un `idle` sintetizado que recorre la hoja). Las cadenas de `fallback` se siguen hasta `idle` y una cadena circular resuelve en vez de colgarse.
+
+**Frontera de confianza (`pets.rs`).** La importacion (desde `~/.codex/pets` o cualquier carpeta) es una **copia validante, no un clon de directorio**: solo se copian el manifiesto y la unica hoja que referencia. Los ids se validan contra traversal, `spritesheetPath` debe ser un nombre de archivo simple junto al manifiesto, la hoja debe pesar ≤ 24 MiB y oler a imagen, y la rejilla declarada esta acotada; los indices de cuadro fuera de la hoja se descartan en vez de invalidar el paquete. Lo que se guarda en disco es el manifiesto **saneado** que se parseo.
+
+**Arte.** La mascota incluida es **Uxni**, un pack en el mismo formato que cualquier otro (`static/pets/uxni/`): hoja de 8 x 11 cuadros con una animacion por fila. No se genera ni se dibuja en codigo — se reemplaza cambiando los archivos de esa carpeta.
+
+**Rejilla medida.** Cuando un manifiesto no declara `frame`, la rejilla real se **deduce de la hoja decodificada** (ancho/alto entre la celda convencional de 192 x 208). Los packs de `hatch-pet` suelen omitirla y no todos miden lo mismo — los v2 son 8 x 11 (1536 x 2288), los antiguos 8 x 9 — asi que asumir una rejilla cortaria cada cuadro en el offset equivocado.
+
+**Procedencia.** uxnan **incluye una sola mascota: la propia**. Cualquier otra la importa el usuario y su arte sigue siendo de su autor; la biblioteca y el dialogo de importacion lo dicen explicitamente, y cada mascota importada guarda su origen (`ORIGIN`), visible bajo su nombre.
+
+**Costo y accesibilidad.** El render solo despierta en frontera de cuadro (una animacion de 8 fps cuesta 8 despertares/s, no 60), se detiene por completo con la ventana oculta, dibuja **un solo cuadro fijo** con `prefers-reduced-motion` (o con *Animar* apagado) y **no carga nada** hasta que las mascotas se habilitan.
+
+Detalle de uso y formato: [`docs/pets.md`](../docs/pets.md).
+
+---
+
 ## 2. Notificaciones
 
 El sistema de notificaciones mantiene al usuario informado del progreso de los agentes, incluso cuando no esta mirando activamente la ventana del ADE.
@@ -541,6 +588,10 @@ El siguiente diagrama muestra como se conectan todos los modulos involucrados en
         v                                                      v
 [Notificaciones OS]                                    [Sidebar: badges]
                                                        [Dashboard: rows]
+                                                       [Mascota (§1.7)]
+                                                              |
+                                                              v
+                                                  [pets.rs: <app-data>/pets/]
 
 [PTY Manager (portable-pty)] <---> [Shell/Agente CLI]
      |

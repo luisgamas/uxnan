@@ -5,6 +5,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Pets: animated companions that mirror agent state
+
+- **A new opt-in companion** that floats over the ADE and animates according to what
+  the agents are doing, driven straight off the precise hook layer: `working` →
+  `running`, `waiting` → `waiting`, `done` → `review`, `blocked` → `failed`, nothing
+  reporting → `idle`. A report older than 30 min is treated as stale and ignored, so
+  the pet rests instead of miming work that already ended. **Clicking the pet reveals
+  the terminal of the agent it is showing**, so it doubles as a shortcut to whatever
+  needs you.
+- **One pet or a colony.** The default is a single companion for the whole app, with
+  the most urgent agent winning (**needs you → blocked → ready → working**). Opt into
+  **one pet per reporting agent** — each following its own work — in Settings.
+- **Codex-compatible pet format**, so packs built for that ecosystem (including the
+  community galleries) load unmodified: a folder holding `pet.json` (or `avatar.json`)
+  plus one spritesheet, with `frame` (default 8 × 9 frames of 192 × 208) and named
+  `animations` of row-major frame indices, `fps`, `loop` and `fallback` chains. Every
+  field is optional — a pack that is only a spritesheet still animates.
+- **Import from `~/.codex/pets` or any folder** (Settings → Pets), listing what was
+  found and importing individually or all at once. Import is a **validating copy, not
+  a directory clone**: only the manifest and the single spritesheet it references are
+  copied, ids are checked against path traversal, `spritesheetPath` must be a bare
+  file name beside the manifest, the sheet must be ≤ 24 MiB and sniff as an image, and
+  the declared grid is bounded — so an untrusted pack can't drop files into app data.
+  The manifest stored on disk is the sanitized one that was parsed.
+- **Attribution is explicit.** uxnan bundles exactly one pet — its own, `Uxni`
+  (`static/pets/uxni/`). Every other pet is imported by the user and stays its
+  author's work; the library and the import dialog say so (the notice in the
+  library is dismissible), and each imported pet records its origin, shown under
+  its name.
+- **Toggle in the sidebar profile menu** ("Show pet", plus a "Choose pet" submenu once
+  more than one is installed) and a full **Settings → Pets** section in the General
+  group: master switch, one-vs-colony, corner, size, animate, click-to-focus, the
+  library grid with a live preview you can step through each state, and the import
+  flow. The pet can also be **dragged anywhere** and snaps to the nearest corner,
+  remembering its offset.
+- **Cheap and accessible by construction**: the renderer wakes only on real frame
+  boundaries (an 8 fps sprite costs 8 wakeups/s, not 60), parks entirely while the
+  window is hidden, renders a single still frame under `prefers-reduced-motion` (or
+  with *Animate* off), hides itself while Settings is open, and **loads nothing at all
+  until pets are enabled**.
+- The bundled pet is **Uxni**, the real mascot, shipped as an ordinary pack in
+  `static/pets/uxni/` — an 8 x 11 sheet with one animation per row, drawn per
+  state (idle, running, waving, jumping, sad, waiting, blocked, celebrating).
+  It is data, not generated art: swapping the mascot means replacing the files in
+  that folder.
+- **A pack's grid is measured when its manifest omits `frame`.** Sheets are not
+  all the same height — `hatch-pet` v2 packs are 8 x 11 (1536 x 2288), older ones
+  8 x 9 — and those manifests routinely ship only an id and a sheet path, so
+  assuming the conventional grid sliced every frame at the wrong offset. The real
+  columns/rows are now derived from the decoded spritesheet; a pack that declares
+  its grid is trusted as-is.
+- **Fixed: the pet window had no permissions.** Tauri capabilities are scoped per
+  window and the shipped one covers only `main`, so the companion window got no
+  core permissions at all — `listen`/`emitTo` failed silently and it rendered as
+  an empty transparent rectangle. A `pet` capability now grants it exactly what it
+  needs (events, start-dragging, position/scale, close).
+- An empty import result **explains itself** instead of only reporting nothing
+  found: Codex's own eight pets are compiled into its binary rather than written
+  to disk, so `~/.codex/pets` stays empty until you install one
+  (`npx codex-pet-cli add <name>`) or create one with `/hatch`. Pointing the
+  picker at a plain folder explains what a pet folder looks like instead.
+- Backend `src-tauri/src/pets.rs` (+ `pets_list` / `pets_sheet` / `pets_scan` /
+  `pets_codex_dir` / `pets_import` / `pets_delete`), persisted `AppSettings.pets`
+  (`PetSettings`, off by default), frontend logic in `src/lib/pets/`
+  (`manifest` / `animator` / `status`), store `state/pets.svelte.ts`, components
+  `PetSprite` / `PetLayer` / `PetsSettings`. Full EN/ES i18n. 8 Rust + 24 Vitest tests
+  cover manifest parsing, traversal refusal, import scoping, the `.webp` +
+  `avatar.json` shape community packs actually ship, frame maths and the state
+  priority. Docs: [`docs/pets.md`](docs/pets.md).
+
 ### Changed — GitHub: a per-project inline view replaces the full-screen section
 
 - The full-screen GitHub overlay is gone. GitHub now opens **per project** from each

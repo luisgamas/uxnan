@@ -302,6 +302,9 @@ export interface AppSettings {
   browser?: BrowserSettings;
   /** Width (px) of the integrated browser panel (the right-side "4th panel"). */
   browserPanelWidth?: number;
+  /** Sprite-animated companions that mirror agent state (Settings → Pets, and
+   *  the sidebar profile menu's toggle). Absent or disabled = nothing renders. */
+  pets?: PetSettings;
   /** AI providers whose usage stats the user activated (Settings → Providers).
    *  Only these are polled. Empty/absent = the feature is idle. */
   usageProviders?: UsageProviderConfig[];
@@ -693,6 +696,78 @@ export interface FileChange {
   index: string;
   /** Working-tree (unstaged) status code — the `Y`. */
   worktree: string;
+}
+
+// --- Pets --------------------------------------------------------------------
+//
+// Sprite-animated companions that mirror agent state. The on-disk format is the
+// one the Codex CLI uses, so packs built for it load unmodified; parsing and
+// rendering live in `$lib/pets/`, the trust-boundary validation in
+// `src-tauri/src/pets.rs`.
+
+/** How many pets are on screen at once (mirror of Rust `PetMode`). */
+export type PetMode = "global" | "colony";
+
+/** Which screen corner the pet rests in. */
+export type PetCorner = "bottom-right" | "bottom-left" | "top-right" | "top-left";
+
+/** Pets configuration (mirror of Rust `PetSettings`). Every field is optional
+ *  here so a partially-written settings blob still reads cleanly. */
+export interface PetSettings {
+  /** Master switch, also toggled from the sidebar profile menu. Default off. */
+  enabled?: boolean;
+  /** Id of the active pet. Empty = the bundled default. */
+  activePetId?: string;
+  /** One pet, or one per reporting agent. */
+  mode?: PetMode;
+  /** Rendered pet height in px. Default 96. */
+  size?: number;
+  corner?: PetCorner;
+  /** Manual offset (px) from that corner, set by dragging the pet. */
+  offsetX?: number;
+  offsetY?: number;
+  /** Play animations; off renders a single still frame. Default true. */
+  animate?: boolean;
+  /** Clicking the pet focuses the agent it is showing. Default true. */
+  clickToFocus?: boolean;
+  /** Provenance notices the user dismissed in the import UI, by key. */
+  dismissedNotices?: string[];
+}
+
+/** The raw manifest of an installed pet (mirror of Rust `PetManifest`). Read
+ *  through `parsePet` in `$lib/pets/manifest` rather than used directly. */
+export interface PetManifestData {
+  id?: string;
+  displayName?: string;
+  description?: string;
+  spritesheetPath?: string;
+  frame?: { width: number; height: number; columns: number; rows: number };
+  animations?: Record<
+    string,
+    { frames?: number[]; fps?: number; loop?: boolean; fallback?: string }
+  >;
+}
+
+/** An installed pet as listed by the backend (mirror of Rust `InstalledPet`).
+ *  The spritesheet is fetched separately (`petsSheet`) so listing stays cheap. */
+export interface InstalledPet {
+  id: string;
+  manifest: PetManifestData;
+  /** Absolute folder, for "reveal in file manager". */
+  dir: string;
+  /** Where it came from, shown as attribution. */
+  origin: string;
+}
+
+/** A pet found in an external folder, available to import (mirror of Rust
+ *  `ImportablePet`). */
+export interface ImportablePet {
+  id: string;
+  displayName: string;
+  description?: string;
+  dir: string;
+  /** True when a pet with this id is already installed. */
+  installed: boolean;
 }
 
 /** One side of an image diff (mirror of Rust `ImageData`): the bytes as base64

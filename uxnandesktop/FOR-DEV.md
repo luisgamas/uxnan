@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 266 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **pets**). 274 Rust backend tests + 249 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -174,6 +174,69 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   **Caveat: the write side is implemented but not yet exercised against real GitHub
   data** (this repo has no PRs/issues/collaborators) — see *Validation status* under
   "GitHub integration — follow-ups" before trusting any of it in anger.
+
+- **Pets** — an opt-in animated companion that mirrors agent state, driven off the
+  precise hook layer (`working`→`running`, `waiting`→`waiting`, `done`→`review`,
+  `blocked`→`failed`, else `idle`; reports older than 30 min are stale and ignored).
+  **One global pet** (most urgent agent wins: needs-you → blocked → ready → working)
+  **or one per reporting agent** (colony). Clicking a pet reveals its agent's
+  terminal; the pet drags anywhere. It renders as a layer inside the uxnan window. The on-disk
+  format is **Codex-compatible** (`pet.json`/`avatar.json` + one spritesheet, 8 × 9
+  frames of 192 × 208 by default, `fallback` chains), so community packs load
+  unmodified; import from `~/.codex/pets` or any folder is a **validating copy**
+  (manifest + referenced sheet only, traversal-checked ids, bare-filename sheet path,
+  ≤ 24 MiB, image sniff, bounded grid). uxnan bundles **only its own pet** and says
+  so in the library + import dialog; each imported pet records its origin. Renderer
+  wakes only on frame boundaries, parks while hidden, one still frame under
+  `prefers-reduced-motion`, and loads nothing until enabled. Backend
+  `src-tauri/src/pets.rs` + `AppSettings.pets`; frontend `src/lib/pets/` +
+  `state/pets.svelte.ts` + `PetSprite`/`PetLayer`/`PetsSettings`. See
+  [`docs/pets.md`](docs/pets.md). The bundled pet is a normal pack in
+  `static/pets/uxni/` (8 x 11 sheet, one animation per row) — swapped by replacing
+  the files, not regenerated. A manifest without a `frame` has its grid **measured
+  from the decoded sheet**, since `hatch-pet` packs omit it and are not all the
+  same height.
+
+## Pets — follow-ups ☐
+
+- [ ] **Always-on-top desktop pet window** — the pet is currently a layer inside
+      the uxnan window, so it disappears when uxnan is minimized or covered. It
+      should be able to live in its own borderless, transparent, always-on-top
+      window like the Codex desktop pet. **Attempted and reverted** (2026-07-25):
+      it repeatedly broke Settings → Pets on the user's machine and none of it
+      reproduces in a browser, which is the only thing CI and local checks can
+      exercise. Land it only with interactive testing on a real packaged build.
+      Two findings worth keeping from the attempt:
+      - **Tauri capabilities are scoped per window.** `capabilities/default.json`
+        lists `"windows": ["main"]`, so a new window gets **no** permissions at
+        all and `listen`/`emitTo`/`invoke` fail silently inside it — it renders as
+        an empty transparent rectangle. It needs its own capability file.
+      - **A second window must not be a SvelteKit route.** The static build emits
+        only `index.html` (no per-route files), so `WebviewUrl::App("pet")`
+        resolves in dev via Vite's fallback and **404s in a packaged build**. Load
+        `index.html?window=pet` and branch in the root layout instead.
+      **Where:** a `pet` window built in `commands.rs`, a component rendered by
+      the root layout, and state pushed from the main window over Tauri events.
+
+- [ ] **AI pet generation ("hatch")** — create a pet from a text description instead
+      of importing one. The blocker is image generation: a usable pack needs ~72
+      *consistent* frames on a single 1536 × 1872 sheet, which the one-shot local-CLI
+      runner (`aicommit.rs`) can't produce on its own — it needs a CLI with real
+      image-generation output, and a prompt/pipeline that keeps the character stable
+      across frames. Deferred deliberately: import (from `~/.codex/pets` or a folder)
+      already covers "have several pets" end-to-end, so this is additive.
+      **Where:** a new `pets_generate` command beside `pets_import` in
+      `src-tauri/src/pets.rs`, driven from the Settings → Pets library header.
+- [ ] **Per-project / per-worktree pet binding** — today the active pet is global.
+      Binding a pet to a project or worktree (like `projectAgents` does for agents)
+      would let each workspace have its own companion. **Where:** extend
+      `PetSettings` with a bindings map + resolve in `state/pets.svelte.ts`
+      (`get active()`), which is already the single resolution point.
+- [ ] **React to non-agent events** — the pet currently only reflects agent state.
+      It could also react to CI/PR outcomes already tracked by the GitHub layer
+      (checks failed → `failed`, PR approved → `review`). **Where:**
+      `state/pets.svelte.ts` `instances`, folding `state/github.svelte.ts` into the
+      same priority collapse.
 
 ## GitHub integration — follow-ups ☐
 
@@ -507,7 +570,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 266 Rust + 225 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 274 Rust + 249 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

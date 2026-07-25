@@ -18,14 +18,16 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`updater.rs`, `which.rs`); integration tests go in `src-tauri/tests/`. ~261
+`updater.rs`, `which.rs`, `pets.rs`); integration tests go in `src-tauri/tests/`. ~274
 backend tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast
 path, the PTY lifecycle,
 the agent hook server, the integrated-browser scheme gate, process detection,
-and the updater's per-channel endpoints.
+the updater's per-channel endpoints, and the pets store (Codex-format manifest
+parsing, path-traversal refusal, and the import copy staying scoped to the
+manifest + its spritesheet).
 
 ## Frontend (Svelte / TypeScript)
 
@@ -54,7 +56,9 @@ register / unregister + `Promise.allSettled` fan-out), `utils/pointerLock.ts`
 `agentResume.ts` (the per-CLI session-resume command registry + hostile-input
 rejection), `terminal/scrollback.ts` (the scrollback clamp) and
 `terminal/windowsJunctionDetector.ts` (the Windows Redirection-Guard failure
-signature detector, incl. chunk-split matching) — 225 tests in
+signature detector, incl. chunk-split matching) and `pets/` (the Codex-compatible
+manifest parser, frame timing, and the agent-state → animation mapping +
+priority) — 249 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
