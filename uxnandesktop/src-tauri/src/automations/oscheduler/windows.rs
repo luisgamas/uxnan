@@ -336,6 +336,7 @@ mod tests {
                 on_failure: crate::automations::OnFailure::Stop,
                 max_attempts: 1,
                 timeout_ms: None,
+                autonomous: false,
             }],
             created_at: 0,
             updated_at: 0,

@@ -1739,6 +1739,9 @@ export const en = {
   "automations.recheck": "Re-check",
   "automations.storageTitle": "Where runs are stored",
   "automations.storageDesc": "Each run is its own file, written by the process that executed it.",
+  "automations.autonomous": "Let this step act on its own",
+  "automations.autonomousOnDesc": "The agent approves its own tool use: it can edit files and run commands with nobody watching.",
+  "automations.autonomousOffDesc": "Tool use is auto-denied, so the step can read and answer but not change anything. Turn this on for a step that has to do work.",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

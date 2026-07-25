@@ -1372,10 +1372,19 @@ pub async fn agent_run_headless(
     prompt: String,
     cwd: String,
     timeout_ms: Option<u64>,
+    // Opt-in auto-approve; absent means the safe default.
+    autonomous: Option<bool>,
 ) -> Result<crate::agentrun::HeadlessResult, CommandError> {
-    crate::agentrun::run_headless(&agent, &model, &prompt, &cwd, timeout_ms)
-        .await
-        .map_err(CommandError::from)
+    crate::agentrun::run_headless(
+        &agent,
+        &model,
+        &prompt,
+        &cwd,
+        timeout_ms,
+        autonomous.unwrap_or(false),
+    )
+    .await
+    .map_err(CommandError::from)
 }
 
 /// Payload of the `agent:detected` event: which agent command (if any) the

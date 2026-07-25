@@ -60,6 +60,14 @@ export interface Step {
   onFailure: OnFailure;
   maxAttempts: number;
   timeoutMs?: number | null;
+  /** Let this step's agent approve its own tool use.
+   *
+   *  Off by default and set per step on purpose. A headless agent cannot ask a
+   *  human, so with tools involved several CLIs auto-deny and come back with
+   *  nothing — Antigravity says so outright. A step that must actually change
+   *  something needs this; a step that only reads and reports should not have
+   *  it, because it lets an agent edit files and run commands unattended. */
+  autonomous: boolean;
 }
 
 export interface Automation {
@@ -180,6 +188,7 @@ export function newStep(id: string, agent = ""): Step {
     dependsOn: [],
     onFailure: "stop",
     maxAttempts: 1,
+    autonomous: false,
   };
 }
 

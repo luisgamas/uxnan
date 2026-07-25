@@ -1732,4 +1732,7 @@ export const es: Record<MessageKey, string> = {
   "automations.recheck": "Volver a comprobar",
   "automations.storageTitle": "Donde se guardan las ejecuciones",
   "automations.storageDesc": "Cada ejecucion es su propio archivo, escrito por el proceso que la ejecuto.",
+  "automations.autonomous": "Dejar que este paso actue solo",
+  "automations.autonomousOnDesc": "El agente aprueba su propio uso de herramientas: puede editar archivos y ejecutar comandos sin nadie mirando.",
+  "automations.autonomousOffDesc": "El uso de herramientas se deniega automaticamente, asi que el paso puede leer y responder pero no cambiar nada. Activalo para un paso que tenga que hacer trabajo.",
 };

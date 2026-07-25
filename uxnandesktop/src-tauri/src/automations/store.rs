@@ -294,6 +294,7 @@ mod tests {
                 on_failure: super::super::OnFailure::Stop,
                 max_attempts: 1,
                 timeout_ms: None,
+                autonomous: false,
             }],
             created_at: 1,
             updated_at: 1,

@@ -208,37 +208,39 @@ pub async fn execute(
             let prompt = resolved.text;
             let dir = cwd.to_string();
             let timeout_ms = step.timeout_ms.or(Some(DEFAULT_STEP_TIMEOUT_MS));
+            let autonomous = step.autonomous;
             inflight.spawn(async move {
-                let outcome =
-                    match crate::agentrun::run_headless(&agent, &model, &prompt, &dir, timeout_ms)
-                        .await
-                    {
-                        Ok(res) if res.exit_code == Some(0) => Outcome::Success {
-                            stdout: res.stdout,
-                            stderr: res.stderr,
-                        },
-                        Ok(res) => {
-                            let detail = res.stderr.trim();
-                            let message = if detail.is_empty() {
-                                match res.exit_code {
-                                    Some(code) => format!("the agent exited with code {code}"),
-                                    None => "the agent was terminated".to_string(),
-                                }
-                            } else {
-                                detail.to_string()
-                            };
-                            Outcome::Failure {
-                                stderr: res.stderr,
-                                exit_code: res.exit_code,
-                                message,
+                let outcome = match crate::agentrun::run_headless(
+                    &agent, &model, &prompt, &dir, timeout_ms, autonomous,
+                )
+                .await
+                {
+                    Ok(res) if res.exit_code == Some(0) => Outcome::Success {
+                        stdout: res.stdout,
+                        stderr: res.stderr,
+                    },
+                    Ok(res) => {
+                        let detail = res.stderr.trim();
+                        let message = if detail.is_empty() {
+                            match res.exit_code {
+                                Some(code) => format!("the agent exited with code {code}"),
+                                None => "the agent was terminated".to_string(),
                             }
+                        } else {
+                            detail.to_string()
+                        };
+                        Outcome::Failure {
+                            stderr: res.stderr,
+                            exit_code: res.exit_code,
+                            message,
                         }
-                        Err(e) => Outcome::Failure {
-                            stderr: String::new(),
-                            exit_code: None,
-                            message: e.to_string(),
-                        },
-                    };
+                    }
+                    Err(e) => Outcome::Failure {
+                        stderr: String::new(),
+                        exit_code: None,
+                        message: e.to_string(),
+                    },
+                };
                 (id, outcome)
             });
         }
@@ -377,6 +379,7 @@ mod tests {
             on_failure,
             max_attempts,
             timeout_ms: None,
+            autonomous: false,
         }
     }
 

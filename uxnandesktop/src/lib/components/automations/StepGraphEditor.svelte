@@ -17,6 +17,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
+  import { Switch } from "$lib/components/ui/switch";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -188,6 +189,26 @@
           {/each}
         </div>
       {/if}
+
+      <!-- Autonomy is per step and off by default. A headless agent cannot ask
+           a human, so without this several CLIs auto-deny their tools and the
+           step comes back empty; with it, the agent edits files and runs
+           commands unattended. Both facts belong next to the switch. -->
+      <div class="flex items-start gap-2.5">
+        <Switch
+          checked={step.autonomous}
+          onCheckedChange={(c) =>
+            (steps = steps.map((s) => (s.id === step.id ? { ...s, autonomous: c } : s)))}
+        />
+        <div class="flex min-w-0 flex-col">
+          <span class={text.body}>{i18n.t("automations.autonomous")}</span>
+          <span class={text.meta}>
+            {step.autonomous
+              ? i18n.t("automations.autonomousOnDesc")
+              : i18n.t("automations.autonomousOffDesc")}
+          </span>
+        </div>
+      </div>
 
       {#if unlinked.length > 0}
         <!-- A reference without the matching dependency is the classic way to

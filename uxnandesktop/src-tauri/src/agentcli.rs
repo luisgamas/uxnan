@@ -1,6 +1,7 @@
-//! Resolution, invocation and model discovery for the coding-agent CLIs the
-//! AI commit-message generator can drive: **Claude Code, Codex, Gemini, OpenCode
-//! and Pi** (spec `02c` §4.5).
+//! Resolution, invocation and model discovery for the coding-agent CLIs uxnan
+//! can drive headlessly — the AI commit-message generator, the orchestration
+//! engine's headless steps and every automation step: **Claude Code, Codex,
+//! Gemini, OpenCode, Pi, Antigravity and Grok** (spec `02c` §4.5, `02f` §3).
 //!
 //! npm installs ship each CLI as an entry `*.js` behind a `.cmd`/`.ps1` shim that
 //! can't be spawned shell-free on Windows, so — mirroring the bridge's
@@ -13,8 +14,9 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-/// The agent ids the AI commit feature supports, in display order.
-pub const SUPPORTED: [&str; 5] = ["claude", "codex", "gemini", "opencode", "pi"];
+/// The agent ids that can be driven headlessly, in display order. Antigravity
+/// (`agy`) and Grok ship a single native binary rather than an npm package.
+pub const SUPPORTED: [&str; 7] = ["claude", "codex", "gemini", "opencode", "pi", "agy", "grok"];
 
 /// A CLI agent resolved to a spawnable form.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +107,14 @@ fn resolve_node_cli(rel: &[&str], launcher: &str) -> Option<Resolved> {
         }
     }
     None
+}
+
+/// Resolve a CLI that ships as one native executable on `PATH`.
+fn resolve_native(command: &str) -> Option<Resolved> {
+    crate::which::resolve(command).map(|p| Resolved {
+        program: p.to_string_lossy().to_string(),
+        prepend: vec![],
+    })
 }
 
 /// Resolve Claude Code: the native `~/.local/bin/claude[.exe]` if present, else
@@ -263,15 +273,31 @@ pub fn resolve(agent_id: &str) -> Option<Resolved> {
             &["@earendil-works", "pi-coding-agent", "dist", "cli.js"],
             "pi",
         ),
+        // Antigravity and Grok ship a single native binary on `PATH` (no npm
+        // package to walk), so a plain lookup is the whole resolution.
+        "agy" | "grok" => resolve_native(agent_id),
         _ => None,
     }
 }
 
 /// The non-interactive (print-mode) args for `agent_id` to answer `prompt` with
 /// an optional `model` (empty → the CLI's default model). The flags match each
-/// CLI's headless mode; the prompt is the final positional arg (except Gemini,
-/// where `-p` takes the prompt as its value). `None` for an unknown agent.
-pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<String>> {
+/// CLI's headless mode; the prompt is the final positional arg (except Gemini
+/// and Antigravity, where `-p` takes the prompt as its value). `None` for an
+/// unknown agent.
+///
+/// `autonomous` adds the CLI's own auto-approve flag. It matters more than it
+/// looks: with tools involved, a headless agent cannot ask a human, so several
+/// CLIs **auto-deny** and return nothing useful (Antigravity says so outright).
+/// An unattended automation that is supposed to *do* something therefore needs
+/// this — but it is opt-in per step, never the default, because it lets an agent
+/// edit files and run commands with nobody watching.
+pub fn build_args(
+    agent_id: &str,
+    model: &str,
+    prompt: &str,
+    autonomous: bool,
+) -> Option<Vec<String>> {
     let m = model.trim();
     let model_flag = |flag: &str| -> Vec<String> {
         if m.is_empty() {
@@ -284,6 +310,9 @@ pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<Strin
         // claude -p [--model M] <prompt>
         "claude" => {
             let mut a = vec!["-p".to_string()];
+            if autonomous {
+                a.push("--dangerously-skip-permissions".to_string());
+            }
             a.extend(model_flag("--model"));
             a.push(prompt.to_string());
             a
@@ -299,6 +328,9 @@ pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<Strin
         // is a separate decision and is left untouched.
         "codex" => {
             let mut a = vec!["exec".to_string(), "--skip-git-repo-check".to_string()];
+            if autonomous {
+                a.push("--dangerously-bypass-approvals-and-sandbox".to_string());
+            }
             a.extend(model_flag("--model"));
             a.push(prompt.to_string());
             a
@@ -313,7 +345,45 @@ pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<Strin
         // opencode run [--model M] <prompt>
         "opencode" => {
             let mut a = vec!["run".to_string()];
+            if autonomous {
+                a.push("--auto".to_string());
+            }
             a.extend(model_flag("--model"));
+            a.push(prompt.to_string());
+            a
+        }
+        // agy [--model M] [--dangerously-skip-permissions] --print <prompt>
+        //
+        // **Order matters here.** Antigravity's parser stops recognizing options
+        // once `--print` has taken the prompt, so a flag placed after it is
+        // silently ignored — which is worse than an error: the run then hangs
+        // until agy's own 5-minute print timeout, waiting for a permission
+        // nobody can grant. Every option therefore goes *before* the prompt.
+        // The workspace comes from the process cwd; `--add-dir` is for *extra*
+        // directories, so it is deliberately not passed.
+        "agy" => {
+            let mut a = model_flag("--model");
+            if autonomous {
+                a.push("--dangerously-skip-permissions".to_string());
+            }
+            a.push("--print".to_string());
+            a.push(prompt.to_string());
+            a
+        }
+        // grok [-m M] [--permission-mode …] -p <prompt>
+        //
+        // Grok's parser is happy either way, but the prompt goes last for the
+        // same reason as Antigravity: one shape for every "flag takes the
+        // prompt" CLI is one fewer thing to get subtly wrong.
+        "grok" => {
+            let mut a = model_flag("-m");
+            if autonomous {
+                // Grok spells its postures out; this is the one that lets an
+                // unattended run actually use tools.
+                a.push("--permission-mode".to_string());
+                a.push("bypassPermissions".to_string());
+            }
+            a.push("-p".to_string());
             a.push(prompt.to_string());
             a
         }
@@ -498,50 +568,147 @@ mod tests {
     fn supported_ids_resolve_to_args() {
         for id in SUPPORTED {
             assert!(
-                build_args(id, "", "msg").is_some(),
+                build_args(id, "", "msg", false).is_some(),
                 "{id} builds default args"
             );
             assert!(
-                build_args(id, "x", "msg").is_some(),
+                build_args(id, "x", "msg", false).is_some(),
                 "{id} builds model args"
             );
         }
-        assert!(build_args("nope", "", "m").is_none());
+        assert!(build_args("nope", "", "m", false).is_none());
     }
 
     #[test]
     fn build_args_default_omits_model_flag() {
-        assert_eq!(build_args("claude", "", "hi").unwrap(), vec!["-p", "hi"]);
         assert_eq!(
-            build_args("codex", "  ", "hi").unwrap(),
+            build_args("claude", "", "hi", false).unwrap(),
+            vec!["-p", "hi"]
+        );
+        assert_eq!(
+            build_args("codex", "  ", "hi", false).unwrap(),
             vec!["exec", "--skip-git-repo-check", "hi"]
         );
-        assert_eq!(build_args("gemini", "", "hi").unwrap(), vec!["-p", "hi"]);
-        assert_eq!(build_args("opencode", "", "hi").unwrap(), vec!["run", "hi"]);
-        assert_eq!(build_args("pi", "", "hi").unwrap(), vec!["-p", "hi"]);
+        assert_eq!(
+            build_args("gemini", "", "hi", false).unwrap(),
+            vec!["-p", "hi"]
+        );
+        assert_eq!(
+            build_args("opencode", "", "hi", false).unwrap(),
+            vec!["run", "hi"]
+        );
+        assert_eq!(build_args("pi", "", "hi", false).unwrap(), vec!["-p", "hi"]);
+    }
+
+    #[test]
+    fn native_agents_keep_every_option_before_the_prompt() {
+        // Antigravity stops parsing options once `--print` has taken the
+        // prompt, so an option placed after it is silently ignored and the run
+        // hangs until its own print timeout. Both natives therefore put every
+        // option first and the prompt last.
+        assert_eq!(
+            build_args("agy", "", "hi", false).unwrap(),
+            vec!["--print", "hi"]
+        );
+        assert_eq!(
+            build_args("grok", "", "hi", false).unwrap(),
+            vec!["-p", "hi"]
+        );
+        assert_eq!(
+            build_args("agy", "gemini-3-pro", "hi", false).unwrap(),
+            vec!["--model", "gemini-3-pro", "--print", "hi"]
+        );
+        assert_eq!(
+            build_args("grok", "grok-4", "hi", false).unwrap(),
+            vec!["-m", "grok-4", "-p", "hi"]
+        );
+    }
+
+    #[test]
+    fn autonomy_is_off_unless_asked_for() {
+        // The safe default is the whole point: nothing may auto-approve tools
+        // just because a run happens to be headless.
+        for id in SUPPORTED {
+            let args = build_args(id, "", "msg", false).unwrap();
+            assert!(
+                !args
+                    .iter()
+                    .any(|a| a.contains("dangerous") || a == "--auto" || a == "bypassPermissions"),
+                "{id} auto-approves by default: {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn autonomy_adds_each_cli_own_auto_approve_flag() {
+        // Without this a headless step that needs a tool comes back empty —
+        // Antigravity auto-denies and says so — so the mapping has to be right
+        // per CLI rather than one flag hopefully shared by all of them.
+        let has = |id: &str, needle: &str| {
+            build_args(id, "", "msg", true)
+                .unwrap()
+                .iter()
+                .any(|a| a == needle)
+        };
+        assert!(has("claude", "--dangerously-skip-permissions"));
+        assert!(has("codex", "--dangerously-bypass-approvals-and-sandbox"));
+        assert!(has("opencode", "--auto"));
+        assert!(has("agy", "--dangerously-skip-permissions"));
+        assert!(has("grok", "bypassPermissions"));
+    }
+
+    #[test]
+    fn the_prompt_stays_the_last_positional_when_autonomy_is_on() {
+        // A flag inserted in the wrong place would silently become the prompt.
+        assert_eq!(
+            build_args("claude", "opus", "hi", true).unwrap(),
+            vec![
+                "-p",
+                "--dangerously-skip-permissions",
+                "--model",
+                "opus",
+                "hi"
+            ]
+        );
+        // Antigravity is the one that breaks if an option lands after the
+        // prompt, so pin its whole shape.
+        assert_eq!(
+            build_args("agy", "gemini-3-pro", "hi", true).unwrap(),
+            vec![
+                "--model",
+                "gemini-3-pro",
+                "--dangerously-skip-permissions",
+                "--print",
+                "hi"
+            ]
+        );
+        assert_eq!(
+            build_args("grok", "", "hi", true).unwrap(),
+            vec!["--permission-mode", "bypassPermissions", "-p", "hi"]
+        );
     }
 
     #[test]
     fn build_args_inserts_model_flag_per_cli() {
         assert_eq!(
-            build_args("claude", "opus", "hi").unwrap(),
+            build_args("claude", "opus", "hi", false).unwrap(),
             vec!["-p", "--model", "opus", "hi"]
         );
         assert_eq!(
-            build_args("codex", "gpt-5", "hi").unwrap(),
+            build_args("codex", "gpt-5", "hi", false).unwrap(),
             vec!["exec", "--skip-git-repo-check", "--model", "gpt-5", "hi"]
         );
         // Gemini: -m before -p, and -p takes the prompt as its value.
         assert_eq!(
-            build_args("gemini", "gemini-2.5-pro", "hi").unwrap(),
+            build_args("gemini", "gemini-2.5-pro", "hi", false).unwrap(),
             vec!["-m", "gemini-2.5-pro", "-p", "hi"]
         );
         assert_eq!(
-            build_args("opencode", "anthropic/claude-3.5", "hi").unwrap(),
+            build_args("opencode", "anthropic/claude-3.5", "hi", false).unwrap(),
             vec!["run", "--model", "anthropic/claude-3.5", "hi"]
         );
         assert_eq!(
-            build_args("pi", "anthropic/sonnet", "hi").unwrap(),
+            build_args("pi", "anthropic/sonnet", "hi", false).unwrap(),
             vec!["-p", "--model", "anthropic/sonnet", "hi"]
         );
     }

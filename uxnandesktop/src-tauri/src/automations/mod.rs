@@ -175,6 +175,16 @@ pub struct Step {
     /// Per-step wall-clock cap; `None` uses the runner's default.
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    /// Let this step's agent approve its own tool use.
+    ///
+    /// Off by default, and deliberately per step. A headless agent cannot ask a
+    /// human, so with tools involved several CLIs **auto-deny** and come back
+    /// with nothing — Antigravity says so in as many words. A step that must
+    /// actually change something therefore needs this; a step that only reads
+    /// and reports should not have it, because it lets an agent edit files and
+    /// run commands with nobody watching.
+    #[serde(default)]
+    pub autonomous: bool,
 }
 
 /// A saved automation.
@@ -529,6 +539,7 @@ mod tests {
             on_failure: OnFailure::Stop,
             max_attempts: 1,
             timeout_ms: None,
+            autonomous: false,
         }
     }
 

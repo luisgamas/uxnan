@@ -47,15 +47,20 @@ pub struct HeadlessResult {
 
 /// Run `agent_id` in print-mode against `prompt` in `cwd`, capturing stdout,
 /// stderr and the exit code. `model` empty → the CLI's default model.
+/// `autonomous` adds the CLI's auto-approve flag (see
+/// [`agentcli::build_args`]) — required for a step that must actually use
+/// tools, and opt-in for exactly that reason.
 /// `timeout_ms` overrides [`DEFAULT_TIMEOUT`]. A non-zero exit is **not** an
 /// error here (it's returned in `exit_code` so the engine can decide); only a
 /// spawn failure, timeout, or an unsupported/uninstalled agent is an `Err`.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_headless(
     agent_id: &str,
     model: &str,
     prompt: &str,
     cwd: &str,
     timeout_ms: Option<u64>,
+    autonomous: bool,
 ) -> Result<HeadlessResult, AppError> {
     let Some(resolved) = agentcli::resolve(agent_id) else {
         return Err(AppError::Agent(format!(
@@ -63,7 +68,7 @@ pub async fn run_headless(
         )));
     };
     let prompt = truncate_prompt(prompt, MAX_PROMPT_BYTES);
-    let args = agentcli::build_args(agent_id, model, &prompt)
+    let args = agentcli::build_args(agent_id, model, &prompt, autonomous)
         .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent_id}'")))?;
     let timeout = timeout_ms
         .map(Duration::from_millis)
@@ -134,7 +139,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_agent_errors_without_spawning() {
-        let err = run_headless("definitely-not-an-agent", "", "hi", "", None)
+        let err = run_headless("definitely-not-an-agent", "", "hi", "", None, false)
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::Agent(_)));
