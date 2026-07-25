@@ -145,7 +145,7 @@ export interface ClaudeCodeAdapterOptions {
   defaultModel?: string;
   /**
    * Concrete, versioned models to surface in the picker **in addition** to the
-   * stable `opus`/`sonnet`/`haiku` aliases — declared in daemon config
+   * stable `fable`/`opus`/`sonnet`/`haiku` aliases — declared in daemon config
    * (`agents.claude-code.models`). Lets users pick an exact/older version while
    * the aliases keep tracking "latest". Deduplicated against the aliases by id.
    */
