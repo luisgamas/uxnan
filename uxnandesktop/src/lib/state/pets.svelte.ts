@@ -85,19 +85,30 @@ class PetStore {
   }
 
   /** Load (and memoize) one pet's spritesheet. Bundled pets are plain static
-   *  assets; imported ones are inlined by the backend as data URLs. */
+   *  assets; imported ones are inlined by the backend as data URLs.
+   *
+   *  The sheet URL is cached, but the *measurement* belongs to the `Pet` object
+   *  — and `load()` rebuilds the library with freshly-parsed pets. Returning
+   *  early on a cached sheet once skipped the measure for those fresh objects,
+   *  leaving every generated pack with no grid and no animations after any
+   *  import or delete: the renderer then fell back to walking the entire sheet
+   *  at the default frame rate, sweeping rows (the v2 look poses among them)
+   *  nothing is ever supposed to play in sequence. */
   private async loadSheet(id: string): Promise<void> {
-    if (this.sheets[id] !== undefined || this.pending.has(id)) return;
+    if (this.pending.has(id)) return;
     const pet = this.library.find((p) => p.id === id);
     if (!pet) return;
+    const cached = this.sheets[id];
+    if (cached !== undefined && pet.layoutResolved) return;
     this.pending.add(id);
     try {
       const url =
-        pet.source === "builtin"
+        cached ??
+        (pet.source === "builtin"
           ? `/pets/${pet.id}/${pet.spritesheetPath}`
-          : await petsSheet(id);
+          : await petsSheet(id));
       await this.measureSheet(pet, url);
-      this.sheets = { ...this.sheets, [id]: url };
+      if (cached === undefined) this.sheets = { ...this.sheets, [id]: url };
     } catch (err) {
       // A pet whose sheet can't be read simply doesn't render; the library entry
       // stays so the user can see it and remove it from Settings.
@@ -145,6 +156,9 @@ class PetStore {
       if (needsAnimations) {
         pet.animations = defaultAnimations(pet.frame.columns, pet.frame.rows);
       }
+      // Mark the pet complete so a later `loadSheet` (the library is rebuilt on
+      // every import/delete) knows this object needs no re-measure.
+      pet.layoutResolved = true;
     } catch {
       // Undecodable (or no canvas) — the conventional grid still renders
       // something, and `resolveAnimation` synthesizes a walk of the sheet.
