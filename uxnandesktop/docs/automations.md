@@ -140,7 +140,7 @@ the frontend and is display-only.
 | Field | Default | Notes |
 |---|---|---|
 | `id` | — | Unique within the automation (`s1`, `s2`, …) |
-| `agent` | — | `claude`, `codex`, `gemini`, `opencode`, `pi`, `agy` (Antigravity), `grok` |
+| `agent` | — | `claude`, `codex`, `gemini`, `opencode`, `pi`, `agy` (Antigravity), `grok`, `zero` |
 | `model` | CLI default | Empty means the CLI picks |
 | `prompt` | — | May reference other steps (below) |
 | `dependsOn` | `[]` | Wait for these to complete |
@@ -265,6 +265,12 @@ captured output. Anything that needs live approval belongs in the
 - **PATH**: a run launched by the OS scheduler inherits a minimal environment
   (launchd in particular), so the runner applies the same PATH enrichment the app
   applies at startup. Without it every agent would resolve as "not installed".
+- **Prompt size.** A prompt passed on the command line is bounded by the OS, so
+  each agent is handed its prompt the best way it supports: **stdin** for Claude,
+  Codex, OpenCode and Pi, a **prompt file** for Grok and Zero, and `argv` for
+  Antigravity and Gemini, which accept nothing else and are therefore the only
+  ones still capped (~28 KB). This matters for a chained step, whose prompt
+  carries the previous step's entire output.
 - **Antigravity** stops parsing options once `--print` has taken the prompt, so
   every option is emitted *before* it. A flag placed after would be silently
   ignored and the run would hang until agy's own five-minute print timeout — the

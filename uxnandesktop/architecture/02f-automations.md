@@ -156,7 +156,29 @@ concurrencia de 4 y reescribe el registro tras cada transicion).
 - **Tope de tiempo:** superado `max_run_minutes`, los pasos en vuelo se abortan y
   se marcan fallidos con el motivo.
 
-### 3.3 Paso de contexto
+### 3.3 Entrega del prompt
+
+Como llega el prompt a cada CLI **no es un detalle**: un prompt pasado como
+argumento esta acotado por el sistema operativo (la linea de comandos de
+`CreateProcess` ronda los 32 KiB en total), y un paso encadenado que planta la
+salida completa del paso anterior alcanza ese techo con facilidad — perdiendo en
+silencio la cola de su propio contexto.
+
+`agentcli::prompt_delivery` declara la via por agente, **comprobada contra cada
+CLI, no supuesta**:
+
+| Via | Agentes |
+|---|---|
+| **stdin** (sin limite) | Claude, Codex, OpenCode, Pi |
+| **archivo** (sin limite) | Grok (`--prompt-file`), Zero (`-f`) |
+| **argv** (acotado ~28 KB) | Antigravity, Gemini — no aceptan otra cosa |
+
+El archivo temporal se borra al salir de ambito, asi que una corrida que agota su
+tiempo o revienta no deja los prompts del usuario tirados en `%TEMP%`. La tuberia
+de stdin se cierra tras escribir: **ese cierre es el fin de entrada** para el CLI,
+y sin el el agente esperaria para siempre.
+
+### 3.4 Paso de contexto
 
 El prompt de un paso resuelve `{{…}}` contra:
 
@@ -172,7 +194,7 @@ trabajo de ayer** en vez de empezar de cero. Una referencia desconocida o aun si
 valor resuelve a cadena vacia y queda anotada en `missing_refs` del registro: un
 traspaso delgado se documenta, no mata la corrida.
 
-### 3.4 Autonomia por paso
+### 3.5 Autonomia por paso
 
 Un agente headless **no puede preguntarle a nadie**, asi que cuando un prompt
 necesita una herramienta varios CLIs la **auto-deniegan** y devuelven nada util
@@ -195,14 +217,14 @@ timeout de cinco minutos esperando un permiso que nadie puede dar. Los dos CLIs
 nativos emiten toda opcion antes del prompt, y un test fija la forma exacta. Esto
 salio de ejecutarlo, no de leer la ayuda.
 
-### 3.5 Por que no hay compuertas humanas
+### 3.6 Por que no hay compuertas humanas
 
 Una tarea desatendida que se bloquea a las 3 AM esperando un clic esta rota. Una
 automatizacion termina y **deja su resultado** (una rama, un reporte, la salida
 capturada) mas una notificacion. Lo que necesita aprobacion en vivo pertenece a
 la consola interactiva de `02d` §3.
 
-### 3.6 Precondicion y aislamiento
+### 3.7 Precondicion y aislamiento
 
 - **Precondicion:** un comando de shell con timeout decide si la corrida procede
   (exit 0 = adelante). Barato para expresar "solo si hay commits nuevos" sin

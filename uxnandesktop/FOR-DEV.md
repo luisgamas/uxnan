@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 341 Rust backend tests + 258 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**). 345 Rust backend tests + 258 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -228,14 +228,21 @@ clicked through it.
   want to inspect what an unattended run did), so nothing removes them yet. Pruning a
   run record should offer to remove its worktree too, and the UI should surface how
   much disk they hold.
-- ☐ **Structured hand-off between steps** — several CLIs can emit machine-readable
-  output (a JSON schema constraint, a JSON output mode, an output-schema file). Using
-  it would turn the A→B hand-off from "trust the prose" into a typed contract. Related:
-  passing a large chained prompt via a **prompt file** instead of argv would also lift
-  the 28 KB cap noted in `agentrun.rs`.
-- ☐ **A headless recipe for Zero** — `agentcli` now covers claude / codex / gemini /
-  opencode / pi / **agy (Antigravity)** / **grok**, so the only agent the bridge drives
-  that an automation still can't target is Zero.
+- ☐ **Structured hand-off between steps** — Grok takes `--json-schema` and Codex an
+  `--output-schema` file, so a step could return JSON matching a schema the next step
+  can rely on, turning the A→B hand-off from "trust the prose" into a typed contract.
+  Deliberately **not** done as a half-measure: simply asking for a JSON *output format*
+  without a schema returns the transcript rather than the answer, which would make
+  `{{steps.sN.output}}` worse, not better. Needs a per-step schema field, the UI to
+  author it, and an honest story for the agents that support neither.
+- ☐ **Tokens and cost per run** — `usage.rs` already reads each provider's own usage
+  API, but attributing a *specific run* means matching it to a provider session by time
+  window, which is exactly the kind of inference that silently produces wrong numbers.
+  Worth doing only with a visible "unattributed" state rather than a confident guess.
+- ☐ **Verify a successful Zero run** — the recipe (`zero exec`, `--auto high`, prompt
+  via `-f`) is wired and its resolution, exit code and error capture are all confirmed,
+  but this machine's Zero account has no credits, so a *completed* Zero step has never
+  been observed. Every other supported agent has been.
 
 ## GitHub integration — follow-ups ☐
 
@@ -569,7 +576,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 341 Rust + 258 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 345 Rust + 258 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

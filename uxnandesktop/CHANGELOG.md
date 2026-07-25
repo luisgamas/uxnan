@@ -61,6 +61,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Fixed — a chained prompt is no longer clipped at 28 KB, and Zero can run a step
+
+- **The argv cap is gone for every agent that offers another channel.** A prompt
+  passed as a command-line argument is bounded by the OS (~32 KiB total on Windows),
+  and a chained automation step planting the previous step's whole output hit that
+  ceiling easily — silently losing the tail of its own context. `agentcli` now
+  declares a **prompt delivery** per agent, verified against each CLI rather than
+  assumed: **stdin** for Claude, Codex, OpenCode and Pi; a **prompt file** for Grok
+  (`--prompt-file`) and Zero (`-f`); `argv` only for Antigravity and Gemini, which
+  accept nothing else and stay capped. Proven with a 39 KB prompt whose only
+  instruction sat on the last line: the agent answered it.
+- The prompt file is removed when it goes out of scope, so a timed-out or panicking
+  run cannot leave the user's prompts lying around in `%TEMP%`. The stdin pipe is
+  closed after writing — that close *is* the CLI's end-of-input, and without it the
+  agent would wait forever.
+- **Zero** joins the headless set via `zero exec` (npm `@gitlawb/zero`), bringing
+  `agentcli::SUPPORTED` to eight and closing the gap against the agents the bridge
+  drives. Its autonomy is a level rather than a switch, so the per-step flag maps to
+  `--auto high`, which its own help documents as the one that enables unsafe tools.
+- `build_args` now takes a `PromptSource` saying where the prompt lives, instead of
+  always embedding it. AI commit passes `Argv` — its prompts are short.
+- 4 new Rust tests (345 total). **Verified end to end** with the app closed: a 39 KB
+  stdin prompt survived intact, a 35 KB prompt reached Grok through a prompt file and
+  left no temporary behind, and Zero resolved and ran (this machine's Zero account has
+  no credits, so its *successful* completion is still unverified — see `FOR-DEV.md`).
+
 ### Added — Antigravity and Grok run headlessly, and a step can be allowed to act on its own
 
 - **Antigravity (`agy`) and Grok** join the headless agent set, so an automation, an

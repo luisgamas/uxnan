@@ -97,8 +97,13 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
     }
 
     let prompt = build_prompt(cfg, &diff);
-    let args = agentcli::build_args(agent, &cfg.model, &prompt, false)
-        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
+    let args = agentcli::build_args(
+        agent,
+        &cfg.model,
+        agentcli::PromptSource::Argv(&prompt),
+        false,
+    )
+    .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
 
     let raw = run_generate(&resolved, &args, worktree_path).await?;
     let message = sanitize_message(&raw);
@@ -138,7 +143,7 @@ pub async fn draft_pr(
     }
     let prompt = build_pr_prompt(cfg, diff);
     let model = cfg.ai_model.as_deref().unwrap_or("");
-    let args = agentcli::build_args(agent, model, &prompt, false)
+    let args = agentcli::build_args(agent, model, agentcli::PromptSource::Argv(&prompt), false)
         .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
     let raw = run_generate(&resolved, &args, worktree_path).await?;
     let body = sanitize_message(&raw);

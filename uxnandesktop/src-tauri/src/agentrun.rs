@@ -10,10 +10,15 @@
 //! trusting a cooperative "I'm done" signal.
 //!
 //! Reuses the exact resolution + print-mode recipes the AI-commit generator uses
-//! ([`crate::agentcli`]: `resolve` + `build_args` for Claude Code, Codex, Gemini,
-//! OpenCode, Pi), the windowless spawn ([`crate::winproc`]), and the same
-//! guardrails: stdin closed, a hard timeout with `kill_on_drop`, and a prompt cap
-//! that keeps the command line within the OS argv limit.
+//! ([`crate::agentcli`]: `resolve` + `build_args`), the windowless spawn ([`crate::winproc`]), and the same
+//! guardrails: a hard timeout with `kill_on_drop`, and a prompt cap for the
+//! agents whose only channel is the command line.
+//!
+//! How each CLI is handed its prompt is not incidental: an `argv` prompt is
+//! bounded by the OS, and a chained step planting the previous step's whole
+//! output hits that ceiling easily — losing the tail of its own context in
+//! silence. Agents that read stdin (Claude, Codex, OpenCode, Pi) or a prompt
+//! file (Grok, Zero) therefore get the whole thing.
 
 use std::process::Stdio;
 use std::time::Duration;
@@ -23,11 +28,10 @@ use serde::Serialize;
 use crate::agentcli;
 use crate::error::AppError;
 
-/// Cap on the prompt passed as a CLI argument. Windows' `CreateProcess` command
-/// line is bounded (~32 KiB total); staying well under keeps a chained,
-/// context-heavy prompt from overflowing the argv.
-// FOR-DEV: large chained context is clipped by this cap — add a per-agent stdin
-// variant for big prompts (pattern: `aicommit::codex_models_inner`). See FOR-DEV.md.
+/// Cap on a prompt passed as a CLI **argument**. Windows' `CreateProcess`
+/// command line is bounded (~32 KiB total), so this only applies to the agents
+/// that accept the prompt no other way; everything else takes it via stdin or a
+/// prompt file and is uncapped (see [`agentcli::prompt_delivery`]).
 const MAX_PROMPT_BYTES: usize = 28_000;
 
 /// Default wall-clock budget for a headless run when the caller doesn't pin one.
@@ -67,28 +71,102 @@ pub async fn run_headless(
             "agent '{agent_id}' is not installed"
         )));
     };
-    let prompt = truncate_prompt(prompt, MAX_PROMPT_BYTES);
-    let args = agentcli::build_args(agent_id, model, &prompt, autonomous)
-        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent_id}'")))?;
     let timeout = timeout_ms
         .map(Duration::from_millis)
         .unwrap_or(DEFAULT_TIMEOUT);
-    run(&resolved, &args, cwd, timeout).await
+
+    // How the prompt travels decides whether it can be long at all. Only the
+    // argv path is capped; stdin and a prompt file carry the whole thing, which
+    // is what a chained step planting a previous step's full output needs.
+    match agentcli::prompt_delivery(agent_id) {
+        agentcli::PromptDelivery::Stdin => {
+            let args = build(agent_id, model, agentcli::PromptSource::Stdin, autonomous)?;
+            run(&resolved, &args, cwd, timeout, Some(prompt)).await
+        }
+        agentcli::PromptDelivery::File => {
+            let file = PromptFile::write(prompt)?;
+            let args = build(
+                agent_id,
+                model,
+                agentcli::PromptSource::File(&file.path_str),
+                autonomous,
+            )?;
+            // The file must outlive the run; `PromptFile` removes it on drop.
+            run(&resolved, &args, cwd, timeout, None).await
+        }
+        agentcli::PromptDelivery::Argv => {
+            let capped = truncate_prompt(prompt, MAX_PROMPT_BYTES);
+            let args = build(
+                agent_id,
+                model,
+                agentcli::PromptSource::Argv(&capped),
+                autonomous,
+            )?;
+            run(&resolved, &args, cwd, timeout, None).await
+        }
+    }
 }
 
-/// Spawn the resolved agent windowless, stdin closed, with a hard timeout and
-/// `kill_on_drop`; capture stdout/stderr/exit. Mirrors `aicommit::run_generate`
-/// but returns the raw capture (exit code included) instead of gating on success.
+fn build(
+    agent_id: &str,
+    model: &str,
+    prompt: agentcli::PromptSource<'_>,
+    autonomous: bool,
+) -> Result<Vec<String>, AppError> {
+    agentcli::build_args(agent_id, model, prompt, autonomous)
+        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent_id}'")))
+}
+
+/// A temporary file holding a prompt, removed when it goes out of scope so a
+/// timed-out or panicking run can't leave the user's prompts lying around in
+/// `%TEMP%`.
+struct PromptFile {
+    path: std::path::PathBuf,
+    path_str: String,
+}
+
+impl PromptFile {
+    fn write(prompt: &str) -> Result<Self, AppError> {
+        let path = std::env::temp_dir().join(format!("uxnan-prompt-{}.txt", uuid::Uuid::new_v4()));
+        std::fs::write(&path, prompt.as_bytes())
+            .map_err(|e| AppError::Agent(format!("could not stage the prompt: {e}")))?;
+        Ok(Self {
+            path_str: path.to_string_lossy().to_string(),
+            path,
+        })
+    }
+}
+
+impl Drop for PromptFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Spawn the resolved agent windowless, with a hard timeout and `kill_on_drop`;
+/// capture stdout/stderr/exit. Mirrors `aicommit::run_generate` but returns the
+/// raw capture (exit code included) instead of gating on success.
+///
+/// `stdin_prompt` is written to the child and the pipe then closed, which is how
+/// the CLIs that read their prompt from stdin know the input is complete. When
+/// it is `None` stdin is closed outright, so nothing can ever sit waiting on it.
 async fn run(
     resolved: &agentcli::Resolved,
     args: &[String],
     cwd: &str,
     timeout: Duration,
+    stdin_prompt: Option<&str>,
 ) -> Result<HeadlessResult, AppError> {
+    use tokio::io::AsyncWriteExt;
+
     let mut cmd = crate::winproc::command(&resolved.program);
     cmd.args(&resolved.prepend)
         .args(args)
-        .stdin(Stdio::null())
+        .stdin(if stdin_prompt.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
@@ -99,9 +177,20 @@ async fn run(
         cmd.current_dir(cwd);
     }
 
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| AppError::Agent(format!("failed to start the agent: {e}")))?;
+
+    if let Some(text) = stdin_prompt {
+        // Take the handle so it drops here: the close is the CLI's EOF, and
+        // without it the agent would wait for more input forever.
+        if let Some(mut sink) = child.stdin.take() {
+            sink.write_all(text.as_bytes())
+                .await
+                .map_err(|e| AppError::Agent(format!("could not send the prompt: {e}")))?;
+            sink.shutdown().await.ok();
+        }
+    }
 
     let output = match tokio::time::timeout(timeout, child.wait_with_output()).await {
         Ok(res) => res.map_err(|e| AppError::Agent(e.to_string()))?,
