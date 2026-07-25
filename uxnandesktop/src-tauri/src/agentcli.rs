@@ -341,25 +341,34 @@ pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
 /// Curated Claude model ids + display names. Claude Code's CLI has **no**
 /// list-models command, so we ship this hand-kept table of **exact** model ids
 /// (the concrete versions Claude Code's `--model` flag accepts — *not* the
-/// `opus`/`sonnet`/`haiku` "latest" aliases, so the message is reproducible).
+/// `fable`/`opus`/`sonnet`/`haiku` "latest" aliases, so the message is
+/// reproducible).
 ///
 /// ## How to maintain this list
-/// When Anthropic ships or retires a model, edit this array:
-/// - **id** (left): the exact `--model` string, e.g. `claude-opus-4-8`. These are
-///   the canonical model ids — never append a date suffix to a concrete id, and
-///   don't use the bare aliases here.
-/// - **display name** (right): what the picker shows, e.g. `Opus 4.8`.
+/// **This table has a twin. Keep the two in sync.** The bridge ships the same
+/// curated list for the mobile app's picker in `bridge/src/daemon-config.ts`
+/// (`DEFAULT_DAEMON_CONFIG.agents['claude-code'].models`). Neither can be
+/// discovered from the CLI, so both are hand-kept: when Anthropic ships or
+/// retires a model, edit **both** arrays, with the same ids, labels and order.
+/// - **id** (left): the exact `--model` string, e.g. `claude-opus-5`. These are
+///   the canonical model ids — never append a date suffix or a routing variant
+///   (`…[1m]`, `…-fast`) to a concrete id, and don't use the bare aliases here.
+/// - **display name** (right): what the picker shows, e.g. `Opus 5`.
 ///
 /// Keep newest/most-capable first (that's the picker order). The user can always
 /// pick "Default" in the UI to let the CLI choose its own configured model.
 /// Source of truth for current ids: the Claude API model catalog.
-const CLAUDE_MODELS: [(&str, &str); 6] = [
+const CLAUDE_MODELS: [(&str, &str); 10] = [
+    ("claude-fable-5", "Fable 5"),
+    ("claude-opus-5", "Opus 5"),
     ("claude-opus-4-8", "Opus 4.8"),
     ("claude-opus-4-7", "Opus 4.7"),
     ("claude-opus-4-6", "Opus 4.6"),
+    ("claude-opus-4-5", "Opus 4.5"),
+    ("claude-sonnet-5", "Sonnet 5"),
     ("claude-sonnet-4-6", "Sonnet 4.6"),
+    ("claude-sonnet-4-5", "Sonnet 4.5"),
     ("claude-haiku-4-5", "Haiku 4.5"),
-    ("claude-fable-5", "Fable 5"),
 ];
 
 /// Curated Gemini model ids + display names (the CLI has no enumerate command),
@@ -529,10 +538,17 @@ mod tests {
     #[test]
     fn static_models_for_claude_and_gemini() {
         let claude = static_models("claude");
-        // Exact concrete model ids (no "latest" aliases), newest first.
-        assert_eq!(claude.first().unwrap().id, "claude-opus-4-8");
-        assert!(claude.iter().any(|m| m.id == "claude-fable-5"));
+        // Exact concrete model ids (no "latest" aliases), newest first — the same
+        // order as the bridge's twin list (see the CLAUDE_MODELS doc comment).
+        assert_eq!(claude.first().unwrap().id, "claude-fable-5");
+        assert_eq!(claude[1].id, "claude-opus-5");
+        assert!(claude.iter().any(|m| m.id == "claude-sonnet-5"));
+        assert!(claude.iter().any(|m| m.id == "claude-sonnet-4-5"));
         assert!(claude.iter().all(|m| m.id.starts_with("claude-")));
+        // no routing variants (`…[1m]`, `…-fast`) leak into the table
+        assert!(claude
+            .iter()
+            .all(|m| !m.id.contains('[') && !m.id.ends_with("-fast")));
         assert!(static_models("gemini").iter().any(|m| m.id == "auto"));
         // Live-discovered agents have no static list.
         assert!(static_models("opencode").is_empty());

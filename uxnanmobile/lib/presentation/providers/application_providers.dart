@@ -1180,9 +1180,10 @@ final confirmBeforePrProvider =
     NotifierProvider<ConfirmBeforePr, bool>(ConfirmBeforePr.new);
 
 /// Whether Claude Code's moving-target "latest" alias models
-/// (`opus`/`sonnet`/`haiku`, flagged `isLatestAlias`) appear in the model
-/// picker. Persisted; defaults to on. Purely a picker-display filter — a thread
-/// already running on an alias keeps working and keeps its run-option knobs.
+/// (`fable`/`opus`/`sonnet`/`haiku`, flagged `isLatestAlias`) appear in the
+/// model picker. Persisted; defaults to on. Purely a picker-display filter — a
+/// thread already running on an alias keeps working and keeps its run-option
+/// knobs.
 class ShowClaudeLatestModels extends Notifier<bool> {
   @override
   bool build() {

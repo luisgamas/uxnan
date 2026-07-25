@@ -159,8 +159,9 @@ class AgentModel extends Equatable {
   final bool isDefault;
 
   /// Whether this is a moving-target "latest" alias (Claude Code's
-  /// `opus`/`sonnet`/`haiku`, which always route to the newest version of that
-  /// tier). Lets settings hide these and keep only concrete pinned versions.
+  /// `fable`/`opus`/`sonnet`/`haiku`, which always route to the newest version
+  /// of that tier). Lets settings hide these and keep only concrete pinned
+  /// versions.
   final bool isLatestAlias;
 
   /// Per-model run-option knobs (reasoning effort, etc.); empty when none.

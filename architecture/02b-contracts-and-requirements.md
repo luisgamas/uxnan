@@ -338,7 +338,7 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
   que aun entrega blocks-first). Producido por `thread-store.ts`, consumido por
   el `thread_manager` movil (`_persistTurns` + `_seedLiveTurn`).
 - `stream/model/resolved`: el bridge informa la version concreta a la que
-  un alias (ej. `opus` -> `claude-opus-4-8`) se resolvio para este turno,
+  un alias (ej. `opus` -> `claude-opus-5`) se resolvio para este turno,
   para que el picker del telefono pueda mostrar una fila "Active version"
   en la status sheet.
 
@@ -472,7 +472,7 @@ interface AgentModel {
   isDefault?: boolean;
   options?: AgentModelOption[];               // per-model run-option knobs
   contextWindow?: number;                     // ventana del modelo cuando el CLI la reporta (p.ej. pi --list-models)
-  isLatestAlias?: boolean;                    // alias movil "(latest)" (Claude opus/sonnet/haiku); ausente en versiones fijas
+  isLatestAlias?: boolean;                    // alias movil "(latest)" (Claude fable/opus/sonnet/haiku); ausente en versiones fijas
 }
 type AgentModelOption =
   | { key: string; kind: 'enum';   label: string; values: string[]; default?: string }

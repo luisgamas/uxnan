@@ -876,9 +876,9 @@
   },
   "settingsClaudeLatestTitle": "Show Claude Code “latest” models",
   "@settingsClaudeLatestTitle": {
-    "description": "Title of the toggle that shows/hides Claude Code's opus/sonnet/haiku “latest” alias models in the model picker."
+    "description": "Title of the toggle that shows/hides Claude Code's fable/opus/sonnet/haiku “latest” alias models in the model picker."
   },
-  "settingsClaudeLatestSubtitle": "List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.",
+  "settingsClaudeLatestSubtitle": "List the Fable, Opus, Sonnet and Haiku “(latest)” aliases in the model picker.",
   "@settingsClaudeLatestSubtitle": {
     "description": "Subtitle of the Claude Code latest-models toggle."
   },

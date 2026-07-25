@@ -379,6 +379,27 @@ Keep the two audiences separate so neither doc rots:
   in `.git/info/exclude` (e.g. the local `*_MVP.md` snapshots, scratch/runbook
   notes) is the maintainer's local context and won't exist on a fresh clone —
   tracked docs, workflows and config must stand on their own without pointing at it.
+- **Hand-kept model tables come in PAIRS — a new model must be added to BOTH.**
+  Most agent CLIs enumerate their own models and are discovered live; **Claude Code
+  and Gemini cannot**, so the repo ships curated tables maintained by hand — and
+  each one exists twice, once per app:
+
+  | Agent | Bridge (feeds the phone) | Desktop (feeds AI commit / PR body) |
+  |---|---|---|
+  | Claude Code | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` |
+  | Gemini | `bridge/src/adapters/gemini-adapter.ts` → `GEMINI_MODELS` | `uxnandesktop/src-tauri/src/agentcli.rs` → `GEMINI_MODELS` |
+
+  When a model ships or is retired, edit **both halves of the pair in the same
+  change set** (updating one silently leaves the other app a version behind), with
+  the **same ids, labels and order** — newest/most capable first. Use canonical ids
+  only: no date suffixes, no routing variants (`…[1m]`, `…-fast`), no
+  invitation-only models, and no bare `fable`/`opus`/`sonnet`/`haiku` alias inside
+  a table (the bridge advertises those aliases separately, from
+  `claude-adapter.ts` — that set is hand-kept too, verified against
+  `claude --help`). A model in an existing tier needs no context-window edit —
+  `claudeContextWindow()` maps by tier. Full rules:
+  [`bridge/docs/agents.md`](bridge/docs/agents.md) and
+  [`uxnandesktop/docs/agent-launch.md`](uxnandesktop/docs/agent-launch.md).
 
 #### The docs track the code — re-verify them when the code moves (easy to miss)
 

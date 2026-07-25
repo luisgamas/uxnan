@@ -611,7 +611,7 @@
   "settingsConfirmPrSubtitle": "Preguntar antes de abrir un pull request.",
   "settingsModelsSection": "Modelos",
   "settingsClaudeLatestTitle": "Mostrar modelos «latest» de Claude Code",
-  "settingsClaudeLatestSubtitle": "Muestra los alias «(latest)» de Opus, Sonnet y Haiku en el selector de modelos.",
+  "settingsClaudeLatestSubtitle": "Muestra los alias «(latest)» de Fable, Opus, Sonnet y Haiku en el selector de modelos.",
   "settingsClaudeLatestHint": "Los alias «(latest)» siempre usan la versión más reciente de cada nivel que tu cuenta puede utilizar, así no tienes que elegir una exacta. Desactívalo para ocultarlos y elegir solo versiones fijas y exactas. Las conversaciones que ya usan un alias siguen funcionando.",
   "settingsAutonomousBannerTitle": "Banner de modo autónomo",
   "settingsAutonomousBannerSubtitle": "Muéstralo cada vez que abras una conversación con un agente autónomo.",
