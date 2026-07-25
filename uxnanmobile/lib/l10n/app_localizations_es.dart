@@ -1710,7 +1710,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsClaudeLatestSubtitle =>
-      'Muestra los alias «(latest)» de Opus, Sonnet y Haiku en el selector de modelos.';
+      'Muestra los alias «(latest)» de Fable, Opus, Sonnet y Haiku en el selector de modelos.';
 
   @override
   String get settingsClaudeLatestHint =>

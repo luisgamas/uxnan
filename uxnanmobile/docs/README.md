@@ -22,6 +22,10 @@ Related files (not in `docs/`):
 - [`../CHANGELOG.md`](../CHANGELOG.md) — what shipped, under `[Unreleased]`.
 - [`../FOR-DEV.md`](../FOR-DEV.md) — pending developer work (greppable `FOR-DEV:`).
 - [`../FOR-HUMAN.md`](../FOR-HUMAN.md) — assets only a human can provide.
+- [`../tool/notification_icon/README.md`](../tool/notification_icon/README.md) —
+  the push notification status-bar icon (`ic_stat_uxnan`): where the density
+  assets live, how the foreground/background paths are wired, and how to
+  regenerate it from the source SVG.
 - [`../../AGENTS.md`](../../AGENTS.md) — monorepo-wide agent guidelines.
 - Node-side testing (`bridge` / `relay` / `shared`) lives in each component's docs
   — [`../../bridge/docs/testing.md`](../../bridge/docs/testing.md) and

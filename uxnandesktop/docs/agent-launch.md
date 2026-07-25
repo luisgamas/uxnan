@@ -130,6 +130,35 @@ in a POSIX shell and `"fix the bug"` under cmd. Just type the raw values in the
 
 ---
 
+## Curated model lists (Claude & Gemini)
+
+Most agent CLIs enumerate their own models and the ADE asks them directly
+(`opencode models`, `pi --list-models`, `codex app-server` `model/list`). **Claude
+Code and Gemini cannot**, so the ADE ships hand-kept tables — `CLAUDE_MODELS` and
+`GEMINI_MODELS` in [`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) —
+that fill the model pickers in **Settings → AI commit** and **Settings → GitHub →
+AI PR body**.
+
+**Those tables have twins in the bridge, and every one of them is maintained by
+hand.** When Anthropic (or Google) ships or retires a model, update **both** sides
+in the same change set — updating one leaves the other surface a version behind:
+
+| Model list | Where | Feeds |
+|---|---|---|
+| Desktop Claude | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
+| Bridge Claude | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the mobile app's model picker (`agent/models`) |
+| Desktop Gemini | `uxnandesktop/src-tauri/src/agentcli.rs` → `GEMINI_MODELS` | the ADE's AI commit-message / PR-body pickers |
+| Bridge Gemini | `bridge/src/adapters/gemini-adapter.ts` → `GEMINI_MODELS` | the mobile app's model picker |
+
+Keep the **same ids, labels and order** across a pair, newest/most capable first.
+Use canonical ids only: never append a date suffix or a routing variant (`…[1m]`,
+`…-fast`) to a concrete id, and never put a bare `fable`/`opus`/`sonnet`/`haiku`
+alias in a desktop table — it pins an exact version so a generated commit message
+stays reproducible. The bridge documents the same rule from its side in
+[`bridge/docs/agents.md`](../../bridge/docs/agents.md).
+
+---
+
 ## See also
 
 - [Orchestration](./orchestration.md) — drive multiple running agents at once.

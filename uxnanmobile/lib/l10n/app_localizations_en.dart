@@ -1704,7 +1704,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsClaudeLatestSubtitle =>
-      'List the Opus, Sonnet and Haiku “(latest)” aliases in the model picker.';
+      'List the Fable, Opus, Sonnet and Haiku “(latest)” aliases in the model picker.';
 
   @override
   String get settingsClaudeLatestHint =>

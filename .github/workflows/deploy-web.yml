@@ -1,0 +1,86 @@
+name: Deploy — Web (Cloudflare Pages)
+
+# Builds the marketing site on GitHub's runners (free minutes on a public repo)
+# and uploads the static export to Cloudflare Pages as a Direct Upload — so
+# Cloudflare only serves the artifact and never runs a build of its own.
+#
+# It verifies the commit FIRST (the same gate PRs run) and deploys only if green,
+# so a broken build never reaches production. Runs on push to main touching the
+# site, and on demand.
+#
+# One-time setup (see web/docs/deploy.md):
+#   1. Create a Cloudflare Pages project named `uxnan` as a **Direct Upload**
+#      project (NOT connected to Git), production branch `main`. Its URL is then
+#      https://uxnan.pages.dev.
+#   2. Add two repository secrets:
+#        CLOUDFLARE_API_TOKEN  — a token with the "Cloudflare Pages — Edit" permission
+#        CLOUDFLARE_ACCOUNT_ID — your Cloudflare account id
+#
+# To point the site at a custom domain later, set a repository variable
+# NEXT_PUBLIC_SITE_URL (e.g. https://uxnan.dev); the build below picks it up.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy-web.yml"
+      - ".github/workflows/verify-web.yml"
+  workflow_dispatch:
+
+# Never let two production deploys race; let an in-flight one finish rather than
+# cancelling a publish midway.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  # Reuse the exact PR gate, so a red build can't be published.
+  verify:
+    uses: ./.github/workflows/verify-web.yml
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://uxnan.pages.dev' }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the static export
+        # Baked into the export at build time.
+        #   SITE_URL — makes the OG/canonical URLs absolute; falls back to the
+        #     Pages subdomain until a custom domain is set.
+        #   GOOGLE_SITE_VERIFICATION — optional Search Console token, kept as a
+        #     repo *variable* (Settings → Secrets and variables → Actions →
+        #     Variables) so it never lives in this public repo's source; it is
+        #     only emitted into the built HTML, where it is public by design.
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://uxnan.pages.dev' }}
+          NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${{ vars.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }}
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `web/out` is the export; the working-directory default does not apply
+          # to the action, so the path is repo-relative here.
+          command: pages deploy web/out --project-name=uxnan --branch=main

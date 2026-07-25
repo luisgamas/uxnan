@@ -28,6 +28,11 @@ which versions "go together".
   `shared-v*`, `bridge-v*`, `relay-v*`, `desktop-stable-v*`,
   `desktop-nightly-v*`, `mobile-v*`
   (mobile may append `+<buildNumber>`, e.g. `mobile-v0.0.1-alpha.20260621+5`).
+- **`web/` is deliberately not in any of this.** The marketing site publishes no
+  artifact and has no consumers, so it carries no tag and no row in the history
+  below. A push to `main` runs `deploy-web.yml`, which builds it on GitHub's
+  runners and uploads the static export to Cloudflare Pages. See
+  [`web/docs/deploy.md`](web/docs/deploy.md).
 - **Source tracks the tag — bump EVERY version file AND its lockfile in the same
   commit.** A stale lockfile is silent drift: the npm/desktop release workflows
   re-apply the version at build time with `--allow-same-version`, which **masks**

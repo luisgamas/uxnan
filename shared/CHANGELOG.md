@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Clarified — `AgentModel` doc comments name the current Claude alias set
+
+- `id` and `isLatestAlias` (`agents/agent-capabilities.ts`) documented Claude
+  Code's aliases as `opus`/`sonnet`/`haiku`; the CLI also accepts `fable`, which
+  the bridge now advertises. Comment-only — no wire shape, field or validator
+  changed. The resolved-version example was refreshed to `claude-opus-5`.
+
 ## [0.0.9-alpha.20260721] - 2026-07-21
 
 ### Clarified — `metrics/*` backups contain the complete durable ledger

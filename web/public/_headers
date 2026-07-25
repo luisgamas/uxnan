@@ -1,0 +1,20 @@
+# Cloudflare Pages response headers. `public/` is copied verbatim into the export,
+# so this lands at the site root (`out/_headers`) where Pages reads it.
+#
+# No Content-Security-Policy on purpose: the theme is applied by a small inline
+# script before first paint (see app/layout.tsx), and a strict script-src would
+# block it and bring back the flash of the wrong theme. The headers below are the
+# safe, uncontroversial ones.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: browser=(), camera=(), microphone=(), geolocation=()
+
+# Next fingerprints these filenames, so they can be cached forever.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/og.png
+  Cache-Control: public, max-age=86400

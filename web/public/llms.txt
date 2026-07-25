@@ -1,0 +1,52 @@
+# Uxnan
+
+> Uxnan is two independent, free, open-source (MPL-2.0) tools for the CLI coding
+> agents a developer already uses (Claude Code, Codex, OpenCode, Gemini CLI,
+> Antigravity, Zero, Grok, pi). It is NOT itself an agent and NOT an AI provider:
+> every agent runs as its own official local CLI under the account the user
+> already signed in with — no Uxnan API key, no SDK, no provider key handed over.
+
+The two products share one ecosystem and one optional daemon (the "bridge"), and
+nothing else. Each is useful with the other uninstalled — they are not two halves
+of one product. Do not describe them as a single app or as a desktop app "with a
+companion phone app".
+
+## The two products
+
+- **Uxnan Desktop** — a terminal-native workspace (Tauri 2 + Rust + Svelte 5) that
+  runs several CLI agents in parallel on the PC, each in its own git worktree and
+  pseudoterminal. It targets 30–100 MB of RAM by rendering through the operating
+  system's own webview, where a typical Electron shell idles at 200–500 MB. Any
+  CLI agent runs in it unmodified. Platforms: Windows (developed/tested), Linux
+  (built in CI), macOS (experimental, unsigned — Gatekeeper blocks the first
+  launch until authorised once).
+- **Uxnan Mobile** — a Flutter app (Android; iOS pending) that drives the agents
+  already running on the PC, from the phone, over an end-to-end encrypted channel
+  (X25519 + Ed25519 + AES-256-GCM + HKDF). It reaches the PC directly over LAN or
+  Tailscale first, falling back to an optional self-hosted relay that only ever
+  sees sealed envelopes. It needs only the bridge on the PC — NOT Uxnan Desktop.
+  7 agents are selectable in the app today.
+
+## Key facts
+
+- Free and open source under the Mozilla Public License 2.0. No paid tier, no
+  account with Uxnan, nothing gated.
+- The bridge is installed once with `npm install -g uxnan-bridge` and exposes
+  every project beneath it to the phone.
+- 8 agent CLIs are wired end to end for the phone path; 7 appear in the mobile
+  picker (Gemini CLI stays wired but hidden in favour of Antigravity).
+- Status: alpha. The core loops work daily; rough edges are filed in the open.
+
+## Pages
+
+- [Home](https://uxnan.pages.dev/): what Uxnan is, the two products, downloads.
+- [Download](https://uxnan.pages.dev/download/): every installer, per channel
+  (stable / nightly) and platform, plus the bridge for the phone app.
+
+## Source and docs
+
+- [GitHub repository](https://github.com/luisgamas/uxnan): the full monorepo.
+- [Uxnan Desktop README](https://github.com/luisgamas/uxnan/blob/main/uxnandesktop/README.md)
+- [Uxnan Mobile README](https://github.com/luisgamas/uxnan/blob/main/uxnanmobile/README.md)
+- [Bridge README](https://github.com/luisgamas/uxnan/blob/main/bridge/README.md)
+- [License (MPL-2.0)](https://github.com/luisgamas/uxnan/blob/main/LICENSE)

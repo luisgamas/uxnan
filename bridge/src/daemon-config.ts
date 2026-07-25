@@ -17,10 +17,10 @@ export type AgentPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions
  * An explicit model to surface in the phone's model picker, declared in config.
  *
  * Use this to pin concrete, versioned models alongside an agent's own
- * auto-updating aliases — e.g. for Claude Code, the `opus`/`sonnet`/`haiku`
- * aliases always track the latest, and pinning `claude-opus-4-7` here adds an
- * older-but-available version to the picker. `id` is passed verbatim to the
- * CLI's `--model`/`-m` flag.
+ * auto-updating aliases — e.g. for Claude Code, the
+ * `fable`/`opus`/`sonnet`/`haiku` aliases always track the latest, and pinning
+ * `claude-opus-4-7` here adds an older-but-available version to the picker. `id`
+ * is passed verbatim to the CLI's `--model`/`-m` flag.
  */
 export interface AgentModelSpec {
   /** Exact model id passed to the agent (e.g. `claude-opus-4-8`). */
@@ -41,9 +41,9 @@ export interface AgentSettings {
    * Extra explicit models to show in the picker, **added on top of** the
    * project's built-in (seeded) list — the two are UNION-ed by id at load time
    * (see `mergeAgentModels`), so the built-in list always stays current with the
-   * app and your entries extend/override it. For Claude Code (which exposes only
-   * the moving `opus`/`sonnet`/`haiku` aliases) this is how you pin an extra
-   * concrete version; a same-id entry overrides the seed's `displayName`.
+   * app and your entries extend/override it. For Claude Code (whose CLI exposes
+   * only the moving `fable`/`opus`/`sonnet`/`haiku` aliases) this is how you pin
+   * an extra concrete version; a same-id entry overrides the seed's `displayName`.
    * Entries may be a bare id string or an {@link AgentModelSpec}. Currently
    * consumed by the Claude Code adapter; ignored by agents that enumerate their
    * own models (OpenCode, Codex).
@@ -149,18 +149,31 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   workspaceRoots: [],
   browseRoots: [],
   projectAgents: [],
-  // Seed Claude Code with a few concrete, currently-available versions so the
-  // picker shows exact models out of the box, alongside the auto-updating
-  // `opus`/`sonnet`/`haiku` aliases. Curate this list as models are released or
-  // retired — the aliases always cover "latest" regardless. See docs/agents.md.
+  // Seed Claude Code with the concrete, currently-available versions its CLI
+  // accepts, so the picker shows exact models out of the box alongside the
+  // auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases. Curate this list as
+  // models are released or retired — the aliases always cover "latest"
+  // regardless. Newest/most capable first (that's the picker order), and only
+  // ids `claude --model` takes: no date-suffixed snapshots, no routing variants
+  // (`…[1m]`, `…-fast`), no invitation-only models. See docs/agents.md.
+  //
+  // TWIN LIST — KEEP IN SYNC. The desktop app ships its own hand-kept copy of
+  // this table in `uxnandesktop/src-tauri/src/agentcli.rs` (`CLAUDE_MODELS`,
+  // used by AI commit messages / PR bodies). Claude Code has no enumerate
+  // command, so both are maintained by hand: every new Claude model must be
+  // added to BOTH lists, with the same ids, labels and order.
   agents: {
     'claude-code': {
       models: [
         { id: 'claude-fable-5', displayName: 'Fable 5' },
+        { id: 'claude-opus-5', displayName: 'Opus 5' },
         { id: 'claude-opus-4-8', displayName: 'Opus 4.8' },
         { id: 'claude-opus-4-7', displayName: 'Opus 4.7' },
+        { id: 'claude-opus-4-6', displayName: 'Opus 4.6' },
+        { id: 'claude-opus-4-5', displayName: 'Opus 4.5' },
         { id: 'claude-sonnet-5', displayName: 'Sonnet 5' },
         { id: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6' },
+        { id: 'claude-sonnet-4-5', displayName: 'Sonnet 4.5' },
         { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },
       ],
     },
