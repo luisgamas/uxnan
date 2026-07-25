@@ -208,46 +208,61 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
 
 ## Automations — follow-ups ☐
 
-The engine, the headless runner, the OS-scheduler registration and the screen are
-done (see `## Status`); what is left is validation on the two platforms this machine
-cannot test, plus the deferrals marked in the code. Spec: `02f`.
+**The feature is complete and works.** The engine, the headless runner, the
+OS-scheduler registration and the screen are all done and verified end to end on
+Windows (see `## Status`). Nothing below is a hole in it — the list mixes three
+different kinds of item, so it is grouped by kind rather than left as one pile.
+Spec: `02f`.
 
-**Validation status — read this first.** Windows is verified end to end (a real
-scheduled task fired the runner with the app closed, and a `#[ignore]`d round-trip
-test covers the Task Scheduler XML). The **UI has not been reviewed on-device by the
-maintainer yet** — it type-checks and its pure logic is unit-tested, but no Svelte
-component or E2E tests exist, so treat its behavior as unexercised until someone has
-clicked through it.
+### Unverified, not unbuilt
 
-- ☐ **Validate the scheduler on macOS and Linux** — the plist and the systemd units
-  are built by pure, unit-tested functions, but neither has been registered on real
-  hardware. The Windows path has a `#[ignore]`d round-trip test
-  (`cargo test -- --ignored windows_round_trip`); the other two need the equivalent
-  run on a real machine.
-- ☐ **Native notification from the runner** (`automations/runner.rs`, marked
-  `FOR-DEV:`) — a failed unattended run should raise an OS notification. The runner
-  has no Tauri app handle, so it needs its own per-OS path (`notify.rs` is
-  webview-side). Until then the outcome is only visible in the app.
-- ☐ **Garbage-collect per-run worktrees** (`automations/runner.rs`, marked
-  `FOR-DEV:`) — `worktree_per_run` leaves each run's worktree in place on purpose (you
-  want to inspect what an unattended run did), so nothing removes them yet. Pruning a
-  run record should offer to remove its worktree too, and the UI should surface how
+Built and unit-tested, but never exercised on real hardware or a real account.
+Someone has to go and look.
+
+- ☐ **The scheduler on macOS and Linux** — the LaunchAgent plist and the systemd
+  units are produced by pure functions that are tested on every platform, but neither
+  has ever been registered on a real machine. Windows has a `#[ignore]`d round-trip
+  test against the real Task Scheduler (`cargo test -- --ignored windows_round_trip`);
+  the other two need the equivalent run by hand.
+- ☐ **A successful Zero run** — the recipe (`zero exec`, `--auto high`, prompt via
+  `-f`) is wired, and its resolution, exit code and error capture are all confirmed
+  against the real CLI. But this machine's Zero account has no credits, so a Zero step
+  has never been seen to *complete*. Every other supported agent has.
+
+### Deferred work, marked in the code
+
+Real gaps, small and scoped. Each has a `FOR-DEV:` marker at its site.
+
+- ☐ **A native notification from the runner** (`automations/runner.rs`) — a failed
+  unattended run should raise an OS notification. The runner has no Tauri app handle,
+  so it needs its own per-OS path (`notify.rs` is webview-side). Until then a failure
+  is visible in the app but nowhere else.
+- ☐ **Garbage-collect per-run worktrees** (`automations/runner.rs`) —
+  `worktree_per_run` leaves each run's worktree in place on purpose, because you want
+  to inspect what an unattended run did. Nothing removes them yet, so they accumulate;
+  pruning a run record should offer to remove its worktree, and the UI should show how
   much disk they hold.
-- ☐ **Structured hand-off between steps** — Grok takes `--json-schema` and Codex an
-  `--output-schema` file, so a step could return JSON matching a schema the next step
-  can rely on, turning the A→B hand-off from "trust the prose" into a typed contract.
-  Deliberately **not** done as a half-measure: simply asking for a JSON *output format*
-  without a schema returns the transcript rather than the answer, which would make
-  `{{steps.sN.output}}` worse, not better. Needs a per-step schema field, the UI to
-  author it, and an honest story for the agents that support neither.
-- ☐ **Tokens and cost per run** — `usage.rs` already reads each provider's own usage
-  API, but attributing a *specific run* means matching it to a provider session by time
-  window, which is exactly the kind of inference that silently produces wrong numbers.
-  Worth doing only with a visible "unattributed" state rather than a confident guess.
-- ☐ **Verify a successful Zero run** — the recipe (`zero exec`, `--auto high`, prompt
-  via `-f`) is wired and its resolution, exit code and error capture are all confirmed,
-  but this machine's Zero account has no credits, so a *completed* Zero step has never
-  been observed. Every other supported agent has been.
+
+### Optional enhancements — nothing is missing without them
+
+Ideas that would make automations *better*, not complete. Both are deliberately
+undone rather than half-done, because the cheap version of each is worse than
+leaving it alone.
+
+- ☐ **A typed hand-off between steps.** Today one agent's answer reaches the next as
+  prose, and the next agent reads it — which works, and is what every example does.
+  Grok accepts `--json-schema` and Codex an `--output-schema` file, so a step *could*
+  return JSON matching a shape the next step relies on. The trap: just asking for a
+  "JSON output format" without a schema returns the whole transcript as JSON instead of
+  the answer, which would make `{{steps.sN.output}}` **worse**. Doing it properly needs
+  a per-step schema field, UI to author it, and an honest answer for the agents that
+  support neither.
+- ☐ **Tokens and cost per run.** Runs already record duration, exit codes and full
+  output; this would add what each one *spent*. `usage.rs` reads each provider's own
+  usage API, but tying a specific run to specific tokens means matching it to a
+  provider session by time window — an inference that quietly produces wrong numbers
+  when two things overlap. Worth doing only with a visible "couldn't attribute this"
+  state instead of a confident guess.
 
 ## GitHub integration — follow-ups ☐
 

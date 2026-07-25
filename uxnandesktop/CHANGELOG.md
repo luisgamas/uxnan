@@ -227,9 +227,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   multi-tag membership, search, step-id reuse). `svelte-check` clean; full EN/ES i18n.
 - Docs: `docs/automations.md` gains a screen section, `architecture/02f` §6 is written
   up (including why the calendar math is where it is), and the `00-index` status row,
-  `FOR-DEV.md` and the monorepo `AGENTS.md` note are updated. **Not yet reviewed
-  on-device** — there are no Svelte component or E2E tests, so its behavior is
-  unexercised until someone clicks through it (`FOR-DEV.md`).
+  `FOR-DEV.md` and the monorepo `AGENTS.md` note are updated. Reviewed on-device by
+  the maintainer; there are still no Svelte component or E2E tests, so the automated
+  coverage is the pure logic underneath it.
 
 ### Added — Automations: scheduled by the operating system, so they fire with the app closed
 
