@@ -5,6 +5,74 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Automations: unattended, recurring multi-agent tasks that run with the app closed
+
+- New **automations engine** (`src-tauri/src/automations/`): an automation is a
+  **recurring** task that runs in **its own working folder** (a git repo or any plain
+  folder — never bound to the selected project) and drives a **graph of agent steps**,
+  so several providers work **in parallel** and a later agent consumes their outputs
+  via `{{steps.s1.output}}`. Independent steps dispatch together; a step listing
+  several dependencies waits for all of them (parallel + fan-in fall out of
+  `dependsOn` alone). Completion is **verified by exit code**, a failure propagates
+  down its whole branch as `skipped` while independent branches keep going, and
+  `onFailure: retry` re-dispatches up to `maxAttempts`.
+- The binary now has a **headless runner mode**: `main.rs` inspects its arguments
+  **before** Tauri builds a window, and `--automation-run <id> [--trigger …]` takes a
+  plain Tokio path that never creates a webview or window (nor a console on Windows).
+  That is what lets an automation fire **while uxnan is closed**. There is exactly one
+  execution path — the OS scheduler and the app's "Run now" both spawn this same
+  subprocess — so scheduled and manual runs can't drift apart. Exit codes: `0` ran or
+  was legitimately skipped, `1` a step failed, `2` not runnable.
+- **Why the engine is in Rust:** the orchestration console's engine lives in
+  TypeScript inside the webview, which cannot exist with the app closed; duplicating a
+  scheduler in two languages would guarantee drift. The TypeScript engine keeps its own
+  job (live agents in real terminals) and is **untouched** — the two surfaces coexist.
+- **Recurrence only, no calendar math in Rust.** `Schedule` is `every N
+  minutes|hours|days|weeks` plus daily / weekdays / weekly presets — **no one-shot**
+  (an automation is recurring by definition) and **no cron** (it doesn't translate
+  cleanly to Task Scheduler or systemd). The OS scheduler owns *when* a run fires, so
+  Rust only describes the frequency; the "next runs" preview is frontend-only and
+  display-only. No new dependency.
+- **Context across runs:** `{{prev.s1.output}}` plants the previous run's output, so a
+  recurring automation can continue yesterday's work. Unresolved references become ""
+  and are recorded in the run's `missingRefs` rather than failing it.
+- **Policy:** missed-run catch-up, overlap (`skip`/`queue`/`cancelPrevious`) with a
+  stale-run guard so a killed runner can't block every future run, a **shell
+  precondition** (exit 0 = proceed, with a timeout and full capture), a whole-run time
+  ceiling, and history **retention**. Optional **worktree per run** on a repo working
+  folder, so unattended work never touches the tree you're using.
+- **Persistence with a single writer per file** (`<app-data>/automations/`):
+  `automations.json` is written only by the app, `runs/<automationId>/<runId>.json`
+  only by its own runner (atomic write-rename, rewritten as steps advance so the app
+  can show live progress by watching the directory). No locks, no lost updates; a
+  corrupt record is skipped instead of hiding the history around it. The runner
+  resolves the same app-data directory **without** a Tauri handle.
+- Run records keep what an unattended execution needs to explain itself afterwards:
+  the **prompt as actually sent**, captured output, verified exit code, stderr,
+  attempts, per-step timings, the precondition capture, and the graph edges (copied in,
+  so history stays readable after the automation is edited or deleted).
+- **No human gates on purpose** — a task that blocks at 3 AM waiting for a click is a
+  broken task. Anything needing live approval stays in the orchestration console.
+- The runner applies the app's **`PATH` enrichment** before resolving anything: a run
+  launched by the OS scheduler inherits an even barer environment than a GUI launch
+  (launchd hands a job the minimal `PATH`), which would make **every** agent read as
+  "not installed".
+- 44 new Rust tests (310 total). Docs: new `docs/automations.md` (linked from the
+  README) and new spec page `architecture/02f-automations.md` (registered in
+  `architecture/00-index.md`: doc table + status table + tree).
+
+### Fixed — Codex print-mode runs work outside a git repository
+
+- `agentcli::build_args` now passes Codex **`--skip-git-repo-check`**. Codex refuses to
+  start outside a Git repository and asks the human to confirm — a prompt nothing can
+  answer in print mode, so the run simply failed. Every invocation through this path is
+  programmatic, in a directory the user picked, so the interactive guard has nothing to
+  protect. Fixes headless Codex steps in the **Global** orchestration workspace and in
+  an automation whose working folder is deliberately not a repo; a no-op for AI-commit
+  (always a repo). Folder **trust** is a separate decision and is left untouched — the
+  automations runner seeds it the same way `mcpinject` already does when launching
+  Codex into a workspace.
+
 ### Changed — GitHub: a per-project inline view replaces the full-screen section
 
 - The full-screen GitHub overlay is gone. GitHub now opens **per project** from each

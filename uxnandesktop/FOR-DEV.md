@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 266 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**). 310 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -87,6 +87,20 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   **contextual variable picker** (per-field descriptions + live previews, insert at
   cursor), **type cards** (headless the default for chaining), **searchable**
   agent/model/worktree pickers, and an **Examples** menu of ready-made runs.
+- **Automations — engine only, no UI yet** (spec `02f`) — unattended, **recurring**
+  tasks that run in **their own working folder** (repo or not; never bound to the
+  selected project) driving a **multi-agent graph**: parallel + fan-in from
+  `dependsOn`, context passing (`{{steps.s1.output}}`, plus `{{prev.s1.output}}` from
+  the previous run), completion **verified by exit code**, skip propagation down a
+  failed branch, per-step retry, shell **precondition**, optional **worktree per
+  run**, overlap policy with a stale-run guard, and history **retention**. The binary
+  doubles as a **headless runner** (`--automation-run <id>`, branched in `main.rs`
+  before Tauri builds a window) so a run fires **with the app closed**; one execution
+  path serves both the OS scheduler and "Run now". Persistence uses a **single writer
+  per file** (`<app-data>/automations/`). **Validated live** with the app closed:
+  OpenCode ∥ Codex in parallel, Claude consuming both outputs, exit 0.
+  **Still missing: OS-scheduler registration and the whole UI** — see *Automations —
+  follow-ups* below. `src-tauri/src/automations/`, [`docs/automations.md`](docs/automations.md).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
@@ -174,6 +188,45 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   **Caveat: the write side is implemented but not yet exercised against real GitHub
   data** (this repo has no PRs/issues/collaborators) — see *Validation status* under
   "GitHub integration — follow-ups" before trusting any of it in anger.
+
+## Automations — follow-ups ☐
+
+The engine and the headless runner are done and validated (see `## Status`); these
+are the pieces that make it a feature a user can actually reach. Spec: `02f`.
+
+- ☐ **OS-scheduler registration** (`02f` §5) — register/unregister/update the task
+  when an automation is saved, enabled, disabled or deleted. Windows: Task Scheduler
+  **XML** via `schtasks /Create /XML` (the short flags can't express hidden execution,
+  the multiple-instances policy, the execution time limit or `StartWhenAvailable`).
+  macOS: LaunchAgent plist + `launchctl`. Linux: `systemd --user` service + timer with
+  `Persistent=true`. All per-user, no elevation. **Must degrade honestly**: if
+  registration fails (unsupported OS, corporate policy, permissions) the automation
+  keeps firing while uxnan is open and the UI says so, with a retry action — never an
+  automation that looks active and isn't.
+- ☐ **The Automations screen** (`02f` §6) — full-screen view inside the window (like
+  Settings), opened from the sidebar profile menu + a global shortcut. Sections:
+  Overview, list (groupable by agent / task type / frequency / folder / status),
+  inline editor, run history with live progress, templates, settings. Needs its
+  Tauri command surface, the frontend store, EN/ES i18n and Vitest coverage for the
+  pure display/preview logic (including the frontend-side "next runs" preview, which
+  is display-only — the OS scheduler stays the authority on *when*).
+- ☐ **Native notification from the runner** (`automations/runner.rs`, marked
+  `FOR-DEV:`) — a failed unattended run should raise an OS notification. The runner
+  has no Tauri app handle, so it needs its own per-OS path (`notify.rs` is
+  webview-side). Until then the outcome is only visible in the app.
+- ☐ **Garbage-collect per-run worktrees** (`automations/runner.rs`, marked
+  `FOR-DEV:`) — `worktree_per_run` leaves each run's worktree in place on purpose (you
+  want to inspect what an unattended run did), so nothing removes them yet. Pruning a
+  run record should offer to remove its worktree too, and the UI should surface how
+  much disk they hold.
+- ☐ **Structured hand-off between steps** — several CLIs can emit machine-readable
+  output (a JSON schema constraint, a JSON output mode, an output-schema file). Using
+  it would turn the A→B hand-off from "trust the prose" into a typed contract. Related:
+  passing a large chained prompt via a **prompt file** instead of argv would also lift
+  the 28 KB cap noted in `agentrun.rs`.
+- ☐ **Headless recipes for the remaining agents** — `agentcli::build_args` only knows
+  claude / codex / gemini / opencode / pi, so an automation can't target the agents the
+  bridge already drives (grok, zero, antigravity).
 
 ## GitHub integration — follow-ups ☐
 
@@ -507,7 +560,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 266 Rust + 225 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 310 Rust + 225 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
