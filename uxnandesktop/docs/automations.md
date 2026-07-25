@@ -13,10 +13,10 @@ Two things make it different from the [orchestration console](./orchestration.md
 it does not need uxnan to be open, and it is not tied to whatever project is
 selected in the sidebar.
 
-> **Status.** The engine, the on-disk format and the headless runner are
-> **implemented and tested**. The **OS-scheduler registration** and the
-> **Automations screen** land in the next phases — until then an automation is
-> defined in `automations.json` and started by invoking the runner (below).
+> **Status.** The engine, the on-disk format, the headless runner and the
+> **OS-scheduler registration** are implemented and tested. The **Automations
+> screen** lands in the next phase — until then an automation is defined in
+> `automations.json` and scheduled or started through the commands below.
 > Spec: [`architecture/02f-automations.md`](../architecture/02f-automations.md).
 
 ---
@@ -150,6 +150,58 @@ A run record keeps everything an unattended execution needs to explain itself
 afterwards: the **prompt as actually sent**, the captured output, the verified
 exit code, stderr, attempts, per-step timings and the precondition capture.
 
+## Scheduling
+
+uxnan keeps **no clock of its own**. Saving or enabling an automation registers a
+task with the operating system's own scheduler, which then spawns the runner —
+that is what keeps it firing with the app closed. Everything is registered **per
+user, without elevation**.
+
+| OS | Mechanism |
+|---|---|
+| Windows | Task Scheduler XML → `schtasks /Create /XML /TN uxnan-automation-<id> /F` |
+| macOS | LaunchAgent in `~/Library/LaunchAgents`, loaded with `launchctl bootstrap gui/<uid>` |
+| Linux | `~/.config/systemd/user/uxnan-automation-<id>.{service,timer}`, `systemctl --user enable --now` |
+
+Two policy fields are delegated to the OS rather than enforced only by us:
+`overlap` becomes Task Scheduler's `MultipleInstancesPolicy` (and its
+equivalents), and `catchUp` becomes `StartWhenAvailable` / `Persistent`, so a run
+whose moment passed while the machine was off is recovered rather than lost.
+
+An interval is emitted as a repeating trigger; the clock-time presets as a
+*calendar* trigger, which stays pinned to the wall clock where an interval would
+drift across DST. On systemd this matters more than cosmetically: `Persistent=`
+only applies to `OnCalendar`, so a monotonic interval timer deliberately does not
+claim a catch-up it would not perform.
+
+### When registration fails
+
+It can — an unsupported platform, a corporate policy, a locked-down machine. When
+it does the automation is **still saved**, and the status returned carries the
+message the OS actually printed. The automation keeps running while uxnan is
+open, and the UI must say plainly that it is not scheduled. There is no state in
+which an automation looks active without being active.
+
+**Windows caveat, stated rather than hidden:** the task runs with
+`InteractiveToken`, so it fires only while the user is logged on. Running with
+the session closed would require storing the user's password, which uxnan does
+not do.
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `automations_list` | Every saved automation |
+| `automations_save` | Upsert **and** bring the OS task in line; returns the resulting scheduler status |
+| `automations_set_enabled` | Enable/disable, registering or removing the task to match |
+| `automations_delete` | Remove the automation, its task and its history |
+| `automations_runs` / `automations_runs_dir` | Run history, and the directory to watch for live progress |
+| `automations_run_now` | Spawn the same runner the scheduler spawns, tagged `manual` |
+| `automations_scheduler_status` / `automations_scheduler_supported` | What the OS thinks, and whether this platform can schedule at all |
+
+`automations_save` takes a `startBoundary`: a **local** ISO 8601 datetime the
+caller computes, because the backend does no calendar arithmetic.
+
 ## No human gates
 
 An unattended task that blocks at 3 AM waiting for a click is a broken task.
@@ -175,8 +227,21 @@ captured output. Anything that needs live approval belongs in the
 
 The pure logic is unit-tested (`cargo test automations`): schedule validation,
 template resolution including multi-byte text, cycle detection, fan-in readiness,
-skip propagation, retry, run-status derivation, retention, and the single-writer
-store contract.
+skip propagation, retry, run-status derivation, retention, the single-writer
+store contract, and the exact text of the Task Scheduler XML, the LaunchAgent
+plist and the systemd units — those builders are compiled and tested on **every**
+platform, so a Windows machine still checks the macOS and Linux output.
+
+The scheduler also has a round-trip test against the **real** Task Scheduler,
+`#[ignore]`d so it never runs in CI or a normal `cargo test`:
+
+```bash
+cargo test -- --ignored windows_round_trip
+```
+
+It registers, queries, removes and re-removes a throwaway task. Run it after any
+change to the XML — Task Scheduler rejects a malformed document with a message
+that says nothing about the cause, and this is the only thing that catches it.
 
 To exercise a real run end to end, point the store at a scratch data directory
 and invoke the runner directly:

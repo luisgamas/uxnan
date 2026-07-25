@@ -8,10 +8,12 @@
 > salidas. El programador del sistema operativo dispara un **runner headless**
 > del mismo binario; el motor vive en Rust.
 >
-> **Estado: NUCLEO IMPLEMENTADO** (modelo, almacenamiento, plantillas, ejecutor
-> del grafo, precondicion, worktree por corrida y runner `--automation-run`).
-> **Pendiente:** registro en el programador del SO (§4) y la interfaz (§5).
-> Ver `FOR-DEV.md`.
+> **Estado: MOTOR Y PROGRAMACION IMPLEMENTADOS** (modelo, almacenamiento,
+> plantillas, ejecutor del grafo, precondicion, worktree por corrida, runner
+> `--automation-run`, registro en el programador del SO y superficie de
+> comandos). Validado de punta a punta en Windows: una tarea real dispara el
+> runner con la app cerrada y deja su registro. **Pendiente: la interfaz (§6)**,
+> y validar macOS/Linux en hardware real. Ver `FOR-DEV.md`.
 
 ---
 
@@ -222,27 +224,74 @@ que `app_data_dir()` devuelve en cada plataforma a partir del `identifier` de
 
 ---
 
-## 5. Registro en el programador del SO — PENDIENTE
+## 5. Registro en el programador del SO
 
-Al guardar o habilitar una automatizacion la app dara de alta la tarea; al
-deshabilitarla o borrarla, la dara de baja. Todo **por usuario, sin permisos de
+Al guardar o habilitar una automatizacion la app da de alta la tarea; al
+deshabilitarla o borrarla, la da de baja. Todo **por usuario, sin permisos de
 administrador**:
 
 | SO | Mecanismo | Recuperacion de corridas perdidas |
 |---|---|---|
-| Windows | XML de Task Scheduler → `schtasks /Create /XML /TN "Uxnan\<id>" /F` | `StartWhenAvailable` |
-| macOS | LaunchAgent `~/Library/LaunchAgents/…automation.<id>.plist` + `launchctl` | reintento al iniciar sesion |
-| Linux | `~/.config/systemd/user/uxnan-automation-<id>.{service,timer}` | `Persistent=true` |
+| Windows | XML de Task Scheduler → `schtasks /Create /XML /TN uxnan-automation-<id> /F` | `StartWhenAvailable` |
+| macOS | LaunchAgent `~/Library/LaunchAgents/dev.luisgamas.uxnandesktop.automation.<id>.plist` + `launchctl bootstrap gui/<uid>` | reintento al despertar / iniciar sesion |
+| Linux | `~/.config/systemd/user/uxnan-automation-<id>.{service,timer}` + `systemctl --user enable --now` | `Persistent=true` (solo `OnCalendar`) |
 
-Se usa el XML de Task Scheduler y no las banderas cortas de `schtasks` porque da
-lo que importa: ejecucion oculta, politica de instancia multiple (que **es** la
-politica de solape), limite de tiempo de ejecucion y recuperacion de perdidas.
+Se usa el **XML** de Task Scheduler y no las banderas cortas de `schtasks`
+porque las banderas no pueden expresar las cuatro cosas que importan:
+ejecucion **oculta**, **politica de instancia multiple** (que *es* la politica de
+solape, ahora respaldada por el SO y no solo por el runner), **limite de tiempo
+de ejecucion** y **recuperacion de perdidas**.
 
-**Degradacion honesta (requisito, no detalle):** si el registro falla (SO no
-soportado, politica corporativa, permisos), la automatizacion **no se rompe**:
-sigue disparandose mientras uxnan este abierto y la ficha lo dice con todas sus
-letras, con accion para reintentar el registro. Nunca una automatizacion que
-aparenta estar activa sin estarlo.
+Un intervalo se emite como trigger de **repeticion**; los presets de hora de
+reloj como trigger de **calendario**, que se mantiene anclado al reloj de pared
+donde un intervalo derivaria con el cambio de horario. En systemd la distincion
+importa aun mas: `Persistent=` (la recuperacion) **solo aplica a `OnCalendar`**,
+asi que un intervalo monotonico deliberadamente **no** lo emite en vez de
+declarar una recuperacion que no ocurriria.
+
+### 5.1 Estructura y verificacion
+
+Cada modulo de plataforma separa un **constructor puro** (el XML / plist /
+unidades, compilado y unit-testeado en **todas** las plataformas — ahi es donde
+viven los errores) de la **invocacion**, que si va detras de `cfg`. Por eso una
+maquina Windows valida igualmente el plist de macOS y las unidades de systemd.
+
+Ademas hay una prueba de **ida y vuelta contra el programador real**
+(`#[ignore]`, se corre a proposito: `cargo test -- --ignored windows_round_trip`)
+que da de alta, consulta, da de baja y repite la baja. Es la unica forma de
+detectar el fallo al que este modulo mas expuesto esta: que Task Scheduler
+rechace el documento con un mensaje que no dice nada de la causa real.
+
+**Sin comparar textos de error.** Distinguir "la tarea no existe" de "no puedo
+ver el almacen de tareas" mirando el mensaje es una trampa: esta **localizado**,
+asi que en un Windows en espanol, aleman o japones ninguna comparacion acierta y
+toda automatizacion se reportaria como fallida. En su lugar, cuando la consulta
+falla se **sondea** si el programador responde en absoluto: si responde, la
+tarea simplemente no esta; si no responde, eso si es un fallo que el usuario
+debe ver.
+
+### 5.2 Superficie de comandos
+
+`automations/commands.rs` mantiene un invariante que la UI no deberia tener que
+recordar: **la definicion en disco y la tarea del SO se mueven juntas**. Guardar
+registra o da de baja, borrar elimina tarea e historial, y **toda mutacion
+devuelve el `SchedulerStatus` resultante** para que la interfaz muestre la verdad
+en lugar de suponer exito. "Ejecutar ahora" lanza **el mismo subproceso runner**
+que lanza el SO, solo etiquetado como `manual`.
+
+### 5.3 Degradacion honesta (requisito, no detalle)
+
+Si el registro falla (SO no soportado, politica corporativa, permisos), la
+automatizacion **no se rompe** y **no se pierde**: se guarda igual, el
+`SchedulerStatus` devuelto lleva **el mensaje del SO tal cual**, y la ficha debe
+decirlo con todas sus letras con accion para reintentar. Nunca una
+automatizacion que aparenta estar activa sin estarlo.
+
+**Limitacion documentada, no disimulada:** en Windows la tarea corre con
+`InteractiveToken`, es decir **solo con el usuario con sesion iniciada**.
+Ejecutar con la sesion cerrada exigiria almacenar la contrasena del usuario, y
+eso no se hace. macOS y Linux **no estan validados en hardware real** todavia
+(`FOR-DEV.md`).
 
 ---
 
@@ -278,3 +327,5 @@ destructiva compartido.
 | `automations/template.rs` | Resolucion de `{{…}}` (escaner propio, sin regex) |
 | `automations/graph.rs` | Ejecutor del DAG (logica pura + pegamento async) + precondicion |
 | `automations/runner.rs` | Modo `--automation-run`, ciclo de vida de la corrida |
+| `automations/oscheduler/` | Registro en el programador del SO: `mod.rs` (API + estado) · `windows.rs` (XML de Task Scheduler) · `macos.rs` (LaunchAgent) · `linux.rs` (unidades systemd) |
+| `automations/commands.rs` | Comandos Tauri; mantiene definicion y tarea del SO sincronizadas |

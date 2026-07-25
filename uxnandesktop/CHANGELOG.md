@@ -61,6 +61,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Added — Automations: scheduled by the operating system, so they fire with the app closed
+
+- Saving or enabling an automation now **registers a task with the OS's own scheduler**,
+  which spawns the headless runner: **Task Scheduler XML** on Windows
+  (`schtasks /Create /XML`), a **LaunchAgent** on macOS (`launchctl bootstrap gui/<uid>`),
+  a **systemd user timer** on Linux (`systemctl --user enable --now`). All per user,
+  **no elevation**. uxnan keeps no clock of its own.
+- Two policy fields are **delegated to the OS** instead of being enforced only by our
+  runner: `overlap` becomes `MultipleInstancesPolicy` (and equivalents) and `catchUp`
+  becomes `StartWhenAvailable` / `Persistent`, so a run whose moment passed while the
+  machine was off is recovered rather than lost. An interval is emitted as a repeating
+  trigger, the clock-time presets as a **calendar** trigger that stays pinned to the
+  wall clock across DST. On systemd a monotonic interval deliberately omits
+  `Persistent=`, which only applies to `OnCalendar` — claiming a catch-up that would
+  never happen would be a lie in a config file.
+- We register full **XML** rather than `schtasks`' short flags because the flags cannot
+  express the four things that matter: hidden execution, the multiple-instances policy,
+  the execution time limit and missed-run recovery. The document is written as UTF-16
+  with a BOM, which Task Scheduler requires.
+- **Honest degradation**: if registration fails (unsupported platform, corporate
+  policy, permissions) the automation is **still saved**, the returned status carries
+  the message the OS actually printed, and it keeps running while uxnan is open. There
+  is no state in which an automation looks active without being active. Documented
+  caveat: on Windows the task uses `InteractiveToken`, so it fires only while the user
+  is logged on — running with the session closed would mean storing their password.
+- New **Tauri command surface** (`automations/commands.rs`) holding one invariant so
+  the UI never has to remember it: **the stored definition and the OS task always move
+  together**. Every mutation returns the resulting scheduler status. "Run now" spawns
+  the *same* runner the scheduler spawns, tagged `manual`.
+- **Status queries never match on error text.** Telling "no such task" apart from "I
+  cannot see the task store" by matching the message is a trap — it is localized, so on
+  a Spanish, German or Japanese Windows nothing would match and every automation would
+  report as failed (exactly what happened on this machine before the round-trip test
+  caught it). The query now probes whether the scheduler responds at all.
+- 27 new Rust tests (337 total), including a `#[ignore]`d **round-trip against the real
+  Task Scheduler** (`cargo test -- --ignored windows_round_trip`) — the only way to
+  catch Windows rejecting the document, since it does so with a message that says
+  nothing about the cause. Verified end to end on Windows: a real task launched the
+  runner with the app closed and left its run record. macOS and Linux registration is
+  built and unit-tested but **not yet validated on real hardware** (`FOR-DEV.md`).
+
 ### Fixed — Codex print-mode runs work outside a git repository
 
 - `agentcli::build_args` now passes Codex **`--skip-git-repo-check`**. Codex refuses to

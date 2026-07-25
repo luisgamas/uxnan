@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 310 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**). 337 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -97,10 +97,15 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   doubles as a **headless runner** (`--automation-run <id>`, branched in `main.rs`
   before Tauri builds a window) so a run fires **with the app closed**; one execution
   path serves both the OS scheduler and "Run now". Persistence uses a **single writer
-  per file** (`<app-data>/automations/`). **Validated live** with the app closed:
-  OpenCode ∥ Codex in parallel, Claude consuming both outputs, exit 0.
-  **Still missing: OS-scheduler registration and the whole UI** — see *Automations —
-  follow-ups* below. `src-tauri/src/automations/`, [`docs/automations.md`](docs/automations.md).
+  per file** (`<app-data>/automations/`). **Registration with the OS scheduler is
+  done** — Task Scheduler XML / LaunchAgent / systemd user timer, per user and
+  without elevation, with the overlap policy and missed-run catch-up delegated to the
+  OS and **honest degradation** when registration fails — plus the Tauri command
+  surface that keeps the stored definition and the OS task in lockstep.
+  **Validated live** with the app closed: OpenCode ∥ Codex in parallel with Claude
+  consuming both outputs, and a real Windows task firing the runner end to end.
+  **Still missing: the whole UI** — see *Automations — follow-ups* below.
+  `src-tauri/src/automations/`, [`docs/automations.md`](docs/automations.md).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
@@ -191,18 +196,15 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
 
 ## Automations — follow-ups ☐
 
-The engine and the headless runner are done and validated (see `## Status`); these
-are the pieces that make it a feature a user can actually reach. Spec: `02f`.
+The engine, the headless runner and the OS-scheduler registration are done and
+validated (see `## Status`); what is left is the surface a user can actually reach,
+plus validation on the two platforms this machine cannot test. Spec: `02f`.
 
-- ☐ **OS-scheduler registration** (`02f` §5) — register/unregister/update the task
-  when an automation is saved, enabled, disabled or deleted. Windows: Task Scheduler
-  **XML** via `schtasks /Create /XML` (the short flags can't express hidden execution,
-  the multiple-instances policy, the execution time limit or `StartWhenAvailable`).
-  macOS: LaunchAgent plist + `launchctl`. Linux: `systemd --user` service + timer with
-  `Persistent=true`. All per-user, no elevation. **Must degrade honestly**: if
-  registration fails (unsupported OS, corporate policy, permissions) the automation
-  keeps firing while uxnan is open and the UI says so, with a retry action — never an
-  automation that looks active and isn't.
+- ☐ **Validate the scheduler on macOS and Linux** — the plist and the systemd units
+  are built by pure, unit-tested functions, but neither has been registered on real
+  hardware. The Windows path has a `#[ignore]`d round-trip test
+  (`cargo test -- --ignored windows_round_trip`); the other two need the equivalent
+  run on a real machine.
 - ☐ **The Automations screen** (`02f` §6) — full-screen view inside the window (like
   Settings), opened from the sidebar profile menu + a global shortcut. Sections:
   Overview, list (groupable by agent / task type / frequency / folder / status),
@@ -560,7 +562,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 310 Rust + 225 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 337 Rust + 225 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
