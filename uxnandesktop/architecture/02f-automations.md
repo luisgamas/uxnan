@@ -172,14 +172,37 @@ trabajo de ayer** en vez de empezar de cero. Una referencia desconocida o aun si
 valor resuelve a cadena vacia y queda anotada en `missing_refs` del registro: un
 traspaso delgado se documenta, no mata la corrida.
 
-### 3.4 Por que no hay compuertas humanas
+### 3.4 Autonomia por paso
+
+Un agente headless **no puede preguntarle a nadie**, asi que cuando un prompt
+necesita una herramienta varios CLIs la **auto-deniegan** y devuelven nada util
+(Antigravity lo dice con todas sus letras). Por eso cada paso lleva
+`autonomous` — apagado por defecto:
+
+- **apagado**: el paso puede leer y responder, pero no cambiar nada;
+- **encendido**: el agente aprueba su propio uso de herramientas y puede editar
+  archivos y ejecutar comandos sin nadie mirando.
+
+Es una decision **por paso** y no global precisamente porque esa segunda linea es
+real. Cada CLI recibe su propia bandera: `--dangerously-skip-permissions` (Claude,
+Antigravity), `--dangerously-bypass-approvals-and-sandbox` (Codex), `--auto`
+(OpenCode), `--permission-mode bypassPermissions` (Grok).
+
+**El orden de los argumentos es parte del contrato.** Antigravity deja de
+reconocer opciones en cuanto `--print` consume el prompt, asi que una bandera
+puesta despues se **ignora en silencio** y la corrida se cuelga hasta su propio
+timeout de cinco minutos esperando un permiso que nadie puede dar. Los dos CLIs
+nativos emiten toda opcion antes del prompt, y un test fija la forma exacta. Esto
+salio de ejecutarlo, no de leer la ayuda.
+
+### 3.5 Por que no hay compuertas humanas
 
 Una tarea desatendida que se bloquea a las 3 AM esperando un clic esta rota. Una
 automatizacion termina y **deja su resultado** (una rama, un reporte, la salida
 capturada) mas una notificacion. Lo que necesita aprobacion en vivo pertenece a
 la consola interactiva de `02d` §3.
 
-### 3.5 Precondicion y aislamiento
+### 3.6 Precondicion y aislamiento
 
 - **Precondicion:** un comando de shell con timeout decide si la corrida procede
   (exit 0 = adelante). Barato para expresar "solo si hay commits nuevos" sin

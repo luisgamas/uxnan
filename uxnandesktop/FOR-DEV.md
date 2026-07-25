@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 337 Rust backend tests + 258 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**). 341 Rust backend tests + 258 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -233,9 +233,9 @@ clicked through it.
   it would turn the A→B hand-off from "trust the prose" into a typed contract. Related:
   passing a large chained prompt via a **prompt file** instead of argv would also lift
   the 28 KB cap noted in `agentrun.rs`.
-- ☐ **Headless recipes for the remaining agents** — `agentcli::build_args` only knows
-  claude / codex / gemini / opencode / pi, so an automation can't target the agents the
-  bridge already drives (grok, zero, antigravity).
+- ☐ **A headless recipe for Zero** — `agentcli` now covers claude / codex / gemini /
+  opencode / pi / **agy (Antigravity)** / **grok**, so the only agent the bridge drives
+  that an automation still can't target is Zero.
 
 ## GitHub integration — follow-ups ☐
 
@@ -569,7 +569,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 337 Rust + 258 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 341 Rust + 258 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

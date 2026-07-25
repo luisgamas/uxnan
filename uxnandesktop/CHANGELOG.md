@@ -61,6 +61,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Added — Antigravity and Grok run headlessly, and a step can be allowed to act on its own
+
+- **Antigravity (`agy`) and Grok** join the headless agent set, so an automation, an
+  orchestration headless step or an AI commit message can be driven by either. Both
+  ship a single native binary rather than an npm package, so they resolve straight
+  off `PATH`. `agentcli::SUPPORTED` is now seven agents.
+- **Per-step autonomy** (`Step.autonomous`, off by default). A headless agent cannot
+  ask a human, so with tools involved several CLIs **auto-deny** and come back with
+  nothing — Antigravity says so in as many words. A step that must actually *change*
+  something therefore needs this, and it is opt-in per step precisely because it lets
+  an agent edit files and run commands with nobody watching. It maps to each CLI's own
+  flag: `--dangerously-skip-permissions` (Claude, Antigravity),
+  `--dangerously-bypass-approvals-and-sandbox` (Codex), `--auto` (OpenCode),
+  `--permission-mode bypassPermissions` (Grok). The editor exposes it as a switch whose
+  helper text changes to state what is true in each position.
+- **Argument order is now part of the contract for the prompt-taking CLIs.**
+  Antigravity stops recognizing options once `--print` has consumed the prompt, so a
+  flag placed after it is *silently ignored* — and the run then hangs until agy's own
+  five-minute print timeout waiting for a permission nobody can grant. Both natives now
+  emit every option before the prompt, and a test pins the exact shape. This was found
+  by running it, not by reading the help.
+- `agent_run_headless` takes an optional `autonomous`; omitting it keeps the safe
+  default, so the orchestration console is unaffected. AI commit passes `false` — it
+  only ever asks for text back.
+- 4 new Rust tests (341 total). **Verified end to end** with the app closed: a
+  three-step automation where Grok answered, Antigravity used the autonomy flag to read
+  a real file, and Claude consumed both outputs.
+
 ### Added — Automations: the screen
 
 - **Entry point + shortcut**: *Automations* in the left sidebar's profile menu, and

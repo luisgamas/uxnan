@@ -140,13 +140,31 @@ the frontend and is display-only.
 | Field | Default | Notes |
 |---|---|---|
 | `id` | — | Unique within the automation (`s1`, `s2`, …) |
-| `agent` | — | `claude`, `codex`, `gemini`, `opencode`, `pi` |
+| `agent` | — | `claude`, `codex`, `gemini`, `opencode`, `pi`, `agy` (Antigravity), `grok` |
 | `model` | CLI default | Empty means the CLI picks |
 | `prompt` | — | May reference other steps (below) |
 | `dependsOn` | `[]` | Wait for these to complete |
 | `onFailure` | `stop` | `retry` re-dispatches up to `maxAttempts` |
 | `maxAttempts` | `1` | |
 | `timeoutMs` | 10 min | Per-step wall-clock cap |
+| `autonomous` | `false` | Let the agent approve its own tool use — see below |
+
+### Letting a step act on its own
+
+A headless agent cannot ask a human, so when a prompt needs a tool several CLIs
+**auto-deny** it and return nothing useful. Antigravity says so outright:
+
+```
+a tool required the "command" permission that headless mode cannot prompt for,
+so it was auto-denied
+```
+
+So a step that only reads and reports is fine as it is, but a step that has to
+*change* something needs `autonomous: true`. It is opt-in per step, and stays off
+by default, because it lets an agent edit files and run commands with nobody
+watching. Each CLI gets its own flag: `--dangerously-skip-permissions` (Claude,
+Antigravity), `--dangerously-bypass-approvals-and-sandbox` (Codex), `--auto`
+(OpenCode), `--permission-mode bypassPermissions` (Grok).
 
 ### Prompt references
 
@@ -247,6 +265,10 @@ captured output. Anything that needs live approval belongs in the
 - **PATH**: a run launched by the OS scheduler inherits a minimal environment
   (launchd in particular), so the runner applies the same PATH enrichment the app
   applies at startup. Without it every agent would resolve as "not installed".
+- **Antigravity** stops parsing options once `--print` has taken the prompt, so
+  every option is emitted *before* it. A flag placed after would be silently
+  ignored and the run would hang until agy's own five-minute print timeout — the
+  kind of thing only a real run surfaces, so a test pins the argument order.
 - The agent CLIs must be **signed in**. If one asks for a login the step fails
   and its stderr is recorded.
 
