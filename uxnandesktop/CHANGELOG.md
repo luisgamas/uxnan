@@ -61,6 +61,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Added — Automations ship with four working examples
+
+- A machine that has never seen them is offered **four example automations** the first
+  time the screen opens, so the overview, the list, a detail view and the editor all
+  have something real to show instead of four dead ends. They are ordinary automations
+  after that: editable, runnable, deletable.
+- All four land **paused**, and nothing registers a scheduled task until the user
+  enables one — an example must not start firing because the app was opened.
+- Between them they cover every idea worth understanding: **parallel work feeding one
+  consolidating agent** (nightly triage), the **same question answered by different
+  providers** with a third comparing them (cross-provider consensus), a run that
+  **continues the previous one** via `{{prev.s1.output}}` (daily relay), and a **cheap
+  shell check** deciding whether an agent turn is worth spending at all (watch for new
+  commits, gated on `git log --since`).
+- Every example is **multi-agent** — a single agent on a timer is what this feature is
+  not — and its agents are drawn from the CLIs actually installed, cycling so two
+  installed CLIs still make a genuinely multi-provider example. With none installed the
+  slots are left empty and the editor asks, rather than naming an agent that isn't there.
+- Seeding happens **once ever**, recorded by a flag in the store that ordinary saves
+  carry over: deleting an example is a decision, and bringing it back next launch would
+  be arguing with it. The **Templates** section can restore any of them on demand, under
+  the same stable id, so a restore replaces rather than accumulates.
+- The definitions live in one place (`$lib/automations/examples.ts`) and are used by both
+  the seeding and the Templates section, so the two cannot drift.
+- 4 new Rust tests (353) and 13 Vitest (275), including checks that every example is
+  multi-agent, that its steps really chain, that no prompt quotes a step it does not
+  wait for, that none of them approve their own tools, and that the shipped English
+  prompts — not stand-ins — are what gets asserted. Verified live: the watch example ran
+  against a real repository, its precondition passed, Claude summarized the commits and
+  Codex read that summary and flagged what to look at.
+
 ### Added — Antigravity and Grok can write commit messages and PR bodies
 
 - **Model discovery for both**, which is what actually wires an agent into this

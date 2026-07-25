@@ -247,6 +247,7 @@ pub fn run() {
             automations::commands::automations_save,
             automations::commands::automations_set_enabled,
             automations::commands::automations_delete,
+            automations::commands::automations_seed_examples,
             automations::commands::automations_runs,
             automations::commands::automations_runs_dir,
             automations::commands::automations_run_now,

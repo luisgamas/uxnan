@@ -362,7 +362,7 @@ selector de carpeta, que es modal por naturaleza.
 | Automatizaciones | La lista, con busqueda y agrupado conmutable por **agente principal**, **tipo de tarea**, **frecuencia**, **carpeta** y **estado**. Cada fila lleva la **pila de logos de todos los agentes** que participan, ejecutar-ahora, pausar/reanudar y el menu ⋯ (editar, crear a partir de, borrar) |
 | Editor | Pagina completa: identidad → carpeta propia (con explorador) → frecuencia (con **vista previa de las proximas 5 ejecuciones**) → grafo de pasos → politica. Valida contra las mismas reglas que el backend, asi que Guardar explica por que esta deshabilitado en vez de fallar en el viaje de ida y vuelta |
 | Ejecuciones | Historial global filtrable por automatizacion y por resultado; por paso muestra el **prompt tal como se envio**, la salida capturada, el exit code, stderr y el motivo de cada omision |
-| Plantillas | Automatizaciones multi-agente listas (fan-in, consenso entre proveedores, relevo diario). Llegan **en pausa** al editor: una plantilla nunca empieza a dispararse antes de que la lean |
+| Plantillas | Los cuatro ejemplos que se envian (§6.3); restaurar uno lo repone bajo su mismo id |
 | Ajustes | Diagnostico del programador del SO (cuantas activas estan realmente registradas, con re-comprobacion) y donde viven las corridas |
 
 ### 6.1 El indicador de programacion
@@ -373,7 +373,34 @@ operativo tal cual**. El Resumen levanta esas automatizaciones a lo alto de la
 pantalla, porque "activa pero el SO no la va a disparar" es el modo de fallo que
 mas importa ver.
 
-### 6.2 La matematica de calendario vive aqui
+### 6.2 Ejemplos sembrados
+
+La primera vez que se abre la pantalla, uxnan siembra **cuatro automatizaciones de
+ejemplo**. La razon es tanto pedagogica como de interfaz: con la lista vacia, el
+resumen, la lista, el detalle y el historial son cuatro callejones sin salida.
+
+Entre las cuatro cubren todo lo que hay que entender: trabajo **en paralelo** que
+alimenta a un agente consolidador, la **misma pregunta a proveedores distintos** con un
+tercero comparando, una corrida que **continua la anterior** (`{{prev.s1.output}}`), y
+una **precondicion de shell** que decide si vale la pena gastar un turno de agente.
+
+Reglas que las hacen seguras de enviar:
+
+- **Todas llegan en pausa.** Nada se programa en el SO hasta que el usuario habilita una.
+- **Todas son multi-agente**, y sus agentes salen de los CLIs realmente instalados,
+  rotando para que con dos instalados el ejemplo siga siendo multi-proveedor. Sin
+  ninguno, los huecos quedan vacios y el editor pregunta — mejor que nombrar un agente
+  que no existe.
+- **Ninguna aprueba sus propias herramientas**: son de leer y reportar.
+- **Se siembra una sola vez**, registrado por una marca en el store que los guardados
+  ordinarios conservan. Borrar un ejemplo es una decision; reponerlo al siguiente
+  arranque seria discutir con ella. La seccion **Plantillas** lo restaura a peticion,
+  bajo el mismo id estable, asi que restaurar reemplaza en vez de acumular.
+
+Las definiciones viven en un solo sitio (`$lib/automations/examples.ts`) y las usan
+tanto el sembrado como Plantillas, de modo que no pueden desfasarse.
+
+### 6.3 La matematica de calendario vive aqui
 
 La vista previa de proximas ejecuciones y el `startBoundary` que se manda al
 backend se calculan en `automations/schedule.ts` (puro, unit-testeado), no en

@@ -1742,6 +1742,19 @@ export const en = {
   "automations.autonomous": "Let this step act on its own",
   "automations.autonomousOnDesc": "The agent approves its own tool use: it can edit files and run commands with nobody watching.",
   "automations.autonomousOffDesc": "Tool use is auto-denied, so the step can read and answer but not change anything. Turn this on for a step that has to do work.",
+  "automations.exTagReview": "review",
+  "automations.exTagOngoing": "ongoing work",
+  "automations.exTagWatch": "watch",
+  "automations.restoreTemplate": "Restore",
+  "automations.tplRelayS2": "Hand over",
+  "automations.tplRelayS2Prompt": "Rewrite this into a short hand-over note for whoever picks the work up next: what was done, what is left, and the first thing to do.\n\n{{steps.s1.output}}",
+  "automations.tplWatchTitle": "Watch for new commits",
+  "automations.tplWatchDesc": "Every 30 minutes, but only if something was actually committed - a one-line shell check decides whether spending an agent turn is worth it at all.",
+  "automations.tplWatchPrecondition": "git log --since=30.minutes --oneline",
+  "automations.tplWatchS1": "Read what changed",
+  "automations.tplWatchS1Prompt": "Summarize the commits from the last 30 minutes in this repository. One line each. If there are none, reply with exactly: nothing new.",
+  "automations.tplWatchS2": "Flag anything risky",
+  "automations.tplWatchS2Prompt": "Read this summary of recent commits and say whether any of it looks risky enough to look at today. Be brief, and say so plainly if nothing does.\n\n{{steps.s1.output}}",
 } as const;
 
 /** Union of every message key (drives `t()` and the locale type). */

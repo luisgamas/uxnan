@@ -44,10 +44,17 @@ const LOGS_DIR: &str = "logs";
 const DOC_VERSION: u32 = 1;
 
 /// The persisted definitions document.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DefinitionsDoc {
     version: u32,
+    /// Whether the shipped examples have been offered once already.
+    ///
+    /// Sticky on purpose: it records that seeding *happened*, not that the
+    /// examples still exist. Deleting an example must not bring it back on the
+    /// next launch — the user said no, and re-adding it would be arguing.
+    #[serde(default)]
+    seeded_examples: bool,
     #[serde(default)]
     automations: Vec<Automation>,
 }
@@ -119,32 +126,71 @@ impl AutomationStore {
 
     // --- Definitions (single writer: the app) --------------------------------
 
-    /// Every saved automation. An absent file is an empty list, not an error —
-    /// a first launch has nothing yet.
-    pub fn load(&self) -> Result<Vec<Automation>, AppError> {
+    /// The whole document. An absent file is an empty one, not an error — a
+    /// first launch has nothing yet.
+    fn load_doc(&self) -> Result<DefinitionsDoc, AppError> {
         let path = self.definitions_path();
         if !path.exists() {
-            return Ok(Vec::new());
+            return Ok(DefinitionsDoc {
+                version: DOC_VERSION,
+                ..Default::default()
+            });
         }
         let raw = std::fs::read_to_string(&path)?;
         let doc: DefinitionsDoc = serde_json::from_str(&raw)?;
         if doc.version > DOC_VERSION {
             return Err(AppError::UnsupportedVersion(doc.version));
         }
-        Ok(doc.automations)
+        Ok(doc)
+    }
+
+    fn write_doc(&self, doc: &DefinitionsDoc) -> Result<(), AppError> {
+        write_atomic(
+            &self.definitions_path(),
+            &serde_json::to_string_pretty(doc)?,
+        )
+    }
+
+    /// Every saved automation.
+    pub fn load(&self) -> Result<Vec<Automation>, AppError> {
+        Ok(self.load_doc()?.automations)
     }
 
     /// Replace the definitions atomically. **Only the app calls this** — a
     /// runner must never write here, or two processes would race the file.
+    ///
+    /// The seeded-examples flag is carried over: a plain save must not look like
+    /// "the examples were never offered", or they would reappear after the user
+    /// deleted them.
     pub fn save(&self, automations: &[Automation]) -> Result<(), AppError> {
-        let doc = DefinitionsDoc {
+        let seeded_examples = self.load_doc().map(|d| d.seeded_examples).unwrap_or(false);
+        self.write_doc(&DefinitionsDoc {
             version: DOC_VERSION,
+            seeded_examples,
             automations: automations.to_vec(),
-        };
-        write_atomic(
-            &self.definitions_path(),
-            &serde_json::to_string_pretty(&doc)?,
-        )
+        })
+    }
+
+    /// Add the shipped examples, **once ever**. Returns whether they were added.
+    ///
+    /// Idempotent by flag rather than by content: once the user has been offered
+    /// them, deleting or editing one is their decision and re-seeding would
+    /// undo it. An id that somehow already exists is skipped rather than
+    /// duplicated.
+    pub fn seed_examples(&self, examples: &[Automation]) -> Result<bool, AppError> {
+        let mut doc = self.load_doc()?;
+        if doc.seeded_examples {
+            return Ok(false);
+        }
+        doc.version = DOC_VERSION;
+        doc.seeded_examples = true;
+        for example in examples {
+            if !doc.automations.iter().any(|a| a.id == example.id) {
+                doc.automations.push(example.clone());
+            }
+        }
+        self.write_doc(&doc)?;
+        Ok(true)
     }
 
     /// One automation by id.
@@ -320,6 +366,56 @@ mod tests {
         assert_eq!(store.load().unwrap(), items);
         assert_eq!(store.get("a2").unwrap().unwrap().id, "a2");
         assert!(store.get("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn examples_are_seeded_once_and_never_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AutomationStore::new(tmp.path());
+        let examples = vec![automation("ex1"), automation("ex2")];
+
+        assert!(store.seed_examples(&examples).unwrap(), "first seed");
+        assert_eq!(store.load().unwrap().len(), 2);
+
+        // Second call is a no-op even though nothing was deleted.
+        assert!(!store.seed_examples(&examples).unwrap(), "second seed");
+        assert_eq!(store.load().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_deleted_example_does_not_come_back() {
+        // The flag records that seeding happened, not that the examples still
+        // exist — re-adding one the user removed would be arguing with them.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AutomationStore::new(tmp.path());
+        store.seed_examples(&[automation("ex1")]).unwrap();
+
+        store.save(&[]).unwrap();
+        assert!(!store.seed_examples(&[automation("ex1")]).unwrap());
+        assert!(store.load().unwrap().is_empty(), "the example returned");
+    }
+
+    #[test]
+    fn an_ordinary_save_keeps_the_seeded_flag() {
+        // Rewriting the definitions must not look like "never seeded", or the
+        // examples would reappear on the next launch.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AutomationStore::new(tmp.path());
+        store.seed_examples(&[automation("ex1")]).unwrap();
+        store.save(&[automation("mine")]).unwrap();
+        assert!(!store.seed_examples(&[automation("ex1")]).unwrap());
+    }
+
+    #[test]
+    fn seeding_never_duplicates_an_id_already_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AutomationStore::new(tmp.path());
+        store.save(&[automation("ex1")]).unwrap();
+        assert!(store
+            .seed_examples(&[automation("ex1"), automation("ex2")])
+            .unwrap());
+        let ids: Vec<String> = store.load().unwrap().into_iter().map(|a| a.id).collect();
+        assert_eq!(ids, vec!["ex1", "ex2"]);
     }
 
     #[test]

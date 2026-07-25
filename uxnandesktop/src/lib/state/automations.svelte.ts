@@ -18,10 +18,13 @@ import {
   automationsRunNow,
   automationsRuns,
   automationsSave,
+  automationsSeedExamples,
   automationsSchedulerStatus,
   automationsSchedulerSupported,
   automationsSetEnabled,
 } from "$lib/api";
+import { i18n } from "$lib/i18n";
+import { buildAllExamples } from "$lib/automations/examples";
 import { startBoundary } from "$lib/automations/schedule";
 import type { Automation, AutomationRun, SchedulerStatus } from "$lib/automations/types";
 
@@ -77,6 +80,29 @@ class AutomationsStore {
     } catch {
       // A failed probe must not claim the platform is unsupported; leave the
       // optimistic default and let a real registration report the truth.
+    }
+  }
+
+  /** Offer the shipped examples on a machine that has never seen them.
+   *
+   *  They land **paused**, so nothing runs by itself, and the backend refuses a
+   *  second seeding — deleting an example is a decision, and bringing it back
+   *  next launch would be arguing with it. Best-effort: a failure here must
+   *  never stop the screen from opening. */
+  async seedExamples(installedAgents: string[], workingDir: string): Promise<void> {
+    try {
+      const examples = buildAllExamples({
+        installedAgents,
+        workingDir,
+        t: (key) => i18n.t(key),
+        now: Date.now(),
+      });
+      if (await automationsSeedExamples(examples)) {
+        this.items = await automationsList();
+        for (const a of this.items) void this.refreshScheduler(a.id);
+      }
+    } catch {
+      // An unseeded machine simply shows an empty list with its own guidance.
     }
   }
 

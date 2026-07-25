@@ -274,6 +274,13 @@ export function automationsDelete(id: string): Promise<void> {
   return invoke("automations_delete", { id });
 }
 
+/** Add the shipped example automations, once ever. Returns whether anything was
+ *  written — the backend owns that decision, so a machine that has already been
+ *  offered them (and perhaps deleted them) is left alone. */
+export function automationsSeedExamples(examples: Automation[]): Promise<boolean> {
+  return invoke("automations_seed_examples", { examples });
+}
+
 /** One automation's run history, newest first. */
 export function automationsRuns(id: string): Promise<AutomationRun[]> {
   return invoke("automations_runs", { id });

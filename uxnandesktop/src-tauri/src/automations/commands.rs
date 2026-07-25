@@ -141,6 +141,19 @@ pub async fn automations_delete(id: String) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// Add the shipped example automations, once ever.
+///
+/// The frontend builds them (it owns the localized copy and knows which agents
+/// are installed); the backend only decides whether this machine has been
+/// offered them before. Returns whether anything was written, so the caller
+/// knows whether to reload.
+#[tauri::command]
+pub fn automations_seed_examples(examples: Vec<Automation>) -> Result<bool, CommandError> {
+    store()?
+        .seed_examples(&examples)
+        .map_err(CommandError::from)
+}
+
 /// An automation's run history, newest first.
 #[tauri::command]
 pub fn automations_runs(id: String) -> Result<Vec<AutomationRun>, CommandError> {

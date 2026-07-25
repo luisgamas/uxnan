@@ -9,6 +9,8 @@
   // interrupt.
   import { app, type AutomationsSection } from "$lib/state/app.svelte";
   import { automations } from "$lib/state/automations.svelte";
+  import { projects } from "$lib/state/projects.svelte";
+  import { aiCommitAgents } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { divider, icon, iconButton, text } from "$lib/design";
@@ -49,9 +51,16 @@
   }
 
   // Load once when the screen opens; a later visit reuses what's in the store
-  // (each section refreshes what it actually shows).
+  // (each section refreshes what it actually shows). On a machine that has never
+  // seen them, the shipped examples are offered right after — an empty list
+  // makes every section here look like a dead end, and the examples are what
+  // the feature's shape is easiest to read from.
   $effect(() => {
-    if (app.automationsOpen) void automations.load();
+    if (!app.automationsOpen) return;
+    void automations.load().then(async () => {
+      const installed = await aiCommitAgents().catch(() => [] as string[]);
+      await automations.seedExamples(installed, projects.allWorktrees()[0]?.path ?? "");
+    });
   });
 
   function onKeyDown(e: KeyboardEvent) {

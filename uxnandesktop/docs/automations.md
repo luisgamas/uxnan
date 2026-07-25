@@ -34,8 +34,25 @@ terminal or PTY is torn down while you are in it.
 | **Automations** | The list. Search, plus grouping by **lead agent**, **task type**, **frequency**, **folder** or **status**. Each row shows every agent involved, and carries run-now, pause/resume and a ⋯ menu (edit, create from this, delete) |
 | **Editor** | A full page, never a dialog: identity → working folder → frequency (with a preview of the next five runs) → the step graph → policy |
 | **Runs** | Every run, filterable by automation and outcome |
-| **Templates** | Ready-made multi-agent automations; each lands **paused** in the editor |
+| **Templates** | The four shipped examples; restoring one puts it back under its own id |
 | **Settings** | Whether this machine can schedule at all, how many active automations are really registered, and where run records live |
+
+### The examples
+
+The first time the screen opens, uxnan seeds **four example automations** so nothing
+here is an empty page. All four are **paused** — nothing schedules itself — and they
+are ordinary automations you can edit, run or delete.
+
+| Example | What it shows |
+|---|---|
+| Nightly triage | Two agents work in parallel, a third consolidates both answers |
+| Cross-provider consensus | The same question to two providers, a third compares them |
+| Daily relay | A run that continues the previous one via `{{prev.s1.output}}` |
+| Watch for new commits | A shell precondition decides whether an agent turn is worth spending |
+
+Their agents come from the CLIs you actually have installed, cycling so two installed
+CLIs still make a genuinely multi-provider example. Seeding happens **once ever**:
+delete one and it stays deleted, and **Templates** is where you put it back.
 
 The **scheduling badge** never flatters: if the task is not registered it says so,
 and if the OS refused it, it shows the operating system's own message rather than a
