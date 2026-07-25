@@ -68,6 +68,17 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
             agentcli::parse_pi_models(&out)
         }
         "codex" => codex_models(&resolved).await,
+        "agy" => {
+            // One bare model id per line on stdout.
+            let out = run_list(&resolved, &["models"], false).await?;
+            agentcli::parse_agy_models(&out)
+        }
+        "grok" => {
+            // A bulleted list wrapped in prose; stderr is included so a
+            // not-signed-in complaint reaches the user rather than an empty list.
+            let out = run_list(&resolved, &["models"], true).await?;
+            agentcli::parse_grok_models(&out)
+        }
         _ => vec![],
     };
     Ok(models)

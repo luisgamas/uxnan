@@ -445,7 +445,7 @@ export const en = {
   "settings.aiCommitAgentDesc": "Which installed coding-agent CLI drafts the message.",
   "settings.aiCommitAgentNone": "Choose an agent",
   "settings.aiCommitNoAgents":
-    "None of the supported agents (Claude Code, Codex, Gemini, OpenCode, Pi) were found installed.",
+    "None of the supported agents were found installed.",
   "settings.aiCommitModel": "Model",
   "settings.aiCommitModelDefault": "Default",
   "settings.aiCommitModelLoading": "Loading models…",

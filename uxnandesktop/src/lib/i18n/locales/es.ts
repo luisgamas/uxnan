@@ -442,7 +442,7 @@ export const es: Record<MessageKey, string> = {
   "settings.aiCommitAgentDesc": "Qué CLI de agente instalada redacta el mensaje.",
   "settings.aiCommitAgentNone": "Elige un agente",
   "settings.aiCommitNoAgents":
-    "No se encontró instalado ninguno de los agentes soportados (Claude Code, Codex, Gemini, OpenCode, Pi).",
+    "No se encontró instalado ninguno de los agentes soportados.",
   "settings.aiCommitModel": "Modelo",
   "settings.aiCommitModelDefault": "Predeterminado",
   "settings.aiCommitModelLoading": "Cargando modelos…",

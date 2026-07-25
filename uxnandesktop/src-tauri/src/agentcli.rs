@@ -608,6 +608,64 @@ pub fn parse_pi_models(output: &str) -> Vec<AgentModel> {
     out
 }
 
+/// Parse `agy models`, which prints one bare model id per line and nothing else.
+///
+/// The ids already carry their reasoning tier (`gemini-3.6-flash-high`), so they
+/// are shown verbatim — inventing a prettier display name would only make the
+/// picker disagree with what the user sees running `agy models` themselves.
+pub fn parse_agy_models(output: &str) -> Vec<AgentModel> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for raw in output.lines() {
+        let line = strip_ansi(raw);
+        let id = line.trim();
+        // A bare id has no whitespace; anything else is a banner or an error
+        // line. An unauthenticated CLI answers in prose, and a phantom model
+        // minted from a sentence would be offered as if it were real.
+        if id.is_empty() || id.contains(char::is_whitespace) {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(AgentModel::new(id, id));
+        }
+    }
+    out
+}
+
+/// Parse `grok models`, which wraps its list in prose:
+///
+/// ```text
+/// You are logged in with grok.com.
+///
+/// Default model: grok-4.5
+///
+/// Available models:
+///   * grok-4.5 (default)
+/// ```
+///
+/// Only the bulleted rows are models. The "Default model:" line names one that
+/// also appears in the list, so reading it too would duplicate the entry.
+pub fn parse_grok_models(output: &str) -> Vec<AgentModel> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for raw in output.lines() {
+        let line = strip_ansi(raw);
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("* ").or_else(|| line.strip_prefix("- ")) else {
+            continue;
+        };
+        // `grok-4.5 (default)` → `grok-4.5`; the marker is presentation, not id.
+        let id = rest.split_whitespace().next().unwrap_or("").trim();
+        if id.is_empty() {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(AgentModel::new(id, id));
+        }
+    }
+    out
+}
+
 /// Map a Codex `model/list` `result.data` array into [`AgentModel`]s, skipping
 /// models hidden from the default picker.
 pub fn parse_codex_models(data: &serde_json::Value) -> Vec<AgentModel> {
@@ -699,6 +757,65 @@ mod tests {
             build_args("grok", "grok-4", PromptSource::Argv("hi"), false).unwrap(),
             vec!["-m", "grok-4", "-p", "hi"]
         );
+    }
+
+    #[test]
+    fn agy_models_are_read_one_per_line() {
+        // Captured verbatim from `agy models` on a signed-in machine.
+        let out = "gemini-3.6-flash-high
+gemini-3.6-flash-medium
+gemini-3.1-pro-high
+claude-sonnet-4-6
+";
+        let models = parse_agy_models(out);
+        assert_eq!(models.len(), 4);
+        assert_eq!(models[0].id, "gemini-3.6-flash-high");
+        // The id already carries its tier, so it doubles as the display name.
+        assert_eq!(models[0].display_name, "gemini-3.6-flash-high");
+    }
+
+    #[test]
+    fn agy_prose_never_becomes_a_phantom_model() {
+        // An unauthenticated CLI answers in sentences; taking those would offer
+        // the user a model that does not exist.
+        let models = parse_agy_models(
+            "Please sign in to continue.
+
+No models available.
+",
+        );
+        assert!(models.is_empty(), "{models:?}");
+    }
+
+    #[test]
+    fn grok_models_come_only_from_the_bulleted_rows() {
+        // Captured verbatim from `grok models`.
+        let out = "You are logged in with grok.com.
+
+Default model: grok-4.5
+
+Available models:
+  * grok-4.5 (default)
+  * grok-4-fast
+";
+        let models = parse_grok_models(out);
+        // The "Default model:" line names one that is already in the list, so
+        // reading it too would duplicate the entry.
+        assert_eq!(
+            models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["grok-4.5", "grok-4-fast"]
+        );
+        // `(default)` is presentation, never part of the id handed to `-m`.
+        assert!(!models[0].id.contains("default"));
+    }
+
+    #[test]
+    fn grok_without_a_list_yields_nothing_rather_than_prose() {
+        let models = parse_grok_models(
+            "You are not logged in. Run `grok login`.
+",
+        );
+        assert!(models.is_empty(), "{models:?}");
     }
 
     #[test]

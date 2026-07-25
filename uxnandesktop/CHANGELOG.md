@@ -61,6 +61,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Added — Antigravity and Grok can write commit messages and PR bodies
+
+- **Model discovery for both**, which is what actually wires an agent into this
+  surface: `agy models` prints one bare id per line, `grok models` wraps a bulleted
+  list in prose (and names a default that is already in the list, so reading it too
+  would duplicate the entry). Both parsers are pinned to output captured from the real
+  CLIs, and both refuse to mint a model out of a not-signed-in sentence — a phantom
+  entry would be offered to the user as if it were real.
+- `AI_COMMIT_AGENTS` is now Claude Code, Codex, OpenCode, Grok, Gemini CLI and
+  Antigravity. It is a **curated subset** of the headless set, not a mirror of it:
+  being drivable is necessary but not sufficient, since an agent with no model list
+  leaves the picker empty and looks broken. The comment above the list now says so,
+  and its test enforces the one direction that matters — every entry must be
+  something the backend can run — instead of demanding the two lists be equal, which
+  was the wrong invariant.
+- 4 new Rust tests (349) and 4 Vitest (262).
+
 ### Fixed — a chained prompt is no longer clipped at 28 KB, and Zero can run a step
 
 - **The argv cap is gone for every agent that offers another channel.** A prompt
