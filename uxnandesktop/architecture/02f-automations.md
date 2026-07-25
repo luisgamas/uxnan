@@ -8,12 +8,13 @@
 > salidas. El programador del sistema operativo dispara un **runner headless**
 > del mismo binario; el motor vive en Rust.
 >
-> **Estado: MOTOR Y PROGRAMACION IMPLEMENTADOS** (modelo, almacenamiento,
-> plantillas, ejecutor del grafo, precondicion, worktree por corrida, runner
-> `--automation-run`, registro en el programador del SO y superficie de
-> comandos). Validado de punta a punta en Windows: una tarea real dispara el
-> runner con la app cerrada y deja su registro. **Pendiente: la interfaz (§6)**,
-> y validar macOS/Linux en hardware real. Ver `FOR-DEV.md`.
+> **Estado: IMPLEMENTADO** (modelo, almacenamiento, plantillas, ejecutor del
+> grafo, precondicion, worktree por corrida, runner `--automation-run`, registro
+> en el programador del SO, superficie de comandos e interfaz completa).
+> Validado de punta a punta en Windows: una tarea real dispara el runner con la
+> app cerrada y deja su registro. **Pendiente:** validar el registro en
+> macOS/Linux en hardware real, notificacion nativa desde el runner y recoleccion
+> de los worktrees por corrida. Ver `FOR-DEV.md`.
 
 ---
 
@@ -295,25 +296,45 @@ eso no se hace. macOS y Linux **no estan validados en hardware real** todavia
 
 ---
 
-## 6. Interfaz — PENDIENTE
+## 6. Interfaz
 
-Vista **a pantalla completa dentro de la ventana**, igual que Configuraciones
-(overlay sobre la region de contenido: tapa los tres paneles y la barra de
-estado). Se abre desde el menu del perfil del panel izquierdo y con un atajo
-global reconfigurable.
+Vista **a pantalla completa dentro de la ventana**, igual que Configuraciones:
+un overlay (`absolute inset-0 z-30`) sobre la region de contenido, asi que tapa
+los tres paneles y la barra de estado **sin desmontar el cuerpo** — ninguna
+terminal ni PTY se destruye por entrar aqui. Se abre desde el menu del perfil del
+panel izquierdo (`SidebarProfile`) y con **`Mod+Shift+A`**, reconfigurable en
+Ajustes → Atajos como cualquier otro. Mientras esta abierta se apropia del
+teclado (incluido `Escape`), igual que Configuraciones.
 
-Riel de secciones a la izquierda (patron de `Settings.svelte`), y **todo el
-contenido inline**: el unico flotante permitido es el dialogo de confirmacion
-destructiva compartido.
+Riel de secciones a la izquierda (mismo patron y tokens que `Settings.svelte`,
+para que las dos pantallas se lean como una familia) y **todo el contenido
+inline**. Los unicos flotantes son el confirmador destructivo compartido y el
+selector de carpeta, que es modal por naturaleza.
 
 | Seccion | Contenido |
 |---|---|
-| Resumen | Proximas ejecuciones, corridas en vivo, fallos recientes, estado del registro en el SO |
-| Automatizaciones | La lista, agrupable por **agente principal**, **tipo de tarea**, **frecuencia**, **carpeta** y **estado** |
-| Editor | Pagina completa: identidad → carpeta → frecuencia (con vista previa) → grafo de pasos → politica |
-| Corridas | Historial filtrable; detalle con timeline, agente+modelo por paso, **prompt resuelto**, salida, exit code, duracion y error |
-| Plantillas | Automatizaciones multi-agente listas para usar |
-| Ajustes | Retencion, notificaciones, diagnostico del programador del SO |
+| Resumen | Lo que **requiere atencion** primero (activas que el SO no esta disparando), proximas ejecuciones, actividad reciente |
+| Automatizaciones | La lista, con busqueda y agrupado conmutable por **agente principal**, **tipo de tarea**, **frecuencia**, **carpeta** y **estado**. Cada fila lleva la **pila de logos de todos los agentes** que participan, ejecutar-ahora, pausar/reanudar y el menu ⋯ (editar, crear a partir de, borrar) |
+| Editor | Pagina completa: identidad → carpeta propia (con explorador) → frecuencia (con **vista previa de las proximas 5 ejecuciones**) → grafo de pasos → politica. Valida contra las mismas reglas que el backend, asi que Guardar explica por que esta deshabilitado en vez de fallar en el viaje de ida y vuelta |
+| Ejecuciones | Historial global filtrable por automatizacion y por resultado; por paso muestra el **prompt tal como se envio**, la salida capturada, el exit code, stderr y el motivo de cada omision |
+| Plantillas | Automatizaciones multi-agente listas (fan-in, consenso entre proveedores, relevo diario). Llegan **en pausa** al editor: una plantilla nunca empieza a dispararse antes de que la lean |
+| Ajustes | Diagnostico del programador del SO (cuantas activas estan realmente registradas, con re-comprobacion) y donde viven las corridas |
+
+### 6.1 El indicador de programacion
+
+`SchedulerBadge` es la valvula de honestidad de §5.3 hecha pixel: dice el estado
+en los cuatro casos y, cuando el registro fallo, muestra **el mensaje del sistema
+operativo tal cual**. El Resumen levanta esas automatizaciones a lo alto de la
+pantalla, porque "activa pero el SO no la va a disparar" es el modo de fallo que
+mas importa ver.
+
+### 6.2 La matematica de calendario vive aqui
+
+La vista previa de proximas ejecuciones y el `startBoundary` que se manda al
+backend se calculan en `automations/schedule.ts` (puro, unit-testeado), no en
+Rust — ver §2.1. El backend no hace aritmetica de calendario y el programador del
+SO sigue siendo la autoridad sobre *cuando*; esto es presentacion y el instante
+inicial del registro.
 
 ---
 
@@ -329,3 +350,7 @@ destructiva compartido.
 | `automations/runner.rs` | Modo `--automation-run`, ciclo de vida de la corrida |
 | `automations/oscheduler/` | Registro en el programador del SO: `mod.rs` (API + estado) · `windows.rs` (XML de Task Scheduler) · `macos.rs` (LaunchAgent) · `linux.rs` (unidades systemd) |
 | `automations/commands.rs` | Comandos Tauri; mantiene definicion y tarea del SO sincronizadas |
+| `src/lib/automations/` | Frontend puro: `types.ts` (contratos), `schedule.ts` (calendario + vista previa), `display.ts` (agrupado, etiquetas, tonos) |
+| `src/lib/state/automations.svelte.ts` | Store: carga, mutaciones y sondeo del historial mientras la pantalla esta abierta |
+| `src/lib/components/Automations.svelte` | Marco de la pantalla + riel de secciones |
+| `src/lib/components/automations/` | Lista, detalle, editor, selector de frecuencia, editor del grafo, vista de corrida, plantillas, ajustes, indicador de programacion |

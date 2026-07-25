@@ -13,13 +13,37 @@ Two things make it different from the [orchestration console](./orchestration.md
 it does not need uxnan to be open, and it is not tied to whatever project is
 selected in the sidebar.
 
-> **Status.** The engine, the on-disk format, the headless runner and the
-> **OS-scheduler registration** are implemented and tested. The **Automations
-> screen** lands in the next phase — until then an automation is defined in
-> `automations.json` and scheduled or started through the commands below.
+> **Status.** Implemented end to end and verified on Windows. macOS and Linux
+> registration is built and unit-tested but **not yet validated on real
+> hardware**, and the screen has not had an on-device review — see `FOR-DEV.md`.
 > Spec: [`architecture/02f-automations.md`](../architecture/02f-automations.md).
 
 ---
+
+## The screen
+
+Open it from the **profile card at the bottom of the left sidebar** → *Automations*,
+or with **`Mod+Shift+A`** (rebindable in Settings → Keyboard shortcuts). It is a
+full-screen view inside the window, exactly like Settings: it covers the three
+panels and the status bar, and because it overlays the still-mounted body, no
+terminal or PTY is torn down while you are in it.
+
+| Section | What it is for |
+|---|---|
+| **Overview** | What needs attention first (active automations the OS is *not* firing), what runs next, what just happened |
+| **Automations** | The list. Search, plus grouping by **lead agent**, **task type**, **frequency**, **folder** or **status**. Each row shows every agent involved, and carries run-now, pause/resume and a ⋯ menu (edit, create from this, delete) |
+| **Editor** | A full page, never a dialog: identity → working folder → frequency (with a preview of the next five runs) → the step graph → policy |
+| **Runs** | Every run, filterable by automation and outcome |
+| **Templates** | Ready-made multi-agent automations; each lands **paused** in the editor |
+| **Settings** | Whether this machine can schedule at all, how many active automations are really registered, and where run records live |
+
+The **scheduling badge** never flatters: if the task is not registered it says so,
+and if the OS refused it, it shows the operating system's own message rather than a
+friendlier one that hides what to fix.
+
+In the graph editor, a prompt that references a step it does not wait for is
+flagged — that is the exact mistake that makes a hand-off arrive empty — with a
+one-click fix.
 
 ## How it runs
 
@@ -59,6 +83,9 @@ no locking is needed. Because the runner rewrites its own record as steps
 advance, the app can show live progress just by watching the directory.
 
 ## Defining one
+
+You will normally do this in the editor; the JSON below is what it writes, and is
+also the format an automation can be hand-edited or imported in.
 
 ```jsonc
 {
@@ -254,5 +281,9 @@ cat "<app-data>/automations/runs/<id>/"*.json
 
 The run record shows each step's status, the resolved prompt, the captured
 output and the exit code — with the app never opened.
+
+The frontend's own logic is unit-tested too (`npm test`): the calendar math that
+produces the next-runs preview and the start boundary, and the grouping, filtering
+and status presentation the list depends on.
 
 See also: [testing & verification](./testing.md).

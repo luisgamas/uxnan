@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**). 337 Rust backend tests + 225 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**). 337 Rust backend tests + 258 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -104,8 +104,15 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   surface that keeps the stored definition and the OS task in lockstep.
   **Validated live** with the app closed: OpenCode ∥ Codex in parallel with Claude
   consuming both outputs, and a real Windows task firing the runner end to end.
-  **Still missing: the whole UI** — see *Automations — follow-ups* below.
-  `src-tauri/src/automations/`, [`docs/automations.md`](docs/automations.md).
+  The **screen** is built too (spec `02f` §6): a full-screen view like Settings,
+  opened from the sidebar profile menu or `Mod+Shift+A`, with a section rail
+  (Overview / Automations / Runs / Templates / Settings), a list groupable by lead
+  agent / task type / frequency / folder / status, an **inline** editor with a
+  next-runs preview and a graph editor that catches a prompt referencing a step it
+  does not wait for, run history showing the **prompt as actually sent**, ready-made
+  multi-agent templates, and the honest scheduling badge. `src-tauri/src/automations/`,
+  `src/lib/automations/`, `src/lib/components/automations/`,
+  [`docs/automations.md`](docs/automations.md).
 - **Cross-cutting (S)** — Settings (theme + terminal profiles w/ OS templates),
   design tokens, full EN/ES i18n + Language picker, agents registry + install
   detection + manual + auto-launch, per-agent env vars, a configurable agent
@@ -196,22 +203,22 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
 
 ## Automations — follow-ups ☐
 
-The engine, the headless runner and the OS-scheduler registration are done and
-validated (see `## Status`); what is left is the surface a user can actually reach,
-plus validation on the two platforms this machine cannot test. Spec: `02f`.
+The engine, the headless runner, the OS-scheduler registration and the screen are
+done (see `## Status`); what is left is validation on the two platforms this machine
+cannot test, plus the deferrals marked in the code. Spec: `02f`.
+
+**Validation status — read this first.** Windows is verified end to end (a real
+scheduled task fired the runner with the app closed, and a `#[ignore]`d round-trip
+test covers the Task Scheduler XML). The **UI has not been reviewed on-device by the
+maintainer yet** — it type-checks and its pure logic is unit-tested, but no Svelte
+component or E2E tests exist, so treat its behavior as unexercised until someone has
+clicked through it.
 
 - ☐ **Validate the scheduler on macOS and Linux** — the plist and the systemd units
   are built by pure, unit-tested functions, but neither has been registered on real
   hardware. The Windows path has a `#[ignore]`d round-trip test
   (`cargo test -- --ignored windows_round_trip`); the other two need the equivalent
   run on a real machine.
-- ☐ **The Automations screen** (`02f` §6) — full-screen view inside the window (like
-  Settings), opened from the sidebar profile menu + a global shortcut. Sections:
-  Overview, list (groupable by agent / task type / frequency / folder / status),
-  inline editor, run history with live progress, templates, settings. Needs its
-  Tauri command surface, the frontend store, EN/ES i18n and Vitest coverage for the
-  pure display/preview logic (including the frontend-side "next runs" preview, which
-  is display-only — the OS scheduler stays the authority on *when*).
 - ☐ **Native notification from the runner** (`automations/runner.rs`, marked
   `FOR-DEV:`) — a failed unattended run should raise an OS notification. The runner
   has no Tauri app handle, so it needs its own per-OS path (`notify.rs` is
@@ -562,7 +569,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 337 Rust + 225 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 337 Rust + 258 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

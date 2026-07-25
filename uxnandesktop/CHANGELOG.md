@@ -61,6 +61,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   README) and new spec page `architecture/02f-automations.md` (registered in
   `architecture/00-index.md`: doc table + status table + tree).
 
+### Added — Automations: the screen
+
+- **Entry point + shortcut**: *Automations* in the left sidebar's profile menu, and
+  **`Mod+Shift+A`** (rebindable in Settings → Keyboard shortcuts, dispatched through
+  the shared `runAppAction` like every other action).
+- **A full-screen view inside the window, built like Settings** — an overlay over the
+  content region that covers the three panels and the status bar while leaving the
+  body **mounted**, so no terminal or PTY is torn down by visiting it. It owns its own
+  keys (including Escape) exactly as Settings does. Section rail on the left with the
+  same recipe and tokens, so the two screens read as one family.
+- **Everything inline.** The only floating surfaces are the shared destructive confirm
+  and the folder picker, which is modal by nature — no dialog-driven editing.
+- **Overview** leads with what needs attention: active automations the OS is *not*
+  actually firing, then what runs next and what just happened.
+- **List** with search and grouping by **lead agent / task type / frequency / folder /
+  status**, since an automation is rarely one agent and the same set reads differently
+  depending on the question. Each row shows the **stack of every agent involved**, plus
+  run-now, pause/resume and a ⋯ menu (edit, **create from this**, delete).
+- **Editor** as a full page: identity, its own working folder (with the in-app folder
+  browser), frequency with a **live preview of the next five runs**, the **step graph**
+  and the policy. It validates against the same rules as the backend, so Save explains
+  why it is disabled instead of failing on the round trip. A prompt that references a
+  step it does not `dependsOn` is flagged with a one-click fix — that is precisely the
+  mistake that makes a hand-off arrive empty.
+- **Runs** — global history filterable by automation and outcome; each step expands to
+  the **prompt as actually sent**, the captured output, the verified exit code, stderr
+  and the reason for any refusal (including the precondition's own capture).
+- **Templates** — ready-made multi-agent automations (parallel review with a
+  consolidated report, cross-provider consensus with a judge, a daily relay that
+  continues the previous run via `{{prev.s1.output}}`). Each lands **paused** in the
+  editor: a template must never start firing before it has been read.
+- **The scheduling badge never flatters**: it states the truth in all four states and,
+  when registration failed, shows **the operating system's own message** instead of a
+  friendlier one that hides what to fix.
+- **Calendar math lives in the frontend** (`automations/schedule.ts`), which is what
+  produces the next-runs preview and the local `startBoundary` handed to the backend.
+  The backend still does none of it — the OS scheduler remains the authority on *when*.
+- 33 new Vitest tests (258 total) over the schedule math (interval anchoring, weekend
+  skipping, month boundaries, local-time formatting) and the display logic (grouping,
+  multi-tag membership, search, step-id reuse). `svelte-check` clean; full EN/ES i18n.
+- Docs: `docs/automations.md` gains a screen section, `architecture/02f` §6 is written
+  up (including why the calendar math is where it is), and the `00-index` status row,
+  `FOR-DEV.md` and the monorepo `AGENTS.md` note are updated. **Not yet reviewed
+  on-device** — there are no Svelte component or E2E tests, so its behavior is
+  unexercised until someone clicks through it (`FOR-DEV.md`).
+
 ### Added — Automations: scheduled by the operating system, so they fire with the app closed
 
 - Saving or enabling an automation now **registers a task with the OS's own scheduler**,
