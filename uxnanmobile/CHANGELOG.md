@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.14-alpha.20260724+20260724] - 2026-07-24
+
 ### Changed — the Claude "latest" toggle now covers four aliases, not three
 
 - The bridge advertises a new `fable` alias (`Fable (latest)`) alongside

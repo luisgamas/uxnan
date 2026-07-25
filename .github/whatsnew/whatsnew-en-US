@@ -1,5 +1,4 @@
 What's new in this update:
 
-• Conversation lists now get useful automatic titles while keeping your manual renames.
-• The response indicator shimmers while waiting, then follows streamed text like a live cursor.
-• The Devices screen keeps its navigation visible when empty and now features the Uxnan logo.
+• Push notifications now show the Uxnan mark in your status bar instead of a blank white square, whether the app is open or closed.
+• The model picker adds Claude's new Fable "(latest)" option, plus more exact versions to choose from: Opus 5, Opus 4.6, Opus 4.5 and Sonnet 4.5.
