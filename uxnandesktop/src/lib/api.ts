@@ -4,6 +4,12 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  Automation,
+  AutomationRun,
+  SaveResult,
+  SchedulerStatus,
+} from "$lib/automations/types";
+import type {
   AgentModel,
   AgentStateEntry,
   AppData,
@@ -235,6 +241,69 @@ export function setTerminalLayout(
  *  next startup so a run survives a restart — spec `02d` §3). */
 export function setOrchestrationRuns(runs: SavedRun[]): Promise<void> {
   return invoke("set_orchestration_runs", { runs });
+}
+
+// --- Automations (spec 02f) -------------------------------------------------
+
+/** Every saved automation. */
+export function automationsList(): Promise<Automation[]> {
+  return invoke("automations_list", {});
+}
+
+/** Create or update an automation **and** bring its OS task in line. The
+ *  `startBoundary` is local wall-clock text we compute here — the backend does
+ *  no calendar arithmetic (spec `02f` §2.1). */
+export function automationsSave(
+  automation: Automation,
+  startBoundary: string,
+): Promise<SaveResult> {
+  return invoke("automations_save", { automation, startBoundary });
+}
+
+/** Enable or disable an automation, registering or removing its task to match. */
+export function automationsSetEnabled(
+  id: string,
+  enabled: boolean,
+  startBoundary: string,
+): Promise<SaveResult> {
+  return invoke("automations_set_enabled", { id, enabled, startBoundary });
+}
+
+/** Delete an automation, its OS task and its run history. */
+export function automationsDelete(id: string): Promise<void> {
+  return invoke("automations_delete", { id });
+}
+
+/** Add the shipped example automations, once ever. Returns whether anything was
+ *  written — the backend owns that decision, so a machine that has already been
+ *  offered them (and perhaps deleted them) is left alone. */
+export function automationsSeedExamples(examples: Automation[]): Promise<boolean> {
+  return invoke("automations_seed_examples", { examples });
+}
+
+/** One automation's run history, newest first. */
+export function automationsRuns(id: string): Promise<AutomationRun[]> {
+  return invoke("automations_runs", { id });
+}
+
+/** The directory run records live in (each run is its own file). */
+export function automationsRunsDir(): Promise<string> {
+  return invoke("automations_runs_dir", {});
+}
+
+/** Start a run now — the same headless runner the OS scheduler spawns. */
+export function automationsRunNow(id: string): Promise<void> {
+  return invoke("automations_run_now", { id });
+}
+
+/** What the OS scheduler currently thinks of this automation. */
+export function automationsSchedulerStatus(id: string): Promise<SchedulerStatus> {
+  return invoke("automations_scheduler_status", { id });
+}
+
+/** Whether this platform can schedule a run with the app closed. */
+export function automationsSchedulerSupported(): Promise<boolean> {
+  return invoke("automations_scheduler_supported", {});
 }
 
 // --- Repositories & worktrees ----------------------------------------------

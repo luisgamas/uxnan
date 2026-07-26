@@ -68,6 +68,17 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
             agentcli::parse_pi_models(&out)
         }
         "codex" => codex_models(&resolved).await,
+        "agy" => {
+            // One bare model id per line on stdout.
+            let out = run_list(&resolved, &["models"], false).await?;
+            agentcli::parse_agy_models(&out)
+        }
+        "grok" => {
+            // A bulleted list wrapped in prose; stderr is included so a
+            // not-signed-in complaint reaches the user rather than an empty list.
+            let out = run_list(&resolved, &["models"], true).await?;
+            agentcli::parse_grok_models(&out)
+        }
         _ => vec![],
     };
     Ok(models)
@@ -97,8 +108,13 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
     }
 
     let prompt = build_prompt(cfg, &diff);
-    let args = agentcli::build_args(agent, &cfg.model, &prompt)
-        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
+    let args = agentcli::build_args(
+        agent,
+        &cfg.model,
+        agentcli::PromptSource::Argv(&prompt),
+        false,
+    )
+    .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
 
     let raw = run_generate(&resolved, &args, worktree_path).await?;
     let message = sanitize_message(&raw);
@@ -138,7 +154,7 @@ pub async fn draft_pr(
     }
     let prompt = build_pr_prompt(cfg, diff);
     let model = cfg.ai_model.as_deref().unwrap_or("");
-    let args = agentcli::build_args(agent, model, &prompt)
+    let args = agentcli::build_args(agent, model, agentcli::PromptSource::Argv(&prompt), false)
         .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
     let raw = run_generate(&resolved, &args, worktree_path).await?;
     let body = sanitize_message(&raw);

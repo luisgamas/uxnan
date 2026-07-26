@@ -32,6 +32,7 @@
   import BrowserPanel from "$lib/components/BrowserPanel.svelte";
   import NewWorktreeDialog from "$lib/components/NewWorktreeDialog.svelte";
   import Settings from "$lib/components/Settings.svelte";
+  import Automations from "$lib/components/Automations.svelte";
   import GitHub from "$lib/components/GitHub.svelte";
   import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
@@ -221,10 +222,10 @@
   // focused (it arbitrates app-shortcut vs TUI per action); here we only run the
   // matched action via the shared dispatcher when a terminal is *not* focused.
   function onKeyDown(e: KeyboardEvent) {
-    // Settings owns its own keys (full-screen overlay). The inline GitHub view
-    // does not — the left sidebar stays active — so global shortcuts keep working;
-    // GitHub handles its own Escape.
-    if (app.settingsOpen) return;
+    // Settings and Automations own their own keys (both are full-screen
+    // overlays). The inline GitHub view does not — the left sidebar stays
+    // active — so global shortcuts keep working; GitHub handles its own Escape.
+    if (app.settingsOpen || app.automationsOpen) return;
     // Never steal keys while typing in a terminal — the shell owns Ctrl+W/J/etc.
     const el = e.target as HTMLElement | null;
     if (el?.closest(".xterm")) return;
@@ -502,6 +503,16 @@
     {#if app.settingsOpen}
       <div class="absolute inset-0 z-30">
         <Settings />
+      </div>
+    {/if}
+
+    <!-- Automations is a full-screen view in the same slot (spec `02f` §6): it
+         covers the three panels and the status bar, and like Settings it
+         overlays the still-mounted body, so no terminal or PTY is torn down
+         while the user is in it. -->
+    {#if app.automationsOpen}
+      <div class="absolute inset-0 z-30">
+        <Automations />
       </div>
     {/if}
   </div>
