@@ -105,6 +105,15 @@ available today are:
   and, under advanced options, where it runs (a new tab or the focused terminal),
   whether it runs immediately or is only pre-typed, the working directory, and the
   shell. Opens with `Ctrl/⌘+Shift+P`.
+- **Automations.** Recurring tasks that run **with uxnan closed**, in a working
+  folder of their own (a repo or not). Each one drives a **graph of agent steps**:
+  steps with no dependencies run at the same time, one that lists several waits
+  for all of them, and a later agent can consume an earlier one's answer
+  (`{{steps.s1.output}}` — or `{{prev.s1.output}}` to continue the previous run).
+  A step counts as done only when its process exits 0. Saving one registers a task
+  with your **operating system's own scheduler** (Task Scheduler · LaunchAgent ·
+  systemd user timer), so uxnan keeps no clock of its own. Opens from the profile
+  menu or `Ctrl/⌘+Shift+A`. See [automations](./docs/automations.md).
 - **Pets.** An optional animated companion that mirrors what your agents are
   doing — working, needs you, ready, blocked — and jumps you to that agent's
   terminal when clicked. It watches your cursor while resting, reacts to pokes

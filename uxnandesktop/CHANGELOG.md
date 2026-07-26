@@ -447,10 +447,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `pets_codex_dir` / `pets_import` / `pets_delete`), persisted `AppSettings.pets`
   (`PetSettings`, off by default), frontend logic in `src/lib/pets/`
   (`manifest` / `animator` / `status`), store `state/pets.svelte.ts`, components
-  `PetSprite` / `PetLayer` / `PetsSettings`. Full EN/ES i18n. 8 Rust + 24 Vitest tests
+  `PetSprite` / `PetLayer` / `PetsSettings`. Full EN/ES i18n. 9 Rust + 55 Vitest tests
   cover manifest parsing, traversal refusal, import scoping, the `.webp` +
-  `avatar.json` shape community packs actually ship, frame maths and the state
-  priority. Docs: [`docs/pets.md`](docs/pets.md).
+  `avatar.json` shape community packs actually ship, the unknown-field round-trip,
+  frame maths, the v2 look poses, idle flavour decay and the state priority.
+  Docs: [`docs/pets.md`](docs/pets.md).
 
 
 ### Changed — GitHub: a per-project inline view replaces the full-screen section
