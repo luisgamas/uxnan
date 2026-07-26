@@ -120,20 +120,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   per-row frame counts — a row is often partly used (a generated wave is 4 frames
   in an 8-wide grid) and playing the blank remainder makes the pet flicker out of
   existence. A pack that declares either is trusted as-is.
-- **The pet can float over the desktop (opt-in).** *Settings → Pets → Float over
-  the desktop* moves the pet into its **own borderless, transparent,
-  always-on-top window** — visible over other apps and while uxnan is minimized,
-  like the Codex desktop pet. It drags anywhere via the OS-native window drag
-  (correct across monitors and DPI scales), remembers where it was parked (a
-  spot on an unplugged monitor falls back to the primary corner), clicking it
-  still jumps to the agent's terminal (raising the main window first), and it is
-  destroyed with the main window so the app never keeps running as nothing but a
-  pet. The window is a thin, stateless renderer fed by the main window over
-  Tauri events; it carries its own per-window capability
+- **The pet floats over the desktop by default.** The pet lives in its **own
+  borderless, transparent, always-on-top window** — visible over other apps and
+  while uxnan is minimized, like the Codex desktop pet; turning *Settings →
+  Pets → Float over the desktop* off keeps it as a layer inside the uxnan
+  window instead. It drags anywhere via the OS-native window drag (correct
+  across monitors and DPI scales), remembers where it was parked (a spot on an
+  unplugged monitor falls back to the primary corner), clicking it still jumps
+  to the agent's terminal — with **Bring uxnan to the front on click** as its
+  own switch, off by default, so a poke never covers what you are doing unless
+  you ask — and it is destroyed with the main window so the app never keeps
+  running as nothing but a pet. The window is a thin, stateless renderer fed by
+  the main window over Tauri events; it carries its own per-window capability
   (`capabilities/pet.json` — without one, a second window gets no permissions
-  and renders empty) and loads `index.html?window=pet` (the static build has no
-  per-route files, so a route URL would 404 when packaged). The in-window layer
-  stays the default presentation.
+  and renders empty) and loads by query, per mode (`/?window=pet` in dev,
+  `index.html?window=pet` packaged — the static build has no per-route files,
+  and the dev server serves routes only at `/`).
 - An empty import result **explains itself** instead of only reporting nothing
   found: Codex's own eight pets are compiled into its binary rather than written
   to disk, so `~/.codex/pets` stays empty until you install one

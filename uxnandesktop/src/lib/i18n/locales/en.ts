@@ -413,7 +413,10 @@ export const en = {
   "pets.enableDesc": "Off by default. The pet floats over the app and follows your agents' state.",
   "pets.overlay": "Float over the desktop",
   "pets.overlayDesc":
-    "The pet lives in its own always-on-top window: visible over other apps, even with uxnan minimized. Drag it anywhere on screen.",
+    "The pet lives in its own always-on-top window: visible over other apps, even with uxnan minimized. Drag it anywhere on screen. Off keeps it inside the uxnan window.",
+  "pets.raiseOnClick": "Bring uxnan to the front on click",
+  "pets.raiseOnClickDesc":
+    "Clicking the floating pet also raises the uxnan window before showing that agent's terminal. Off by default so a poke never covers what you're doing.",
   "pets.corner": "Corner",
   "pets.cornerDesc": "Where the pet rests. You can also drag it anywhere and it snaps to the nearest corner.",
   "pets.corner.bottomRight": "Bottom right",

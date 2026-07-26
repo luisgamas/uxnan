@@ -3,10 +3,11 @@
 An optional, purely cosmetic companion that floats over the ADE and animates
 according to what your agents are doing. It never changes how an agent works.
 
-By default the pet lives **inside the uxnan window**. Flip **Settings → Pets →
-Float over the desktop** and it moves into its **own borderless, transparent,
-always-on-top window** — visible over other apps and while uxnan is minimized,
-draggable anywhere on any monitor, exactly like the Codex desktop pet.
+By default the pet **floats over the desktop** in its **own borderless,
+transparent, always-on-top window** — visible over other apps and while uxnan
+is minimized, draggable anywhere on any monitor, exactly like the Codex desktop
+pet. Turn **Settings → Pets → Float over the desktop** off and it lives as a
+layer inside the uxnan window instead.
 
 Pets are **off by default**. Turn them on from the sidebar **profile menu →
 Show pet**, or in **Settings → Pets**.
@@ -278,7 +279,8 @@ name in the library.
 | Setting | Default | Notes |
 |---|---|---|
 | Show a pet | off | Master switch; also in the profile menu |
-| Float over the desktop | off | The pet moves into its own always-on-top window |
+| Float over the desktop | on | Off keeps the pet as a layer inside the uxnan window |
+| Bring uxnan to the front on click | off | Desktop window only; a poke never covers your work unless you ask |
 | Corner | Bottom right | In-window layer only; the desktop window parks by dragging |
 | Size | Medium (144 px) | 96 / 144 / 200 / 260 px — the height of the sprite, which a generated pack nearly fills |
 | Animate | on | Off shows a single still frame |
@@ -292,16 +294,17 @@ pointer-based because Tauri suppresses HTML5 drag-and-drop in the webview.
 
 ### The desktop window
 
-With *Float over the desktop* on, the pet gets a window of its own (label
-`pet`): borderless, transparent, always on top, skipped from the taskbar, sized
-to the sprite. What that means in practice:
+With *Float over the desktop* on (the default), the pet gets a window of its own
+(label `pet`): borderless, transparent, always on top, skipped from the taskbar,
+sized to the sprite. What that means in practice:
 
 - **Drag it anywhere** — dragging hands off to the OS-native window drag, which
   stays correct across monitors and DPI scales. The parked position persists,
   and a spot on a monitor that is no longer attached falls back to resting near
   the primary monitor's bottom-right corner.
-- **Clicking still jumps to the agent**, bringing the uxnan window to the front
-  first.
+- **Clicking still jumps to the agent.** By default the agent's terminal is
+  revealed without raising uxnan over what you are doing; flip *Bring uxnan to
+  the front on click* to also raise the window.
 - **Closing uxnan closes the pet.** The window cannot be closed on its own
   (the Settings switch is the way to dismiss it), and it is destroyed with the
   main window so the app never keeps running as nothing but a pet.
@@ -313,9 +316,11 @@ to the sprite. What that means in practice:
 Two implementation constraints worth knowing (each cost a broken round once):
 Tauri **capabilities are per window** — the `pet` label has its own
 `capabilities/pet.json`, without which `listen`/`emitTo` fail silently and the
-window renders empty — and the static build has **no per-route files**, so the
-window loads `index.html?window=pet` and the root layout branches on the query
-(a SvelteKit route URL would 404 in a packaged build).
+window renders empty — and the window loads **by query, per mode**: the static
+build has no per-route files (a SvelteKit route URL would 404 packaged) while
+the dev server serves routes only at `/` (`/index.html` 404s there), so it is
+`index.html?window=pet` packaged and `/?window=pet` in dev, branched in the
+root layout.
 
 ---
 

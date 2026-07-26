@@ -146,9 +146,21 @@
       <SettingsRow label={i18n.t("pets.overlay")} description={i18n.t("pets.overlayDesc")}>
         {#snippet control()}
           <Switch
-            checked={settings.overlay === true}
+            checked={settings.overlay !== false}
             disabled={settings.enabled !== true}
             onCheckedChange={(c) => set({ overlay: c })}
+          />
+        {/snippet}
+      </SettingsRow>
+
+      <!-- Only meaningful for the desktop window: an in-window click already
+           happens inside a focused uxnan. -->
+      <SettingsRow label={i18n.t("pets.raiseOnClick")} description={i18n.t("pets.raiseOnClickDesc")}>
+        {#snippet control()}
+          <Switch
+            checked={settings.raiseOnClick === true}
+            disabled={settings.enabled !== true || settings.overlay === false}
+            onCheckedChange={(c) => set({ raiseOnClick: c })}
           />
         {/snippet}
       </SettingsRow>
@@ -160,7 +172,7 @@
           <Combobox
             value={settings.corner ?? "bottom-right"}
             groups={cornerGroups}
-            disabled={settings.enabled !== true || settings.overlay === true}
+            disabled={settings.enabled !== true || settings.overlay !== false}
             triggerClass="w-56"
             searchPlaceholder={i18n.t("common.search")}
             onChange={(v) => set({ corner: v as PetCorner, offsetX: 16, offsetY: 16 })}

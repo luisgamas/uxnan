@@ -198,7 +198,8 @@
 
   /** Only a real Tauri runtime has windows to manage (not the browser preview). */
   const tauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-  const overlayOn = $derived(tauri && pets.enabled && settings.overlay === true);
+  /** The desktop window is the default presentation; off = the in-window layer. */
+  const overlayOn = $derived(tauri && pets.enabled && settings.overlay !== false);
 
   /** Push the pet window everything it renders from. Split in two so the heavy
    *  half (the pet + its sheet, possibly a multi-MB data URL) is only sent when
@@ -284,7 +285,9 @@
         app.updatePets({ screenX: e.payload.x, screenY: e.payload.y }),
       ),
       listen<{ tabId?: string }>("pet:focus", (e) => {
-        void petFocusMain().catch(() => {});
+        // Raising the app is its own opt-in: revealing the right terminal is
+        // always useful, yanking uxnan over the user's work is not.
+        if (settings.raiseOnClick === true) void petFocusMain().catch(() => {});
         pets.focus(e.payload.tabId);
       }),
     ];

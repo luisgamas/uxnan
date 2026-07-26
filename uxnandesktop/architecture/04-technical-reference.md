@@ -181,11 +181,13 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 - [x] **Una sola mascota**, con el estado mas urgente ganando (`waiting` →
       `blocked` → `done` → `working`). El modo colonia (una por agente) se
       construyo y se retiro por no aportar sobre la barra lateral.
-- [x] **Ventana propia de escritorio (opt-in)** — sin bordes, transparente,
-      siempre encima, visible sobre otras apps y con uxnan minimizado; drag
-      nativo de ventana (correcto en DPI/multi-monitor), posicion persistida y
-      validada contra los monitores vivos, capability propia (`pet.json`) y carga
-      via `index.html?window=pet` (`02d` §1.7).
+- [x] **Ventana propia de escritorio (por defecto, desactivable)** — sin bordes,
+      transparente, siempre encima, visible sobre otras apps y con uxnan
+      minimizado; drag nativo de ventana (correcto en DPI/multi-monitor),
+      posicion persistida y validada contra los monitores vivos, capability
+      propia (`pet.json`), carga por query segun el modo (`/?window=pet` en dev,
+      `index.html?window=pet` empaquetada) y **traer uxnan al frente al clic
+      como interruptor propio, apagado por defecto** (`02d` §1.7).
 - [x] **Interactividad de puntero**: la mascota mira al cursor mientras descansa
       (las 16 poses v2 de las filas 9-10, zona muerta al frente), reacciona al
       clic con un salto y sostiene la pose de mirar-abajo mientras se arrastra.

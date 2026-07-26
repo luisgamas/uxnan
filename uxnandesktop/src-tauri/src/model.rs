@@ -823,10 +823,15 @@ pub struct PetSettings {
     pub enabled: bool,
     /// Show the pet in its own borderless, transparent, always-on-top desktop
     /// window (visible over other apps and while uxnan is minimized), like the
-    /// Codex desktop pet. Opt-in: the in-window layer stays the default,
-    /// verified presentation.
-    #[serde(default)]
+    /// Codex desktop pet. **On by default** — turning it off keeps the pet as a
+    /// layer inside the uxnan window instead.
+    #[serde(default = "default_true")]
     pub overlay: bool,
+    /// When the desktop pet is clicked, also bring the uxnan window to the
+    /// front before revealing the agent's terminal. Off by default: a pet click
+    /// should not yank the app over whatever the user is doing unless they ask.
+    #[serde(default)]
+    pub raise_on_click: bool,
     /// Last position of the desktop pet window (physical px, top-left corner).
     /// `None` until first dragged; the window then rests near the primary
     /// monitor's bottom-right corner. A saved spot on a monitor that is no
@@ -879,7 +884,8 @@ impl Default for PetSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            overlay: false,
+            overlay: true,
+            raise_on_click: false,
             screen_x: None,
             screen_y: None,
             active_pet_id: String::new(),

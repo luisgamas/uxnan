@@ -411,7 +411,10 @@ export const es: Record<MessageKey, string> = {
     "Desactivado por defecto. La mascota flota sobre la app y sigue el estado de tus agentes.",
   "pets.overlay": "Flotar sobre el escritorio",
   "pets.overlayDesc":
-    "La mascota vive en su propia ventana siempre visible: se ve sobre otras aplicaciones, incluso con uxnan minimizado. Arrástrala a cualquier parte de la pantalla.",
+    "La mascota vive en su propia ventana siempre visible: se ve sobre otras aplicaciones, incluso con uxnan minimizado. Arrástrala a cualquier parte de la pantalla. Apagado la mantiene dentro de la ventana de uxnan.",
+  "pets.raiseOnClick": "Traer uxnan al frente al hacer clic",
+  "pets.raiseOnClickDesc":
+    "Al hacer clic en la mascota flotante también se trae la ventana de uxnan al frente antes de mostrar la terminal de ese agente. Apagado por defecto para que un toque nunca tape lo que estás haciendo.",
   "pets.corner": "Esquina",
   "pets.cornerDesc":
     "Dónde descansa la mascota. También puedes arrastrarla y se acomoda en la esquina más cercana.",

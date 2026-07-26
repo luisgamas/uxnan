@@ -713,8 +713,11 @@ export type PetCorner = "bottom-right" | "bottom-left" | "top-right" | "top-left
 export interface PetSettings {
   /** Master switch, also toggled from the sidebar profile menu. Default off. */
   enabled?: boolean;
-  /** Show the pet in its own always-on-top desktop window (opt-in). */
+  /** Show the pet in its own always-on-top desktop window. Default on;
+   *  off keeps it as a layer inside the uxnan window. */
   overlay?: boolean;
+  /** Clicking the desktop pet also brings uxnan to the front. Default off. */
+  raiseOnClick?: boolean;
   /** Last desktop-window position (physical px), set by dragging it. */
   screenX?: number | null;
   screenY?: number | null;

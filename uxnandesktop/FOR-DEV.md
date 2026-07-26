@@ -180,12 +180,14 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   `blocked`→`failed`, else `idle`; reports older than 30 min are stale and ignored).
   **One pet**, showing the most urgent agent state (needs-you → blocked → ready →
   working). Clicking it reveals that agent's
-  terminal; the pet drags anywhere. It renders as a layer inside the uxnan window
-  or — opt-in (`pets.overlay`) — in its **own borderless, transparent,
-  always-on-top desktop window** (visible over other apps and with uxnan
-  minimized; native window drag, position persisted + validated against live
-  monitors, its own `capabilities/pet.json`, loaded via `index.html?window=pet`,
-  a thin stateless renderer fed by the main window over events). The pet is
+  terminal; the pet drags anywhere. By default it renders in its **own
+  borderless, transparent, always-on-top desktop window** (`pets.overlay`,
+  switchable back to a layer inside the uxnan window; visible over other apps
+  and with uxnan minimized; native window drag, position persisted + validated
+  against live monitors, its own `capabilities/pet.json`, loaded by query per
+  mode — `/?window=pet` in dev, `index.html?window=pet` packaged — a thin
+  stateless renderer fed by the main window over events; raising uxnan on a pet
+  click is its own switch, off by default). The pet is
   **interactive**: while resting it watches the cursor (the v2 sheet's rows 9-10
   are 16 clockwise look poses, 0° = up, front = deadzone), a click pokes it (jump
   reaction), and dragging holds the looking-down carry pose. On top of the state's base
