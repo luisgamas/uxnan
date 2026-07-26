@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.23] - 2026-07-26
+
 ### Added — Automations: unattended, recurring multi-agent tasks that run with the app closed
 
 - New **automations engine** (`src-tauri/src/automations/`): an automation is a

@@ -5341,7 +5341,7 @@ dependencies = [
 
 [[package]]
 name = "uxnan-desktop"
-version = "0.0.22"
+version = "0.0.23"
 dependencies = [
  "axum",
  "base64 0.22.1",
