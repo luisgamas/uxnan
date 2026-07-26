@@ -9,6 +9,9 @@ mod agent_hooks;
 mod agentcli;
 mod agentrun;
 mod aicommit;
+// Public so the binary's headless runner mode (`main.rs`) can reach it without
+// starting Tauri — an automation must run with the app closed.
+pub mod automations;
 mod browse;
 mod browser;
 mod codex_trust;
@@ -250,6 +253,19 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Automations (spec 02f): the definition on disk and the OS task
+            // always move together, so every mutation returns the resulting
+            // scheduler status.
+            automations::commands::automations_list,
+            automations::commands::automations_save,
+            automations::commands::automations_set_enabled,
+            automations::commands::automations_delete,
+            automations::commands::automations_seed_examples,
+            automations::commands::automations_runs,
+            automations::commands::automations_runs_dir,
+            automations::commands::automations_run_now,
+            automations::commands::automations_scheduler_status,
+            automations::commands::automations_scheduler_supported,
             commands::get_app_state,
             commands::update_settings,
             commands::quick_commands_set,

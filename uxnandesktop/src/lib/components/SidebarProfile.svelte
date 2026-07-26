@@ -1,7 +1,7 @@
 <script lang="ts">
   // Left-sidebar footer: a configurable profile card (avatar + name + a line of
-  // text), shadcn-sidebar-footer style. Clicking it opens a menu with Settings
-  // plus an "Edit profile" entry. The avatar/name/description live in
+  // text), shadcn-sidebar-footer style. Clicking it opens a menu with
+  // Automations and Settings, plus an "Edit profile" entry. The avatar/name/description live in
   // `AppSettings.profile` and are edited via SidebarProfileDialog.
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { app } from "$lib/state/app.svelte";
@@ -16,6 +16,7 @@
   import UserRoundIcon from "@lucide/svelte/icons/user-round";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
   import SettingsIcon from "@lucide/svelte/icons/settings";
+  import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import PawPrintIcon from "@lucide/svelte/icons/paw-print";
   import CheckIcon from "@lucide/svelte/icons/check";
@@ -40,6 +41,7 @@
   // Shortcut hint (the action still fires from the global keybindings; this is
   // just a discoverability cue in the menu).
   const settingsBinding = $derived(resolveBinding("openSettings"));
+  const automationsBinding = $derived(resolveBinding("openAutomations"));
 
   // Display fields with graceful fallbacks so the card always reads as intentional
   // (the user personalizes them from the Edit dialog).
@@ -109,6 +111,13 @@
         </span>
       </div>
       <DropdownMenu.Separator />
+      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => app.openAutomations()}>
+        <CalendarClockIcon class={icon.button} />
+        <span class="flex-1">{i18n.t("automations.title")}</span>
+        {#if automationsBinding}
+          <KeyChord chord={automationsBinding} />
+        {/if}
+      </DropdownMenu.Item>
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => app.openSettings()}>
         <SettingsIcon class={icon.button} />
         <span class="flex-1">{i18n.t("settings.title")}</span>

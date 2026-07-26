@@ -62,6 +62,13 @@ export const KEY_ACTIONS: KeyAction[] = [
     default: "Mod+Shift+P",
   },
   {
+    id: "openAutomations",
+    labelKey: "shortcuts.openAutomations",
+    descKey: "shortcuts.openAutomationsDesc",
+    category: "general",
+    default: "Mod+Shift+A",
+  },
+  {
     id: "worktreePalette",
     labelKey: "shortcuts.worktreePalette",
     descKey: "shortcuts.worktreePaletteDesc",

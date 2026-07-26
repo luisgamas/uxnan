@@ -5,6 +5,302 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — Automations: unattended, recurring multi-agent tasks that run with the app closed
+
+- New **automations engine** (`src-tauri/src/automations/`): an automation is a
+  **recurring** task that runs in **its own working folder** (a git repo or any plain
+  folder — never bound to the selected project) and drives a **graph of agent steps**,
+  so several providers work **in parallel** and a later agent consumes their outputs
+  via `{{steps.s1.output}}`. Independent steps dispatch together; a step listing
+  several dependencies waits for all of them (parallel + fan-in fall out of
+  `dependsOn` alone). Completion is **verified by exit code**, a failure propagates
+  down its whole branch as `skipped` while independent branches keep going, and
+  `onFailure: retry` re-dispatches up to `maxAttempts`.
+- The binary now has a **headless runner mode**: `main.rs` inspects its arguments
+  **before** Tauri builds a window, and `--automation-run <id> [--trigger …]` takes a
+  plain Tokio path that never creates a webview or window (nor a console on Windows).
+  That is what lets an automation fire **while uxnan is closed**. There is exactly one
+  execution path — the OS scheduler and the app's "Run now" both spawn this same
+  subprocess — so scheduled and manual runs can't drift apart. Exit codes: `0` ran or
+  was legitimately skipped, `1` a step failed, `2` not runnable.
+- **Why the engine is in Rust:** the orchestration console's engine lives in
+  TypeScript inside the webview, which cannot exist with the app closed; duplicating a
+  scheduler in two languages would guarantee drift. The TypeScript engine keeps its own
+  job (live agents in real terminals) and is **untouched** — the two surfaces coexist.
+- **Recurrence only, no calendar math in Rust.** `Schedule` is `every N
+  minutes|hours|days|weeks` plus daily / weekdays / weekly presets — **no one-shot**
+  (an automation is recurring by definition) and **no cron** (it doesn't translate
+  cleanly to Task Scheduler or systemd). The OS scheduler owns *when* a run fires, so
+  Rust only describes the frequency; the "next runs" preview is frontend-only and
+  display-only. No new dependency.
+- **Context across runs:** `{{prev.s1.output}}` plants the previous run's output, so a
+  recurring automation can continue yesterday's work. Unresolved references become ""
+  and are recorded in the run's `missingRefs` rather than failing it.
+- **Policy:** missed-run catch-up, overlap (`skip`/`queue`/`cancelPrevious`) with a
+  stale-run guard so a killed runner can't block every future run, a **shell
+  precondition** (exit 0 = proceed, with a timeout and full capture), a whole-run time
+  ceiling, and history **retention**. Optional **worktree per run** on a repo working
+  folder, so unattended work never touches the tree you're using.
+- **Persistence with a single writer per file** (`<app-data>/automations/`):
+  `automations.json` is written only by the app, `runs/<automationId>/<runId>.json`
+  only by its own runner (atomic write-rename, rewritten as steps advance so the app
+  can show live progress by watching the directory). No locks, no lost updates; a
+  corrupt record is skipped instead of hiding the history around it. The runner
+  resolves the same app-data directory **without** a Tauri handle.
+- Run records keep what an unattended execution needs to explain itself afterwards:
+  the **prompt as actually sent**, captured output, verified exit code, stderr,
+  attempts, per-step timings, the precondition capture, and the graph edges (copied in,
+  so history stays readable after the automation is edited or deleted).
+- **No human gates on purpose** — a task that blocks at 3 AM waiting for a click is a
+  broken task. Anything needing live approval stays in the orchestration console.
+- The runner applies the app's **`PATH` enrichment** before resolving anything: a run
+  launched by the OS scheduler inherits an even barer environment than a GUI launch
+  (launchd hands a job the minimal `PATH`), which would make **every** agent read as
+  "not installed".
+- 44 new Rust tests (310 total). Docs: new `docs/automations.md` (linked from the
+  README) and new spec page `architecture/02f-automations.md` (registered in
+  `architecture/00-index.md`: doc table + status table + tree).
+
+### Added — the values a prompt can carry are now offered where the prompt is written
+
+- `{{steps.s1.output}}` was invisible knowledge: nobody discovers it by looking at a
+  text box, and someone who has not read the docs has no way to know an automation can
+  pass one agent's answer to the next. Every value a step can plant is now listed under
+  its prompt field, **in plain language**, one click away — the same idea as the
+  orchestration console's context picker, with the variables that exist on this side.
+- Three groups, each explained: **from an earlier step in this run** (its answer, its
+  name), **from the previous run** (what that step answered last time, for picking up
+  where it left off), and **about this run** (the working folder).
+- Inserting a value from an earlier step also makes the step **wait** for it, and says
+  so before you click. A prompt quoting a step it does not depend on is the classic way
+  to end up with an empty hand-off; now the common path cannot produce one.
+- The value lands **at the cursor** and replaces a selection, because a value usually
+  belongs mid-sentence rather than appended; the caret ends up after it so typing
+  continues naturally. That logic is pure and unit-tested (`$lib/automations/insert`),
+  including a backwards selection, a stale caret past the end of the text, and a step
+  that would otherwise be made to wait for itself.
+- Replaces the bare "insert output" chips, which showed a token without ever saying
+  what it was.
+- 10 new Vitest tests (285).
+
+### Added — Automations ship with four working examples
+
+- A machine that has never seen them is offered **four example automations** the first
+  time the screen opens, so the overview, the list, a detail view and the editor all
+  have something real to show instead of four dead ends. They are ordinary automations
+  after that: editable, runnable, deletable.
+- All four land **paused**, and nothing registers a scheduled task until the user
+  enables one — an example must not start firing because the app was opened.
+- Between them they cover every idea worth understanding: **parallel work feeding one
+  consolidating agent** (nightly triage), the **same question answered by different
+  providers** with a third comparing them (cross-provider consensus), a run that
+  **continues the previous one** via `{{prev.s1.output}}` (daily relay), and a **cheap
+  shell check** deciding whether an agent turn is worth spending at all (watch for new
+  commits, gated on `git log --since`).
+- Every example is **multi-agent** — a single agent on a timer is what this feature is
+  not — and its agents are drawn from the CLIs actually installed, cycling so two
+  installed CLIs still make a genuinely multi-provider example. With none installed the
+  slots are left empty and the editor asks, rather than naming an agent that isn't there.
+- Seeding happens **once ever**, recorded by a flag in the store that ordinary saves
+  carry over: deleting an example is a decision, and bringing it back next launch would
+  be arguing with it. The **Templates** section can restore any of them on demand, under
+  the same stable id, so a restore replaces rather than accumulates.
+- The definitions live in one place (`$lib/automations/examples.ts`) and are used by both
+  the seeding and the Templates section, so the two cannot drift.
+- 4 new Rust tests (353) and 13 Vitest (275), including checks that every example is
+  multi-agent, that its steps really chain, that no prompt quotes a step it does not
+  wait for, that none of them approve their own tools, and that the shipped English
+  prompts — not stand-ins — are what gets asserted. Verified live: the watch example ran
+  against a real repository, its precondition passed, Claude summarized the commits and
+  Codex read that summary and flagged what to look at.
+
+### Added — Antigravity and Grok can write commit messages and PR bodies
+
+- **Model discovery for both**, which is what actually wires an agent into this
+  surface: `agy models` prints one bare id per line, `grok models` wraps a bulleted
+  list in prose (and names a default that is already in the list, so reading it too
+  would duplicate the entry). Both parsers are pinned to output captured from the real
+  CLIs, and both refuse to mint a model out of a not-signed-in sentence — a phantom
+  entry would be offered to the user as if it were real.
+- `AI_COMMIT_AGENTS` is now Claude Code, Codex, OpenCode, Grok, Gemini CLI and
+  Antigravity. It is a **curated subset** of the headless set, not a mirror of it:
+  being drivable is necessary but not sufficient, since an agent with no model list
+  leaves the picker empty and looks broken. The comment above the list now says so,
+  and its test enforces the one direction that matters — every entry must be
+  something the backend can run — instead of demanding the two lists be equal, which
+  was the wrong invariant.
+- 4 new Rust tests (349) and 4 Vitest (262).
+
+### Fixed — a chained prompt is no longer clipped at 28 KB, and Zero can run a step
+
+- **The argv cap is gone for every agent that offers another channel.** A prompt
+  passed as a command-line argument is bounded by the OS (~32 KiB total on Windows),
+  and a chained automation step planting the previous step's whole output hit that
+  ceiling easily — silently losing the tail of its own context. `agentcli` now
+  declares a **prompt delivery** per agent, verified against each CLI rather than
+  assumed: **stdin** for Claude, Codex, OpenCode and Pi; a **prompt file** for Grok
+  (`--prompt-file`) and Zero (`-f`); `argv` only for Antigravity and Gemini, which
+  accept nothing else and stay capped. Proven with a 39 KB prompt whose only
+  instruction sat on the last line: the agent answered it.
+- The prompt file is removed when it goes out of scope, so a timed-out or panicking
+  run cannot leave the user's prompts lying around in `%TEMP%`. The stdin pipe is
+  closed after writing — that close *is* the CLI's end-of-input, and without it the
+  agent would wait forever.
+- **Zero** joins the headless set via `zero exec` (npm `@gitlawb/zero`), bringing
+  `agentcli::SUPPORTED` to eight and closing the gap against the agents the bridge
+  drives. Its autonomy is a level rather than a switch, so the per-step flag maps to
+  `--auto high`, which its own help documents as the one that enables unsafe tools.
+- `build_args` now takes a `PromptSource` saying where the prompt lives, instead of
+  always embedding it. AI commit passes `Argv` — its prompts are short.
+- 4 new Rust tests (345 total). **Verified end to end** with the app closed: a 39 KB
+  stdin prompt survived intact, a 35 KB prompt reached Grok through a prompt file and
+  left no temporary behind, and Zero resolved and ran (this machine's Zero account has
+  no credits, so its *successful* completion is still unverified — see `FOR-DEV.md`).
+
+### Added — Antigravity and Grok run headlessly, and a step can be allowed to act on its own
+
+- **Antigravity (`agy`) and Grok** join the headless agent set, so an automation, an
+  orchestration headless step or an AI commit message can be driven by either. Both
+  ship a single native binary rather than an npm package, so they resolve straight
+  off `PATH`. `agentcli::SUPPORTED` is now seven agents.
+- **Per-step autonomy** (`Step.autonomous`, off by default). A headless agent cannot
+  ask a human, so with tools involved several CLIs **auto-deny** and come back with
+  nothing — Antigravity says so in as many words. A step that must actually *change*
+  something therefore needs this, and it is opt-in per step precisely because it lets
+  an agent edit files and run commands with nobody watching. It maps to each CLI's own
+  flag: `--dangerously-skip-permissions` (Claude, Antigravity),
+  `--dangerously-bypass-approvals-and-sandbox` (Codex), `--auto` (OpenCode),
+  `--permission-mode bypassPermissions` (Grok). The editor exposes it as a switch whose
+  helper text changes to state what is true in each position.
+- **Argument order is now part of the contract for the prompt-taking CLIs.**
+  Antigravity stops recognizing options once `--print` has consumed the prompt, so a
+  flag placed after it is *silently ignored* — and the run then hangs until agy's own
+  five-minute print timeout waiting for a permission nobody can grant. Both natives now
+  emit every option before the prompt, and a test pins the exact shape. This was found
+  by running it, not by reading the help.
+- `agent_run_headless` takes an optional `autonomous`; omitting it keeps the safe
+  default, so the orchestration console is unaffected. AI commit passes `false` — it
+  only ever asks for text back.
+- 4 new Rust tests (341 total). **Verified end to end** with the app closed: a
+  three-step automation where Grok answered, Antigravity used the autonomy flag to read
+  a real file, and Claude consumed both outputs.
+
+### Added — Automations: the screen
+
+- **Entry point + shortcut**: *Automations* in the left sidebar's profile menu, and
+  **`Mod+Shift+A`** (rebindable in Settings → Keyboard shortcuts, dispatched through
+  the shared `runAppAction` like every other action).
+- **A full-screen view inside the window, built like Settings** — an overlay over the
+  content region that covers the three panels and the status bar while leaving the
+  body **mounted**, so no terminal or PTY is torn down by visiting it. It owns its own
+  keys (including Escape) exactly as Settings does. Section rail on the left with the
+  same recipe and tokens, so the two screens read as one family.
+- **Everything inline.** The only floating surfaces are the shared destructive confirm
+  and the folder picker, which is modal by nature — no dialog-driven editing.
+- **Overview** leads with what needs attention: active automations the OS is *not*
+  actually firing, then what runs next and what just happened.
+- **List** with search and grouping by **lead agent / task type / frequency / folder /
+  status**, since an automation is rarely one agent and the same set reads differently
+  depending on the question. Each row shows the **stack of every agent involved**, plus
+  run-now, pause/resume and a ⋯ menu (edit, **create from this**, delete).
+- **Editor** as a full page: identity, its own working folder (with the in-app folder
+  browser), frequency with a **live preview of the next five runs**, the **step graph**
+  and the policy. It validates against the same rules as the backend, so Save explains
+  why it is disabled instead of failing on the round trip. A prompt that references a
+  step it does not `dependsOn` is flagged with a one-click fix — that is precisely the
+  mistake that makes a hand-off arrive empty.
+- **Runs** — global history filterable by automation and outcome; each step expands to
+  the **prompt as actually sent**, the captured output, the verified exit code, stderr
+  and the reason for any refusal (including the precondition's own capture).
+- **Templates** — ready-made multi-agent automations (parallel review with a
+  consolidated report, cross-provider consensus with a judge, a daily relay that
+  continues the previous run via `{{prev.s1.output}}`). Each lands **paused** in the
+  editor: a template must never start firing before it has been read.
+- **The scheduling badge never flatters**: it states the truth in all four states and,
+  when registration failed, shows **the operating system's own message** instead of a
+  friendlier one that hides what to fix.
+- **Calendar math lives in the frontend** (`automations/schedule.ts`), which is what
+  produces the next-runs preview and the local `startBoundary` handed to the backend.
+  The backend still does none of it — the OS scheduler remains the authority on *when*.
+- 33 new Vitest tests (258 total) over the schedule math (interval anchoring, weekend
+  skipping, month boundaries, local-time formatting) and the display logic (grouping,
+  multi-tag membership, search, step-id reuse). `svelte-check` clean; full EN/ES i18n.
+- Docs: `docs/automations.md` gains a screen section, `architecture/02f` §6 is written
+  up (including why the calendar math is where it is), and the `00-index` status row,
+  `FOR-DEV.md` and the monorepo `AGENTS.md` note are updated. Reviewed on-device by
+  the maintainer; there are still no Svelte component or E2E tests, so the automated
+  coverage is the pure logic underneath it.
+
+### Added — Automations: scheduled by the operating system, so they fire with the app closed
+
+- Saving or enabling an automation now **registers a task with the OS's own scheduler**,
+  which spawns the headless runner: **Task Scheduler XML** on Windows
+  (`schtasks /Create /XML`), a **LaunchAgent** on macOS (`launchctl bootstrap gui/<uid>`),
+  a **systemd user timer** on Linux (`systemctl --user enable --now`). All per user,
+  **no elevation**. uxnan keeps no clock of its own.
+- Two policy fields are **delegated to the OS** instead of being enforced only by our
+  runner: `overlap` becomes `MultipleInstancesPolicy` (and equivalents) and `catchUp`
+  becomes `StartWhenAvailable` / `Persistent`, so a run whose moment passed while the
+  machine was off is recovered rather than lost. An interval is emitted as a repeating
+  trigger, the clock-time presets as a **calendar** trigger that stays pinned to the
+  wall clock across DST. On systemd a monotonic interval deliberately omits
+  `Persistent=`, which only applies to `OnCalendar` — claiming a catch-up that would
+  never happen would be a lie in a config file.
+- We register full **XML** rather than `schtasks`' short flags because the flags cannot
+  express the four things that matter: hidden execution, the multiple-instances policy,
+  the execution time limit and missed-run recovery. The document is written as UTF-16
+  with a BOM, which Task Scheduler requires.
+- **Honest degradation**: if registration fails (unsupported platform, corporate
+  policy, permissions) the automation is **still saved**, the returned status carries
+  the message the OS actually printed, and it keeps running while uxnan is open. There
+  is no state in which an automation looks active without being active. Documented
+  caveat: on Windows the task uses `InteractiveToken`, so it fires only while the user
+  is logged on — running with the session closed would mean storing their password.
+- New **Tauri command surface** (`automations/commands.rs`) holding one invariant so
+  the UI never has to remember it: **the stored definition and the OS task always move
+  together**. Every mutation returns the resulting scheduler status. "Run now" spawns
+  the *same* runner the scheduler spawns, tagged `manual`.
+- **Status queries never match on error text.** Telling "no such task" apart from "I
+  cannot see the task store" by matching the message is a trap — it is localized, so on
+  a Spanish, German or Japanese Windows nothing would match and every automation would
+  report as failed (exactly what happened on this machine before the round-trip test
+  caught it). The query now probes whether the scheduler responds at all.
+- 27 new Rust tests (337 total), including a `#[ignore]`d **round-trip against the real
+  Task Scheduler** (`cargo test -- --ignored windows_round_trip`) — the only way to
+  catch Windows rejecting the document, since it does so with a message that says
+  nothing about the cause. Verified end to end on Windows: a real task launched the
+  runner with the app closed and left its run record. macOS and Linux registration is
+  built and unit-tested but **not yet validated on real hardware** (`FOR-DEV.md`).
+
+### Fixed — Codex print-mode runs work outside a git repository
+
+- `agentcli::build_args` now passes Codex **`--skip-git-repo-check`**. Codex refuses to
+  start outside a Git repository and asks the human to confirm — a prompt nothing can
+  answer in print mode, so the run simply failed. Every invocation through this path is
+  programmatic, in a directory the user picked, so the interactive guard has nothing to
+  protect. Fixes headless Codex steps in the **Global** orchestration workspace and in
+  an automation whose working folder is deliberately not a repo; a no-op for AI-commit
+  (always a repo). Folder **trust** is a separate decision and is left untouched — the
+  automations runner seeds it the same way `mcpinject` already does when launching
+  Codex into a workspace.
+
+### Fixed — the project "+" launcher now really opens what you picked in a brand-new worktree
+
+- Creating a worktree from the project card's **"+" → New worktree** with a terminal,
+  a profile, one or more agents (or the browser) selected created the worktree and the
+  branch **but opened nothing**. The launcher's reset effect (which picks a default
+  target and clears the "what to open" selection each time the dialog opens) also read
+  `projects.worktreesByRepo` and `projects.activeWorktreePath` as tracked dependencies.
+  Creating a worktree changes both — so the effect re-ran **mid-submit**, across the
+  `await`, and wiped `selected` before `runActions` could launch it: the loop then
+  iterated over an empty list. Verified against Svelte 5.56's scheduler (the effect
+  re-ran twice per create).
+- `LauncherDialog.svelte` now (a) wraps the reset body in `untrack` so it depends
+  **only** on `open`, and (b) **snapshots the selection before the first `await`** and
+  launches that snapshot — so nothing that runs during creation can change what opens.
+  Selecting an existing worktree as the target was never affected (no `await` in that
+  path), and "create only" (nothing selected) is unchanged.
+
 ### Added — Pets: animated companions that mirror agent state
 
 - **A new opt-in companion** that floats over the ADE and animates according to what
@@ -155,6 +451,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   cover manifest parsing, traversal refusal, import scoping, the `.webp` +
   `avatar.json` shape community packs actually ship, frame maths and the state
   priority. Docs: [`docs/pets.md`](docs/pets.md).
+
 
 ### Changed — GitHub: a per-project inline view replaces the full-screen section
 

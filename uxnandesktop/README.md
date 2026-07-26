@@ -193,6 +193,7 @@ Detailed docs live in [`docs/`](./docs/):
 [agent launch & configuration](./docs/agent-launch.md) ·
 [provider usage statistics](./docs/providers.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·
+[automations (unattended, recurring)](./docs/automations.md) ·
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·
 [GitHub integration](./docs/github.md) ·

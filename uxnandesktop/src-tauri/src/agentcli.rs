@@ -1,6 +1,7 @@
-//! Resolution, invocation and model discovery for the coding-agent CLIs the
-//! AI commit-message generator can drive: **Claude Code, Codex, Gemini, OpenCode
-//! and Pi** (spec `02c` §4.5).
+//! Resolution, invocation and model discovery for the coding-agent CLIs uxnan
+//! can drive headlessly — the AI commit-message generator, the orchestration
+//! engine's headless steps and every automation step: **Claude Code, Codex,
+//! Gemini, OpenCode, Pi, Antigravity and Grok** (spec `02c` §4.5, `02f` §3).
 //!
 //! npm installs ship each CLI as an entry `*.js` behind a `.cmd`/`.ps1` shim that
 //! can't be spawned shell-free on Windows, so — mirroring the bridge's
@@ -13,8 +14,51 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-/// The agent ids the AI commit feature supports, in display order.
-pub const SUPPORTED: [&str; 5] = ["claude", "codex", "gemini", "opencode", "pi"];
+/// The agent ids that can be driven headlessly, in display order. Antigravity
+/// (`agy`) and Grok ship a single native binary rather than an npm package.
+pub const SUPPORTED: [&str; 8] = [
+    "claude", "codex", "gemini", "opencode", "pi", "agy", "grok", "zero",
+];
+
+/// How a CLI wants to be handed its prompt.
+///
+/// This is not cosmetic. A prompt passed as a command-line argument is bounded
+/// by the OS (Windows' `CreateProcess` command line is ~32 KiB **total**), and a
+/// chained automation step whose prompt carries the previous step's whole output
+/// hits that ceiling easily — silently losing the tail of its own context. Every
+/// CLI that offers a way out gets one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptDelivery {
+    /// The prompt rides in `argv` and is therefore length-capped.
+    Argv,
+    /// The prompt is piped to the process's stdin — unbounded.
+    Stdin,
+    /// The prompt is written to a file the CLI is pointed at — unbounded.
+    File,
+}
+
+/// How `agent_id` should receive its prompt. Verified against each CLI rather
+/// than assumed: Claude, Codex, OpenCode and Pi read stdin when their print flag
+/// gets no positional; Grok and Zero take a file; Antigravity and Gemini only
+/// take an argument.
+pub const fn prompt_delivery(agent_id: &str) -> PromptDelivery {
+    match agent_id.as_bytes() {
+        b"claude" | b"codex" | b"opencode" | b"pi" => PromptDelivery::Stdin,
+        b"grok" | b"zero" => PromptDelivery::File,
+        _ => PromptDelivery::Argv,
+    }
+}
+
+/// Where the prompt is, when building a CLI's arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptSource<'a> {
+    /// Embed this text in `argv`.
+    Argv(&'a str),
+    /// Omit it entirely — the caller pipes it to stdin.
+    Stdin,
+    /// Point the CLI at this file.
+    File(&'a str),
+}
 
 /// A CLI agent resolved to a spawnable form.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +149,14 @@ fn resolve_node_cli(rel: &[&str], launcher: &str) -> Option<Resolved> {
         }
     }
     None
+}
+
+/// Resolve a CLI that ships as one native executable on `PATH`.
+fn resolve_native(command: &str) -> Option<Resolved> {
+    crate::which::resolve(command).map(|p| Resolved {
+        program: p.to_string_lossy().to_string(),
+        prepend: vec![],
+    })
 }
 
 /// Resolve Claude Code: the native `~/.local/bin/claude[.exe]` if present, else
@@ -263,15 +315,33 @@ pub fn resolve(agent_id: &str) -> Option<Resolved> {
             &["@earendil-works", "pi-coding-agent", "dist", "cli.js"],
             "pi",
         ),
+        // Antigravity and Grok ship a single native binary on `PATH` (no npm
+        // package to walk), so a plain lookup is the whole resolution.
+        "agy" | "grok" => resolve_native(agent_id),
+        "zero" => resolve_node_cli(&["@gitlawb", "zero", "bin", "zero.js"], "zero"),
         _ => None,
     }
 }
 
-/// The non-interactive (print-mode) args for `agent_id` to answer `prompt` with
-/// an optional `model` (empty → the CLI's default model). The flags match each
-/// CLI's headless mode; the prompt is the final positional arg (except Gemini,
-/// where `-p` takes the prompt as its value). `None` for an unknown agent.
-pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<String>> {
+/// The non-interactive (print-mode) args for `agent_id`, with an optional
+/// `model` (empty → the CLI's default). `None` for an unknown agent.
+///
+/// `prompt` says *where* the prompt lives: inline in `argv`, piped to stdin, or
+/// in a file the CLI is pointed at (see [`prompt_delivery`]). Callers with short
+/// prompts can just use [`PromptSource::Argv`].
+///
+/// `autonomous` adds the CLI's own auto-approve flag. It matters more than it
+/// looks: with tools involved, a headless agent cannot ask a human, so several
+/// CLIs **auto-deny** and return nothing useful (Antigravity says so outright).
+/// An unattended automation that is supposed to *do* something therefore needs
+/// this — but it is opt-in per step, never the default, because it lets an agent
+/// edit files and run commands with nobody watching.
+pub fn build_args(
+    agent_id: &str,
+    model: &str,
+    prompt: PromptSource<'_>,
+    autonomous: bool,
+) -> Option<Vec<String>> {
     let m = model.trim();
     let model_flag = |flag: &str| -> Vec<String> {
         if m.is_empty() {
@@ -280,40 +350,122 @@ pub fn build_args(agent_id: &str, model: &str, prompt: &str) -> Option<Vec<Strin
             vec![flag.to_string(), m.to_string()]
         }
     };
+    // The trailing positional prompt, or nothing when it travels another way.
+    let positional = |a: &mut Vec<String>| {
+        if let PromptSource::Argv(p) = prompt {
+            a.push(p.to_string());
+        }
+    };
+
     let args = match agent_id {
-        // claude -p [--model M] <prompt>
+        // claude -p [--dangerously-skip-permissions] [--model M] [<prompt>]
+        // With no positional, Claude reads the prompt from stdin.
         "claude" => {
             let mut a = vec!["-p".to_string()];
+            if autonomous {
+                a.push("--dangerously-skip-permissions".to_string());
+            }
             a.extend(model_flag("--model"));
-            a.push(prompt.to_string());
+            positional(&mut a);
             a
         }
-        // codex exec [--model M] <prompt>
+        // codex exec --skip-git-repo-check [flags] [<prompt>]
+        //
+        // Codex refuses to start outside a Git repository and asks the human to
+        // confirm — a prompt nothing can answer in print mode, so the run just
+        // fails. Every invocation here is programmatic, in a directory the user
+        // picked, so the interactive guard has nothing to protect and is waived.
+        // Folder *trust* is a separate decision and is left untouched.
         "codex" => {
-            let mut a = vec!["exec".to_string()];
+            let mut a = vec!["exec".to_string(), "--skip-git-repo-check".to_string()];
+            if autonomous {
+                a.push("--dangerously-bypass-approvals-and-sandbox".to_string());
+            }
             a.extend(model_flag("--model"));
-            a.push(prompt.to_string());
+            positional(&mut a);
             a
         }
         // gemini [-m M] -p <prompt>   (-p consumes the prompt as its value)
         "gemini" => {
             let mut a = model_flag("-m");
             a.push("-p".to_string());
-            a.push(prompt.to_string());
+            positional(&mut a);
             a
         }
-        // opencode run [--model M] <prompt>
+        // opencode run [--auto] [--model M] [<message>]
         "opencode" => {
             let mut a = vec!["run".to_string()];
+            if autonomous {
+                a.push("--auto".to_string());
+            }
             a.extend(model_flag("--model"));
-            a.push(prompt.to_string());
+            positional(&mut a);
             a
         }
-        // pi -p [--model M] <prompt>
+        // agy [--model M] [--dangerously-skip-permissions] --print <prompt>
+        //
+        // **Order matters here.** Antigravity's parser stops recognizing options
+        // once `--print` has taken the prompt, so a flag placed after it is
+        // silently ignored — which is worse than an error: the run then hangs
+        // until agy's own 5-minute print timeout, waiting for a permission
+        // nobody can grant. Every option therefore goes *before* the prompt.
+        // The workspace comes from the process cwd; `--add-dir` is for *extra*
+        // directories, so it is deliberately not passed.
+        "agy" => {
+            let mut a = model_flag("--model");
+            if autonomous {
+                a.push("--dangerously-skip-permissions".to_string());
+            }
+            a.push("--print".to_string());
+            positional(&mut a);
+            a
+        }
+        // grok [-m M] [--permission-mode …] (-p <prompt> | --prompt-file <path>)
+        "grok" => {
+            let mut a = model_flag("-m");
+            if autonomous {
+                // Grok spells its postures out; this is the one that lets an
+                // unattended run actually use tools.
+                a.push("--permission-mode".to_string());
+                a.push("bypassPermissions".to_string());
+            }
+            match prompt {
+                PromptSource::File(path) => {
+                    a.push("--prompt-file".to_string());
+                    a.push(path.to_string());
+                }
+                _ => {
+                    a.push("-p".to_string());
+                    positional(&mut a);
+                }
+            }
+            a
+        }
+        // zero exec [-m M] [--auto high] (<prompt> | -f <path>)
+        //
+        // Zero's autonomy is a level rather than a switch, and its own help is
+        // explicit that `high` is the one that enables unsafe tools.
+        "zero" => {
+            let mut a = vec!["exec".to_string()];
+            a.extend(model_flag("-m"));
+            if autonomous {
+                a.push("--auto".to_string());
+                a.push("high".to_string());
+            }
+            match prompt {
+                PromptSource::File(path) => {
+                    a.push("-f".to_string());
+                    a.push(path.to_string());
+                }
+                _ => positional(&mut a),
+            }
+            a
+        }
+        // pi -p [--model M] [<prompt>]
         "pi" => {
             let mut a = vec!["-p".to_string()];
             a.extend(model_flag("--model"));
-            a.push(prompt.to_string());
+            positional(&mut a);
             a
         }
         _ => return None,
@@ -456,6 +608,64 @@ pub fn parse_pi_models(output: &str) -> Vec<AgentModel> {
     out
 }
 
+/// Parse `agy models`, which prints one bare model id per line and nothing else.
+///
+/// The ids already carry their reasoning tier (`gemini-3.6-flash-high`), so they
+/// are shown verbatim — inventing a prettier display name would only make the
+/// picker disagree with what the user sees running `agy models` themselves.
+pub fn parse_agy_models(output: &str) -> Vec<AgentModel> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for raw in output.lines() {
+        let line = strip_ansi(raw);
+        let id = line.trim();
+        // A bare id has no whitespace; anything else is a banner or an error
+        // line. An unauthenticated CLI answers in prose, and a phantom model
+        // minted from a sentence would be offered as if it were real.
+        if id.is_empty() || id.contains(char::is_whitespace) {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(AgentModel::new(id, id));
+        }
+    }
+    out
+}
+
+/// Parse `grok models`, which wraps its list in prose:
+///
+/// ```text
+/// You are logged in with grok.com.
+///
+/// Default model: grok-4.5
+///
+/// Available models:
+///   * grok-4.5 (default)
+/// ```
+///
+/// Only the bulleted rows are models. The "Default model:" line names one that
+/// also appears in the list, so reading it too would duplicate the entry.
+pub fn parse_grok_models(output: &str) -> Vec<AgentModel> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for raw in output.lines() {
+        let line = strip_ansi(raw);
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("* ").or_else(|| line.strip_prefix("- ")) else {
+            continue;
+        };
+        // `grok-4.5 (default)` → `grok-4.5`; the marker is presentation, not id.
+        let id = rest.split_whitespace().next().unwrap_or("").trim();
+        if id.is_empty() {
+            continue;
+        }
+        if seen.insert(id.to_string()) {
+            out.push(AgentModel::new(id, id));
+        }
+    }
+    out
+}
+
 /// Map a Codex `model/list` `result.data` array into [`AgentModel`]s, skipping
 /// models hidden from the default picker.
 pub fn parse_codex_models(data: &serde_json::Value) -> Vec<AgentModel> {
@@ -490,47 +700,273 @@ mod tests {
     fn supported_ids_resolve_to_args() {
         for id in SUPPORTED {
             assert!(
-                build_args(id, "", "msg").is_some(),
+                build_args(id, "", PromptSource::Argv("msg"), false).is_some(),
                 "{id} builds default args"
             );
             assert!(
-                build_args(id, "x", "msg").is_some(),
+                build_args(id, "x", PromptSource::Argv("msg"), false).is_some(),
                 "{id} builds model args"
             );
         }
-        assert!(build_args("nope", "", "m").is_none());
+        assert!(build_args("nope", "", PromptSource::Argv("m"), false).is_none());
     }
 
     #[test]
     fn build_args_default_omits_model_flag() {
-        assert_eq!(build_args("claude", "", "hi").unwrap(), vec!["-p", "hi"]);
-        assert_eq!(build_args("codex", "  ", "hi").unwrap(), vec!["exec", "hi"]);
-        assert_eq!(build_args("gemini", "", "hi").unwrap(), vec!["-p", "hi"]);
-        assert_eq!(build_args("opencode", "", "hi").unwrap(), vec!["run", "hi"]);
-        assert_eq!(build_args("pi", "", "hi").unwrap(), vec!["-p", "hi"]);
+        assert_eq!(
+            build_args("claude", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["-p", "hi"]
+        );
+        assert_eq!(
+            build_args("codex", "  ", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["exec", "--skip-git-repo-check", "hi"]
+        );
+        assert_eq!(
+            build_args("gemini", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["-p", "hi"]
+        );
+        assert_eq!(
+            build_args("opencode", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["run", "hi"]
+        );
+        assert_eq!(
+            build_args("pi", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["-p", "hi"]
+        );
+    }
+
+    #[test]
+    fn native_agents_keep_every_option_before_the_prompt() {
+        // Antigravity stops parsing options once `--print` has taken the
+        // prompt, so an option placed after it is silently ignored and the run
+        // hangs until its own print timeout. Both natives therefore put every
+        // option first and the prompt last.
+        assert_eq!(
+            build_args("agy", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["--print", "hi"]
+        );
+        assert_eq!(
+            build_args("grok", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["-p", "hi"]
+        );
+        assert_eq!(
+            build_args("agy", "gemini-3-pro", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["--model", "gemini-3-pro", "--print", "hi"]
+        );
+        assert_eq!(
+            build_args("grok", "grok-4", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["-m", "grok-4", "-p", "hi"]
+        );
+    }
+
+    #[test]
+    fn agy_models_are_read_one_per_line() {
+        // Captured verbatim from `agy models` on a signed-in machine.
+        let out = "gemini-3.6-flash-high
+gemini-3.6-flash-medium
+gemini-3.1-pro-high
+claude-sonnet-4-6
+";
+        let models = parse_agy_models(out);
+        assert_eq!(models.len(), 4);
+        assert_eq!(models[0].id, "gemini-3.6-flash-high");
+        // The id already carries its tier, so it doubles as the display name.
+        assert_eq!(models[0].display_name, "gemini-3.6-flash-high");
+    }
+
+    #[test]
+    fn agy_prose_never_becomes_a_phantom_model() {
+        // An unauthenticated CLI answers in sentences; taking those would offer
+        // the user a model that does not exist.
+        let models = parse_agy_models(
+            "Please sign in to continue.
+
+No models available.
+",
+        );
+        assert!(models.is_empty(), "{models:?}");
+    }
+
+    #[test]
+    fn grok_models_come_only_from_the_bulleted_rows() {
+        // Captured verbatim from `grok models`.
+        let out = "You are logged in with grok.com.
+
+Default model: grok-4.5
+
+Available models:
+  * grok-4.5 (default)
+  * grok-4-fast
+";
+        let models = parse_grok_models(out);
+        // The "Default model:" line names one that is already in the list, so
+        // reading it too would duplicate the entry.
+        assert_eq!(
+            models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["grok-4.5", "grok-4-fast"]
+        );
+        // `(default)` is presentation, never part of the id handed to `-m`.
+        assert!(!models[0].id.contains("default"));
+    }
+
+    #[test]
+    fn grok_without_a_list_yields_nothing_rather_than_prose() {
+        let models = parse_grok_models(
+            "You are not logged in. Run `grok login`.
+",
+        );
+        assert!(models.is_empty(), "{models:?}");
+    }
+
+    #[test]
+    fn only_the_argv_agents_are_length_capped() {
+        // Everything with another channel must use it: an argv prompt is bounded
+        // by the OS, and a chained step carrying a previous step's whole output
+        // would silently lose its tail.
+        for id in ["claude", "codex", "opencode", "pi"] {
+            assert_eq!(prompt_delivery(id), PromptDelivery::Stdin, "{id}");
+        }
+        for id in ["grok", "zero"] {
+            assert_eq!(prompt_delivery(id), PromptDelivery::File, "{id}");
+        }
+        for id in ["agy", "gemini"] {
+            assert_eq!(prompt_delivery(id), PromptDelivery::Argv, "{id}");
+        }
+    }
+
+    #[test]
+    fn a_stdin_prompt_is_left_out_of_the_arguments() {
+        // If it stayed in argv too, the agent would get the prompt twice.
+        for id in ["claude", "codex", "opencode", "pi"] {
+            let args = build_args(id, "", PromptSource::Stdin, false).unwrap();
+            assert!(
+                !args.iter().any(|a| a == "hi"),
+                "{id} still passes a positional: {args:?}"
+            );
+        }
+        assert_eq!(
+            build_args("claude", "", PromptSource::Stdin, false).unwrap(),
+            vec!["-p"]
+        );
+    }
+
+    #[test]
+    fn a_file_prompt_uses_each_cli_own_flag() {
+        assert_eq!(
+            build_args("grok", "", PromptSource::File("C:/tmp/p.txt"), false).unwrap(),
+            vec!["--prompt-file", "C:/tmp/p.txt"]
+        );
+        assert_eq!(
+            build_args("zero", "", PromptSource::File("C:/tmp/p.txt"), false).unwrap(),
+            vec!["exec", "-f", "C:/tmp/p.txt"]
+        );
+    }
+
+    #[test]
+    fn zero_runs_one_shot_with_a_level_rather_than_a_switch() {
+        // Zero's autonomy is graded, and its own help says `high` is the level
+        // that enables unsafe tools.
+        assert_eq!(
+            build_args("zero", "", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["exec", "hi"]
+        );
+        assert_eq!(
+            build_args("zero", "gpt-5", PromptSource::Argv("hi"), true).unwrap(),
+            vec!["exec", "-m", "gpt-5", "--auto", "high", "hi"]
+        );
+    }
+
+    #[test]
+    fn autonomy_is_off_unless_asked_for() {
+        // The safe default is the whole point: nothing may auto-approve tools
+        // just because a run happens to be headless.
+        for id in SUPPORTED {
+            let args = build_args(id, "", PromptSource::Argv("msg"), false).unwrap();
+            assert!(
+                !args
+                    .iter()
+                    .any(|a| a.contains("dangerous") || a == "--auto" || a == "bypassPermissions"),
+                "{id} auto-approves by default: {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn autonomy_adds_each_cli_own_auto_approve_flag() {
+        // Without this a headless step that needs a tool comes back empty —
+        // Antigravity auto-denies and says so — so the mapping has to be right
+        // per CLI rather than one flag hopefully shared by all of them.
+        let has = |id: &str, needle: &str| {
+            build_args(id, "", PromptSource::Argv("msg"), true)
+                .unwrap()
+                .iter()
+                .any(|a| a == needle)
+        };
+        assert!(has("claude", "--dangerously-skip-permissions"));
+        assert!(has("codex", "--dangerously-bypass-approvals-and-sandbox"));
+        assert!(has("opencode", "--auto"));
+        assert!(has("agy", "--dangerously-skip-permissions"));
+        assert!(has("grok", "bypassPermissions"));
+    }
+
+    #[test]
+    fn the_prompt_stays_the_last_positional_when_autonomy_is_on() {
+        // A flag inserted in the wrong place would silently become the prompt.
+        assert_eq!(
+            build_args("claude", "opus", PromptSource::Argv("hi"), true).unwrap(),
+            vec![
+                "-p",
+                "--dangerously-skip-permissions",
+                "--model",
+                "opus",
+                "hi"
+            ]
+        );
+        // Antigravity is the one that breaks if an option lands after the
+        // prompt, so pin its whole shape.
+        assert_eq!(
+            build_args("agy", "gemini-3-pro", PromptSource::Argv("hi"), true).unwrap(),
+            vec![
+                "--model",
+                "gemini-3-pro",
+                "--dangerously-skip-permissions",
+                "--print",
+                "hi"
+            ]
+        );
+        assert_eq!(
+            build_args("grok", "", PromptSource::Argv("hi"), true).unwrap(),
+            vec!["--permission-mode", "bypassPermissions", "-p", "hi"]
+        );
     }
 
     #[test]
     fn build_args_inserts_model_flag_per_cli() {
         assert_eq!(
-            build_args("claude", "opus", "hi").unwrap(),
+            build_args("claude", "opus", PromptSource::Argv("hi"), false).unwrap(),
             vec!["-p", "--model", "opus", "hi"]
         );
         assert_eq!(
-            build_args("codex", "gpt-5", "hi").unwrap(),
-            vec!["exec", "--model", "gpt-5", "hi"]
+            build_args("codex", "gpt-5", PromptSource::Argv("hi"), false).unwrap(),
+            vec!["exec", "--skip-git-repo-check", "--model", "gpt-5", "hi"]
         );
         // Gemini: -m before -p, and -p takes the prompt as its value.
         assert_eq!(
-            build_args("gemini", "gemini-2.5-pro", "hi").unwrap(),
+            build_args("gemini", "gemini-2.5-pro", PromptSource::Argv("hi"), false).unwrap(),
             vec!["-m", "gemini-2.5-pro", "-p", "hi"]
         );
         assert_eq!(
-            build_args("opencode", "anthropic/claude-3.5", "hi").unwrap(),
+            build_args(
+                "opencode",
+                "anthropic/claude-3.5",
+                PromptSource::Argv("hi"),
+                false
+            )
+            .unwrap(),
             vec!["run", "--model", "anthropic/claude-3.5", "hi"]
         );
         assert_eq!(
-            build_args("pi", "anthropic/sonnet", "hi").unwrap(),
+            build_args("pi", "anthropic/sonnet", PromptSource::Argv("hi"), false).unwrap(),
             vec!["-p", "--model", "anthropic/sonnet", "hi"]
         );
     }

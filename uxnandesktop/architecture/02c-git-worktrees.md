@@ -239,7 +239,7 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   **Configuración → Mensaje de commit con IA**, aparece un botón **Generar** en el
   composer que redacta el mensaje a partir del diff staged. La configuración es
   **no técnica**: el usuario elige un **agente** (solo se pueden seleccionar los
-  instalados de entre Claude Code, Codex, Gemini, OpenCode y Pi) y un **modelo**;
+  instalados de la lista curada `AI_COMMIT_AGENTS` — un **subconjunto** del conjunto headless, porque un agente ademas tiene que responder una lista de modelos) y un **modelo**;
   no hay comando ni argumentos que configurar. El backend resuelve cada CLI igual
   que el bridge (`src-tauri/src/agentcli.rs`: `node <entry.js>` para instalaciones
   npm, binario nativo si existe — así el lanzamiento no interactivo funciona en

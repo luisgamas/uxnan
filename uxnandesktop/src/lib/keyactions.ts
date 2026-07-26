@@ -86,6 +86,9 @@ export function runAppAction(id: string, opts: RunActionOpts = {}): boolean {
     case "openSettings":
       app.openSettings();
       return true;
+    case "openAutomations":
+      app.openAutomations();
+      return true;
     case "openQuickCommands":
       app.quickCommandsMenuOpen = true;
       return true;

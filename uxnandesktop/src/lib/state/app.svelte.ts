@@ -83,6 +83,14 @@ export type SettingsSection =
  *  (the `"github"` section) and Overview is gone. */
 export type GithubSection = "pulls" | "issues" | "actions";
 
+/** Which pane the Automations screen shows (spec `02f` §6). */
+export type AutomationsSection =
+  | "overview"
+  | "list"
+  | "runs"
+  | "templates"
+  | "settings";
+
 class AppStore {
   /** Registered repositories (and their worktrees). */
   repos = $state<RepoData[]>([]);
@@ -117,6 +125,14 @@ class AppStore {
   githubInline = $state(false);
   /** Which GitHub pane the inline view shows (pulls / issues / actions). */
   githubSection = $state<GithubSection>("pulls");
+  /** Whether the Automations screen is open. Like Settings it is a
+   *  full-screen overlay over the still-mounted body, so no terminal or PTY is
+   *  torn down while the user is in it. */
+  automationsOpen = $state(false);
+  /** Which Automations pane is shown. */
+  automationsSection = $state<AutomationsSection>("overview");
+  /** The automation opened for editing/inspection, or null for the list. */
+  automationsSelectedId = $state<string | null>(null);
   /** Live OS dark-mode preference (kept in sync via a matchMedia listener), so
    *  the "System" theme reacts to the OS switching light/dark at runtime. */
   systemDark = $state(detectSystemDark());
@@ -185,6 +201,17 @@ class AppStore {
   /** Close the inline GitHub view, returning to the center + right panels. */
   closeGithub(): void {
     this.githubInline = false;
+  }
+
+  /** Open the Automations screen, optionally on a specific pane. */
+  openAutomations(section: AutomationsSection = "overview"): void {
+    this.automationsSection = section;
+    this.automationsOpen = true;
+  }
+
+  /** Close the Automations screen. */
+  closeAutomations(): void {
+    this.automationsOpen = false;
   }
 
   /** Open the integrated browser panel at `url` (or the configured homepage, or a

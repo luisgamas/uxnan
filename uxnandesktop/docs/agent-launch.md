@@ -113,6 +113,11 @@ You don't have to launch an agent by hand for every new branch:
   you create a worktree**. Leave it on **None** to never start one automatically.
 - The **New worktree** dialog pre-selects that default but lets you **override it
   per worktree** — choose a different agent, or **None** for that one worktree.
+- The project card's **"+" launcher** takes a different route: when its target is
+  **New worktree**, the **"What to open" selection is the only source of truth** —
+  the default agent is deliberately *not* auto-launched, so you get exactly the
+  terminals / profiles / agents (one or several) you ticked, and nothing if you
+  ticked nothing.
 
 When the worktree is created, the chosen agent starts in its own terminal in that
 worktree, using the launch shell and env vars from its profile.

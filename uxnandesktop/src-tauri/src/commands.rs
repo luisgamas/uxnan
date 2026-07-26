@@ -1562,9 +1562,14 @@ pub async fn git_generate_commit_message(
         .map_err(CommandError::from)
 }
 
-/// Which of the supported AI-commit agents (Claude Code, Codex, Gemini, OpenCode,
-/// Pi) are installed in a runnable shape, so Settings → AI commit offers only
-/// those.
+/// Which headlessly-drivable agents ([`crate::agentcli::SUPPORTED`]) are
+/// installed in a runnable shape.
+///
+/// Callers use it to mark install state, not to decide what to offer: the AI
+/// commit / PR-body pickers show their own **curated** list (the frontend's
+/// `AI_COMMIT_AGENTS`) intersected with this, because being drivable is not the
+/// same as being wired for that surface. The automations editor, which only
+/// needs "can the backend run it", uses this list directly.
 #[tauri::command]
 pub async fn ai_commit_agents() -> Result<Vec<String>, CommandError> {
     Ok(crate::aicommit::available_agents())
@@ -1595,10 +1600,19 @@ pub async fn agent_run_headless(
     prompt: String,
     cwd: String,
     timeout_ms: Option<u64>,
+    // Opt-in auto-approve; absent means the safe default.
+    autonomous: Option<bool>,
 ) -> Result<crate::agentrun::HeadlessResult, CommandError> {
-    crate::agentrun::run_headless(&agent, &model, &prompt, &cwd, timeout_ms)
-        .await
-        .map_err(CommandError::from)
+    crate::agentrun::run_headless(
+        &agent,
+        &model,
+        &prompt,
+        &cwd,
+        timeout_ms,
+        autonomous.unwrap_or(false),
+    )
+    .await
+    .map_err(CommandError::from)
 }
 
 /// Payload of the `agent:detected` event: which agent command (if any) the
