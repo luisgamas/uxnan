@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — the project "+" launcher now really opens what you picked in a brand-new worktree
+
+- Creating a worktree from the project card's **"+" → New worktree** with a terminal,
+  a profile, one or more agents (or the browser) selected created the worktree and the
+  branch **but opened nothing**. The launcher's reset effect (which picks a default
+  target and clears the "what to open" selection each time the dialog opens) also read
+  `projects.worktreesByRepo` and `projects.activeWorktreePath` as tracked dependencies.
+  Creating a worktree changes both — so the effect re-ran **mid-submit**, across the
+  `await`, and wiped `selected` before `runActions` could launch it: the loop then
+  iterated over an empty list. Verified against Svelte 5.56's scheduler (the effect
+  re-ran twice per create).
+- `LauncherDialog.svelte` now (a) wraps the reset body in `untrack` so it depends
+  **only** on `open`, and (b) **snapshots the selection before the first `await`** and
+  launches that snapshot — so nothing that runs during creation can change what opens.
+  Selecting an existing worktree as the target was never affected (no `await` in that
+  path), and "create only" (nothing selected) is unchanged.
+
 ### Changed — GitHub: a per-project inline view replaces the full-screen section
 
 - The full-screen GitHub overlay is gone. GitHub now opens **per project** from each

@@ -6,6 +6,7 @@
   // to open there (a terminal / profile, one or several agents, the browser).
   // Everything runs against the chosen target so the workspace linkage
   // (terminals ↔ agents ↔ worktree) is preserved.
+  import { untrack } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -140,20 +141,26 @@
   // Reset + pick a sensible default target every time the dialog opens. The
   // worktree-creation fields reset themselves (WorktreeCreateFields, keyed off
   // `active={isNew}`), so nothing branch-related is touched here.
+  // `untrack` so this depends ONLY on `open`: creating a worktree refreshes the
+  // repo's list and moves the active worktree, and a tracked read of either would
+  // re-run this reset mid-submit — wiping the user's "what to open" picks before
+  // they were launched.
   $effect(() => {
     if (!open) return;
-    const active = projects.activeWorktreePath;
-    const belongs = active && worktrees.some((w) => w.path === active);
-    target = belongs ? active! : (worktrees[0]?.path ?? repo.path);
-    selected = [];
-    projects.error = null;
+    untrack(() => {
+      const active = projects.activeWorktreePath;
+      const belongs = active && worktrees.some((w) => w.path === active);
+      target = belongs ? active! : (worktrees[0]?.path ?? repo.path);
+      selected = [];
+      projects.error = null;
+    });
   });
 
-  function runActions(path: string) {
+  function runActions(path: string, actions: string[]) {
     // Switch to (and link) the target first, so even a browser-only launch
     // leaves the app focused on the chosen worktree.
     projects.setActiveWorktree(path);
-    for (const id of selected) {
+    for (const id of actions) {
       if (id === "term:default") projects.openTerminalAt(path);
       else if (id.startsWith("term:")) projects.openTerminalAt(path, id.slice(5));
       else if (id.startsWith("agent:")) {
@@ -167,8 +174,13 @@
     if (!canSubmit || busy) return;
     busy = true;
     try {
+      // Snapshot what the user picked BEFORE any await: creating the worktree
+      // yields, and whatever runs in between must not be able to change what we
+      // launch. The snapshot is what `runActions` opens.
+      const actions = [...selected];
+      const creating = isNew;
       let path = target;
-      if (isNew) {
+      if (creating) {
         // `null` = don't auto-launch the default agent; the "what to open"
         // selection is the single source of truth for what starts here.
         const ok = await projects.createWorktree(repo.id, wtEffectiveBranch, {
@@ -180,7 +192,7 @@
         if (!ok) return;
         path = projects.activeWorktreePath ?? path;
       }
-      runActions(path);
+      runActions(path, actions);
       open = false;
     } finally {
       busy = false;
