@@ -60,12 +60,13 @@ animation the pet occasionally plays a short one-shot and returns:
 | Ready | hops, pleased | 9–20 s |
 | Blocked | sags | 9–18 s |
 
-**Decoration plays slower than the real thing.** The format's timings are tuned
-for animations that fire because something *happened* — a wave is 140 ms a frame,
-against 660–1920 ms for a resting pose — so unprompted they read as a twitch
-beside the idle they interrupt. A flavour's frames are stretched 2.4× (140 →
-336 ms); an animation triggered by an actual state change is never stretched,
-because there the pace is the message.
+**One pace for every gesture.** The reference's raw row timings (120–150 ms a
+frame) are tuned for a glance at a terminal; beside an idle that breathes every
+6.6 s they read as a twitch — the wave is over before the eye lands on it. So
+the derived rows all play at those times × 2.4 (`STATE_PACE` in `manifest.ts`,
+the pace the idle decoration was originally approved at): a wave looks the same
+whether it decorates the idle, answers a click, or fires because the agent
+needs you. A pack that declares its own `fps` knows better and keeps it.
 
 The state always wins: a real change cancels whatever flavour is playing, so the
 texture never hides a signal. A pack missing one of these animations falls back
@@ -171,6 +172,9 @@ that ecosystem — including community galleries — load here unmodified.
   | 7 | **`running`** (the busy state) | 120 ms | 220 ms |
   | 8 | `review` | 150 ms | 280 ms |
   | 9–10 | **look poses** (v2 only, not an animation) | held | — |
+
+  The table shows the reference's **raw** times; the derived rows play them
+  × 2.4 (`STATE_PACE` — see *One pace for every gesture* above).
 
   Three details are easy to get wrong and all three are visible immediately:
 

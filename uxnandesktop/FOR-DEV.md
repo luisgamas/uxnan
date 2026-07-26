@@ -210,7 +210,7 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   `animations`, so both are recovered from the image — grid from its dimensions,
   animations from the conventional row order with its declared per-row frame counts (the
   reference map: `running` is the in-place row 7, not the travelling run on row 1;
-  each state animation is its row three times followed by the idle frames, looping from idle; frames carry individual durations, idle breathing once every 6.6 s). States **expire** rather
+  each state animation is its row three times followed by the idle frames, looping from idle; frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 2.4, one ambient pace for every gesture). States **expire** rather
   than mirror — busy 3 min, anything waiting on the user 30 min, from when the
   agent entered the state.
 

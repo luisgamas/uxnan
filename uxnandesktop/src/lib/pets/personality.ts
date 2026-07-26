@@ -23,17 +23,10 @@ export interface FlavourPlan {
   delayMs: number;
 }
 
-/**
- * How much to stretch a flavour's frame durations when it plays as decoration.
- *
- * The reference's timings are tuned for animations that fire because something
- * *happened* — a wave is 140 ms a frame, against 660–1920 ms for a resting pose.
- * At that pace an unprompted wave reads as a twitch beside the idle it
- * interrupts: 4.7x to 13.7x faster than its surroundings. Flavour is texture, so
- * it is slowed to sit nearer the breathing it decorates. An animation triggered
- * by a real state change is never stretched — there, urgency is the point.
- */
-export const FLAVOUR_SLOWDOWN = 2.4;
+// Flavours used to be stretched 2.4x here so decoration wouldn't twitch beside
+// the slow idle. That pace turned out to be right for *everything*, so it now
+// lives in the animation set itself (`STATE_PACE` in `manifest.ts`) and a
+// flavour plays exactly as the same row would when a state fires it.
 
 interface FlavourSpec {
   /** Candidates, chosen uniformly. A pack missing one falls back (see

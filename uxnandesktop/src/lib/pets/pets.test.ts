@@ -9,6 +9,7 @@ import {
   framePosition,
   DEFAULT_FRAME,
   DEFAULT_FRAME_MS,
+  STATE_PACE,
   type PetAnimation,
 } from "./manifest";
 import { frameAt, msUntilNextFrame, durationMs } from "./animator";
@@ -18,7 +19,7 @@ import {
   hasDecayed,
   STATE_LIFETIME_MS,
 } from "./status";
-import { planFlavour, hasFlavour, FLAVOUR_SLOWDOWN } from "./personality";
+import { planFlavour, hasFlavour } from "./personality";
 import {
   hasLookPoses,
   lookAngle,
@@ -179,11 +180,15 @@ describe("defaultAnimations", () => {
     expect(durationMs(ANIMS.idle)).toBe(6600);
   });
 
-  it("closes each state's row on a longer frame, at the reference pace", () => {
+  it("closes each state's row on a longer frame, at the ambient pace", () => {
+    // The reference's raw 120–150 ms a frame is a terminal-glance pace; beside
+    // an idle that breathes every 6.6 s it reads as a twitch. Rows play at the
+    // reference timings times STATE_PACE — the pace decoration was approved at.
     const running = ANIMS.running.frames;
-    expect(running[0].ms).toBe(120);
-    expect(running[5].ms).toBe(220); // row 7 has 6 frames; the last is held
-    expect(ANIMS.waiting.frames[0].ms).toBe(150);
+    expect(running[0].ms).toBe(Math.round(120 * STATE_PACE)); // 288
+    expect(running[5].ms).toBe(Math.round(220 * STATE_PACE)); // row 7's held close
+    expect(ANIMS.waiting.frames[0].ms).toBe(Math.round(150 * STATE_PACE));
+    expect(STATE_PACE).toBeGreaterThan(1); // anything at or below 1 defeats it
   });
 
   it("skips rows the grid does not have", () => {
@@ -514,11 +519,12 @@ describe("planFlavour", () => {
     expect(new Set(picks)).toEqual(new Set(["waving", "jumping"]));
   });
 
-  it("plays decoration slower than the same animation would when a state fires it", () => {
-    // A wave is 140 ms a frame beside a resting pose of 660–1920 ms; unprompted,
-    // that reads as a twitch. Anything at or below 1 would defeat the point.
-    expect(FLAVOUR_SLOWDOWN).toBeGreaterThan(2);
-    expect(140 * FLAVOUR_SLOWDOWN).toBeGreaterThan(300);
+  it("plays decoration at the same pace a state would play the row", () => {
+    // The pace lives in the animation set itself (STATE_PACE), so a wave looks
+    // identical whether it decorates the idle or answers a state — no separate
+    // flavour stretching that would make the two drift apart again.
+    const anims = defaultAnimations(8, 11);
+    expect(anims.waving.frames[0].ms).toBe(Math.round(140 * STATE_PACE));
   });
 
   it("nags sooner when the agent needs you than when it is resting", () => {

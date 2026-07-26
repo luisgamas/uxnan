@@ -17,7 +17,7 @@
     type Pet,
   } from "$lib/pets/manifest";
   import { frameAt, msUntilNextFrame } from "$lib/pets/animator";
-  import { planFlavour, FLAVOUR_SLOWDOWN } from "$lib/pets/personality";
+  import { planFlavour } from "$lib/pets/personality";
 
   interface Props {
     pet: Pet;
@@ -98,20 +98,10 @@
     };
   });
 
-  const resolved = $derived(resolveAnimation(pet, override ?? flavourAnim ?? animation));
-
-  // A flavour is decoration, so it plays slower than the very same animation
-  // would when a real state triggers it — see `FLAVOUR_SLOWDOWN`. State-driven
-  // animations and interaction overrides are never stretched: there, the pace
-  // is the message.
-  const anim = $derived(
-    flavourAnim && !override
-      ? {
-          ...resolved,
-          frames: resolved.frames.map((f) => ({ ...f, ms: f.ms * FLAVOUR_SLOWDOWN })),
-        }
-      : resolved,
-  );
+  // One pace for everything: a flavour, a state and a click reaction all play
+  // the row exactly as the animation set times it (`STATE_PACE` is baked in),
+  // so the same wave never looks calm in one context and frantic in another.
+  const anim = $derived(resolveAnimation(pet, override ?? flavourAnim ?? animation));
 
   /** Frame index currently displayed (an index into the sheet, not the list). */
   let frame = $state(0);

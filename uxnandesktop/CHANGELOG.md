@@ -49,14 +49,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   pet sprinted for as long as a task lasted. The conventional row map now matches
   the reference implementation exactly, including the `sad`/`bounce`/`wave`/
   `move_*` aliases.
-- **Animations settle instead of repeating, and run at the reference pace.**
-  Each state animation is now its row played three times *followed by the idle
-  frames*, looping from where idle begins — so the pet reacts and then calms down
-  rather than performing a state for as long as it lasts. Timing moved from a flat
-  frame rate to **per-frame durations**: idle holds its resting poses for 1.68 s
-  and 1.92 s while passing through the in-betweens in 0.66 s, one breath every
-  **6.6 s**, where the previous flat loop took 1.2 s and read as frantic. State
-  rows keep a longer closing frame (120 ms per frame, 220 ms on the last).
+- **Animations settle instead of repeating.** Each state animation is now its
+  row played three times *followed by the idle frames*, looping from where idle
+  begins — so the pet reacts and then calms down rather than performing a state
+  for as long as it lasts. Timing moved from a flat frame rate to **per-frame
+  durations**: idle holds its resting poses for 1.68 s and 1.92 s while passing
+  through the in-betweens in 0.66 s, one breath every **6.6 s**, where the
+  previous flat loop took 1.2 s and read as frantic. State rows keep a longer
+  closing frame than they run (the reference's 120/220 ms shape, played at the
+  ambient pace — see below).
 - **Pet states expire instead of mirroring.** A state is shown for a lifetime
   measured from when the agent *entered* it (busy: 3 min; anything waiting on the
   user: 30 min), so a hook firing on every tool call can't renew it and a long
@@ -66,13 +67,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   large" smaller than the reference desktop pet at its *middle* setting (~200 px).
   It is now 96/144/200/260 with the default at 144, and the rendered size snaps to
   the ladder so the picker and the pet can never disagree.
-- **Idle decoration no longer twitches.** The occasional resting one-shot reused
-  the format's timings, which are tuned for animations that fire because something
-  happened — 140 ms a frame against 660–1920 ms for a resting pose, so a wave with
-  no reason behind it ran 4.7–13.7× faster than the idle it interrupted. Flavour
-  frames are now stretched 2.4× (140 → 336 ms); a state-driven animation is never
-  stretched. `bounce` also left the resting pool: it is an alias of `jumping`
-  (both row 4), so listing both quietly made the hop twice as likely as the wave.
+- **One ambient pace for every gesture.** The reference's raw row timings
+  (120–150 ms a frame) are tuned for a glance at a terminal; beside an idle that
+  breathes every 6.6 s they read as a twitch — every Settings preview except
+  *Resting* looked too fast to follow, and so did the live pet on any state
+  change, poke or first appearance. The derived rows now all play at the
+  reference times × 2.4 (`STATE_PACE`), which is the pace the idle decoration
+  already played at and was approved at — promoted from a flavour-only stretch
+  to *the* pace, so a wave looks identical whether it decorates the idle,
+  answers a click, or fires because the agent needs you. A pack that declares
+  its own `fps` keeps it. `bounce` also left the resting pool: it is an alias of
+  `jumping` (both row 4), so listing both quietly made the hop twice as likely
+  as the wave.
 - The attention halo behind the pet is gone — the animation carries the state.
 - **Idle personality.** The five-state map alone leaves a pet that only ever
   stands or runs — and a pack ships more than five animations (the bundled one

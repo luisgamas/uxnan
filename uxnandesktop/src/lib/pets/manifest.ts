@@ -282,6 +282,9 @@ const IDLE_FRAME_MS = [1680, 660, 660, 840, 840, 1920];
  * here rather than detected from the image, which keeps this pure — and avoids
  * reading pixels back from a canvas, which a webview may refuse outright.
  *
+ * The `frameMs`/`finalFrameMs` below are the reference's **raw** numbers; what
+ * actually plays is those times [`STATE_PACE`] — see that constant for why.
+ *
  * Note that **`running` is row 7, not row 1**: rows 1 and 2 are `running-right` /
  * `running-left`, a run that *travels*, for a pet that walks across a desktop.
  * The busy state is row 7, animated in place — wiring it to row 1 makes the pet
@@ -314,6 +317,22 @@ const DEFAULT_ANIMATION_SPECS: Record<string, DefaultAnimationSpec> = {
 /** The animation names a generated pack is assumed to provide. */
 export const DEFAULT_ANIMATION_NAMES = [BASE_ANIMATION, ...Object.keys(DEFAULT_ANIMATION_SPECS)];
 
+/**
+ * How much the conventional state rows are slowed against the reference's raw
+ * timings.
+ *
+ * The reference's 120–150 ms a frame is tuned for a glance at a terminal.
+ * Beside this pet's idle — which deliberately breathes once every 6.6 s — a raw
+ * row reads as a twitch: the wave is over before the eye lands on it, which is
+ * exactly what "every preview except resting moves too fast" looks like. 2.4 is
+ * not a new taste decision: it is the pace the idle decoration already played
+ * at (and was approved at), promoted to *the* pace — a wave now looks the same
+ * whether the pet waves because the agent needs you, because it was clicked, or
+ * just to pass the time. Only the derived conventional set is stretched; a pack
+ * that declares its own `fps` knows better and keeps it.
+ */
+export const STATE_PACE = 2.4;
+
 /** How many times a state animation plays before the pet settles into idle. */
 export const STATE_REPEATS = 3;
 
@@ -339,7 +358,7 @@ export function defaultAnimations(columns: number, rows: number): Record<string,
     if (spec.row >= rows || spec.count > cols) continue;
     const primary: PetFrame[] = Array.from({ length: spec.count }, (_, i) => ({
       index: spec.row * cols + i,
-      ms: i === spec.count - 1 ? spec.finalFrameMs : spec.frameMs,
+      ms: Math.round((i === spec.count - 1 ? spec.finalFrameMs : spec.frameMs) * STATE_PACE),
     }));
     const frames: PetFrame[] = [];
     for (let i = 0; i < STATE_REPEATS; i++) frames.push(...primary.map((f) => ({ ...f })));
