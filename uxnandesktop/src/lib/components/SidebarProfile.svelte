@@ -12,13 +12,31 @@
   import KeyChord from "./KeyChord.svelte";
   import EntityIcon from "./EntityIcon.svelte";
   import SidebarProfileDialog from "./SidebarProfileDialog.svelte";
+  import { pets } from "$lib/state/pets.svelte";
   import UserRoundIcon from "@lucide/svelte/icons/user-round";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
   import PencilIcon from "@lucide/svelte/icons/pencil";
+  import PawPrintIcon from "@lucide/svelte/icons/paw-print";
+  import CheckIcon from "@lucide/svelte/icons/check";
 
   let editOpen = $state(false);
+
+  // Pet companion: the quick on/off lives here (the full options are in
+  // Settings → Pets). Turning it on loads the library on demand, so a user who
+  // never enables pets never pays for them.
+  const petsOn = $derived(app.petSettings.enabled === true);
+
+  function togglePets(): void {
+    const enabled = !petsOn;
+    app.updatePets({ enabled });
+    if (enabled && !pets.loaded) void pets.load();
+  }
+
+  function choosePet(id: string): void {
+    app.updatePets({ activePetId: id, enabled: true });
+  }
 
   // Shortcut hint (the action still fires from the global keybindings; this is
   // just a discoverability cue in the menu).
@@ -107,6 +125,34 @@
           <KeyChord chord={settingsBinding} />
         {/if}
       </DropdownMenu.Item>
+      <DropdownMenu.Separator />
+      <!-- Pet companion: a quick on/off, plus a picker once more than one pet is
+           installed. Everything else lives in Settings → Pets. -->
+      <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={togglePets}>
+        <PawPrintIcon class={icon.button} />
+        <span class="flex-1">{i18n.t(petsOn ? "pets.hide" : "pets.show")}</span>
+      </DropdownMenu.Item>
+      {#if petsOn && pets.library.length > 1}
+        <DropdownMenu.Sub>
+          <DropdownMenu.SubTrigger class={cn(text.menu, "gap-2")}>
+            <PawPrintIcon class={cn(icon.button, "opacity-0")} />
+            <span class="flex-1">{i18n.t("pets.choose")}</span>
+          </DropdownMenu.SubTrigger>
+          <DropdownMenu.SubContent class="max-h-72 min-w-48 overflow-y-auto">
+            {#each pets.library as p (p.id)}
+              <DropdownMenu.Item
+                class={cn(text.menu, "gap-2")}
+                onclick={() => choosePet(p.id)}
+              >
+                <CheckIcon
+                  class={cn(icon.button, pets.active?.id === p.id ? "" : "opacity-0")}
+                />
+                <span class="flex-1 truncate">{p.displayName}</span>
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.SubContent>
+        </DropdownMenu.Sub>
+      {/if}
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => (editOpen = true)}>
         <PencilIcon class={icon.button} />

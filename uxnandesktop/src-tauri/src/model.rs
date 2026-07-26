@@ -431,6 +431,11 @@ pub struct AppSettings {
     /// Width (px) of the integrated browser panel (the right-side "4th panel").
     #[serde(default = "default_browser_panel_width")]
     pub browser_panel_width: u32,
+    /// Sprite-animated companions that mirror agent state (Settings → Pets, and
+    /// the sidebar profile menu's toggle). Off by default, so nothing ever
+    /// appears unasked. All fields default, so older state loads unchanged.
+    #[serde(default)]
+    pub pets: PetSettings,
     /// AI providers whose usage stats the user activated (Settings → Providers).
     /// Frontend-owned shape (`UsageProviderConfig`), persisted opaquely. Only the
     /// providers listed here are ever polled by `usage_read`.
@@ -804,6 +809,97 @@ impl Default for BrowserSettings {
     }
 }
 
+/// Sprite-animated companions that mirror agent state (`pets.rs`).
+///
+/// Deliberately opt-in: `enabled` is false by default, so a user who never asks
+/// for a pet never gets one. The bundled pet is uxnan's own; every other pet is
+/// imported by the user from a folder they already have (typically
+/// `~/.codex/pets`), and its artwork stays its author's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PetSettings {
+    /// Master switch, also toggled from the sidebar profile menu. Default off.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Show the pet in its own borderless, transparent, always-on-top desktop
+    /// window (visible over other apps and while uxnan is minimized), like the
+    /// Codex desktop pet. **On by default** — turning it off keeps the pet as a
+    /// layer inside the uxnan window instead.
+    #[serde(default = "default_true")]
+    pub overlay: bool,
+    /// When the desktop pet is clicked, also bring the uxnan window to the
+    /// front before revealing the agent's terminal. Off by default: a pet click
+    /// should not yank the app over whatever the user is doing unless they ask.
+    #[serde(default)]
+    pub raise_on_click: bool,
+    /// Last position of the desktop pet window (physical px, top-left corner).
+    /// `None` until first dragged; the window then rests near the primary
+    /// monitor's bottom-right corner. A saved spot on a monitor that is no
+    /// longer attached is ignored at creation (see `pet_window_show`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen_x: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen_y: Option<i32>,
+    /// Id of the active pet. Empty = the bundled default.
+    #[serde(default)]
+    pub active_pet_id: String,
+    /// Rendered pet height in px (the sprite scales to it). Default 144 — the
+    /// middle of the ladder offered in Settings; see `PET_SIZES` in
+    /// `src/lib/pets/manifest.ts`.
+    #[serde(default = "default_pet_size")]
+    pub size: u32,
+    /// Which screen corner the pet rests in: `"bottom-right"`, `"bottom-left"`,
+    /// `"top-right"`, `"top-left"`. Frontend-owned enum; unknown values fall back
+    /// to bottom-right there.
+    #[serde(default = "default_pet_corner")]
+    pub corner: String,
+    /// Manual offset (px) from that corner, set by dragging the pet. Persisted so
+    /// it stays where the user parked it.
+    #[serde(default)]
+    pub offset_x: i32,
+    #[serde(default)]
+    pub offset_y: i32,
+    /// Play animations. Off renders a single still frame — the same escape hatch
+    /// the OS "reduce motion" preference triggers automatically. Default on.
+    #[serde(default = "default_true")]
+    pub animate: bool,
+    /// Clicking the pet focuses the agent whose state it is showing. Default on.
+    #[serde(default = "default_true")]
+    pub click_to_focus: bool,
+    /// Provenance notices the user dismissed in the import UI (by key), so a
+    /// one-time explanation doesn't nag on every visit.
+    #[serde(default)]
+    pub dismissed_notices: Vec<String>,
+}
+
+fn default_pet_size() -> u32 {
+    144
+}
+
+fn default_pet_corner() -> String {
+    "bottom-right".into()
+}
+
+impl Default for PetSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            overlay: true,
+            raise_on_click: false,
+            screen_x: None,
+            screen_y: None,
+            active_pet_id: String::new(),
+            size: default_pet_size(),
+            corner: default_pet_corner(),
+            offset_x: 0,
+            offset_y: 0,
+            animate: true,
+            click_to_focus: true,
+            dismissed_notices: Vec::new(),
+        }
+    }
+}
+
 /// Configuration for the optional AI commit-message generator (spec `02c` §4.5).
 /// The user picks a known **agent** and a **model**; the backend resolves the CLI
 /// (`crate::agentcli`) and runs it one-shot with the built prompt. All fields
@@ -908,6 +1004,7 @@ impl Default for AppSettings {
             updater: UpdaterSettings::default(),
             browser: BrowserSettings::default(),
             browser_panel_width: default_browser_panel_width(),
+            pets: PetSettings::default(),
             usage_providers: Vec::new(),
             usage_refresh_minutes: default_usage_refresh_minutes(),
             usage_status_bar_enabled: true,

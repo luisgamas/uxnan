@@ -27,6 +27,8 @@ import type {
   FileSearch,
   FsEntry,
   GithubStatus,
+  ImportablePet,
+  InstalledPet,
   IssueDetail,
   IssueListItem,
   HookInstall,
@@ -73,6 +75,66 @@ export function updateSettings(settings: AppSettings): Promise<AppData> {
  *  duplicate / delete / move / prune all funnel through this snapshot setter). */
 export function quickCommandsSet(commands: QuickCommand[]): Promise<void> {
   return invoke<void>("quick_commands_set", { commands });
+}
+
+// --- Pets --------------------------------------------------------------------
+
+/** Every installed pet (metadata only — sheets load lazily via [`petsSheet`]). */
+export function petsList(): Promise<InstalledPet[]> {
+  return invoke<InstalledPet[]>("pets_list");
+}
+
+/** One installed pet's spritesheet as an inline `data:<mime>;base64,…` URL. */
+export function petsSheet(id: string): Promise<string> {
+  return invoke<string>("pets_sheet", { id });
+}
+
+/** Pets available for import in `source` — a folder of pets, or a single pet. */
+export function petsScan(source: string): Promise<ImportablePet[]> {
+  return invoke<ImportablePet[]>("pets_scan", { source });
+}
+
+/** Where the Codex CLI keeps its pets, when that folder exists on this machine
+ *  (`null` = nothing to offer, so the import shortcut stays hidden). */
+export function petsCodexDir(): Promise<string | null> {
+  return invoke<string | null>("pets_codex_dir");
+}
+
+/** Import one pet folder, recording `origin` for attribution. */
+export function petsImport(
+  source: string,
+  origin: string,
+  overwrite: boolean,
+): Promise<InstalledPet> {
+  return invoke<InstalledPet>("pets_import", { source, origin, overwrite });
+}
+
+/** Delete an installed pet (idempotent). */
+export function petsDelete(id: string): Promise<void> {
+  return invoke<void>("pets_delete", { id });
+}
+
+/** Show (creating on first use) the always-on-top desktop pet window.
+ *  `width`/`height` in logical px; `x`/`y` the saved position in physical px,
+ *  honored only at creation and only while still on a live monitor. */
+export function petWindowShow(
+  width: number,
+  height: number,
+  x: number | null,
+  y: number | null,
+): Promise<void> {
+  return invoke<void>("pet_window_show", { width, height, x, y });
+}
+
+/** Tear the desktop pet window down (the overlay switch went off). */
+export function petWindowHide(): Promise<void> {
+  return invoke<void>("pet_window_hide");
+}
+
+/** Bring the main window to the front (the pet window asks for this when its
+ *  pet is clicked, before the terminal is revealed). */
+export function petFocusMain(): Promise<void> {
+  return invoke<void>("pet_focus_main");
 }
 
 /** Write raw bytes to a PTY's stdin (used to type a quick command into the

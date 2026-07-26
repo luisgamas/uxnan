@@ -24,6 +24,7 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
       - **Config:** none — `AgentLogo` picks up `/agents/<logo>.svg` automatically
         once the file exists (viewBox-normalized, monochrome-friendly like the
         existing ones).
+
 ## Needed for distributable / signed release builds
 
 > The CI/CD pipeline (see `FOR-DEV.md → "CI/CD — release builds"`) can produce

@@ -35,6 +35,7 @@
   import Automations from "$lib/components/Automations.svelte";
   import GitHub from "$lib/components/GitHub.svelte";
   import OrchestrationConsole from "$lib/components/OrchestrationConsole.svelte";
+  import PetLayer from "$lib/components/PetLayer.svelte";
   import WorktreeSearch from "$lib/components/WorktreeSearch.svelte";
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
@@ -520,3 +521,7 @@
 
 <!-- Multi-agent orchestration console (modal; binds app.orchestrationOpen). -->
 <OrchestrationConsole />
+
+<!-- Floating pet companion (opt-in; mirrors agent state). Last in the tree so it
+     composites over the app content, and self-hiding while Settings is open. -->
+<PetLayer />

@@ -311,6 +311,62 @@ El merge preserva el resto de la configuracion del usuario (JSON via `serde_json
 
 ---
 
+### 1.7 Mascotas (pets): estado de agente como companero animado
+
+Una superficie **puramente cosmetica y opcional** (apagada por defecto) que consume el mismo estado preciso de la Capa 1 y lo representa como un companero animado que flota sobre el ADE. No cambia en nada como trabaja un agente.
+
+**Mapeo de estado → animacion** (1:1 con `AgentStatus`, §1.2):
+
+| Estado del agente | La mascota muestra | Animacion |
+|---|---|---|
+| `working` | Trabajando | `running` |
+| `waiting` | Te necesita | `waiting` |
+| `done` | Lista | `review` |
+| `blocked` | Bloqueada | `failed` |
+| *(nadie reportando)* | Descansando | `idle` |
+
+Un reporte **stale** (§1.5, 30 min) se ignora, de modo que la mascota vuelve a descansar en vez de seguir mimando trabajo que ya termino.
+
+**Una sola mascota.** Cuando varios agentes reportan a la vez gana el mas urgente — **`waiting` → `blocked` → `done` → `working`**. Una mascota *por agente* se construyo y se retiro: nunca hubo asignacion (aparecia una por cada agente reportando dentro de la ventana de frescura), asi que la segunda solo existia en los instantes en que dos agentes trabajaban a la vez, y duplicaba lo que la barra lateral ya reporta por agente con nombre. La mascota aporta conciencia ambiental —algo que ves de reojo—, y eso lo da mejor una que cinco.
+
+**Clic = atajo.** Hacer clic en una mascota revela la terminal del agente que esta representando (`terminals.revealTab`), asi que el companero tambien navega, no solo decora. Se puede arrastrar a cualquier lado y se acomoda en la esquina mas cercana conservando su desplazamiento.
+
+**Interactividad de puntero.** La mascota responde al raton como la mascota de escritorio de referencia. Un pack **v2** (`spriteVersionNumber: 2`, rejilla 8 x 11) reserva sus **filas 9-10** para un bucle continuo de **16 poses de mirada** en sentido horario (pasos de 22.5°, 0° = mirar hacia arriba; el frente/neutral no tiene pose: es la **zona muerta** del puntero, donde descansa el idle). Mientras descansa, la mascota **gira la mirada hacia el cursor** (pose sostenida, nunca una animacion — reproducirlas en secuencia es exactamente el barrido que hace ver rota una mascota), la mantiene unos segundos despues de que el cursor se detiene y vuelve a respirar dentro de la zona muerta. **Clic = un toque**: reacciona con el salto (ademas del atajo a la terminal). **Arrastrar = cargarla**: sostiene la pose v2 de mirar hacia abajo — viendo pasar el suelo — o se menea con `jumping` si el pack no tiene filas de mirada. Todo respeta *Animar* y `prefers-reduced-motion`; matematicas puras y testeadas en `src/lib/pets/look.ts` + `src/lib/pets/interactions.ts`.
+
+**Ventana de escritorio (por defecto).** Con `pets.overlay` (activo por defecto; apagarlo devuelve la mascota a la capa dentro de la ventana de uxnan) la mascota vive en su **propia ventana sin bordes, transparente y siempre-encima** (`pet_window_show`, etiqueta `pet`): visible sobre otras aplicaciones e incluso con uxnan minimizado, como la mascota de escritorio de Codex. Se arrastra con el **drag nativo de ventana** (`startDragging` — correcto en DPI y multi-monitor, donde mover a mano con coordenadas falla), recuerda su posicion (validada contra los monitores vivos al crearla: un punto en una pantalla desconectada cae al reposo junto a la esquina inferior derecha del monitor primario) y el clic salta al agente; **traer la ventana principal al frente en ese clic es su propio interruptor (`raise_on_click`), apagado por defecto** — un toque a la mascota no debe tapar lo que la persona este haciendo salvo que lo pida. Dos restricciones aprendidas a golpe la moldean: las **capabilities de Tauri son por ventana** (la etiqueta `pet` lleva su propio `capabilities/pet.json`; sin el, `listen`/`emitTo` fallan en silencio y la ventana se ve vacia) y **el build estatico no tiene archivos por ruta** (la ventana carga `index.html?window=pet` y el layout raiz bifurca; una URL de ruta resuelve en dev via el fallback de Vite y da 404 empaquetada). La ventana es un **renderer delgado sin estado propio** (`PetWindow.svelte`): la ventana principal le empuja el pack parseado + hoja + estado vivo por eventos Tauri y aplica lo que vuelve (posicion a persistir, el salto de foco); cerrarse la ventana principal la destruye (la app nunca queda corriendo solo-mascota).
+
+**Formato en disco (compatible con Codex).** Una mascota es una carpeta con un manifiesto (`pet.json`, o `avatar.json`) y una hoja de sprites; los paquetes hechos para ese ecosistema cargan sin modificaciones:
+
+```json
+{ "id": "…", "displayName": "…", "spritesheetPath": "spritesheet.webp",
+  "frame": { "width": 192, "height": 208, "columns": 8, "rows": 9 },
+  "animations": { "idle": { "frames": [0,1], "fps": 8, "loop": true, "fallback": "idle" } } }
+```
+
+Todos los campos son opcionales (una hoja suelta ya anima, con rejilla convencional 8 × 9 de 192 × 208 y un `idle` sintetizado que recorre la hoja). Las cadenas de `fallback` se siguen hasta `idle` y una cadena circular resuelve en vez de colgarse.
+
+**Frontera de confianza (`pets.rs`).** La importacion (desde `~/.codex/pets` o cualquier carpeta) es una **copia validante, no un clon de directorio**: solo se copian el manifiesto y la unica hoja que referencia. Los ids se validan contra traversal, `spritesheetPath` debe ser un nombre de archivo simple junto al manifiesto, la hoja debe pesar ≤ 24 MiB y oler a imagen, y la rejilla declarada esta acotada; los indices de cuadro fuera de la hoja se descartan en vez de invalidar el paquete. Lo que se guarda en disco es el manifiesto **saneado** que se parseo.
+
+**Personalidad ociosa.** El mapa de estados son solo cinco animaciones y un pack trae mas (el incluido, once). Sobre la animacion base del estado la mascota intercala **one-shots** cortos y vuelve: mira alrededor / rebota / brinca mientras descansa, **saluda para llamar la atencion** mientras te espera, se da la vuelta mientras corre, se desploma mientras esta bloqueada. Un cambio de estado real **siempre cancela** el flavour, asi que la textura nunca tapa una senal; se desactiva en la vista previa de Settings, con `prefers-reduced-motion` y con *Animar* apagado (`src/lib/pets/personality.ts`, puro y testeado).
+
+**Tamano.** La escala ofrecida es 96 / 144 / 200 / 260 px (por defecto 144), medida sobre la **celda** del sprite — que un pack generado llena casi por completo (~6 px de margen arriba y abajo). Una escala anterior que terminaba en 160 dejaba incluso el maximo por debajo de la mascota de escritorio de referencia en su ajuste *medio* (~200 px). El tamano dibujado se ajusta a esa escala, para que el selector y la mascota nunca discrepen.
+
+**Arte.** La mascota incluida es **Uxni**, un pack v2 en el mismo formato que cualquier otro (`static/pets/uxni/`): hoja de 8 x 11 cuadros — filas 0-8 con una animacion de estado por fila, filas 9-10 con las 16 poses de mirada. No se genera ni se dibuja en codigo — se reemplaza cambiando los archivos de esa carpeta.
+
+**Los estados caducan, no se espejan.** Una mascota que refleja `working` literalmente corre sin pausa lo que dure la tarea: se lee como un spinner y tapa los estados que si requieren a la persona. Cada estado tiene una **vida util** medida desde que el agente **entro** en el (un hook que dispara en cada llamada a herramienta no puede renovarla): **ocupado 3 min**, **te-necesita / bloqueado / listo 30 min**. Al expirar la mascota vuelve a descansar aunque el trabajo siga. Misma idea que el `RUNNING_LIFETIME` de la implementacion de referencia.
+
+**Packs generados: rejilla y animaciones deducidas.** Un pack de `hatch-pet` (lo que producen `/hatch` y las galerias de la comunidad) trae solo id, descripcion y ruta de la hoja: el layout es convencion del formato, no dato por pack. Ambas mitades se recuperan de la imagen — la **rejilla** de sus dimensiones (los v2 son 8 x 11 = 1536 x 2288, los antiguos 8 x 9; asumir cortaria cada cuadro en el offset equivocado) y las **animaciones** del orden convencional de filas de la implementacion de referencia, con sus **conteos de cuadros por fila** declarados (las filas suelen ir a medias — un saludo generado son 4 cuadros en una rejilla de 8 — y animar el resto en blanco hace parpadear a la mascota). Dos detalles importan: **`running` es la fila 7** (animacion en el sitio), no la fila 1 (una carrera que *se desplaza*, para una mascota que camina por el escritorio) — cablearlo a la fila 1 hace que la mascota esprinte toda la tarea; cada animacion de estado es **su fila repetida tres veces seguida de los cuadros de idle**, con el bucle volviendo al tramo de idle (la mascota reacciona y luego se calma, en vez de interpretar un estado mientras dure); y los cuadros llevan **duraciones individuales**, no una tasa fija: el idle sostiene sus poses de reposo 1.68 s y 1.92 s y pasa por los intermedios en 0.66 s — una respiracion cada **6.6 s**, donde un bucle plano a 8 fps dura 0.75 s y se ve frenetico. Las filas de estado se reproducen a los tiempos crudos de la referencia (120-150 ms por cuadro) **multiplicados por `STATE_PACE` (2.4)** — el ritmo al que ya se aprobo la decoracion ociosa, ahora el unico ritmo: junto a un idle que respira cada 6.6 s, la fila cruda se veia como un tic (todas las vistas previas salvo Descansando "demasiado rapidas"). Un pack que declare cualquiera de las dos (o su propio `fps`) se respeta tal cual.
+
+**Fidelidad del formato.** El import re-escribe el manifiesto saneado, pero los campos que la app **no interpreta se conservan tal cual** (mapa aplanado en `PetManifest`): `spriteVersionNumber` en particular, sin el cual Codex rechaza la hoja de 11 filas de un pack v2 — un pack importado aqui y copiado de vuelta a `~/.codex/pets` sigue siendo exactamente tan valido como llego.
+
+**Procedencia.** uxnan **incluye una sola mascota: la propia**. Cualquier otra la importa el usuario y su arte sigue siendo de su autor; la biblioteca y el dialogo de importacion lo dicen explicitamente, y cada mascota importada guarda su origen (`ORIGIN`), visible bajo su nombre.
+
+**Costo y accesibilidad.** El render solo despierta en frontera de cuadro (una animacion de 8 fps cuesta 8 despertares/s, no 60), se detiene por completo con la ventana oculta, dibuja **un solo cuadro fijo** con `prefers-reduced-motion` (o con *Animar* apagado) y **no carga nada** hasta que las mascotas se habilitan.
+
+Detalle de uso y formato: [`docs/pets.md`](../docs/pets.md).
+
+---
+
 ## 2. Notificaciones
 
 El sistema de notificaciones mantiene al usuario informado del progreso de los agentes, incluso cuando no esta mirando activamente la ventana del ADE.
@@ -541,6 +597,10 @@ El siguiente diagrama muestra como se conectan todos los modulos involucrados en
         v                                                      v
 [Notificaciones OS]                                    [Sidebar: badges]
                                                        [Dashboard: rows]
+                                                       [Mascota (§1.7)]
+                                                              |
+                                                              v
+                                                  [pets.rs: <app-data>/pets/]
 
 [PTY Manager (portable-pty)] <---> [Shell/Agente CLI]
      |

@@ -105,6 +105,23 @@ available today are:
   and, under advanced options, where it runs (a new tab or the focused terminal),
   whether it runs immediately or is only pre-typed, the working directory, and the
   shell. Opens with `Ctrl/⌘+Shift+P`.
+- **Automations.** Recurring tasks that run **with uxnan closed**, in a working
+  folder of their own (a repo or not). Each one drives a **graph of agent steps**:
+  steps with no dependencies run at the same time, one that lists several waits
+  for all of them, and a later agent can consume an earlier one's answer
+  (`{{steps.s1.output}}` — or `{{prev.s1.output}}` to continue the previous run).
+  A step counts as done only when its process exits 0. Saving one registers a task
+  with your **operating system's own scheduler** (Task Scheduler · LaunchAgent ·
+  systemd user timer), so uxnan keeps no clock of its own. Opens from the profile
+  menu or `Ctrl/⌘+Shift+A`. See [automations](./docs/automations.md).
+- **Pets.** An optional animated companion that mirrors what your agents are
+  doing — working, needs you, ready, blocked — and jumps you to that agent's
+  terminal when clicked. It watches your cursor while resting, reacts to pokes
+  and being carried, and floats over the whole desktop in its own always-on-top
+  window by default (or stays a layer inside the app if you prefer).
+  uxnan bundles its own; you can import more from `~/.codex/pets` or any folder
+  (the format is Codex-compatible, so community packs load unmodified). Off by
+  default; toggle it from the profile menu. See [pets](./docs/pets.md).
 - **Personalization and internationalization.** Full custom theming with design
   tokens and light/dark modes, terminal profiles, per-agent launch settings and
   environment variables, a configurable launch shell, and a completely translated
@@ -189,6 +206,7 @@ Detailed docs live in [`docs/`](./docs/):
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·
 [GitHub integration](./docs/github.md) ·
+[pets (animated companions)](./docs/pets.md) ·
 [updates & release channels](./docs/updates.md) ·
 [Windows junctions & Redirection Guard](./docs/windows-junctions.md).
 
@@ -229,6 +247,7 @@ uxnandesktop/
 │       ├── browse.rs      # in-app directory picker
 │       ├── fs.rs          # file read/write for the center editor
 │       ├── fswatch.rs     # filesystem watcher (file-tree auto-refresh)
+│       ├── pets.rs        # pet library: Codex-format manifests + validating import
 │       ├── which.rs       # agent/shell install detection
 │       └── error.rs       # AppError / CommandError
 ├── components.json        # shadcn-svelte config

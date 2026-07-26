@@ -22,7 +22,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # `devtools`: keep web DevTools available in release builds too, so the integrated
 # developer browser (a docked `WebviewWindow`) can debug the pages agents serve.
-tauri = { version = "2", features = ["devtools"] }
+# `macos-private-api` exists solely for the desktop pet window: a transparent
+# webview window needs it on macOS (it is a no-op on Windows/Linux).
+tauri = { version = "2", features = ["devtools", "macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"

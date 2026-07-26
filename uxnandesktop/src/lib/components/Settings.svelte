@@ -54,6 +54,7 @@
   import QuickCommandsSettings from "./QuickCommandsSettings.svelte";
   import OpenWithSettings from "./OpenWithSettings.svelte";
   import GithubSettings from "./GithubSettings.svelte";
+  import PetsSettings from "./PetsSettings.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import { TERMINAL_SCROLLBACK_PRESETS } from "$lib/terminal/scrollback";
@@ -91,6 +92,7 @@
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CheckIcon from "@lucide/svelte/icons/check";
   import ZapIcon from "@lucide/svelte/icons/zap";
+  import PawPrintIcon from "@lucide/svelte/icons/paw-print";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -730,6 +732,7 @@
         { id: "language", key: "settings.language", icon: LanguagesIcon },
         { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
         { id: "commands", key: "settings.commands", icon: ZapIcon },
+        { id: "pets", key: "settings.pets", icon: PawPrintIcon },
       ],
     },
     {
@@ -996,6 +999,8 @@
           </SettingsSection>
         {:else if app.settingsSection === "commands"}
           <QuickCommandsSettings />
+        {:else if app.settingsSection === "pets"}
+          <PetsSettings />
         {:else if app.settingsSection === "agents"}
           <div class="flex flex-col gap-6">
             <SettingsSection title={i18n.t("settings.agents")} description={i18n.t("settings.agentsDesc")}>

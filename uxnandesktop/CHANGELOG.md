@@ -301,6 +301,159 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   Selecting an existing worktree as the target was never affected (no `await` in that
   path), and "create only" (nothing selected) is unchanged.
 
+### Added — Pets: animated companions that mirror agent state
+
+- **A new opt-in companion** that floats over the ADE and animates according to what
+  the agents are doing, driven straight off the precise hook layer: `working` →
+  `running`, `waiting` → `waiting`, `done` → `review`, `blocked` → `failed`, nothing
+  reporting → `idle`. A report older than 30 min is treated as stale and ignored, so
+  the pet rests instead of miming work that already ended. **Clicking the pet reveals
+  the terminal of the agent it is showing**, so it doubles as a shortcut to whatever
+  needs you.
+- **One pet**, showing the most urgent agent state when several report at once
+  (**needs you → blocked → ready → working**).
+- **Codex-compatible pet format**, so packs built for that ecosystem (including the
+  community galleries) load unmodified: a folder holding `pet.json` (or `avatar.json`)
+  plus one spritesheet, with `frame` (default 8 × 9 frames of 192 × 208) and named
+  `animations` of row-major frame indices, `fps`, `loop` and `fallback` chains. Every
+  field is optional — a pack that is only a spritesheet still animates.
+- **Import from `~/.codex/pets` or any folder** (Settings → Pets), listing what was
+  found and importing individually or all at once. Import is a **validating copy, not
+  a directory clone**: only the manifest and the single spritesheet it references are
+  copied, ids are checked against path traversal, `spritesheetPath` must be a bare
+  file name beside the manifest, the sheet must be ≤ 24 MiB and sniff as an image, and
+  the declared grid is bounded — so an untrusted pack can't drop files into app data.
+  The manifest stored on disk is the sanitized one that was parsed.
+- **Attribution is explicit.** uxnan bundles exactly one pet — its own, `Uxni`
+  (`static/pets/uxni/`). Every other pet is imported by the user and stays its
+  author's work; the library and the import dialog say so (the notice in the
+  library is dismissible), and each imported pet records its origin, shown under
+  its name.
+- **Toggle in the sidebar profile menu** ("Show pet", plus a "Choose pet" submenu once
+  more than one is installed) and a full **Settings → Pets** section in the General
+  group: master switch, corner, size, animate, click-to-focus, the
+  library grid with a live preview you can step through each state, and the import
+  flow. The pet can also be **dragged anywhere** and snaps to the nearest corner,
+  remembering its offset.
+- **Cheap and accessible by construction**: the renderer wakes only on real frame
+  boundaries (an 8 fps sprite costs 8 wakeups/s, not 60), parks entirely while the
+  window is hidden, renders a single still frame under `prefers-reduced-motion` (or
+  with *Animate* off), hides itself while Settings is open, and **loads nothing at all
+  until pets are enabled**.
+- **Fixed: the pet ran non-stop.** The working state was wired to the sheet's
+  *travelling* run (row 1) instead of the in-place busy animation (row 7), so the
+  pet sprinted for as long as a task lasted. The conventional row map now matches
+  the reference implementation exactly, including the `sad`/`bounce`/`wave`/
+  `move_*` aliases.
+- **Animations settle instead of repeating.** Each state animation is now its
+  row played three times *followed by the idle frames*, looping from where idle
+  begins — so the pet reacts and then calms down rather than performing a state
+  for as long as it lasts. Timing moved from a flat frame rate to **per-frame
+  durations**: idle holds its resting poses for 1.68 s and 1.92 s while passing
+  through the in-betweens in 0.66 s, one breath every **6.6 s**, where the
+  previous flat loop took 1.2 s and read as frantic. State rows keep a longer
+  closing frame than they run (the reference's 120/220 ms shape, played at the
+  ambient pace — see below).
+- **Pet states expire instead of mirroring.** A state is shown for a lifetime
+  measured from when the agent *entered* it (busy: 3 min; anything waiting on the
+  user: 30 min), so a hook firing on every tool call can't renew it and a long
+  task no longer pins the pet to one animation. Same idea as the reference
+  implementation's `RUNNING_LIFETIME`.
+- **Bigger sizes.** The ladder was 64/96/128/160 px, which left even "extra
+  large" smaller than the reference desktop pet at its *middle* setting (~200 px).
+  It is now 96/144/200/260 with the default at 144, and the rendered size snaps to
+  the ladder so the picker and the pet can never disagree.
+- **One ambient pace for every gesture.** The reference's raw row timings
+  (120–150 ms a frame) are tuned for a glance at a terminal; beside an idle that
+  breathes every 6.6 s they read as a twitch — every Settings preview except
+  *Resting* looked too fast to follow, and so did the live pet on any state
+  change, poke or first appearance. The derived rows now all play at the
+  reference times × 2.4 (`STATE_PACE`), which is the pace the idle decoration
+  already played at and was approved at — promoted from a flavour-only stretch
+  to *the* pace, so a wave looks identical whether it decorates the idle,
+  answers a click, or fires because the agent needs you. A pack that declares
+  its own `fps` keeps it. `bounce` also left the resting pool: it is an alias of
+  `jumping` (both row 4), so listing both quietly made the hop twice as likely
+  as the wave.
+- The attention halo behind the pet is gone — the animation carries the state.
+- **Idle personality.** The five-state map alone leaves a pet that only ever
+  stands or runs — and a pack ships more than five animations (the bundled one
+  has eleven). On top of the state's base loop the pet now plays short one-shots
+  and returns: it looks around, bounces or hops while resting, **waves for
+  attention while it needs you**, turns around while running, sags while blocked.
+  A real state change always cancels the flavour, so texture never hides a
+  signal; it is disabled in the Settings preview, under `prefers-reduced-motion`
+  and with *Animate* off. Scheduling is a pure, unit-tested module
+  (`src/lib/pets/personality.ts`).
+- The bundled pet is **Uxni**, the real mascot, shipped as an ordinary v2 pack in
+  `static/pets/uxni/` — an 8 x 11 sheet whose rows 0–8 hold one animation per
+  state (idle, running, waving, jumping, sad, waiting, blocked, celebrating) and
+  whose rows 9–10 hold the 16 look-direction poses. It is data, not generated
+  art: swapping the mascot means replacing the files in that folder.
+- **The pet answers the mouse**, the way the desktop reference does. While
+  resting, a v2 pack **watches the cursor**: rows 9–10 of the sheet are a
+  16-pose clockwise look loop (22.5° steps, 0° = looking up; neutral/front is
+  the pointer deadzone, which rests on idle), and the pet holds the pose facing
+  the pointer, lingering a few seconds after it stops. **Clicking pokes it** — a
+  jump reaction, on top of the existing jump-to-the-agent click. **Dragging
+  carries it**: it holds the v2 looking-down pose (or wiggles through `jumping`
+  for packs without look rows) until released. Look maths are a pure,
+  unit-tested module (`src/lib/pets/look.ts`).
+- **Fixed: any import or delete broke every generated pack's animations.** The
+  library is rebuilt on each reload but the spritesheet cache is not, and the
+  sheet loader skipped re-deriving the grid and animations for a cached sheet —
+  leaving the freshly-parsed pets animation-less, so the renderer fell back to
+  **sweeping the entire sheet at 125 ms a frame** (an 11-second flicker through
+  every row, look poses included, fast enough that individual poses barely
+  registered). A pet now records when its layout is final and the loader
+  re-measures fresh objects even when their sheet is cached.
+- **Imported packs keep the fields uxnan doesn't interpret.** The validating
+  re-write on import dropped unknown manifest fields, including
+  `spriteVersionNumber` — without which Codex rejects a v2 pack's 11-row sheet,
+  so a pet imported here and copied back to `~/.codex/pets` stopped loading
+  there. Unknown fields now round-trip verbatim.
+- **Generated packs work without hand-editing.** A `hatch-pet` pack — which is
+  what Codex's `/hatch` and the community galleries produce — ships only an id, a
+  description and a sheet path: no `frame`, no `animations`, because the layout is
+  the format's convention rather than per-pack data. Both are now recovered from
+  the image: the grid from its dimensions (sheets differ — v2 is 8 x 11 =
+  1536 x 2288, older ones 8 x 9, and assuming would slice every frame at the wrong
+  offset), and the animations from the conventional row order with its declared
+  per-row frame counts — a row is often partly used (a generated wave is 4 frames
+  in an 8-wide grid) and playing the blank remainder makes the pet flicker out of
+  existence. A pack that declares either is trusted as-is.
+- **The pet floats over the desktop by default.** The pet lives in its **own
+  borderless, transparent, always-on-top window** — visible over other apps and
+  while uxnan is minimized, like the Codex desktop pet; turning *Settings →
+  Pets → Float over the desktop* off keeps it as a layer inside the uxnan
+  window instead. It drags anywhere via the OS-native window drag (correct
+  across monitors and DPI scales), remembers where it was parked (a spot on an
+  unplugged monitor falls back to the primary corner), clicking it still jumps
+  to the agent's terminal — with **Bring uxnan to the front on click** as its
+  own switch, off by default, so a poke never covers what you are doing unless
+  you ask — and it is destroyed with the main window so the app never keeps
+  running as nothing but a pet. The window is a thin, stateless renderer fed by
+  the main window over Tauri events; it carries its own per-window capability
+  (`capabilities/pet.json` — without one, a second window gets no permissions
+  and renders empty) and loads by query, per mode (`/?window=pet` in dev,
+  `index.html?window=pet` packaged — the static build has no per-route files,
+  and the dev server serves routes only at `/`).
+- An empty import result **explains itself** instead of only reporting nothing
+  found: Codex's own eight pets are compiled into its binary rather than written
+  to disk, so `~/.codex/pets` stays empty until you install one
+  (`npx codex-pet-cli add <name>`) or create one with `/hatch`. Pointing the
+  picker at a plain folder explains what a pet folder looks like instead.
+- Backend `src-tauri/src/pets.rs` (+ `pets_list` / `pets_sheet` / `pets_scan` /
+  `pets_codex_dir` / `pets_import` / `pets_delete`), persisted `AppSettings.pets`
+  (`PetSettings`, off by default), frontend logic in `src/lib/pets/`
+  (`manifest` / `animator` / `status`), store `state/pets.svelte.ts`, components
+  `PetSprite` / `PetLayer` / `PetsSettings`. Full EN/ES i18n. 9 Rust + 55 Vitest tests
+  cover manifest parsing, traversal refusal, import scoping, the `.webp` +
+  `avatar.json` shape community packs actually ship, the unknown-field round-trip,
+  frame maths, the v2 look poses, idle flavour decay and the state priority.
+  Docs: [`docs/pets.md`](docs/pets.md).
+
+
 ### Changed — GitHub: a per-project inline view replaces the full-screen section
 
 - The full-screen GitHub overlay is gone. GitHub now opens **per project** from each

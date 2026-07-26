@@ -25,6 +25,7 @@ import {
   type AppSettings,
   type AgentHooksStatus,
   type HookInstall,
+  type PetSettings,
   type QuickCommand,
   type RepoData,
   type SidebarProfile,
@@ -66,6 +67,7 @@ export type SettingsSection =
   | "language"
   | "shortcuts"
   | "commands"
+  | "pets"
   | "agents"
   | "providers"
   | "aicommit"
@@ -423,6 +425,21 @@ class AppStore {
    *  profile editor (name/description on save, avatar the moment it's picked). */
   updateSidebarProfile(patch: Partial<SidebarProfile>): void {
     this.settings.profile = { ...(this.settings.profile ?? {}), ...patch };
+    void this.persistSettings();
+  }
+
+  // --- Pets ----------------------------------------------------------------
+
+  /** Pets configuration. Always an object so the UI reads fields without
+   *  null-checking; every field has a documented default in `state/pets`. */
+  get petSettings(): PetSettings {
+    return this.settings.pets ?? {};
+  }
+
+  /** Merge a partial pets update into settings and persist. Used by the profile
+   *  menu's toggle, the Settings section and the drag-to-park handler. */
+  updatePets(patch: Partial<PetSettings>): void {
+    this.settings.pets = { ...(this.settings.pets ?? {}), ...patch };
     void this.persistSettings();
   }
 

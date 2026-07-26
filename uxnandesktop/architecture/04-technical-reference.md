@@ -172,6 +172,40 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
 - [ ] Conexion movil desde la interfaz de escritorio.
 - [ ] Emparejamiento QR desde la GUI del ADE.
 
+#### T3.6 - Mascotas (pets) — ✅ Hecho (`02d` §1.7)
+
+- [x] Companero animado opcional (apagado por defecto) que refleja el estado
+      preciso de los agentes: `working`→`running`, `waiting`→`waiting`,
+      `done`→`review`, `blocked`→`failed`, nadie reportando→`idle`; los reportes
+      stale (§1.5) se ignoran.
+- [x] **Una sola mascota**, con el estado mas urgente ganando (`waiting` →
+      `blocked` → `done` → `working`). El modo colonia (una por agente) se
+      construyo y se retiro por no aportar sobre la barra lateral.
+- [x] **Ventana propia de escritorio (por defecto, desactivable)** — sin bordes,
+      transparente, siempre encima, visible sobre otras apps y con uxnan
+      minimizado; drag nativo de ventana (correcto en DPI/multi-monitor),
+      posicion persistida y validada contra los monitores vivos, capability
+      propia (`pet.json`), carga por query segun el modo (`/?window=pet` en dev,
+      `index.html?window=pet` empaquetada) y **traer uxnan al frente al clic
+      como interruptor propio, apagado por defecto** (`02d` §1.7).
+- [x] **Interactividad de puntero**: la mascota mira al cursor mientras descansa
+      (las 16 poses v2 de las filas 9-10, zona muerta al frente), reacciona al
+      clic con un salto y sostiene la pose de mirar-abajo mientras se arrastra.
+- [x] Clic en la mascota revela la terminal de su agente; arrastrable, se acomoda
+      en la esquina mas cercana.
+- [x] Formato en disco **compatible con Codex** (`pet.json`/`avatar.json` + hoja
+      de sprites), asi que los paquetes de la comunidad cargan sin cambios;
+      importacion desde `~/.codex/pets` o cualquier carpeta como **copia
+      validante** (solo manifiesto + hoja referenciada).
+- [x] uxnan incluye **solo su propia mascota**; el resto lo importa el usuario y
+      su arte sigue siendo de su autor (avisos de procedencia + `ORIGIN` por
+      mascota).
+- [x] Interruptor en el menu de perfil de la sidebar + seccion **Settings → Pets**
+      (grupo General). `src-tauri/src/pets.rs`, `src/lib/pets/`,
+      [`docs/pets.md`](../docs/pets.md).
+- [ ] Generacion de mascotas con IA ("hatch") — pendiente, requiere generacion de
+      imagenes consistente en ~72 cuadros (`FOR-DEV.md → "Pets — follow-ups"`).
+
 ---
 
 ## 2. Fases de Implementacion

@@ -395,9 +395,76 @@ export const es: Record<MessageKey, string> = {
   "settings.commands": "Comandos rápidos",
   "settings.commandsDesc":
     "Programa los comandos que usas seguido y lánzalos en el worktree activo (o en el proyecto/worktree que elijas) desde el lanzador de la barra superior.",
+  "settings.pets": "Mascotas",
+  "settings.pets.desc":
+    "Una mascota animada que refleja lo que están haciendo tus agentes. Es puramente estético: nunca cambia cómo trabaja un agente.",
   "settings.hooks": "Hooks",
   "settings.hooksDesc":
     "Configuraciones de hooks listas para usar para que los agentes reporten su estado preciso de fábrica.",
+
+  // --- Mascotas ---------------------------------------------------------------
+  "pets.show": "Mostrar mascota",
+  "pets.hide": "Ocultar mascota",
+  "pets.choose": "Elegir mascota",
+  "pets.enable": "Mostrar una mascota",
+  "pets.enableDesc":
+    "Desactivado por defecto. La mascota flota sobre la app y sigue el estado de tus agentes.",
+  "pets.overlay": "Flotar sobre el escritorio",
+  "pets.overlayDesc":
+    "La mascota vive en su propia ventana siempre visible: se ve sobre otras aplicaciones, incluso con uxnan minimizado. Arrástrala a cualquier parte de la pantalla. Apagado la mantiene dentro de la ventana de uxnan.",
+  "pets.raiseOnClick": "Traer uxnan al frente al hacer clic",
+  "pets.raiseOnClickDesc":
+    "Al hacer clic en la mascota flotante también se trae la ventana de uxnan al frente antes de mostrar la terminal de ese agente. Apagado por defecto para que un toque nunca tape lo que estás haciendo.",
+  "pets.corner": "Esquina",
+  "pets.cornerDesc":
+    "Dónde descansa la mascota. También puedes arrastrarla y se acomoda en la esquina más cercana.",
+  "pets.corner.bottomRight": "Abajo a la derecha",
+  "pets.corner.bottomLeft": "Abajo a la izquierda",
+  "pets.corner.topRight": "Arriba a la derecha",
+  "pets.corner.topLeft": "Arriba a la izquierda",
+  "pets.size": "Tamaño",
+  "pets.sizeDesc": "Qué tan grande se dibuja la mascota.",
+  "pets.size.small": "Pequeño",
+  "pets.size.medium": "Mediano",
+  "pets.size.large": "Grande",
+  "pets.size.huge": "Muy grande",
+  "pets.animate": "Animar",
+  "pets.animateDesc":
+    "Al desactivarlo se muestra un solo cuadro fijo. La opción «reducir movimiento» de tu sistema hace esto automáticamente.",
+  "pets.clickToFocus": "Clic para ir al agente",
+  "pets.clickToFocusDesc": "Al hacer clic en la mascota se abre la terminal del agente que muestra.",
+  "pets.library": "Tus mascotas",
+  "pets.libraryDesc":
+    "Elige cuál mostrar. Importa más desde Codex o desde una carpeta de esta computadora.",
+  "pets.bundled": "Incluida con uxnan",
+  "pets.remove": "Eliminar mascota",
+  "pets.preview": "Vista previa:",
+  "pets.state.idle": "Descansando",
+  "pets.state.working": "Trabajando",
+  "pets.state.waiting": "Te necesita",
+  "pets.state.done": "Lista",
+  "pets.state.blocked": "Bloqueada",
+  "pets.importFromCodex": "Importar desde Codex",
+  "pets.importFolder": "Importar desde carpeta",
+  "pets.importFolderTitle": "Elige una carpeta de mascotas",
+  "pets.importFolderDesc":
+    "Elige una carpeta con varias mascotas, o la carpeta de una sola que contenga pet.json.",
+  "pets.importTitle": "Importar mascotas",
+  "pets.importDesc": "Elige cuáles agregar a tu biblioteca.",
+  "pets.import": "Importar",
+  "pets.reimport": "Reemplazar",
+  "pets.importAll": "Importar todas",
+  "pets.importEmpty": "No se encontraron mascotas en esa carpeta.",
+  "pets.importEmptyCodex":
+    "Las mascotas propias de Codex vienen dentro de su programa, no como archivos, así que esta carpeta solo se llena cuando instalas o creas una. Consigue una de la comunidad con «npx codex-pet-cli add <nombre>», o crea una dentro de Codex con /hatch, y luego impórtala aquí.",
+  "pets.importEmptyFolder":
+    "Una mascota es una carpeta con un pet.json (o avatar.json) y su imagen de sprites. Elige una carpeta así, o una carpeta que contenga varias.",
+  "pets.provenanceNotice":
+    "uxnan incluye una mascota propia. Cualquier otra la importas tú desde Codex o desde un paquete de la comunidad: ese arte pertenece a sus autores, y uxnan ni lo incluye ni lo redistribuye.",
+  "pets.importAttribution":
+    "Estas mascotas provienen de una carpeta de tu computadora. Su arte sigue siendo propiedad de quien lo creó; importarlas solo lo copia dentro de uxnan para tu uso personal.",
+  "pets.originCodex": "Importada desde Codex",
+  "pets.originFolder": "Importada desde una carpeta",
   "settings.updates": "Actualizaciones",
   "settings.updatesDesc":
     "Elige cómo Uxnan Desktop busca, descarga e instala nuevas versiones.",
