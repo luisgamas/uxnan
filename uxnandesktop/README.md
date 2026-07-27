@@ -116,9 +116,10 @@ available today are:
   menu or `Ctrl/⌘+Shift+A`. See [automations](./docs/automations.md).
 - **Pets.** An optional animated companion that mirrors what your agents are
   doing — working, needs you, ready, blocked — and jumps you to that agent's
-  terminal when clicked. It watches your cursor while resting, reacts to pokes
-  and being carried, and floats over the whole desktop in its own always-on-top
-  window by default (or stays a layer inside the app if you prefer).
+  terminal when clicked. It watches your cursor while resting, hops when poked,
+  runs whichever way you carry it, and floats over the whole desktop in its own
+  always-on-top window by default (or stays a layer inside the app if you
+  prefer).
   uxnan bundles its own; you can import more from `~/.codex/pets` or any folder
   (the format is Codex-compatible, so community packs load unmodified). Off by
   default; toggle it from the profile menu. See [pets](./docs/pets.md).

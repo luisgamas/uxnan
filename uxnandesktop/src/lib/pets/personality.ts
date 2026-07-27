@@ -23,10 +23,11 @@ export interface FlavourPlan {
   delayMs: number;
 }
 
-// Flavours used to be stretched 2.4x here so decoration wouldn't twitch beside
-// the slow idle. That pace turned out to be right for *everything*, so it now
+// Flavours used to be stretched here so decoration wouldn't twitch beside the
+// slow idle. That stretch turned out to be right for *everything*, so it now
 // lives in the animation set itself (`STATE_PACE` in `manifest.ts`) and a
-// flavour plays exactly as the same row would when a state fires it.
+// flavour plays exactly as the same row would when a state fires it — tune the
+// pace there and every gesture follows.
 
 interface FlavourSpec {
   /** Candidates, chosen uniformly. A pack missing one falls back (see
@@ -40,26 +41,45 @@ interface FlavourSpec {
 /**
  * Flavours per base animation (which is 1:1 with the agent state).
  *
- * Frequency carries meaning: a pet that needs you nags every few seconds, while
- * a resting one only stirs every half-minute or so, and a working one just
- * changes direction now and then. Nothing here fires while an agent is mid-
- * anything the user must react to — flavour is texture, never a signal.
+ * **A flavour costs more than it looks.** Ending one hands the renderer a
+ * different animation again — the base — which restarts it from frame zero, so
+ * the state replays its whole row three times as well. That is a feature: it is
+ * what re-shows a live state that had long since settled into its idle tail,
+ * without any of the machinery a "pulse" would need. But it means each entry
+ * below schedules **two** bursts of movement, one of them several seconds long,
+ * and the delay is really the pet's whole rest between them.
+ *
+ * So a flavour is always a *different* row than the state's own. Picking the
+ * state's own row was tried and reverted: it stacks the one-shot on top of the
+ * replay it already causes, and a `done` pet — a state that lasts half an hour —
+ * spent that half hour celebrating.
+ *
+ * Frequency carries meaning, and it is set against how long the state lasts. A
+ * pet that needs you nags every few seconds because that is the point. A resting
+ * one stirs every half-minute. The long-lived states (busy while an agent keeps
+ * reporting, ready and blocked for up to 30 minutes) are the calmest of all: at a
+ * livelier cadence they read as a pet that never settles.
  */
 const FLAVOURS: Record<string, FlavourSpec> = {
   // Resting: the "is it alive?" case. Look around, stretch, get bored.
   // `bounce` is an alias of `jumping` (both are row 4), so listing it too would
   // only make the hop twice as likely as the wave.
-  idle: { pick: ["waving", "jumping"], delay: [14_000, 34_000], holdMs: 3_600 },
+  idle: { pick: ["waving", "jumping"], delay: [14_000, 34_000], holdMs: 2_400 },
   // Needs you: wave to get attention, often enough to notice, not so often it
-  // becomes wallpaper.
-  waiting: { pick: ["waving"], delay: [6_000, 13_000], holdMs: 2_600 },
-  // Busy: the working animation is an in-place loop, so the texture that keeps
-  // it from reading as a spinner is a brief breather, not a change of direction.
-  running: { pick: ["idle"], delay: [8_000, 16_000], holdMs: 2_400 },
-  // Ready: a pleased little hop every so often.
-  review: { pick: ["bounce", "jumping"], delay: [9_000, 20_000], holdMs: 2_200 },
+  // becomes wallpaper. The one state where insisting is the whole point.
+  waiting: { pick: ["waving"], delay: [6_000, 13_000], holdMs: 2_400 },
+  // Busy: a brief breather. It lasts as long as the agent keeps reporting, so the
+  // rest between them is long — every half-minute or so the pet takes a breath
+  // and then runs through the working row again, which is "still on it" without
+  // miming the task like a spinner.
+  running: { pick: ["idle"], delay: [25_000, 50_000], holdMs: 2_400 },
+  // Ready: a pleased little hop — rarely. `done` sticks for up to half an hour,
+  // and a livelier cadence is a pet that celebrates for the whole thirty minutes.
+  review: { pick: ["bounce", "jumping"], delay: [25_000, 50_000], holdMs: 2_200 },
   // Blocked: sag now and then, so the failure keeps reading as a failure.
-  failed: { pick: ["sad"], delay: [9_000, 18_000], holdMs: 3_000 },
+  // (`sad` is row 5, the same row as `failed` — a different entry, so it restarts
+  // the way any other flavour does.) Long-lived too, hence unhurried.
+  failed: { pick: ["sad"], delay: [20_000, 40_000], holdMs: 3_200 },
 };
 
 /**

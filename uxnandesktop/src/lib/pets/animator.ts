@@ -23,7 +23,7 @@ export function durationMs(anim: PetAnimation): number {
 }
 
 /** Run time of the play-once prefix, in ms. */
-function prefixMs(anim: PetAnimation): number {
+export function prefixMs(anim: PetAnimation): number {
   let total = 0;
   for (let i = 0; i < Math.min(anim.loopStart, anim.frames.length); i++) {
     total += anim.frames[i].ms;
@@ -68,6 +68,23 @@ export function frameAt(anim: PetAnimation, elapsedMs: number): number {
   const t = positionAt(anim, elapsedMs);
   if (t === null) return anim.frames[anim.frames.length - 1].index;
   return anim.frames[slotAt(anim, t)].index;
+}
+
+/**
+ * Whether the animation has played through its one-off part and is now looping
+ * its tail — for a state animation, that its row is done and the pet is back to
+ * breathing.
+ *
+ * This is "the pet is visually at rest", which is not the same as "the agent
+ * state is idle": a state stays live for as long as the agent keeps reporting,
+ * while its animation settles seconds in. Anything that may only happen to a
+ * resting pet — holding a look pose toward the cursor — keys off this rather
+ * than off the state, or it would interrupt a gesture mid-move, and would never
+ * happen at all during a long task. `idle` (nothing to play through) is settled
+ * from the first instant, which is exactly how it behaved before.
+ */
+export function hasSettled(anim: PetAnimation, elapsedMs: number): boolean {
+  return elapsedMs >= prefixMs(anim);
 }
 
 /**

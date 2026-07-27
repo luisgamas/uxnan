@@ -37,7 +37,15 @@
     LOOK_DOWN_DEG,
     LOOK_LINGER_MS,
   } from "$lib/pets/look";
-  import { DRAG_ANIMATION, REACTION_ANIMATION, REACTION_MS } from "$lib/pets/interactions";
+  import {
+    CARRY_SETTLE_MS,
+    carryAnimation,
+    carryDirection,
+    DRAG_ANIMATION,
+    REACTION_ANIMATION,
+    REACTION_MS,
+    type CarryDirection,
+  } from "$lib/pets/interactions";
   import PetSprite from "./PetSprite.svelte";
   import type { PetCorner } from "$lib/types";
 
@@ -81,18 +89,26 @@
   /** The carried pose: looking straight down at the ground, when the pack has
    *  the v2 look rows. Packs without them wiggle through [`DRAG_ANIMATION`]. */
   const dragPose = $derived(pet ? lookFrameIndex(pet, LOOK_DOWN_DEG) : null);
-  /** Whether the pet is resting (memoized so the cursor-watch effect doesn't
-   *  re-subscribe on every clock tick that re-derives the instance). */
-  const resting = $derived(instance?.state === "idle");
-
-  // Watch the cursor while resting: the pet turns toward it (16 poses, v2
-  // packs), holds the glance for a while after the cursor stops, and goes back
-  // to breathing inside the deadzone. Listener-driven — no polling.
+  /** Which way the pet is currently being carried, aged out once the hand stops
+   *  (so a paused drag settles back into the look-down pose). */
+  let carryDir = $state<CarryDirection>(null);
+  let carrySettle: ReturnType<typeof setTimeout> | undefined;
+  let lastCarryX = 0;
+  /** The travelling run to play while carried, when the pack has those rows. */
+  const carryAnim = $derived(pet && dragging ? carryAnimation(pet, carryDir) : null);
+  // Watch the cursor: the pet turns toward it (16 poses, v2 packs), holds the
+  // glance for a while after the cursor stops, and goes back to breathing inside
+  // the deadzone. Listener-driven — no polling.
+  //
+  // Not gated on the agent state: whether a glance is *shown* is the sprite's
+  // call, and it holds the pose only once the current animation has played
+  // through (`hasSettled`). Gating here on "resting" is what silently cost the
+  // pet its glance once a live state stopped expiring after three minutes.
   $effect(() => {
     const p = pet;
     // `overlayOn`: while the desktop window shows the pet, this layer renders
     // nothing — the pet window runs its own cursor watch.
-    if (!p || !resting || overlayOn || settings.animate === false || !hasLookPoses(p)) {
+    if (!p || overlayOn || settings.animate === false || !hasLookPoses(p)) {
       lookFrame = null;
       return;
     }
@@ -131,14 +147,27 @@
     origin = { x: e.clientX, y: e.clientY };
     moved = false;
     dragAt = { x: rect.left, y: rect.top };
+    lastCarryX = e.clientX;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
+  }
+
+  /** Turn the pet the way it is being carried, and let that decay: the gap
+   *  between two pointer moves is not "the drag stopped", but a hand that has
+   *  actually come to rest should go back to looking down. */
+  function trackCarry(x: number) {
+    const next = carryDirection(x - lastCarryX, carryDir);
+    lastCarryX = x;
+    if (next !== carryDir) carryDir = next;
+    clearTimeout(carrySettle);
+    carrySettle = setTimeout(() => (carryDir = null), CARRY_SETTLE_MS);
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!dragAt || !root) return;
     if (!moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < DRAG_SLOP) return;
     moved = true;
+    trackCarry(e.clientX);
     const rect = root.getBoundingClientRect();
     // Clamp so the pet can never be dragged off-screen and stranded there.
     const x = Math.min(Math.max(0, e.clientX - grab.x), window.innerWidth - rect.width);
@@ -149,6 +178,11 @@
   function onPointerUp(e: PointerEvent) {
     if (!dragAt || !root) return;
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    // Poking a pet is not "focusing a control": leaving it focused means the
+    // next keystroke (Esc, anything) flips the focus-visible flag and rings the
+    // sprite. Blurring here keeps the ring exclusive to Tab navigation, and does
+    // not stop the `click` that follows this event.
+    (e.currentTarget as HTMLElement).blur();
     if (moved) {
       // Snap to whichever corner the pet was released nearest, keeping its exact
       // distance from that corner so it stays where the user put it.
@@ -166,6 +200,8 @@
       });
     }
     dragAt = null;
+    clearTimeout(carrySettle);
+    carryDir = null;
   }
 
   function onClick(instanceTabId: string | undefined) {
@@ -181,8 +217,11 @@
     pets.focus(instanceTabId);
   }
 
-  // Clear a pending reaction timer when the layer unmounts.
-  $effect(() => () => clearTimeout(reactionTimer));
+  // Clear pending timers when the layer unmounts.
+  $effect(() => () => {
+    clearTimeout(reactionTimer);
+    clearTimeout(carrySettle);
+  });
 
   /** Human-readable state, reused for the tooltip and the accessible label. */
   function stateLabel(state: PetState): string {
@@ -316,7 +355,13 @@
         title={title(instance.state, instance.label)}
         aria-label={title(instance.state, instance.label)}
         class={cn(
-          "pointer-events-auto relative select-none rounded-lg transition-transform",
+          // `outline-none` + an explicit `focus-visible` ring, the same way the
+          // shared Button does it: the webview's default ring boxes the whole
+          // sprite cell (and reappears on any key pressed after a click), which
+          // reads as a selection rectangle around the pet. Keyboard focus still
+          // gets a ring — a pointer one is dropped on release, below.
+          "pointer-events-auto relative select-none rounded-lg transition-transform outline-none",
+          "focus-visible:ring-ring/50 focus-visible:ring-2",
           dragAt ? "cursor-grabbing" : "cursor-grab",
           settings.clickToFocus !== false && instance.tabId && "hover:scale-105",
         )}
@@ -332,8 +377,10 @@
           animation={animationFor(instance.state)}
           {size}
           animate={settings.animate !== false}
-          override={dragging && dragPose === null ? DRAG_ANIMATION : reaction}
-          holdFrame={dragging ? dragPose : null}
+          override={dragging
+            ? (carryAnim ?? (dragPose === null ? DRAG_ANIMATION : null))
+            : reaction}
+          holdFrame={dragging && !carryAnim ? dragPose : null}
           {lookFrame}
         />
       </button>

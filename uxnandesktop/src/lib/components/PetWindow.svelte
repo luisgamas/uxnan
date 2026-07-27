@@ -28,7 +28,16 @@
     LOOK_DOWN_DEG,
     LOOK_LINGER_MS,
   } from "$lib/pets/look";
-  import { DRAG_ANIMATION, REACTION_ANIMATION, REACTION_MS } from "$lib/pets/interactions";
+  import {
+    CARRY_HOLD_MS,
+    CARRY_SETTLE_MS,
+    carryAnimation,
+    carryDirection,
+    DRAG_ANIMATION,
+    REACTION_ANIMATION,
+    REACTION_MS,
+    type CarryDirection,
+  } from "$lib/pets/interactions";
   import PetSprite from "./PetSprite.svelte";
 
   /** Everything about the pet being shown, pushed by the main window whenever
@@ -59,10 +68,32 @@
   let reactionTimer: ReturnType<typeof setTimeout> | undefined;
   /** True while the OS-native window drag is carrying the pet. */
   let dragging = $state(false);
+  /** Which way the pet is being carried, read from the window's own movement
+   *  (the OS owns the drag, so there are no pointer events to measure). */
+  let carryDir = $state<CarryDirection>(null);
+  let carrySettle: ReturnType<typeof setTimeout> | undefined;
+  /** Last window x seen while carrying; `NaN` until the first move gives us a
+   *  baseline to compare against. */
+  let lastCarryX = Number.NaN;
 
   const pet = $derived(config?.pet ?? null);
   const dragPose = $derived(pet ? lookFrameIndex(pet, LOOK_DOWN_DEG) : null);
-  const resting = $derived(live.state === "idle");
+  /** The travelling run to play while carried, when the pack has those rows. */
+  const carryAnim = $derived(pet && dragging ? carryAnimation(pet, carryDir) : null);
+
+  /** Turn the pet the way the window is travelling, and let that decay so a
+   *  carry that comes to rest settles back into the look-down pose. */
+  function trackCarry(x: number) {
+    if (Number.isNaN(lastCarryX)) {
+      lastCarryX = x;
+      return;
+    }
+    const next = carryDirection(x - lastCarryX, carryDir);
+    lastCarryX = x;
+    if (next !== carryDir) carryDir = next;
+    clearTimeout(carrySettle);
+    carrySettle = setTimeout(() => (carryDir = null), CARRY_SETTLE_MS);
+  }
 
   // Wire the event channel and announce readiness — the main window answers
   // with the current config and state, so a recreated window self-hydrates.
@@ -90,17 +121,35 @@
     };
   });
 
-  // Report the parked position after a drag so it persists (the main window
-  // owns settings). The OS drag emits a stream of move events; the drag is
-  // considered over once they stop for a moment.
+  // The window's own movement is the only thing this window knows about its
+  // drag: the OS owns it and swallows every pointer event for the duration. So
+  // that one stream answers all three questions — is it still being carried,
+  // which way, and where did it end up.
+  //
+  // Movement therefore *arms* the carry rather than only feeding it. Waiting for
+  // a pointer event to do that is what let a paused hand end the carry for good:
+  // nothing could contradict the "it went still, so it was dropped" guess, and
+  // the pet stopped running mid-drag and never started again.
   $effect(() => {
     const win = getCurrentWindow();
     let settle: ReturnType<typeof setTimeout> | undefined;
-    const unlisten = win.onMoved(() => {
+    let hold: ReturnType<typeof setTimeout> | undefined;
+    const unlisten = win.onMoved((e) => {
+      dragging = true;
+      trackCarry(e.payload.x);
+      // Still for long enough to mean "let go" — see `CARRY_HOLD_MS`.
+      clearTimeout(hold);
+      hold = setTimeout(() => {
+        dragging = false;
+        clearTimeout(carrySettle);
+        carryDir = null;
+        lastCarryX = Number.NaN;
+      }, CARRY_HOLD_MS);
+      // Persisting where it was parked is a separate, cheaper question: the spot
+      // is worth recording as soon as the window settles, carried or not.
       clearTimeout(settle);
       settle = setTimeout(() => {
         void (async () => {
-          dragging = false;
           const pos = await win.outerPosition();
           void emitTo("main", "pet:moved", { x: pos.x, y: pos.y });
         })();
@@ -108,17 +157,24 @@
     });
     return () => {
       clearTimeout(settle);
+      clearTimeout(hold);
+      clearTimeout(carrySettle);
       void unlisten.then((f) => f());
     };
   });
 
-  // Watch the cursor while resting. The cursor is outside this window nearly
-  // always, so `mousemove` never fires here — the global position is polled
-  // instead, at a gentle 150 ms, and only while there is something to show.
+  // Watch the cursor. The cursor is outside this window nearly always, so
+  // `mousemove` never fires here — the global position is polled instead, at a
+  // gentle 150 ms, and only while there is something to show.
+  //
+  // Not gated on the agent state: whether a glance is *shown* is the sprite's
+  // call, and it holds the pose only once the current animation has played
+  // through (`hasSettled`). Gating here on "resting" is what silently cost the
+  // pet its glance once a live state stopped expiring after three minutes.
   $effect(() => {
     const p = pet;
     const cfg = config;
-    if (!p || !cfg || !cfg.animate || !resting || dragging || !hasLookPoses(p)) {
+    if (!p || !cfg || !cfg.animate || dragging || !hasLookPoses(p)) {
       lookFrame = null;
       return;
     }
@@ -183,9 +239,11 @@
     if (!pressed || dragging) return;
     if (Math.hypot(e.screenX - origin.x, e.screenY - origin.y) < DRAG_SLOP) return;
     // Hand the drag to the OS. From here pointer events stop arriving; the
-    // move-settle listener above ends the drag state and persists the spot.
+    // move-settle listener above ends the drag state and persists the spot,
+    // and the window's own movement is what tells us which way it is going.
     pressed = false;
     dragging = true;
+    lastCarryX = Number.NaN;
     void getCurrentWindow().startDragging();
   }
 
@@ -213,11 +271,19 @@
 
 {#if config && pet}
   <div class="flex h-screen w-screen items-end justify-center overflow-hidden">
+    <!-- `outline-none`: this window is a single borderless sprite floating over
+         the desktop, and the webview's default focus ring draws a rectangle
+         around the whole sprite cell as soon as the button holds focus — on the
+         click itself, and again on any key pressed afterwards (the focus-visible
+         flag is re-evaluated then, which is why Esc "brought the box back").
+         There is nothing else here to move focus between, so the ring carries no
+         information and only breaks the illusion of a pet on the desktop. The
+         in-window layer keeps a real keyboard ring — see `PetLayer.svelte`. -->
     <button
       type="button"
       {title}
       aria-label={title}
-      class="select-none {dragging ? 'cursor-grabbing' : 'cursor-grab'}"
+      class="select-none outline-none {dragging ? 'cursor-grabbing' : 'cursor-grab'}"
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
@@ -229,8 +295,10 @@
         animation={animationFor(live.state)}
         size={config.size}
         animate={config.animate}
-        override={dragging && dragPose === null ? DRAG_ANIMATION : reaction}
-        holdFrame={dragging ? dragPose : null}
+        override={dragging
+          ? (carryAnim ?? (dragPose === null ? DRAG_ANIMATION : null))
+          : reaction}
+        holdFrame={dragging && !carryAnim ? dragPose : null}
         {lookFrame}
       />
     </button>

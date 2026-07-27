@@ -10,13 +10,14 @@
   // of 60, and a settled one-shot or a still frame schedules nothing at all.
   // The animation is also fully parked while the window is hidden, and reduced
   // to a single frame under `prefers-reduced-motion`.
+  import { untrack } from "svelte";
   import {
-    BASE_ANIMATION,
     resolveAnimation,
     framePosition,
     type Pet,
+    type PetAnimation,
   } from "$lib/pets/manifest";
-  import { frameAt, msUntilNextFrame } from "$lib/pets/animator";
+  import { frameAt, hasSettled, msUntilNextFrame, prefixMs } from "$lib/pets/animator";
   import { planFlavour } from "$lib/pets/personality";
 
   interface Props {
@@ -60,7 +61,14 @@
     class: className = "",
   }: Props = $props();
 
-  /** A short one-shot currently interrupting the base loop, if any. */
+  /** A short one-shot currently interrupting the base loop, if any.
+   *
+   *  Always a *different* animation than the base — see `personality.ts`. Both
+   *  edges of a flavour hand the renderer a new animation, and the second one
+   *  (back to the base) restarts the state's row from the top: that replay is
+   *  how a state the pet had long since settled out of shows itself again, and
+   *  it is why a flavour that resolved to the base itself made the pet perform
+   *  twice over. */
   let flavourAnim = $state<string | null>(null);
 
   // Schedule flavour one-shots for as long as the base animation holds. The
@@ -110,18 +118,30 @@
   /** Park the animation entirely while the window is hidden (zero wakeups). */
   let visible = $state(true);
 
+  /** The animation the pet has already played through and is now looping the
+   *  tail of — i.e. it is visually breathing. Held as the animation itself, so
+   *  it is self-invalidating: a new animation is not settled until it says so. */
+  let settledAnim = $state<PetAnimation | null>(null);
+  /** Whether what is playing right now has settled. */
+  const settled = $derived(settledAnim === anim);
+
   /** Static pose to hold instead of animating, when an interaction asks for
-   *  one. Carried (`holdFrame`) wins outright; a look pose only applies while
-   *  the pet is genuinely resting. Reduced motion keeps its still frame. */
+   *  one. Carried (`holdFrame`) wins outright; a look pose only applies once the
+   *  pet is visually at rest. Reduced motion keeps its still frame.
+   *
+   *  "At rest" is [`hasSettled`], not "the agent state is idle". Those used to be
+   *  the same thing, because every state expired within minutes and the pet spent
+   *  most of its life on the idle animation. Now a state lives for as long as its
+   *  agent keeps reporting, while its *animation* settles seconds in — so keying
+   *  the look pose off the state meant a pet that never once glanced at the cursor
+   *  during a long task. Keying it off the animation keeps the original rule
+   *  intact (a gesture is never interrupted mid-move) and restores the glance. */
   const staticFrame = $derived(
     reduced || !animate
       ? null
       : holdFrame != null
         ? holdFrame
-        : override == null &&
-            flavourAnim == null &&
-            animation === BASE_ANIMATION &&
-            lookFrame != null
+        : override == null && flavourAnim == null && settled && lookFrame != null
           ? lookFrame
           : null,
   );
@@ -151,10 +171,17 @@
       frame = staticFrame;
       return;
     }
-    frame = a.frames[0]?.index ?? 0;
+    // Resuming an animation that had already played through — the look pose it
+    // was holding just ended — picks up at the loop point instead of the top.
+    // Starting over would perform the whole gesture again every time the cursor
+    // wandered off, which is the pet performing twice for one event.
+    // Untracked: this effect must not re-run merely because the flag was set.
+    const resuming = untrack(() => settledAnim) === a;
+    const offset = resuming ? prefixMs(a) : 0;
+    frame = frameAt(a, offset);
     if (reduced || !animate || !visible) return;
 
-    const startedAt = performance.now();
+    const startedAt = performance.now() - offset;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
 
@@ -162,8 +189,9 @@
       if (stopped) return;
       const elapsed = performance.now() - startedAt;
       frame = frameAt(a, elapsed);
+      if (!resuming && hasSettled(a, elapsed)) settledAnim = a;
       const next = msUntilNextFrame(a, elapsed);
-      if (next === null) return; // settled — nothing more to schedule
+      if (next === null) return; // nothing left to schedule
       timer = setTimeout(tick, Math.max(16, next));
     };
     tick();

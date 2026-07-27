@@ -10,16 +10,21 @@ import {
   DEFAULT_FRAME,
   DEFAULT_FRAME_MS,
   STATE_PACE,
+  CARRY_PACE,
   type PetAnimation,
 } from "./manifest";
-import { frameAt, msUntilNextFrame, durationMs } from "./animator";
+import { frameAt, hasSettled, msUntilNextFrame, durationMs } from "./animator";
 import {
   animationFor,
   aggregateState,
+  decayVerdict,
   hasDecayed,
+  petStateOf,
+  pickDriver,
   STATE_LIFETIME_MS,
 } from "./status";
 import { planFlavour, hasFlavour } from "./personality";
+import { carryAnimation, carryDirection, CARRY_TURN_PX } from "./interactions";
 import {
   hasLookPoses,
   lookAngle,
@@ -183,12 +188,15 @@ describe("defaultAnimations", () => {
   it("closes each state's row on a longer frame, at the ambient pace", () => {
     // The reference's raw 120–150 ms a frame is a terminal-glance pace; beside
     // an idle that breathes every 6.6 s it reads as a twitch. Rows play at the
-    // reference timings times STATE_PACE — the pace decoration was approved at.
+    // reference timings times STATE_PACE — one ambient pace for every gesture.
     const running = ANIMS.running.frames;
-    expect(running[0].ms).toBe(Math.round(120 * STATE_PACE)); // 288
+    expect(running[0].ms).toBe(Math.round(120 * STATE_PACE)); // 240
     expect(running[5].ms).toBe(Math.round(220 * STATE_PACE)); // row 7's held close
     expect(ANIMS.waiting.frames[0].ms).toBe(Math.round(150 * STATE_PACE));
     expect(STATE_PACE).toBeGreaterThan(1); // anything at or below 1 defeats it
+    // Bounded on the other side as well: past ~a quarter second a held frame
+    // stops reading as a pose and starts reading as a pause between stills.
+    expect(ANIMS.waiting.frames[0].ms).toBeLessThanOrEqual(300);
   });
 
   it("skips rows the grid does not have", () => {
@@ -425,6 +433,37 @@ describe("frameAt", () => {
   });
 });
 
+describe("hasSettled", () => {
+  // "Visually at rest" — the row is done and the pet is breathing again. It is
+  // what a look pose waits for, and it is deliberately *not* the agent state:
+  // a state lives as long as its agent reports, its animation settles seconds in.
+  const state = anim(
+    [
+      [8, 200],
+      [9, 200],
+      [0, 500],
+      [1, 500],
+    ],
+    2, // two frames of row, then the idle tail
+  );
+
+  it("is false while the row is still playing", () => {
+    expect(hasSettled(state, 0)).toBe(false);
+    expect(hasSettled(state, 399)).toBe(false);
+  });
+
+  it("is true from the loop point onward", () => {
+    expect(hasSettled(state, 400)).toBe(true);
+    expect(hasSettled(state, 10_000)).toBe(true);
+  });
+
+  it("is true from the first instant for an animation with nothing to play through", () => {
+    // `idle` loops from frame zero, so a resting pet can glance immediately —
+    // exactly as it did before any of this existed.
+    expect(hasSettled(anim([[0, 100]], 0), 0)).toBe(true);
+  });
+});
+
 describe("msUntilNextFrame", () => {
   it("reports the time left on the current frame", () => {
     const a = anim([
@@ -492,6 +531,20 @@ describe("state decay", () => {
   it("never decays resting", () => {
     expect(hasDecayed("idle", 0, 10 * 24 * 60 * MIN)).toBe(false);
   });
+
+  it("lets a state come round again while the agent is still reporting", () => {
+    const REARM = 90_000;
+    // Three minutes in, `working` has used up its lifetime — but a hook that
+    // fired seconds ago means the task is genuinely still running. Dropping it
+    // would rest the pet on top of live work (and lose the click target).
+    expect(decayVerdict("working", 0, 3 * MIN - 5_000, 3 * MIN, REARM)).toBe("rearm");
+    // Silent long enough and it really is over: finished, crashed, closed.
+    expect(decayVerdict("working", 0, 0, 3 * MIN, REARM)).toBe("drop");
+    // Inside its lifetime nothing is decided at all.
+    expect(decayVerdict("working", 0, 0, 2 * MIN, REARM)).toBe("show");
+    // A finished turn stops reporting, so it expires on schedule as before.
+    expect(decayVerdict("done", 0, 0, 30 * MIN, REARM)).toBe("drop");
+  });
 });
 
 describe("planFlavour", () => {
@@ -534,6 +587,41 @@ describe("planFlavour", () => {
     expect(waiting.delayMs).toBeLessThan(idle.delayMs);
   });
 
+  it("never decorates a state with the state's own row", () => {
+    // Ending a flavour hands the renderer the base animation again, which
+    // restarts it — so the state replays its row anyway, for free. A flavour
+    // that *is* the base stacks the one-shot on top of that replay, and the pet
+    // performs twice over every cycle (a `done` pet celebrated for half an hour).
+    for (const base of ["idle", "waiting", "running", "review", "failed"] as const) {
+      for (const r of [0, 0.5, 0.99]) {
+        expect(planFlavour(base, seq(0.5, r))!.animation).not.toBe(base);
+      }
+    }
+  });
+
+  it("rests longest in the states that last longest", () => {
+    // Cadence is set against how long a state sticks around: needs-you nags,
+    // resting stirs, and the long-lived states (busy while the agent keeps
+    // reporting; ready and blocked for up to 30 min) are the calmest.
+    const delayOf = (base: string) => planFlavour(base, seq(0, 0))!.delayMs;
+    expect(delayOf("waiting")).toBeLessThan(delayOf("idle"));
+    expect(delayOf("idle")).toBeLessThan(delayOf("running"));
+    expect(delayOf("idle")).toBeLessThan(delayOf("review"));
+  });
+
+  it("holds a one-shot long enough for a couple of passes of its row", () => {
+    // A hold shorter than one pass would cut the gesture off mid-move.
+    const anims = defaultAnimations(8, 11);
+    const pass = (name: string) =>
+      anims[name].frames
+        .slice(0, anims[name].loopStart / STATE_REPEATS)
+        .reduce((t, f) => t + f.ms, 0);
+    for (const base of ["idle", "waiting", "running", "review", "failed"] as const) {
+      const plan = planFlavour(base, seq(0, 0))!;
+      expect(plan.holdMs).toBeGreaterThan(pass(plan.animation));
+    }
+  });
+
   it("has nothing to add for an animation it doesn't know", () => {
     expect(planFlavour("waving")).toBeNull();
     expect(hasFlavour("idle")).toBe(true);
@@ -569,5 +657,82 @@ describe("agent state → pet animation", () => {
     expect(aggregateState(["working", "done"])).toBe("done");
     expect(aggregateState(["working", "idle"])).toBe("working");
     expect(aggregateState(["done", "blocked", "waiting", "working"])).toBe("waiting");
+  });
+
+  it("attaches to the agent that spoke last, not to an arbitrary one", () => {
+    // The state can be true of several agents at once; the pet points at exactly
+    // one — its tooltip, and the terminal a click reveals. The freshest report is
+    // in practice the agent being driven right now.
+    const reports = [
+      { tabId: "a", state: "working" as const, lastUpdate: 1_000 },
+      { tabId: "b", state: "waiting" as const, lastUpdate: 5_000 },
+      { tabId: "c", state: "working" as const, lastUpdate: 9_000 },
+    ];
+    expect(pickDriver(reports, "working")?.tabId).toBe("c");
+    expect(pickDriver(reports, "waiting")?.tabId).toBe("b");
+    // Nothing in that state — the pet has nowhere to point, and says so.
+    expect(pickDriver(reports, "blocked")).toBeUndefined();
+    expect(pickDriver([], "idle")).toBeUndefined();
+  });
+
+  it("reads an interrupted turn as blocked, not as a pleased result", () => {
+    // Esc / Ctrl-C reports `done` + `interrupted` (the turn did end, as far as
+    // every other consumer is concerned). Answering that with the "ready"
+    // gesture says the opposite of what happened.
+    expect(petStateOf({ status: "done", interrupted: true })).toBe("blocked");
+    expect(petStateOf({ status: "done", interrupted: false })).toBe("done");
+    expect(petStateOf({ status: "done" })).toBe("done");
+    // The flag only means anything on a finished turn.
+    expect(petStateOf({ status: "working", interrupted: true })).toBe("working");
+    expect(petStateOf({ status: "waiting", interrupted: true })).toBe("waiting");
+  });
+});
+
+describe("carrying a pet", () => {
+  /** A v2 pack with the conventional set, i.e. with the travelling runs. */
+  const carried = parsePet({ spriteVersionNumber: 2 }, "uxni");
+  carried.animations = defaultAnimations(8, 11);
+  /** A pack that has no travelling rows at all. */
+  const bare = parsePet({ animations: { idle: { frames: [0, 1] } } }, "bare");
+
+  it("faces the way it is being taken, and ignores a shaky hand", () => {
+    expect(carryDirection(CARRY_TURN_PX, null)).toBe("right");
+    expect(carryDirection(-CARRY_TURN_PX, "right")).toBe("left");
+    // Below the threshold the direction is kept, not dropped: it is the caller's
+    // settle timer that ends a carry, so jitter can't flip the pet back and forth.
+    expect(carryDirection(1, "left")).toBe("left");
+    expect(carryDirection(-1, null)).toBe(null);
+    expect(carryDirection(0, "right")).toBe("right");
+  });
+
+  it("uses the travelling run rows, which nothing else plays", () => {
+    expect(carryAnimation(carried, "right")).toBe("running-right");
+    expect(carryAnimation(carried, "left")).toBe("running-left");
+    expect(carryAnimation(carried, null)).toBe(null);
+  });
+
+  it("has no travelling run to offer for a pack without those rows", () => {
+    // Deliberately null rather than falling through to `idle`: the caller then
+    // keeps the look-down pose, instead of standing still mid-drag.
+    expect(carryAnimation(bare, "right")).toBe(null);
+  });
+
+  it("loops the run for as long as the carry lasts", () => {
+    const run = defaultAnimations(8, 11)["running-right"];
+    // Not the row-three-times-then-idle shape of a state: its own row, on repeat.
+    expect(run.loopStart).toBe(0);
+    expect(idx(run)).toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
+  });
+
+  it("runs at its own pace, evenly — a run is not a gesture", () => {
+    const run = defaultAnimations(8, 11)["running-right"];
+    const times = run.frames.map((f) => f.ms);
+    // Every frame the same: a gesture's longer closing frame would land a limp
+    // in the middle of the run, once per lap.
+    expect(new Set(times).size).toBe(1);
+    expect(times[0]).toBe(Math.round(120 * CARRY_PACE));
+    // And quicker than a gesture, or the carry looks like slow motion.
+    expect(CARRY_PACE).toBeLessThan(STATE_PACE);
+    expect(times[0]).toBeLessThan(defaultAnimations(8, 11).running.frames[0].ms);
   });
 });

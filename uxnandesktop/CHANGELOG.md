@@ -5,6 +5,94 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Pets: a carried pet runs.** Dragging the pet now plays the **travelling run**
+  matching the direction of travel (`running-right` / `running-left`, sheet rows
+  1–2), settling back into the v2 looking-down pose when the hand stops. Those two
+  rows were declared by the conventional set but **no state, interaction or flavour
+  ever played them** — a carried v2 pack held a single static frame for the whole
+  drag. Unlike a state animation, a travelling run loops its own row instead of
+  settling into idle after three passes (a pet standing still mid-drag looks
+  broken), and it runs at its own quicker, perfectly even pace (`CARRY_PACE` 1.25
+  rather than `STATE_PACE` 2.0, with no long closing frame): a run is a loop, not
+  a gesture — stretched like one it is slow motion, and a gesture's closing hold
+  lands a limp in the middle of it, once per lap.
+  The two presentations measure the drag differently and share the decision: the
+  in-window layer reads pointer moves; the desktop window can't, since the OS owns
+  that drag and swallows every pointer event, so the window's own movement both
+  feeds **and arms** the carry. Arming matters: movement being the only evidence
+  makes "it went still" a guess that the pet was dropped, and if only a fresh
+  press could arm the carry again, pausing your hand mid-drag ended it for good —
+  the pet stopped running and never resumed, however long you kept dragging. Any
+  movement now re-arms it, and a carry outlives a still moment by
+  `CARRY_HOLD_MS`.
+
+### Changed
+
+- **Pets: the long-lived states are calmer.** The idle personality's one-shots are
+  spaced against how long a state actually lasts: working and ready every 25–50 s,
+  blocked every 20–40 s (from 8–16, 9–20 and 9–18). A one-shot costs *two* bursts
+  of movement, not one — ending it restarts the base animation, so the state
+  replays its whole row as well — and `done` sticks for up to half an hour, so at
+  the old cadence a finished turn left the pet celebrating for thirty minutes.
+  Resting (14–34 s) and needs-you (6–13 s) are unchanged: insisting is the latter's
+  entire job.
+- **Pets: a state whose agent is still reporting no longer vanishes.** State
+  lifetimes (3 min busy, 30 min for anything waiting on a human) dropped the agent
+  outright, so a long task left the pet resting on top of live work — and pointing
+  nowhere, since the click target decays with the state: poking the pet mid-task
+  went nowhere at all. A decayed state whose agent reported within the last 90 s
+  now starts its clock over; keeping a spinner off screen is the animation's job,
+  not the lifetime's. An agent that goes quiet (finished, crashed, terminal closed)
+  decays exactly as before.
+- **Pets: the pet points at the agent that spoke last.** When several agents share
+  the winning state, the one the pet is *about* — its tooltip's task, the terminal
+  a click reveals — used to be the first match in map order, i.e. roughly whichever
+  agent first reported since launch: neither the agent being driven nor the one
+  that just moved. It is now the most recent report. Deliberately not filtered to
+  the selected worktree, which would go quiet exactly when something elsewhere
+  needs you.
+- **Pets: the gestures move at the pace the carry run set.** `STATE_PACE` 2.4 →
+  **1.3**, putting a gesture at **182–195 ms a frame** instead of 288–360. The
+  stretch exists because the reference's raw 120–150 ms reads as a twitch beside an
+  idle that breathes every 6.6 s — but the bound on the other side turned out to be
+  the binding one: past roughly a fifth of a second a held frame stops reading as a
+  pose and starts reading as a **pause**, and the gesture goes stepped and
+  mechanical. 1.3 is the same register as the carry run's 150 ms, with a gesture
+  keeping the slightly longer beat it should. The click reaction tracks the pace
+  (`REACTION_MS` 2 s → 1.1 s, still exactly one pass of the jump row, with no still
+  frame tacked on the end), the idle breathing is untouched, and a pack that
+  declares its own `fps` still keeps it.
+- **Pets: an interrupted turn reads as Blocked, not Ready.** Esc / Ctrl-C reports
+  `done` carrying an interrupt flag — true for every other consumer (sidebar,
+  notifications, badges keep seeing `done`), but a pet answering a cancelled turn
+  with the pleased "ready" gesture said the opposite of what happened. Only the pet
+  re-reads it (`petStateOf`). It is also what makes Blocked reachable at all: of
+  the five agents that report, only OpenCode can raise a genuine error state (its
+  `session.error`), so the sheet's failed row — and the `sad` flavour that only
+  fires from it — were effectively dead.
+### Fixed
+
+- **Pets: the pet watches the cursor again during a live state.** The glance
+  toward the pointer (and so the little follow after you put the pet down) was
+  gated on the agent state being `idle`. That was the same thing as "the pet is
+  visually at rest" only while every state expired within minutes; once a state
+  started living for as long as its agent keeps reporting, the pet quietly stopped
+  glancing at all during a long task. It now keys off the **animation** having
+  played through (`hasSettled`), which keeps the original rule intact — a gesture
+  is never interrupted mid-move — and restores the behaviour. Resuming after a
+  glance picks up at the loop point rather than replaying the whole gesture.
+- **Pets: no more selection box around the pet.** Clicking the pet (and then any
+  keystroke, Esc included, which is what re-evaluates the focus-visible flag) left
+  the webview's **default focus ring** drawn around the whole sprite cell — a
+  rectangle the size of the frame, floating over the desktop. The desktop pet
+  window now drops the ring outright (`outline-none`): it holds a single sprite and
+  nothing else to move focus between, so the ring never carried information. The
+  in-window layer follows the shared Button instead of the webview default — no ring
+  from a pointer poke (focus is released on pointer-up, which does not affect the
+  click that follows), a proper design-system ring for Tab navigation.
+
 ## [0.0.23] - 2026-07-26
 
 ### Added — Automations: unattended, recurring multi-agent tasks that run with the app closed

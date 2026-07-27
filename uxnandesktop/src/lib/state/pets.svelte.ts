@@ -21,7 +21,13 @@ import {
   type Pet,
   type PetFrameSpec,
 } from "$lib/pets/manifest";
-import { aggregateState, hasDecayed, type PetState } from "$lib/pets/status";
+import {
+  aggregateState,
+  decayVerdict,
+  petStateOf,
+  pickDriver,
+  type PetState,
+} from "$lib/pets/status";
 import { agentStatus } from "./agentStatus.svelte";
 import { terminals } from "./terminals.svelte";
 import { app } from "./app.svelte";
@@ -34,6 +40,13 @@ export const BUILTIN_PET_ID = "uxni";
  *  matching how the sidebar dims a stale report. Individual states decay sooner
  *  — see `STATE_LIFETIME_MS`. */
 const STALE_MS = 30 * 60 * 1000;
+
+/** How recently an agent must have reported for a state that has run out its
+ *  lifetime to start over instead of being dropped. Comfortably longer than the
+ *  gap between two hook reports of a working agent (a tool call apiece), short
+ *  enough that an agent which went quiet — finished, crashed, terminal closed —
+ *  is not held open on the strength of one old report. */
+const REARM_WITHIN_MS = 90 * 1000;
 
 /** The pet on screen, with the agent it is reflecting. */
 export interface PetInstance {
@@ -241,30 +254,52 @@ class PetStore {
   /**
    * Live agent reports still worth showing, paired with their tab.
    *
-   * Two filters: a report older than [`STALE_MS`] is ignored outright, and a
-   * state that has outlived its own lifetime decays away (a task that has been
-   * running for hours stops being news after three minutes — see
-   * `STATE_LIFETIME_MS`). The lifetime runs from when the agent *entered* the
-   * state, so a hook firing `working` on every tool call cannot keep renewing it.
+   * Three filters, in order. A report older than [`STALE_MS`] is ignored
+   * outright. A state that has outlived its own lifetime decays away (see
+   * `STATE_LIFETIME_MS`), measured from when the agent *entered* it — a hook
+   * firing `working` on every tool call cannot keep renewing it. But a decayed
+   * state whose agent is **still reporting** ([`REARM_WITHIN_MS`]) comes back
+   * round instead of vanishing.
+   *
+   * That last one is the difference between a lifetime and an amnesia. The
+   * lifetime exists so a pet doesn't mime `working` for a whole task like a
+   * spinner — a job the *animation* already does, since a state plays its row
+   * three times and then settles into idle. Dropping the agent as well left the
+   * pet resting on top of a live task, and pointing nowhere: the click target
+   * decays with the state, so poking the pet during a long task went nowhere at
+   * all. Now the state stays true for as long as the agent keeps saying so, the
+   * pet re-shows the row every so often (`personality.ts`), and an agent that
+   * falls silent — finished, crashed, terminal closed — decays exactly as before.
    */
-  private reporting(): { tabId: string; state: PetState; label?: string }[] {
+  private reporting(): { tabId: string; state: PetState; label?: string; lastUpdate: number }[] {
     // Read the shared clock so the derivation re-runs as states age out, rather
     // than only when a new hook report arrives.
     const now = Math.max(clock.now, Date.now());
-    const out: { tabId: string; state: PetState; label?: string }[] = [];
+    const out: { tabId: string; state: PetState; label?: string; lastUpdate: number }[] = [];
     const live = new Set<string>();
 
     for (const [tabId, report] of Object.entries(agentStatus.byId)) {
       live.add(tabId);
+      // The pet's own reading of the report — an interrupted `done` is a turn
+      // that was cut short, not a result to be pleased about (`petStateOf`).
+      const state = petStateOf(report);
       const seen = this.enteredAt.get(tabId);
-      if (!seen || seen.state !== report.status) {
-        this.enteredAt.set(tabId, { state: report.status, at: report.lastUpdate });
+      if (!seen || seen.state !== state) {
+        this.enteredAt.set(tabId, { state, at: report.lastUpdate });
       }
       const since = this.enteredAt.get(tabId)?.at ?? report.lastUpdate;
 
       if (now - report.lastUpdate > STALE_MS) continue;
-      if (hasDecayed(report.status, since, now)) continue;
-      out.push({ tabId, state: report.status, label: report.prompt ?? undefined });
+      const verdict = decayVerdict(state, since, report.lastUpdate, now, REARM_WITHIN_MS);
+      if (verdict === "drop") continue;
+      // Still reporting after its lifetime ran out: start the clock again.
+      if (verdict === "rearm") this.enteredAt.set(tabId, { state, at: now });
+      out.push({
+        tabId,
+        state,
+        label: report.prompt ?? undefined,
+        lastUpdate: report.lastUpdate,
+      });
     }
     // Forget tabs that are gone, so the memo can't grow without bound.
     for (const tabId of this.enteredAt.keys()) {
@@ -286,8 +321,9 @@ class PetStore {
     if (!this.enabled) return null;
     const reports = this.reporting();
     const state = aggregateState(reports.map((r) => r.state));
-    // Focus target: the agent actually driving the shown state.
-    const driver = reports.find((r) => r.state === state);
+    // Focus target: of the agents in the shown state, the one that spoke last —
+    // in practice the one being driven right now (`pickDriver`).
+    const driver = pickDriver(reports, state);
     return { state, tabId: driver?.tabId, label: driver?.label };
   }
 

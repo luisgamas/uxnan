@@ -279,10 +279,17 @@ leaving it alone.
   click is its own switch, off by default). The pet is
   **interactive**: while resting it watches the cursor (the v2 sheet's rows 9-10
   are 16 clockwise look poses, 0° = up, front = deadzone), a click pokes it (jump
-  reaction), and dragging holds the looking-down carry pose. On top of the state's base
+  reaction), and dragging **carries it running** — the travelling run of rows 1-2 in
+  the direction of travel (looping its own row), settling back into the looking-down
+  carry pose when the hand stops. On top of the state's base
   animation it plays occasional one-shots (look around while resting, wave while
-  waiting on you, turn around while running) so the whole sheet is used and the
-  pet doesn't read as a spinner — `pets/personality.ts`, pure and tested. The on-disk
+  waiting on you, take a breather while working) so the whole sheet is used and the
+  pet doesn't read as a spinner. A one-shot is always a **different** row than the
+  state's own: ending one restarts the base animation, which replays the state's row
+  for free (that is what re-shows a settled state), so the state's own row would
+  stack the two and the pet performs twice per cycle. Cadence tracks how long a
+  state lasts — needs-you 6-13 s, resting 14-34 s, the long-lived ones 25-50 s —
+  `pets/personality.ts`, pure and tested. The on-disk
   format is **Codex-compatible** (`pet.json`/`avatar.json` + one spritesheet, 8 × 9
   frames of 192 × 208 by default, `fallback` chains), so community packs load
   unmodified; import from `~/.codex/pets` or any folder is a **validating copy**
@@ -298,10 +305,16 @@ leaving it alone.
   the files, not regenerated. A generated pack declares neither `frame` nor
   `animations`, so both are recovered from the image — grid from its dimensions,
   animations from the conventional row order with its declared per-row frame counts (the
-  reference map: `running` is the in-place row 7, not the travelling run on row 1;
-  each state animation is its row three times followed by the idle frames, looping from idle; frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 2.4, one ambient pace for every gesture). States **expire** rather
+  reference map: `running` is the in-place row 7, not the travelling run on rows 1-2,
+  which is what a *carried* pet plays;
+  each state animation is its row three times followed by the idle frames, looping from idle
+  (a travelling run is the exception on both counts: it repeats its own row for as long
+  as the carry lasts, evenly and at the quicker CARRY_PACE — a run is a loop, not a gesture); frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 1.3 = 182-195 ms a frame, one ambient pace for every gesture, capped so no frame is held long enough to read as a pause between stills). States **expire** rather
   than mirror — busy 3 min, anything waiting on the user 30 min, from when the
-  agent entered the state.
+  agent entered the state — **unless the agent is still reporting** (a hook within
+  90 s), which starts the clock over rather than resting the pet on top of live work
+  with no terminal to point at. Among agents sharing the shown state, the pet is
+  about the **freshest report** (`pickDriver`), not map order.
 
 ## Pets — follow-ups ☐
 
@@ -330,8 +343,16 @@ leaving it alone.
 - [ ] **React to non-agent events** — the pet currently only reflects agent state.
       It could also react to CI/PR outcomes already tracked by the GitHub layer
       (checks failed → `failed`, PR approved → `review`). **Where:**
-      `state/pets.svelte.ts` `instances`, folding `state/github.svelte.ts` into the
+      `state/pets.svelte.ts` `instance`, folding `state/github.svelte.ts` into the
       same priority collapse.
+- [ ] **End the desktop pet's carry on a real signal, not a stall** — the overlay
+      window's drag belongs to the OS, which swallows every pointer event, so
+      "carried" is armed by window movement and released after `CARRY_HOLD_MS`
+      (900 ms) of stillness. It behaves correctly (a paused hand keeps carrying,
+      releasing settles a beat later), but it is a heuristic: Windows knows
+      exactly when the drag ends (`WM_EXITSIZEMOVE`), and Tauri does not surface
+      it. **Where:** `PetWindow.svelte`'s `onMoved` effect, plus a window event
+      the Rust side would have to raise from a message hook.
 
 
 ## GitHub integration — follow-ups ☐
