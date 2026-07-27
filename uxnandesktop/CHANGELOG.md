@@ -112,6 +112,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   fires from it — were effectively dead.
 ### Fixed
 
+- **AI commit / PR body: the prompt now reaches each CLI the way that CLI wants
+  it.** Both generators built their arguments with a hard-coded
+  `PromptSource::Argv`, so the prompt — which carries a diff — always rode in the
+  command line. That is the one channel bounded by the OS (Windows caps a command
+  line at ~32 KiB *total*), and it ignored the per-agent `prompt_delivery()` map
+  the codebase already had. They now go through `agentrun::run_headless`, the same
+  one-shot runner the orchestration engine and automations use, so **Claude, Codex
+  and OpenCode receive the prompt on stdin and Grok through a prompt file** — all
+  uncapped — while Antigravity keeps the argv path that is its only option, now
+  with the shared cap applied.
+  This also makes **Codex** deliberate instead of lucky: `codex exec` reads stdin
+  *even when the prompt is a positional argument*, and the old path only avoided
+  hanging because it happened to close stdin. Verified against all five real CLIs
+  through the new channel. `aicommit::run_generate` is gone — its spawn logic was
+  a slightly weaker copy of the runner's — leaving one one-shot runner in the app.
+
 - **Pets: the pet watches the cursor again during a live state.** The glance
   toward the pointer (and so the little follow after you put the pet down) was
   gated on the agent state being `idle`. That was the same thing as "the pet is
