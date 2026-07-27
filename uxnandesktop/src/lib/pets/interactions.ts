@@ -14,8 +14,10 @@ export const REACTION_ANIMATION = "jumping";
 
 /** How long the click reaction holds before the pet resumes, in ms. Sized to
  *  one deliberate pass of the jump row at the ambient pace (`STATE_PACE`):
- *  4 x 336 ms + a 672 ms landing ≈ 2 s — one clear jump, then back to work. */
-export const REACTION_MS = 2_000;
+ *  4 x 280 ms + a 560 ms landing ≈ 1.7 s — one clear jump, then back to work.
+ *  It tracks the pace: leaving it at the old 2 s would tack a still frame onto
+ *  the end of the hop. */
+export const REACTION_MS = 1_700;
 
 /** Animation looped while dragging, for packs without the v2 look-down pose. */
 export const DRAG_ANIMATION = "jumping";

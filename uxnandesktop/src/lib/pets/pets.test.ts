@@ -183,12 +183,15 @@ describe("defaultAnimations", () => {
   it("closes each state's row on a longer frame, at the ambient pace", () => {
     // The reference's raw 120–150 ms a frame is a terminal-glance pace; beside
     // an idle that breathes every 6.6 s it reads as a twitch. Rows play at the
-    // reference timings times STATE_PACE — the pace decoration was approved at.
+    // reference timings times STATE_PACE — one ambient pace for every gesture.
     const running = ANIMS.running.frames;
-    expect(running[0].ms).toBe(Math.round(120 * STATE_PACE)); // 288
+    expect(running[0].ms).toBe(Math.round(120 * STATE_PACE)); // 240
     expect(running[5].ms).toBe(Math.round(220 * STATE_PACE)); // row 7's held close
     expect(ANIMS.waiting.frames[0].ms).toBe(Math.round(150 * STATE_PACE));
     expect(STATE_PACE).toBeGreaterThan(1); // anything at or below 1 defeats it
+    // Bounded on the other side as well: past ~a quarter second a held frame
+    // stops reading as a pose and starts reading as a pause between stills.
+    expect(ANIMS.waiting.frames[0].ms).toBeLessThanOrEqual(300);
   });
 
   it("skips rows the grid does not have", () => {

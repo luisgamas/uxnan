@@ -23,10 +23,11 @@ export interface FlavourPlan {
   delayMs: number;
 }
 
-// Flavours used to be stretched 2.4x here so decoration wouldn't twitch beside
-// the slow idle. That pace turned out to be right for *everything*, so it now
+// Flavours used to be stretched here so decoration wouldn't twitch beside the
+// slow idle. That stretch turned out to be right for *everything*, so it now
 // lives in the animation set itself (`STATE_PACE` in `manifest.ts`) and a
-// flavour plays exactly as the same row would when a state fires it.
+// flavour plays exactly as the same row would when a state fires it — tune the
+// pace there and every gesture follows.
 
 interface FlavourSpec {
   /** Candidates, chosen uniformly. A pack missing one falls back (see

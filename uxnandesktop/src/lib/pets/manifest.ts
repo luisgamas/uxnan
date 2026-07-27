@@ -324,14 +324,21 @@ export const DEFAULT_ANIMATION_NAMES = [BASE_ANIMATION, ...Object.keys(DEFAULT_A
  * The reference's 120–150 ms a frame is tuned for a glance at a terminal.
  * Beside this pet's idle — which deliberately breathes once every 6.6 s — a raw
  * row reads as a twitch: the wave is over before the eye lands on it, which is
- * exactly what "every preview except resting moves too fast" looks like. 2.4 is
- * not a new taste decision: it is the pace the idle decoration already played
- * at (and was approved at), promoted to *the* pace — a wave now looks the same
- * whether the pet waves because the agent needs you, because it was clicked, or
- * just to pass the time. Only the derived conventional set is stretched; a pack
- * that declares its own `fps` knows better and keeps it.
+ * exactly what "every preview except resting moves too fast" looks like. So the
+ * derived rows are stretched, and every gesture uses the *same* stretch: a wave
+ * looks alike whether the pet waves because the agent needs you, because it was
+ * clicked, or just to pass the time.
+ *
+ * The stretch is bounded on the other side too. Past roughly a quarter of a
+ * second, a held frame stops reading as a pose and starts reading as a pause,
+ * and the gesture turns stepped — the pet looks mechanical rather than alive.
+ * 2.0 is the compromise: 240–300 ms a frame (down from the 288–360 ms of the
+ * original 2.4), still unhurried next to the idle, but with the poses flowing
+ * into each other instead of clicking between stills. Only the derived
+ * conventional set is stretched; a pack that declares its own `fps` knows
+ * better and keeps it.
  */
-export const STATE_PACE = 2.4;
+export const STATE_PACE = 2.0;
 
 /** How many times a state animation plays before the pet settles into idle. */
 export const STATE_REPEATS = 3;

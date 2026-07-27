@@ -17,6 +17,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   from a pointer poke (focus is released on pointer-up, which does not affect the
   click that follows), a proper design-system ring for Tab navigation.
 
+### Changed
+
+- **Pets: the gestures move a little quicker.** `STATE_PACE` goes from 2.4 to
+  **2.0**, so the conventional state rows play the reference's raw timings at
+  240–300 ms a frame instead of 288–360 ms. The stretch exists because the raw
+  120–150 ms reads as a twitch beside an idle that breathes every 6.6 s, but past
+  roughly a quarter of a second a held frame stops reading as a pose and starts
+  reading as a **pause** — the pet ends up clicking between stills rather than
+  moving. Since the pace lives in the animation set, every gesture follows it at
+  once (state, click reaction and idle flavour), and the click reaction shortens
+  with it (`REACTION_MS` 2 s → 1.7 s, still exactly one pass of the jump row, no
+  still frame tacked on the end). The idle breathing is untouched, and a pack that
+  declares its own `fps` still keeps it.
+
 ## [0.0.23] - 2026-07-26
 
 ### Added — Automations: unattended, recurring multi-agent tasks that run with the app closed

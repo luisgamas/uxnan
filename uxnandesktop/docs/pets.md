@@ -63,10 +63,13 @@ animation the pet occasionally plays a short one-shot and returns:
 **One pace for every gesture.** The reference's raw row timings (120–150 ms a
 frame) are tuned for a glance at a terminal; beside an idle that breathes every
 6.6 s they read as a twitch — the wave is over before the eye lands on it. So
-the derived rows all play at those times × 2.4 (`STATE_PACE` in `manifest.ts`,
-the pace the idle decoration was originally approved at): a wave looks the same
-whether it decorates the idle, answers a click, or fires because the agent
-needs you. A pack that declares its own `fps` knows better and keeps it.
+the derived rows all play at those times × 2.0 (`STATE_PACE` in `manifest.ts`):
+a wave looks the same whether it decorates the idle, answers a click, or fires
+because the agent needs you. The stretch is bounded on the other side too — past
+roughly a quarter of a second a held frame stops reading as a pose and starts
+reading as a pause, and the gesture turns stepped and mechanical, so 240–300 ms
+a frame is the ceiling. A pack that declares its own `fps` knows better and
+keeps it.
 
 The state always wins: a real change cancels whatever flavour is playing, so the
 texture never hides a signal. A pack missing one of these animations falls back
@@ -180,7 +183,7 @@ that ecosystem — including community galleries — load here unmodified.
   | 9–10 | **look poses** (v2 only, not an animation) | held | — |
 
   The table shows the reference's **raw** times; the derived rows play them
-  × 2.4 (`STATE_PACE` — see *One pace for every gesture* above).
+  × 2.0 (`STATE_PACE` — see *One pace for every gesture* above).
 
   Three details are easy to get wrong and all three are visible immediately:
 
