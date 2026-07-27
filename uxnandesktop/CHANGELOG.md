@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pets: no more selection box around the pet.** Clicking the pet (and then any
+  keystroke, Esc included, which is what re-evaluates the focus-visible flag) left
+  the webview's **default focus ring** drawn around the whole sprite cell — a
+  rectangle the size of the frame, floating over the desktop. The desktop pet
+  window now drops the ring outright (`outline-none`): it holds a single sprite and
+  nothing else to move focus between, so the ring never carried information. The
+  in-window layer follows the shared Button instead of the webview default — no ring
+  from a pointer poke (focus is released on pointer-up, which does not affect the
+  click that follows), a proper design-system ring for Tab navigation.
+
 ## [0.0.23] - 2026-07-26
 
 ### Added — Automations: unattended, recurring multi-agent tasks that run with the app closed

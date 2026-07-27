@@ -149,6 +149,11 @@
   function onPointerUp(e: PointerEvent) {
     if (!dragAt || !root) return;
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    // Poking a pet is not "focusing a control": leaving it focused means the
+    // next keystroke (Esc, anything) flips the focus-visible flag and rings the
+    // sprite. Blurring here keeps the ring exclusive to Tab navigation, and does
+    // not stop the `click` that follows this event.
+    (e.currentTarget as HTMLElement).blur();
     if (moved) {
       // Snap to whichever corner the pet was released nearest, keeping its exact
       // distance from that corner so it stays where the user put it.
@@ -316,7 +321,13 @@
         title={title(instance.state, instance.label)}
         aria-label={title(instance.state, instance.label)}
         class={cn(
-          "pointer-events-auto relative select-none rounded-lg transition-transform",
+          // `outline-none` + an explicit `focus-visible` ring, the same way the
+          // shared Button does it: the webview's default ring boxes the whole
+          // sprite cell (and reappears on any key pressed after a click), which
+          // reads as a selection rectangle around the pet. Keyboard focus still
+          // gets a ring — a pointer one is dropped on release, below.
+          "pointer-events-auto relative select-none rounded-lg transition-transform outline-none",
+          "focus-visible:ring-ring/50 focus-visible:ring-2",
           dragAt ? "cursor-grabbing" : "cursor-grab",
           settings.clickToFocus !== false && instance.tabId && "hover:scale-105",
         )}

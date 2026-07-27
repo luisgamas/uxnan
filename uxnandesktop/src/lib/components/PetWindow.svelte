@@ -213,11 +213,19 @@
 
 {#if config && pet}
   <div class="flex h-screen w-screen items-end justify-center overflow-hidden">
+    <!-- `outline-none`: this window is a single borderless sprite floating over
+         the desktop, and the webview's default focus ring draws a rectangle
+         around the whole sprite cell as soon as the button holds focus — on the
+         click itself, and again on any key pressed afterwards (the focus-visible
+         flag is re-evaluated then, which is why Esc "brought the box back").
+         There is nothing else here to move focus between, so the ring carries no
+         information and only breaks the illusion of a pet on the desktop. The
+         in-window layer keeps a real keyboard ring — see `PetLayer.svelte`. -->
     <button
       type="button"
       {title}
       aria-label={title}
-      class="select-none {dragging ? 'cursor-grabbing' : 'cursor-grab'}"
+      class="select-none outline-none {dragging ? 'cursor-grabbing' : 'cursor-grab'}"
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}

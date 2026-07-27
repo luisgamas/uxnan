@@ -87,7 +87,13 @@ The pet answers the mouse the way the desktop reference does:
   playing that state.
 - **Clicking pokes it.** A click plays the jump reaction (falling back through
   the pack's chain for packs without one), *and* still jumps to the agent's
-  terminal when *Click to jump to the agent* is on.
+  terminal when *Click to jump to the agent* is on. A poke leaves **no focus
+  rectangle** around the sprite: the webview's default ring boxes the whole
+  frame cell — on the click, and again on the next keystroke, since that
+  re-evaluates the focus-visible flag — which reads as a selection box drawn
+  around the pet. The desktop window drops the ring outright (there is nothing
+  else in it to move focus between); the in-window layer keeps a proper ring for
+  Tab navigation and blurs after a pointer poke.
 - **Dragging carries it.** While carried the pet holds the v2 looking-down pose —
   watching the ground go by — or wiggles through `jumping` for packs without the
   look rows.
