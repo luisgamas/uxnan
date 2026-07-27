@@ -343,8 +343,16 @@ leaving it alone.
 - [ ] **React to non-agent events** — the pet currently only reflects agent state.
       It could also react to CI/PR outcomes already tracked by the GitHub layer
       (checks failed → `failed`, PR approved → `review`). **Where:**
-      `state/pets.svelte.ts` `instances`, folding `state/github.svelte.ts` into the
+      `state/pets.svelte.ts` `instance`, folding `state/github.svelte.ts` into the
       same priority collapse.
+- [ ] **End the desktop pet's carry on a real signal, not a stall** — the overlay
+      window's drag belongs to the OS, which swallows every pointer event, so
+      "carried" is armed by window movement and released after `CARRY_HOLD_MS`
+      (900 ms) of stillness. It behaves correctly (a paused hand keeps carrying,
+      releasing settles a beat later), but it is a heuristic: Windows knows
+      exactly when the drag ends (`WM_EXITSIZEMOVE`), and Tauri does not surface
+      it. **Where:** `PetWindow.svelte`'s `onMoved` effect, plus a window event
+      the Rust side would have to raise from a message hook.
 
 
 ## GitHub integration — follow-ups ☐
