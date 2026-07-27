@@ -80,7 +80,6 @@
   const dragPose = $derived(pet ? lookFrameIndex(pet, LOOK_DOWN_DEG) : null);
   /** The travelling run to play while carried, when the pack has those rows. */
   const carryAnim = $derived(pet && dragging ? carryAnimation(pet, carryDir) : null);
-  const resting = $derived(live.state === "idle");
 
   /** Turn the pet the way the window is travelling, and let that decay so a
    *  carry that comes to rest settles back into the look-down pose. */
@@ -164,13 +163,18 @@
     };
   });
 
-  // Watch the cursor while resting. The cursor is outside this window nearly
-  // always, so `mousemove` never fires here — the global position is polled
-  // instead, at a gentle 150 ms, and only while there is something to show.
+  // Watch the cursor. The cursor is outside this window nearly always, so
+  // `mousemove` never fires here — the global position is polled instead, at a
+  // gentle 150 ms, and only while there is something to show.
+  //
+  // Not gated on the agent state: whether a glance is *shown* is the sprite's
+  // call, and it holds the pose only once the current animation has played
+  // through (`hasSettled`). Gating here on "resting" is what silently cost the
+  // pet its glance once a live state stopped expiring after three minutes.
   $effect(() => {
     const p = pet;
     const cfg = config;
-    if (!p || !cfg || !cfg.animate || !resting || dragging || !hasLookPoses(p)) {
+    if (!p || !cfg || !cfg.animate || dragging || !hasLookPoses(p)) {
       lookFrame = null;
       return;
     }

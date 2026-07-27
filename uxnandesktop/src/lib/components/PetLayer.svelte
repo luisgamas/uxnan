@@ -96,18 +96,19 @@
   let lastCarryX = 0;
   /** The travelling run to play while carried, when the pack has those rows. */
   const carryAnim = $derived(pet && dragging ? carryAnimation(pet, carryDir) : null);
-  /** Whether the pet is resting (memoized so the cursor-watch effect doesn't
-   *  re-subscribe on every clock tick that re-derives the instance). */
-  const resting = $derived(instance?.state === "idle");
-
-  // Watch the cursor while resting: the pet turns toward it (16 poses, v2
-  // packs), holds the glance for a while after the cursor stops, and goes back
-  // to breathing inside the deadzone. Listener-driven — no polling.
+  // Watch the cursor: the pet turns toward it (16 poses, v2 packs), holds the
+  // glance for a while after the cursor stops, and goes back to breathing inside
+  // the deadzone. Listener-driven — no polling.
+  //
+  // Not gated on the agent state: whether a glance is *shown* is the sprite's
+  // call, and it holds the pose only once the current animation has played
+  // through (`hasSettled`). Gating here on "resting" is what silently cost the
+  // pet its glance once a live state stopped expiring after three minutes.
   $effect(() => {
     const p = pet;
     // `overlayOn`: while the desktop window shows the pet, this layer renders
     // nothing — the pet window runs its own cursor watch.
-    if (!p || !resting || overlayOn || settings.animate === false || !hasLookPoses(p)) {
+    if (!p || overlayOn || settings.animate === false || !hasLookPoses(p)) {
       lookFrame = null;
       return;
     }

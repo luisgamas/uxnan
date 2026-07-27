@@ -74,6 +74,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   fires from it — were effectively dead.
 ### Fixed
 
+- **Pets: the pet watches the cursor again during a live state.** The glance
+  toward the pointer (and so the little follow after you put the pet down) was
+  gated on the agent state being `idle`. That was the same thing as "the pet is
+  visually at rest" only while every state expired within minutes; once a state
+  started living for as long as its agent keeps reporting, the pet quietly stopped
+  glancing at all during a long task. It now keys off the **animation** having
+  played through (`hasSettled`), which keeps the original rule intact — a gesture
+  is never interrupted mid-move — and restores the behaviour. Resuming after a
+  glance picks up at the loop point rather than replaying the whole gesture.
 - **Pets: no more selection box around the pet.** Clicking the pet (and then any
   keystroke, Esc included, which is what re-evaluates the focus-visible flag) left
   the webview's **default focus ring** drawn around the whole sprite cell — a

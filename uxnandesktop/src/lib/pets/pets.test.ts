@@ -13,7 +13,7 @@ import {
   CARRY_PACE,
   type PetAnimation,
 } from "./manifest";
-import { frameAt, msUntilNextFrame, durationMs } from "./animator";
+import { frameAt, hasSettled, msUntilNextFrame, durationMs } from "./animator";
 import {
   animationFor,
   aggregateState,
@@ -430,6 +430,37 @@ describe("frameAt", () => {
   it("is safe on empty and negative input", () => {
     expect(frameAt(anim([]), 500)).toBe(0);
     expect(frameAt(anim([[7, 100]]), -50)).toBe(7);
+  });
+});
+
+describe("hasSettled", () => {
+  // "Visually at rest" — the row is done and the pet is breathing again. It is
+  // what a look pose waits for, and it is deliberately *not* the agent state:
+  // a state lives as long as its agent reports, its animation settles seconds in.
+  const state = anim(
+    [
+      [8, 200],
+      [9, 200],
+      [0, 500],
+      [1, 500],
+    ],
+    2, // two frames of row, then the idle tail
+  );
+
+  it("is false while the row is still playing", () => {
+    expect(hasSettled(state, 0)).toBe(false);
+    expect(hasSettled(state, 399)).toBe(false);
+  });
+
+  it("is true from the loop point onward", () => {
+    expect(hasSettled(state, 400)).toBe(true);
+    expect(hasSettled(state, 10_000)).toBe(true);
+  });
+
+  it("is true from the first instant for an animation with nothing to play through", () => {
+    // `idle` loops from frame zero, so a resting pet can glance immediately —
+    // exactly as it did before any of this existed.
+    expect(hasSettled(anim([[0, 100]], 0), 0)).toBe(true);
   });
 });
 

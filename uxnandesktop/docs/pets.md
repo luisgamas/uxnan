@@ -121,12 +121,22 @@ off. Scheduling lives in `src/lib/pets/personality.ts` (pure, unit-tested).
 
 The pet answers the mouse the way the desktop reference does:
 
-- **It watches the cursor.** While resting, a v2 pack turns toward the pointer
+- **It watches the cursor.** While at rest, a v2 pack turns toward the pointer
   using the 16 look poses on rows 9–10 (see *The format*), snapping to the
   nearest 22.5° step. Inside the deadzone around the pet (or once the cursor has
   been still for a few seconds) it goes back to breathing. Listener-driven — no
-  polling — and only while the pet is genuinely resting: a pet mid-state keeps
-  playing that state.
+  polling.
+
+  **"At rest" means the animation has played through, not that the agent state is
+  idle.** A gesture is still never interrupted mid-move: the pose is only held
+  once the current row has run its three passes and the pet is breathing again
+  (`hasSettled`). The two used to amount to the same thing, back when every state
+  expired within minutes and the pet spent most of its life on the idle
+  animation — so gating the glance on the *state* was invisible until states
+  started living as long as their agent keeps reporting, at which point the pet
+  quietly stopped glancing at all during a long task. Resuming after a glance
+  picks up at the loop point, too: replaying the whole gesture every time the
+  cursor wandered off would be the pet performing twice for one event.
 - **Clicking pokes it.** A click plays the jump reaction (falling back through
   the pack's chain for packs without one), *and* still jumps to the agent's
   terminal when *Click to jump to the agent* is on. A poke leaves **no focus
