@@ -30,6 +30,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **Pets: the long-lived states are calmer.** The idle personality's one-shots are
+  spaced against how long a state actually lasts: working and ready every 25–50 s,
+  blocked every 20–40 s (from 8–16, 9–20 and 9–18). A one-shot costs *two* bursts
+  of movement, not one — ending it restarts the base animation, so the state
+  replays its whole row as well — and `done` sticks for up to half an hour, so at
+  the old cadence a finished turn left the pet celebrating for thirty minutes.
+  Resting (14–34 s) and needs-you (6–13 s) are unchanged: insisting is the latter's
+  entire job.
+- **Pets: a state whose agent is still reporting no longer vanishes.** State
+  lifetimes (3 min busy, 30 min for anything waiting on a human) dropped the agent
+  outright, so a long task left the pet resting on top of live work — and pointing
+  nowhere, since the click target decays with the state: poking the pet mid-task
+  went nowhere at all. A decayed state whose agent reported within the last 90 s
+  now starts its clock over; keeping a spinner off screen is the animation's job,
+  not the lifetime's. An agent that goes quiet (finished, crashed, terminal closed)
+  decays exactly as before.
+- **Pets: the pet points at the agent that spoke last.** When several agents share
+  the winning state, the one the pet is *about* — its tooltip's task, the terminal
+  a click reveals — used to be the first match in map order, i.e. roughly whichever
+  agent first reported since launch: neither the agent being driven nor the one
+  that just moved. It is now the most recent report. Deliberately not filtered to
+  the selected worktree, which would go quiet exactly when something elsewhere
+  needs you.
+- **Pets: the gestures move at the pace the carry run set.** `STATE_PACE` 2.4 →
+  **1.3**, putting a gesture at **182–195 ms a frame** instead of 288–360. The
+  stretch exists because the reference's raw 120–150 ms reads as a twitch beside an
+  idle that breathes every 6.6 s — but the bound on the other side turned out to be
+  the binding one: past roughly a fifth of a second a held frame stops reading as a
+  pose and starts reading as a **pause**, and the gesture goes stepped and
+  mechanical. 1.3 is the same register as the carry run's 150 ms, with a gesture
+  keeping the slightly longer beat it should. The click reaction tracks the pace
+  (`REACTION_MS` 2 s → 1.1 s, still exactly one pass of the jump row, with no still
+  frame tacked on the end), the idle breathing is untouched, and a pack that
+  declares its own `fps` still keeps it.
 - **Pets: an interrupted turn reads as Blocked, not Ready.** Esc / Ctrl-C reports
   `done` carrying an interrupt flag — true for every other consumer (sidebar,
   notifications, badges keep seeing `done`), but a pet answering a cancelled turn
@@ -38,18 +72,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   the five agents that report, only OpenCode can raise a genuine error state (its
   `session.error`), so the sheet's failed row — and the `sad` flavour that only
   fires from it — were effectively dead.
-- **Pets: the gestures move a little quicker.** `STATE_PACE` goes from 2.4 to
-  **2.0**, so the conventional state rows play the reference's raw timings at
-  240–300 ms a frame instead of 288–360 ms. The stretch exists because the raw
-  120–150 ms reads as a twitch beside an idle that breathes every 6.6 s, but past
-  roughly a quarter of a second a held frame stops reading as a pose and starts
-  reading as a **pause** — the pet ends up clicking between stills rather than
-  moving. Since the pace lives in the animation set, every gesture follows it at
-  once (state, click reaction and idle flavour), and the click reaction shortens
-  with it (`REACTION_MS` 2 s → 1.7 s, still exactly one pass of the jump row, no
-  still frame tacked on the end). The idle breathing is untouched, and a pack that
-  declares its own `fps` still keeps it.
-
 ### Fixed
 
 - **Pets: no more selection box around the pet.** Clicking the pet (and then any

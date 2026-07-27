@@ -334,27 +334,37 @@ export const DEFAULT_ANIMATION_NAMES = [BASE_ANIMATION, ...Object.keys(DEFAULT_A
  * looks alike whether the pet waves because the agent needs you, because it was
  * clicked, or just to pass the time.
  *
- * The stretch is bounded on the other side too. Past roughly a quarter of a
- * second, a held frame stops reading as a pose and starts reading as a pause,
- * and the gesture turns stepped — the pet looks mechanical rather than alive.
- * 2.0 is the compromise: 240–300 ms a frame (down from the 288–360 ms of the
- * original 2.4), still unhurried next to the idle, but with the poses flowing
- * into each other instead of clicking between stills. Only the derived
- * conventional set is stretched; a pack that declares its own `fps` knows
- * better and keeps it.
+ * The stretch is bounded on the other side, and that bound turned out to be the
+ * binding one. Past roughly a fifth of a second a held frame stops reading as a
+ * pose and starts reading as a pause, and the gesture goes stepped — the pet
+ * looks mechanical rather than alive. Both earlier values sat above it (2.4 →
+ * 288–360 ms a frame, 2.0 → 240–300 ms) and both were reported as robotic.
+ *
+ * 1.3 is where it landed: **182–195 ms a frame**, in the same register as the
+ * carry run's [`CARRY_PACE`], which reads right — a gesture keeps a slightly
+ * longer beat than a run, which is what it should have. Still unhurried beside
+ * a 6.6 s breath, but the poses flow into each other instead of clicking
+ * between stills. Only the derived conventional set is stretched; a pack that
+ * declares its own `fps` knows better and keeps it.
  */
-export const STATE_PACE = 2.0;
+export const STATE_PACE = 1.3;
 
 /**
  * Pace for the travelling runs (rows 1–2) — deliberately quicker than
  * [`STATE_PACE`].
  *
- * A locomotion cycle is not a gesture. `STATE_PACE` exists so a wave doesn't
- * twitch beside a 6.6 s idle, but a run stretched the same way is slow motion:
- * at 240 ms a frame a carried pet jogs through treacle, which reads as
- * mechanical — the one thing a run must never look like. 1.25 keeps a little of
- * the ambient weight (150 ms a frame, ≈1.2 s for an eight-frame cycle) without
- * the drag happening underwater.
+ * A locomotion cycle is not a gesture, and it earns its own constant for two
+ * reasons — the second of which holds however `STATE_PACE` is later tuned.
+ *
+ * The first is pace. `STATE_PACE` exists so a wave doesn't twitch beside a 6.6 s
+ * idle; a run stretched the same way is slow motion — at the 2.0 in force when
+ * this landed, 240 ms a frame, a carried pet jogging through treacle. 1.25 is
+ * 150 ms a frame, ≈1.2 s for an eight-frame cycle, validated on-device.
+ *
+ * The second is shape, and it survives the two paces converging: this row is
+ * played as a **loop**, so every frame here gets the same length. A gesture's
+ * longer closing frame is a natural full stop at the end of a wave; in a run it
+ * lands a limp in the middle, once per lap.
  */
 export const CARRY_PACE = 1.25;
 

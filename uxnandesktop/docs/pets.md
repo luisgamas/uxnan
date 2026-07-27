@@ -49,9 +49,17 @@ cannot renew it:
 | Working | 3 min | Busy is not actionable; it stops being news |
 | Needs you / Blocked / Ready | 30 min | Waiting on a human — it should persist |
 
-After that the pet drops back to resting while the work continues. A report older
-than 30 minutes is ignored outright either way, matching the staleness rule the
-sidebar uses to dim a report.
+A report older than 30 minutes is ignored outright either way, matching the
+staleness rule the sidebar uses to dim a report.
+
+**…but a lifetime is not an amnesia.** A state that runs out its lifetime while
+its agent is **still reporting** (a hook within the last 90 s) starts the clock
+over instead of vanishing. Keeping a spinner off the screen is the *animation's*
+job — a state plays its row three times and settles into idle — so expiring the
+state as well only meant the pet rested on top of live work, and pointed nowhere
+while it did: the click target decays with the state, so poking the pet in the
+middle of a long task went nowhere at all. An agent that goes quiet — finished,
+crashed, terminal closed — still decays exactly as before.
 
 **Clicking the pet jumps to the terminal of the agent it is showing** — so it
 doubles as a shortcut to whatever needs you. Turn that off with
@@ -67,20 +75,40 @@ animation the pet occasionally plays a short one-shot and returns:
 |---|---|---|
 | Resting | waves or hops | 14–34 s |
 | Needs you | **waves for attention** | 6–13 s |
-| Working | takes a brief breather | 8–16 s |
-| Ready | hops, pleased | 9–20 s |
-| Blocked | sags | 9–18 s |
+| Working | takes a brief breather | 25–50 s |
+| Ready | hops, pleased | 25–50 s |
+| Blocked | sags | 20–40 s |
+
+**A one-shot costs two bursts of movement, not one — and that is how a state
+re-shows itself.** Ending a one-shot hands the renderer a different animation
+again (the base), which restarts it from the top, so the state replays its whole
+row three times as well. That is the useful half: a state that had long since
+settled into its idle tail comes back into view every so often, with no "pulse"
+machinery anywhere. It is also why a one-shot is always a **different** row than
+the state's own — using the state's own row was tried and reverted, because it
+stacks the one-shot on top of the replay it already causes and the pet performs
+twice over every cycle: a `done` pet, a state that lasts half an hour, spent that
+half hour celebrating.
+
+Cadence therefore reads against how long a state lasts. Needs-you nags every few
+seconds because that is its entire job. Resting stirs every half-minute. The
+long-lived states — busy for as long as the agent keeps reporting, ready and
+blocked for up to 30 minutes — are the calmest of all, since at a livelier
+cadence they read as a pet that never settles.
 
 **One pace for every gesture.** The reference's raw row timings (120–150 ms a
 frame) are tuned for a glance at a terminal; beside an idle that breathes every
 6.6 s they read as a twitch — the wave is over before the eye lands on it. So
-the derived rows all play at those times × 2.0 (`STATE_PACE` in `manifest.ts`):
+the derived rows all play at those times × 1.3 (`STATE_PACE` in `manifest.ts`):
 a wave looks the same whether it decorates the idle, answers a click, or fires
-because the agent needs you. The stretch is bounded on the other side too — past
-roughly a quarter of a second a held frame stops reading as a pose and starts
-reading as a pause, and the gesture turns stepped and mechanical, so 240–300 ms
-a frame is the ceiling. A pack that declares its own `fps` knows better and
-keeps it.
+because the agent needs you. The stretch is bounded on the other side, and that
+bound is the binding one: past roughly a fifth of a second a held frame stops
+reading as a pose and starts reading as a pause, and the gesture goes stepped and
+mechanical. Both earlier values (2.4 → 288–360 ms a frame, 2.0 → 240–300 ms) were
+reported as robotic; 1.3 puts a gesture at **182–195 ms**, the same register as
+the carry run, which is where it reads right — a gesture keeps a slightly longer
+beat than a run, as it should. A pack that declares its own `fps` knows better
+and keeps it.
 
 The state always wins: a real change cancels whatever flavour is playing, so the
 texture never hides a signal. A pack missing one of these animations falls back
@@ -138,6 +166,15 @@ let go, which is what letting go looks like anyway).
 
 There is exactly one pet. When several agents report at once it shows the most
 urgent state: **needs you → blocked → ready → working**.
+
+**And it is about one of them.** The tooltip names that agent's task and a click
+reveals its terminal, so when several agents share the winning state one has to be
+chosen: it is **the one that reported most recently**. Picking the first match
+instead — the order reports happened to land in a map, roughly the order each
+agent first reported since launch — meant the pet pointed at an arbitrary
+candidate: neither the agent you are driving nor the one that just moved. It is
+deliberately *not* filtered to the selected worktree: the pet would then go quiet
+exactly when something elsewhere needs you, which is when it is most useful.
 
 > One pet *per agent* was built and removed. Pets were never assigned to agents —
 > that mode simply showed a pet for every agent reporting within the staleness
@@ -212,7 +249,7 @@ that ecosystem — including community galleries — load here unmodified.
   | 9–10 | **look poses** (v2 only, not an animation) | held | — |
 
   The table shows the reference's **raw** times; the derived rows play them
-  × 2.0 (`STATE_PACE` — see *One pace for every gesture* above). Rows 1–2 are the
+  × 1.3 (`STATE_PACE` — see *One pace for every gesture* above). Rows 1–2 are the
   exception at both ends: they play × 1.25 (`CARRY_PACE`) with **every frame the
   same length**, closing frame included. A run is a loop, not a gesture — stretch
   it like one and the carry is slow motion, keep the longer closing frame and the

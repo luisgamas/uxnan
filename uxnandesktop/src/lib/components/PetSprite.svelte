@@ -60,7 +60,14 @@
     class: className = "",
   }: Props = $props();
 
-  /** A short one-shot currently interrupting the base loop, if any. */
+  /** A short one-shot currently interrupting the base loop, if any.
+   *
+   *  Always a *different* animation than the base — see `personality.ts`. Both
+   *  edges of a flavour hand the renderer a new animation, and the second one
+   *  (back to the base) restarts the state's row from the top: that replay is
+   *  how a state the pet had long since settled out of shows itself again, and
+   *  it is why a flavour that resolved to the base itself made the pet perform
+   *  twice over. */
   let flavourAnim = $state<string | null>(null);
 
   // Schedule flavour one-shots for as long as the base animation holds. The

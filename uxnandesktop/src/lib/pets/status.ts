@@ -70,6 +70,29 @@ export function hasDecayed(state: PetState, since: number, now: number): boolean
   return now - since >= lifetime;
 }
 
+/**
+ * What to do with a report once its state has used up its lifetime.
+ *
+ * `rearm` is the case worth naming. A lifetime exists so the pet doesn't mime
+ * `working` for a whole task like a spinner — but an agent that is *still
+ * reporting* is still doing the thing, and dropping it leaves the pet resting on
+ * top of live work and pointing nowhere (the click target goes with the state).
+ * So a decayed state whose agent spoke within `rearmWithinMs` starts its
+ * lifetime over; the *animation* is what keeps it from looking like a spinner,
+ * by playing the row a few times and settling. An agent that has gone quiet —
+ * finished, crashed, terminal closed — is simply dropped, as before.
+ */
+export function decayVerdict(
+  state: PetState,
+  since: number,
+  lastUpdate: number,
+  now: number,
+  rearmWithinMs: number,
+): "show" | "rearm" | "drop" {
+  if (!hasDecayed(state, since, now)) return "show";
+  return now - lastUpdate <= rearmWithinMs ? "rearm" : "drop";
+}
+
 /** The animation name for a state (what the renderer asks the pet for). */
 export function animationFor(state: PetState): string {
   return ANIMATION[state] ?? ANIMATION.idle;
@@ -91,6 +114,32 @@ export function animationFor(state: PetState): string {
  */
 export function petStateOf(report: { status: AgentStatus; interrupted?: boolean }): PetState {
   return report.status === "done" && report.interrupted === true ? "blocked" : report.status;
+}
+
+/**
+ * Which report the pet is *about*, among those sharing the shown state: the one
+ * that reported most recently.
+ *
+ * The pet shows one state, but that state can be true of several agents at once,
+ * and it attaches to exactly one of them — the tooltip names its task and a
+ * click reveals its terminal. Picking the first match instead (the order reports
+ * happened to land in a map, which is roughly the order each agent first
+ * reported since launch) made the pet point at an arbitrary one of the
+ * candidates: neither the agent you are driving nor the one that just moved.
+ * The freshest report is both meaningful and cheap — in practice it *is* the
+ * agent you are working with, without pinning the pet to the selected worktree
+ * (which would go quiet exactly when something elsewhere needs you).
+ */
+export function pickDriver<T extends { state: PetState; lastUpdate: number }>(
+  reports: readonly T[],
+  state: PetState,
+): T | undefined {
+  let best: T | undefined;
+  for (const report of reports) {
+    if (report.state !== state) continue;
+    if (!best || report.lastUpdate > best.lastUpdate) best = report;
+  }
+  return best;
 }
 
 /**

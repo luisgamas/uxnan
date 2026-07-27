@@ -283,8 +283,13 @@ leaving it alone.
   the direction of travel (looping its own row), settling back into the looking-down
   carry pose when the hand stops. On top of the state's base
   animation it plays occasional one-shots (look around while resting, wave while
-  waiting on you, turn around while running) so the whole sheet is used and the
-  pet doesn't read as a spinner — `pets/personality.ts`, pure and tested. The on-disk
+  waiting on you, take a breather while working) so the whole sheet is used and the
+  pet doesn't read as a spinner. A one-shot is always a **different** row than the
+  state's own: ending one restarts the base animation, which replays the state's row
+  for free (that is what re-shows a settled state), so the state's own row would
+  stack the two and the pet performs twice per cycle. Cadence tracks how long a
+  state lasts — needs-you 6-13 s, resting 14-34 s, the long-lived ones 25-50 s —
+  `pets/personality.ts`, pure and tested. The on-disk
   format is **Codex-compatible** (`pet.json`/`avatar.json` + one spritesheet, 8 × 9
   frames of 192 × 208 by default, `fallback` chains), so community packs load
   unmodified; import from `~/.codex/pets` or any folder is a **validating copy**
@@ -304,9 +309,12 @@ leaving it alone.
   which is what a *carried* pet plays;
   each state animation is its row three times followed by the idle frames, looping from idle
   (a travelling run is the exception on both counts: it repeats its own row for as long
-  as the carry lasts, evenly and at the quicker CARRY_PACE — a run is a loop, not a gesture); frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 2.0, one ambient pace for every gesture, capped so no frame is held long enough to read as a pause between stills). States **expire** rather
+  as the carry lasts, evenly and at the quicker CARRY_PACE — a run is a loop, not a gesture); frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 1.3 = 182-195 ms a frame, one ambient pace for every gesture, capped so no frame is held long enough to read as a pause between stills). States **expire** rather
   than mirror — busy 3 min, anything waiting on the user 30 min, from when the
-  agent entered the state.
+  agent entered the state — **unless the agent is still reporting** (a hook within
+  90 s), which starts the clock over rather than resting the pet on top of live work
+  with no terminal to point at. Among agents sharing the shown state, the pet is
+  about the **freshest report** (`pickDriver`), not map order.
 
 ## Pets — follow-ups ☐
 

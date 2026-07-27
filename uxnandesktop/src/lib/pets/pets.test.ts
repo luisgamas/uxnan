@@ -17,8 +17,10 @@ import { frameAt, msUntilNextFrame, durationMs } from "./animator";
 import {
   animationFor,
   aggregateState,
+  decayVerdict,
   hasDecayed,
   petStateOf,
+  pickDriver,
   STATE_LIFETIME_MS,
 } from "./status";
 import { planFlavour, hasFlavour } from "./personality";
@@ -498,6 +500,20 @@ describe("state decay", () => {
   it("never decays resting", () => {
     expect(hasDecayed("idle", 0, 10 * 24 * 60 * MIN)).toBe(false);
   });
+
+  it("lets a state come round again while the agent is still reporting", () => {
+    const REARM = 90_000;
+    // Three minutes in, `working` has used up its lifetime — but a hook that
+    // fired seconds ago means the task is genuinely still running. Dropping it
+    // would rest the pet on top of live work (and lose the click target).
+    expect(decayVerdict("working", 0, 3 * MIN - 5_000, 3 * MIN, REARM)).toBe("rearm");
+    // Silent long enough and it really is over: finished, crashed, closed.
+    expect(decayVerdict("working", 0, 0, 3 * MIN, REARM)).toBe("drop");
+    // Inside its lifetime nothing is decided at all.
+    expect(decayVerdict("working", 0, 0, 2 * MIN, REARM)).toBe("show");
+    // A finished turn stops reporting, so it expires on schedule as before.
+    expect(decayVerdict("done", 0, 0, 30 * MIN, REARM)).toBe("drop");
+  });
 });
 
 describe("planFlavour", () => {
@@ -540,6 +556,41 @@ describe("planFlavour", () => {
     expect(waiting.delayMs).toBeLessThan(idle.delayMs);
   });
 
+  it("never decorates a state with the state's own row", () => {
+    // Ending a flavour hands the renderer the base animation again, which
+    // restarts it — so the state replays its row anyway, for free. A flavour
+    // that *is* the base stacks the one-shot on top of that replay, and the pet
+    // performs twice over every cycle (a `done` pet celebrated for half an hour).
+    for (const base of ["idle", "waiting", "running", "review", "failed"] as const) {
+      for (const r of [0, 0.5, 0.99]) {
+        expect(planFlavour(base, seq(0.5, r))!.animation).not.toBe(base);
+      }
+    }
+  });
+
+  it("rests longest in the states that last longest", () => {
+    // Cadence is set against how long a state sticks around: needs-you nags,
+    // resting stirs, and the long-lived states (busy while the agent keeps
+    // reporting; ready and blocked for up to 30 min) are the calmest.
+    const delayOf = (base: string) => planFlavour(base, seq(0, 0))!.delayMs;
+    expect(delayOf("waiting")).toBeLessThan(delayOf("idle"));
+    expect(delayOf("idle")).toBeLessThan(delayOf("running"));
+    expect(delayOf("idle")).toBeLessThan(delayOf("review"));
+  });
+
+  it("holds a one-shot long enough for a couple of passes of its row", () => {
+    // A hold shorter than one pass would cut the gesture off mid-move.
+    const anims = defaultAnimations(8, 11);
+    const pass = (name: string) =>
+      anims[name].frames
+        .slice(0, anims[name].loopStart / STATE_REPEATS)
+        .reduce((t, f) => t + f.ms, 0);
+    for (const base of ["idle", "waiting", "running", "review", "failed"] as const) {
+      const plan = planFlavour(base, seq(0, 0))!;
+      expect(plan.holdMs).toBeGreaterThan(pass(plan.animation));
+    }
+  });
+
   it("has nothing to add for an animation it doesn't know", () => {
     expect(planFlavour("waving")).toBeNull();
     expect(hasFlavour("idle")).toBe(true);
@@ -575,6 +626,22 @@ describe("agent state → pet animation", () => {
     expect(aggregateState(["working", "done"])).toBe("done");
     expect(aggregateState(["working", "idle"])).toBe("working");
     expect(aggregateState(["done", "blocked", "waiting", "working"])).toBe("waiting");
+  });
+
+  it("attaches to the agent that spoke last, not to an arbitrary one", () => {
+    // The state can be true of several agents at once; the pet points at exactly
+    // one — its tooltip, and the terminal a click reveals. The freshest report is
+    // in practice the agent being driven right now.
+    const reports = [
+      { tabId: "a", state: "working" as const, lastUpdate: 1_000 },
+      { tabId: "b", state: "waiting" as const, lastUpdate: 5_000 },
+      { tabId: "c", state: "working" as const, lastUpdate: 9_000 },
+    ];
+    expect(pickDriver(reports, "working")?.tabId).toBe("c");
+    expect(pickDriver(reports, "waiting")?.tabId).toBe("b");
+    // Nothing in that state — the pet has nowhere to point, and says so.
+    expect(pickDriver(reports, "blocked")).toBeUndefined();
+    expect(pickDriver([], "idle")).toBeUndefined();
   });
 
   it("reads an interrupted turn as blocked, not as a pleased result", () => {
