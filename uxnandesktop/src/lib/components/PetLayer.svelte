@@ -37,7 +37,15 @@
     LOOK_DOWN_DEG,
     LOOK_LINGER_MS,
   } from "$lib/pets/look";
-  import { DRAG_ANIMATION, REACTION_ANIMATION, REACTION_MS } from "$lib/pets/interactions";
+  import {
+    CARRY_SETTLE_MS,
+    carryAnimation,
+    carryDirection,
+    DRAG_ANIMATION,
+    REACTION_ANIMATION,
+    REACTION_MS,
+    type CarryDirection,
+  } from "$lib/pets/interactions";
   import PetSprite from "./PetSprite.svelte";
   import type { PetCorner } from "$lib/types";
 
@@ -81,6 +89,13 @@
   /** The carried pose: looking straight down at the ground, when the pack has
    *  the v2 look rows. Packs without them wiggle through [`DRAG_ANIMATION`]. */
   const dragPose = $derived(pet ? lookFrameIndex(pet, LOOK_DOWN_DEG) : null);
+  /** Which way the pet is currently being carried, aged out once the hand stops
+   *  (so a paused drag settles back into the look-down pose). */
+  let carryDir = $state<CarryDirection>(null);
+  let carrySettle: ReturnType<typeof setTimeout> | undefined;
+  let lastCarryX = 0;
+  /** The travelling run to play while carried, when the pack has those rows. */
+  const carryAnim = $derived(pet && dragging ? carryAnimation(pet, carryDir) : null);
   /** Whether the pet is resting (memoized so the cursor-watch effect doesn't
    *  re-subscribe on every clock tick that re-derives the instance). */
   const resting = $derived(instance?.state === "idle");
@@ -131,14 +146,27 @@
     origin = { x: e.clientX, y: e.clientY };
     moved = false;
     dragAt = { x: rect.left, y: rect.top };
+    lastCarryX = e.clientX;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
+  }
+
+  /** Turn the pet the way it is being carried, and let that decay: the gap
+   *  between two pointer moves is not "the drag stopped", but a hand that has
+   *  actually come to rest should go back to looking down. */
+  function trackCarry(x: number) {
+    const next = carryDirection(x - lastCarryX, carryDir);
+    lastCarryX = x;
+    if (next !== carryDir) carryDir = next;
+    clearTimeout(carrySettle);
+    carrySettle = setTimeout(() => (carryDir = null), CARRY_SETTLE_MS);
   }
 
   function onPointerMove(e: PointerEvent) {
     if (!dragAt || !root) return;
     if (!moved && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) < DRAG_SLOP) return;
     moved = true;
+    trackCarry(e.clientX);
     const rect = root.getBoundingClientRect();
     // Clamp so the pet can never be dragged off-screen and stranded there.
     const x = Math.min(Math.max(0, e.clientX - grab.x), window.innerWidth - rect.width);
@@ -171,6 +199,8 @@
       });
     }
     dragAt = null;
+    clearTimeout(carrySettle);
+    carryDir = null;
   }
 
   function onClick(instanceTabId: string | undefined) {
@@ -186,8 +216,11 @@
     pets.focus(instanceTabId);
   }
 
-  // Clear a pending reaction timer when the layer unmounts.
-  $effect(() => () => clearTimeout(reactionTimer));
+  // Clear pending timers when the layer unmounts.
+  $effect(() => () => {
+    clearTimeout(reactionTimer);
+    clearTimeout(carrySettle);
+  });
 
   /** Human-readable state, reused for the tooltip and the accessible label. */
   function stateLabel(state: PetState): string {
@@ -343,8 +376,10 @@
           animation={animationFor(instance.state)}
           {size}
           animate={settings.animate !== false}
-          override={dragging && dragPose === null ? DRAG_ANIMATION : reaction}
-          holdFrame={dragging ? dragPose : null}
+          override={dragging
+            ? (carryAnim ?? (dragPose === null ? DRAG_ANIMATION : null))
+            : reaction}
+          holdFrame={dragging && !carryAnim ? dragPose : null}
           {lookFrame}
         />
       </button>

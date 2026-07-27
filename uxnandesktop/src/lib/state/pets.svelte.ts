@@ -21,7 +21,7 @@ import {
   type Pet,
   type PetFrameSpec,
 } from "$lib/pets/manifest";
-import { aggregateState, hasDecayed, type PetState } from "$lib/pets/status";
+import { aggregateState, hasDecayed, petStateOf, type PetState } from "$lib/pets/status";
 import { agentStatus } from "./agentStatus.svelte";
 import { terminals } from "./terminals.svelte";
 import { app } from "./app.svelte";
@@ -256,15 +256,18 @@ class PetStore {
 
     for (const [tabId, report] of Object.entries(agentStatus.byId)) {
       live.add(tabId);
+      // The pet's own reading of the report — an interrupted `done` is a turn
+      // that was cut short, not a result to be pleased about (`petStateOf`).
+      const state = petStateOf(report);
       const seen = this.enteredAt.get(tabId);
-      if (!seen || seen.state !== report.status) {
-        this.enteredAt.set(tabId, { state: report.status, at: report.lastUpdate });
+      if (!seen || seen.state !== state) {
+        this.enteredAt.set(tabId, { state, at: report.lastUpdate });
       }
       const since = this.enteredAt.get(tabId)?.at ?? report.lastUpdate;
 
       if (now - report.lastUpdate > STALE_MS) continue;
-      if (hasDecayed(report.status, since, now)) continue;
-      out.push({ tabId, state: report.status, label: report.prompt ?? undefined });
+      if (hasDecayed(state, since, now)) continue;
+      out.push({ tabId, state, label: report.prompt ?? undefined });
     }
     // Forget tabs that are gone, so the memo can't grow without bound.
     for (const tabId of this.enteredAt.keys()) {

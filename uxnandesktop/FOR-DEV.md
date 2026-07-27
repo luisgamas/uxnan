@@ -279,7 +279,9 @@ leaving it alone.
   click is its own switch, off by default). The pet is
   **interactive**: while resting it watches the cursor (the v2 sheet's rows 9-10
   are 16 clockwise look poses, 0° = up, front = deadzone), a click pokes it (jump
-  reaction), and dragging holds the looking-down carry pose. On top of the state's base
+  reaction), and dragging **carries it running** — the travelling run of rows 1-2 in
+  the direction of travel (looping its own row), settling back into the looking-down
+  carry pose when the hand stops. On top of the state's base
   animation it plays occasional one-shots (look around while resting, wave while
   waiting on you, turn around while running) so the whole sheet is used and the
   pet doesn't read as a spinner — `pets/personality.ts`, pure and tested. The on-disk
@@ -298,8 +300,11 @@ leaving it alone.
   the files, not regenerated. A generated pack declares neither `frame` nor
   `animations`, so both are recovered from the image — grid from its dimensions,
   animations from the conventional row order with its declared per-row frame counts (the
-  reference map: `running` is the in-place row 7, not the travelling run on row 1;
-  each state animation is its row three times followed by the idle frames, looping from idle; frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 2.0, one ambient pace for every gesture, capped so no frame is held long enough to read as a pause between stills). States **expire** rather
+  reference map: `running` is the in-place row 7, not the travelling run on rows 1-2,
+  which is what a *carried* pet plays;
+  each state animation is its row three times followed by the idle frames, looping from idle
+  (a travelling run is the exception on both counts: it repeats its own row for as long
+  as the carry lasts, evenly and at the quicker CARRY_PACE — a run is a loop, not a gesture); frames carry individual durations — idle breathing once every 6.6 s, state rows at the reference times x STATE_PACE 2.0, one ambient pace for every gesture, capped so no frame is held long enough to read as a pause between stills). States **expire** rather
   than mirror — busy 3 min, anything waiting on the user 30 min, from when the
   agent entered the state.
 

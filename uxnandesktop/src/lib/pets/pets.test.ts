@@ -10,6 +10,7 @@ import {
   DEFAULT_FRAME,
   DEFAULT_FRAME_MS,
   STATE_PACE,
+  CARRY_PACE,
   type PetAnimation,
 } from "./manifest";
 import { frameAt, msUntilNextFrame, durationMs } from "./animator";
@@ -17,9 +18,11 @@ import {
   animationFor,
   aggregateState,
   hasDecayed,
+  petStateOf,
   STATE_LIFETIME_MS,
 } from "./status";
 import { planFlavour, hasFlavour } from "./personality";
+import { carryAnimation, carryDirection, CARRY_TURN_PX } from "./interactions";
 import {
   hasLookPoses,
   lookAngle,
@@ -572,5 +575,66 @@ describe("agent state → pet animation", () => {
     expect(aggregateState(["working", "done"])).toBe("done");
     expect(aggregateState(["working", "idle"])).toBe("working");
     expect(aggregateState(["done", "blocked", "waiting", "working"])).toBe("waiting");
+  });
+
+  it("reads an interrupted turn as blocked, not as a pleased result", () => {
+    // Esc / Ctrl-C reports `done` + `interrupted` (the turn did end, as far as
+    // every other consumer is concerned). Answering that with the "ready"
+    // gesture says the opposite of what happened.
+    expect(petStateOf({ status: "done", interrupted: true })).toBe("blocked");
+    expect(petStateOf({ status: "done", interrupted: false })).toBe("done");
+    expect(petStateOf({ status: "done" })).toBe("done");
+    // The flag only means anything on a finished turn.
+    expect(petStateOf({ status: "working", interrupted: true })).toBe("working");
+    expect(petStateOf({ status: "waiting", interrupted: true })).toBe("waiting");
+  });
+});
+
+describe("carrying a pet", () => {
+  /** A v2 pack with the conventional set, i.e. with the travelling runs. */
+  const carried = parsePet({ spriteVersionNumber: 2 }, "uxni");
+  carried.animations = defaultAnimations(8, 11);
+  /** A pack that has no travelling rows at all. */
+  const bare = parsePet({ animations: { idle: { frames: [0, 1] } } }, "bare");
+
+  it("faces the way it is being taken, and ignores a shaky hand", () => {
+    expect(carryDirection(CARRY_TURN_PX, null)).toBe("right");
+    expect(carryDirection(-CARRY_TURN_PX, "right")).toBe("left");
+    // Below the threshold the direction is kept, not dropped: it is the caller's
+    // settle timer that ends a carry, so jitter can't flip the pet back and forth.
+    expect(carryDirection(1, "left")).toBe("left");
+    expect(carryDirection(-1, null)).toBe(null);
+    expect(carryDirection(0, "right")).toBe("right");
+  });
+
+  it("uses the travelling run rows, which nothing else plays", () => {
+    expect(carryAnimation(carried, "right")).toBe("running-right");
+    expect(carryAnimation(carried, "left")).toBe("running-left");
+    expect(carryAnimation(carried, null)).toBe(null);
+  });
+
+  it("has no travelling run to offer for a pack without those rows", () => {
+    // Deliberately null rather than falling through to `idle`: the caller then
+    // keeps the look-down pose, instead of standing still mid-drag.
+    expect(carryAnimation(bare, "right")).toBe(null);
+  });
+
+  it("loops the run for as long as the carry lasts", () => {
+    const run = defaultAnimations(8, 11)["running-right"];
+    // Not the row-three-times-then-idle shape of a state: its own row, on repeat.
+    expect(run.loopStart).toBe(0);
+    expect(idx(run)).toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
+  });
+
+  it("runs at its own pace, evenly — a run is not a gesture", () => {
+    const run = defaultAnimations(8, 11)["running-right"];
+    const times = run.frames.map((f) => f.ms);
+    // Every frame the same: a gesture's longer closing frame would land a limp
+    // in the middle of the run, once per lap.
+    expect(new Set(times).size).toBe(1);
+    expect(times[0]).toBe(Math.round(120 * CARRY_PACE));
+    // And quicker than a gesture, or the carry looks like slow motion.
+    expect(CARRY_PACE).toBeLessThan(STATE_PACE);
+    expect(times[0]).toBeLessThan(defaultAnimations(8, 11).running.frames[0].ms);
   });
 });

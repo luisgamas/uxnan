@@ -76,6 +76,24 @@ export function animationFor(state: PetState): string {
 }
 
 /**
+ * The state a pet should show for one hook report.
+ *
+ * Almost always the reported state verbatim — with one correction. A turn the
+ * user cut short (Esc / Ctrl-C, or the interrupt inference) is reported as
+ * `done` **carrying an interrupt flag**, because for every other consumer the
+ * turn did end. A pet answering that with the pleased "ready" gesture says the
+ * opposite of what happened, so here — and only here — an interrupted `done`
+ * reads as `blocked`.
+ *
+ * It is also what makes `blocked` reachable at all in practice: of the five
+ * agents that report, only OpenCode can raise a genuine error state (its
+ * `session.error` → `Error`), which left the sheet's failed row all but unused.
+ */
+export function petStateOf(report: { status: AgentStatus; interrupted?: boolean }): PetState {
+  return report.status === "done" && report.interrupted === true ? "blocked" : report.status;
+}
+
+/**
  * Collapse many agent states into the single one a global pet should show.
  * An empty list — nothing running — rests at `idle`.
  */

@@ -295,11 +295,16 @@ interface DefaultAnimationSpec {
   count: number;
   frameMs: number;
   finalFrameMs: number;
+  /** A run that *travels* (rows 1–2). It is not a state the pet settles out of
+   *  but a loop that lasts exactly as long as the pet is being carried, so it
+   *  repeats its own row instead of running three times and dropping to idle —
+   *  a pet that stands still halfway through a drag looks broken. */
+  travels?: boolean;
 }
 
 const DEFAULT_ANIMATION_SPECS: Record<string, DefaultAnimationSpec> = {
-  "running-right": { row: 1, count: 8, frameMs: 120, finalFrameMs: 220 },
-  "running-left": { row: 2, count: 8, frameMs: 120, finalFrameMs: 220 },
+  "running-right": { row: 1, count: 8, frameMs: 120, finalFrameMs: 220, travels: true },
+  "running-left": { row: 2, count: 8, frameMs: 120, finalFrameMs: 220, travels: true },
   waving: { row: 3, count: 4, frameMs: 140, finalFrameMs: 280 },
   jumping: { row: 4, count: 5, frameMs: 140, finalFrameMs: 280 },
   failed: { row: 5, count: 8, frameMs: 140, finalFrameMs: 240 },
@@ -307,8 +312,8 @@ const DEFAULT_ANIMATION_SPECS: Record<string, DefaultAnimationSpec> = {
   running: { row: 7, count: 6, frameMs: 120, finalFrameMs: 220 },
   review: { row: 8, count: 6, frameMs: 150, finalFrameMs: 280 },
   // Aliases the format also recognises, sharing a row with the above.
-  move_right: { row: 1, count: 8, frameMs: 120, finalFrameMs: 220 },
-  move_left: { row: 2, count: 8, frameMs: 120, finalFrameMs: 220 },
+  move_right: { row: 1, count: 8, frameMs: 120, finalFrameMs: 220, travels: true },
+  move_left: { row: 2, count: 8, frameMs: 120, finalFrameMs: 220, travels: true },
   wave: { row: 3, count: 4, frameMs: 140, finalFrameMs: 280 },
   bounce: { row: 4, count: 5, frameMs: 140, finalFrameMs: 280 },
   sad: { row: 5, count: 8, frameMs: 140, finalFrameMs: 240 },
@@ -340,6 +345,19 @@ export const DEFAULT_ANIMATION_NAMES = [BASE_ANIMATION, ...Object.keys(DEFAULT_A
  */
 export const STATE_PACE = 2.0;
 
+/**
+ * Pace for the travelling runs (rows 1–2) — deliberately quicker than
+ * [`STATE_PACE`].
+ *
+ * A locomotion cycle is not a gesture. `STATE_PACE` exists so a wave doesn't
+ * twitch beside a 6.6 s idle, but a run stretched the same way is slow motion:
+ * at 240 ms a frame a carried pet jogs through treacle, which reads as
+ * mechanical — the one thing a run must never look like. 1.25 keeps a little of
+ * the ambient weight (150 ms a frame, ≈1.2 s for an eight-frame cycle) without
+ * the drag happening underwater.
+ */
+export const CARRY_PACE = 1.25;
+
 /** How many times a state animation plays before the pet settles into idle. */
 export const STATE_REPEATS = 3;
 
@@ -350,6 +368,11 @@ export const STATE_REPEATS = 3;
  * the idle frames**, looping from where idle begins — so the pet reacts to a
  * state a few times and then calms down, rather than performing it for as long as
  * the state lasts. A row that would not fit in the grid is skipped.
+ *
+ * The travelling runs (rows 1–2, `spec.travels`) are the one exception: they are
+ * played for exactly as long as the pet is being carried, so they loop their own
+ * row. Settling into idle mid-drag would leave the pet hanging motionless from
+ * the cursor.
  */
 export function defaultAnimations(columns: number, rows: number): Record<string, PetAnimation> {
   const out: Record<string, PetAnimation> = {};
@@ -363,6 +386,22 @@ export function defaultAnimations(columns: number, rows: number): Record<string,
 
   for (const [name, spec] of Object.entries(DEFAULT_ANIMATION_SPECS)) {
     if (spec.row >= rows || spec.count > cols) continue;
+    if (spec.travels) {
+      // A carry loop, not a gesture, so it is built differently on both counts:
+      // every frame the same length — a gesture's longer closing frame would put
+      // a limp in the middle of a run, once per lap — and at the quicker
+      // [`CARRY_PACE`].
+      const ms = Math.round(spec.frameMs * CARRY_PACE);
+      out[name] = {
+        frames: Array.from({ length: spec.count }, (_, i) => ({
+          index: spec.row * cols + i,
+          ms,
+        })),
+        loopStart: 0,
+        fallback: BASE_ANIMATION,
+      };
+      continue;
+    }
     const primary: PetFrame[] = Array.from({ length: spec.count }, (_, i) => ({
       index: spec.row * cols + i,
       ms: Math.round((i === spec.count - 1 ? spec.finalFrameMs : spec.frameMs) * STATE_PACE),

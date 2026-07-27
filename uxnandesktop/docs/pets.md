@@ -25,7 +25,18 @@ The ADE already knows precise, per-agent state from the
 | `waiting` | Needs you | `waiting` |
 | `done` | Ready | `review` |
 | `blocked` | Blocked | `failed` |
+| `done` **+ interrupted** | Blocked | `failed` |
 | *(nothing reporting)* | Resting | `idle` |
+
+**An interrupted turn is not a result.** Esc / Ctrl-C reports `done` carrying an
+interrupt flag — the turn did end, which is what every other consumer (sidebar,
+notifications, badges) needs to know. The pet is the one place where that reads
+differently: answering a cancelled turn with the pleased "ready" gesture says the
+opposite of what happened, so an interrupted `done` shows as **Blocked**
+(`petStateOf` in `src/lib/pets/status.ts`). It is also what makes Blocked
+reachable at all — of the five agents that report, only OpenCode can raise a
+genuine error state (its `session.error`), so the sheet's failed row would
+otherwise be all but unused.
 
 **States expire, they are not mirrored.** A pet that mirrors `working` literally
 runs without pause for as long as a task takes, which reads as a spinner and
@@ -97,13 +108,31 @@ The pet answers the mouse the way the desktop reference does:
   around the pet. The desktop window drops the ring outright (there is nothing
   else in it to move focus between); the in-window layer keeps a proper ring for
   Tab navigation and blurs after a pointer poke.
-- **Dragging carries it.** While carried the pet holds the v2 looking-down pose —
-  watching the ground go by — or wiggles through `jumping` for packs without the
-  look rows.
+- **Dragging carries it, and it runs.** Carried across the desktop, the pet plays
+  the **travelling run** that matches the direction of travel (`running-right` /
+  `running-left`, sheet rows 1–2 — the one thing those rows are for, and the only
+  place they are used). Stop moving and it settles back into the v2 looking-down
+  pose, watching the ground go by; a pack with neither travelling runs nor look
+  rows wiggles through `jumping` as before. Unlike a state animation, a
+  travelling run **loops its own row** rather than settling into idle after three
+  passes — a pet standing still halfway through a drag looks broken — and it runs
+  at its own quicker, perfectly even pace (`CARRY_PACE`, see *The format*).
 
 All of it obeys *Animate* and the OS reduced-motion preference: with either off,
-the pet stays a still frame. Pure maths in `src/lib/pets/look.ts` and constants
-in `src/lib/pets/interactions.ts`, both unit-tested.
+the pet stays a still frame. Pure maths in `src/lib/pets/look.ts` and constants +
+carry helpers in `src/lib/pets/interactions.ts`, both unit-tested.
+
+The two presentations measure the drag differently and share the decision. The
+in-window layer reads pointer moves. The desktop window can't: the OS owns that
+drag and swallows every pointer event for its duration, so the window's own
+movement is the only signal — and it therefore **arms** the carry, rather than
+merely feeding one a pointer event started. That distinction is the whole
+behaviour: with movement as the only evidence, "it went still" is a *guess* that
+the pet was dropped, and if only a press can arm the carry again, a hand pausing
+mid-drag ends it permanently — the pet stops running and never resumes, however
+long you keep dragging. So any movement re-arms it, and the carry outlives a
+still moment by `CARRY_HOLD_MS` (parking the pet then settles it a beat after you
+let go, which is what letting go looks like anyway).
 
 ### One pet
 
@@ -183,14 +212,20 @@ that ecosystem — including community galleries — load here unmodified.
   | 9–10 | **look poses** (v2 only, not an animation) | held | — |
 
   The table shows the reference's **raw** times; the derived rows play them
-  × 2.0 (`STATE_PACE` — see *One pace for every gesture* above).
+  × 2.0 (`STATE_PACE` — see *One pace for every gesture* above). Rows 1–2 are the
+  exception at both ends: they play × 1.25 (`CARRY_PACE`) with **every frame the
+  same length**, closing frame included. A run is a loop, not a gesture — stretch
+  it like one and the carry is slow motion, keep the longer closing frame and the
+  run limps once per lap.
 
   Three details are easy to get wrong and all three are visible immediately:
 
-  - **`running` is row 7, not row 1.** Rows 1–2 are a run that *travels* — for a
-    pet that walks across a desktop. The busy state is row 7, animated in place.
-    Wiring the working state to row 1 makes the pet sprint for as long as a task
-    lasts.
+  - **`running` is row 7, not row 1.** Rows 1–2 are a run that *travels* — which
+    is what a pet being **carried** does, and the only thing they are used for
+    (see *Interactions*). The busy state is row 7, animated in place; wiring the
+    working state to row 1 makes the pet sprint for as long as a task lasts.
+    Being a carry loop rather than a reaction, rows 1–2 are also the exception to
+    the rule below: they repeat their own row instead of settling into idle.
   - **A state plays three times and then settles into idle.** Each state
     animation is its row repeated three times *followed by the idle frames*, and
     the loop returns to where idle begins. So the pet reacts, then calms down —

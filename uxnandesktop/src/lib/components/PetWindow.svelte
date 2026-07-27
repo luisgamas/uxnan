@@ -28,7 +28,16 @@
     LOOK_DOWN_DEG,
     LOOK_LINGER_MS,
   } from "$lib/pets/look";
-  import { DRAG_ANIMATION, REACTION_ANIMATION, REACTION_MS } from "$lib/pets/interactions";
+  import {
+    CARRY_HOLD_MS,
+    CARRY_SETTLE_MS,
+    carryAnimation,
+    carryDirection,
+    DRAG_ANIMATION,
+    REACTION_ANIMATION,
+    REACTION_MS,
+    type CarryDirection,
+  } from "$lib/pets/interactions";
   import PetSprite from "./PetSprite.svelte";
 
   /** Everything about the pet being shown, pushed by the main window whenever
@@ -59,10 +68,33 @@
   let reactionTimer: ReturnType<typeof setTimeout> | undefined;
   /** True while the OS-native window drag is carrying the pet. */
   let dragging = $state(false);
+  /** Which way the pet is being carried, read from the window's own movement
+   *  (the OS owns the drag, so there are no pointer events to measure). */
+  let carryDir = $state<CarryDirection>(null);
+  let carrySettle: ReturnType<typeof setTimeout> | undefined;
+  /** Last window x seen while carrying; `NaN` until the first move gives us a
+   *  baseline to compare against. */
+  let lastCarryX = Number.NaN;
 
   const pet = $derived(config?.pet ?? null);
   const dragPose = $derived(pet ? lookFrameIndex(pet, LOOK_DOWN_DEG) : null);
+  /** The travelling run to play while carried, when the pack has those rows. */
+  const carryAnim = $derived(pet && dragging ? carryAnimation(pet, carryDir) : null);
   const resting = $derived(live.state === "idle");
+
+  /** Turn the pet the way the window is travelling, and let that decay so a
+   *  carry that comes to rest settles back into the look-down pose. */
+  function trackCarry(x: number) {
+    if (Number.isNaN(lastCarryX)) {
+      lastCarryX = x;
+      return;
+    }
+    const next = carryDirection(x - lastCarryX, carryDir);
+    lastCarryX = x;
+    if (next !== carryDir) carryDir = next;
+    clearTimeout(carrySettle);
+    carrySettle = setTimeout(() => (carryDir = null), CARRY_SETTLE_MS);
+  }
 
   // Wire the event channel and announce readiness — the main window answers
   // with the current config and state, so a recreated window self-hydrates.
@@ -90,17 +122,35 @@
     };
   });
 
-  // Report the parked position after a drag so it persists (the main window
-  // owns settings). The OS drag emits a stream of move events; the drag is
-  // considered over once they stop for a moment.
+  // The window's own movement is the only thing this window knows about its
+  // drag: the OS owns it and swallows every pointer event for the duration. So
+  // that one stream answers all three questions — is it still being carried,
+  // which way, and where did it end up.
+  //
+  // Movement therefore *arms* the carry rather than only feeding it. Waiting for
+  // a pointer event to do that is what let a paused hand end the carry for good:
+  // nothing could contradict the "it went still, so it was dropped" guess, and
+  // the pet stopped running mid-drag and never started again.
   $effect(() => {
     const win = getCurrentWindow();
     let settle: ReturnType<typeof setTimeout> | undefined;
-    const unlisten = win.onMoved(() => {
+    let hold: ReturnType<typeof setTimeout> | undefined;
+    const unlisten = win.onMoved((e) => {
+      dragging = true;
+      trackCarry(e.payload.x);
+      // Still for long enough to mean "let go" — see `CARRY_HOLD_MS`.
+      clearTimeout(hold);
+      hold = setTimeout(() => {
+        dragging = false;
+        clearTimeout(carrySettle);
+        carryDir = null;
+        lastCarryX = Number.NaN;
+      }, CARRY_HOLD_MS);
+      // Persisting where it was parked is a separate, cheaper question: the spot
+      // is worth recording as soon as the window settles, carried or not.
       clearTimeout(settle);
       settle = setTimeout(() => {
         void (async () => {
-          dragging = false;
           const pos = await win.outerPosition();
           void emitTo("main", "pet:moved", { x: pos.x, y: pos.y });
         })();
@@ -108,6 +158,8 @@
     });
     return () => {
       clearTimeout(settle);
+      clearTimeout(hold);
+      clearTimeout(carrySettle);
       void unlisten.then((f) => f());
     };
   });
@@ -183,9 +235,11 @@
     if (!pressed || dragging) return;
     if (Math.hypot(e.screenX - origin.x, e.screenY - origin.y) < DRAG_SLOP) return;
     // Hand the drag to the OS. From here pointer events stop arriving; the
-    // move-settle listener above ends the drag state and persists the spot.
+    // move-settle listener above ends the drag state and persists the spot,
+    // and the window's own movement is what tells us which way it is going.
     pressed = false;
     dragging = true;
+    lastCarryX = Number.NaN;
     void getCurrentWindow().startDragging();
   }
 
@@ -237,8 +291,10 @@
         animation={animationFor(live.state)}
         size={config.size}
         animate={config.animate}
-        override={dragging && dragPose === null ? DRAG_ANIMATION : reaction}
-        holdFrame={dragging ? dragPose : null}
+        override={dragging
+          ? (carryAnim ?? (dragPose === null ? DRAG_ANIMATION : null))
+          : reaction}
+        holdFrame={dragging && !carryAnim ? dragPose : null}
         {lookFrame}
       />
     </button>

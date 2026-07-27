@@ -5,20 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- **Pets: no more selection box around the pet.** Clicking the pet (and then any
-  keystroke, Esc included, which is what re-evaluates the focus-visible flag) left
-  the webview's **default focus ring** drawn around the whole sprite cell — a
-  rectangle the size of the frame, floating over the desktop. The desktop pet
-  window now drops the ring outright (`outline-none`): it holds a single sprite and
-  nothing else to move focus between, so the ring never carried information. The
-  in-window layer follows the shared Button instead of the webview default — no ring
-  from a pointer poke (focus is released on pointer-up, which does not affect the
-  click that follows), a proper design-system ring for Tab navigation.
+- **Pets: a carried pet runs.** Dragging the pet now plays the **travelling run**
+  matching the direction of travel (`running-right` / `running-left`, sheet rows
+  1–2), settling back into the v2 looking-down pose when the hand stops. Those two
+  rows were declared by the conventional set but **no state, interaction or flavour
+  ever played them** — a carried v2 pack held a single static frame for the whole
+  drag. Unlike a state animation, a travelling run loops its own row instead of
+  settling into idle after three passes (a pet standing still mid-drag looks
+  broken), and it runs at its own quicker, perfectly even pace (`CARRY_PACE` 1.25
+  rather than `STATE_PACE` 2.0, with no long closing frame): a run is a loop, not
+  a gesture — stretched like one it is slow motion, and a gesture's closing hold
+  lands a limp in the middle of it, once per lap.
+  The two presentations measure the drag differently and share the decision: the
+  in-window layer reads pointer moves; the desktop window can't, since the OS owns
+  that drag and swallows every pointer event, so the window's own movement both
+  feeds **and arms** the carry. Arming matters: movement being the only evidence
+  makes "it went still" a guess that the pet was dropped, and if only a fresh
+  press could arm the carry again, pausing your hand mid-drag ended it for good —
+  the pet stopped running and never resumed, however long you kept dragging. Any
+  movement now re-arms it, and a carry outlives a still moment by
+  `CARRY_HOLD_MS`.
 
 ### Changed
 
+- **Pets: an interrupted turn reads as Blocked, not Ready.** Esc / Ctrl-C reports
+  `done` carrying an interrupt flag — true for every other consumer (sidebar,
+  notifications, badges keep seeing `done`), but a pet answering a cancelled turn
+  with the pleased "ready" gesture said the opposite of what happened. Only the pet
+  re-reads it (`petStateOf`). It is also what makes Blocked reachable at all: of
+  the five agents that report, only OpenCode can raise a genuine error state (its
+  `session.error`), so the sheet's failed row — and the `sad` flavour that only
+  fires from it — were effectively dead.
 - **Pets: the gestures move a little quicker.** `STATE_PACE` goes from 2.4 to
   **2.0**, so the conventional state rows play the reference's raw timings at
   240–300 ms a frame instead of 288–360 ms. The stretch exists because the raw
@@ -30,6 +49,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   with it (`REACTION_MS` 2 s → 1.7 s, still exactly one pass of the jump row, no
   still frame tacked on the end). The idle breathing is untouched, and a pack that
   declares its own `fps` still keeps it.
+
+### Fixed
+
+- **Pets: no more selection box around the pet.** Clicking the pet (and then any
+  keystroke, Esc included, which is what re-evaluates the focus-visible flag) left
+  the webview's **default focus ring** drawn around the whole sprite cell — a
+  rectangle the size of the frame, floating over the desktop. The desktop pet
+  window now drops the ring outright (`outline-none`): it holds a single sprite and
+  nothing else to move focus between, so the ring never carried information. The
+  in-window layer follows the shared Button instead of the webview default — no ring
+  from a pointer poke (focus is released on pointer-up, which does not affect the
+  click that follows), a proper design-system ring for Tab navigation.
 
 ## [0.0.23] - 2026-07-26
 
