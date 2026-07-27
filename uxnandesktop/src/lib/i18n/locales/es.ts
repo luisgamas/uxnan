@@ -553,6 +553,8 @@ export const es: Record<MessageKey, string> = {
   "providers.addProvider": "Agregar un proveedor",
   "providers.addPick": "Elegir un proveedor…",
   "providers.notDetected": "no detectado",
+  "providers.deprecatedDesc":
+    "Su fabricante descontinuó esta CLI, así que ya no se ofrece al agregar un proveedor; la tuya se sigue leyendo con normalidad.",
   "providers.empty": "Aún no hay proveedores. Agrega uno arriba para ver su uso.",
   "providers.showInStatusBar": "Mostrar en la barra de estado",
   "providers.noWindowsToPick": "Aún no hay ventanas de cuota — actualiza tras iniciar sesión.",
@@ -1031,6 +1033,7 @@ export const es: Record<MessageKey, string> = {
   "settings.addAllInstalled": "Agregar los instalados",
   "settings.agentAdded": "agregado",
   "settings.agentNotFound": "no encontrado",
+  "settings.agentDeprecated": "descontinuado — elige otro",
   "settings.detecting": "Verificando qué agentes están instalados…",
   "settings.yourAgents": "Tus agentes",
   "settings.addCustomAgent": "Agregar agente personalizado",

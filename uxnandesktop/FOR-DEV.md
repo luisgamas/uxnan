@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **automations**, **pets**). 362 Rust backend tests + 340 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **automations**, **pets**). 362 Rust backend tests + 362 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -135,12 +135,15 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   a `FOR-HUMAN.md` item.
 - **AI-provider usage statistics (Settings → Providers)** — native Rust reader
   (`src-tauri/src/usage.rs`, `usage_read`/`usage_detect`) for **Codex, Claude,
-  Copilot, Gemini, Grok**, reading each CLI's own stored token → the provider's official
+  Copilot, Grok**, reading each CLI's own stored token → the provider's official
   usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
   status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
-  bridge/mobile side is Phase 6 (see below).
+  bridge/mobile side is Phase 6 (see below). **Gemini CLI** is still read but
+  **hidden from the picker** (discontinued upstream — `deprecated` in
+  `src/lib/usageCatalog.ts`); **Antigravity** is researched but not wired (its
+  token lives in the OS keyring, not on disk — see *Providers* below).
 - **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
   slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
   Quick commands editor. Commands are persisted flat in `AppData.quickCommands`
@@ -619,6 +622,41 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 - [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
       the choice drives the one-shot launch but isn't recorded on the worktree).
 
+**Providers (usage statistics)**
+- [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
+      data.** Researched against a real install; nothing implemented. The data and
+      the API are within reach: `agy` talks to Google's Code Assist backend (its own
+      logs under `~/.gemini/antigravity-cli/log/` show
+      `daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` /
+      `:fetchAvailableModels` plus a `quota_manager.go` refresh loop), and the Gemini
+      reader in `usage.rs` already calls the sibling `…/v1internal:retrieveUserQuota`
+      and parses its `buckets[]` — that half is reusable as-is. Upstream documents
+      `/usage`, `/quota` and `/credits`, but they are **interactive-only** slash
+      commands (`agy --help` exposes no usage subcommand), so shelling out is not an
+      option. **The blocker is the credential:** unlike every wired provider, `agy`
+      keeps its OAuth token in the **OS keyring** (Windows Credential Manager, the
+      macOS Keychain item "Antigravity Safe Storage", Linux Secret Service) — the
+      log line `keyring.go: keyringAuth: loaded token, expiry=…` with neither
+      `~/.gemini/antigravity-cli/credentials.enc` nor `…/antigravity-oauth-token`
+      on disk. The plain-file token
+      (`{auth_method, token:{access_token, refresh_token, expiry}}`) is written
+      **only** when `agy` detects a container/headless environment, so a file-only
+      reader would report `authRequired` on virtually every desktop. **What unblocks
+      it:** a decision to read the OS keyring — a new `keyring` crate plus an
+      undocumented, `agy`-version-fragile entry name (macOS may prompt), stretching
+      the documented "only the token the CLI already left on disk" posture. **Do not**
+      fall back to `~/.gemini/oauth_creds.json` (the Gemini CLI's token): Antigravity
+      bills a **separate** quota pool + AI credits, so those numbers would be Gemini's
+      wearing Antigravity's name. Sites when picked up: `src-tauri/src/usage.rs`
+      (`UsageProvider`, `read_one`, `is_present`), `src/lib/usageCatalog.ts`,
+      `shared/src/models/usage.ts` (contract → bridge + mobile), `docs/providers.md`.
+- [ ] **Retire the Gemini CLI reader once nobody is on it.** Gemini CLI is
+      discontinued upstream, so it is hidden from the "Add a provider" picker
+      (`deprecated: true` in `src/lib/usageCatalog.ts`) while its reader stays wired
+      for anyone who already activated it. When it is time to drop it for good, the
+      removal spans `usage.rs`, the `UsageProvider` union in `shared/`, the bridge
+      reader and the mobile side — a contract change, not a catalog edit.
+
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
@@ -687,7 +725,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 362 Rust + 340 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 362 Rust + 362 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

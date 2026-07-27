@@ -503,6 +503,10 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
+// `gemini` permanece en la union a proposito: la Gemini CLI esta descontinuada
+// aguas arriba y el escritorio ya no la ofrece al agregar un proveedor, pero
+// sigue leyendose para quien ya la tenia activada. Retirarla de verdad seria un
+// cambio de contrato (shared + bridge + movil), no una edicion de catalogo.
 type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini' | 'grok';
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 

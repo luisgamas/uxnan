@@ -552,6 +552,8 @@ export const en = {
   "providers.addProvider": "Add a provider",
   "providers.addPick": "Choose a provider…",
   "providers.notDetected": "not detected",
+  "providers.deprecatedDesc":
+    "This CLI is discontinued by its maker, so it is no longer offered when adding a provider — yours keeps being read as usual.",
   "providers.empty": "No providers yet. Add one above to track its usage.",
   "providers.showInStatusBar": "Show in status bar",
   "providers.noWindowsToPick": "No quota windows yet — refresh once signed in.",
@@ -1030,6 +1032,7 @@ export const en = {
   "settings.addAllInstalled": "Add all installed",
   "settings.agentAdded": "added",
   "settings.agentNotFound": "not found",
+  "settings.agentDeprecated": "discontinued — pick another",
   "settings.detecting": "Checking which agents are installed…",
   "settings.yourAgents": "Your agents",
   "settings.addCustomAgent": "Add custom agent",

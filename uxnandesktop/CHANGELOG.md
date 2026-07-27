@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed
+
+- **AI commit messages & AI PR bodies: Gemini CLI is no longer offered.** Both
+  curated pickers (Settings → AI commit, Settings → GitHub → AI PR body) now offer
+  exactly the five agents wired end to end for this surface — **Claude Code, Codex,
+  OpenCode, Grok and Antigravity** — after verifying each against its real CLI:
+  every one resolves to a spawnable binary, answers a model list (Claude from the
+  curated table, Codex via `codex app-server` `model/list`, the rest from their own
+  `models` command) and returns its answer on **stdout** in print mode. Codex is
+  worth naming: its banner, hook lines and token tally all go to stderr, which the
+  runner discards, so the message it yields is clean.
+  Gemini stays *resolvable* rather than deleted, and the picker still lists it
+  **while it is the saved selection**, flagged as discontinued. Hiding it outright
+  would have been a lie: the backend runs whatever agent id the settings hold and
+  never consults this list, so the field would have read "none" while Gemini kept
+  writing commit messages. `aiCommitAgentChoices()` encodes exactly that rule.
+
+- **Providers: Gemini CLI is no longer offered.** Google discontinued the
+  standalone Gemini CLI in favour of Antigravity (`agy`), so it is filtered out of
+  the **Add a provider** picker (a `deprecated` flag on its catalog entry plus a
+  new `activatableUsageProviders()`, which the picker and the presence probe both
+  read — a hidden provider is no longer probed on disk either). It is hidden, not
+  removed: an already-activated Gemini keeps its tab, keeps refreshing and keeps
+  its real name and logo, now with a one-line note saying why it is no longer
+  offered. Re-enabling it is dropping the flag; genuinely retiring it is a
+  contract change across `shared/`, the bridge and mobile, so that stays a
+  `FOR-DEV.md` item.
+- **Providers: Antigravity investigated, deferred on the credential.** `agy`'s
+  quota sits behind the same Google Code Assist API the Gemini reader already
+  calls (`v1internal:retrieveUserQuota`), so the parsing half is reusable — but
+  `agy` keeps its OAuth token in the **OS keyring** rather than on disk, and its
+  `/usage` and `/quota` commands are interactive-only. Reading it would need a new
+  keyring dependency and a change to the documented "only the token the CLI
+  already left on disk" posture, so nothing shipped; the full findings, the
+  rejected shortcut (reusing the Gemini CLI's token, which meters a different
+  quota pool) and what would unblock it are recorded in `FOR-DEV.md` and
+  `docs/providers.md`.
+
 ### Added
 
 - **Pets: a carried pet runs.** Dragging the pet now plays the **travelling run**
