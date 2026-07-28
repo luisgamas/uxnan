@@ -6,6 +6,134 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — send follow-up messages while the agent is working
+
+The agent CLIs all let you keep typing while they work; the app made you wait
+for the turn to end. Now a message sent during a live turn joins the thread's
+queue and runs on its own when the current turn finishes. The queue lives on the
+**bridge**, not here — it has to drain with the app backgrounded or closed,
+which is the whole point of sending something and pocketing the phone.
+
+- **A floating "Queue message" action above the composer**, shown only when it
+  means something: a draft is waiting AND the thread is busy. The composer's own
+  button is untouched — Send/Stop as always — and Enter still inserts a newline,
+  so drafting a multi-line message (physical keyboard included) works exactly as
+  before.
+- **One control at a time above the composer.** The floating slot holds
+  jump-to-latest when the user has scrolled up, the queue action when a draft is
+  waiting on a busy thread, and otherwise nothing — with the turn-context shelf
+  visible underneath, as before. The three never stack.
+- **Queued messages are pinned to the bottom of the timeline** — below the reply
+  still streaming — for as long as they wait, because they are not part of the
+  conversation yet. Each is a soft elevated bubble rather than the user's
+  primary tone, shows **one truncated line**, carries an **X** in its top-right
+  corner and says where it sits in line ("Next in the queue", "2 in the queue").
+  When the queue reaches one it settles into its full normal bubble, filed at
+  the point where it was actually **delivered** — not where it was typed, which
+  would place it above the previous turn's reply.
+- **Two corner actions, deliberately different.** **Edit** (pencil) withdraws
+  the message from the queue and puts its text back in the composer, leaving
+  **no trace** in the timeline — it is about to be re-typed, so a husk beside it
+  would be noise. **Cancel** (X) only drops it from the queue and leaves the
+  normal bubble marked with a warning-toned "Message cancelled" note; nothing
+  goes back to the composer. Either way the queue moves on to the next message.
+- **Saved drafts live behind a Drafts action**, left of the queue button, rather
+  than a card permanently over the conversation. Editing a queued message while
+  the composer already holds text saves that text as a draft — so several
+  queued messages can be edited without ever losing one. The action opens the
+  **`/` palette's own card** (`ComposerPaletteCard`, now shared by `@`, `/` and
+  drafts instead of three near-identical surfaces): two lines per draft, tap to
+  restore, per-row delete, and a clear-all in the header behind a destructive
+  confirmation. A draft only returns to an **empty** composer, so recovering
+  text can never destroy the text being written.
+- **One slot, three states, one rhythm.** The strip above the pill holds
+  jump-to-latest (whenever the reader has scrolled up — it always wins), else
+  the queue actions (Drafts whenever drafts exist, "Queue message" whenever
+  sending would queue; either appears without the other), else nothing, with the
+  turn-context shelf visible underneath. Saved drafts stay reachable even when
+  there is nothing to queue. Composer chrome that floats above the pill from
+  outside it now reproduces the pill's own 16 dp gutter (`_Centered`) and sits
+  8 dp above it, so the palettes, banners and shortcuts stop each having their
+  own width and spacing.
+- **No snackbar on a successful hand-off.** It covered the composer at exactly
+  the moment the user was meant to look at it — hiding the text the action had
+  just put there, which read as the action having failed. The text appearing in
+  the pill is the confirmation. Only the *refusal* still speaks, because nothing
+  visible happens and the reason is not on screen.
+- **A paused-queue banner** above the composer after you stop a turn (or one
+  fails) with messages still waiting: the bridge holds them rather than firing
+  them at a stopped agent, and the banner offers *Send them* / *Discard*.
+- **Survives everything the live view already survives**: a resync re-reads
+  `queuedTurnIds` / `queuePaused` from `turn/list` and settles each waiting
+  bubble against the bridge's own view — still queued, ran, or cancelled — so a
+  message whose fate we missed while backgrounded never stays a ghost. A queue
+  changed from another device converges the same way.
+- **Gated on the bridge actually supporting it** (`bridge/status` →
+  `features.messageQueue`, via `bridgeSupportsQueueProvider`). Against an older
+  bridge the action is hidden and sending stays blocked during a turn, exactly
+  as before — offering it there would make that bridge start a second
+  *concurrent* turn, which kills the running one (verified live: the running
+  OpenCode turn stopped and the follow-up's reply was cut short).
+
+### Fixed — the app no longer promises an immediate send it can't keep
+
+Reopening the app with a turn still running left a window where the thread
+merely *looked* idle: the live in-flight state lives in the bridge process and
+only reaches the phone with the first `turn/list`. Sending in that window was
+always safe — the bridge queues regardless of what the client believes — but the
+button said "Send", so a message the bridge was about to queue was announced as
+going out now.
+
+A thread's in-flight state is now explicitly **unknown** until the bridge
+confirms it (`ThreadManager.isTurnStateKnown`, reset on every reconnect since a
+new connection can be a different bridge process), and the composer treats
+unknown as **possibly busy**. The two mistakes are not symmetric: hedging toward
+busy on an idle thread costs nothing (the action reads "Queue message", the tap
+runs immediately anyway), while hedging toward idle is the one that misleads.
+The bridge's *capability* is the one thing still never assumed — offering to
+queue where it cannot would start a concurrent turn.
+
+### Fixed — the composer keeps its text when chrome appears above it
+
+`ComposerBar` had no key while everything above it in the same `Column` is
+conditional (banners, the context shelf, the drafts palette, the attachment
+strip). It survives today only because Flutter also matches children from the
+end of the list and the composer is last — a property nothing was enforcing. It
+now carries a stable key, so it cannot silently remount with a fresh empty
+controller (and discard what is being typed) the day something is added below
+it.
+
+### Fixed — `bridge/status` is re-read on every (re)connect
+
+It was keyed only on the connected device, so pointing the app at a different
+bridge on the same PC (restarting it, swapping the build) kept answering with
+whatever the first handshake reported. Harmless for the transport indicator it
+originally fed; not harmless now that the same response decides which optional
+features the app offers. It watches the connection phase too, and short-circuits
+before that watch when nothing is connected so it never spins up the session
+coordinator just to answer "not connected".
+- **Two ordering fixes the queue exposed.** The live streaming message is
+  anchored to `max(orderIndex) + 1`, so storing a queued message pushed the
+  reply below it and re-sorted the view mid-turn; queued messages now render
+  from their own pinned band and `_nextOrderIndex` reads the persisted messages
+  instead of the rendered timeline (which carries synthetic indices). And the
+  delivery-state writes that `stream/turn/cancelled` and `stream/queue/updated`
+  both make are now serialized — running concurrently, the loser could overwrite
+  the winner and a cancelled message came back as merely "sent".
+- **Motion instead of jumps.** Timeline messages fade and lift into place
+  (`NeEnterTransition`, one-shot per widget then a pass-through, so scrolling a
+  long thread is unaffected); a queued bubble cross-fades its one-line preview
+  into the full message on delivery, its corner actions fade with it, and the
+  status line under it grows rather than snapping; the drafts palette opens and
+  closes with an `AnimatedSize`; and `NePillButton` animates its tone between
+  idle, selected and emphasized. All of it honors `disableAnimations`.
+- New `MessageDeliveryState.queued` / `.cancelled`, `ThreadQueueState`,
+  `threadQueueForProvider`, `BridgeStatus.supportsMessageQueue`,
+  `ComposerHandoff` (+ `RescuedDraft`), `ComposerPaletteCard`,
+  `RescuedDraftsCard`, `NeEnterTransition`, `IMessageRepository.deleteMessage`,
+  and `stream/queue/updated` + `stream/turn/cancelled` decoding. EN/ES strings.
+  33 new tests (739 total).
+
 ## [0.0.14-alpha.20260724+20260724] - 2026-07-24
 
 ### Changed — the Claude "latest" toggle now covers four aliases, not three

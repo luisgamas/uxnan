@@ -73,6 +73,26 @@ connected to live bridge data, validated on-device against a real bridge.
   to the bridge's exact text↔work-log interleave. `beforeText`-flagged blocks
   (parallel/subagent activity) slot before the open text run, never splitting a
   sentence mid-word.
+- **Message queue** — a follow-up sent while the agent is working joins the
+  thread's queue (owned by the bridge, so it drains with the app closed) instead
+  of being blocked. A floating **"Queue message"** action appears above the
+  composer only when a draft is waiting on a busy thread; it shares one slot with
+  jump-to-latest and the turn-context shelf, so exactly one of the three shows at
+  a time, and the composer's own Send/Stop button and Enter-inserts-a-newline
+  behaviour are unchanged. A waiting message is **pinned to the bottom** of the
+  timeline (below the streaming reply) as a soft elevated bubble showing one
+  truncated line with **edit + cancel** in its corner; it settles into its full
+  normal bubble at the point it was *delivered* once the queue reaches it.
+  **Edit** withdraws it to the composer leaving no trace; **cancel** leaves the
+  bubble marked. Editing over a busy composer saves that text as a draft, behind
+  a **Drafts** pill beside the queue button that opens the shared
+  `ComposerPaletteCard` (two lines each, restore/delete/clear-all) and restores
+  **only into an empty composer**. A banner
+  offers *Send them* / *Discard* when the bridge holds the queue after a stop or
+  a failure. Gated on `bridge/status` → `features.messageQueue`, so an older
+  bridge keeps the pre-queue behaviour. Resync re-reads
+  `queuedTurnIds`/`queuePaused` and settles every waiting bubble against the
+  bridge's view, so a message whose fate we missed never stays a ghost.
 - **Message scroll rail** — a reusable, dependency-free right-edge minimap
   (`message_scroll_rail.dart`, one faint tick per user message) that is hidden
   while the timeline sits at the bottom and slides in from the right edge when

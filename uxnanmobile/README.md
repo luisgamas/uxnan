@@ -173,9 +173,10 @@ flutter test               # unit + widget tests
 **MVP wired — Android alpha-ready.** Every core module is implemented and
 connected to live bridge data, validated on-device against a real bridge:
 pairing + E2EE transport, live streaming conversations with structured agent
-turns, the model picker and run-option knobs, context-usage and sign-in
-indicators, interactive approvals, voice and image input, per-PC threads, a full
-Git screen, and Android push.
+turns, a message queue for follow-ups sent while the agent is working, the model
+picker and run-option knobs, context-usage and sign-in indicators, interactive
+approvals, voice and image input, per-PC threads, a full Git screen, and Android
+push.
 
 The detailed, always-current feature inventory and what's left (Bug A relink
 latency, OpenCode/pi interactive approvals — a bridge-side gap — the automated
