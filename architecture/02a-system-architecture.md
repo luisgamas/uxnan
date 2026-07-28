@@ -1955,6 +1955,39 @@ attribution, revocation and migration semantics exist.
 
 ---
 
+#### 5.8.12 Cola de mensajes por thread (`AgentManager`)
+
+El bridge conduce **un turno por thread**. No es una simplificacion: la mitad
+de los agentes corre one-shot por turno (`claude -p --resume`, gemini, pi,
+antigravity), asi que dos turnos concurrentes serian dos procesos CLI sobre la
+misma sesion nativa. Un `turn/send` que llega con un turno en vuelo se
+**encola** — el mismo comportamiento que las CLI cuando escribes mientras
+trabajan (contrato completo en `02b` §1.2).
+
+```javascript
+// src/agents/agent-manager.ts
+// #queueByThread:       threadId -> QueuedTurn[] (orden de ejecucion)
+// #queuePausedByThread: threadId -> 'turnAborted' | 'turnError'
+//
+// sendTurn()  : hay turno activo (o cola no vacia) -> #enqueueTurn, que persiste
+//               el turno con status `queued` (ThreadStore.queueTurn) y congela
+//               sus run options; si no, arranca normal. Ambos caminos terminan
+//               en #runTurn, asi que un turno encolado corre por la MISMA ruta
+//               (comando/attachments/adapter) que uno inmediato.
+// turn_completed -> #drainQueue: promueve el siguiente (`queued` -> `streaming`)
+//               y lo entrega al adapter.
+// turn_aborted / turn_error -> #pauseQueue: el usuario detuvo (o el agente se
+//               rompio) por algo; los follow-ups esperan un `queue/resume`.
+// turn/cancel de un turno encolado -> nunca toca un adapter: sale de la cola y
+//               queda `cancelled` (conservado en el thread, no borrado).
+```
+
+La cola es **estado vivo**, como `#activeTurnByThread`: no se reconstruye tras
+un reinicio. Por eso el arranque llama a
+`ThreadStore.cancelOrphanedQueuedTurns()`, que marca `cancelled` cualquier turno
+que quedo `queued` en disco — el usuario ve exactamente que mensajes no
+salieron, en vez de quedar esperando una cola que ya no existe.
+
 ### 5.9 Transporte seguro y mensajeria E2EE
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
