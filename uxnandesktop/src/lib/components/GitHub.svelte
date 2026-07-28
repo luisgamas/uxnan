@@ -51,6 +51,7 @@
   } from "$lib/types";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTimeLong } from "$lib/relTime";
+  import { samePath } from "$lib/pathid";
   import {
     prStateIcon,
     prStateIconClass,
@@ -107,9 +108,12 @@
   // The inline view acts on the repo opened from the project card (stored in the
   // github store as the selected section repo).
   const path = () => github.sectionRepoPath;
-  /** The registered repo id for the selected repo (for worktree-creating actions). */
+  /** The registered repo id for the selected repo (for worktree-creating actions).
+   *  Matched with `samePath`, since the selection can arrive spelled the way git
+   *  prints a worktree path rather than the way the project was registered. */
   const selectedRepoId = () =>
-    app.repos.find((r) => r.path === github.sectionRepoPath)?.id ?? null;
+    app.repos.find((r) => github.sectionRepoPath && samePath(r.path, github.sectionRepoPath))?.id ??
+    null;
 
   function close() {
     app.closeGithub();

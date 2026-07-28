@@ -59,6 +59,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   movement now re-arms it, and a carry outlives a still moment by
   `CARRY_HOLD_MS`.
 
+### Fixed
+
+- **Opening GitHub for one project no longer shows another project's data.** With
+  more than one project registered, opening the GitHub view from a second
+  project's ⋯ / worktree menu kept listing the first project's PRs, issues and
+  runs — while the header named the project you actually picked, which is what
+  made it look like a rendering glitch instead of a wrong repo.
+  Two causes, both fixed at the source. (1) `ensureSectionRepo()` compared the
+  selected path to the registered projects with `===`, but git prints a worktree
+  as `C:/repo` where the project was registered as `C:\repo`; the repo the user
+  explicitly picked therefore read as unregistered and was silently replaced by
+  the fallback — *the active worktree's* repo, i.e. whatever project you had open.
+  It now compares with `samePath`, and `selectSectionRepo` canonicalizes the path
+  to the registered spelling so every later comparison (including the section's
+  `selectedRepoId`, which gates the worktree actions) sees one spelling per
+  folder. (2) `loadSectionContext()` had no sequence guard, so among the several
+  context loads an open fires, an earlier repo's slower answer could land last and
+  leave the header naming a project the lists weren't showing — it now carries the
+  same `#seq` token `loadContext` already used.
+
 ### Changed
 
 - **GitHub's status-bar readout moved into the backend popover.** The passive

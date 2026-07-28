@@ -22,6 +22,7 @@ import type {
 } from "$lib/types";
 import { app, type GithubSection } from "./app.svelte";
 import { projects } from "./projects.svelte";
+import { samePath, canonicalFor } from "$lib/pathid";
 
 /** An item the inline section should open on arrival, requested from outside it. */
 export type PendingDetail =
@@ -76,6 +77,8 @@ class GithubStore {
   /** Monotonic token so a slow response for an old worktree can't clobber a newer
    *  one (worktree switches are frequent). */
   #ctxSeq = 0;
+  /** Same guard for the *section's* context (the two are independent loads). */
+  #sectionSeq = 0;
   #timer: ReturnType<typeof setInterval> | null = null;
 
   /** Whether GitHub features are usable (gh present + signed in). A `$derived`, so
@@ -93,9 +96,13 @@ class GithubStore {
   }
 
   /** Make sure the section has a repo selected. Defaults (once) to the active
-   *  worktree's repo, then the active project, then the first git repo. */
+   *  worktree's repo, then the active project, then the first git repo.
+   *  Path spellings are compared with `samePath`: git hands back `C:/repo` where
+   *  the project was registered as `C:\repo`, and a `===` here read the repo the
+   *  user explicitly picked as "unknown" and silently replaced it with the active
+   *  worktree's — i.e. opened a different project's GitHub than the one asked for. */
   ensureSectionRepo(): void {
-    if (this.sectionRepoPath && app.repos.some((r) => r.path === this.sectionRepoPath)) {
+    if (this.sectionRepoPath && app.repos.some((r) => samePath(r.path, this.sectionRepoPath!))) {
       return;
     }
     const fallback =
@@ -106,9 +113,12 @@ class GithubStore {
     if (fallback) void this.selectSectionRepo(fallback);
   }
 
-  /** Select a repo for the section: load its context + the current pane's list. */
+  /** Select a repo for the section: load its context + the current pane's list.
+   *  The path is canonicalized to the registered project's own spelling, so every
+   *  later comparison (`ensureSectionRepo`, the section's `selectedRepoId`) sees
+   *  one spelling for one folder. */
   async selectSectionRepo(path: string): Promise<void> {
-    this.sectionRepoPath = path;
+    this.sectionRepoPath = canonicalFor(path, app.repos.map((r) => r.path)) ?? path;
     await this.loadSectionContext();
   }
 
@@ -141,8 +151,13 @@ class GithubStore {
     return d;
   }
 
-  /** Load the selected repo's context (owner/repo + branch + PR). */
+  /** Load the selected repo's context (owner/repo + branch + PR). Guarded by a
+   *  sequence token like `loadContext`: opening the section fires several loads
+   *  in a row (the caller's, then the view's own effect), and without this an
+   *  earlier repo's slower answer could land last and leave the header naming a
+   *  project the lists aren't showing. */
   async loadSectionContext(): Promise<void> {
+    const seq = ++this.#sectionSeq;
     const path = this.sectionRepoPath;
     if (!path || !this.available) {
       this.sectionContext = null;
@@ -150,11 +165,13 @@ class GithubStore {
     }
     this.sectionContextLoading = true;
     try {
-      this.sectionContext = await githubRepoContext(path);
+      const ctx = await githubRepoContext(path);
+      if (seq !== this.#sectionSeq) return; // a newer selection superseded us
+      this.sectionContext = ctx;
     } catch {
-      this.sectionContext = null;
+      if (seq === this.#sectionSeq) this.sectionContext = null;
     } finally {
-      this.sectionContextLoading = false;
+      if (seq === this.#sectionSeq) this.sectionContextLoading = false;
     }
   }
 
