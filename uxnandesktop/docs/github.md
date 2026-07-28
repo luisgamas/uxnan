@@ -185,9 +185,12 @@ left-panel Projects tree identically.
 ## Elsewhere in the UI
 
 - **Sidebar cards** show a PR icon on worktrees whose branch has a PR, colored by CI.
-- The **status-bar GitHub indicator** is passive — it shows the API rate-limit remaining
-  (and, if enabled, the unread-notifications count) in a tooltip, but no longer opens
-  anything (GitHub opens per project from each card's ⋯ menu).
+- The **status-bar GitHub readout** is passive and lives **inside the backend (server)
+  popover** at the bottom-right — open it and a GitHub block shows the unread-notifications
+  count (if enabled) and the API rate-limit remaining, plus a row that opens
+  **Settings → GitHub**. It has no button of its own; GitHub opens per project from each
+  card's ⋯ menu. Unread notifications also put a small dot on the backend icon, so the
+  passive signal survives without a click.
 - After a **push** on a GitHub branch with no PR yet, a **"Create PR"** toast appears
   (its action opens the per-project GitHub view on Pull Requests for the active repo).
 
@@ -199,9 +202,9 @@ The GitHub preferences and the **Account / Session** panel live in **Settings �
 | Setting | What it does |
 |---|---|
 | **Right-panel GitHub tab** | Show/hide the contextual right-panel tab (GitHub repos only). |
-| **Status-bar indicator** | Show/hide the passive status-bar GitHub indicator + rate-limit gauge. |
+| **Status-bar readout** | Show/hide the passive GitHub block (unread count + rate limit) inside the status bar's backend popover. |
 | **Refresh interval** | How often (seconds) the active worktree's PR/CI status refreshes while focused. `0` = manual only. |
-| **Notifications badge** | Poll your unread notifications count for the status bar (an extra request). |
+| **Notifications badge** | Poll your unread notifications count for the backend popover + its dot (an extra request). |
 | **Confirm PR actions** | Ask before creating or merging a PR (both the GitHub view and the right-panel tab). On by default. |
 
 ### AI PR authoring

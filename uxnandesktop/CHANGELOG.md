@@ -30,6 +30,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **GitHub's status-bar readout moved into the backend popover.** The passive
+  GitHub indicator no longer takes a slot of its own in the bottom bar: its
+  unread-notifications count and API rate limit are now a block inside the
+  **backend (server) popover**, followed by a row that opens **Settings → GitHub**.
+  Both answer the same question — how the app is talking to the outside — and the
+  indicator was already click-less, so a permanent icon bought nothing but width
+  in a bar that keeps gaining entries. What a popover *would* have swallowed is
+  the passive alert, so unread notifications now show as a **dot on the backend
+  icon** and spell themselves out in its tooltip. Opening the popover also
+  re-reads both values, which otherwise sat up to one poll interval (45 s by
+  default) stale. `GithubStatusButton.svelte` is gone; the **Status-bar readout**
+  and **Notifications badge** settings keep working and now describe where the
+  values actually appear.
+
 - **Pets: the long-lived states are calmer.** The idle personality's one-shots are
   spaced against how long a state actually lasts: working and ready every 25–50 s,
   blocked every 20–40 s (from 8–16, 9–20 and 9–18). A one-shot costs *two* bursts

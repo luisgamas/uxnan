@@ -994,6 +994,10 @@ export const es: Record<MessageKey, string> = {
     "Los hooks de agente no están del todo instalados, así que los estados precisos pueden no estar disponibles. Haz clic para revisarlos en Configuración → Hooks.",
   "status.backendDesc": "Backend local de Uxnan (terminales, git, agentes).",
   "status.backendRepos": "Proyectos",
+  "status.githubUnread": "Notificaciones sin leer",
+  "status.githubUnreadOne": "{n} notificación de GitHub sin leer",
+  "status.githubUnreadOther": "{n} notificaciones de GitHub sin leer",
+  "status.githubSettings": "Ajustes de GitHub",
 
   // Terminal tab state
   "terminal.exited": "finalizada",
@@ -1583,12 +1587,14 @@ export const es: Record<MessageKey, string> = {
   "github.settings.rightPanelTab": "Tab de GitHub en el panel derecho",
   "github.settings.rightPanelTabDesc":
     "Muestra un tab contextual de GitHub en el panel derecho (PR y CI por worktree). Solo aparece en repos de GitHub.",
-  "github.settings.statusBar": "Botón en la barra de estado",
-  "github.settings.statusBarDesc": "Muestra el estado de GitHub y el medidor de rate-limit en la barra de estado inferior.",
+  "github.settings.statusBar": "Información en la barra de estado",
+  "github.settings.statusBarDesc":
+    "Muestra las notificaciones sin leer y el rate-limit de la API de GitHub en el menú del backend de la barra de estado.",
   "github.settings.poll": "Intervalo de actualización",
   "github.settings.pollDesc": "Cada cuántos segundos se refresca el estado de PR y CI del worktree activo. 0 = solo manual.",
   "github.settings.notifications": "Badge de notificaciones",
-  "github.settings.notificationsDesc": "Consulta el número de notificaciones de GitHub sin leer para la barra de estado (una petición extra).",
+  "github.settings.notificationsDesc":
+    "Consulta el número de notificaciones de GitHub sin leer para el menú del backend de la barra de estado (una petición extra).",
   "github.settings.confirmPr": "Confirmar acciones de PR",
   "github.settings.confirmPrDesc": "Pedir confirmación antes de crear o mergear un pull request (tanto en la sección como en el tab del panel derecho).",
   "github.confirm.createTitle": "¿Crear este pull request?",

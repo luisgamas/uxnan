@@ -158,8 +158,10 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   `app.githubInline`), with the **Account / Session** panel and every GitHub
   preference in **Settings → GitHub** (`GithubSettings.svelte`); a configurable
   **right-panel GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR
-  badges**, a passive **status-bar indicator** (rate-limit gauge + optional
-  notifications; it no longer navigates), and a post-push **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
+  badges**, a passive **readout inside the status bar's backend popover**
+  (rate limit + optional unread count, an unread dot on the backend icon and a row
+  into Settings → GitHub; it has no status-bar button of its own and never
+  navigates on its own), and a post-push **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
   **close/reopen** + the unified **diff** (**split per file**, collapsed by default +
   expand/collapse-all); a **GitHub-style timeline** (a chronological vertical rail
   interleaving description + comments + review verdicts + commits + events —
