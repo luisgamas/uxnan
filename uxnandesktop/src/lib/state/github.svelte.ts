@@ -20,7 +20,7 @@ import type {
   IssueListItem,
   RunListItem,
 } from "$lib/types";
-import { app } from "./app.svelte";
+import { app, type GithubSection } from "./app.svelte";
 import { projects } from "./projects.svelte";
 
 class GithubStore {
@@ -104,6 +104,16 @@ class GithubStore {
   async selectSectionRepo(path: string): Promise<void> {
     this.sectionRepoPath = path;
     await this.loadSectionContext();
+  }
+
+  /** Open the inline GitHub view on `section`, scoped to `repoPath` (a repo's
+   *  main-worktree path). Every entry point goes through here — the project
+   *  card's ⋯ menu, a worktree row's right-click menu — so adding one is adding
+   *  a way to *reach* the view, never a second way to open it. Deliberately does
+   *  not activate a workspace: activating one closes the view. */
+  openSection(repoPath: string, section: GithubSection = "pulls"): void {
+    void this.selectSectionRepo(repoPath);
+    app.openGithubInline(section);
   }
 
   /** Load the selected repo's context (owner/repo + branch + PR). */

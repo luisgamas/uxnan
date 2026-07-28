@@ -7,6 +7,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **GitHub is reachable from a worktree's right-click menu.** Every worktree row —
+  in the project tree and in the flattened **group-by-status** view — now carries a
+  **GitHub → Pull Requests / Issues / Actions** submenu that opens the inline view
+  for the row's **owning project** (the submenu is headed by the project name, since
+  the action deliberately jumps up a level). This closes a hole rather than adding a
+  feature: switching the sidebar to group-by-status replaces the project cards with
+  attention lanes, and the ⋯ menu on those cards was the **only** way into the GitHub
+  view — so the whole section became unreachable in that mode. Both menus now call
+  one shared entry point (`github.openSection`), so there is a new way to *reach* the
+  view, not a second implementation of opening it; the project card's ⋯ menu was
+  rewired onto it too. Opening from a row deliberately does **not** activate that
+  worktree — activating one closes the view.
+
 - **Pets: a carried pet runs.** Dragging the pet now plays the **travelling run**
   matching the direction of travel (`running-right` / `running-left`, sheet rows
   1–2), settling back into the v2 looking-down pose when the hand stops. Those two

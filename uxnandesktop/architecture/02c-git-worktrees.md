@@ -322,8 +322,12 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    (`AppSettings.github.rightPanelTab`). Las vistas grandes (review/diff/logs) se
    abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
    centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se
-   abre desde el menú **⋯** de cada tarjeta de proyecto (**GitHub → Pull Requests /
-   Issues / Actions**), muestra solo la sección elegida con un selector de sección +
+   abre desde el menú **⋯** de cada tarjeta de proyecto y desde el menú contextual
+   de **cualquier fila de worktree** (**GitHub → Pull Requests / Issues / Actions**,
+   siempre sobre el proyecto propietario y por el mismo camino,
+   `github.openSection`; la fila es la única entrada cuando el sidebar está
+   **agrupado por estado** y no se dibuja ninguna tarjeta),
+   muestra solo la sección elegida con un selector de sección +
    cerrar/actualizar en su propia barra, y se cierra al activar cualquier worktree
    (`app.githubInline`; integración `gh`-backed; ver `docs/github.md`). La sección de
    ajustes/cuenta de GitHub vive en **Configuración → GitHub** (`GithubSettings.svelte`).

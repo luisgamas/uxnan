@@ -18,8 +18,15 @@ identical manual path** — GitHub keeps working even with zero AI-agent quota.
 
 ## The GitHub view (per project)
 
-Open it **per project**: each project card's **⋯ menu → GitHub → Pull Requests /
-Issues / Actions**. It opens **in place of the center + right panels** — the left
+Open it **per project**, from either entry point — both land in the same view:
+
+- each project card's **⋯ menu → GitHub → Pull Requests / Issues / Actions**;
+- **right-click any worktree row → GitHub → …**, which opens the view for the
+  worktree's **owning project** (its submenu is headed by the project name). This is
+  the way in while the sidebar is **grouped by status**, where worktrees are
+  flattened into attention lanes and no project card — hence no ⋯ menu — is drawn.
+
+It opens **in place of the center + right panels** — the left
 sidebar (projects) and the browser panel stay visible — scoped to that project, so
 there's no repository selector. A **section switcher** (Pull Requests / Issues /
 Actions) sits next to a **close** button (left) and a **refresh** button (right), all

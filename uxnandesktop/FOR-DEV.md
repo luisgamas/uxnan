@@ -153,9 +153,11 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
 - **GitHub integration (`gh`-backed)** — a **per-project inline GitHub view**
   (Pull Requests / Issues / Actions, opened from each project card's **⋯ menu →
-  GitHub**; it replaces the center + right panels, leaving the left sidebar and the
-  browser panel in place, and closes when any worktree is activated —
-  `app.githubInline`), with the **Account / Session** panel and every GitHub
+  GitHub** *or* any **worktree row's right-click menu → GitHub** — which acts on the
+  owning project and is the only way in while the sidebar is grouped by status, both
+  routed through the shared `github.openSection`; it replaces the center + right
+  panels, leaving the left sidebar and the browser panel in place, and closes when
+  any worktree is activated — `app.githubInline`), with the **Account / Session** panel and every GitHub
   preference in **Settings → GitHub** (`GithubSettings.svelte`); a configurable
   **right-panel GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR
   badges**, a passive **readout inside the status bar's backend popover**

@@ -126,7 +126,8 @@ Estas son las funcionalidades **estrictamente necesarias** para un ADE ligero qu
       diff `branch`, `02c` §4.6; y el diff completo de un PR vía `gh pr diff`).
 - [~] Integracion con PRs de GitHub/GitLab. — **GitHub: hecho** (integración
       `gh`-backed: vista GitHub inline por-proyecto (centro+derecha, abierta desde el
-      menú ⋯ de la tarjeta) + tab contextual del panel derecho +
+      menú ⋯ de la tarjeta **o el menú contextual de cualquier fila de worktree**,
+      ambas por `github.openSection`) + tab contextual del panel derecho +
       review/merge/**close/reopen** de PRs, con **CI en sección expandible** en el detalle
       + **popover** en el head-commit del timeline y por fila en la lista, **diff separado
       por archivo** (colapsado por defecto + expandir/contraer todo), un **timeline estilo
