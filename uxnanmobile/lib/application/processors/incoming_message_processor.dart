@@ -2,6 +2,7 @@ import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 
 /// Classifies inbound bridge notifications into [DomainEvent]s (spec 02a
 /// §5.2.5).
@@ -57,6 +58,16 @@ class IncomingMessageProcessor {
         ),
       'stream/turn/aborted' =>
         TurnAbortedEvent(turnId: turnId, threadId: threadId),
+      'stream/turn/cancelled' =>
+        TurnCancelledEvent(turnId: turnId, threadId: threadId),
+      'stream/queue/updated' => QueueUpdatedEvent(
+          threadId: threadId,
+          queuedTurnIds: _stringList(params['queuedTurnIds']),
+          paused: params['paused'] == true,
+          pausedReason: params['paused'] == true
+              ? QueuePausedReason.fromWire(params['pausedReason'])
+              : null,
+        ),
       'stream/model/resolved' => ModelResolvedEvent(
           model: params['model'] is String ? params['model'] as String : '',
           turnId: turnId,
@@ -97,6 +108,16 @@ class IncomingMessageProcessor {
 
   /// Maps a stream of inbound [source] messages to a stream of domain events.
   Stream<DomainEvent> bind(Stream<RpcMessage> source) => source.map(classify);
+
+  /// Reads a list-of-strings field, tolerating a malformed payload (a garbled
+  /// queue notification degrades to "the queue is empty", never to a crash).
+  static List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return [
+      for (final entry in value)
+        if (entry is String) entry,
+    ];
+  }
 
   /// Reads an int field from the `usage` map of a turn-completed notification.
   static int? _usageInt(Object? usage, String key) {

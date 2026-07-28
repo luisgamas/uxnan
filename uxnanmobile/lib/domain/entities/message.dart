@@ -53,7 +53,13 @@ class Message extends Equatable {
       contents.any((c) => c is TextContent && c.isStreaming);
 
   /// Returns a copy with the given fields replaced.
+  ///
+  /// [turnId] is settable because a locally-echoed user message is created
+  /// before the bridge has assigned it a turn: the id arrives with the
+  /// `turn/send` reply, and it is what later lets the message be taken back
+  /// while it waits in the queue.
   Message copyWith({
+    String? turnId,
     List<MessageContent>? contents,
     MessageDeliveryState? deliveryState,
     int? orderIndex,
@@ -62,7 +68,7 @@ class Message extends Equatable {
     return Message(
       id: id,
       threadId: threadId,
-      turnId: turnId,
+      turnId: turnId ?? this.turnId,
       role: role,
       contents: contents ?? this.contents,
       deliveryState: deliveryState ?? this.deliveryState,

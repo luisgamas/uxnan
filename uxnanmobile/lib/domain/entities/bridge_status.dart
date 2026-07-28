@@ -3,8 +3,8 @@ import 'package:equatable/equatable.dart';
 /// The bridge daemon's reported status (`bridge/status`). Sanitized and
 /// non-secret. Mirrors the contract `BridgeStatus = { version, relayConnected,
 /// lanEnabled, activeSessions, platform, uptimeMs, latestVersion?,
-/// updateAvailable? }`; the parser is tolerant so the app degrades gracefully
-/// against newer/older bridges.
+/// updateAvailable?, features? }`; the parser is tolerant so the app degrades
+/// gracefully against newer/older bridges.
 class BridgeStatus extends Equatable {
   /// Creates a [BridgeStatus].
   const BridgeStatus({
@@ -14,18 +14,26 @@ class BridgeStatus extends Equatable {
     this.activeSessions,
     this.latestVersion,
     this.updateAvailable = false,
+    this.supportsMessageQueue = false,
   });
 
   /// Reconstructs a [BridgeStatus] from a `bridge/status` result.
-  factory BridgeStatus.fromJson(Map<String, dynamic> json) => BridgeStatus(
-        relayConnected: json['relayConnected'] == true,
-        version: json['version'] as String?,
-        lanEnabled:
-            json['lanEnabled'] is bool ? json['lanEnabled'] as bool : null,
-        activeSessions: (json['activeSessions'] as num?)?.toInt(),
-        latestVersion: json['latestVersion'] as String?,
-        updateAvailable: json['updateAvailable'] == true,
-      );
+  factory BridgeStatus.fromJson(Map<String, dynamic> json) {
+    final features = json['features'];
+    return BridgeStatus(
+      relayConnected: json['relayConnected'] == true,
+      version: json['version'] as String?,
+      lanEnabled:
+          json['lanEnabled'] is bool ? json['lanEnabled'] as bool : null,
+      activeSessions: (json['activeSessions'] as num?)?.toInt(),
+      latestVersion: json['latestVersion'] as String?,
+      updateAvailable: json['updateAvailable'] == true,
+      // Absent → false. Assuming a capability the bridge lacks is not a
+      // cosmetic mistake here: offering to queue against a bridge that cannot
+      // queue makes it start a second concurrent turn, corrupting the session.
+      supportsMessageQueue: features is Map && features['messageQueue'] == true,
+    );
+  }
 
   /// Whether the bridge is currently serving this phone over the hosted relay
   /// (false means a direct LAN/Tailscale connection).
@@ -48,6 +56,13 @@ class BridgeStatus extends Equatable {
   /// available. Drives the informational "bridge update available" banner.
   final bool updateAvailable;
 
+  /// Whether the bridge queues a `turn/send` sent while a turn is in flight
+  /// (`features.messageQueue`). **False on any bridge that doesn't advertise
+  /// it**, which is the only safe default: on such a bridge a second send
+  /// starts a concurrent turn instead of queueing, killing the running one. The
+  /// conversation screen hides the "queue message" action unless this is true.
+  final bool supportsMessageQueue;
+
   @override
   List<Object?> get props => [
         relayConnected,
@@ -56,5 +71,6 @@ class BridgeStatus extends Equatable {
         activeSessions,
         latestVersion,
         updateAvailable,
+        supportsMessageQueue,
       ];
 }

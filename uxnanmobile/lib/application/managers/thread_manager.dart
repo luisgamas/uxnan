@@ -26,6 +26,7 @@ import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 
 /// Sends a JSON-RPC request and resolves with the bridge response.
@@ -103,6 +104,26 @@ class ThreadManager {
   /// In memory only (resets on restart).
   final BehaviorSubject<Set<String>> _unread = BehaviorSubject.seeded(const {});
 
+  /// Threads whose in-flight state we have actually confirmed with the bridge
+  /// since the current connection was established.
+  ///
+  /// Until a thread is in here we do not know whether a turn is running: the
+  /// live state lives in the bridge process and reaches us only via
+  /// `turn/list`. Reopening the app with a turn still running leaves a window
+  /// where the thread looks idle, and a client that trusts that window tells
+  /// the user "Send" for a message the bridge is about to queue. Callers treat
+  /// absence as "possibly busy" — see [isTurnStateKnown].
+  final BehaviorSubject<Set<String>> _turnStateKnown =
+      BehaviorSubject.seeded(const {});
+
+  /// Per-thread message queue as the BRIDGE reports it — the follow-ups sent
+  /// while a turn was in flight. Mirrored, never owned: the bridge drains the
+  /// queue whether or not this app is running, so this map is refreshed from
+  /// `stream/queue/updated` and re-read on every `turn/list` resync. Threads
+  /// with nothing queued are absent.
+  final BehaviorSubject<Map<String, ThreadQueueState>> _queues =
+      BehaviorSubject.seeded(const {});
+
   /// Latest persisted messages for the active thread (from the local repo),
   /// composed with any [_LiveTurn] overlay to build the active timeline.
   List<Message> _activePersisted = const [];
@@ -162,6 +183,10 @@ class ThreadManager {
     _lastPhase = phase;
     if (phase == ConnectionPhase.connected &&
         was != ConnectionPhase.connected) {
+      // A new connection can be a different bridge process, or the same one
+      // after minutes away: whatever we knew about which turns were running is
+      // no longer confirmed until this connection tells us again.
+      if (_turnStateKnown.value.isNotEmpty) _turnStateKnown.add(const {});
       unawaited(resyncActive());
     }
   }
@@ -182,6 +207,23 @@ class ThreadManager {
 
   /// Set of thread ids with an unread agent reply, for the list's unread style.
   Stream<Set<String>> get unreadStream => _unread.stream;
+
+  /// Map of threadId → its live [ThreadQueueState]. Threads with an empty,
+  /// un-paused queue are omitted from the map.
+  Stream<Map<String, ThreadQueueState>> get queuesStream => _queues.stream;
+
+  /// Thread ids whose in-flight state has been confirmed on this connection.
+  Stream<Set<String>> get turnStateKnownStream => _turnStateKnown.stream;
+
+  /// Whether we have confirmed with the bridge whether [threadId] has a turn
+  /// running. False right after opening the app (or reconnecting) until the
+  /// first `turn/list` lands — treat it as "possibly busy", never as idle.
+  bool isTurnStateKnown(String threadId) =>
+      _turnStateKnown.value.contains(threadId);
+
+  /// The current queue state for [threadId] (empty when nothing is waiting).
+  ThreadQueueState queueOf(String threadId) =>
+      _queues.value[threadId] ?? ThreadQueueState.empty;
 
   /// Clears the unread flag for [threadId] (the user opened/returned to it).
   void markRead(String threadId) {
@@ -705,6 +747,17 @@ class ThreadManager {
       }
       _setActivity(threadId, ThreadActivity.running);
     }
+    // Re-attach to the message queue the same way. It is live bridge state, so
+    // this is what restores the waiting bubbles (and the paused banner) after
+    // the app was closed — and what settles a message whose fate we missed
+    // while away: it either still waits, or it ran, or it was cancelled.
+    _setQueue(threadId, page.queue);
+    // The bridge has now told us whether this thread has a turn running, so
+    // the UI can stop hedging.
+    if (!_turnStateKnown.value.contains(threadId)) {
+      _turnStateKnown.add({..._turnStateKnown.value, threadId});
+    }
+    await _reconcileQueuedMessages(threadId, page.queue.turnIds, page.turns);
     await _persistTurns(threadId, page.turns, trackLatestUsage: true);
     if (threadId != _activeThreadId) return;
     final total = page.total;
@@ -762,8 +815,13 @@ class ThreadManager {
   /// Sends `turn/list` for one page and returns its turns + reported `total`
   /// (null on failure or an older bridge). [fromEnd] asks for the newest page;
   /// otherwise [cursor] is an explicit offset.
-  Future<({List<Object?> turns, int? total, String? activeTurnId})?>
-      _fetchTurns(
+  Future<
+      ({
+        List<Object?> turns,
+        int? total,
+        String? activeTurnId,
+        ThreadQueueState queue,
+      })?> _fetchTurns(
     String threadId, {
     String? cursor,
     int? limit,
@@ -788,11 +846,59 @@ class ThreadManager {
     if (turns is! List) return null;
     final total = result['total'];
     final activeTurnId = result['activeTurnId'];
+    final paused = result['queuePaused'] == true;
     return (
       turns: turns,
       total: total is int ? total : null,
       activeTurnId: activeTurnId is String ? activeTurnId : null,
+      // Absent on an older bridge → an empty, un-paused queue, which is exactly
+      // how a bridge without the feature behaves.
+      queue: ThreadQueueState(
+        turnIds: _stringList(result['queuedTurnIds']),
+        paused: paused,
+        pausedReason: paused
+            ? QueuePausedReason.fromWire(result['queuePausedReason'])
+            : null,
+      ),
     );
+  }
+
+  /// Settles every locally-`queued` message of [threadId] against the bridge's
+  /// authoritative view after a resync.
+  ///
+  /// A message we left waiting can have three fates while the app was away: it
+  /// is still queued, it ran, or it was cancelled. Without this the bubble
+  /// would stay a ghost forever — the queue notification that resolved it
+  /// arrived while nothing was listening.
+  Future<void> _reconcileQueuedMessages(
+    String threadId,
+    List<String> queuedTurnIds,
+    List<Object?> turns,
+  ) async {
+    final messages = await _messageRepository.getMessages(threadId);
+    final stillQueued = queuedTurnIds.toSet();
+    final statusByTurn = <String, String>{
+      for (final turn in turns)
+        if (turn is Map && turn['id'] is String && turn['status'] is String)
+          turn['id'] as String: turn['status'] as String,
+    };
+    for (final message in messages) {
+      if (message.deliveryState != MessageDeliveryState.queued) continue;
+      if (message.turnId.isEmpty || stillQueued.contains(message.turnId)) {
+        continue;
+      }
+      // Off the queue. `cancelled` is the only status that means "never ran";
+      // anything else (streaming/completed/error/aborted) means it did, so the
+      // bubble becomes an ordinary sent message. A turn missing from this page
+      // is also treated as sent — it is old enough to have scrolled out of it.
+      final ran = statusByTurn[message.turnId] != 'cancelled';
+      await _messageRepository.saveMessage(
+        message.copyWith(
+          deliveryState:
+              ran ? MessageDeliveryState.sent : MessageDeliveryState.cancelled,
+        ),
+      );
+    }
   }
 
   /// Persists the assistant answers from a fetched page of [turns] into the
@@ -992,13 +1098,224 @@ class ThreadManager {
           message.copyWith(deliveryState: MessageDeliveryState.failed),
         );
         AppLogger.warn('turn/send rejected: ${res.error!.message}');
+        return;
       }
+      // The bridge queues a message sent while a turn is in flight and answers
+      // `{ turnId, queued: true }`. Record BOTH: the turn id is what lets the
+      // user take this message back (`turn/cancel`), and the queued state is
+      // what renders it as a waiting "ghost" bubble instead of a sent one.
+      final result = res.result;
+      final resultTurnId = result is Map ? result['turnId'] : null;
+      final queued = result is Map && result['queued'] == true;
+      await _messageRepository.saveMessage(
+        message.copyWith(
+          turnId: resultTurnId is String ? resultTurnId : null,
+          deliveryState:
+              queued ? MessageDeliveryState.queued : MessageDeliveryState.sent,
+        ),
+      );
     } on Object catch (error, stackTrace) {
       await _messageRepository.saveMessage(
         message.copyWith(deliveryState: MessageDeliveryState.failed),
       );
       AppLogger.warn('turn/send failed', error, stackTrace);
     }
+  }
+
+  /// Takes a queued message off the queue and **removes it from the timeline**,
+  /// leaving no trace — the message is going back to the composer to be
+  /// rewritten, so a "cancelled" husk beside the text being re-edited would be
+  /// noise, not a record.
+  ///
+  /// The bridge still marks the turn `cancelled` (its history stays honest);
+  /// this only drops the phone's local echo of the user's message. Returns
+  /// whether the bridge accepted the cancel — the text goes back only if the
+  /// message really left the queue, or it would run AND sit in the composer.
+  Future<bool> withdrawQueuedTurn(String threadId, String turnId) async {
+    if (!await cancelQueuedTurn(threadId, turnId)) return false;
+    await _serializeWrite(() async {
+      final messages = await _messageRepository.getMessages(threadId);
+      for (final message in messages) {
+        if (message.turnId == turnId && message.role == MessageRole.user) {
+          await _messageRepository.deleteMessage(message.id);
+          return;
+        }
+      }
+    });
+    return true;
+  }
+
+  /// Takes a queued message back before the agent ever sees it
+  /// (`turn/cancel` on a `queued` turn). The bridge marks the turn `cancelled`
+  /// and echoes `stream/turn/cancelled`, which is what flips the local bubble —
+  /// so the message stays in the timeline, marked, rather than vanishing.
+  ///
+  /// Returns whether the bridge accepted it.
+  Future<bool> cancelQueuedTurn(String threadId, String turnId) async {
+    try {
+      final res = await _sendRequest('turn/cancel', {
+        'threadId': threadId,
+        'turnId': turnId,
+      });
+      if (res.error != null) {
+        AppLogger.warn('turn/cancel (queued) rejected: ${res.error!.message}');
+        return false;
+      }
+      return true;
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('turn/cancel (queued) failed', error, stackTrace);
+      return false;
+    }
+  }
+
+  /// Resumes a queue the bridge held after the user stopped a turn (or one
+  /// failed). The bridge starts the next queued turn immediately.
+  Future<void> resumeQueue(String threadId) async {
+    await _queueControl(threadId, 'queue/resume');
+  }
+
+  /// Drops every queued message for [threadId]; each is marked cancelled and
+  /// stays in the timeline.
+  Future<void> clearQueue(String threadId) async {
+    await _queueControl(threadId, 'queue/clear');
+  }
+
+  /// Sends a `queue/*` control call and applies the state it returns, so the UI
+  /// settles even if the broadcast notification is slow or lost.
+  Future<void> _queueControl(String threadId, String method) async {
+    try {
+      final res = await _sendRequest(method, {'threadId': threadId});
+      if (res.error != null) {
+        AppLogger.warn('$method rejected: ${res.error!.message}');
+        return;
+      }
+      final result = res.result;
+      if (result is! Map) return;
+      _setQueue(
+        threadId,
+        ThreadQueueState(
+          turnIds: _stringList(result['queuedTurnIds']),
+          paused: result['paused'] == true,
+          pausedReason: result['paused'] == true
+              ? QueuePausedReason.fromWire(result['pausedReason'])
+              : null,
+        ),
+      );
+    } on Object catch (error, stackTrace) {
+      AppLogger.warn('$method failed', error, stackTrace);
+    }
+  }
+
+  /// Stores [state] for [threadId], dropping the entry entirely when the thread
+  /// is back to "nothing queued, nothing held" so listeners can treat a missing
+  /// key as idle.
+  void _setQueue(String threadId, ThreadQueueState state) {
+    final current = _queues.value[threadId] ?? ThreadQueueState.empty;
+    if (current == state) return;
+    final next = Map<String, ThreadQueueState>.from(_queues.value);
+    if (state.turnIds.isEmpty && !state.paused) {
+      next.remove(threadId);
+    } else {
+      next[threadId] = state;
+    }
+    _queues.add(next);
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return [
+      for (final entry in value)
+        if (entry is String) entry,
+    ];
+  }
+
+  /// Serializes the delivery-state writes that queue events trigger.
+  ///
+  /// `stream/turn/cancelled` and `stream/queue/updated` arrive back to back for
+  /// the same message and both rewrite its state — read-modify-write, so
+  /// running them concurrently lets the loser overwrite the winner and a
+  /// cancelled message comes back as merely "sent". Events are applied in
+  /// order, so chaining their writes makes the outcome deterministic: last
+  /// event wins, always.
+  Future<void> _messageWrites = Future<void>.value();
+
+  Future<void> _serializeWrite(Future<void> Function() write) {
+    final next = _messageWrites.then((_) => write()).catchError((
+      Object error,
+      StackTrace stackTrace,
+    ) {
+      AppLogger.warn('queued-message write failed', error, stackTrace);
+    });
+    _messageWrites = next;
+    return next;
+  }
+
+  /// Clears the local `queued` echo of any message the bridge no longer lists
+  /// as waiting — it either started or was cancelled, and either way it is no
+  /// longer a ghost. A cancelled one is already settled by
+  /// `stream/turn/cancelled` (which lands first and is skipped here, since only
+  /// a still-`queued` message is touched); anything else that left the queue
+  /// ran.
+  Future<void> _settleLocalQueueEchoes(
+    String threadId,
+    List<String> stillQueued,
+  ) {
+    final waiting = stillQueued.toSet();
+    return _serializeWrite(() async {
+      final messages = await _messageRepository.getMessages(threadId);
+      var end = _maxOrder(messages);
+      for (final message in messages) {
+        if (message.deliveryState != MessageDeliveryState.queued) continue;
+        if (message.turnId.isEmpty || waiting.contains(message.turnId)) {
+          continue;
+        }
+        // Anything cancelled is already `cancelled` by the time this runs
+        // (`stream/turn/cancelled` lands first and writes are serialized), so a
+        // message still `queued` that left the queue is one that STARTED — and
+        // it belongs at the end, where it was delivered, not back above the
+        // previous turn's reply where it was typed.
+        await _messageRepository.saveMessage(
+          message.copyWith(
+            deliveryState: MessageDeliveryState.sent,
+            orderIndex: ++end,
+          ),
+        );
+      }
+    });
+  }
+
+  /// Flips the local user message belonging to [turnId] to [state] (used when a
+  /// queued message is cancelled, or starts running). No-op when the thread has
+  /// no such message — e.g. it was queued from another device.
+  Future<void> _markUserMessage(
+    String threadId,
+    String turnId,
+    MessageDeliveryState state, {
+    bool reorderToEnd = false,
+  }) {
+    if (turnId.isEmpty) return Future<void>.value();
+    return _serializeWrite(() async {
+      final messages = await _messageRepository.getMessages(threadId);
+      for (final message in messages) {
+        if (message.turnId != turnId || message.role != MessageRole.user) {
+          continue;
+        }
+        if (message.deliveryState == state && !reorderToEnd) return;
+        // A message that waited in the queue belongs where it was DELIVERED,
+        // not where it was typed: it was stored while the previous turn was
+        // still running, so its original index would file it above that turn's
+        // reply — as if the user had said it before getting an answer.
+        final movedToEnd = reorderToEnd &&
+            message.deliveryState == MessageDeliveryState.queued;
+        await _messageRepository.saveMessage(
+          message.copyWith(
+            deliveryState: state,
+            orderIndex: movedToEnd ? _maxOrder(messages) + 1 : null,
+          ),
+        );
+        return;
+      }
+    });
   }
 
   Future<void> _titleFromFirstPrompt(String threadId, String text) async {
@@ -1109,6 +1426,8 @@ class ThreadManager {
     await _resolvedModels.close();
     await _activity.close();
     await _unread.close();
+    await _queues.close();
+    await _turnStateKnown.close();
     await _contextUsage.close();
   }
 
@@ -1142,6 +1461,17 @@ class ThreadManager {
           _live[threadId] = _LiveTurn(turnId: turnId);
         }
         _setActivity(threadId, ThreadActivity.running);
+        // A turn the queue just drained to: its bubble stops being a ghost,
+        // becomes an ordinary sent message, and takes its place at the end of
+        // the conversation — where it was actually delivered.
+        unawaited(
+          _markUserMessage(
+            threadId,
+            turnId,
+            MessageDeliveryState.sent,
+            reorderToEnd: true,
+          ),
+        );
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case MessageDeltaEvent(:final turnId, :final delta):
         _ensureLive(threadId, turnId).appendText(delta);
@@ -1181,6 +1511,35 @@ class ThreadManager {
         );
       case TurnAbortedEvent(:final turnId):
         unawaited(_finishTurn(threadId, turnId, failed: false));
+      case TurnCancelledEvent(:final turnId):
+        // A queued message taken off the queue — here or from another device.
+        // It never ran, so there is no live buffer to finalize: only the user's
+        // own bubble changes, keeping the record of what was not sent.
+        unawaited(
+          _markUserMessage(threadId, turnId, MessageDeliveryState.cancelled),
+        );
+      case QueueUpdatedEvent(
+          :final queuedTurnIds,
+          :final paused,
+          :final pausedReason,
+        ):
+        // Whole-state notification: adopt it as-is. Missing one (backgrounded,
+        // mid-reconnect) is harmless — the next one converges.
+        _setQueue(
+          threadId,
+          ThreadQueueState(
+            turnIds: queuedTurnIds,
+            paused: paused,
+            pausedReason: paused ? pausedReason : null,
+          ),
+        );
+        // Clear the local "waiting" echo for anything the bridge no longer
+        // holds. Without this the flag would depend entirely on catching the
+        // turn's `turn_started`, and a missed one would leave the bubble a
+        // ghost forever — the bridge's list is the authority, so settle
+        // against it every time it changes.
+        unawaited(_settleLocalQueueEchoes(threadId, queuedTurnIds));
+        if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
         break;
     }
@@ -1326,9 +1685,28 @@ class ThreadManager {
     final hasMore = localHasMore || _remoteOldestOffset > 0;
     final windowed =
         localHasMore ? all.sublist(all.length - _renderLimit) : all;
-    var snapshot = const TurnTimelineSnapshot().reconcile(windowed).copyWith(
+
+    // A message still WAITING in the queue is not part of the conversation yet:
+    // it is pinned below everything, including the reply being streamed right
+    // now, for as long as it waits. Separating it here is also what keeps the
+    // timeline stable — the streaming message is anchored to
+    // `max(orderIndex) + 1`, so leaving a queued message in the same pool made
+    // every send push the live reply below it and re-sort the whole view.
+    final queuedTurnIds = queueOf(threadId).turnIds.toSet();
+    final settled = <Message>[];
+    final waiting = <Message>[];
+    for (final message in windowed) {
+      if (message.turnId.isNotEmpty && queuedTurnIds.contains(message.turnId)) {
+        waiting.add(message);
+      } else {
+        settled.add(message);
+      }
+    }
+
+    var snapshot = const TurnTimelineSnapshot().reconcile(settled).copyWith(
           hasMore: hasMore,
         );
+    var nextOrder = _maxOrder(settled) + 1;
     final live = _live[threadId];
     if (live != null) {
       final streaming = Message(
@@ -1342,11 +1720,29 @@ class ThreadManager {
           streaming: true,
         ),
         deliveryState: MessageDeliveryState.delivered,
-        orderIndex: _maxOrder(_activePersisted) + 1,
+        orderIndex: nextOrder,
         createdAt: live.startedAt,
       );
+      nextOrder += 1;
       snapshot = snapshot
           .reconcile([streaming]).copyWith(streamingTurnId: live.turnId);
+    }
+    if (waiting.isNotEmpty) {
+      // Keep the queue's own order (the bridge's run order), then lay them out
+      // after everything else. Only the render index is rewritten — the stored
+      // `orderIndex` is untouched, so a message drops back into its
+      // chronological place the moment it leaves the queue.
+      waiting.sort((a, b) {
+        final byQueue = queueOf(threadId)
+            .turnIds
+            .indexOf(a.turnId)
+            .compareTo(queueOf(threadId).turnIds.indexOf(b.turnId));
+        return byQueue != 0 ? byQueue : a.orderIndex.compareTo(b.orderIndex);
+      });
+      snapshot = snapshot.reconcile([
+        for (final message in waiting)
+          message.copyWith(orderIndex: nextOrder++),
+      ]);
     }
     _timeline.add(snapshot);
   }
@@ -1478,10 +1874,14 @@ class ThreadManager {
     return true;
   }
 
-  int _nextOrderIndex() {
-    final messages = _timeline.value.messages;
-    return messages.isEmpty ? 0 : messages.last.orderIndex + 1;
-  }
+  /// The `orderIndex` to store a new local message with.
+  ///
+  /// Derived from the PERSISTED messages, not from the rendered timeline: the
+  /// timeline also carries the live streaming message and any queued bubbles
+  /// pinned below it, both of which use synthetic render indices. Reading the
+  /// last rendered index would fold those synthetic values back into storage
+  /// and make the stored order drift upward with every send.
+  int _nextOrderIndex() => _maxOrder(_activePersisted) + 1;
 
   static String? _threadOf(DomainEvent event) => switch (event) {
         TurnStartedEvent(:final threadId) => threadId,
@@ -1491,6 +1891,8 @@ class ThreadManager {
         TurnCompletedEvent(:final threadId) => threadId,
         TurnErrorEvent(:final threadId) => threadId,
         TurnAbortedEvent(:final threadId) => threadId,
+        TurnCancelledEvent(:final threadId) => threadId,
+        QueueUpdatedEvent(:final threadId) => threadId,
         GitProgressEvent(:final threadId) => threadId,
         ModelResolvedEvent(:final threadId) => threadId,
         UnknownDomainEvent() => null,

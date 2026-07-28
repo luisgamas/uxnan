@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 
 /// A classified event derived from an inbound bridge notification
 /// (spec 02a §5.2.5).
@@ -170,6 +171,54 @@ class TurnAbortedEvent extends DomainEvent {
 
   @override
   List<Object?> get props => [turnId, threadId];
+}
+
+/// A queued turn was removed before it ever ran (`stream/turn/cancelled`).
+/// Distinct from [TurnAbortedEvent], which is a turn that was *running* and got
+/// stopped: this one never started, and its user message stays in the timeline
+/// marked as cancelled instead of disappearing.
+class TurnCancelledEvent extends DomainEvent {
+  /// Creates a [TurnCancelledEvent].
+  const TurnCancelledEvent({required this.turnId, this.threadId});
+
+  /// The turn that was taken off the queue.
+  final String turnId;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [turnId, threadId];
+}
+
+/// The thread's message queue changed (`stream/queue/updated`).
+///
+/// Carries the WHOLE queue state rather than a delta, so a client that missed
+/// one (backgrounded, mid-reconnect) converges on the next one instead of
+/// drifting.
+class QueueUpdatedEvent extends DomainEvent {
+  /// Creates a [QueueUpdatedEvent].
+  const QueueUpdatedEvent({
+    required this.queuedTurnIds,
+    required this.paused,
+    this.pausedReason,
+    this.threadId,
+  });
+
+  /// Queued turn ids in the order they will run.
+  final List<String> queuedTurnIds;
+
+  /// Whether draining is held after the user stopped a turn or one failed.
+  final bool paused;
+
+  /// Why draining is held; null when it is not paused.
+  final QueuePausedReason? pausedReason;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [queuedTurnIds, paused, pausedReason, threadId];
 }
 
 /// The agent resolved its alias to a concrete model for a turn
