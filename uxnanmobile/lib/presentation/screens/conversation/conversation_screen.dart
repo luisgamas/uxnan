@@ -14,10 +14,12 @@ import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/providers/conversation_auto_follow_policy.dart';
 import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
@@ -25,6 +27,8 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
@@ -41,6 +45,8 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/message_scroll_rail.dart';
 import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
+import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
+import 'package:uxnan/presentation/widgets/ne_pill_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// The active conversation: a Neural Expressive layout — a transparent top bar
@@ -99,6 +105,20 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   /// Whether the "jump to latest" button is shown — true once the user has
   /// scrolled up far enough that the newest messages are off-screen.
   bool _showJumpToBottom = false;
+
+  /// Whether the composer currently holds something sendable (text, or a
+  /// pending attachment). Reported by [ComposerBar.onDraftChanged]; combined
+  /// with a busy thread it reveals the floating "queue message" action.
+  bool _hasDraft = false;
+
+  /// Lets the floating "queue message" action trigger the composer's own send,
+  /// so the draft, attachments and dictation teardown stay in one place.
+  final ComposerSubmitController _composerSubmit = ComposerSubmitController();
+
+  /// Whether the saved-drafts palette is open. Closed by default: drafts are
+  /// somewhere to go back to, not something that should sit over the
+  /// conversation.
+  bool _draftsOpen = false;
 
   /// Bottom-chrome height captured when the jump shortcut appears. Collapsing
   /// the auxiliary chrome also shortens the timeline's bottom spacer; this
@@ -215,7 +235,37 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     _scroll
       ..removeListener(_onScroll)
       ..dispose();
+    _composerSubmit.dispose();
     super.dispose();
+  }
+
+  /// Puts a rescued draft back into the composer, or explains why it can't.
+  /// A rescued draft only returns to an EMPTY composer — otherwise restoring
+  /// one parked draft would displace whatever is being written, which is the
+  /// exact problem the rescue exists to avoid.
+  void _restoreRescuedDraft(RescuedDraft draft) {
+    final restored = ref
+        .read(composerHandoffsProvider.notifier)
+        .restore(widget.threadId, draft);
+    if (restored) {
+      // Close the palette — the draft is now in the composer, and leaving the
+      // card open over it would hide what the user came back for. That, plus
+      // the text appearing, is the confirmation; a snackbar here would cover
+      // the composer at the worst possible moment.
+      setState(() => _draftsOpen = false);
+      return;
+    }
+    // The refusal DOES need saying: nothing visibly happened, and the reason
+    // (the composer is not empty) is not on screen anywhere.
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context).rescuedDraftComposerBusy,
+          ),
+        ),
+      );
   }
 
   bool _isNearBottom() {
@@ -732,6 +782,59 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     final showApproval = caps?.approvals ?? false;
     final showTurnControls = showRunOptions || showApproval;
 
+    // The thread's message queue, as the bridge reports it.
+    final queue = ref.watch(threadQueueForProvider(widget.threadId));
+    // Sending now would QUEUE rather than start: either a turn is in flight, or
+    // messages sent earlier are still waiting (a held queue keeps its order —
+    // jumping ahead of them would run this one out of turn).
+    //
+    // Gated on the bridge actually having the queue: against one that doesn't,
+    // a second send starts a concurrent turn and kills the running one, so we
+    // must not offer it. Unknown/older bridge → the pre-queue behaviour (no
+    // queue action, sending blocked while a turn runs).
+    final canQueue = ref.watch(bridgeSupportsQueueProvider);
+    // "Might a turn be running?" rather than "is one running?" — right after
+    // opening the app or reconnecting, the bridge has not told us yet, and
+    // treating that window as idle is what makes the app promise an immediate
+    // send for a message the bridge is about to queue. The bridge's
+    // *capability* is the one thing never assumed: offering to queue where it
+    // cannot would start a concurrent turn and corrupt the session.
+    final maybeBusy = ref.watch(threadMaybeBusyProvider(widget.threadId));
+    // Sending right now would QUEUE rather than start, AND there is something
+    // to send — the only moment the queue action means anything.
+    final wouldQueue = connectedHere &&
+        canQueue &&
+        (maybeBusy || queue.isNotEmpty) &&
+        _hasDraft;
+    // Composer ↔ queue hand-off: drafts saved when an edited queued message
+    // handed its text back.
+    final handoff = ref.watch(composerHandoffProvider(widget.threadId));
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final motionDuration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
+    // Which single thing occupies the floating slot above the composer, in
+    // strict order of precedence:
+    //
+    //   1. jump-to-latest, whenever the reader has scrolled up. It always wins:
+    //      being lost in history is the state you most need a way out of, and
+    //      the queue actions are still reachable once you are back at the
+    //      bottom.
+    //   2. the queue actions — the Drafts pill whenever drafts exist, and
+    //      "Queue message" whenever sending would queue. Either one alone is
+    //      enough to claim the slot: saved drafts must stay reachable even when
+    //      there is nothing to queue, or the only way back to them would be to
+    //      manufacture a queued message.
+    //   3. nothing, and the turn-context shelf underneath is visible as usual.
+    //
+    // Everything below reads from this one value, so the shelf and the slot can
+    // never disagree about who owns the space.
+    final hasDrafts = handoff.rescued.isNotEmpty;
+    final shortcutSlot = _showJumpToBottom
+        ? _ComposerShortcut.jumpToBottom
+        : (wouldQueue || hasDrafts
+            ? _ComposerShortcut.queueActions
+            : _ComposerShortcut.none);
+
     // Resolve git state for the real workspace once the thread's cwd is known,
     // and probe whether that cwd still exists (folders/worktrees can vanish).
     if (connectedHere) {
@@ -839,7 +942,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                                   GlobalKey.new,
                                 )
                               : ValueKey(message.id);
-                          return MessageBubble(key: key, message: message);
+                          // Messages fade and lift into place instead of
+                          // appearing at full opacity the instant they are
+                          // stored. The transition runs once per widget and
+                          // then becomes a pass-through, so scrolling a long
+                          // thread is unaffected.
+                          return NeEnterTransition(
+                            child: MessageBubble(key: key, message: message),
+                          );
                         },
                       ),
                     ),
@@ -881,21 +991,36 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                 },
               ),
             ),
-          // Jump-to-latest button: appears (with a small spring) when the user
-          // has scrolled up, floating horizontally centered just above the
-          // composer chrome — over the content, on its own layer, so it is
-          // always available (independent of the context bar) and never
-          // collides with the left controls or right indicators below it.
+          // The floating shortcut slot above the composer chrome, centered on
+          // its own layer over the content. Exactly ONE thing occupies it at a
+          // time, in this order:
+          //   1. jump-to-latest, whenever the user has scrolled up — reading
+          //      older messages is the state you most need a way out of;
+          //   2. "queue message", when a draft is waiting and the thread is
+          //      busy — the only moment it means anything;
+          //   3. otherwise nothing, and the context shelf below stays visible
+          //      (it hides for 1 and 2 through the same `_shortcutSlot` state).
+          // Keeping them mutually exclusive is what stops the area above the
+          // pill from stacking controls.
           Positioned(
             left: 0,
             right: 0,
-            bottom: _bottomChromeHeight + UxnanSpacing.md,
+            // The same 8 dp the palettes and banners leave between themselves
+            // and the pill, so everything that floats above the composer sits
+            // on one rhythm instead of three.
+            bottom: _bottomChromeHeight + UxnanSpacing.sm,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _JumpToBottomButton(
-                  visible: _showJumpToBottom,
-                  onTap: _scrollToBottom,
+                _ShortcutSlot(
+                  slot: shortcutSlot,
+                  draftCount: handoff.rescued.length,
+                  canQueue: wouldQueue,
+                  draftsOpen: _draftsOpen,
+                  onJumpToBottom: _scrollToBottom,
+                  onQueueMessage: _composerSubmit.submit,
+                  onToggleDrafts: () =>
+                      setState(() => _draftsOpen = !_draftsOpen),
                 ),
               ],
             ),
@@ -923,13 +1048,30 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         showAutonomousBanner &&
                         !_autonomousBannerDismissed)
                       ComposerChromeVisibility(
-                        visible: !_showJumpToBottom,
+                        visible: shortcutSlot == _ComposerShortcut.none,
                         child: _Centered(
                           child: _AutonomousBanner(
                             onClose: () => setState(
                               () => _autonomousBannerDismissed = true,
                             ),
                           ),
+                        ),
+                      ),
+                    // The bridge holds the queue after the user stops a turn
+                    // (or one fails) rather than firing the follow-ups at it.
+                    // That is the only queue state that needs words, so it
+                    // sits with the other banners, not in the timeline.
+                    if (queue.paused)
+                      _Centered(
+                        child: _QueuePausedBanner(
+                          reason: queue.pausedReason,
+                          count: queue.length,
+                          onResume: () => ref
+                              .read(threadManagerProvider)
+                              .resumeQueue(widget.threadId),
+                          onDiscard: () => ref
+                              .read(threadManagerProvider)
+                              .clearQueue(widget.threadId),
                         ),
                       ),
                     if (requiresLogin && thread != null)
@@ -940,7 +1082,8 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         lastEdits != null ||
                         environment.showContext)
                       ComposerChromeVisibility(
-                        visible: !_showJumpToBottom,
+                        // Yields the slot to whichever shortcut is showing.
+                        visible: shortcutSlot == _ComposerShortcut.none,
                         child: _Centered(
                           child: _ComposerContextBar(
                             controls: showTurnControls
@@ -969,6 +1112,28 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                           ),
                         ),
                       ),
+                    // Drafts saved when a queued message was pulled back to be
+                    // edited. Opened from the Drafts action, directly above the
+                    // pill on the `/` palette's own surface.
+                    _Centered(
+                      child: AnimatedSize(
+                        duration: motionDuration,
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.bottomCenter,
+                        child: _draftsOpen && handoff.rescued.isNotEmpty
+                            ? RescuedDraftsCard(
+                                drafts: handoff.rescued,
+                                onRestore: _restoreRescuedDraft,
+                                onDismiss: (draft) => ref
+                                    .read(composerHandoffsProvider.notifier)
+                                    .dismiss(widget.threadId, draft),
+                                onClearAll: () => ref
+                                    .read(composerHandoffsProvider.notifier)
+                                    .clearAll(widget.threadId),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
                     if (_attachments.isNotEmpty)
                       _Centered(
                         child: _AttachmentStrip(
@@ -977,8 +1142,26 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         ),
                       ),
                     ComposerBar(
+                      // A STABLE key, not decoration: everything above the
+                      // composer in this Column is conditional (banners, the
+                      // context shelf, the drafts palette, the attachment
+                      // strip). Without a key, one of them appearing shifts the
+                      // composer's index, Flutter treats it as a different
+                      // widget, and it remounts with a fresh empty controller —
+                      // silently discarding whatever was being typed, including
+                      // text just handed back from the queue.
+                      key: const ValueKey('composer-bar'),
+                      threadId: widget.threadId,
                       enabled: connectedHere && !_cwdMissing,
                       hasAttachments: _attachments.isNotEmpty,
+                      // A drafted message during a live turn is what reveals
+                      // the floating "queue message" action above the pill.
+                      onDraftChanged: (hasDraft) {
+                        if (hasDraft != _hasDraft) {
+                          setState(() => _hasDraft = hasDraft);
+                        }
+                      },
+                      submitController: _composerSubmit,
                       // Backs the inline `@` file/folder mention picker.
                       cwd: cwd,
                       // The agent's slash commands, rendered in the `/` palette.
@@ -1219,6 +1402,15 @@ class _TokenChip extends StatelessWidget {
 /// Centers its [child] within [UxnanSpacing.maxContentWidth] so the above-
 /// composer chrome (banner, diff strip) lines up with the centered message
 /// column on wide screens.
+/// Centers a piece of composer chrome on the composer's own gutter.
+///
+/// The pill insets itself horizontally (24 dp idle → 16 dp focused, guide
+/// §4.3), and the `/` and `@` palettes inherit that inset because they are its
+/// children. Anything that floats above the pill from OUTSIDE it — banners, the
+/// context shelf, the drafts palette — has to reproduce the gutter, or it grows
+/// wider than the pill it belongs to and the stack stops reading as one column.
+/// The focused value is used: this chrome is on screen precisely when the user
+/// is working in the composer.
 class _Centered extends StatelessWidget {
   const _Centered({required this.child});
   final Widget child;
@@ -1230,7 +1422,10 @@ class _Centered extends StatelessWidget {
         constraints: const BoxConstraints(
           maxWidth: UxnanSpacing.maxContentWidth,
         ),
-        child: child,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
+          child: child,
+        ),
       ),
     );
   }
@@ -1560,18 +1755,86 @@ class _ConversationMenu extends StatelessWidget {
   }
 }
 
-/// A small circular "jump to latest" button shown over the timeline when the
-/// user has scrolled up. Scales in with a light spring (NE small-element
-/// motion) and is non-interactive while hidden.
-class _JumpToBottomButton extends StatelessWidget {
-  const _JumpToBottomButton({required this.visible, required this.onTap});
+/// What occupies the single floating slot above the composer chrome.
+enum _ComposerShortcut {
+  /// Nothing — the turn-context shelf below stays visible.
+  none,
 
-  final bool visible;
-  final VoidCallback onTap;
+  /// The user has scrolled up and needs a way back to the newest message.
+  jumpToBottom,
+
+  /// Queue-related actions: saved drafts, and/or queueing what is drafted.
+  queueActions,
+}
+
+/// Renders whichever shortcut currently owns the floating slot, cross-fading
+/// between them so the area above the pill never shows two at once (and never
+/// pops from one to the other).
+class _ShortcutSlot extends StatelessWidget {
+  const _ShortcutSlot({
+    required this.slot,
+    required this.draftCount,
+    required this.canQueue,
+    required this.draftsOpen,
+    required this.onJumpToBottom,
+    required this.onQueueMessage,
+    required this.onToggleDrafts,
+  });
+
+  final _ComposerShortcut slot;
+
+  /// Saved drafts for this thread; 0 hides the Drafts action.
+  final int draftCount;
+
+  /// Whether sending right now would queue (and there is something to send).
+  final bool canQueue;
+
+  /// Whether the drafts card is currently open (the action reads as selected).
+  final bool draftsOpen;
+
+  final VoidCallback onJumpToBottom;
+  final VoidCallback onQueueMessage;
+  final VoidCallback onToggleDrafts;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final visible = slot != _ComposerShortcut.none;
+    final child = switch (slot) {
+      _ComposerShortcut.jumpToBottom => NeCircularButton(
+          key: const ValueKey('shortcut-jump'),
+          icon: Icons.keyboard_arrow_down_rounded,
+          tooltip: l10n.conversationScrollToBottom,
+          onTap: onJumpToBottom,
+        ),
+      // Drafts sits to the LEFT of the queue action: it holds text pulled back
+      // OUT of the queue, so it reads as the step before sending again. Either
+      // action can appear without the other.
+      _ComposerShortcut.queueActions => Row(
+          key: const ValueKey('shortcut-queue'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (draftCount > 0)
+              NePillButton(
+                icon: Icons.edit_note_rounded,
+                label: l10n.rescuedDraftsAction(draftCount),
+                selected: draftsOpen,
+                onTap: onToggleDrafts,
+              ),
+            if (draftCount > 0 && canQueue)
+              const SizedBox(width: UxnanSpacing.sm),
+            if (canQueue)
+              NePillButton(
+                icon: Icons.playlist_add_rounded,
+                label: l10n.composerQueueMessage,
+                emphasized: true,
+                onTap: onQueueMessage,
+              ),
+          ],
+        ),
+      _ComposerShortcut.none =>
+        const SizedBox.shrink(key: ValueKey('shortcut-none')),
+    };
     return IgnorePointer(
       ignoring: !visible,
       child: AnimatedScale(
@@ -1581,10 +1844,81 @@ class _JumpToBottomButton extends StatelessWidget {
         child: AnimatedOpacity(
           opacity: visible ? 1 : 0,
           duration: const Duration(milliseconds: 140),
-          child: NeCircularButton(
-            icon: Icons.keyboard_arrow_down_rounded,
-            tooltip: l10n.conversationScrollToBottom,
-            onTap: onTap,
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Explains a queue the bridge is holding, and offers the only two ways out.
+///
+/// Shown after the user stops a turn (or one fails) with follow-ups still
+/// waiting: they stopped for a reason, so the queue does not resume itself.
+class _QueuePausedBanner extends StatelessWidget {
+  const _QueuePausedBanner({
+    required this.reason,
+    required this.count,
+    required this.onResume,
+    required this.onDiscard,
+  });
+
+  final QueuePausedReason? reason;
+  final int count;
+  final VoidCallback onResume;
+  final VoidCallback onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
+    final label = reason == QueuePausedReason.turnError
+        ? l10n.queuePausedAfterError(count)
+        : l10n.queuePausedAfterStop(count);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
+      child: Material(
+        color: colors.surfaceContainerHigh,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            UxnanSpacing.md,
+            UxnanSpacing.xs,
+            UxnanSpacing.xs,
+            UxnanSpacing.xs,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.pause_circle_outline_rounded,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  label,
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: colors.onSurfaceVariant),
+                ),
+              ),
+              TextButton(
+                onPressed: onDiscard,
+                child: Text(l10n.queueDiscard),
+              ),
+              FilledButton.tonal(
+                onPressed: onResume,
+                child: Text(l10n.queueResume),
+              ),
+            ],
           ),
         ),
       ),

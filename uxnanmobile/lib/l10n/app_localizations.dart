@@ -1472,6 +1472,144 @@ abstract class AppLocalizations {
   /// **'Stop'**
   String get composerStop;
 
+  /// Floating action above the composer, shown only while the agent is busy and a message is drafted: sending it adds it to the thread's queue instead of starting a turn.
+  ///
+  /// In en, this message translates to:
+  /// **'Queue message'**
+  String get composerQueueMessage;
+
+  /// Label under a queued user message that has not reached the agent yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to be sent'**
+  String get queuedMessageWaiting;
+
+  /// Label under the queued user message that will run as soon as the current turn ends.
+  ///
+  /// In en, this message translates to:
+  /// **'Next in the queue'**
+  String get queuedMessageNext;
+
+  /// Label under a queued user message showing its place in line, e.g. '2nd in the queue' rendered as '2 in the queue'.
+  ///
+  /// In en, this message translates to:
+  /// **'{position} in the queue'**
+  String queuedMessagePosition(int position);
+
+  /// Tooltip on the X in a queued bubble's corner: drops the message from the queue and leaves it marked as cancelled in the timeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel this message'**
+  String get queuedMessageCancel;
+
+  /// Tooltip on the pencil in a queued bubble's corner: takes the message off the queue and puts its text back in the composer, leaving no trace.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit this message'**
+  String get queuedMessageEdit;
+
+  /// Floating action beside the queue button that opens the saved-drafts palette.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 draft} other{{count} drafts}}'**
+  String rescuedDraftsAction(int count);
+
+  /// Tooltip on the clear-all action in the saved-drafts palette header.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete all drafts'**
+  String get rescuedDraftsClearAll;
+
+  /// Title of the confirmation dialog for deleting every saved draft.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete all drafts?'**
+  String get rescuedDraftsClearAllTitle;
+
+  /// Body of the confirmation dialog for deleting every saved draft.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{This draft will be deleted. It can\'t be undone.} other{These {count} drafts will be deleted. It can\'t be undone.}}'**
+  String rescuedDraftsClearAllBody(int count);
+
+  /// Destructive confirm button of the delete-all-drafts dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete all'**
+  String get rescuedDraftsClearAllConfirm;
+
+  /// Label under a user message that was queued and taken off the queue before the agent saw it.
+  ///
+  /// In en, this message translates to:
+  /// **'Message cancelled'**
+  String get cancelledMessage;
+
+  /// Banner above the composer after the user stopped a turn with messages still queued.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 message is waiting. You stopped the agent, so it wasn\'t sent.} other{{count} messages are waiting. You stopped the agent, so they weren\'t sent.}}'**
+  String queuePausedAfterStop(int count);
+
+  /// Banner above the composer after a turn failed with messages still queued.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 message is waiting. The last turn failed, so it wasn\'t sent.} other{{count} messages are waiting. The last turn failed, so they weren\'t sent.}}'**
+  String queuePausedAfterError(int count);
+
+  /// Snackbar after editing a queued message: its text was put back into an empty composer.
+  ///
+  /// In en, this message translates to:
+  /// **'Message back in the composer'**
+  String get queuedMessageRecovered;
+
+  /// Snackbar after editing a queued message when the composer already held text, which was saved into the drafts palette.
+  ///
+  /// In en, this message translates to:
+  /// **'Message back in the composer — what you were writing was saved as a draft'**
+  String get queuedMessageRecoveredRescued;
+
+  /// Snackbar when the bridge refused to remove a queued message from the queue.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t take that message back'**
+  String get queuedMessageRecoverFailed;
+
+  /// Header of the palette holding drafts saved when a queued message was pulled back into the composer to be edited.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved drafts'**
+  String get rescuedDraftsTitle;
+
+  /// Tooltip on the button that removes one saved draft.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard draft'**
+  String get rescuedDraftDiscard;
+
+  /// Snackbar after tapping a saved draft to put it back.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft back in the composer'**
+  String get rescuedDraftRestored;
+
+  /// Snackbar when a saved draft can't be restored because the composer already holds text.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear the composer first to bring this draft back'**
+  String get rescuedDraftComposerBusy;
+
+  /// Action in the paused-queue banner that resumes the queue.
+  ///
+  /// In en, this message translates to:
+  /// **'Send them'**
+  String get queueResume;
+
+  /// Action in the paused-queue banner that drops every waiting message.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get queueDiscard;
+
   /// No description provided for @composerVoice.
   ///
   /// In en, this message translates to:

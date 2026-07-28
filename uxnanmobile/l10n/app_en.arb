@@ -373,6 +373,113 @@
   "@composerStop": {
     "description": "Tooltip on the button that cancels the in-flight agent turn (replaces Send while running)."
   },
+  "composerQueueMessage": "Queue message",
+  "@composerQueueMessage": {
+    "description": "Floating action above the composer, shown only while the agent is busy and a message is drafted: sending it adds it to the thread's queue instead of starting a turn."
+  },
+  "queuedMessageWaiting": "Waiting to be sent",
+  "@queuedMessageWaiting": {
+    "description": "Label under a queued user message that has not reached the agent yet."
+  },
+  "queuedMessageNext": "Next in the queue",
+  "@queuedMessageNext": {
+    "description": "Label under the queued user message that will run as soon as the current turn ends."
+  },
+  "queuedMessagePosition": "{position} in the queue",
+  "@queuedMessagePosition": {
+    "description": "Label under a queued user message showing its place in line, e.g. '2nd in the queue' rendered as '2 in the queue'.",
+    "placeholders": {
+      "position": { "type": "int" }
+    }
+  },
+  "queuedMessageCancel": "Cancel this message",
+  "@queuedMessageCancel": {
+    "description": "Tooltip on the X in a queued bubble's corner: drops the message from the queue and leaves it marked as cancelled in the timeline."
+  },
+  "queuedMessageEdit": "Edit this message",
+  "@queuedMessageEdit": {
+    "description": "Tooltip on the pencil in a queued bubble's corner: takes the message off the queue and puts its text back in the composer, leaving no trace."
+  },
+  "rescuedDraftsAction": "{count, plural, =1{1 draft} other{{count} drafts}}",
+  "@rescuedDraftsAction": {
+    "description": "Floating action beside the queue button that opens the saved-drafts palette.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "rescuedDraftsClearAll": "Delete all drafts",
+  "@rescuedDraftsClearAll": {
+    "description": "Tooltip on the clear-all action in the saved-drafts palette header."
+  },
+  "rescuedDraftsClearAllTitle": "Delete all drafts?",
+  "@rescuedDraftsClearAllTitle": {
+    "description": "Title of the confirmation dialog for deleting every saved draft."
+  },
+  "rescuedDraftsClearAllBody": "{count, plural, =1{This draft will be deleted. It can't be undone.} other{These {count} drafts will be deleted. It can't be undone.}}",
+  "@rescuedDraftsClearAllBody": {
+    "description": "Body of the confirmation dialog for deleting every saved draft.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "rescuedDraftsClearAllConfirm": "Delete all",
+  "@rescuedDraftsClearAllConfirm": {
+    "description": "Destructive confirm button of the delete-all-drafts dialog."
+  },
+  "cancelledMessage": "Message cancelled",
+  "@cancelledMessage": {
+    "description": "Label under a user message that was queued and taken off the queue before the agent saw it."
+  },
+  "queuePausedAfterStop": "{count, plural, =1{1 message is waiting. You stopped the agent, so it wasn't sent.} other{{count} messages are waiting. You stopped the agent, so they weren't sent.}}",
+  "@queuePausedAfterStop": {
+    "description": "Banner above the composer after the user stopped a turn with messages still queued.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "queuePausedAfterError": "{count, plural, =1{1 message is waiting. The last turn failed, so it wasn't sent.} other{{count} messages are waiting. The last turn failed, so they weren't sent.}}",
+  "@queuePausedAfterError": {
+    "description": "Banner above the composer after a turn failed with messages still queued.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "queuedMessageRecovered": "Message back in the composer",
+  "@queuedMessageRecovered": {
+    "description": "Snackbar after editing a queued message: its text was put back into an empty composer."
+  },
+  "queuedMessageRecoveredRescued": "Message back in the composer — what you were writing was saved as a draft",
+  "@queuedMessageRecoveredRescued": {
+    "description": "Snackbar after editing a queued message when the composer already held text, which was saved into the drafts palette."
+  },
+  "queuedMessageRecoverFailed": "Couldn't take that message back",
+  "@queuedMessageRecoverFailed": {
+    "description": "Snackbar when the bridge refused to remove a queued message from the queue."
+  },
+  "rescuedDraftsTitle": "Saved drafts",
+  "@rescuedDraftsTitle": {
+    "description": "Header of the palette holding drafts saved when a queued message was pulled back into the composer to be edited."
+  },
+  "rescuedDraftDiscard": "Discard draft",
+  "@rescuedDraftDiscard": {
+    "description": "Tooltip on the button that removes one saved draft."
+  },
+  "rescuedDraftRestored": "Draft back in the composer",
+  "@rescuedDraftRestored": {
+    "description": "Snackbar after tapping a saved draft to put it back."
+  },
+  "rescuedDraftComposerBusy": "Clear the composer first to bring this draft back",
+  "@rescuedDraftComposerBusy": {
+    "description": "Snackbar when a saved draft can't be restored because the composer already holds text."
+  },
+  "queueResume": "Send them",
+  "@queueResume": {
+    "description": "Action in the paused-queue banner that resumes the queue."
+  },
+  "queueDiscard": "Discard",
+  "@queueDiscard": {
+    "description": "Action in the paused-queue banner that drops every waiting message."
+  },
   "composerVoice": "Voice input",
   "composerVoiceStop": "Stop dictation",
   "@composerVoiceStop": {

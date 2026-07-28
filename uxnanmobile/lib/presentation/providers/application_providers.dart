@@ -43,6 +43,7 @@ import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 import 'package:uxnan/infrastructure/transport/secure_transport_layer.dart';
 import 'package:uxnan/infrastructure/transport/transport_selector.dart';
@@ -145,19 +146,45 @@ final networkKindProvider = Provider<NetworkKind>((ref) {
   return classifyEndpoint(endpoint, relayUrl: device.relayUrl);
 });
 
-/// The connected bridge's status (`bridge/status`), refreshed whenever the
-/// connected device changes. Null while not connected or against an older
-/// bridge — short-circuits before touching the session when offline. Drives the
-/// relay-vs-direct transport indicator on the connected device.
+/// The connected bridge's status (`bridge/status`), re-read on every
+/// (re)connect. Null while not connected or against an older bridge —
+/// short-circuits before touching the session when offline. Drives the
+/// relay-vs-direct transport indicator, the bridge-update hint, and which
+/// optional features the app may offer.
+///
+/// It watches the connection PHASE, not just the connected device: the same PC
+/// can be serving a different bridge build after a restart, leaving the device
+/// value unchanged. Keyed only on the device, this would keep answering with
+/// whatever the first handshake reported — including which features the bridge
+/// supports, which is what decides whether the app offers to queue a message.
 final bridgeStatusProvider = FutureProvider<BridgeStatus?>((ref) async {
   final connected = ref.watch(connectedDeviceProvider).value;
+  // Short-circuit BEFORE watching the phase: with no connected device there is
+  // nothing to ask, and reaching for the phase would spin up the session
+  // coordinator (and the whole infrastructure chain behind it) for nothing.
   if (connected == null) return null;
+  final phase = ref.watch(connectionPhaseProvider).value;
+  if (phase != ConnectionPhase.connected) return null;
   final response =
       await ref.watch(sessionCoordinatorProvider).sendRequest('bridge/status');
   final result = response.result;
   return result is Map
       ? BridgeStatus.fromJson(result.cast<String, dynamic>())
       : null;
+});
+
+/// Whether the connected bridge can queue a message sent while a turn is in
+/// flight (`bridge/status` → `features.messageQueue`).
+///
+/// **False whenever we don't know** — not connected, status not read yet, or an
+/// older bridge that doesn't advertise the feature. That default is the point:
+/// on a bridge without the queue, a second `turn/send` starts a CONCURRENT turn
+/// rather than waiting, which kills the running one (OpenCode retires it; the
+/// one-shot CLIs get two processes on one `--resume` session). So the
+/// "queue message" action stays hidden and sending stays blocked during a turn,
+/// exactly as it behaved before the queue existed.
+final bridgeSupportsQueueProvider = Provider<bool>((ref) {
+  return ref.watch(bridgeStatusProvider).value?.supportsMessageQueue ?? false;
 });
 
 /// Tracks the bridge `latestVersion`s the user dismissed so the informational
@@ -702,6 +729,40 @@ final threadActivityForProvider =
     Provider.family<ThreadActivity, String>((ref, threadId) {
   final map = ref.watch(threadActivityProvider).value;
   return map?[threadId] ?? ThreadActivity.idle;
+});
+
+/// Map of threadId → its live message queue (the follow-ups sent while a turn
+/// was in flight); threads with nothing waiting are absent.
+final threadQueuesProvider = StreamProvider<Map<String, ThreadQueueState>>(
+  (ref) => ref.watch(threadManagerProvider).queuesStream,
+);
+
+/// The message queue for one thread (empty when nothing is waiting).
+final threadQueueForProvider =
+    Provider.family<ThreadQueueState, String>((ref, threadId) {
+  final map = ref.watch(threadQueuesProvider).value;
+  return map?[threadId] ?? ThreadQueueState.empty;
+});
+
+/// Thread ids whose in-flight state has been confirmed on this connection.
+final turnStateKnownProvider = StreamProvider<Set<String>>(
+  (ref) => ref.watch(threadManagerProvider).turnStateKnownStream,
+);
+
+/// Whether a thread **might** have a turn running — true while a turn is
+/// confirmed in flight, AND during the window after opening the app or
+/// reconnecting where the bridge has not told us yet.
+///
+/// Hedging toward "busy" is deliberate, because the two mistakes are not
+/// symmetric. Assuming busy when the thread is idle costs nothing: the action
+/// reads "Queue message", the user taps it, the bridge finds no turn and runs
+/// it immediately. Assuming idle when a turn IS running is the one that
+/// stings — the user is told the message goes now, and the bridge queues it.
+final threadMaybeBusyProvider = Provider.family<bool, String>((ref, threadId) {
+  final activity = ref.watch(threadActivityForProvider(threadId));
+  if (activity == ThreadActivity.running) return true;
+  final known = ref.watch(turnStateKnownProvider).value ?? const <String>{};
+  return !known.contains(threadId);
 });
 
 /// Map of threadId → most recent turn token usage, for the context indicator.
