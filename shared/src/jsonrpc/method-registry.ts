@@ -21,6 +21,9 @@ export const METHOD_NAMES = [
   'turn/read',
   'turn/send',
   'turn/cancel',
+  // Message queue
+  'queue/resume',
+  'queue/clear',
   // Git
   'git/status',
   'git/diff',

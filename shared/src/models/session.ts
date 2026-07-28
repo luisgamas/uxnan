@@ -41,4 +41,28 @@ export interface BridgeStatus {
    * without querying npm itself. Absent/false when unknown or up to date.
    */
   updateAvailable?: boolean;
+  /**
+   * Optional capabilities this bridge supports, so a newer client offers a
+   * feature only where it actually works instead of inferring it from the
+   * version string. **Absent means "assume none"** — an older bridge simply
+   * omits the field and the client falls back to the pre-feature behaviour.
+   *
+   * This matters because guessing wrong is not a cosmetic degradation: a client
+   * that offers to queue a follow-up against a bridge that cannot queue makes it
+   * start a second CONCURRENT turn, which corrupts the agent session (two CLI
+   * processes on one `--resume`; OpenCode retires the running turn outright).
+   */
+  features?: BridgeFeatures;
+}
+
+/** Optional, additive bridge capabilities advertised on {@link BridgeStatus}. */
+export interface BridgeFeatures {
+  /**
+   * The bridge queues a `turn/send` that arrives while a turn is in flight
+   * (stored as a `queued` turn, drained on completion) instead of starting it
+   * concurrently, and implements `queue/resume` / `queue/clear`. Absent/false →
+   * the client must NOT offer to queue: sending during a live turn is unsafe on
+   * that bridge.
+   */
+  messageQueue?: boolean;
 }

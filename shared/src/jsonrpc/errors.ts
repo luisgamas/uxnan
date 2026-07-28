@@ -1,7 +1,7 @@
 /**
  * JSON-RPC 2.0 error codes used across the Uxnan ecosystem.
  *
- * Standard codes (-32700..-32603) plus Uxnan-specific codes (-32000..-32008).
+ * Standard codes (-32700..-32603) plus Uxnan-specific codes (-32000..-32009).
  * Source: architecture/02b-contracts-and-requirements.md.
  */
 export const JsonRpcErrorCode = {
@@ -21,6 +21,12 @@ export const JsonRpcErrorCode = {
   SessionExpired: -32006,
   ConfirmationRequired: -32007,
   ResourceNotFound: -32008,
+  /**
+   * A turn is already in flight on this thread and the caller asked NOT to
+   * queue behind it (`turn/send` with `queue: false`). Only ever raised on an
+   * explicit opt-out — the default is to queue.
+   */
+  AgentBusy: -32009,
 } as const;
 
 export type JsonRpcErrorCode = (typeof JsonRpcErrorCode)[keyof typeof JsonRpcErrorCode];
@@ -41,6 +47,7 @@ export const JSON_RPC_ERROR_MESSAGES: Record<JsonRpcErrorCode, string> = {
   [JsonRpcErrorCode.SessionExpired]: 'Session expired',
   [JsonRpcErrorCode.ConfirmationRequired]: 'Confirmation required',
   [JsonRpcErrorCode.ResourceNotFound]: 'Resource not found',
+  [JsonRpcErrorCode.AgentBusy]: 'Agent busy',
 };
 
 /** Shape of the `error` member of a JSON-RPC error response. */

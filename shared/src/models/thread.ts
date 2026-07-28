@@ -7,9 +7,40 @@
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 
-export type TurnStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'aborted';
+/**
+ * Lifecycle of a turn.
+ * - `queued` — accepted while another turn was in flight; it holds its place in
+ *   the thread's queue and starts on its own once the queue drains to it. The
+ *   user message is already stored, the assistant one is still empty.
+ * - `pending` / `streaming` — the agent is producing it.
+ * - `completed` / `error` — it ran and ended.
+ * - `aborted` — it was RUNNING and the user stopped it mid-flight.
+ * - `cancelled` — it was QUEUED and removed before it ever started. Kept in the
+ *   thread (never deleted) so the user's message stays visible with a "cancelled"
+ *   mark instead of silently vanishing; distinct from `aborted` precisely so a
+ *   client can tell "never ran" from "interrupted".
+ */
+export type TurnStatus =
+  | 'queued'
+  | 'pending'
+  | 'streaming'
+  | 'completed'
+  | 'error'
+  | 'aborted'
+  | 'cancelled';
 
 export type ThreadStatus = 'active' | 'idle' | 'archived';
+
+/**
+ * Why a thread's message queue is held instead of draining:
+ * - `turnAborted` — the user stopped the running turn.
+ * - `turnError` — the running turn failed.
+ *
+ * In both cases the remaining queued turns are kept, not discarded: the user
+ * stopped (or the agent broke) for a reason, and firing the follow-ups at it
+ * anyway is the one outcome nobody wants. Draining resumes on `queue/resume`.
+ */
+export type QueuePausedReason = 'turnAborted' | 'turnError';
 
 export interface Message {
   id: string;
@@ -107,4 +138,20 @@ export interface TurnList {
    * stopped tracking while backgrounded, instead of treating the turn as ended.
    */
   activeTurnId?: string;
+  /**
+   * The thread's queued turns (status `queued`), in the order they will run.
+   * Like {@link activeTurnId} this is LIVE bridge state the phone re-attaches to
+   * on resync — a client restores its "queued" bubbles from it without having to
+   * scan the returned page (the queue may sit outside a narrow `turn/list` page).
+   * Absent/empty when nothing is queued.
+   */
+  queuedTurnIds?: string[];
+  /**
+   * True when the queue is HELD: the previous turn was stopped by the user or
+   * failed, so the bridge stopped draining and is waiting for an explicit
+   * `queue/resume` (or `queue/clear`). Queued turns stay queued meanwhile.
+   */
+  queuePaused?: boolean;
+  /** Why the queue is held; absent when it is not paused. */
+  queuePausedReason?: QueuePausedReason;
 }

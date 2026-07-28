@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![JSON Schema](https://img.shields.io/badge/validation-Ajv-000000?style=for-the-badge&logo=json&logoColor=white)
-![Contracts](https://img.shields.io/badge/66_methods_%7C_8_notifications-blue?style=for-the-badge)
+![Contracts](https://img.shields.io/badge/68_methods_%7C_10_notifications-blue?style=for-the-badge)
 
 Shared JSON-RPC and E2EE contracts for the [Uxnan](../README.md) ecosystem — the
 single source of truth every component agrees on. Consumed as a local workspace
@@ -13,7 +13,7 @@ equivalents (see
 [`architecture/02b-contracts-and-requirements.md`](../architecture/02b-contracts-and-requirements.md)
 §1 for the canonical contract list).
 
-> **Status:** implemented and stable — **66 JSON-RPC methods** + **8 streaming
+> **Status:** implemented and stable — **68 JSON-RPC methods** + **10 streaming
 > notifications**, kept lock-step at build time with the `METHOD_NAMES` array and
 > the `StreamNotification` enum (a compile-time assertion in
 > `src/jsonrpc/method-registry.ts` fails the build on any drift). Changes are
@@ -49,7 +49,7 @@ flowchart TB
 
 | Area | Exports |
 |---|---|
-| JSON-RPC | envelope types + constructors (`makeRequest`, `makeNotification`, `makeResponse`, `makeErrorResponse`), error codes (`JsonRpcErrorCode` + Uxnan-specific `-32000..-32008`), `RpcError`, typed method registry (`JsonRpcMethodRegistry` + `METHOD_NAMES`), `isKnownMethod` |
+| JSON-RPC | envelope types + constructors (`makeRequest`, `makeNotification`, `makeResponse`, `makeErrorResponse`), error codes (`JsonRpcErrorCode` + Uxnan-specific `-32000..-32009`), `RpcError`, typed method registry (`JsonRpcMethodRegistry` + `METHOD_NAMES`), `isKnownMethod` |
 | Streaming | `StreamNotification` enum + param types (`TurnStartedParams`, `MessageDeltaParams`, `ThinkingDeltaParams`, `ContentBlockParams`, `TurnCompletedParams`, `TurnUsage`, `TurnErrorParams`, `TurnAbortedParams`, `ModelResolvedParams`) |
 | E2EE | handshake messages (`clientHello` / `serverHello` / `clientAuth` / `ready`), `buildHandshakeTranscript`, `SecureEnvelope`, `PairingPayload` v2 (`relay` optional + `hosts: string[]`) with `Base64(utf8(JSON))` QR encoding |
 | Models | thread / turn / message (with `MessageContent` polymorphic blocks), git, workspace (incl. `browseDirs` + `exists`), project, auth, session/trust (`BridgeStatus` incl. `latestVersion?`/`updateAvailable?`), bridge-owned profile metrics (complete-ledger export/import), approval, question (interactive multiple-choice) |

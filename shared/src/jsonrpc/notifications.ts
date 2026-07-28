@@ -3,6 +3,7 @@
  *
  * Source: architecture/02b-contracts-and-requirements.md (streaming events).
  */
+import type { QueuePausedReason } from '../models/thread.js';
 
 export const StreamNotification = {
   TurnStarted: 'stream/turn/started',
@@ -14,6 +15,10 @@ export const StreamNotification = {
   TurnCompleted: 'stream/turn/completed',
   TurnError: 'stream/turn/error',
   TurnAborted: 'stream/turn/aborted',
+  /** A queued turn was removed before it ever ran (status → `cancelled`). */
+  TurnCancelled: 'stream/turn/cancelled',
+  /** The thread's message queue changed (queued, drained, cancelled, paused). */
+  QueueUpdated: 'stream/queue/updated',
   /** The agent resolved an alias (e.g. `opus`) to a concrete model id for this turn. */
   ModelResolved: 'stream/model/resolved',
 } as const;
@@ -95,6 +100,34 @@ export interface TurnErrorParams {
 export interface TurnAbortedParams {
   threadId: string;
   turnId: string;
+}
+
+/**
+ * A queued turn was removed before it ever started (its status is now
+ * `cancelled`). The turn is NOT deleted — the user's message stays in the
+ * thread, marked as cancelled, so the history shows what was asked and dropped.
+ */
+export interface TurnCancelledParams {
+  threadId: string;
+  turnId: string;
+}
+
+/**
+ * The thread's message queue changed. Carries the WHOLE state rather than a
+ * delta, so it is idempotent: a client that missed one (backgrounded, mid-
+ * reconnect) converges on the next one it receives instead of drifting.
+ *
+ * A client that sees an id it does not know about yet (another device queued
+ * it) resyncs the thread the same way it does for any unknown turn.
+ */
+export interface QueueUpdatedParams {
+  threadId: string;
+  /** Queued turn ids in drain order; empty when the queue just emptied. */
+  queuedTurnIds: string[];
+  /** True while draining is held after a stop/failure (see `TurnList.queuePaused`). */
+  paused: boolean;
+  /** Why it is held; absent when it is not paused. */
+  pausedReason?: QueuePausedReason;
 }
 
 export interface ModelResolvedParams {

@@ -5,7 +5,14 @@
  * Source: architecture/02b-contracts-and-requirements.md and
  * uxnandesktop/architecture/02e-bridge-integration.md §4.4.
  */
-import type { AccessMode, Thread, ThreadList, Turn, TurnList } from '../models/thread.js';
+import type {
+  AccessMode,
+  QueuePausedReason,
+  Thread,
+  ThreadList,
+  Turn,
+  TurnList,
+} from '../models/thread.js';
 import type {
   GitBranchList,
   GitBranchResult,
@@ -133,6 +140,20 @@ export interface TurnSendParams {
    * required.
    */
   command?: AgentCommandInvocation;
+  /**
+   * What to do when a turn is ALREADY in flight on this thread (the CLIs' own
+   * "queue a follow-up while it works" behaviour):
+   * - `true` — queue it explicitly; it starts when the queue drains to it.
+   * - `false` — reject with `AgentBusy` instead of queueing (a client that
+   *   wants to handle the busy case itself).
+   * - absent — **queue it anyway**. Queueing is the safe default because the
+   *   bridge can only drive ONE turn per thread: half the agents run one-shot
+   *   per turn (`claude -p --resume`, gemini, pi, antigravity) and a second
+   *   concurrent turn would put two CLI processes on the same session.
+   *
+   * Ignored when no turn is in flight — the turn simply starts.
+   */
+  queue?: boolean;
 }
 export interface ThreadSetModelParams {
   threadId: string;
@@ -150,6 +171,23 @@ export interface ThreadSetAccessModeParams {
 }
 export interface TurnSendResult {
   turnId: string;
+  /**
+   * True when the turn was QUEUED behind an in-flight one instead of starting
+   * now. The `turnId` is real either way (the turn is stored, and `turn/cancel`
+   * takes it off the queue); it just has status `queued` until it runs.
+   */
+  queued?: boolean;
+  /** 1-based place in the queue when `queued` is true (1 = runs next). */
+  queuePosition?: number;
+}
+
+export interface QueueStateResult {
+  /** Queued turn ids in drain order. */
+  queuedTurnIds: string[];
+  /** True while draining is held after a stop/failure. */
+  paused: boolean;
+  /** Why it is held; absent when it is not paused. */
+  pausedReason?: QueuePausedReason;
 }
 
 export interface GitCommitParams {
@@ -337,7 +375,13 @@ export interface JsonRpcMethodRegistry {
   'turn/list': { params: TurnListParams; result: TurnList };
   'turn/read': { params: { turnId: string }; result: Turn };
   'turn/send': { params: TurnSendParams; result: TurnSendResult };
+  // Stops a RUNNING turn, or takes a QUEUED one off the queue (→ `cancelled`).
   'turn/cancel': { params: { threadId: string; turnId: string }; result: void };
+  // Message queue (follow-ups sent while a turn is in flight)
+  /** Resumes draining after a stop/failure held the queue. */
+  'queue/resume': { params: { threadId: string }; result: QueueStateResult };
+  /** Drops every queued turn (each → `cancelled`) and clears the paused state. */
+  'queue/clear': { params: { threadId: string }; result: QueueStateResult };
 
   // Git
   'git/status': { params: { cwd: string }; result: GitRepoStatus };
