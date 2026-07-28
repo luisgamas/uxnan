@@ -106,8 +106,17 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     // This is the AgentManager's authoritative state, not a stored `streaming`
     // status (which can dangle after a restart) — see TurnList.activeTurnId.
     const activeTurnId = ctx.agentManager.activeTurnId(threadId);
-    const withActive = (list: TurnList): TurnList =>
-      activeTurnId !== undefined ? { ...list, activeTurnId } : list;
+    // Same idea for the message queue: it is live AgentManager state, so a phone
+    // resyncing restores its queued bubbles (and the paused banner) from here
+    // rather than having to find them inside whatever page it asked for.
+    const queue = ctx.agentManager.queueState(threadId);
+    const withActive = (list: TurnList): TurnList => ({
+      ...list,
+      ...(activeTurnId !== undefined ? { activeTurnId } : {}),
+      ...(queue.queuedTurnIds.length > 0 ? { queuedTurnIds: queue.queuedTurnIds } : {}),
+      ...(queue.paused ? { queuePaused: true } : {}),
+      ...(queue.pausedReason !== undefined ? { queuePausedReason: queue.pausedReason } : {}),
+    });
     const stored = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);
     // Fallback (§5.8.8): when the store has nothing for this thread, read the
     // agent's own on-disk session log so the phone can still show history (e.g.
@@ -158,6 +167,9 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       // to their permission flag; absent → the adapter's configured posture).
       ...(runtime.accessMode !== undefined ? { accessMode: runtime.accessMode } : {}),
       ...(command !== undefined ? { command } : {}),
+      // Absent → the manager queues behind an in-flight turn (the safe default);
+      // `false` asks it to reject with `AgentBusy` instead.
+      ...optionalQueue(p),
     };
     return ctx.agentManager.sendTurn(threadId, text, options);
   });
@@ -165,6 +177,12 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     await ctx.agentManager.cancelTurn(requireString(p, 'threadId'), requireString(p, 'turnId'));
     return null;
   });
+  router.register('queue/resume', (p, ctx: BridgeContext) =>
+    ctx.agentManager.resumeQueue(requireString(p, 'threadId')),
+  );
+  router.register('queue/clear', (p, ctx: BridgeContext) =>
+    ctx.agentManager.clearQueue(requireString(p, 'threadId')),
+  );
 }
 
 /**
@@ -196,6 +214,17 @@ function paginateTurns(
 function optionalEffort(params: unknown): { effort?: string } {
   const value = optionalString(params, 'effort');
   return value === undefined ? {} : { effort: value };
+}
+
+/**
+ * Extracts `queue` from `turn/send` params. Only a real boolean counts — a
+ * garbled value falls back to the default (queue behind an in-flight turn),
+ * which is the safe side: the alternative would be starting a second concurrent
+ * turn on a thread that already has one.
+ */
+function optionalQueue(params: unknown): { queue?: boolean } {
+  const value = optionalBoolean(params, 'queue');
+  return value === undefined ? {} : { queue: value };
 }
 
 const APPROVAL_DECISIONS = new Set<ApprovalDecision>(['approve', 'reject', 'approveSession']);

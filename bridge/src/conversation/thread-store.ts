@@ -83,6 +83,14 @@ interface StoredThread {
 
 const DEFAULT_TURN_LIMIT = 20;
 
+/** Statuses that end a turn — the only ones that stamp `completedAt`. */
+const TERMINAL_TURN_STATUSES: ReadonlySet<TurnStatus> = new Set<TurnStatus>([
+  'completed',
+  'error',
+  'aborted',
+  'cancelled',
+]);
+
 export interface StartTurnResult {
   turnId: string;
   userMessageId: string;
@@ -325,6 +333,70 @@ export class ThreadStore {
   }
 
   async startTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
+    return this.#createTurn(threadId, userText, 'streaming', now);
+  }
+
+  /**
+   * Stores a turn the user sent while another one was in flight. Identical to
+   * {@link startTurn} except for the status: the user message is persisted right
+   * away (so it survives a resync and shows in the thread), the assistant one
+   * stays empty, and nothing is handed to an adapter until
+   * {@link beginQueuedTurn} promotes it.
+   */
+  async queueTurn(threadId: string, userText: string, now: number): Promise<StartTurnResult> {
+    return this.#createTurn(threadId, userText, 'queued', now);
+  }
+
+  /** Promotes a `queued` turn to `streaming` as the queue drains to it. */
+  beginQueuedTurn(threadId: string, turnId: string, now: number): Promise<void> {
+    return this.#setTurnStatus(threadId, turnId, 'streaming', now);
+  }
+
+  /**
+   * Marks a queued turn as `cancelled` — removed before it ever ran. The turn is
+   * kept (not deleted) so the user's message stays in the thread with a visible
+   * "cancelled" mark; `aborted` stays reserved for a turn that was running.
+   */
+  cancelQueuedTurn(threadId: string, turnId: string, now: number): Promise<void> {
+    return this.#setTurnStatus(threadId, turnId, 'cancelled', now);
+  }
+
+  /** The ids of a thread's `queued` turns, oldest first (their run order). */
+  async queuedTurnIds(threadId: string): Promise<string[]> {
+    const threads = await this.#read();
+    const thread = threads.find((t) => t.id === threadId);
+    if (!thread) return [];
+    return thread.turns.filter((t) => t.status === 'queued').map((t) => t.id);
+  }
+
+  /**
+   * Marks every still-`queued` turn across all threads as `cancelled`. Called
+   * once at startup: the in-memory queue does not survive a bridge restart (nor
+   * does the in-flight turn it was waiting behind), so leaving turns `queued`
+   * would strand them forever. Cancelling them keeps the record honest — the
+   * user sees exactly which messages never went out. Returns how many it closed.
+   */
+  async cancelOrphanedQueuedTurns(now: number): Promise<number> {
+    return this.#mutate(async (threads) => {
+      let cancelled = 0;
+      for (const thread of threads) {
+        for (const turn of thread.turns) {
+          if (turn.status !== 'queued') continue;
+          turn.status = 'cancelled';
+          turn.completedAt = now;
+          cancelled += 1;
+        }
+      }
+      return cancelled;
+    });
+  }
+
+  async #createTurn(
+    threadId: string,
+    userText: string,
+    status: TurnStatus,
+    now: number,
+  ): Promise<StartTurnResult> {
     const captured = await this.#mutate(async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const turnId = randomUUID();
@@ -345,7 +417,7 @@ export class ThreadStore {
       thread.turns.push({
         id: turnId,
         threadId,
-        status: 'streaming',
+        status,
         messages: [userMessage, assistantMessage],
         createdAt: now,
       });
@@ -458,7 +530,10 @@ export class ThreadStore {
     return this.#mutate(async (threads) => {
       const turn = this.#turn(threads, threadId, turnId);
       turn.status = status;
-      turn.completedAt = now;
+      // Only a terminal status stamps `completedAt`. `beginQueuedTurn` moves a
+      // turn from `queued` to `streaming` — it is starting, not ending, and
+      // stamping it there would date a live turn as finished.
+      if (TERMINAL_TURN_STATUSES.has(status)) turn.completedAt = now;
       this.#touch(threads, threadId, now);
     });
   }
