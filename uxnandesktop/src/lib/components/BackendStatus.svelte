@@ -118,9 +118,11 @@
           {app.errorMessage}
         </div>
       {/if}
-      <div class="flex items-center justify-between border-t border-border/60 pt-2">
-        <span class={text.meta}>{i18n.t("status.backendRepos")}</span>
-        <span class={cn("font-medium text-foreground", text.body)}>{app.repos.length}</span>
+      <div class="flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+        <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("status.backendRepos")}</span>
+        <span class={cn("shrink-0 font-medium tabular-nums text-foreground", text.body)}>
+          {app.repos.length}
+        </span>
       </div>
     </div>
 
@@ -131,11 +133,11 @@
           <span class="text-sm font-medium text-foreground">{i18n.t("github.title")}</span>
         </div>
         {#if showUnread}
-          <div class="flex items-center justify-between">
-            <span class={text.meta}>{i18n.t("status.githubUnread")}</span>
+          <div class="flex items-center justify-between gap-2">
+            <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("status.githubUnread")}</span>
             <span
               class={cn(
-                "font-medium",
+                "shrink-0 font-medium tabular-nums",
                 unread > 0 ? "text-foreground" : "text-muted-foreground",
                 text.body,
               )}
@@ -144,9 +146,9 @@
             </span>
           </div>
         {/if}
-        <div class="flex items-center justify-between">
-          <span class={text.meta}>{i18n.t("github.account.rateLimit")}</span>
-          <span class={cn("font-medium text-foreground", text.body)}>
+        <div class="flex items-center justify-between gap-2">
+          <span class={cn("min-w-0 truncate", text.meta)}>{i18n.t("github.account.rateLimit")}</span>
+          <span class={cn("shrink-0 font-medium tabular-nums text-foreground", text.body)}>
             {#if rate}
               {rate.remaining} / {rate.limit}
             {:else}
