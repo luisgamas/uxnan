@@ -316,9 +316,18 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    en las secciones 3–4 (estado/diff/stage/commit/push/pull).
 3. **Historial** (`HistoryPanel.svelte`): el log de commits del worktree activo,
    con un grafo de ramas opcional (ver §6.4).
-4. **GitHub** (`GithubPanel.svelte`, opcional): vista contextual del worktree activo
-   con el PR de su rama (resumen de checks + acciones rápidas) y los runs de CI de
-   esa rama. Solo aparece cuando el repo es de GitHub y el tab está habilitado
+4. **GitHub** (`GithubPanel.svelte`, opcional): resumen contextual del repo al que
+   pertenece el worktree activo — el PR de su rama (resumen de checks + acciones
+   rápidas) y, debajo, los **5 PR**, los **5 runs de CI** y los **5 issues** más
+   recientes del repositorio (cualquier estado; los runs **ya no se filtran por
+   rama**, que era lo que hacía que la lista repitiera siempre las mismas
+   ejecuciones). Cada fila **abre el detalle dentro de la app** —
+   `github.openSection(repoPath, section, detail)` deja la vista inline mostrando
+   ese review, ese log o ese hilo— y cada issue ofrece, al pasar el ratón,
+   `GithubWorktreeDialog` para arrancar su worktree. La cabecera abre la vista de
+   GitHub del proyecto y refresca (con tooltip que dice qué relee). Los iconos y
+   tonos de estado son los de `$lib/githubDisplay`, compartidos con la vista
+   inline. Solo aparece cuando el repo es de GitHub y el tab está habilitado
    (`AppSettings.github.rightPanelTab`). Las vistas grandes (review/diff/logs) se
    abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
    centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se

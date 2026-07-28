@@ -1579,6 +1579,12 @@ export const es: Record<MessageKey, string> = {
   "github.panel.createPr": "Crear PR",
   "github.panel.openPr": "PR #{n}",
   "github.panel.runs": "Runs de CI",
+  "github.panel.openViewTip": "Abrir la vista de GitHub de este proyecto",
+  "github.panel.refreshTip":
+    "Actualiza este panel: el PR de la rama y los pull requests, runs de CI e issues del repositorio",
+  "github.panel.openPulls": "Abrir Pull Requests",
+  "github.panel.openIssues": "Abrir Issues",
+  "github.panel.openActions": "Abrir Actions",
   "github.panel.branch": "Rama",
   "github.panel.checksPass": "{passed}/{total} checks",
   "github.settings.title": "Ajustes de GitHub",

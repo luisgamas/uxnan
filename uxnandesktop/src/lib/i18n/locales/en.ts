@@ -1580,6 +1580,12 @@ export const en = {
   "github.panel.createPr": "Create PR",
   "github.panel.openPr": "PR #{n}",
   "github.panel.runs": "CI runs",
+  "github.panel.openViewTip": "Open the GitHub view for this project",
+  "github.panel.refreshTip":
+    "Refresh this panel: the branch's PR, and the repository's pull requests, CI runs and issues",
+  "github.panel.openPulls": "Open Pull Requests",
+  "github.panel.openIssues": "Open Issues",
+  "github.panel.openActions": "Open Actions",
   "github.panel.branch": "Branch",
   "github.panel.checksPass": "{passed}/{total} checks",
   // Settings pane

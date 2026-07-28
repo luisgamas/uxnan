@@ -7,6 +7,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The right-panel GitHub tab became a real digest of the repo.** Under the
+  branch's PR it now lists the repo's **5 most recent pull requests** and its **5
+  most recent issues** (any state, with GitHub's own state icons), and every row —
+  PR, CI run or issue — **opens that item's detail inside the app**: the inline
+  GitHub view takes over already showing that review, that run's log or that issue
+  thread. Rows used to be either dead ends or a trip to the browser. Each issue
+  also reveals a **start-work** button on hover that opens the same worktree dialog
+  the section uses (branch name, agent, folder preview) — the shortest path from
+  "this needs doing" to a worktree with an agent in it.
+  The header gained a button that **opens the GitHub view** for the project (the
+  entry point the project card's ⋯ menu uses), and its refresh button finally has a
+  tooltip naming what it re-reads.
+  Reaching a detail from outside the section goes through `github.openSection`'s
+  new optional pending-detail argument, consumed once by the section — the section
+  still owns what's open, so this is a way in, not a second source of truth.
+  The state icons/tones moved to `$lib/githubDisplay` so the panel and the section
+  can't drift on what a merged PR looks like.
+
 - **GitHub is reachable from a worktree's right-click menu.** Every worktree row —
   in the project tree and in the flattened **group-by-status** view — now carries a
   **GitHub → Pull Requests / Issues / Actions** submenu that opens the inline view

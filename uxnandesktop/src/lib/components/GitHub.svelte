@@ -51,6 +51,12 @@
   } from "$lib/types";
   import { splitCommitDiff } from "$lib/diffParse";
   import { relTimeLong } from "$lib/relTime";
+  import {
+    prStateIcon,
+    prStateIconClass,
+    issueStateIcon,
+    issueStateIconClass,
+  } from "$lib/githubDisplay";
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { Spinner } from "$lib/components/ui/spinner";
@@ -95,7 +101,6 @@
   import LinkIcon from "@lucide/svelte/icons/link";
   import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
   import GitPullRequestDraftIcon from "@lucide/svelte/icons/git-pull-request-draft";
-  import GitPullRequestClosedIcon from "@lucide/svelte/icons/git-pull-request-closed";
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import SearchIcon from "@lucide/svelte/icons/search";
 
@@ -190,6 +195,11 @@
     void github.refreshRateLimit();
     github.ensureSectionRepo();
     void github.loadSectionContext();
+    // An outside entry point (the right-panel lists) can ask for one item's
+    // detail. Consume it *here*, right after the clearDetail() above, so the very
+    // effect that wipes detail state can't wipe the one we were asked to open —
+    // this effect re-runs while `selectSectionRepo` settles.
+    openPendingDetail();
   });
   // Load the active pane's list when the pane, the SELECTED REPO, availability or a
   // filter changes. NOTE: no `clearDetail()` here — detail state is owned by
@@ -209,6 +219,17 @@
     void github.refreshRateLimit();
     void github.loadSectionContext();
     loadPane(app.githubSection);
+  }
+
+  /** Open the one item an outside entry point asked us to show (`openSection`'s
+   *  optional detail). The request is consumed on read, so a later re-run of the
+   *  effect above doesn't re-open it over whatever the user navigated to. */
+  function openPendingDetail() {
+    const req = github.takePendingDetail();
+    if (!req) return;
+    if (req.kind === "pr") void selectPr(req.number);
+    else if (req.kind === "issue") void selectIssue(req.number);
+    else void viewRunLog(req.id, req.title);
   }
 
   // --- Pull requests --------------------------------------------------------
@@ -902,26 +923,8 @@
     return relTimeLong(ms, Date.now(), i18n.locale);
   }
   // --- status icons (list rows + detail headers) ----------------------------
-  function prStateIcon(state: string, isDraft: boolean) {
-    const s = state.toUpperCase();
-    if (s === "MERGED") return GitMergeIcon;
-    if (s === "CLOSED") return GitPullRequestClosedIcon;
-    if (isDraft) return GitPullRequestDraftIcon;
-    return GitPullRequestIcon;
-  }
-  function prStateIconClass(state: string, isDraft: boolean): string {
-    const s = state.toUpperCase();
-    if (s === "MERGED") return "text-purple-500";
-    if (s === "CLOSED") return "text-red-500";
-    if (isDraft) return "text-muted-foreground";
-    return "text-emerald-500";
-  }
-  function issueStateIcon(state: string) {
-    return state.toUpperCase() === "OPEN" ? CircleDotIcon : CheckCircle2Icon;
-  }
-  function issueStateIconClass(state: string): string {
-    return state.toUpperCase() === "OPEN" ? "text-emerald-500" : "text-purple-500";
-  }
+  // State icons/tones live in `$lib/githubDisplay` so the right-panel tab lists
+  // these items exactly the way this section does.
   // --- Timeline rendering ---------------------------------------------------
   /** Fill a full TimelineEvent from a partial (all optional fields default null). */
   function mkEvent(e: Partial<TimelineEvent> & { event: string }): TimelineEvent {

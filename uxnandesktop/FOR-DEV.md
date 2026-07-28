@@ -159,7 +159,10 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   panels, leaving the left sidebar and the browser panel in place, and closes when
   any worktree is activated — `app.githubInline`), with the **Account / Session** panel and every GitHub
   preference in **Settings → GitHub** (`GithubSettings.svelte`); a configurable
-  **right-panel GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR
+  **right-panel GitHub tab** (the branch's PR + checks, plus the repo's 5 latest
+  PRs / CI runs / issues — every row opening that item's detail inside the app via
+  `github.openSection`'s pending-detail, and each issue offering the worktree
+  dialog), **sidebar-card PR
   badges**, a passive **readout inside the status bar's backend popover**
   (rate limit + optional unread count, an unread dot on the backend icon and a row
   into Settings → GitHub; it has no status-bar button of its own and never

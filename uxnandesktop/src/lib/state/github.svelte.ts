@@ -23,6 +23,12 @@ import type {
 import { app, type GithubSection } from "./app.svelte";
 import { projects } from "./projects.svelte";
 
+/** An item the inline section should open on arrival, requested from outside it. */
+export type PendingDetail =
+  | { kind: "pr"; number: number }
+  | { kind: "issue"; number: number }
+  | { kind: "run"; id: number; title: string };
+
 class GithubStore {
   /** Sign-in status (gh installed? authenticated? login/host/scopes). */
   status = $state<GithubStatus | null>(null);
@@ -106,14 +112,33 @@ class GithubStore {
     await this.loadSectionContext();
   }
 
+  /** A detail the section should open as soon as it takes over — set by an entry
+   *  point outside the section (the right-panel tab's lists). The section owns
+   *  its own detail state, so this is a one-shot request it consumes and clears;
+   *  it is never a second source of truth for what's open. */
+  pendingDetail = $state<PendingDetail | null>(null);
+
   /** Open the inline GitHub view on `section`, scoped to `repoPath` (a repo's
-   *  main-worktree path). Every entry point goes through here — the project
-   *  card's ⋯ menu, a worktree row's right-click menu — so adding one is adding
-   *  a way to *reach* the view, never a second way to open it. Deliberately does
-   *  not activate a workspace: activating one closes the view. */
-  openSection(repoPath: string, section: GithubSection = "pulls"): void {
+   *  main-worktree path), optionally straight into one item's detail. Every entry
+   *  point goes through here — the project card's ⋯ menu, a worktree row's
+   *  right-click menu, the right-panel lists — so adding one is adding a way to
+   *  *reach* the view, never a second way to open it. Deliberately does not
+   *  activate a workspace: activating one closes the view. */
+  openSection(
+    repoPath: string,
+    section: GithubSection = "pulls",
+    detail: PendingDetail | null = null,
+  ): void {
+    this.pendingDetail = detail;
     void this.selectSectionRepo(repoPath);
     app.openGithubInline(section);
+  }
+
+  /** Take the pending request (if any), clearing it so it fires exactly once. */
+  takePendingDetail(): PendingDetail | null {
+    const d = this.pendingDetail;
+    if (d) this.pendingDetail = null;
+    return d;
   }
 
   /** Load the selected repo's context (owner/repo + branch + PR). */

@@ -76,18 +76,27 @@ GitHub** (see *Settings* below), not in this view.
 ## The right-panel GitHub tab
 
 A 4th tab in the right panel (next to Files / Changes / History), scoped to the
-**active worktree**: its PR (with a colored checks roll-up + quick actions), this
-branch's CI runs, and a full **create-PR form** (base ← head, title + body, manual or
-AI-drafted; the head is pinned to this worktree's branch — see *Creating a PR* below).
+**active worktree** — a digest of the repo that worktree belongs to, top to bottom:
+
+| Block | What it shows |
+|---|---|
+| **Header** | `owner/repo` + the branch, with two icon buttons: **open the GitHub view** for this project (same entry point as the project card's ⋯ menu) and **refresh** (its tooltip names exactly what it re-reads: the branch's PR plus the repo's pull requests, CI runs and issues). |
+| **This branch's PR** | The PR for the active branch with a colored checks roll-up + quick actions, or a full **create-PR form** (base ← head, title + body, manual or AI-drafted; the head is pinned to this worktree's branch — see *Creating a PR* below). |
+| **Pull requests** | The repo's **5 most recent** PRs, any state, each with its state icon (open / draft / merged / closed) and relative date. |
+| **CI runs** | The repo's **5 most recent** workflow runs — **not** filtered to this branch, so it answers "what has CI been doing" instead of repeating the same handful of runs. |
+| **Issues** | The repo's **5 most recent** issues, any state. Hovering one reveals a **start-work** button that opens the same worktree dialog the section uses (branch name, agent, folder preview). |
+
+Every row **opens that item's detail inside the app** — the inline GitHub view takes
+over already showing that PR's review, that run's log or that issue's thread. None of
+them sends you to the browser (the explicit **Open on GitHub** action still does).
+
 Unlike the per-project GitHub view (scoped to the card you opened), this tab **is** bound
 to the **active worktree** — when no worktree is selected it shows an empty state (like
 the Files / Changes / History tabs). It stays visible whenever enabled (toggle in
 **Settings → GitHub → Right-panel GitHub tab**), showing a "connect" / "no active
 worktree" / "not a GitHub repo" state rather than appearing and disappearing. The
 right-panel **tab strip scrolls horizontally** when it's narrow, and the panel has a
-minimum width that keeps all four tabs visible. Big views (review, diff, logs) open in
-the per-project GitHub view (its **View PR** / **View Actions** buttons open it for the
-active worktree's repo).
+minimum width that keeps all four tabs visible.
 
 ## Creating a PR
 
