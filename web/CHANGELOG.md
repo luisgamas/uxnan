@@ -11,6 +11,11 @@ grouped by the date they landed rather than by a version number.
 
 ### Changed
 
+- **Contract counts refreshed to 68 methods / 10 notifications**
+  (`BRIDGE_METHOD_COUNT`, `BRIDGE_NOTIFICATION_COUNT`). The mobile message queue
+  added `queue/resume` + `queue/clear` and the `stream/turn/cancelled` +
+  `stream/queue/updated` notifications; both numbers were re-derived from
+  `shared/src/jsonrpc/` rather than incremented on trust.
 - **Mobile mockups now match the app at miniature scale.** The feature marquee
   keeps each screen's real hierarchy and signature controls without reproducing
   details that disappear inside a 114 × 230 px phone.
