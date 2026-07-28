@@ -1685,6 +1685,13 @@ pub struct HookScripts {
     /// The full `~/.codex/hooks.json` body (the `trusted_hash` in `config.toml` is
     /// auto-managed, so it isn't shown here).
     pub codex_json: String,
+    /// The full `~/.grok/hooks/uxnan-status.json` body (a file we own outright).
+    pub grok_json: String,
+    /// The named entry the ADE adds to `~/.gemini/config/hooks.json`.
+    pub antigravity_json: String,
+    /// The per-event `curl` reporter Grok and Antigravity run (POSIX / Windows).
+    pub event_hook_sh: String,
+    pub event_hook_cmd: String,
     /// The in-process plugin source the ADE drops in OpenCode's `plugins/` dir.
     pub opencode_plugin_js: String,
     /// The in-process extension source the ADE drops in Pi's `extensions/` dir.
@@ -1784,6 +1791,45 @@ pub async fn uninstall_gemini_hooks() -> Result<AgentHooksStatus, CommandError> 
     agent_hooks::uninstall_gemini_hooks().map_err(CommandError::from)
 }
 
+/// Status of the managed Grok reporter (`~/.grok/hooks/uxnan-status.json`).
+#[tauri::command]
+pub async fn get_grok_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_grok_hooks_status())
+}
+
+/// Install the ADE-managed reporter as its own file in `~/.grok/hooks/`.
+#[tauri::command]
+pub async fn install_grok_hooks(
+    state: State<'_, AppState>,
+) -> Result<AgentHooksStatus, CommandError> {
+    let install = state.hook_install.read().await.clone().ok_or_else(|| {
+        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
+    })?;
+    agent_hooks::install_grok_hooks(&install).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_grok_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_grok_hooks().map_err(CommandError::from)
+}
+
+/// Status of the managed Antigravity hook (`~/.gemini/config/hooks.json`).
+#[tauri::command]
+pub async fn get_antigravity_hooks_status() -> Result<AgentHooksStatus, CommandError> {
+    Ok(agent_hooks::read_antigravity_hooks_status())
+}
+
+/// Install the ADE-managed named hook into `~/.gemini/config/hooks.json`.
+#[tauri::command]
+pub async fn install_antigravity_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::install_antigravity_hooks().map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn uninstall_antigravity_hooks() -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_antigravity_hooks().map_err(CommandError::from)
+}
+
 /// Status of the managed Pi/OMP status extension.
 #[tauri::command]
 pub async fn get_pi_hooks_status() -> Result<AgentHooksStatus, CommandError> {
@@ -1847,10 +1893,17 @@ pub async fn get_hook_scripts(
     let gemini_json = agent_hooks::render_gemini_settings_json(&install.status_relay_script)
         .map_err(CommandError::from)?;
     let codex_json = agent_hooks::render_codex_hooks_json(&install).map_err(CommandError::from)?;
+    let grok_json = agent_hooks::render_grok_hooks_json(&install).map_err(CommandError::from)?;
+    let antigravity_json =
+        agent_hooks::render_antigravity_hooks_json().map_err(CommandError::from)?;
     Ok(Some(HookScripts {
         claude_json,
         gemini_json,
         codex_json,
+        grok_json,
+        antigravity_json,
+        event_hook_sh: agent_hooks::EVENT_HOOK_SH.to_string(),
+        event_hook_cmd: agent_hooks::EVENT_HOOK_CMD.to_string(),
         opencode_plugin_js: agent_hooks::OPENCODE_STATUS_PLUGIN.to_string(),
         pi_extension_js: agent_hooks::PI_STATUS_EXTENSION.to_string(),
         status_relay_cjs: agent_hooks::STATUS_RELAY_SCRIPT.to_string(),

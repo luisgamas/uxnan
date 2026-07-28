@@ -911,6 +911,9 @@ export interface HookInstall {
   /** OpenCode plugin / Pi extension sources (in the hooks dir). */
   opencodePluginScript: string;
   piExtensionScript: string;
+  /** Per-event `curl` reporter shared by Grok + Antigravity (POSIX / Windows). */
+  eventHookSh: string;
+  eventHookCmd: string;
   wrapperBash: string;
   wrapperPowershell: string;
   wrapperCmd: string;
@@ -923,6 +926,8 @@ export interface HookInstall {
   geminiSettingsPath: string;
   opencodePluginPath: string;
   piExtensionPath: string;
+  grokHooksPath: string;
+  antigravityHooksPath: string;
 }
 
 /** The current install state of a managed agent hook (Claude Code, Codex,
@@ -944,6 +949,10 @@ export interface HookScripts {
   claudeJson: string;
   geminiJson: string;
   codexJson: string;
+  grokJson: string;
+  antigravityJson: string;
+  eventHookSh: string;
+  eventHookCmd: string;
   opencodePluginJs: string;
   piExtensionJs: string;
   statusRelayCjs: string;

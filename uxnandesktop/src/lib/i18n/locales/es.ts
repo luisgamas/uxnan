@@ -1067,6 +1067,12 @@ export const es: Record<MessageKey, string> = {
   "hooks.piTitle": "Pi",
   "hooks.piDesc":
     "Instala la extensión de estado del ADE en `~/.pi/agent/extensions` para que Pi reporte trabajando / listo en el propio proceso (no tiene señal de permiso).",
+  "hooks.grokTitle": "Grok",
+  "hooks.grokDesc":
+    "Escribe su propio archivo en `~/.grok/hooks/`, así que nunca toca tus hooks. Grok habla los eventos de Claude Code, de modo que reporta todo el rango — incluido un `blocked` real cuando un turno muere por un error de la API.",
+  "hooks.antigravityTitle": "Antigravity",
+  "hooks.antigravityDesc":
+    "Agrega un hook con nombre propio a `~/.gemini/config/hooks.json`. Antigravity solo expone su bucle de ejecución — sin evento de prompt ni de permiso — así que reporta trabajando / listo con precisión y nunca dice que te está esperando.",
   "hooks.statusInstalled": "Instalado en {path}",
   "hooks.statusInstalledShort": "Instalado",
   "hooks.statusNotInstalled": "No instalado",

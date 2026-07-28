@@ -5,7 +5,54 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **Agent hooks: Grok and Antigravity report their own state.** Both now ship a
+  managed reporter, auto-installed like the rest, so their terminals show a
+  precise status instead of the coarse title/process inference. They are single
+  native binaries (Rust and Go) with no Node guarantee, so they share a new
+  `curl` reporter — `uxnan-event-hook.{sh,cmd}` — that takes the agent kind as an
+  argument rather than baking it in (the Codex hook's bytes are frozen by its
+  `trusted_hash`, so it could not simply be parameterized).
+  **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`: Grok merges
+  every `*.json` in that folder, so your hooks are never read or rewritten, and
+  global hooks need no folder-trust grant. Its event vocabulary *is* Claude
+  Code's, so it reports the full range — including a genuine `blocked` from
+  `StopFailure`, a state only OpenCode could report before.
+  **Antigravity** gets one named entry in `~/.gemini/config/hooks.json`, leaving
+  any other named hook untouched. It exposes only its execution loop, with no
+  prompt, permission or notification event, so it reports working and done
+  precisely and can **never** claim to be waiting on you — the panel says so
+  outright rather than shipping a status that silently never appears.
+  Both CLIs turned out to parse a hook command as a literal path with **no
+  quoting**, which quietly breaks for any account name containing a space.
+  Antigravity's own docs pin the hook's working directory to the config folder, so
+  its reporter is copied there and invoked dot-relative — a command with no path
+  in it at all. Grok has no such escape hatch, so its command falls back to the
+  path's 8.3 short form (`GetShortPathNameW`), and if the OS won't produce one the
+  panel reports it unavailable instead of installing a hook that would never fire.
+  Every form here was verified against the real CLIs, including with a space in
+  the home path.
+- **Integrated browser: Grok gets the browser tools.** `grok` joins the MCP
+  injection (`~/.grok/config.toml` → `[mcp_servers.uxnan-browser]`), authenticating
+  with `Authorization = "Bearer ${UXNAN_MCP_TOKEN}"` — Grok expands `${VAR}` in
+  `url`/`headers`/`env` at load time, so the module's posture holds exactly: the
+  token stays in the environment and never lands in a file.
+
 ### Changed
+
+- **Agent hooks & integrated browser: Gemini CLI is no longer offered.** It is no
+  longer auto-installed as a hook agent nor configured for the browser MCP, since
+  Google discontinued it in favour of Antigravity. Its wiring stays: the hooks
+  panel still shows its card **while its reporter is installed**, so it can be
+  turned off, and the browser injector still knows its config path so an entry
+  from an earlier version is still cleaned up.
+- **Antigravity is not a browser-MCP agent, and won't be soon.** Its remote MCP
+  transport is SSE carrying only a `serverUrl` — no header field — so there is
+  nowhere to put the bearer token, and uxnan's endpoint is Streamable HTTP, which
+  answers `GET /mcp` with a 405. Writing the token into the file would have solved
+  neither half and would have broken the module's stated posture, so it is
+  recorded as a `FOR-DEV.md` item with both blockers spelled out.
 
 - **AI commit messages & AI PR bodies: Gemini CLI is no longer offered.** Both
   curated pickers (Settings → AI commit, Settings → GitHub → AI PR body) now offer

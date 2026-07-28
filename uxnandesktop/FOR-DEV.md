@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **automations**, **pets**). 362 Rust backend tests + 362 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **automations**, **pets**). 368 Rust backend tests + 362 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -70,7 +70,16 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   Gemini CLI use a Node relay (`node` guaranteed; Claude in exec-form so no shell
   is involved); Codex uses a `curl` hook + a reproduced `trusted_hash` in
   `~/.codex/config.toml` (golden-vector-tested `codex_trust.rs`); OpenCode a
-  plugin, Pi an in-process extension. Per-event merge preserves user hooks; shell
+  plugin, Pi an in-process extension. **Grok** owns a file in `~/.grok/hooks/`
+  (Claude's event vocabulary, so it reaches every state incl. a real `blocked`
+  from `StopFailure`) and **Antigravity** one named entry in
+  `~/.gemini/config/hooks.json` (loop events only — it has no prompt/permission
+  hook, so it never reports `waiting`); both drive `uxnan-event-hook.{sh,cmd}`,
+  and both CLIs parse a hook command as an unquoted literal path, handled by a
+  dot-relative command (Antigravity) and an 8.3 short-path fallback (Grok).
+  Gemini CLI is no longer auto-installed (discontinued upstream) but its card
+  still appears while its reporter is present, so it can be removed.
+  Per-event merge preserves user hooks; shell
   reporters pass id/kind/state in headers (no JSON building); an endpoint file
   (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
   WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
@@ -622,6 +631,20 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 - [ ] Persist the per-worktree launch agent onto `WorktreeData.agentId` (today
       the choice drives the one-shot launch but isn't recorded on the worktree).
 
+**Integrated developer browser**
+- [ ] **Antigravity (`agy`) as a browser-MCP agent — blocked on both sides.** Its
+      remote MCP transport is **SSE with only a `serverUrl`** (no `headers` field,
+      per its own bundled `agy-customizations` guide), so there is nowhere to put
+      the bearer token that every other injected config carries; and uxnan's
+      endpoint is **Streamable HTTP**, whose `GET /mcp` deliberately answers 405
+      (`mcp.rs`). Either `agy` grows header support (then it is one row in
+      `mcpinject::AGENTS` + a `config_path`/`write_entry` arm, writing
+      `~/.gemini/config/mcp_config.json`), or we publish a small **stdio** MCP
+      proxy it can launch with `command` + `env` — which keeps the token out of the
+      file but adds a binary to build, sign and ship for one agent. Do **not**
+      "solve" it by putting the token in the `serverUrl`: that breaks the module's
+      documented posture and still leaves the transport mismatch.
+
 **Providers (usage statistics)**
 - [ ] **Antigravity (`agy`) as a usage provider — deferred on the token, not on the
       data.** Researched against a real install; nothing implemented. The data and
@@ -725,7 +748,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 362 Rust + 362 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 368 Rust + 362 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

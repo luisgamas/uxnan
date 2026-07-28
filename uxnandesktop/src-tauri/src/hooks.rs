@@ -129,6 +129,28 @@ pub fn normalize_event(
             "AfterAgent" | "SessionEnd" => Some(AgentStatus::Done),
             _ => None,
         },
+        // Grok's hook vocabulary *is* Claude Code's (it loads a Claude settings
+        // file unchanged), plus a `StopFailure` of its own for a turn that died on
+        // an API error — which makes Grok the second agent, after OpenCode, that
+        // reports a real `blocked` instead of it being inferred.
+        "grok" => match event {
+            "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse"
+            | "PostToolUseFailure" | "PreCompact" | "PostCompact" => Some(AgentStatus::Working),
+            "Notification" => Some(AgentStatus::Waiting),
+            "StopFailure" => Some(AgentStatus::Blocked),
+            "Stop" | "SessionEnd" => Some(AgentStatus::Done),
+            _ => None,
+        },
+        // Antigravity exposes only its execution loop — there is no prompt,
+        // permission or notification hook — so it reports `working` and `done`
+        // precisely and can never claim to be waiting on the user.
+        "antigravity" => match event {
+            "PreInvocation" | "PostInvocation" | "PreToolUse" | "PostToolUse" => {
+                Some(AgentStatus::Working)
+            }
+            "Stop" => Some(AgentStatus::Done),
+            _ => None,
+        },
         "opencode" => match event {
             "SessionStart" | "SessionBusy" | "MessagePart" => Some(AgentStatus::Working),
             "SessionIdle" | "Stop" => Some(AgentStatus::Done),
@@ -969,6 +991,46 @@ mod tests {
         )
         .expect("id survives");
         assert_eq!(s.file, None);
+    }
+
+    #[test]
+    fn normalize_event_maps_grok_and_antigravity() {
+        // Grok speaks Claude's vocabulary, and adds a real error state of its own.
+        assert_eq!(
+            normalize_event("grok", "UserPromptSubmit", None),
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            normalize_event("grok", "Notification", None),
+            Some(AgentStatus::Waiting)
+        );
+        assert_eq!(
+            normalize_event("grok", "StopFailure", None),
+            Some(AgentStatus::Blocked)
+        );
+        assert_eq!(
+            normalize_event("grok", "Stop", None),
+            Some(AgentStatus::Done)
+        );
+
+        // Antigravity exposes only its execution loop.
+        assert_eq!(
+            normalize_event("antigravity", "PreInvocation", None),
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            normalize_event("antigravity", "PostToolUse", None),
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            normalize_event("antigravity", "Stop", None),
+            Some(AgentStatus::Done)
+        );
+        // It has no prompt/permission/notification hook at all, so it must never
+        // be able to claim the user is needed — the state that drives the badge.
+        for event in ["Notification", "PermissionRequest", "UserPromptSubmit"] {
+            assert_eq!(normalize_event("antigravity", event, None), None);
+        }
     }
 
     #[test]

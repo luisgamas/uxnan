@@ -1065,6 +1065,12 @@ export const en = {
   "hooks.piTitle": "Pi",
   "hooks.piDesc":
     "Installs the ADE status extension into `~/.pi/agent/extensions` so Pi reports working / done in-process (it has no permission signal).",
+  "hooks.grokTitle": "Grok",
+  "hooks.grokDesc":
+    "Writes its own file in `~/.grok/hooks/`, so your hooks are never touched. Grok speaks Claude Code's hook events, so it reports the full range — including a real `blocked` when a turn dies on an API error.",
+  "hooks.antigravityTitle": "Antigravity",
+  "hooks.antigravityDesc":
+    "Adds one named hook to `~/.gemini/config/hooks.json`. Antigravity exposes only its execution loop — no prompt or permission event — so it reports working / done precisely and never claims to be waiting on you.",
   "hooks.statusInstalled": "Installed at {path}",
   "hooks.statusInstalledShort": "Installed",
   "hooks.statusNotInstalled": "Not installed",
