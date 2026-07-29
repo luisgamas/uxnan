@@ -258,6 +258,42 @@ test('a turn without a cwd writes the attachment into the ADAPTER working dir', 
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('an adapter that takes attachments natively gets no file and no path note', async () => {
+  // Zero decodes an inline ACP image block and its read tool is text-only, so
+  // materializing a file would only invite it to read a PNG as garbage.
+  const baseDir = join(tmpdir(), `uxnan-am-native-${randomUUID()}`);
+  const cwd = join(tmpdir(), `uxnan-am-native-cwd-${randomUUID()}`);
+  await mkdir(cwd, { recursive: true });
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new EchoAgentAdapter();
+  (adapter as unknown as { handlesAttachments: () => boolean }).handlesAttachments = () => true;
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'look at this', {
+    cwd,
+    attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
+  });
+
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  const turn = await store.getTurn(turnId);
+  const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');
+  // The prompt is the user's text, untouched — no "[Attached image …]" note…
+  assert.ok(!assistant.includes('Attached image'));
+  // …and nothing was written to disk.
+  assert.equal(existsSync(join(cwd, '.uxnan-attachments')), false);
+
+  await rm(cwd, { recursive: true, force: true });
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('respondApproval drives the echo demo approval to completion', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-appr-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

@@ -19,6 +19,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   workspace-relative and inside the sandbox. The temp dir remains a last resort
   for an adapter that reports none.
 
+### Fixed — Zero receives an attachment as a real image, not a path it can't read
+
+- Zero's `read_file` tool is line-oriented **text**, so the bridge's file-path
+  delivery had it read a PNG as garbage — while its ACP advertises
+  `promptCapabilities.image` and decodes an inline `{ type: "image", mimeType,
+  data }` block straight into the model's image input.
+- The Zero adapter now sends attachments **natively** as inline ACP image
+  blocks. New optional `IAgentAdapter.handlesAttachments()` lets an adapter say
+  it delivers attachments itself, and the bridge then writes no file and appends
+  no path note for it (pointing a text reader at a binary is worse than saying
+  nothing). Every other adapter keeps the CLI-agnostic file path.
+- Covered by unit tests (the emitted prompt blocks, an image-only turn, and the
+  manager skipping materialization); **not yet exercised end to end** — the
+  local Zero account is credit-blocked.
+
 ### Fixed — Antigravity and Grok now accept image attachments
 
 - Both declared `capabilities.images: false`, so the phone hid the "+" attach

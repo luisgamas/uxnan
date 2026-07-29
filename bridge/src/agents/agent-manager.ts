@@ -325,7 +325,10 @@ export class AgentManager {
     // — so a turn without its own `cwd` falls back to the adapter's, never to
     // a directory the agent cannot reach. Best-effort: a failure to write
     // degrades to a text-only turn, never aborts it.
-    if (attachments.length > 0) {
+    // An adapter whose protocol carries images natively (Zero's ACP image
+    // block) consumes `attachments` itself in sendTurn — writing files and
+    // pointing at them would only invite it to read a binary as text.
+    if (attachments.length > 0 && !adapter.handlesAttachments?.()) {
       try {
         const attachmentCwd = options.cwd ?? adapter.defaultCwd?.();
         const materialized = await materializeAttachments(attachments, started.turnId, {

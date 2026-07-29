@@ -225,9 +225,10 @@ push validation (FOR-HUMAN).
       four-quadrant probe image was described correctly by `claude -p`,
       `agy -p`, `grok --print`, `pi -p` and `opencode run` (the last two via
       their file tools rather than vision), and by **Codex on-device** through
-      the phone. Still unverified: **Zero** (the account is credit-blocked) and
-      **Gemini CLI** (its local install is broken — `MODULE_NOT_FOUND` — and the
-      agent is hidden from the phone's picker anyway).
+      the phone. **Zero** takes them natively (inline ACP image block) — unit
+      tested, but not yet run end to end because the account is credit-blocked.
+      **Gemini CLI** is unverified: its local install is broken
+      (`MODULE_NOT_FOUND`) and the agent is hidden from the phone's picker.
 - [ ] **`auth/login` / `auth/logout`** — still stubs (driving a CLI's interactive
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command

@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `IAgentAdapter.handlesAttachments()` (optional)
+
+- Declares that an adapter delivers `SendTurnOptions.attachments` to its CLI
+  itself, so the bridge must not materialize them to files nor append a path
+  note. Default (unset) keeps the CLI-agnostic file-path delivery.
+- An adapter opts in when its protocol carries images natively **and** its file
+  tools cannot open one — Zero's ACP advertises `promptCapabilities.image` while
+  its `read_file` is line-oriented text.
+
 ### Added — `IAgentAdapter.defaultCwd()` (optional)
 
 - Reports the directory an adapter runs a turn in when the turn carries no `cwd`

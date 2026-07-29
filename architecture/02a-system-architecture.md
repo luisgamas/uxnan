@@ -1981,6 +1981,13 @@ Reglas (no negociables, verificadas contra los CLIs reales):
   oculta el "+" cuando es `false`. Que el modelo *vea* los pixeles o razone
   sobre los bytes con herramientas es cosa del modelo — un modelo no multimodal
   igualmente responde inspeccionando el fichero.
+- **Excepcion: entrega nativa.** Un adaptador cuyo protocolo transporta imagenes
+  y cuyas herramientas de fichero NO pueden abrirlas declara
+  `IAgentAdapter.handlesAttachments()`; entonces el bridge **no** materializa
+  nada ni añade la nota, y el adaptador entrega los adjuntos el mismo. Es el
+  caso de **Zero**: su ACP anuncia `promptCapabilities.image` y decodifica un
+  bloque `{ type: "image", mimeType, data }` inline, mientras que su `read_file`
+  es texto por lineas — referenciar la ruta le haria leer un PNG como basura.
 
 ### 5.9 Transporte seguro y mensajeria E2EE
 
