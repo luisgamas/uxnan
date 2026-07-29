@@ -279,6 +279,10 @@ test('a failed turn holds the queue too', async () => {
   await h.manager.sendTurn(h.threadId, 'second');
 
   h.adapter.fail(h.threadId, first.turnId, 'API error (status 402): balance exhausted');
+  // Wait on the pause itself, not just on the stored turn: persisting the error
+  // and pausing the queue are two steps of the same handler, so a run that only
+  // waits for the store can read `queueState()` in between and see it unpaused.
+  await waitFor(() => h.manager.queueState(h.threadId).paused);
   await waitFor(async () => (await h.store.getTurn(first.turnId)).status === 'error');
 
   const state = h.manager.queueState(h.threadId);
