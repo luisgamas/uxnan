@@ -24,6 +24,11 @@ import { app, type GithubSection } from "./app.svelte";
 import { projects } from "./projects.svelte";
 import { samePath, canonicalFor } from "$lib/pathid";
 
+/** How many non-active worktrees may have their PR badge re-read per poll tick.
+ *  Each one is a `gh` call against the account's API rate limit, so the badges
+ *  catch up over a few ticks instead of all at once. */
+const BADGE_TICK_CAP = 2;
+
 /** An item the inline section should open on arrival, requested from outside it. */
 export type PendingDetail =
   | { kind: "pr"; number: number }
@@ -79,6 +84,8 @@ class GithubStore {
   #ctxSeq = 0;
   /** Same guard for the *section's* context (the two are independent loads). */
   #sectionSeq = 0;
+  /** Round-robin cursor over the non-active worktrees whose badges we refresh. */
+  #badgeCursor = 0;
   #timer: ReturnType<typeof setInterval> | null = null;
 
   /** Whether GitHub features are usable (gh present + signed in). A `$derived`, so
@@ -244,6 +251,7 @@ class GithubStore {
       void this.refreshContext();
       void this.refreshRateLimit();
       if (app.settings.github?.notificationsEnabled) void this.refreshNotifications();
+      this.refreshOtherWorktreeBadges();
     };
     const seconds = Math.max(0, app.settings.github?.pollSeconds ?? 45);
     if (seconds > 0) this.#timer = setInterval(tick, seconds * 1000);
@@ -254,6 +262,50 @@ class GithubStore {
     if (this.#timer) {
       clearInterval(this.#timer);
       this.#timer = null;
+    }
+  }
+
+  /** Keep the *other* worktrees' PR badges from going stale, without turning one
+   *  poll into N network calls.
+   *
+   *  Two sources, both deliberately cheap:
+   *  - **worktrees whose git status just changed** (drained from the projects
+   *    store's sweep). New commits or a push is precisely when a branch gains or
+   *    updates a PR, so this is the signal worth spending a `gh` call on.
+   *  - **one rotating worktree per tick**, so a repo nobody touched still gets
+   *    re-read eventually rather than never.
+   *
+   *  Capped per tick, because every context is a `gh` invocation against the API
+   *  rate limit the status bar reports. */
+  refreshOtherWorktreeBadges(): void {
+    const active = app_activePath();
+    const known = projects.allWorktreePaths().filter((p) => p !== active);
+    if (known.length === 0) return;
+
+    const changed = projects.takeChangedPaths().filter((p) => known.includes(p));
+    const picks = changed.slice(0, BADGE_TICK_CAP);
+    if (picks.length < BADGE_TICK_CAP) {
+      // Round-robin over the rest, one per tick, skipping what we just picked.
+      for (let i = 0; i < known.length && picks.length < BADGE_TICK_CAP; i++) {
+        const candidate = known[this.#badgeCursor++ % known.length];
+        if (!picks.includes(candidate)) picks.push(candidate);
+      }
+    }
+    for (const path of picks) void this.loadContextFor(path);
+  }
+
+  /** Load one worktree's context into the per-path cache only — used for the
+   *  sidebar badges of worktrees that are not the active one, so it never
+   *  disturbs `context` (which the right panel reads). */
+  async loadContextFor(path: string): Promise<void> {
+    if (!this.available) return;
+    try {
+      const ctx = await githubRepoContext(path);
+      if (!sameJson(ctx, this.contextByPath[path])) {
+        this.contextByPath = { ...this.contextByPath, [path]: ctx };
+      }
+    } catch {
+      /* leave the cached value */
     }
   }
 

@@ -161,6 +161,30 @@ de worktrees de cada repositorio registrado. Esto cubre worktrees creados fuera
 del ADE por agentes o por Git; solo se reasigna una lista cuando cambian sus
 entradas, para no perturbar el orden estabilizado de las vistas del panel.
 
+**Barrido de estado de TODAS las tarjetas.** El watcher de 3 s sigue una sola
+ruta —la del worktree activo—, así que los indicadores del resto de tarjetas
+(cambios pendientes, ahead/behind) solo se refrescaban cuando aparecía o
+desaparecía un worktree: un agente lanzado en el repo padre, o en otro worktree,
+dejaba la tarjeta afectada en blanco hasta que se hacía clic en ella. El store
+`projects` ejecuta ahora un **barrido de todos los worktrees conocidos**
+(`sweepStatuses`), limitado a uno cada `SWEEP_MS` (15 s), sin solapamiento y
+omitido con la ventana oculta; la política vive en `shouldSweep`
+(`statusSweepRegistry.ts`, TS puro y con tests). Tres señales lo **fuerzan** de
+inmediato: un agente que cambia de estado (hook), la ventana recuperando el foco,
+y las acciones git propias (commit / push / pull / fetch). Los sitios que no
+pueden importar `projects` —el listener de agentes, al que `projects` sí
+importa— piden el barrido a través de `statusSweepRegistry`, evitando un ciclo de
+imports (mismo patrón que `flushRegistry`).
+
+**Insignias de PR fuera del worktree activo.** El contexto de GitHub también se
+cargaba solo para el worktree activo. El poll de `github` refresca ahora, además,
+hasta `BADGE_TICK_CAP` (2) worktrees no activos por ciclo: primero aquellos cuyo
+estado git acaba de cambiar (`projects.takeChangedPaths()` — cuando una rama gana
+commits o se publica es justo cuando aparece o cambia su PR) y, si sobra cupo, uno
+en rotación. Cada contexto es una llamada a `gh` contra el rate limit, de ahí el
+tope por ciclo; `loadContextFor` escribe únicamente en la caché por ruta que
+alimenta las insignias, sin tocar el `context` que lee el panel derecho.
+
 ### 3.4 Gestión de Ramas
 
 - **Nomenclatura**: Las ramas se crean con un prefijo configurable (ej: `usuario/feature-name`, `custom/feature-name`, o sin prefijo). Los nombres se sanitizan para eliminar caracteres no válidos.

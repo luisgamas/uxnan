@@ -61,6 +61,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Fixed
 
+- **Sidebar cards now notice work done by an agent that isn't standing in them.**
+  A worktree's indicators (pending changes, ahead/behind, its PR badge) only
+  refreshed for the worktree you had active: the 3 s backend watcher follows a
+  single path, and the sidebar poll re-read statuses **only when a worktree
+  appeared or disappeared**. An agent launched in the parent repo — or in a
+  sibling worktree — could commit, push and open a PR while the affected card sat
+  blank until you clicked it and a terminal opened.
+  The projects store now sweeps **every known worktree** (`sweepStatuses`), paced
+  to one pass per 15 s, single-flight, and skipped while the window is hidden.
+  Three signals force it immediately: **an agent changing state** (its hook is the
+  cheapest evidence that the trees moved), **the window regaining focus**, and
+  **our own git actions** (commit / push / pull / fetch). The pacing itself is a
+  pure, tested function (`shouldSweep`), and the signal sites reach the store
+  through a tiny registry (`statusSweepRegistry`) rather than an import cycle.
+  PR badges follow at their own, cheaper rhythm: each GitHub poll re-reads up to
+  **2** non-active worktrees — first the ones whose git status just changed (a
+  branch that just gained commits is exactly when its PR appears), then one in
+  rotation — because every context is a `gh` call against the API rate limit.
+
 - **Opening GitHub for one project no longer shows another project's data.** With
   more than one project registered, opening the GitHub view from a second
   project's ⋯ / worktree menu kept listing the first project's PRs, issues and

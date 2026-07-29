@@ -66,8 +66,20 @@
   // project card and both sidebar views stay current without a manual click.
   $effect(() => {
     if (app.backend !== "ready") return;
-    const timer = setInterval(() => void projects.refreshWorktrees(), 3000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => {
+      void projects.refreshWorktrees();
+      // …and keep every card's badges honest, not just the active worktree's:
+      // the sweep rate-limits itself (see `SWEEP_MS`) and skips a hidden window.
+      void projects.sweepStatuses();
+    }, 3000);
+    // Coming back to the window is the moment the indicators are most likely
+    // stale — an agent has been working while we were elsewhere.
+    const onFocus = () => projects.requestStatusSweep();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   });
 
   // The rendered project order — frozen against jumping for the drifting modes
