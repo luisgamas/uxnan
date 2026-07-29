@@ -8,6 +8,13 @@ import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
+import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
+
+/// Side of a sent-attachment thumbnail above the user bubble — the size the
+/// composer strip used to have, so a sent image stays a compact reference the
+/// timeline can scroll past; tapping it opens the image full size.
+const double _sentThumbSize = 72;
 
 /// Renders a [Message] in the timeline, by role:
 ///
@@ -40,6 +47,11 @@ class MessageBubble extends StatelessWidget {
 /// The user's own message: a right-aligned primary-container bubble. Tapping
 /// the bubble toggles a "Copy message" affordance below it (hidden by default),
 /// mirroring the agent turn's copy action.
+///
+/// Attached images ride **above** the bubble as the same small thumbnail strip
+/// the composer shows before sending — right-aligned, scrolling horizontally
+/// when there are several — instead of blowing the bubble open from the inside.
+/// Tapping one opens it full size.
 class _UserBubble extends StatefulWidget {
   const _UserBubble({required this.message});
   final Message message;
@@ -58,6 +70,15 @@ class _UserBubbleState extends State<_UserBubble> {
       .where((t) => t.isNotEmpty)
       .join('\n\n');
 
+  /// The message's attached images, shown above the bubble.
+  List<ImageContent> get _images =>
+      widget.message.contents.whereType<ImageContent>().toList();
+
+  /// Content that is neither text nor an image — kept inside the bubble.
+  List<MessageContent> get _otherBlocks => widget.message.contents
+      .where((c) => c is! TextContent && c is! ImageContent)
+      .toList();
+
   void _copy() {
     final l10n = AppLocalizations.of(context);
     unawaited(Clipboard.setData(ClipboardData(text: _text)));
@@ -71,47 +92,73 @@ class _UserBubbleState extends State<_UserBubble> {
     final colors = Theme.of(context).colorScheme;
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
     final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final images = _images;
+    // An image-only message needs no bubble at all — the strip is the message.
+    final hasBubble = _text.isNotEmpty || _otherBlocks.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _showCopy = !_showCopy),
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-              padding: const EdgeInsets.symmetric(
-                horizontal: UxnanSpacing.md,
-                vertical: UxnanSpacing.sm,
-              ),
-              decoration: BoxDecoration(
-                color: colors.primaryContainer,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(14),
-                  topRight: Radius.circular(14),
-                  bottomLeft: Radius.circular(14),
-                  bottomRight: Radius.circular(4),
-                ),
-              ),
-              child: AnimatedSize(
-                duration: reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topRight,
-                child: _UserMessageBody(
-                  message: widget.message,
-                  text: _text,
-                  expanded: _expanded,
-                  onExpandedChanged: (value) =>
-                      setState(() => _expanded = value),
+        if (images.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UxnanSpacing.xs),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: ImageThumbStrip(
+                  key: const ValueKey('message-attachments'),
+                  images: images,
+                  size: _sentThumbSize,
+                  onTap: (index) => unawaited(
+                    showImageViewerDialog(
+                      context,
+                      images: images,
+                      initialIndex: index,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        if (hasBubble)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _showCopy = !_showCopy),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    topRight: Radius.circular(14),
+                    bottomLeft: Radius.circular(14),
+                    bottomRight: Radius.circular(4),
+                  ),
+                ),
+                child: AnimatedSize(
+                  duration: reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topRight,
+                  child: _UserMessageBody(
+                    message: widget.message,
+                    text: _text,
+                    expanded: _expanded,
+                    onExpandedChanged: (value) =>
+                        setState(() => _expanded = value),
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (_showCopy && _text.isNotEmpty) _CopyMessageAction(onCopy: _copy),
       ],
     );
@@ -119,8 +166,9 @@ class _UserBubbleState extends State<_UserBubble> {
 }
 
 /// User-message content with a responsive text preview. Only textual content
-/// is clipped; image attachments and other blocks remain fully visible. The
-/// full source stays mounted and is always used by the copy action.
+/// is clipped; the remaining blocks stay fully visible (images are lifted out
+/// of the bubble by [_UserBubble]). The full source stays mounted and is always
+/// used by the copy action.
 class _UserMessageBody extends StatelessWidget {
   const _UserMessageBody({
     required this.message,
@@ -162,7 +210,10 @@ class _UserMessageBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
-    final nonText = message.contents.where((c) => c is! TextContent).toList();
+    // Images are rendered above the bubble, not in it.
+    final nonText = message.contents
+        .where((c) => c is! TextContent && c is! ImageContent)
+        .toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {

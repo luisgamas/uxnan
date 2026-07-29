@@ -29,6 +29,27 @@ Widget _wrap(Widget child) => ProviderScope(
       ),
     );
 
+/// A 1×1 transparent PNG, so `Image.memory` decodes a real image in tests.
+const _pngPixel =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ'
+    'DwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+/// A user message carrying [images] attachments plus optional [text].
+Message _userMessage({required int images, String text = ''}) => Message(
+      id: 'u-img',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.user,
+      contents: [
+        if (text.isNotEmpty) TextContent(text),
+        for (var i = 0; i < images; i++)
+          const ImageContent(mimeType: 'image/png', base64Data: _pngPixel),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // The thinking section reads a shared_preferences-backed setting; default to
@@ -644,6 +665,64 @@ void main() {
     await tester.tap(find.text('Show less'));
     await tester.pumpAndSettle();
     expect(find.text('Show more'), findsOneWidget);
+  });
+
+  testWidgets('sent images ride above the bubble as small thumbnails',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(
+        MessageBubble(message: _userMessage(images: 3, text: 'look at these')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final strip = find.byKey(const ValueKey('message-attachments'));
+    expect(strip, findsOneWidget);
+
+    // Above the bubble, never inside it.
+    final bubbleText = find.byType(MarkdownBody);
+    expect(
+      tester.getRect(strip).bottom,
+      lessThanOrEqualTo(tester.getRect(bubbleText).top),
+    );
+
+    // Small and square — not the full-width block the bubble used to hold.
+    final thumbs = find.descendant(of: strip, matching: find.byType(Image));
+    expect(thumbs, findsNWidgets(3));
+    expect(tester.getSize(thumbs.first), const Size.square(72));
+  });
+
+  testWidgets('an image-only message needs no bubble', (tester) async {
+    await tester.pumpWidget(
+      _wrap(MessageBubble(message: _userMessage(images: 1))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('message-attachments')), findsOneWidget);
+    expect(find.byType(MarkdownBody), findsNothing);
+  });
+
+  testWidgets('tapping a sent thumbnail opens it full size', (tester) async {
+    await tester.pumpWidget(
+      _wrap(MessageBubble(message: _userMessage(images: 2, text: 'hi'))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InteractiveViewer), findsNothing);
+
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey('message-attachments')),
+            matching: find.byType(Image),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    // The viewer is zoomable and says which image of the set is open.
+    expect(find.byType(InteractiveViewer), findsWidgets);
+    expect(find.text('1 / 2'), findsOneWidget);
   });
 
   testWidgets('ComposerBar shows a Stop button while running and calls onStop',

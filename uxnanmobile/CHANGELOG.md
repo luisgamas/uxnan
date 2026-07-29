@@ -6,6 +6,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a row written by another build no longer takes the conversation down
+
+- Opening a conversation threw `Invalid argument (name): No enum value with that
+  name: "cancelled"` and left the screen dead. The local drift database outlives
+  any single build of the app: a device that ran the message-queue build carries
+  rows with `deliveryState: cancelled`, a value the current enum doesn't know,
+  and `EnumByName.byName` throws inside the `watchMessages` stream — so the
+  whole timeline (not just that message) failed to decode.
+- Enum decoding from the local database is now **tolerant** (`byNameOr`, in the
+  new `core/extensions/enum_ext.dart`), applied to the message repository
+  (`role`, `deliveryState`) and the thread repository (`syncState`, `status`).
+  An unrecognized value logs once and degrades: unknown role → `system` (a
+  neutral block), unknown delivery state → `delivered` (the row exists, so the
+  honest default is "it is in the history", never "it failed"), unknown sync →
+  `behind` (self-correcting: it triggers a catch-up), unknown status → `active`
+  (a thread is never silently hidden). Downgrades, branch builds and rollbacks
+  now read a newer database instead of crashing on it.
+
+### Changed — image attachments live inside the composer, and stay small once sent
+
+- **Pending attachments moved into the pill.** The separate box that used to sit
+  *above* the composer is gone: the thumbnails now render **inside** the
+  composer, above the text field, in a row that scrolls horizontally once it
+  outgrows the pill. Each keeps its own ✕ to drop just that image. Thumbnails
+  are **56 dp** (down from 72 dp) so queuing an image grows the composer only a
+  little, and the pill **morphs from its stadium ends into a 24 dp rounded
+  surface** while attachments are present — the same task-specific morph the git
+  commit composer already used — so the thumbnails aren't eaten by the round
+  corners.
+- **The picker takes several images at once.** The photo-library action now uses
+  a multi-selection (`pickMultiImage`); the camera still captures one. The queue
+  is capped at **10 images per message** (each rides inline as base64 on
+  `turn/send`), with a snackbar when the cap is reached.
+- **Sent images no longer blow the bubble open.** A user message renders its
+  images as the same small strip **above** the bubble — right-aligned, scrolling
+  horizontally when there are several — instead of full-size blocks stacked
+  inside it under the text, so a long prompt keeps its collapsed preview and the
+  timeline stays scannable. An **image-only message drops the bubble entirely**:
+  the strip *is* the message. Tapping a thumbnail opens the image **full size**
+  (pinch-zoom, swipe between the message's images).
+- A new shared `ImageThumbStrip` widget backs both ends, so an attachment looks
+  identical before and after it is sent, and a new `UxnanRadius.xxl` (24 dp)
+  token carries the composer morph.
+- New strings (EN + ES): `composerAttachLimit`, `attachmentImage`,
+  `attachmentRemove`.
+
 ## [0.0.14-alpha.20260724+20260724] - 2026-07-24
 
 ### Changed — the Claude "latest" toggle now covers four aliases, not three

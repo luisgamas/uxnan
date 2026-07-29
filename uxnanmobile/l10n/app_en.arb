@@ -369,6 +369,19 @@
   "composerAttachGallery": "Photo library",
   "composerAttachCamera": "Take a photo",
   "composerAttachFailed": "Couldn't attach that image",
+  "composerAttachLimit": "You can attach up to {count} images per message",
+  "@composerAttachLimit": {
+    "description": "Snackbar shown when the pending-attachment queue is full (images ride inline on the turn, so the count is bounded).",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "attachmentImage": "Attached image",
+  "@attachmentImage": {
+    "description": "Accessibility label of an attachment thumbnail, in the composer and above a sent message."
+  },
+  "attachmentRemove": "Remove image",
+  "@attachmentRemove": {
+    "description": "Tooltip of the ✕ that drops a pending attachment from the composer."
+  },
   "composerStop": "Stop",
   "@composerStop": {
     "description": "Tooltip on the button that cancels the in-flight agent turn (replaces Send while running)."

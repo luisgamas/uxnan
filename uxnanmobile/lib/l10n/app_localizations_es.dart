@@ -765,6 +765,17 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerAttachFailed => 'No se pudo adjuntar esa imagen';
 
   @override
+  String composerAttachLimit(int count) {
+    return 'Puedes adjuntar hasta $count imágenes por mensaje';
+  }
+
+  @override
+  String get attachmentImage => 'Imagen adjunta';
+
+  @override
+  String get attachmentRemove => 'Quitar imagen';
+
+  @override
   String get composerStop => 'Detener';
 
   @override

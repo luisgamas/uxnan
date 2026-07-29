@@ -1255,9 +1255,12 @@ class _ComposerWidgetState extends ConsumerState<ComposerWidget> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Fila de adjuntos (si hay)
+          // Fila de adjuntos (si hay): vive DENTRO del composer, encima del
+          // campo de texto — miniaturas de 56 dp con scroll horizontal y un ✕
+          // por imagen (`ImageThumbStrip`). Mientras hay adjuntos el pill
+          // pierde sus extremos de estadio y adopta un radio de 24 dp.
           if (composerState.attachments.isNotEmpty)
-            AttachmentRowWidget(attachments: composerState.attachments),
+            ImageThumbStrip(images: composerState.attachments, size: 56),
 
           // Overlay de autocompletado (menciones / archivos)
           if (composerState.showAutocomplete)

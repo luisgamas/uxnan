@@ -13,14 +13,14 @@ enum AttachmentSource {
   camera,
 }
 
-/// Picks an image for the composer and returns it as an inline-base64
-/// [ImageContent] ready to ride on `turn/send`.
+/// Picks images for the composer and returns them as inline-base64
+/// [ImageContent] blocks ready to ride on `turn/send`.
 ///
 /// Guarded like the other infrastructure services: every plugin call is wrapped
-/// so a cancel / denied permission / missing plugin yields `null` instead of
-/// throwing. Images are downscaled (max 2048 px, quality 85) to keep the base64
-/// payload well under the bridge's 10 MB `workspace/readImage` ceiling. The
-/// plugin is injectable so tests run without the platform channel.
+/// so a cancel / denied permission / missing plugin yields an empty result
+/// instead of throwing. Images are downscaled (max 2048 px, quality 85) to keep
+/// the base64 payload well under the bridge's 10 MB `workspace/readImage`
+/// ceiling. The plugin is injectable so tests run without the platform channel.
 class AttachmentPickerService {
   /// Creates an [AttachmentPickerService], optionally injecting the plugin.
   AttachmentPickerService([ImagePicker? picker])
@@ -28,27 +28,48 @@ class AttachmentPickerService {
 
   final ImagePicker _picker;
 
-  /// Picks one image from [source]. Returns the decoded [ImageContent], or
-  /// `null` when the user cancels or the pick fails.
-  Future<ImageContent?> pickImage(AttachmentSource source) async {
+  /// Picks images from [source]: the gallery allows a multi-selection (capped
+  /// at [limit] when given, since every image rides inline on the turn), the
+  /// camera captures a single photo. Returns the decoded images in the order
+  /// they were picked, or an empty list when the user cancels or the pick
+  /// fails.
+  Future<List<ImageContent>> pickImages(
+    AttachmentSource source, {
+    int? limit,
+  }) async {
     try {
-      final file = await _picker.pickImage(
-        source: source == AttachmentSource.camera
-            ? ImageSource.camera
-            : ImageSource.gallery,
-        maxWidth: 2048,
-        maxHeight: 2048,
-        imageQuality: 85,
-      );
-      if (file == null) return null;
-      final bytes = await file.readAsBytes();
-      return ImageContent(
-        mimeType: _mimeFor(file.name),
-        base64Data: base64Encode(bytes),
-      );
+      final files = source == AttachmentSource.camera
+          ? [
+              await _picker.pickImage(
+                source: ImageSource.camera,
+                maxWidth: 2048,
+                maxHeight: 2048,
+                imageQuality: 85,
+              ),
+            ].nonNulls.toList()
+          : await _picker.pickMultiImage(
+              maxWidth: 2048,
+              maxHeight: 2048,
+              imageQuality: 85,
+              // The plugin's multi-selection rejects a limit below 2, so a
+              // single free slot is left unbounded here and capped by the
+              // caller instead.
+              limit: limit != null && limit >= 2 ? limit : null,
+            );
+      final images = <ImageContent>[];
+      for (final file in files) {
+        final bytes = await file.readAsBytes();
+        images.add(
+          ImageContent(
+            mimeType: _mimeFor(file.name),
+            base64Data: base64Encode(bytes),
+          ),
+        );
+      }
+      return images;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('image pick failed', error, stackTrace);
-      return null;
+      return const [];
     }
   }
 

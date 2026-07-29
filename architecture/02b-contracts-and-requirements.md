@@ -813,7 +813,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | ID | Requisito |
 |---|---|
 | RF-COMP-01 | El composer soporta texto multilinea |
-| RF-COMP-02 | El composer soporta adjuntos de imagen (galeria y camara) |
+| RF-COMP-02 | El composer soporta adjuntos de imagen (galeria — seleccion multiple, hasta 10 por mensaje — y camara), previsualizados dentro del propio composer con un ✕ por imagen |
 | RF-COMP-03 | El composer soporta autocompletado de archivos del workspace (filtrado por nombre parcial) |
 | RF-COMP-04 | El composer soporta menciones (@archivo, @proyecto) |
 | RF-COMP-05 | El composer soporta slash commands (/fork, /new, /status) |
