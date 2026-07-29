@@ -17,7 +17,7 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **automations**, **pets**). 368 Rust backend tests + 362 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **automations**, **pets**). 368 Rust backend tests + 369 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -165,13 +165,20 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   immediately or only pre-typing (`runCommandExecute`). Opens with **`Mod+Shift+P`**.
 - **GitHub integration (`gh`-backed)** — a **per-project inline GitHub view**
   (Pull Requests / Issues / Actions, opened from each project card's **⋯ menu →
-  GitHub**; it replaces the center + right panels, leaving the left sidebar and the
-  browser panel in place, and closes when any worktree is activated —
-  `app.githubInline`), with the **Account / Session** panel and every GitHub
+  GitHub** *or* any **worktree row's right-click menu → GitHub** — which acts on the
+  owning project and is the only way in while the sidebar is grouped by status, both
+  routed through the shared `github.openSection`; it replaces the center + right
+  panels, leaving the left sidebar and the browser panel in place, and closes when
+  any worktree is activated — `app.githubInline`), with the **Account / Session** panel and every GitHub
   preference in **Settings → GitHub** (`GithubSettings.svelte`); a configurable
-  **right-panel GitHub tab** (per-worktree PR + checks + CI runs), **sidebar-card PR
-  badges**, a passive **status-bar indicator** (rate-limit gauge + optional
-  notifications; it no longer navigates), and a post-push **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
+  **right-panel GitHub tab** (the branch's PR + checks, plus the repo's 5 latest
+  PRs / CI runs / issues — every row opening that item's detail inside the app via
+  `github.openSection`'s pending-detail, and each issue offering the worktree
+  dialog), **sidebar-card PR
+  badges**, a passive **readout inside the status bar's backend popover**
+  (rate limit + optional unread count, an unread dot on the backend icon and a row
+  into Settings → GitHub; it has no status-bar button of its own and never
+  navigates on its own), and a post-push **"Create PR"** toast. PR **review** (approve/request-changes/comment) + **merge** +
   **close/reopen** + the unified **diff** (**split per file**, collapsed by default +
   expand/collapse-all); a **GitHub-style timeline** (a chronological vertical rail
   interleaving description + comments + review verdicts + commits + events —
@@ -749,7 +756,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 368 Rust + 362 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 368 Rust + 369 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

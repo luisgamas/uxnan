@@ -161,6 +161,30 @@ de worktrees de cada repositorio registrado. Esto cubre worktrees creados fuera
 del ADE por agentes o por Git; solo se reasigna una lista cuando cambian sus
 entradas, para no perturbar el orden estabilizado de las vistas del panel.
 
+**Barrido de estado de TODAS las tarjetas.** El watcher de 3 s sigue una sola
+ruta —la del worktree activo—, así que los indicadores del resto de tarjetas
+(cambios pendientes, ahead/behind) solo se refrescaban cuando aparecía o
+desaparecía un worktree: un agente lanzado en el repo padre, o en otro worktree,
+dejaba la tarjeta afectada en blanco hasta que se hacía clic en ella. El store
+`projects` ejecuta ahora un **barrido de todos los worktrees conocidos**
+(`sweepStatuses`), limitado a uno cada `SWEEP_MS` (15 s), sin solapamiento y
+omitido con la ventana oculta; la política vive en `shouldSweep`
+(`statusSweepRegistry.ts`, TS puro y con tests). Tres señales lo **fuerzan** de
+inmediato: un agente que cambia de estado (hook), la ventana recuperando el foco,
+y las acciones git propias (commit / push / pull / fetch). Los sitios que no
+pueden importar `projects` —el listener de agentes, al que `projects` sí
+importa— piden el barrido a través de `statusSweepRegistry`, evitando un ciclo de
+imports (mismo patrón que `flushRegistry`).
+
+**Insignias de PR fuera del worktree activo.** El contexto de GitHub también se
+cargaba solo para el worktree activo. El poll de `github` refresca ahora, además,
+hasta `BADGE_TICK_CAP` (2) worktrees no activos por ciclo: primero aquellos cuyo
+estado git acaba de cambiar (`projects.takeChangedPaths()` — cuando una rama gana
+commits o se publica es justo cuando aparece o cambia su PR) y, si sobra cupo, uno
+en rotación. Cada contexto es una llamada a `gh` contra el rate limit, de ahí el
+tope por ciclo; `loadContextFor` escribe únicamente en la caché por ruta que
+alimenta las insignias, sin tocar el `context` que lee el panel derecho.
+
 ### 3.4 Gestión de Ramas
 
 - **Nomenclatura**: Las ramas se crean con un prefijo configurable (ej: `usuario/feature-name`, `custom/feature-name`, o sin prefijo). Los nombres se sanitizan para eliminar caracteres no válidos.
@@ -327,14 +351,27 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    en las secciones 3–4 (estado/diff/stage/commit/push/pull).
 3. **Historial** (`HistoryPanel.svelte`): el log de commits del worktree activo,
    con un grafo de ramas opcional (ver §6.4).
-4. **GitHub** (`GithubPanel.svelte`, opcional): vista contextual del worktree activo
-   con el PR de su rama (resumen de checks + acciones rápidas) y los runs de CI de
-   esa rama. Solo aparece cuando el repo es de GitHub y el tab está habilitado
+4. **GitHub** (`GithubPanel.svelte`, opcional): resumen contextual del repo al que
+   pertenece el worktree activo — el PR de su rama (resumen de checks + acciones
+   rápidas) y, debajo, los **5 PR**, los **5 runs de CI** y los **5 issues** más
+   recientes del repositorio (cualquier estado; los runs **ya no se filtran por
+   rama**, que era lo que hacía que la lista repitiera siempre las mismas
+   ejecuciones). Cada fila **abre el detalle dentro de la app** —
+   `github.openSection(repoPath, section, detail)` deja la vista inline mostrando
+   ese review, ese log o ese hilo— y cada issue ofrece, al pasar el ratón,
+   `GithubWorktreeDialog` para arrancar su worktree. La cabecera abre la vista de
+   GitHub del proyecto y refresca (con tooltip que dice qué relee). Los iconos y
+   tonos de estado son los de `$lib/githubDisplay`, compartidos con la vista
+   inline. Solo aparece cuando el repo es de GitHub y el tab está habilitado
    (`AppSettings.github.rightPanelTab`). Las vistas grandes (review/diff/logs) se
    abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
    centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se
-   abre desde el menú **⋯** de cada tarjeta de proyecto (**GitHub → Pull Requests /
-   Issues / Actions**), muestra solo la sección elegida con un selector de sección +
+   abre desde el menú **⋯** de cada tarjeta de proyecto y desde el menú contextual
+   de **cualquier fila de worktree** (**GitHub → Pull Requests / Issues / Actions**,
+   siempre sobre el proyecto propietario y por el mismo camino,
+   `github.openSection`; la fila es la única entrada cuando el sidebar está
+   **agrupado por estado** y no se dibuja ninguna tarjeta),
+   muestra solo la sección elegida con un selector de sección +
    cerrar/actualizar en su propia barra, y se cierra al activar cualquier worktree
    (`app.githubInline`; integración `gh`-backed; ver `docs/github.md`). La sección de
    ajustes/cuenta de GitHub vive en **Configuración → GitHub** (`GithubSettings.svelte`).

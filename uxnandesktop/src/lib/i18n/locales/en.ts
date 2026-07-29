@@ -995,6 +995,10 @@ export const en = {
     "Agent hooks aren't fully installed, so precise agent states may be unavailable. Click to review them in Settings → Hooks.",
   "status.backendDesc": "Uxnan's local backend (terminals, git, agents).",
   "status.backendRepos": "Projects",
+  "status.githubUnread": "Unread notifications",
+  "status.githubUnreadOne": "{n} unread GitHub notification",
+  "status.githubUnreadOther": "{n} unread GitHub notifications",
+  "status.githubSettings": "GitHub settings",
 
   // Terminal tab state
   "terminal.exited": "exited",
@@ -1585,6 +1589,12 @@ export const en = {
   "github.panel.createPr": "Create PR",
   "github.panel.openPr": "PR #{n}",
   "github.panel.runs": "CI runs",
+  "github.panel.openViewTip": "Open the GitHub view for this project",
+  "github.panel.refreshTip":
+    "Refresh this panel: the branch's PR, and the repository's pull requests, CI runs and issues",
+  "github.panel.openPulls": "Open Pull Requests",
+  "github.panel.openIssues": "Open Issues",
+  "github.panel.openActions": "Open Actions",
   "github.panel.branch": "Branch",
   "github.panel.checksPass": "{passed}/{total} checks",
   // Settings pane
@@ -1594,12 +1604,14 @@ export const en = {
   "github.settings.rightPanelTab": "Right-panel GitHub tab",
   "github.settings.rightPanelTabDesc":
     "Show a contextual GitHub tab in the right panel (per-worktree PR & CI). Appears only for GitHub repos.",
-  "github.settings.statusBar": "Status-bar button",
-  "github.settings.statusBarDesc": "Show the GitHub status & rate-limit gauge in the bottom status bar.",
+  "github.settings.statusBar": "Status-bar readout",
+  "github.settings.statusBarDesc":
+    "Show GitHub's unread count & API rate limit in the status bar's backend popover.",
   "github.settings.poll": "Refresh interval",
   "github.settings.pollDesc": "How often (seconds) the active worktree's PR & CI status refreshes. 0 = manual only.",
   "github.settings.notifications": "Notifications badge",
-  "github.settings.notificationsDesc": "Poll your unread GitHub notifications count for the status bar (an extra request).",
+  "github.settings.notificationsDesc":
+    "Poll your unread GitHub notifications count for the status bar's backend popover (an extra request).",
   "github.settings.confirmPr": "Confirm PR actions",
   "github.settings.confirmPrDesc": "Ask before creating or merging a pull request (both in the section and the right-panel tab).",
   "github.confirm.createTitle": "Create this pull request?",

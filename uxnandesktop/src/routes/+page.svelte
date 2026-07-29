@@ -40,7 +40,6 @@
   import DirectoryPicker from "$lib/components/DirectoryPicker.svelte";
   import BackendStatus from "$lib/components/BackendStatus.svelte";
   import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
-  import GithubStatusButton from "$lib/components/GithubStatusButton.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
   import type { RepoData } from "$lib/types";
@@ -431,14 +430,11 @@
         </TooltipSimple>
       {/if}
 
-      <!-- GitHub: opens the section; shows notifications + rate limit (hidden when
-           disabled / not signed in) -->
-      <GithubStatusButton />
-
       <!-- Provider usage indicator (icon + popover; hidden when nothing pinned) -->
       <UsageStatusButton />
 
-      <!-- Backend status (icon + live popover) -->
+      <!-- Backend status (icon + live popover; also holds GitHub's passive
+           notifications + rate-limit readout) -->
       <BackendStatus />
 
       <!-- Show/hide panels — selected = panel visible (neutral lifted segment) -->

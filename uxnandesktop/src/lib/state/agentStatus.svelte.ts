@@ -13,6 +13,7 @@ import { listen } from "@tauri-apps/api/event";
 import { agentStates } from "$lib/api";
 import { terminals } from "./terminals.svelte";
 import { unread } from "./unread.svelte";
+import { requestSweep } from "./statusSweepRegistry";
 import { app } from "./app.svelte";
 import { toast } from "$lib/toast";
 import { notify } from "$lib/notify";
@@ -81,7 +82,16 @@ class AgentStatusStore {
         // Announce meaningful transitions (done / blocked / waiting). Pass the
         // previous state so we can recover the task prompt on `done` (the Stop
         // report's own prompt may be the freshly-read transcript task).
-        if (prevState?.status !== p.status) this.notifyChange(p, prevState);
+        if (prevState?.status !== p.status) {
+          this.notifyChange(p, prevState);
+          // An agent changing state is the cheapest evidence that the working
+          // trees moved, so re-read every worktree's badges now instead of
+          // waiting out the sweep interval. Deliberately not scoped to this
+          // agent's own worktree: an agent launched in the parent repo (or in a
+          // sibling worktree) routinely edits *another* worktree, which is
+          // exactly the case where the card used to stay blank until clicked.
+          requestSweep();
+        }
       });
     } catch {
       this.started = false; // no Tauri event bus

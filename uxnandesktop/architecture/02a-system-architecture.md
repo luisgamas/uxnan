@@ -212,7 +212,9 @@ Se organiza en **cuatro regiones verticales** (`LeftSidebar.svelte`):
    (anclada por abajo, para no salirse del borde inferior) un menu con
    **Configuracion** —cuyo acceso vivia antes en las acciones rapidas— mas
    **Editar perfil**. (GitHub ya no se abre desde aqui: ahora se abre por
-   proyecto desde el menu ⋯ de cada tarjeta; ver §6 del `02c`.)
+   proyecto desde el menu ⋯ de cada tarjeta o desde el menu contextual de
+   cualquier fila de worktree —la unica via cuando el sidebar esta agrupado por
+   estado—; ver §6 del `02c`.)
 
    El perfil se persiste en `AppSettings.profile` (`SidebarProfile`: `name`,
    `icon`, `description`; forma propiedad del frontend, guardada de forma opaca

@@ -35,6 +35,7 @@ import type {
 import { app } from "$lib/state/app.svelte";
 import { canonicalFor, reconcilePlan } from "$lib/pathid";
 import { registerFlush } from "$lib/state/flushRegistry";
+import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
 import {
   resolveCommandCwd,
@@ -61,6 +62,11 @@ const msg = (e: unknown) =>
     ? String((e as { message: unknown }).message)
     : String(e);
 
+/** How often the background sweep re-reads every worktree's git status. Git is
+ *  local and `worktree_status` is one `git2` walk, but this runs for every known
+ *  worktree, so it's paced well below the 3 s single-worktree watcher. */
+const SWEEP_MS = 15_000;
+
 const baseName = (p: string) =>
   p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? p;
 
@@ -78,6 +84,8 @@ class ProjectsStore {
   worktreesByRepo = $state<Record<string, WorktreeEntry[]>>({});
   /** Working-tree status per worktree path (dirty/ahead/behind), best-effort. */
   statusByPath = $state<Record<string, WorktreeStatus>>({});
+  /** Worktrees whose status changed since the GitHub poll last drained this. */
+  changedPaths = $state<string[]>([]);
   /** Active worktree, keyed by its path (WorktreeEntry has no stable id). */
   activeWorktreePath = $state<string | null>(null);
   /** Last error from a project/worktree action, surfaced in the panel. */
@@ -442,6 +450,9 @@ class ProjectsStore {
     await app.persistSettings();
   }
   private worktreeRefreshInFlight = false;
+  /** Single-flight + rate-limit state for the all-worktree status sweep. */
+  #sweepInFlight = false;
+  #lastSweep = 0;
   private initPromise: Promise<void> | null = null;
 
   /** Load every repo's worktrees. Called from the boot sequence and from the
@@ -541,8 +552,10 @@ class ProjectsStore {
     }
   }
 
-  /** Best-effort refresh of the git status badges for the given worktree paths. */
-  async refreshStatuses(paths: string[]): Promise<void> {
+  /** Best-effort refresh of the git status badges for the given worktree paths.
+   *  Returns the paths whose status actually changed, so callers can react to a
+   *  real change (see `changedPaths`). */
+  async refreshStatuses(paths: string[]): Promise<string[]> {
     const entries = await Promise.all(
       paths.map(async (path) => {
         try {
@@ -553,8 +566,88 @@ class ProjectsStore {
       }),
     );
     const merged = { ...this.statusByPath };
-    for (const entry of entries) if (entry) merged[entry[0]] = entry[1];
+    const changed: string[] = [];
+    for (const entry of entries) {
+      if (!entry) continue;
+      const [path, next] = entry;
+      const prev = merged[path];
+      if (
+        !prev ||
+        prev.dirty !== next.dirty ||
+        prev.ahead !== next.ahead ||
+        prev.behind !== next.behind
+      ) {
+        changed.push(path);
+      }
+      merged[path] = next;
+    }
     this.statusByPath = merged;
+    if (changed.length) {
+      // Announce it for the GitHub poll (a worktree that just gained commits or
+      // got pushed is exactly when its PR badge is worth re-reading). Draining
+      // this from `github` instead of calling it here keeps the store graph
+      // one-way — `github` already imports `projects`, not the reverse.
+      this.changedPaths = [...new Set([...this.changedPaths, ...changed])];
+    }
+    return changed;
+  }
+
+  /** Every known worktree path across all projects (main + children). */
+  allWorktreePaths(): string[] {
+    const out: string[] = [];
+    for (const repo of app.repos) {
+      const list = this.worktreesOf(repo.id);
+      if (list.length) out.push(...list.map((w) => w.path));
+      else if (repo.isGit !== false) out.push(repo.path);
+    }
+    return [...new Set(out)];
+  }
+
+  /** Refresh the badges of EVERY known worktree, not just the active one.
+   *
+   *  The card indicators used to be a lie for any worktree you weren't standing
+   *  in: the 3 s backend watcher follows a single path (the active worktree) and
+   *  the sidebar poll only re-read statuses when a worktree appeared or
+   *  disappeared. An agent working from another folder — or from the parent repo
+   *  — left its target worktree's card showing nothing until you clicked it.
+   *
+   *  Rate-limited to `SWEEP_MS`, skipped while the window is hidden, and
+   *  single-flight. `force` (agent activity, window focus, a git action of ours)
+   *  runs it now instead of waiting for the interval. */
+  async sweepStatuses(force = false): Promise<void> {
+    const proceed = shouldSweep({
+      inFlight: this.#sweepInFlight,
+      force,
+      hidden: typeof document !== "undefined" && document.hidden,
+      now: Date.now(),
+      lastSweep: this.#lastSweep,
+      intervalMs: SWEEP_MS,
+    });
+    if (!proceed) return;
+    const paths = this.allWorktreePaths();
+    if (paths.length === 0) return;
+    this.#sweepInFlight = true;
+    try {
+      await this.refreshStatuses(paths);
+      this.#lastSweep = Date.now();
+    } finally {
+      this.#sweepInFlight = false;
+    }
+  }
+
+  /** Ask for a sweep at the next opportunity — used by the signals that mean
+   *  "something just changed on disk": an agent reporting a state transition,
+   *  the window regaining focus, and our own git actions. */
+  requestStatusSweep(): void {
+    void this.sweepStatuses(true);
+  }
+
+  /** Take the paths whose status changed since the last drain (the GitHub poll
+   *  consumes these to re-read just those worktrees' PR badges). */
+  takeChangedPaths(): string[] {
+    const out = this.changedPaths;
+    if (out.length) this.changedPaths = [];
+    return out;
   }
 
   /** Status badge data for a worktree path (undefined until loaded). */
@@ -920,3 +1013,7 @@ class ProjectsStore {
 
 /** Singleton projects store shared across the left panel. */
 export const projects = new ProjectsStore();
+
+// Let the signal sites that can't import this module (agent hooks, git actions —
+// `projects` imports *them*) ask for a status sweep without closing a cycle.
+registerStatusSweep(() => projects.requestStatusSweep());

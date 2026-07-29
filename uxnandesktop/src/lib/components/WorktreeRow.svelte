@@ -268,6 +268,7 @@
 
     <RowActionsMenu
       path={row.path}
+      repoId={row.repoId}
       removeLabel={row.isMain ? i18n.t("project.removeProject") : i18n.t("worktree.removeWorktree")}
       onRemove={row.isMain ? onRemoveProject : openRemove}
       onChangeIcon={() => (iconPickerOpen = true)}
