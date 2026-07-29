@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.11-alpha.20260729] - 2026-07-29
+
 ### Added — a thread message queue (follow-ups sent while a turn is in flight)
 
 The agent CLIs all let you type a follow-up while they work and hold it for the

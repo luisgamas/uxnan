@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.13-alpha.20260729] - 2026-07-29
+
 ### Added — a per-thread message queue (and the serialization hole it closes)
 
 The agent CLIs let you type a follow-up while they work and hold it for the
