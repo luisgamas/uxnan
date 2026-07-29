@@ -28,7 +28,7 @@ export interface BridgeStatusInput {
  * table it would have to keep in sync.
  */
 const BRIDGE_FEATURES = {
-  // The per-thread message queue (architecture/02a §5.8.12).
+  // The per-thread message queue (architecture/02a §5.8.13).
   messageQueue: true,
 } as const;
 

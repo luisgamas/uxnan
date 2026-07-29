@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -48,6 +47,10 @@ import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
 import 'package:uxnan/presentation/widgets/ne_pill_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+
+/// How many images one turn may carry. Attachments travel inline (base64) on
+/// `turn/send`, so the queue is bounded rather than left to the picker.
+const int _maxAttachments = 10;
 
 /// The active conversation: a Neural Expressive layout — a transparent top bar
 /// (back · model-picker pill · context · git · status · menu) over the
@@ -139,7 +142,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   bool _restoredScroll = false;
 
   /// Images the user attached for the next turn (shown as removable thumbnails
-  /// above the composer); cleared on send.
+  /// inside the composer, above the text field); cleared on send.
   final List<ImageContent> _attachments = [];
 
   // Captured in initState: using `ref` inside dispose() is unreliable in
@@ -570,20 +573,41 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
   }
 
-  /// Picks an image from [source] and appends it to the pending attachments.
+  /// Picks images from [source] and appends them to the pending attachments.
+  /// The gallery allows a multi-selection; the queue is capped at
+  /// [_maxAttachments] because every image rides inline on the turn.
   Future<void> _pickAttachment(AttachmentSource source) async {
     final messenger = ScaffoldMessenger.of(context);
     final l10n = AppLocalizations.of(context);
-    final image =
-        await ref.read(attachmentPickerServiceProvider).pickImage(source);
-    if (!mounted || image == null) return;
-    if (image.base64Data == null) {
+    final free = _maxAttachments - _attachments.length;
+    if (free <= 0) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.composerAttachLimit(_maxAttachments))),
+        );
+      return;
+    }
+    final picked = await ref
+        .read(attachmentPickerServiceProvider)
+        .pickImages(source, limit: free);
+    if (!mounted || picked.isEmpty) return;
+    final usable = picked.where((i) => i.base64Data != null).toList();
+    if (usable.isEmpty) {
       messenger
         ..clearSnackBars()
         ..showSnackBar(SnackBar(content: Text(l10n.composerAttachFailed)));
       return;
     }
-    setState(() => _attachments.add(image));
+    final accepted = usable.take(free).toList();
+    setState(() => _attachments.addAll(accepted));
+    if (accepted.length < usable.length) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.composerAttachLimit(_maxAttachments))),
+        );
+    }
   }
 
   void _removeAttachment(int index) {
@@ -1134,13 +1158,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                             : const SizedBox.shrink(),
                       ),
                     ),
-                    if (_attachments.isNotEmpty)
-                      _Centered(
-                        child: _AttachmentStrip(
-                          attachments: _attachments,
-                          onRemove: _removeAttachment,
-                        ),
-                      ),
                     ComposerBar(
                       // A STABLE key, not decoration: everything above the
                       // composer in this Column is conditional (banners, the
@@ -1153,7 +1170,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                       key: const ValueKey('composer-bar'),
                       threadId: widget.threadId,
                       enabled: connectedHere && !_cwdMissing,
-                      hasAttachments: _attachments.isNotEmpty,
+                      // Pending images ride inside the pill, above the field.
+                      attachments: _attachments,
+                      onRemoveAttachment: _removeAttachment,
                       // A drafted message during a live turn is what reveals
                       // the floating "queue message" action above the pill.
                       onDraftChanged: (hasDraft) {
@@ -1425,83 +1444,6 @@ class _Centered extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: UxnanSpacing.lg),
           child: child,
-        ),
-      ),
-    );
-  }
-}
-
-/// A horizontal strip of pending attachment thumbnails shown just above the
-/// composer; each has a remove (✕) overlay. Sits on the same gutter as the
-/// composer pill.
-class _AttachmentStrip extends StatelessWidget {
-  const _AttachmentStrip({required this.attachments, required this.onRemove});
-
-  final List<ImageContent> attachments;
-  final ValueChanged<int> onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        0,
-      ),
-      child: SizedBox(
-        height: 72,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: attachments.length,
-          separatorBuilder: (_, __) => const SizedBox(width: UxnanSpacing.sm),
-          itemBuilder: (context, index) {
-            final data = attachments[index].base64Data;
-            return Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.all(UxnanRadius.md),
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    color: colors.surfaceContainerHighest,
-                    child: data == null
-                        ? Icon(
-                            Icons.image_outlined,
-                            color: colors.onSurfaceVariant,
-                          )
-                        : Image.memory(
-                            base64Decode(data),
-                            width: 72,
-                            height: 72,
-                            fit: BoxFit.cover,
-                            gaplessPlayback: true,
-                          ),
-                  ),
-                ),
-                Positioned(
-                  top: 2,
-                  right: 2,
-                  child: GestureDetector(
-                    onTap: () => onRemove(index),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: colors.scrim.withValues(alpha: 0.6),
-                        shape: BoxShape.circle,
-                      ),
-                      padding: const EdgeInsets.all(2),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
         ),
       ),
     );

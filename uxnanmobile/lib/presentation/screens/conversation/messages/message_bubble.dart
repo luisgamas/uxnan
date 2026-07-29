@@ -14,6 +14,13 @@ import 'package:uxnan/presentation/screens/conversation/messages/message_content
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
+import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
+
+/// Side of a sent-attachment thumbnail above the user bubble — the size the
+/// composer strip used to have, so a sent image stays a compact reference the
+/// timeline can scroll past; tapping it opens the image full size.
+const double _sentThumbSize = 72;
 
 /// Renders a [Message] in the timeline, by role:
 ///
@@ -47,6 +54,11 @@ class MessageBubble extends StatelessWidget {
 /// the bubble toggles a "Copy message" affordance below it (hidden by default),
 /// mirroring the agent turn's copy action.
 ///
+/// Attached images ride **above** the bubble as the same small thumbnail strip
+/// the composer shows before sending — right-aligned, scrolling horizontally
+/// when there are several — instead of blowing the bubble open from the inside.
+/// Tapping one opens it full size.
+///
 /// Two delivery states change how it reads:
 /// - **queued** — sent while the agent was busy and still waiting its turn. It
 ///   is drawn as a muted "ghost" with a cancel button in its corner, and says
@@ -76,6 +88,15 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
       .map((t) => t.text)
       .where((t) => t.isNotEmpty)
       .join('\n\n');
+
+  /// The message's attached images, shown above the bubble.
+  List<ImageContent> get _images =>
+      widget.message.contents.whereType<ImageContent>().toList();
+
+  /// Content that is neither text nor an image — kept inside the bubble.
+  List<MessageContent> get _otherBlocks => widget.message.contents
+      .where((c) => c is! TextContent && c is! ImageContent)
+      .toList();
 
   void _copy() {
     final l10n = AppLocalizations.of(context);
@@ -139,126 +160,159 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     final cancelled = message.deliveryState == MessageDeliveryState.cancelled;
     final motion =
         reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
+    final images = _images;
+    // An image-only message needs no bubble at all — the strip is the message.
+    // A queued one always keeps its bubble: the edit/cancel actions live in the
+    // bubble's corner, so dropping it would leave a waiting image unactionable.
+    final hasBubble = _text.isNotEmpty || _otherBlocks.isNotEmpty || queued;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            // A waiting message is a pending action, not conversation: tapping
-            // it must not open the copy affordance meant for sent history.
-            onTap: queued ? null : () => setState(() => _showCopy = !_showCopy),
-            child: Stack(
-              children: [
-                // A queued bubble settles into its normal tone the instant the
-                // queue drains to it — the animation IS the feedback that the
-                // message finally went out.
-                AnimatedContainer(
-                  duration: motion,
-                  curve: Curves.easeOutCubic,
-                  margin: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-                  padding: EdgeInsets.fromLTRB(
-                    UxnanSpacing.md,
-                    UxnanSpacing.sm,
-                    // Room for the edit + cancel pair so neither ever sits on
-                    // the text (2 × 28 dp + the gap between and after them).
-                    queued ? _queuedActionsWidth : UxnanSpacing.md,
-                    UxnanSpacing.sm,
-                  ),
-                  decoration: BoxDecoration(
-                    // The soft "elevated" surface rather than the user's own
-                    // primary tone: a waiting message should read as pending,
-                    // not as something already said.
-                    color: queued
-                        ? colors.surfaceContainerHighest
-                        : colors.primaryContainer,
-                    border: queued
-                        ? Border.all(color: colors.outlineVariant)
-                        : null,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(14),
-                      topRight: Radius.circular(14),
-                      bottomLeft: Radius.circular(14),
-                      bottomRight: Radius.circular(4),
-                    ),
-                  ),
-                  child: AnimatedSize(
-                    duration: motion,
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topRight,
-                    child: AnimatedSwitcher(
-                      duration: motion,
-                      // Cross-fade the one-line preview into the full message
-                      // rather than swapping them, so delivery reads as the
-                      // bubble opening up instead of a different bubble.
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeOutCubic,
-                      child: queued
-                          // One line, ellipsized: a waiting message is a
-                          // reminder of what is coming, not something to read.
-                          ? Text(
-                              _text,
-                              key: const ValueKey('queued-preview'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(color: colors.onSurfaceVariant),
-                            )
-                          : _UserMessageBody(
-                              key: const ValueKey('delivered-body'),
-                              message: message,
-                              text: _text,
-                              surface: colors.primaryContainer,
-                              onSurface: colors.onPrimaryContainer,
-                              expanded: _expanded,
-                              onExpandedChanged: (value) =>
-                                  setState(() => _expanded = value),
-                            ),
+        if (images.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UxnanSpacing.xs),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: ImageThumbStrip(
+                  key: const ValueKey('message-attachments'),
+                  images: images,
+                  size: _sentThumbSize,
+                  onTap: (index) => unawaited(
+                    showImageViewerDialog(
+                      context,
+                      images: images,
+                      initialIndex: index,
                     ),
                   ),
                 ),
-                // The corner actions fade out with the queued state instead of
-                // vanishing the instant the message is delivered.
-                Positioned(
-                  top: UxnanSpacing.sm,
-                  right: UxnanSpacing.sm,
-                  child: AnimatedOpacity(
+              ),
+            ),
+          ),
+        if (hasBubble)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // A waiting message is a pending action, not conversation:
+              // tapping it must not open the copy affordance meant for
+              // sent history.
+              onTap:
+                  queued ? null : () => setState(() => _showCopy = !_showCopy),
+              child: Stack(
+                children: [
+                  // A queued bubble settles into its normal tone the instant
+                  // the queue drains to it — the animation IS the feedback
+                  // that the message finally went out.
+                  AnimatedContainer(
                     duration: motion,
                     curve: Curves.easeOutCubic,
-                    opacity: queued ? 1 : 0,
-                    child: IgnorePointer(
-                      ignoring: !queued,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Edit first (reading order): the recoverable action
-                          // sits before the one that ends the message.
-                          _QueuedActionButton(
-                            icon: Icons.edit_outlined,
-                            tooltip: l10n.queuedMessageEdit,
-                            busy: _busy,
-                            onTap: _editQueued,
-                          ),
-                          const SizedBox(width: UxnanSpacing.xs),
-                          _QueuedActionButton(
-                            icon: Icons.close_rounded,
-                            tooltip: l10n.queuedMessageCancel,
-                            busy: _busy,
-                            onTap: _cancelQueued,
-                          ),
-                        ],
+                    margin:
+                        const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+                    padding: EdgeInsets.fromLTRB(
+                      UxnanSpacing.md,
+                      UxnanSpacing.sm,
+                      // Room for the edit + cancel pair so neither ever sits on
+                      // the text (2 × 28 dp + the gap between and after them).
+                      queued ? _queuedActionsWidth : UxnanSpacing.md,
+                      UxnanSpacing.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      // The soft "elevated" surface rather than the user's own
+                      // primary tone: a waiting message should read as pending,
+                      // not as something already said.
+                      color: queued
+                          ? colors.surfaceContainerHighest
+                          : colors.primaryContainer,
+                      border: queued
+                          ? Border.all(color: colors.outlineVariant)
+                          : null,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(14),
+                        topRight: Radius.circular(14),
+                        bottomLeft: Radius.circular(14),
+                        bottomRight: Radius.circular(4),
+                      ),
+                    ),
+                    child: AnimatedSize(
+                      duration: motion,
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topRight,
+                      child: AnimatedSwitcher(
+                        duration: motion,
+                        // Cross-fade the one-line preview into the full message
+                        // rather than swapping them, so delivery reads as the
+                        // bubble opening up instead of a different bubble.
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeOutCubic,
+                        child: queued
+                            // One line, ellipsized: a waiting message is a
+                            // reminder of what is coming, not something
+                            // to read.
+                            ? Text(
+                                _text,
+                                key: const ValueKey('queued-preview'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: colors.onSurfaceVariant),
+                              )
+                            : _UserMessageBody(
+                                key: const ValueKey('delivered-body'),
+                                message: message,
+                                text: _text,
+                                surface: colors.primaryContainer,
+                                onSurface: colors.onPrimaryContainer,
+                                expanded: _expanded,
+                                onExpandedChanged: (value) =>
+                                    setState(() => _expanded = value),
+                              ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                  // The corner actions fade out with the queued state instead
+                  // of vanishing the instant the message is delivered.
+                  Positioned(
+                    top: UxnanSpacing.sm,
+                    right: UxnanSpacing.sm,
+                    child: AnimatedOpacity(
+                      duration: motion,
+                      curve: Curves.easeOutCubic,
+                      opacity: queued ? 1 : 0,
+                      child: IgnorePointer(
+                        ignoring: !queued,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Edit first (reading order): the recoverable
+                            // action sits before the one that ends the
+                            // message.
+                            _QueuedActionButton(
+                              icon: Icons.edit_outlined,
+                              tooltip: l10n.queuedMessageEdit,
+                              busy: _busy,
+                              onTap: _editQueued,
+                            ),
+                            const SizedBox(width: UxnanSpacing.xs),
+                            _QueuedActionButton(
+                              icon: Icons.close_rounded,
+                              tooltip: l10n.queuedMessageCancel,
+                              busy: _busy,
+                              onTap: _cancelQueued,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
         // The status line under the bubble grows/shrinks rather than snapping
         // between "waiting", "cancelled" and nothing at all.
         AnimatedSize(
@@ -411,8 +465,9 @@ class _CancelledMessageNote extends StatelessWidget {
 }
 
 /// User-message content with a responsive text preview. Only textual content
-/// is clipped; image attachments and other blocks remain fully visible. The
-/// full source stays mounted and is always used by the copy action.
+/// is clipped; the remaining blocks stay fully visible (images are lifted out
+/// of the bubble by [_UserBubble]). The full source stays mounted and is always
+/// used by the copy action.
 class _UserMessageBody extends StatelessWidget {
   const _UserMessageBody({
     required this.message,
@@ -464,7 +519,10 @@ class _UserMessageBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final nonText = message.contents.where((c) => c is! TextContent).toList();
+    // Images are rendered above the bubble, not in it.
+    final nonText = message.contents
+        .where((c) => c is! TextContent && c is! ImageContent)
+        .toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {

@@ -88,7 +88,11 @@ push validation (FOR-HUMAN).
   `opencode serve` `permission.asked` + Gemini `BeforeTool` hook + Zero and Grok
   via ACP `session/request_permission`; all routed through one `requestApproval`
   round-trip, validated end-to-end.
-- **Image attachments** — CLI-agnostic file-path, sandbox-safe.
+- **Image attachments** — CLI-agnostic file-path, sandbox-safe (written into the
+  directory the CLI actually runs in — the turn's `cwd`, else the adapter's —
+  and referenced relatively, since every agent refuses a path outside its
+  workspace). Accepted by every wired agent (`capabilities.images`) except the
+  echo demo; see `docs/agents.md` → *Image attachments*.
 - **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
   Gemini JSONL/JSON stores.
 - **Bridge control** — `bridge/status` (real `relayConnected`),
@@ -225,8 +229,14 @@ push validation (FOR-HUMAN).
 - [ ] **Image attachments — follow-ups** — native per-CLI image input (a dedicated
       flag / MCP image part) where richer than a cwd-relative file path; add
       `.uxnan-attachments/` to a recommended `.gitignore` (cleaned per turn, but a
-      crash mid-turn could leave one); on-device verify an agent actually reads the
-      delivered image.
+      crash mid-turn could leave one). **Delivery itself is verified**: a
+      four-quadrant probe image was described correctly by `claude -p`,
+      `agy -p`, `grok --print`, `pi -p` and `opencode run` (the last two via
+      their file tools rather than vision), and by **Codex on-device** through
+      the phone. **Zero** takes them natively (inline ACP image block) — unit
+      tested, but not yet run end to end because the account is credit-blocked.
+      **Gemini CLI** is unverified: its local install is broken
+      (`MODULE_NOT_FOUND`) and the agent is hidden from the phone's picker.
 - [ ] **`auth/login` / `auth/logout`** — still stubs (driving a CLI's interactive
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command

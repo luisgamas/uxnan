@@ -11,7 +11,9 @@
   import { text } from "$lib/design";
   import { aiCommitAgents, aiCommitModels } from "$lib/api";
   import type { AgentModel } from "$lib/types";
-  import { AI_COMMIT_AGENTS } from "$lib/aiCommitPresets";
+  // The full list resolves a logo (deprecated entries included); the choices
+  // helper decides what the picker actually offers.
+  import { AI_COMMIT_AGENTS, aiCommitAgentChoices } from "$lib/aiCommitPresets";
   import { Switch } from "$lib/components/ui/switch";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -51,12 +53,15 @@
     {
       items: [
         { value: "", label: i18n.t("github.settings.aiNone") },
-        ...AI_COMMIT_AGENTS.map((a) => ({
+        // A discontinued agent is only listed while it is the saved selection —
+        // otherwise the field would read "none" while it kept drafting bodies.
+        ...aiCommitAgentChoices(app.settings.github?.aiAgentId).map((a) => ({
           value: a.id,
           label: a.name,
           disabled: aiAgentsInstalled !== null && !aiAgentInstalled(a.id),
-          meta:
-            aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
+          meta: a.deprecated
+            ? i18n.t("settings.agentDeprecated")
+            : aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
               ? i18n.t("settings.agentNotFound")
               : undefined,
         })),

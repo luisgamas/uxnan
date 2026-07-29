@@ -210,5 +210,25 @@ void main() {
       await sub.cancel();
       expect(emissions.last, 2);
     });
+
+    test('a thread row written by another build decodes instead of throwing',
+        () async {
+      await db.into(db.threadsTable).insert(
+            ThreadsTableCompanion.insert(
+              id: 'foreign',
+              title: 'From another build',
+              agentId: 'codex',
+              syncState: 'reconciling',
+              status: 'paused',
+              createdAtMs: 1000,
+            ),
+          );
+
+      final thread = (await repo.getThreads()).single;
+      // Unknown sync → `behind`, which self-corrects by triggering a catch-up;
+      // unknown status → `active`, so a thread is never silently hidden.
+      expect(thread.syncState, ThreadSyncState.behind);
+      expect(thread.status, ThreadStatus.active);
+    });
   });
 }

@@ -1466,6 +1466,24 @@ abstract class AppLocalizations {
   /// **'Couldn\'t attach that image'**
   String get composerAttachFailed;
 
+  /// Snackbar shown when the pending-attachment queue is full (images ride inline on the turn, so the count is bounded).
+  ///
+  /// In en, this message translates to:
+  /// **'You can attach up to {count} images per message'**
+  String composerAttachLimit(int count);
+
+  /// Accessibility label of an attachment thumbnail, in the composer and above a sent message.
+  ///
+  /// In en, this message translates to:
+  /// **'Attached image'**
+  String get attachmentImage;
+
+  /// Tooltip of the ✕ that drops a pending attachment from the composer.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove image'**
+  String get attachmentRemove;
+
   /// Tooltip on the button that cancels the in-flight agent turn (replaces Send while running).
   ///
   /// In en, this message translates to:

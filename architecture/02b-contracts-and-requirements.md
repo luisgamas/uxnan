@@ -558,6 +558,10 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
+// `gemini` permanece en la union a proposito: la Gemini CLI esta descontinuada
+// aguas arriba y el escritorio ya no la ofrece al agregar un proveedor, pero
+// sigue leyendose para quien ya la tenia activada. Retirarla de verdad seria un
+// cambio de contrato (shared + bridge + movil), no una edicion de catalogo.
 type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini' | 'grok';
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 
@@ -868,7 +872,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | ID | Requisito |
 |---|---|
 | RF-COMP-01 | El composer soporta texto multilinea |
-| RF-COMP-02 | El composer soporta adjuntos de imagen (galeria y camara) |
+| RF-COMP-02 | El composer soporta adjuntos de imagen (galeria — seleccion multiple, hasta 10 por mensaje — y camara), previsualizados dentro del propio composer con un ✕ por imagen |
 | RF-COMP-03 | El composer soporta autocompletado de archivos del workspace (filtrado por nombre parcial) |
 | RF-COMP-04 | El composer soporta menciones (@archivo, @proyecto) |
 | RF-COMP-05 | El composer soporta slash commands (/fork, /new, /status) |

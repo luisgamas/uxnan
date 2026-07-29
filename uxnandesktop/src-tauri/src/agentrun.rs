@@ -9,10 +9,12 @@
 //! lets the run engine chain steps robustly and detect failures, instead of
 //! trusting a cooperative "I'm done" signal.
 //!
-//! Reuses the exact resolution + print-mode recipes the AI-commit generator uses
-//! ([`crate::agentcli`]: `resolve` + `build_args`), the windowless spawn ([`crate::winproc`]), and the same
-//! guardrails: a hard timeout with `kill_on_drop`, and a prompt cap for the
-//! agents whose only channel is the command line.
+//! Built on [`crate::agentcli`] (`resolve` + `build_args`) and the windowless
+//! spawn ([`crate::winproc`]), with a hard timeout, `kill_on_drop`, and a prompt
+//! cap for the agents whose only channel is the command line. **This is the one
+//! one-shot runner**: AI commit messages and AI PR bodies
+//! ([`crate::aicommit`]) and automation steps go through it too, so they all get
+//! the same prompt-delivery handling instead of each re-deriving it.
 //!
 //! How each CLI is handed its prompt is not incidental: an `argv` prompt is
 //! bounded by the OS, and a chained step planting the previous step's whole
@@ -144,8 +146,9 @@ impl Drop for PromptFile {
 }
 
 /// Spawn the resolved agent windowless, with a hard timeout and `kill_on_drop`;
-/// capture stdout/stderr/exit. Mirrors `aicommit::run_generate` but returns the
-/// raw capture (exit code included) instead of gating on success.
+/// capture stdout/stderr/exit. Returns the raw capture (exit code included)
+/// rather than gating on success — the run engine decides what a non-zero exit
+/// means, and `aicommit` turns it into an error carrying the CLI's stderr.
 ///
 /// `stdin_prompt` is written to the child and the pipe then closed, which is how
 /// the CLIs that read their prompt from stdin know the input is complete. When

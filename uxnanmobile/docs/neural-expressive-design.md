@@ -397,7 +397,20 @@ any secondary header action.
 With only Photo library and Camera available, tapping "➕" opens a compact
 anchored M3 popup menu with two icon-and-label rows. A bottom sheet is reserved
 for a future larger action set; persistent turn context is not mixed into this
-menu.
+menu. Photo library takes a **multi-selection**; the camera captures one photo.
+
+**Pending attachments (inside the pill):**
+Queued images belong to the composer, not to a separate box above it: they
+render **inside** the pill, above the text field, as one 56 dp row that scrolls
+horizontally when it outgrows the pill, each thumbnail carrying its own ✕. The
+strip is deliberately shorter than the sent-message one so the composer only
+grows a little. While attachments are present the pill applies the same
+task-specific morph as the git commit composer — its stadium ends become a
+24 dp rounded surface (`UxnanRadius.xxl`), so the thumbnails are not eaten by
+the round corners — and the growth is animated with the composer's own
+reduced-motion-aware duration. The ✕ is a solid `surface` chip with an
+`onSurface` glyph rather than a translucent scrim, so it stays legible over any
+photo in both themes.
 
 **Slash-command palette:**
 Typing `/` or `@` opens an auxiliary surface 8 dp above the composer. Both use
@@ -814,6 +827,13 @@ reasoning or activity auto-collapses the previously open process disclosure in
 that same turn. Streaming follows the latest response only until the user
 manually scrolls, and long user prompts use an expandable visual-line preview
 so neither automation nor message length takes control of the reading surface.
+A sent prompt's **images ride above its bubble**, not inside it: the same
+thumbnail strip the composer shows (at 72 dp), right-aligned with the bubble and
+scrolling horizontally when there are several, so the collapsed text preview
+keeps governing the bubble's height and an attachment stays a compact reference
+the timeline can scroll past — tapping one opens it full size (pinch-zoom, swipe
+across the message's images). An image-only message drops the bubble entirely;
+the strip is the message.
 A minimal, reusable **message scroll rail** (`lib/presentation/widgets/message_scroll_rail.dart`)
 — faint at rest on the right edge, one short tick per user message — is hidden
 while the timeline sits at the bottom and slides in from the right edge (with a

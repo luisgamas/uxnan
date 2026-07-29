@@ -145,12 +145,21 @@ project folder). The token is always referenced via `UXNAN_MCP_TOKEN` (never inl
 | --- | --- | --- |
 | Claude Code | `~/.claude.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
 | Codex | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
-| Gemini CLI | `~/.gemini/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, trust, headers}` |
 | OpenCode | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
+| Grok | `~/.grok/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `headers` |
 
 Merges are non-destructive (your other keys/servers are preserved), and uxnan removes
-its own entry on exit. Gemini's entry carries `trust: true` so it doesn't ask for
-per-tool confirmation of the browser server.
+its own entry on exit. Grok's entry authenticates with
+`Authorization = "Bearer ${UXNAN_MCP_TOKEN}"` — Grok expands `${VAR}` in `url`,
+`headers` and `env` at load time, so the token still never lands in a file.
+
+**Gemini CLI** is no longer configured — Google discontinued it in favour of
+Antigravity — though uxnan still knows its config path, so an entry left behind by
+an earlier version is still cleaned up. **Antigravity itself cannot be supported
+yet**: its remote MCP transport is SSE with only a `serverUrl` and no header
+field, so there is nowhere to put the bearer token, and uxnan's endpoint speaks
+Streamable HTTP rather than SSE. Fixing it needs a change on one side or the
+other; the detail is in [`FOR-DEV.md`](../FOR-DEV.md).
 
 ### Adding another agent
 

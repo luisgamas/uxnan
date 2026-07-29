@@ -50,7 +50,50 @@ refusing to send a second message kept it from happening.
   client that guesses wrong makes an older bridge start a second concurrent turn
   and kill the running one — which is exactly what a pre-queue bridge did when a
   newer app offered the action.
-- 14 new tests (556 total). Spec: `architecture/02a` §5.8.12, `02b` §1.2–1.4.
+- 14 new tests (560 total). Spec: `architecture/02a` §5.8.13, `02b` §1.2–1.4.
+
+### Fixed — an attachment on a `cwd`-less turn was written where no agent could read it
+
+- `materializeAttachments` fell back to the **OS temp dir** (with an absolute
+  reference) whenever `turn/send` carried no `cwd`. Every agent is confined to
+  its workspace, so the file was simply unreachable — verified against the real
+  CLI: Claude answers *"the read was blocked by a permission prompt"* for the
+  very same image under the temp dir, while it describes it correctly from a
+  workspace-relative path.
+- The fallback is now the **adapter's own working directory**, which is where
+  the CLI actually runs. A new optional `IAgentAdapter.defaultCwd()`
+  (implemented by all eight adapters) reports it, so the reference stays
+  workspace-relative and inside the sandbox. The temp dir remains a last resort
+  for an adapter that reports none.
+
+### Fixed — Zero receives an attachment as a real image, not a path it can't read
+
+- Zero's `read_file` tool is line-oriented **text**, so the bridge's file-path
+  delivery had it read a PNG as garbage — while its ACP advertises
+  `promptCapabilities.image` and decodes an inline `{ type: "image", mimeType,
+  data }` block straight into the model's image input.
+- The Zero adapter now sends attachments **natively** as inline ACP image
+  blocks. New optional `IAgentAdapter.handlesAttachments()` lets an adapter say
+  it delivers attachments itself, and the bridge then writes no file and appends
+  no path note for it (pointing a text reader at a binary is worse than saying
+  nothing). Every other adapter keeps the CLI-agnostic file path.
+- Covered by unit tests (the emitted prompt blocks, an image-only turn, and the
+  manager skipping materialization); **not yet exercised end to end** — the
+  local Zero account is credit-blocked.
+
+### Fixed — Antigravity and Grok now accept image attachments
+
+- Both declared `capabilities.images: false`, so the phone hid the "+" attach
+  action for them entirely. Verified against the real CLIs with a four-quadrant
+  probe image, which **both described correctly**: `agy` opens a workspace file
+  with its own tools (its models are the multimodal Gemini family), and Grok
+  does the same — its ACP `promptCapabilities.image: false` only rules out an
+  *inline* image block on `session/prompt`, which is not how the bridge delivers
+  an attachment. Both are now `images: true`.
+- Whether the *model* sees pixels or reasons about the bytes with tools is the
+  model's business (a non-multimodal OpenCode model still answers — it inspects
+  the file), now documented per agent in `docs/agents.md` → *Image attachments*,
+  alongside the delivery rules (spec: `architecture/02a` §5.8.12).
 
 ## [0.0.12-alpha.20260724] - 2026-07-24
 

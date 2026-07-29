@@ -445,13 +445,22 @@ export class AgentManager {
       ? await this.#resolveCommandText(adapter, options.command, options.cwd)
       : userText;
 
-    // Materialize image attachments to temp files and reference them in the
-    // prompt so any file/vision-capable agent CLI can open them. Best-effort:
-    // a failure to write degrades to a text-only turn, never aborts it.
-    if (attachments.length > 0) {
+    // Materialize image attachments to files and reference them in the prompt
+    // so any file/vision-capable agent CLI can open them. The files MUST land
+    // in the directory the CLI actually runs in — every supported agent
+    // refuses to read outside its workspace (verified: Claude answers "the
+    // read was blocked by a permission prompt" for a path in the OS temp dir)
+    // — so a turn without its own `cwd` falls back to the adapter's, never to
+    // a directory the agent cannot reach. Best-effort: a failure to write
+    // degrades to a text-only turn, never aborts it.
+    // An adapter whose protocol carries images natively (Zero's ACP image
+    // block) consumes `attachments` itself in sendTurn — writing files and
+    // pointing at them would only invite it to read a binary as text.
+    if (attachments.length > 0 && !adapter.handlesAttachments?.()) {
       try {
+        const attachmentCwd = options.cwd ?? adapter.defaultCwd?.();
         const materialized = await materializeAttachments(attachments, turnId, {
-          ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+          ...(attachmentCwd !== undefined ? { cwd: attachmentCwd } : {}),
         });
         if (materialized.note) {
           agentText =

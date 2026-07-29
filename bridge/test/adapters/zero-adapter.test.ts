@@ -374,3 +374,48 @@ test('ZeroAdapter cancelTurn sends session/cancel and emits turn_aborted', async
   assert.ok(server.sent.some((m) => m.method === 'session/cancel'));
   assert.ok(events.some((e) => e.type === 'turn_aborted'));
 });
+
+test('ZeroAdapter sends an attachment as an INLINE ACP image block', async () => {
+  // Zero's `read_file` is line-oriented text, so a path reference would have it
+  // read a PNG as garbage. Its ACP advertises `promptCapabilities.image`, so the
+  // adapter takes attachments natively (`handlesAttachments`) and inlines them.
+  const { adapter, server } = setup();
+  const events: AgentStreamEvent[] = [];
+  adapter.onEvent((e) => events.push(e));
+  server.handle((m) => void m); // leave the turn in flight
+
+  assert.equal(adapter.handlesAttachments(), true);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: 'what is in this image?',
+    attachments: [
+      { type: 'image', mimeType: 'image/png', base64Data: 'AAAA' },
+      // A bare workspace path carries no bytes → not inlined.
+      { type: 'image', mimeType: 'image/png', path: 'shot.png' },
+    ],
+  });
+  await tick();
+
+  const prompt = server.sent.find((m) => m.method === 'session/prompt');
+  assert.deepEqual(prompt.params.prompt, [
+    { type: 'text', text: 'what is in this image?' },
+    { type: 'image', mimeType: 'image/png', data: 'AAAA' },
+  ]);
+});
+
+test('ZeroAdapter keeps a text block for an image-only turn', async () => {
+  const { adapter, server } = setup();
+  server.handle((m) => void m);
+  await adapter.sendTurn({
+    threadId: 't1',
+    turnId: 'u1',
+    text: '',
+    attachments: [{ type: 'image', mimeType: 'image/jpeg', base64Data: 'BBBB' }],
+  });
+  await tick();
+
+  const prompt = server.sent.find((m) => m.method === 'session/prompt');
+  // The image rides alone — no empty text block padding the prompt.
+  assert.deepEqual(prompt.params.prompt, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
+});

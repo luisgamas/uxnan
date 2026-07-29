@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:uxnan/core/extensions/enum_ext.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
@@ -122,8 +123,14 @@ class DriftThreadRepository implements IThreadRepository {
         worktreePath: row.worktreePath,
         agentId: row.agentId,
         model: row.model,
-        syncState: ThreadSyncState.values.byName(row.syncState),
-        status: ThreadStatus.values.byName(row.status),
+        // Tolerant like the message decoder: an enum value this build doesn't
+        // know must not take the thread list down. Unknown sync reads as
+        // `behind` (the self-correcting choice — it triggers a catch-up) and
+        // an unknown status as `active`, so a thread is never hidden because
+        // of a value we failed to parse.
+        syncState: ThreadSyncState.values
+            .byNameOr(row.syncState, ThreadSyncState.behind),
+        status: ThreadStatus.values.byNameOr(row.status, ThreadStatus.active),
         lastActivity: row.lastActivityMs != null
             ? DateTime.fromMillisecondsSinceEpoch(row.lastActivityMs!)
             : null,

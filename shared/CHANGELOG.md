@@ -43,6 +43,26 @@ or killed — the whole point is to send and pocket the phone).
   OpenCode retiring the running turn) — observed live against a bridge from
   before this change.
 
+### Added — `IAgentAdapter.handlesAttachments()` (optional)
+
+- Declares that an adapter delivers `SendTurnOptions.attachments` to its CLI
+  itself, so the bridge must not materialize them to files nor append a path
+  note. Default (unset) keeps the CLI-agnostic file-path delivery.
+- An adapter opts in when its protocol carries images natively **and** its file
+  tools cannot open one — Zero's ACP advertises `promptCapabilities.image` while
+  its `read_file` is line-oriented text.
+
+### Added — `IAgentAdapter.defaultCwd()` (optional)
+
+- Reports the directory an adapter runs a turn in when the turn carries no `cwd`
+  of its own (its configured `AgentConfig.cwd`, else the daemon's process
+  directory). Optional, so an adapter that cannot report one is unaffected.
+- The bridge needs it to place per-turn files — image attachments in particular
+  — inside the directory the CLI is actually sandboxed to: every supported agent
+  refuses to open a path outside its workspace, so a file written anywhere else
+  is unreachable no matter how it is referenced. See `bridge/CHANGELOG.md` and
+  `architecture/02a` §5.8.12.
+
 ## [0.0.10-alpha.20260724] - 2026-07-24
 
 ### Clarified — `AgentModel` doc comments name the current Claude alias set

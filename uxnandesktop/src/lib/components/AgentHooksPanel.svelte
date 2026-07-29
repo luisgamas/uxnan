@@ -25,6 +25,12 @@
     getClaudeHooksStatus,
     getCodexHooksStatus,
     getGeminiHooksStatus,
+    getGrokHooksStatus,
+    installGrokHooks,
+    uninstallGrokHooks,
+    getAntigravityHooksStatus,
+    installAntigravityHooks,
+    uninstallAntigravityHooks,
     getPiHooksStatus,
     getOpencodeHooksStatus,
     getHookInstall,
@@ -62,8 +68,12 @@
     { id: "fish", label: "fish" },
   ];
 
-  type AgentId = "claude" | "codex" | "gemini" | "opencode" | "pi";
-  const AGENTS: AgentId[] = ["claude", "codex", "gemini", "opencode", "pi"];
+  type AgentId = "claude" | "codex" | "gemini" | "opencode" | "pi" | "grok" | "antigravity";
+  /** The agents offered here. Gemini CLI is discontinued upstream so it is not
+   *  among them — but it is appended by `visibleAgents` when its reporter is
+   *  still installed, because hiding the card outright would leave a user no way
+   *  to turn a hook off that keeps on reporting. */
+  const AGENTS: AgentId[] = ["claude", "codex", "opencode", "pi", "grok", "antigravity"];
 
   /** Short tab label (the tab strip stays compact); the full name + description
    *  live in the pane. */
@@ -73,6 +83,8 @@
     gemini: "Gemini",
     opencode: "OpenCode",
     pi: "Pi",
+    grok: "Grok",
+    antigravity: "Antigravity",
   };
   /** Catalog logo key for each agent (brand SVG → favicon → Bot fallback). */
   const LOGO: Record<AgentId, string> = {
@@ -81,6 +93,8 @@
     gemini: "gemini",
     opencode: "opencode",
     pi: "pi",
+    grok: "grok",
+    antigravity: "antigravity",
   };
 
   function agentTitle(id: AgentId): string {
@@ -95,6 +109,10 @@
         return i18n.t("hooks.opencodeTitle");
       case "pi":
         return i18n.t("hooks.piTitle");
+      case "grok":
+        return i18n.t("hooks.grokTitle");
+      case "antigravity":
+        return i18n.t("hooks.antigravityTitle");
     }
   }
   function agentDesc(id: AgentId): string {
@@ -109,6 +127,10 @@
         return i18n.t("hooks.opencodeDesc");
       case "pi":
         return i18n.t("hooks.piDesc");
+      case "grok":
+        return i18n.t("hooks.grokDesc");
+      case "antigravity":
+        return i18n.t("hooks.antigravityDesc");
     }
   }
 
@@ -120,6 +142,8 @@
     gemini: null,
     opencode: null,
     pi: null,
+    grok: null,
+    antigravity: null,
   });
   let busy = $state<AgentId | "all" | null>(null);
   let busyOperation = $state<"install" | "uninstall" | null>(null);
@@ -132,6 +156,8 @@
     gemini: false,
     opencode: false,
     pi: false,
+    grok: false,
+    antigravity: false,
   });
   let platform = $state<Platform>("bash");
   let copied = $state<Record<string, boolean>>({});
@@ -146,6 +172,8 @@
     gemini: getGeminiHooksStatus,
     opencode: getOpencodeHooksStatus,
     pi: getPiHooksStatus,
+    grok: getGrokHooksStatus,
+    antigravity: getAntigravityHooksStatus,
   };
   const INSTALLERS: Record<AgentId, () => Promise<AgentHooksStatus>> = {
     claude: installClaudeHooks,
@@ -153,6 +181,8 @@
     gemini: installGeminiHooks,
     opencode: installOpencodeHooks,
     pi: installPiHooks,
+    grok: installGrokHooks,
+    antigravity: installAntigravityHooks,
   };
   const UNINSTALLERS: Record<AgentId, () => Promise<AgentHooksStatus>> = {
     claude: uninstallClaudeHooks,
@@ -160,7 +190,16 @@
     gemini: uninstallGeminiHooks,
     opencode: uninstallOpencodeHooks,
     pi: uninstallPiHooks,
+    grok: uninstallGrokHooks,
+    antigravity: uninstallAntigravityHooks,
   };
+
+  /** The tabs actually shown: the offered agents, plus the discontinued Gemini
+   *  CLI while its reporter is still installed so it can be removed. Its status
+   *  is fetched either way (it is in `GETTERS`), so this stays truthful. */
+  const visibleAgents = $derived<AgentId[]>(
+    statuses.gemini?.installed ? [...AGENTS, "gemini"] : AGENTS,
+  );
 
   onMount(async () => {
     try {
@@ -301,6 +340,10 @@
         return install.opencodePluginPath;
       case "pi":
         return install.piExtensionPath;
+      case "grok":
+        return install.grokHooksPath;
+      case "antigravity":
+        return install.antigravityHooksPath;
     }
   };
 
@@ -331,6 +374,10 @@
         return scripts.opencodePluginJs;
       case "pi":
         return scripts.piExtensionJs;
+      case "grok":
+        return scripts.grokJson;
+      case "antigravity":
+        return scripts.antigravityJson;
     }
   }
   const wrapperPath = $derived.by(() => {
@@ -383,7 +430,7 @@
         <Tabs.List
           class="h-9 w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b border-border/60 bg-transparent px-0 py-0"
         >
-          {#each AGENTS as id (id)}
+          {#each visibleAgents as id (id)}
             <Tabs.Trigger
               value={id}
               class={cn(
@@ -399,7 +446,7 @@
           {/each}
         </Tabs.List>
 
-        {#each AGENTS as id (id)}
+        {#each visibleAgents as id (id)}
           {@const b = badge(id)}
           <Tabs.Content value={id} class="pt-4">
             <div class="flex flex-col gap-3">

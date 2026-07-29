@@ -336,6 +336,15 @@ export class GeminiAdapter extends BaseAgentAdapter {
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
+
+  /**
+   * The directory a turn without its own `cwd` runs in — where the bridge must
+   * place per-turn attachment files so this CLI can open them (see
+   * `agents/attachments.ts`).
+   */
+  defaultCwd(): string {
+    return this.#defaultCwd;
+  }
   /** cwd's we've already written `.gemini/settings.json` into (idempotent). */
   readonly #hookInstalledCwd = new Set<string>();
 
