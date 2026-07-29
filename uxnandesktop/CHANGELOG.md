@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.24] - 2026-07-29
+
 ### Added
 
 - **The right-panel GitHub tab became a real digest of the repo.** Under the
