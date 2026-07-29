@@ -255,6 +255,32 @@ export function uninstallGeminiHooks(): Promise<AgentHooksStatus> {
   return invoke<AgentHooksStatus>("uninstall_gemini_hooks");
 }
 
+/** Status of the managed Grok reporter (`~/.grok/hooks/uxnan-status.json`). */
+export function getGrokHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_grok_hooks_status");
+}
+
+export function installGrokHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_grok_hooks");
+}
+
+export function uninstallGrokHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_grok_hooks");
+}
+
+/** Status of the managed Antigravity hook (`~/.gemini/config/hooks.json`). */
+export function getAntigravityHooksStatus(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("get_antigravity_hooks_status");
+}
+
+export function installAntigravityHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("install_antigravity_hooks");
+}
+
+export function uninstallAntigravityHooks(): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>("uninstall_antigravity_hooks");
+}
+
 /** Status of the managed Pi/OMP status extension. */
 export function getPiHooksStatus(): Promise<AgentHooksStatus> {
   return invoke<AgentHooksStatus>("get_pi_hooks_status");

@@ -10,9 +10,12 @@ setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` —
 agent must actively report them to the ADE's local **hook server** (Layer 1 of
 the monitoring design, spec `architecture/02d-agent-monitoring.md` §1.1).
 
-The ADE ships a reporter for each of its five most-used agents — **Claude Code,
-Codex, Gemini CLI, OpenCode and Pi** — and installs them **automatically on
-startup** (you can turn that off any time). Each reporter is picked to be robust
+The ADE ships a reporter for each of its six most-used agents — **Claude Code,
+Codex, OpenCode, Pi, Grok and Antigravity** — and installs them **automatically
+on startup** (you can turn that off any time). The **Gemini CLI** reporter is
+still wired but no longer installed or offered, since Google discontinued that
+CLI in favour of Antigravity; if you already have it installed, its card stays in
+the panel so you can turn it off. Each reporter is picked to be robust
 across every shell you might launch the agent from (cmd, PowerShell, PowerShell
 7, Git Bash, WSL, bash, zsh, fish), because the agent's *own* hook runner
 executes it. Any other agent is **opt-in**: point it at the generic wrapper.
@@ -98,6 +101,7 @@ The reporters (one per agent, plus the generic wrapper) — full table in
 |---|---|---|
 | `uxnan-status-relay.cjs` | Claude Code, Gemini CLI | Node relay (both agents *are* Node, so `node` is guaranteed → works from any shell). Forwards the raw event; the server normalizes it. |
 | `uxnan-codex-hook.{sh,cmd}` | Codex | `curl` hook (Codex is a Rust binary — no Node). Paired with a `trusted_hash` in `~/.codex/config.toml`. |
+| `uxnan-event-hook.{sh,cmd}` | Grok, Antigravity | `curl` reporter with the agent kind as its argument (both are single native binaries — Rust and Go — so no Node). |
 | `uxnan-opencode-status.js` | OpenCode | In-process plugin. |
 | `uxnan-pi-status.js` | Pi / OMP | In-process extension. |
 | `uxnan-hook-wrapper.{sh,ps1,cmd,fish}` | any CLI agent | Generic wrapper: `working` before exec, `done` on exit. |
@@ -123,10 +127,29 @@ environment, and so does anything else you write against the contract.
 
 ---
 
-## Install — the five built-in agents (automatic)
+## Install — the six built-in agents (automatic)
 
 On every startup (unless you turned it off) the ADE installs the managed reporter
-for each of Claude Code, Codex, Gemini CLI, OpenCode and Pi:
+for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
+
+- **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`. Grok merges
+  every `*.json` in that folder, so nothing of yours is ever read or rewritten,
+  and global hooks need no folder-trust grant. Its event vocabulary *is* Claude
+  Code's, so it reports the full range — including a genuine `blocked` from
+  `StopFailure` (a turn that died on an API error), which only OpenCode could
+  report before.
+- **Antigravity** gets one named entry, `uxnan-status`, in
+  `~/.gemini/config/hooks.json`; other named hooks in that file are untouched.
+  It exposes only its execution loop (`PreInvocation`, `PostInvocation`,
+  `PreToolUse`, `PostToolUse`, `Stop`) — there is no prompt, permission or
+  notification event — so it reports **working** and **done** precisely and can
+  never claim to be waiting on you. Its reporter is copied next to that config and
+  invoked **dot-relative** (`.\uxnan-event-hook.cmd antigravity`), because
+  Antigravity parses a hook command as a literal path and honours no quoting: a
+  command holding an absolute path would break for anyone whose account name has
+  a space in it. Grok has the same limitation, so on Windows its command falls
+  back to the path's **8.3 short form** when needed; if the OS won't produce one,
+  the panel says so instead of installing a hook that would never fire.
 
 - **Per-event merge, user-preserving.** For the JSON-config agents (Claude,
   Codex, Gemini) the reporter is merged into each event of the agent's config

@@ -15,7 +15,9 @@
   import { registerFlush, unregisterFlush } from "$lib/state/flushRegistry";
   import { i18n, LOCALES } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
-  import { AI_COMMIT_AGENTS } from "$lib/aiCommitPresets";
+  // The full list resolves a logo (deprecated entries included); the choices
+  // helper decides what the picker actually offers.
+  import { AI_COMMIT_AGENTS, aiCommitAgentChoices } from "$lib/aiCommitPresets";
   import { aiCommitAgents, aiCommitModels } from "$lib/api";
   import type { AiCommitSettings, AgentModel } from "$lib/types";
   import {
@@ -23,7 +25,7 @@
     type TerminalTemplate,
   } from "$lib/terminalTemplates";
   import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
-  import { USAGE_CATALOG, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
+  import { activatableUsageProviders, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
   import { statusMeta } from "$lib/usageFormat";
   import { detectAgents, usageDetect } from "$lib/api";
   import { usage } from "$lib/state/usage.svelte";
@@ -316,10 +318,12 @@
 
   // --- Providers (usage statistics) -----------------------------------------
   // Which catalog providers are present on the machine (null = not checked yet).
+  // Only the activatable ones are probed: presence solely drives the "not
+  // detected" hint in the picker, and a deprecated provider never appears there.
   let usagePresent = $state<Set<UsageProvider> | null>(null);
   async function detectProviders() {
     try {
-      usagePresent = new Set(await usageDetect(USAGE_CATALOG.map((p) => p.id)));
+      usagePresent = new Set(await usageDetect(activatableUsageProviders().map((p) => p.id)));
     } catch {
       usagePresent = new Set(); // backend unreachable (e.g. web preview)
     }
@@ -368,15 +372,18 @@
   // A card edited a field (refresh interval / status-bar picks): persist soon.
   const onProviderChange = () => schedulePersist();
 
-  // Combobox: providers not yet activated, with an "installed?" hint.
+  // Combobox: providers not yet activated, with an "installed?" hint. Deprecated
+  // providers are never offered — an already-activated one keeps its own tab.
   const addProviderGroups = $derived<ComboGroup[]>([
     {
-      items: USAGE_CATALOG.filter((p) => !isProviderActive(p.id)).map((p) => ({
-        value: p.id,
-        label: p.name,
-        keywords: [p.id],
-        meta: providerPresent(p.id) ? undefined : i18n.t("providers.notDetected"),
-      })),
+      items: activatableUsageProviders()
+        .filter((p) => !isProviderActive(p.id))
+        .map((p) => ({
+          value: p.id,
+          label: p.name,
+          keywords: [p.id],
+          meta: providerPresent(p.id) ? undefined : i18n.t("providers.notDetected"),
+        })),
     },
   ]);
 
@@ -621,12 +628,15 @@
   ]);
   const aiAgentGroups = $derived<ComboGroup[]>([
     {
-      items: AI_COMMIT_AGENTS.map((a) => ({
+      // A discontinued agent is only listed while it is the saved selection —
+      // otherwise the field would read "none" while it kept writing messages.
+      items: aiCommitAgentChoices(ai.agentId).map((a) => ({
         value: a.id,
         label: a.name,
         disabled: !aiAgentInstalled(a.id),
-        meta:
-          aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
+        meta: a.deprecated
+          ? i18n.t("settings.agentDeprecated")
+          : aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
             ? i18n.t("settings.agentNotFound")
             : undefined,
       })),

@@ -101,6 +101,44 @@ are passed through literally). The five command-capable adapters set
 `capabilities.commands = true`; `cwd` on `agent/commands`/`listCommands` scopes
 discovery to a project's own custom commands.
 
+## Image attachments (`turn/send { attachments }`)
+
+The phone sends images inline (base64). No agent CLI accepts inline base64 over
+the headless path, but every wired agent can **open a local file** with its own
+file/vision tools — so the bridge materializes each attachment and references
+its path in the prompt (`src/agents/attachments.ts`). No per-adapter image code.
+
+One adapter opts out of that path: **Zero** takes attachments natively
+(`IAgentAdapter.handlesAttachments()`), so the bridge writes nothing and adds no
+path note for it — see the table below.
+
+Two rules make the file-path delivery work, both verified against the real CLIs:
+
+1. **The file lands inside the directory the CLI actually runs in**
+   (`<cwd>/.uxnan-attachments/<turnId>/`) and is referenced **relative to that
+   cwd**. Agents are confined to their workspace: given the same image under the
+   OS temp dir, Claude answers *"the read was blocked by a permission prompt"*.
+   A turn without its own `cwd` therefore falls back to the adapter's
+   (`IAgentAdapter.defaultCwd()`), never to the temp dir.
+2. **The directory is removed when the turn ends**, and the persisted history
+   shows `[N image attachments]` — no temp path leaks into the conversation.
+
+`capabilities.images` decides whether the phone offers the "+" attach action:
+
+| Agent | `images` | What actually happens |
+|---|:--:|---|
+| **Claude Code** | ✅ | reads the file with `Read` (native vision) |
+| **Codex** | ✅ | reads it natively |
+| **Antigravity** | ✅ | `agy` opens it with its file tools (multimodal Gemini models) |
+| **Grok** | ✅ | opens it with its file tools — its ACP `promptCapabilities.image` is false, but that only rules out an *inline* image block, not a workspace file |
+| **Zero** | ✅ | **natively**: the attachment rides as an inline ACP image block (`{ type: "image", mimeType, data }`), because Zero's ACP advertises `promptCapabilities.image` while its `read_file` is line-oriented text — a path reference would have it read a PNG as garbage. No file is written for it |
+| **pi**, **OpenCode** | ✅ | the CLI opens it; whether the *model* sees pixels depends on the selected model — a non-multimodal one still answers by inspecting the file with tools |
+| **Gemini CLI** | ✅ | supported, but the agent is hidden from the phone's picker (superseded by Antigravity) |
+
+A non-multimodal model is not a bug: the attachment is delivered either way, the
+agent just reasons about the bytes instead of the picture. Pick a multimodal
+model when you need real vision.
+
 ## Claude Code models: latest aliases + pinned versions
 
 Claude Code has **no enumerate command** — `--model` accepts either a stable

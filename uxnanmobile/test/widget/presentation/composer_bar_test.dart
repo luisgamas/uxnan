@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -68,6 +69,8 @@ FileBrowserManager _oldBridgeManager() => FileBrowserManager(
 Widget _wrap({
   required Widget child,
   FileBrowserManager? manager,
+  List<ImageContent> attachments = const [],
+  ValueChanged<int>? onRemoveAttachment,
 }) {
   return ProviderScope(
     overrides: [
@@ -82,7 +85,12 @@ Widget _wrap({
       home: Scaffold(
         body: Align(
           alignment: Alignment.bottomCenter,
-          child: ComposerBar(onSend: (_) {}, cwd: '/repo'),
+          child: ComposerBar(
+            onSend: (_) {},
+            cwd: '/repo',
+            attachments: attachments,
+            onRemoveAttachment: onRemoveAttachment,
+          ),
         ),
       ),
     ),
@@ -91,6 +99,14 @@ Widget _wrap({
 
 String _composerText(WidgetTester tester) =>
     tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+/// A 1×1 transparent PNG, so `Image.memory` decodes a real image in tests.
+const _pngPixel =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ'
+    'DwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+ImageContent _image() =>
+    const ImageContent(mimeType: 'image/png', base64Data: _pngPixel);
 
 void main() {
   testWidgets('typing / opens the command palette and inserts a template',
@@ -197,5 +213,77 @@ void main() {
     await tester.tap(find.text('README.md'));
     await tester.pumpAndSettle();
     expect(_composerText(tester), '@README.md ');
+  });
+
+  testWidgets('pending attachments sit inside the pill, above the field',
+      (tester) async {
+    await tester.pumpWidget(
+      _wrap(child: const SizedBox(), attachments: [_image(), _image()]),
+    );
+    await tester.pumpAndSettle();
+
+    final strip = find.byKey(const ValueKey('composer-attachments'));
+    expect(strip, findsOneWidget);
+    expect(find.byType(Image), findsNWidgets(2));
+
+    // Inside the composer surface, not stacked above it…
+    final surface = find.byKey(const ValueKey('composer-surface'));
+    final surfaceRect = tester.getRect(surface);
+    final stripRect = tester.getRect(strip);
+    expect(stripRect.top, greaterThanOrEqualTo(surfaceRect.top));
+    expect(stripRect.bottom, lessThanOrEqualTo(surfaceRect.bottom));
+    // …and above the text field.
+    final fieldRect = tester.getRect(find.byType(TextField));
+    expect(stripRect.bottom, lessThanOrEqualTo(fieldRect.top));
+
+    // Short enough that the pill only grows a little.
+    expect(stripRect.height, 56);
+
+    // An attachment alone enables Send (image-only message).
+    expect(find.byKey(const ValueKey('send')), findsOneWidget);
+  });
+
+  testWidgets('each attachment has its own ✕ that removes just that image',
+      (tester) async {
+    final removed = <int>[];
+    await tester.pumpWidget(
+      _wrap(
+        child: const SizedBox(),
+        attachments: [_image(), _image(), _image()],
+        onRemoveAttachment: removed.add,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final closers = find.descendant(
+      of: find.byKey(const ValueKey('composer-attachments')),
+      matching: find.byIcon(Icons.close_rounded),
+    );
+    expect(closers, findsNWidgets(3));
+
+    await tester.tap(closers.at(1));
+    await tester.pumpAndSettle();
+    expect(removed, [1]);
+  });
+
+  testWidgets('without attachments the composer keeps its stadium shape',
+      (tester) async {
+    await tester.pumpWidget(_wrap(child: const SizedBox()));
+    await tester.pumpAndSettle();
+
+    RoundedRectangleBorder shapeOf(WidgetTester tester) => tester
+        .widget<Material>(find.byKey(const ValueKey('composer-surface')))
+        .shape! as RoundedRectangleBorder;
+
+    expect(shapeOf(tester).borderRadius, BorderRadius.circular(999));
+    expect(find.byKey(const ValueKey('composer-attachments')), findsNothing);
+
+    // With attachments it morphs into a rounded surface so the thumbnails
+    // aren't clipped by the pill's round ends.
+    await tester.pumpWidget(
+      _wrap(child: const SizedBox(), attachments: [_image()]),
+    );
+    await tester.pumpAndSettle();
+    expect(shapeOf(tester).borderRadius, BorderRadius.circular(24));
   });
 }

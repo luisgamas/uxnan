@@ -68,6 +68,10 @@ class UxnanRadius {
   /// 16dp radius.
   static const Radius xl = Radius.circular(16);
 
+  /// 24dp radius — what a pill morphs into when it has to hold stacked content
+  /// (the composer with attachments), instead of keeping its stadium ends.
+  static const Radius xxl = Radius.circular(24);
+
   /// Fully rounded (pill) radius.
   static const Radius full = Radius.circular(999);
 }

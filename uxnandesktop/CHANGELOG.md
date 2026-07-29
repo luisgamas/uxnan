@@ -38,6 +38,91 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   rewired onto it too. Opening from a row deliberately does **not** activate that
   worktree — activating one closes the view.
 
+- **Agent hooks: Grok and Antigravity report their own state.** Both now ship a
+  managed reporter, auto-installed like the rest, so their terminals show a
+  precise status instead of the coarse title/process inference. They are single
+  native binaries (Rust and Go) with no Node guarantee, so they share a new
+  `curl` reporter — `uxnan-event-hook.{sh,cmd}` — that takes the agent kind as an
+  argument rather than baking it in (the Codex hook's bytes are frozen by its
+  `trusted_hash`, so it could not simply be parameterized).
+  **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`: Grok merges
+  every `*.json` in that folder, so your hooks are never read or rewritten, and
+  global hooks need no folder-trust grant. Its event vocabulary *is* Claude
+  Code's, so it reports the full range — including a genuine `blocked` from
+  `StopFailure`, a state only OpenCode could report before.
+  **Antigravity** gets one named entry in `~/.gemini/config/hooks.json`, leaving
+  any other named hook untouched. It exposes only its execution loop, with no
+  prompt, permission or notification event, so it reports working and done
+  precisely and can **never** claim to be waiting on you — the panel says so
+  outright rather than shipping a status that silently never appears.
+  Both CLIs turned out to parse a hook command as a literal path with **no
+  quoting**, which quietly breaks for any account name containing a space.
+  Antigravity's own docs pin the hook's working directory to the config folder, so
+  its reporter is copied there and invoked dot-relative — a command with no path
+  in it at all. Grok has no such escape hatch, so its command falls back to the
+  path's 8.3 short form (`GetShortPathNameW`), and if the OS won't produce one the
+  panel reports it unavailable instead of installing a hook that would never fire.
+  Every form here was verified against the real CLIs, including with a space in
+  the home path.
+- **Integrated browser: Grok gets the browser tools.** `grok` joins the MCP
+  injection (`~/.grok/config.toml` → `[mcp_servers.uxnan-browser]`), authenticating
+  with `Authorization = "Bearer ${UXNAN_MCP_TOKEN}"` — Grok expands `${VAR}` in
+  `url`/`headers`/`env` at load time, so the module's posture holds exactly: the
+  token stays in the environment and never lands in a file.
+
+### Changed
+
+- **Agent hooks & integrated browser: Gemini CLI is no longer offered.** It is no
+  longer auto-installed as a hook agent nor configured for the browser MCP, since
+  Google discontinued it in favour of Antigravity. Its wiring stays: the hooks
+  panel still shows its card **while its reporter is installed**, so it can be
+  turned off, and the browser injector still knows its config path so an entry
+  from an earlier version is still cleaned up.
+- **Antigravity is not a browser-MCP agent, and won't be soon.** Its remote MCP
+  transport is SSE carrying only a `serverUrl` — no header field — so there is
+  nowhere to put the bearer token, and uxnan's endpoint is Streamable HTTP, which
+  answers `GET /mcp` with a 405. Writing the token into the file would have solved
+  neither half and would have broken the module's stated posture, so it is
+  recorded as a `FOR-DEV.md` item with both blockers spelled out.
+
+- **AI commit messages & AI PR bodies: Gemini CLI is no longer offered.** Both
+  curated pickers (Settings → AI commit, Settings → GitHub → AI PR body) now offer
+  exactly the five agents wired end to end for this surface — **Claude Code, Codex,
+  OpenCode, Grok and Antigravity** — after verifying each against its real CLI:
+  every one resolves to a spawnable binary, answers a model list (Claude from the
+  curated table, Codex via `codex app-server` `model/list`, the rest from their own
+  `models` command) and returns its answer on **stdout** in print mode. Codex is
+  worth naming: its banner, hook lines and token tally all go to stderr, which the
+  runner discards, so the message it yields is clean.
+  Gemini stays *resolvable* rather than deleted, and the picker still lists it
+  **while it is the saved selection**, flagged as discontinued. Hiding it outright
+  would have been a lie: the backend runs whatever agent id the settings hold and
+  never consults this list, so the field would have read "none" while Gemini kept
+  writing commit messages. `aiCommitAgentChoices()` encodes exactly that rule.
+
+- **Providers: Gemini CLI is no longer offered.** Google discontinued the
+  standalone Gemini CLI in favour of Antigravity (`agy`), so it is filtered out of
+  the **Add a provider** picker (a `deprecated` flag on its catalog entry plus a
+  new `activatableUsageProviders()`, which the picker and the presence probe both
+  read — a hidden provider is no longer probed on disk either). It is hidden, not
+  removed: an already-activated Gemini keeps its tab, keeps refreshing and keeps
+  its real name and logo, now with a one-line note saying why it is no longer
+  offered. Re-enabling it is dropping the flag; genuinely retiring it is a
+  contract change across `shared/`, the bridge and mobile, so that stays a
+  `FOR-DEV.md` item.
+- **Providers: Antigravity investigated, deferred on the credential.** `agy`'s
+  quota sits behind the same Google Code Assist API the Gemini reader already
+  calls (`v1internal:retrieveUserQuota`), so the parsing half is reusable — but
+  `agy` keeps its OAuth token in the **OS keyring** rather than on disk, and its
+  `/usage` and `/quota` commands are interactive-only. Reading it would need a new
+  keyring dependency and a change to the documented "only the token the CLI
+  already left on disk" posture, so nothing shipped; the full findings, the
+  rejected shortcut (reusing the Gemini CLI's token, which meters a different
+  quota pool) and what would unblock it are recorded in `FOR-DEV.md` and
+  `docs/providers.md`.
+
+### Added
+
 - **Pets: a carried pet runs.** Dragging the pet now plays the **travelling run**
   matching the direction of travel (`running-right` / `running-left`, sheet rows
   1–2), settling back into the v2 looking-down pose when the hand stops. Those two
@@ -157,6 +242,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   `session.error`), so the sheet's failed row — and the `sad` flavour that only
   fires from it — were effectively dead.
 ### Fixed
+
+- **AI commit / PR body: the prompt now reaches each CLI the way that CLI wants
+  it.** Both generators built their arguments with a hard-coded
+  `PromptSource::Argv`, so the prompt — which carries a diff — always rode in the
+  command line. That is the one channel bounded by the OS (Windows caps a command
+  line at ~32 KiB *total*), and it ignored the per-agent `prompt_delivery()` map
+  the codebase already had. They now go through `agentrun::run_headless`, the same
+  one-shot runner the orchestration engine and automations use, so **Claude, Codex
+  and OpenCode receive the prompt on stdin and Grok through a prompt file** — all
+  uncapped — while Antigravity keeps the argv path that is its only option, now
+  with the shared cap applied.
+  This also makes **Codex** deliberate instead of lucky: `codex exec` reads stdin
+  *even when the prompt is a positional argument*, and the old path only avoided
+  hanging because it happened to close stdin. Verified against all five real CLIs
+  through the new channel. `aicommit::run_generate` is gone — its spawn logic was
+  a slightly weaker copy of the runner's — leaving one one-shot runner in the app.
 
 - **Pets: the pet watches the cursor again during a live state.** The glance
   toward the pointer (and so the little follow after you put the pet down) was

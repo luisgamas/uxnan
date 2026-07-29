@@ -47,6 +47,24 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
     Rust sin garantía de Node) en `~/.codex/hooks.json`, **más un `trusted_hash`
     reproducido** en `~/.codex/config.toml` (`codex_trust.rs`): Codex 0.129+
     exige ese hash o el hook nunca dispara.
+  - **Grok** y **Antigravity** — un reporter `curl` compartido
+    (`uxnan-event-hook.{sh,cmd}`) que recibe el **tipo de agente como argumento**;
+    ambos son binarios nativos (Rust y Go) sin garantía de Node, y los bytes del
+    hook de Codex están congelados por su `trusted_hash`, así que no podía
+    parametrizarse ese. Grok recibe un **archivo propio**
+    (`~/.grok/hooks/uxnan-status.json`: Grok mergea todos los `*.json` de esa
+    carpeta, siempre confiada, así que no se lee ni reescribe nada del usuario) y
+    habla el vocabulario de eventos de Claude Code, incluido un `StopFailure` que
+    da un `blocked` **real**. Antigravity recibe **una entrada con nombre**
+    (`uxnan-status`) en `~/.gemini/config/hooks.json`; solo expone su bucle de
+    ejecución (`PreInvocation`, `PostInvocation`, `PreToolUse`, `PostToolUse`,
+    `Stop`) — sin evento de prompt, permiso ni notificación — así que **nunca
+    puede reportar `waiting`**. Ambos CLIs interpretan el comando del hook como
+    una ruta literal **sin quoting**, lo que rompería con un nombre de usuario con
+    espacio: Antigravity se resuelve copiando el reporter junto a su config e
+    invocándolo **relativo** (`.\uxnan-event-hook.cmd antigravity`, su doc fija el
+    cwd del hook a esa carpeta), y Grok con la **ruta corta 8.3** de Windows,
+    degradando a "no disponible" si el SO no la genera.
   - **OpenCode** — un plugin in-process depositado en su directorio `plugins/`
     (`~/.config/opencode/plugins/uxnan-status.js`); OpenCode lo auto-descubre, así
     que **no** se toca `opencode.json` (no tiene key `plugins` en su schema).
@@ -299,7 +317,7 @@ El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un 
 
 **Autenticacion y aislamiento:** el endpoint acepta el **mismo token por lanzamiento** que el hook server (`Authorization: Bearer <token>`, o el header legado `x-uxnan-token`). Los agentes reciben la configuracion MCP de su propio CLI apuntando a `/mcp`, pero el **token nunca se escribe en un archivo**: cada config lo referencia por la variable de entorno `UXNAN_MCP_TOKEN`, que el ADE inyecta en el PTY del agente. Consecuencia de diseno: la config inyectada **solo funciona dentro de una terminal lanzada por uxnan** — un agente ejecutado en otro entorno lee el mismo archivo pero no tiene la variable, no autentica y el servidor simplemente no carga para el (no puede secuestrar el navegador in-app).
 
-**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, Gemini, OpenCode) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.config/opencode/opencode.json`) — nunca en el directorio del proyecto. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
+**Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, OpenCode, Grok) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.grok/config.toml`) — nunca en el directorio del proyecto. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
 
 - **`managed`** (default): la escritura global-de-usuario descrita arriba, mas — cuando **`friction_free`** esta activo — la supresion del aviso de confianza de carpeta del CLI para agentes lanzados por la app: Gemini via la variable de entorno `GEMINI_CLI_TRUST_WORKSPACE=true` (robusta entre versiones; una variable desconocida es un no-op, a diferencia de un flag rechazado) y Codex via una semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `config.toml` (respeta una decision explicita del usuario). La entrada de Gemini ademas lleva `trust: true`, que evita su confirmacion por-herramienta.
 - **`global`**: identica escritura global-de-usuario, pero sin la supresion de confianza (los CLI conservan sus avisos nativos).

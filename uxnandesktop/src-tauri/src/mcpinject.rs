@@ -29,16 +29,23 @@
 //!
 //! ## Per-agent config (this is the extension point)
 //! Each supported agent is one [`McpAgent`] row in [`AGENTS`]. To support a **new**
-//! agent (e.g. `agy`/Antigravity, Cursor, Grok, amp), add a row and a match arm in
-//! [`config_path`] + [`write_entry`] describing where its user-global MCP config
-//! lives and its shape — nothing else changes. Current rows:
+//! agent (e.g. Cursor, amp), add a row and a match arm in [`config_path`] +
+//! [`write_entry`] describing where its user-global MCP config lives and its
+//! shape — nothing else changes. Current rows:
 //!
 //! | Agent | User-global file | Shape |
 //! |-------|------------------|-------|
 //! | Claude Code | `~/.claude.json` | `mcpServers.<n> {type:http,url,headers}` |
 //! | Codex | `~/.codex/config.toml` | `[mcp_servers.<n>] url + bearer_token_env_var` |
-//! | Gemini CLI | `~/.gemini/settings.json` | `mcpServers.<n> {httpUrl,trust,headers}` |
 //! | OpenCode | `~/.config/opencode/opencode.json` | `mcp.<n> {type:remote,url,headers,enabled}` |
+//! | Grok | `~/.grok/config.toml` | `[mcp_servers.<n>] url + headers` (`${VAR}` expanded) |
+//!
+//! Two agents are deliberately absent. **Gemini CLI** is discontinued upstream, so
+//! it is no longer offered (its `config_path` arm is kept so a stale entry can
+//! still be undone). **Antigravity** cannot be supported at all today: its remote
+//! MCP transport is SSE with only a `serverUrl` — no header field — so there is
+//! nowhere to put the bearer token, and our endpoint is Streamable HTTP rather
+//! than SSE. See `FOR-DEV.md` → *Integrated developer browser*.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -97,12 +104,12 @@ pub const AGENTS: &[McpAgent] = &[
         label: "Codex",
     },
     McpAgent {
-        id: "gemini",
-        label: "Gemini CLI",
-    },
-    McpAgent {
         id: "opencode",
         label: "OpenCode",
+    },
+    McpAgent {
+        id: "grok",
+        label: "Grok",
     },
 ];
 
@@ -131,12 +138,19 @@ fn config_path(agent: &str, home: &Path) -> Option<PathBuf> {
         "codex" => Some(home.join(".codex").join("config.toml")),
         "gemini" => Some(home.join(".gemini").join("settings.json")),
         "opencode" => Some(home.join(".config").join("opencode").join("opencode.json")),
+        "grok" => Some(home.join(".grok").join("config.toml")),
         _ => None,
     }
 }
 
-/// The JSON entry (server definition) for a JSON-config agent. `None` for Codex
-/// (TOML, handled separately).
+/// Whether `agent` keeps its MCP config in TOML (Codex, Grok) rather than JSON —
+/// the two branches differ in how a file is parsed, merged and undone.
+fn is_toml_agent(agent: &str) -> bool {
+    matches!(agent, "codex" | "grok")
+}
+
+/// The JSON entry (server definition) for a JSON-config agent. `None` for the
+/// TOML agents (handled separately).
 fn json_entry(agent: &str, endpoint: &str) -> Option<(Vec<&'static str>, Value)> {
     // Token is referenced by env, never inlined — each CLI's own expansion syntax.
     let bearer_dollar = format!("Bearer ${{{TOKEN_ENV}}}"); // ${UXNAN_MCP_TOKEN}
@@ -222,7 +236,7 @@ fn json_remove(mut doc: Value, pointer: &[&str]) -> Value {
 
 /// Merge (or remove) our Codex server in a `config.toml`, preserving the user's
 /// other settings and formatting. `endpoint = Some` inserts; `None` removes.
-fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
+fn toml_mcp(agent: &str, existing: &str, endpoint: Option<&str>) -> String {
     let mut doc = existing
         .parse::<toml_edit::DocumentMut>()
         .unwrap_or_default();
@@ -239,7 +253,19 @@ fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
             }
             let mut entry = toml_edit::Table::new();
             entry["url"] = toml_edit::value(url);
-            entry["bearer_token_env_var"] = toml_edit::value(TOKEN_ENV);
+            if agent == "grok" {
+                // Grok has no `bearer_token_env_var`, but it *does* expand `${VAR}`
+                // in `url`, `headers` and `env` at load time — so the header can
+                // name the variable and the token still never lands in the file.
+                let mut headers = toml_edit::InlineTable::new();
+                headers.insert(
+                    "Authorization",
+                    toml_edit::Value::from(format!("Bearer ${{{TOKEN_ENV}}}")),
+                );
+                entry["headers"] = toml_edit::value(headers);
+            } else {
+                entry["bearer_token_env_var"] = toml_edit::value(TOKEN_ENV);
+            }
             if let Some(servers) = doc["mcp_servers"].as_table_mut() {
                 servers.insert(SERVER_NAME, toml_edit::Item::Table(entry));
             }
@@ -268,12 +294,12 @@ fn toml_codex(existing: &str, endpoint: Option<&str>) -> String {
     doc.to_string()
 }
 
-/// True if `text` parses as valid TOML, so [`toml_codex`] can merge into it
-/// without discarding the user's content. Gates Codex config writes on parse
-/// success: a malformed `config.toml` is left untouched rather than rebuilt from
-/// an empty document (which would clobber the user's settings). Mirrors the
-/// JSON branch's parse-failure skip semantics.
-fn codex_parses(text: &str) -> bool {
+/// True if `text` parses as valid TOML, so [`toml_mcp`] can merge into it
+/// without discarding the user's content. Gates the TOML config writes (Codex
+/// and Grok) on parse success: a malformed `config.toml` is left untouched rather
+/// than rebuilt from an empty document (which would clobber the user's settings).
+/// Mirrors the JSON branch's parse-failure skip semantics.
+fn toml_parses(text: &str) -> bool {
     text.parse::<toml_edit::DocumentMut>().is_ok()
 }
 
@@ -291,7 +317,7 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
     }
     let existed = path.exists();
 
-    if agent == "codex" {
+    if is_toml_agent(agent) {
         // File missing → start from an empty document. File present but
         // unreadable or unparseable → skip (never rebuild from an empty doc,
         // which would discard the user's TOML).
@@ -299,11 +325,11 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
             String::new()
         } else {
             match std::fs::read_to_string(path) {
-                Ok(s) if codex_parses(&s) => s,
+                Ok(s) if toml_parses(&s) => s,
                 _ => return None,
             }
         };
-        let merged = toml_codex(&existing, Some(endpoint));
+        let merged = toml_mcp(agent, &existing, Some(endpoint));
         crate::agent_hooks::write_text_atomic(path, &merged).ok()?;
     } else {
         let (pointer, entry) = json_entry(agent, endpoint)?;
@@ -340,11 +366,11 @@ fn undo_entry(w: &Written) {
     let Ok(text) = std::fs::read_to_string(&w.path) else {
         return; // unreadable → do nothing
     };
-    if w.agent == "codex" {
-        if !codex_parses(&text) {
+    if is_toml_agent(&w.agent) {
+        if !toml_parses(&text) {
             return; // unparseable → leave untouched
         }
-        let stripped = toml_codex(&text, None);
+        let stripped = toml_mcp(&w.agent, &text, None);
         if w.created && stripped.trim().is_empty() {
             let _ = std::fs::remove_file(&w.path);
         } else {
@@ -518,7 +544,7 @@ mod tests {
     #[test]
     fn toml_codex_inserts_and_removes_without_clobbering() {
         let existing = "model = \"o3\"\n\n[some.other]\nk = 1\n";
-        let with = toml_codex(existing, Some("http://127.0.0.1:9/mcp"));
+        let with = toml_mcp("codex", existing, Some("http://127.0.0.1:9/mcp"));
         // Verify the structure by re-parsing (robust to header formatting).
         let doc = with.parse::<toml_edit::DocumentMut>().unwrap();
         assert_eq!(
@@ -532,7 +558,7 @@ mod tests {
         assert!(with.contains("model = \"o3\"")); // user's settings preserved
         assert!(with.contains("[some.other]"));
 
-        let without = toml_codex(&with, None);
+        let without = toml_mcp("codex", &with, None);
         assert!(!without.contains("uxnan-browser"));
         assert!(without.contains("model = \"o3\"")); // still preserved
     }

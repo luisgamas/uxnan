@@ -6,6 +6,7 @@ import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/core/extensions/string_ext.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
+import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
@@ -18,6 +19,12 @@ import 'package:uxnan/presentation/screens/conversation/composer/mention_suggest
 import 'package:uxnan/presentation/screens/conversation/composer/mention_text_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
+
+/// Side of a pending-attachment thumbnail inside the pill. Deliberately
+/// smaller than the sent-message strip so queuing an image grows the composer
+/// only a little.
+const double _attachmentThumbSize = 56;
 
 /// The message composer — a Neural Expressive **floating pill** (guide §4.3):
 /// a `surfaceContainerHighest` rounded surface holding just the essentials —
@@ -38,11 +45,12 @@ class ComposerBar extends ConsumerStatefulWidget {
     required this.onSend,
     this.enabled = true,
     this.running = false,
-    this.hasAttachments = false,
+    this.attachments = const [],
     this.cwd,
     this.agentCommands = const [],
     this.onStop,
     this.onAttach,
+    this.onRemoveAttachment,
     super.key,
   });
 
@@ -52,9 +60,11 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
 
-  /// Whether the composer has pending attachments — lets the user send with an
-  /// empty text field (image-only message) and shows Send instead of the mic.
-  final bool hasAttachments;
+  /// The images queued for the next turn. They ride *inside* the pill, above
+  /// the text field, so the composer grows into the attachment instead of
+  /// stacking a separate box on top of it. A non-empty list also lets the user
+  /// send with an empty field (image-only message) and shows Send.
+  final List<ImageContent> attachments;
 
   /// Whether the agent is currently producing a turn — Send becomes Stop.
   final bool running;
@@ -73,6 +83,9 @@ class ComposerBar extends ConsumerStatefulWidget {
   /// Handles a media source picked from the compact "+" menu. When null the
   /// action is hidden because the active agent does not advertise image input.
   final ValueChanged<AttachmentSource>? onAttach;
+
+  /// Drops the attachment at the given index (the ✕ on its thumbnail).
+  final ValueChanged<int>? onRemoveAttachment;
 
   @override
   ConsumerState<ComposerBar> createState() => _ComposerBarState();
@@ -369,7 +382,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (!widget.enabled) return;
-    if (text.isEmpty && !widget.hasAttachments) return;
+    if (text.isEmpty && widget.attachments.isEmpty) return;
     // Voice remains an independent action even when the field has text. Stop
     // an active session before clearing so a late recognition result cannot
     // repopulate a message that was already sent.
@@ -427,7 +440,8 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final showSend = _hasText || widget.hasAttachments;
+    final hasAttachments = widget.attachments.isNotEmpty;
+    final showSend = _hasText || hasAttachments;
     final canSend = showSend && widget.enabled;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final motionDuration =
@@ -488,8 +502,13 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                   elevation: _focused ? 2 : 0,
                   shadowColor: colors.shadow,
                   animationDuration: motionDuration,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(UxnanRadius.full),
+                  // Attachments morph the stadium into a rounded surface — the
+                  // same task-specific morph the git commit composer uses, so
+                  // the thumbnails aren't eaten by the pill's round ends.
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(
+                      hasAttachments ? UxnanRadius.xxl : UxnanRadius.full,
+                    ),
                   ),
                   child: AnimatedPadding(
                     duration: motionDuration,
@@ -498,63 +517,97 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
                       horizontal: UxnanSpacing.xs,
                       vertical: _focused ? UxnanSpacing.sm : UxnanSpacing.xs,
                     ),
-                    child: Row(
-                      // crossAxisAlignment defaults to center, so the "+", the
-                      // text field and the mic/send buttons share one baseline
-                      // (different intrinsic heights); the field grows upward
-                      // when multi-line.
-                      children: [
-                        // "+" opens immediate media actions; persistent turn
-                        // settings stay visible in the shelf above.
-                        if (widget.onAttach != null)
-                          TurnToolsMenuButton(
-                            onSelected: widget.onAttach!,
-                          )
-                        else
-                          const SizedBox(width: UxnanSpacing.sm),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: UxnanSpacing.sm,
-                            ),
-                            child: TextField(
-                              controller: _controller,
-                              focusNode: _focusNode,
-                              // Autofocus so the keyboard opens as soon as the
-                              // conversation is opened — users almost always
-                              // want to start typing right away. The tap-
-                              // outside-to-unfocus behavior (FocusScope.unfocus
-                              // in ConversationScreen) still works: tapping the
-                              // timeline dismisses the keyboard.
-                              autofocus: true,
-                              // Always editable so a message can be drafted
-                              // while offline; only *sending* is gated by
-                              // [enabled].
-                              minLines: 1,
-                              maxLines: 6,
-                              style: textTheme.bodyMedium,
-                              textInputAction: TextInputAction.newline,
-                              decoration: InputDecoration(
-                                isCollapsed: true,
-                                border: InputBorder.none,
-                                hintText: l10n.composerHint,
-                                hintStyle:
-                                    TextStyle(color: colors.onSurfaceVariant),
+                    child: AnimatedSize(
+                      duration: motionDuration,
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.bottomCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Pending attachments sit inside the composer, above
+                          // the field: one row, scrolling horizontally once the
+                          // thumbnails outgrow the pill.
+                          if (hasAttachments)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                UxnanSpacing.sm,
+                                UxnanSpacing.xs,
+                                UxnanSpacing.sm,
+                                UxnanSpacing.sm,
+                              ),
+                              child: ImageThumbStrip(
+                                key: const ValueKey('composer-attachments'),
+                                images: widget.attachments,
+                                size: _attachmentThumbSize,
+                                onRemove: widget.onRemoveAttachment,
                               ),
                             ),
+                          Row(
+                            // crossAxisAlignment defaults to center, so the
+                            // "+", the text field and the mic/send buttons
+                            // share one baseline (different intrinsic
+                            // heights); the field grows upward when
+                            // multi-line.
+                            children: [
+                              // "+" opens immediate media actions; persistent
+                              // turn settings stay visible in the shelf above.
+                              if (widget.onAttach != null)
+                                TurnToolsMenuButton(
+                                  onSelected: widget.onAttach!,
+                                )
+                              else
+                                const SizedBox(width: UxnanSpacing.sm),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: UxnanSpacing.sm,
+                                  ),
+                                  child: TextField(
+                                    controller: _controller,
+                                    focusNode: _focusNode,
+                                    // Autofocus so the keyboard opens as soon
+                                    // as the conversation is opened — users
+                                    // almost always want to start typing right
+                                    // away. The tap-outside-to-unfocus
+                                    // behavior (FocusScope.unfocus in
+                                    // ConversationScreen) still works: tapping
+                                    // the timeline dismisses the keyboard.
+                                    autofocus: true,
+                                    // Always editable so a message can be
+                                    // drafted while offline; only *sending* is
+                                    // gated by [enabled].
+                                    minLines: 1,
+                                    maxLines: 6,
+                                    style: textTheme.bodyMedium,
+                                    textInputAction: TextInputAction.newline,
+                                    decoration: InputDecoration(
+                                      isCollapsed: true,
+                                      border: InputBorder.none,
+                                      hintText: l10n.composerHint,
+                                      hintStyle: TextStyle(
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: UxnanSpacing.xs),
+                              _ComposerActions(
+                                hasText: showSend,
+                                enabled: widget.enabled,
+                                running: widget.running,
+                                listening: _listening,
+                                onSend:
+                                    canSend ? () => unawaited(_send()) : null,
+                                onStop: widget.onStop,
+                                onVoice:
+                                    widget.enabled ? _toggleDictation : null,
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                        _ComposerActions(
-                          hasText: showSend,
-                          enabled: widget.enabled,
-                          running: widget.running,
-                          listening: _listening,
-                          onSend: canSend ? () => unawaited(_send()) : null,
-                          onStop: widget.onStop,
-                          onVoice: widget.enabled ? _toggleDictation : null,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

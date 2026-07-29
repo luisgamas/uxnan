@@ -267,21 +267,32 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   no hay comando ni argumentos que configurar. El backend resuelve cada CLI igual
   que el bridge (`src-tauri/src/agentcli.rs`: `node <entry.js>` para instalaciones
   npm, binario nativo si existe — así el lanzamiento no interactivo funciona en
-  Windows sin shell) y lo ejecuta de forma **no interactiva** (subproceso de una
-  sola pasada — no un PTY — con stdin cerrado, timeout de 120 s y `kill_on_drop`;
-  sin API/SDK/keys de proveedor). Los modelos se descubren por agente: estáticos
+  Windows sin shell) y lo ejecuta de forma **no interactiva** a través de
+  `agentrun::run_headless` — el mismo runner de una sola pasada que usan el motor
+  de orquestación y las automatizaciones (subproceso, no un PTY; timeout de 120 s
+  y `kill_on_drop`; sin API/SDK/keys de proveedor). El prompt viaja por el canal
+  que cada CLI prefiere (`agentcli::prompt_delivery`): **stdin** para Claude,
+  Codex y OpenCode, **archivo de prompt** para Grok, y `argv` (acotado) para
+  Antigravity, que no admite otro. Importa porque el prompt lleva un diff y la
+  línea de comandos es el único canal que el SO limita (~32 KiB en Windows). Los modelos se descubren por agente: estáticos
   para Claude (versiones concretas exactas, p. ej. `claude-opus-4-8`, mantenidas
   en `agentcli.rs::CLAUDE_MODELS` con una guía de actualización — sin alias
-  "latest") y Gemini (lista curada), o en vivo para OpenCode (`opencode models`),
-  Pi (`pi --list-models`) y Codex (`codex app-server` `model/list`); siempre con
-  una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
+  "latest"), o en vivo para OpenCode (`opencode models`), Antigravity
+  (`agy models`), Grok (`grok models`) y Codex (`codex app-server` `model/list`);
+  siempre con una opción **Predeterminado** (sin flag de modelo). El selector de modelo es
   **buscable y con scroll** (`AiModelPicker.svelte`) porque algunos agentes
   listan cientos de modelos.
   Comandos: `git_generate_commit_message`, `ai_commit_agents`, `ai_commit_models`
   (`src-tauri/src/aicommit.rs`). La configuración vive en `AppSettings.aiCommit`
   (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo
   extendido, instrucciones extra), **desactivada por defecto**. Lista de agentes
-  soportados en `src/lib/aiCommitPresets.ts`.
+  soportados en `src/lib/aiCommitPresets.ts`: se ofrecen **Claude Code, Codex,
+  OpenCode, Grok y Antigravity**. La **Gemini CLI ya no se ofrece** (descontinuada
+  aguas arriba en favor de Antigravity); el backend todavía sabe ejecutarla, así
+  que una configuración que ya la nombraba sigue funcionando y la muestra marcada
+  como descontinuada hasta que el usuario elija otro agente — el backend corre el
+  id guardado y nunca consulta esta lista, de modo que ocultarla del todo dejaría
+  el campo diciendo "ninguno" mientras Gemini sigue redactando.
 
 ### 4.6 Fuentes de Diff
 
