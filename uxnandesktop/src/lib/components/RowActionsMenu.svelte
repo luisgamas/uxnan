@@ -8,6 +8,7 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { github } from "$lib/state/github.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import { clipboardWrite } from "$lib/clipboard";
@@ -30,12 +31,16 @@
   import CopyIcon from "@lucide/svelte/icons/copy";
   import ImageIcon from "@lucide/svelte/icons/image";
   import SettingsIcon from "@lucide/svelte/icons/settings";
+  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
+  import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
+  import PlayIcon from "@lucide/svelte/icons/play";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import PinIcon from "@lucide/svelte/icons/pin";
   import PinOffIcon from "@lucide/svelte/icons/pin-off";
 
   let {
     path,
+    repoId,
     removeLabel,
     onRemove,
     onChangeIcon,
@@ -45,6 +50,11 @@
   }: {
     /** The worktree/project folder every action targets. */
     path: string;
+    /** The owning project, when known — adds the GitHub submenu, which acts on
+     *  the *project* (not this worktree). It matters most in the flattened
+     *  "group by status" view, where the project cards (and their ⋯ menu, the
+     *  only other way in) aren't rendered at all. */
+    repoId?: string;
     /** Label for the destructive item (remove worktree vs remove project). */
     removeLabel?: string;
     /** Destructive action. Omit it to hide the item entirely (e.g. the primary
@@ -65,6 +75,15 @@
 
   const profiles = $derived(app.terminalProfiles);
   const launchable = $derived(app.launchableAgents);
+  // The owning project, for the GitHub submenu: its main-worktree path is what
+  // the inline view is scoped to (same value the project card passes). A non-git
+  // folder has no GitHub to offer.
+  const repo = $derived(repoId ? app.repos.find((r) => r.id === repoId) : undefined);
+  const githubPath = $derived(
+    repo && repo.isGit !== false
+      ? (projects.mainWorktree(repo.id)?.path ?? repo.path)
+      : null,
+  );
   // Agents currently running in this workspace (for the "Active agents" submenu).
   const activeAgents = $derived(terminals.agentTabs(path));
   // Live-space state for the sleep/wake item.
@@ -211,6 +230,41 @@
       </ContextMenu.Item>
     </ContextMenu.SubContent>
   </ContextMenu.Sub>
+
+  {#if githubPath}
+    <!-- GitHub for the OWNING PROJECT (not this worktree): the same inline view
+         the project card's ⋯ menu opens, reachable from a row too — which is the
+         only way in while the sidebar is grouped by status. The heading names the
+         project so it's clear what the panes will be scoped to. -->
+    <ContextMenu.Sub>
+      <ContextMenu.SubTrigger class={text.menu}>
+        <GitPullRequestIcon />
+        {i18n.t("github.title")}
+      </ContextMenu.SubTrigger>
+      <ContextMenu.SubContent>
+        <!-- The heading MUST sit inside a Group: bits-ui resolves it through the
+             group context and throws without one, which silently kills the whole
+             submenu (it never renders). -->
+        <ContextMenu.Group>
+          <ContextMenu.GroupHeading class="max-w-56 truncate {text.menuLabel}">
+            {repo?.name ?? i18n.t("github.title")}
+          </ContextMenu.GroupHeading>
+          <ContextMenu.Item class={text.menu} onclick={() => github.openSection(githubPath, "pulls")}>
+            <GitPullRequestIcon />
+            {i18n.t("github.nav.pulls")}
+          </ContextMenu.Item>
+          <ContextMenu.Item class={text.menu} onclick={() => github.openSection(githubPath, "issues")}>
+            <CircleDotIcon />
+            {i18n.t("github.nav.issues")}
+          </ContextMenu.Item>
+          <ContextMenu.Item class={text.menu} onclick={() => github.openSection(githubPath, "actions")}>
+            <PlayIcon />
+            {i18n.t("github.nav.actions")}
+          </ContextMenu.Item>
+        </ContextMenu.Group>
+      </ContextMenu.SubContent>
+    </ContextMenu.Sub>
+  {/if}
 
   {#if onRemove}
     <ContextMenu.Separator />

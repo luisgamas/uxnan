@@ -293,6 +293,10 @@ class GitStore {
       this.resetComposer();
       history.markStale();
       await this.refresh();
+      // Our own git actions move more than this worktree's card: a commit here
+      // changes what a sibling worktree is ahead/behind by, and those cards are
+      // only re-read by the background sweep.
+      projects.requestStatusSweep();
       toast.success(i18n.t("toast.committed"));
     } catch (e) {
       this.error = msg(e);
@@ -318,6 +322,7 @@ class GitStore {
       await fn(path);
       history.markStale();
       await this.refresh();
+      projects.requestStatusSweep();
       toast.success(okMsg);
     } catch (e) {
       this.error = msg(e);
@@ -353,6 +358,8 @@ class GitStore {
         // Keep the project card badge in sync with the freshly fetched state.
         projects.setStatus(path, st);
       }
+      // A fetch updates every worktree's notion of the remote, not just this one.
+      projects.requestStatusSweep();
       if (st.behind > 0) {
         toast.success(i18n.plural(st.behind, "toast.fetchBehindOne", "toast.fetchBehindOther"));
       } else {

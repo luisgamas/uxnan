@@ -76,12 +76,12 @@
 
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
 
-  /** Open the inline GitHub view (center + right panels) scoped to this project.
-   *  Points the section at this repo, then opens the requested pane — the left
-   *  sidebar and browser panel stay in place; a worktree click closes it. */
+  /** Open the inline GitHub view (center + right panels) scoped to this project —
+   *  the shared entry point every menu uses (`github.openSection`), so the card's
+   *  ⋯ menu and a worktree row's right-click land in exactly the same place. The
+   *  left sidebar and browser panel stay put; a worktree click closes it. */
   function openGithub(section: GithubSection) {
-    void github.selectSectionRepo(mainPath);
-    app.openGithubInline(section);
+    github.openSection(mainPath, section);
   }
 
   // Live-space aggregate for the collapsed card: terminals open across this

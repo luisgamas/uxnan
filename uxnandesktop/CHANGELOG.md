@@ -7,6 +7,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The right-panel GitHub tab became a real digest of the repo.** Under the
+  branch's PR it now lists the repo's **5 most recent pull requests** and its **5
+  most recent issues** (any state, with GitHub's own state icons), and every row —
+  PR, CI run or issue — **opens that item's detail inside the app**: the inline
+  GitHub view takes over already showing that review, that run's log or that issue
+  thread. Rows used to be either dead ends or a trip to the browser. Each issue
+  also reveals a **start-work** button on hover that opens the same worktree dialog
+  the section uses (branch name, agent, folder preview) — the shortest path from
+  "this needs doing" to a worktree with an agent in it.
+  The header gained a button that **opens the GitHub view** for the project (the
+  entry point the project card's ⋯ menu uses), and its refresh button finally has a
+  tooltip naming what it re-reads.
+  Reaching a detail from outside the section goes through `github.openSection`'s
+  new optional pending-detail argument, consumed once by the section — the section
+  still owns what's open, so this is a way in, not a second source of truth.
+  The state icons/tones moved to `$lib/githubDisplay` so the panel and the section
+  can't drift on what a merged PR looks like.
+
+- **GitHub is reachable from a worktree's right-click menu.** Every worktree row —
+  in the project tree and in the flattened **group-by-status** view — now carries a
+  **GitHub → Pull Requests / Issues / Actions** submenu that opens the inline view
+  for the row's **owning project** (the submenu is headed by the project name, since
+  the action deliberately jumps up a level). This closes a hole rather than adding a
+  feature: switching the sidebar to group-by-status replaces the project cards with
+  attention lanes, and the ⋯ menu on those cards was the **only** way into the GitHub
+  view — so the whole section became unreachable in that mode. Both menus now call
+  one shared entry point (`github.openSection`), so there is a new way to *reach* the
+  view, not a second implementation of opening it; the project card's ⋯ menu was
+  rewired onto it too. Opening from a row deliberately does **not** activate that
+  worktree — activating one closes the view.
+
 - **Agent hooks: Grok and Antigravity report their own state.** Both now ship a
   managed reporter, auto-installed like the rest, so their terminals show a
   precise status instead of the coarse title/process inference. They are single
@@ -113,7 +144,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   movement now re-arms it, and a carry outlives a still moment by
   `CARRY_HOLD_MS`.
 
+### Fixed
+
+- **Sidebar cards now notice work done by an agent that isn't standing in them.**
+  A worktree's indicators (pending changes, ahead/behind, its PR badge) only
+  refreshed for the worktree you had active: the 3 s backend watcher follows a
+  single path, and the sidebar poll re-read statuses **only when a worktree
+  appeared or disappeared**. An agent launched in the parent repo — or in a
+  sibling worktree — could commit, push and open a PR while the affected card sat
+  blank until you clicked it and a terminal opened.
+  The projects store now sweeps **every known worktree** (`sweepStatuses`), paced
+  to one pass per 15 s, single-flight, and skipped while the window is hidden.
+  Three signals force it immediately: **an agent changing state** (its hook is the
+  cheapest evidence that the trees moved), **the window regaining focus**, and
+  **our own git actions** (commit / push / pull / fetch). The pacing itself is a
+  pure, tested function (`shouldSweep`), and the signal sites reach the store
+  through a tiny registry (`statusSweepRegistry`) rather than an import cycle.
+  PR badges follow at their own, cheaper rhythm: each GitHub poll re-reads up to
+  **2** non-active worktrees — first the ones whose git status just changed (a
+  branch that just gained commits is exactly when its PR appears), then one in
+  rotation — because every context is a `gh` call against the API rate limit.
+
+- **Opening GitHub for one project no longer shows another project's data.** With
+  more than one project registered, opening the GitHub view from a second
+  project's ⋯ / worktree menu kept listing the first project's PRs, issues and
+  runs — while the header named the project you actually picked, which is what
+  made it look like a rendering glitch instead of a wrong repo.
+  Two causes, both fixed at the source. (1) `ensureSectionRepo()` compared the
+  selected path to the registered projects with `===`, but git prints a worktree
+  as `C:/repo` where the project was registered as `C:\repo`; the repo the user
+  explicitly picked therefore read as unregistered and was silently replaced by
+  the fallback — *the active worktree's* repo, i.e. whatever project you had open.
+  It now compares with `samePath`, and `selectSectionRepo` canonicalizes the path
+  to the registered spelling so every later comparison (including the section's
+  `selectedRepoId`, which gates the worktree actions) sees one spelling per
+  folder. (2) `loadSectionContext()` had no sequence guard, so among the several
+  context loads an open fires, an earlier repo's slower answer could land last and
+  leave the header naming a project the lists weren't showing — it now carries the
+  same `#seq` token `loadContext` already used.
+
 ### Changed
+
+- **GitHub's status-bar readout moved into the backend popover.** The passive
+  GitHub indicator no longer takes a slot of its own in the bottom bar: its
+  unread-notifications count and API rate limit are now a block inside the
+  **backend (server) popover**, followed by a row that opens **Settings → GitHub**.
+  Both answer the same question — how the app is talking to the outside — and the
+  indicator was already click-less, so a permanent icon bought nothing but width
+  in a bar that keeps gaining entries. What a popover *would* have swallowed is
+  the passive alert, so unread notifications now show as a **dot on the backend
+  icon** and spell themselves out in its tooltip. Opening the popover also
+  re-reads both values, which otherwise sat up to one poll interval (45 s by
+  default) stale. `GithubStatusButton.svelte` is gone; the **Status-bar readout**
+  and **Notifications badge** settings keep working and now describe where the
+  values actually appear.
 
 - **Pets: the long-lived states are calmer.** The idle personality's one-shots are
   spaced against how long a state actually lasts: working and ready every 25–50 s,

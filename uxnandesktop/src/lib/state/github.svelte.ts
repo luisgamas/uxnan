@@ -20,8 +20,20 @@ import type {
   IssueListItem,
   RunListItem,
 } from "$lib/types";
-import { app } from "./app.svelte";
+import { app, type GithubSection } from "./app.svelte";
 import { projects } from "./projects.svelte";
+import { samePath, canonicalFor } from "$lib/pathid";
+
+/** How many non-active worktrees may have their PR badge re-read per poll tick.
+ *  Each one is a `gh` call against the account's API rate limit, so the badges
+ *  catch up over a few ticks instead of all at once. */
+const BADGE_TICK_CAP = 2;
+
+/** An item the inline section should open on arrival, requested from outside it. */
+export type PendingDetail =
+  | { kind: "pr"; number: number }
+  | { kind: "issue"; number: number }
+  | { kind: "run"; id: number; title: string };
 
 class GithubStore {
   /** Sign-in status (gh installed? authenticated? login/host/scopes). */
@@ -70,6 +82,10 @@ class GithubStore {
   /** Monotonic token so a slow response for an old worktree can't clobber a newer
    *  one (worktree switches are frequent). */
   #ctxSeq = 0;
+  /** Same guard for the *section's* context (the two are independent loads). */
+  #sectionSeq = 0;
+  /** Round-robin cursor over the non-active worktrees whose badges we refresh. */
+  #badgeCursor = 0;
   #timer: ReturnType<typeof setInterval> | null = null;
 
   /** Whether GitHub features are usable (gh present + signed in). A `$derived`, so
@@ -87,9 +103,13 @@ class GithubStore {
   }
 
   /** Make sure the section has a repo selected. Defaults (once) to the active
-   *  worktree's repo, then the active project, then the first git repo. */
+   *  worktree's repo, then the active project, then the first git repo.
+   *  Path spellings are compared with `samePath`: git hands back `C:/repo` where
+   *  the project was registered as `C:\repo`, and a `===` here read the repo the
+   *  user explicitly picked as "unknown" and silently replaced it with the active
+   *  worktree's — i.e. opened a different project's GitHub than the one asked for. */
   ensureSectionRepo(): void {
-    if (this.sectionRepoPath && app.repos.some((r) => r.path === this.sectionRepoPath)) {
+    if (this.sectionRepoPath && app.repos.some((r) => samePath(r.path, this.sectionRepoPath!))) {
       return;
     }
     const fallback =
@@ -100,14 +120,51 @@ class GithubStore {
     if (fallback) void this.selectSectionRepo(fallback);
   }
 
-  /** Select a repo for the section: load its context + the current pane's list. */
+  /** Select a repo for the section: load its context + the current pane's list.
+   *  The path is canonicalized to the registered project's own spelling, so every
+   *  later comparison (`ensureSectionRepo`, the section's `selectedRepoId`) sees
+   *  one spelling for one folder. */
   async selectSectionRepo(path: string): Promise<void> {
-    this.sectionRepoPath = path;
+    this.sectionRepoPath = canonicalFor(path, app.repos.map((r) => r.path)) ?? path;
     await this.loadSectionContext();
   }
 
-  /** Load the selected repo's context (owner/repo + branch + PR). */
+  /** A detail the section should open as soon as it takes over — set by an entry
+   *  point outside the section (the right-panel tab's lists). The section owns
+   *  its own detail state, so this is a one-shot request it consumes and clears;
+   *  it is never a second source of truth for what's open. */
+  pendingDetail = $state<PendingDetail | null>(null);
+
+  /** Open the inline GitHub view on `section`, scoped to `repoPath` (a repo's
+   *  main-worktree path), optionally straight into one item's detail. Every entry
+   *  point goes through here — the project card's ⋯ menu, a worktree row's
+   *  right-click menu, the right-panel lists — so adding one is adding a way to
+   *  *reach* the view, never a second way to open it. Deliberately does not
+   *  activate a workspace: activating one closes the view. */
+  openSection(
+    repoPath: string,
+    section: GithubSection = "pulls",
+    detail: PendingDetail | null = null,
+  ): void {
+    this.pendingDetail = detail;
+    void this.selectSectionRepo(repoPath);
+    app.openGithubInline(section);
+  }
+
+  /** Take the pending request (if any), clearing it so it fires exactly once. */
+  takePendingDetail(): PendingDetail | null {
+    const d = this.pendingDetail;
+    if (d) this.pendingDetail = null;
+    return d;
+  }
+
+  /** Load the selected repo's context (owner/repo + branch + PR). Guarded by a
+   *  sequence token like `loadContext`: opening the section fires several loads
+   *  in a row (the caller's, then the view's own effect), and without this an
+   *  earlier repo's slower answer could land last and leave the header naming a
+   *  project the lists aren't showing. */
   async loadSectionContext(): Promise<void> {
+    const seq = ++this.#sectionSeq;
     const path = this.sectionRepoPath;
     if (!path || !this.available) {
       this.sectionContext = null;
@@ -115,11 +172,13 @@ class GithubStore {
     }
     this.sectionContextLoading = true;
     try {
-      this.sectionContext = await githubRepoContext(path);
+      const ctx = await githubRepoContext(path);
+      if (seq !== this.#sectionSeq) return; // a newer selection superseded us
+      this.sectionContext = ctx;
     } catch {
-      this.sectionContext = null;
+      if (seq === this.#sectionSeq) this.sectionContext = null;
     } finally {
-      this.sectionContextLoading = false;
+      if (seq === this.#sectionSeq) this.sectionContextLoading = false;
     }
   }
 
@@ -192,6 +251,7 @@ class GithubStore {
       void this.refreshContext();
       void this.refreshRateLimit();
       if (app.settings.github?.notificationsEnabled) void this.refreshNotifications();
+      this.refreshOtherWorktreeBadges();
     };
     const seconds = Math.max(0, app.settings.github?.pollSeconds ?? 45);
     if (seconds > 0) this.#timer = setInterval(tick, seconds * 1000);
@@ -202,6 +262,50 @@ class GithubStore {
     if (this.#timer) {
       clearInterval(this.#timer);
       this.#timer = null;
+    }
+  }
+
+  /** Keep the *other* worktrees' PR badges from going stale, without turning one
+   *  poll into N network calls.
+   *
+   *  Two sources, both deliberately cheap:
+   *  - **worktrees whose git status just changed** (drained from the projects
+   *    store's sweep). New commits or a push is precisely when a branch gains or
+   *    updates a PR, so this is the signal worth spending a `gh` call on.
+   *  - **one rotating worktree per tick**, so a repo nobody touched still gets
+   *    re-read eventually rather than never.
+   *
+   *  Capped per tick, because every context is a `gh` invocation against the API
+   *  rate limit the status bar reports. */
+  refreshOtherWorktreeBadges(): void {
+    const active = app_activePath();
+    const known = projects.allWorktreePaths().filter((p) => p !== active);
+    if (known.length === 0) return;
+
+    const changed = projects.takeChangedPaths().filter((p) => known.includes(p));
+    const picks = changed.slice(0, BADGE_TICK_CAP);
+    if (picks.length < BADGE_TICK_CAP) {
+      // Round-robin over the rest, one per tick, skipping what we just picked.
+      for (let i = 0; i < known.length && picks.length < BADGE_TICK_CAP; i++) {
+        const candidate = known[this.#badgeCursor++ % known.length];
+        if (!picks.includes(candidate)) picks.push(candidate);
+      }
+    }
+    for (const path of picks) void this.loadContextFor(path);
+  }
+
+  /** Load one worktree's context into the per-path cache only — used for the
+   *  sidebar badges of worktrees that are not the active one, so it never
+   *  disturbs `context` (which the right panel reads). */
+  async loadContextFor(path: string): Promise<void> {
+    if (!this.available) return;
+    try {
+      const ctx = await githubRepoContext(path);
+      if (!sameJson(ctx, this.contextByPath[path])) {
+        this.contextByPath = { ...this.contextByPath, [path]: ctx };
+      }
+    } catch {
+      /* leave the cached value */
     }
   }
 

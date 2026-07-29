@@ -60,8 +60,10 @@ signature detector, incl. chunk-split matching) and `pets/` (the Codex-compatibl
 manifest parser, frame timing, and the agent-state → animation mapping +
 priority, plus the v2 look-pose maths) and `automations/` (the recurrence
 schedule + next-runs preview, the run/step display projections, the seeded
-example automations, and the prompt-variable insertion) and `usageCatalog.ts`
-(which providers are still offered vs merely still readable) — 362 tests in
+example automations, and the prompt-variable insertion) and
+`state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
+its request registry) and `usageCatalog.ts` (which providers are still offered
+vs merely still readable) — 369 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
