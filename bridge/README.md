@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-66_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-68_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -165,8 +165,8 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **66 JSON-RPC methods +
-  8 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  E2EE types and runtime validators. The bridge exposes **68 JSON-RPC methods +
+  10 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads.json`, `metrics.json`,
@@ -176,7 +176,7 @@ Task-focused guides live in [`docs/`](docs/):
   deleted. The Ed25519 identity and metrics sealing key are secrets kept in a
   `SecretStore`, never written in plaintext.
 - **Routing.** `HandlerRouter.dispatchRaw()` validates the envelope and routes to
-  registered handlers; errors map to JSON-RPC error codes (`-32000..-32008` +
+  registered handlers; errors map to JSON-RPC error codes (`-32000..-32009` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
   Gemini CLI / Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`

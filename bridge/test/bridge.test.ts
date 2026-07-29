@@ -84,6 +84,19 @@ test('bridge/status reports the real relay-connection state (false when idle)', 
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('bridge/status advertises the message-queue feature', async () => {
+  const { bridge, baseDir } = await bootBridge();
+  const res = await bridge.router.dispatch(makeRequest('6', 'bridge/status'));
+  assert.ok('result' in res);
+  // A client must be able to ask "can this bridge queue?" rather than infer it
+  // from the version: offering to queue against a bridge that cannot makes it
+  // start a second concurrent turn, which kills the one already running.
+  const features = (res.result as { features?: { messageQueue?: boolean } }).features;
+  assert.equal(features?.messageQueue, true);
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('bridge/removeTrustedDevice revokes trust and is idempotent', async () => {
   const { bridge, baseDir } = await bootBridge();
   await bridge.context.trustStore.upsert({

@@ -176,7 +176,7 @@ equivalentes en Dart sincronizados a mano. Si dos componentes necesitan ponerse
 de acuerdo en la forma de un mensaje, se ponen de acuerdo aquí.
 
 - **JSON-RPC**: tipos de envelope + constructores, códigos de error
-  (`-32000..-32008` + estándar), registro de métodos tipado (locked en
+  (`-32000..-32009` + estándar), registro de métodos tipado (locked en
   build-time contra `METHOD_NAMES`).
 - **E2EE**: mensajes de handshake, transcript builder, `SecureEnvelope`,
   `PairingPayload` v2 (con `hosts: string[]` para direccionamiento directo).

@@ -12,9 +12,12 @@ import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/infrastructure/speech/speech_to_text_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_palette_card.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_suggestion.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_text_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
@@ -51,11 +54,27 @@ class ComposerBar extends ConsumerStatefulWidget {
     this.onStop,
     this.onAttach,
     this.onRemoveAttachment,
+    this.onDraftChanged,
+    this.submitController,
+    this.threadId,
     super.key,
   });
 
+  /// The thread this composer belongs to, so it can mirror its draft into the
+  /// hand-off state and receive text recovered from the queue. Null disables
+  /// the hand-off (the composer still works normally).
+  final String? threadId;
+
   /// Called with the trimmed message when the user sends.
   final ValueChanged<String> onSend;
+
+  /// Notified whenever the pill goes from empty to holding something sendable
+  /// and back. Lets the screen decide what to float above the composer — a
+  /// drafted message during a live turn is what reveals the "queue" action.
+  final ValueChanged<bool>? onDraftChanged;
+
+  /// Lets a control outside the pill trigger the same send the ↑ button does.
+  final ComposerSubmitController? submitController;
 
   /// Whether sending is currently allowed (e.g. connected).
   final bool enabled;
@@ -159,6 +178,7 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     super.initState();
     _controller.addListener(_onChanged);
     _focusNode.addListener(_onFocusChanged);
+    widget.submitController?.addListener(_onExternalSubmit);
   }
 
   @override
@@ -171,11 +191,21 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
       _searchMatches = const [];
       _searchMode = false;
     }
+    if (oldWidget.submitController != widget.submitController) {
+      oldWidget.submitController?.removeListener(_onExternalSubmit);
+      widget.submitController?.addListener(_onExternalSubmit);
+    }
+    // An attachment picked (or removed) outside the pill changes whether there
+    // is anything to send, which the screen's floating actions depend on.
+    if (oldWidget.attachments.isNotEmpty != widget.attachments.isNotEmpty) {
+      _notifyDraft();
+    }
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    widget.submitController?.removeListener(_onExternalSubmit);
     // Best-effort: stop any active dictation when the composer goes away.
     if (_listening) ref.read(speechToTextServiceProvider).cancel();
     _controller
@@ -195,8 +225,40 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
 
   void _onChanged() {
     final hasText = _controller.text.isNotBlank;
-    if (hasText != _hasText) setState(() => _hasText = hasText);
+    if (hasText != _hasText) {
+      setState(() => _hasText = hasText);
+      _notifyDraft();
+    }
+    // Mirror the draft so a control outside the composer (a queued bubble's
+    // cancel button) can tell whether handing text over would overwrite it.
+    final threadId = widget.threadId;
+    if (threadId != null) {
+      ref
+          .read(composerHandoffsProvider.notifier)
+          .reportDraft(threadId, _controller.text);
+    }
     _refreshTrigger();
+  }
+
+  /// Places text handed back from the queue (or a rescued draft) into the
+  /// field, putting the caret at the end so the user can keep typing.
+  void _acceptIncoming(String text) {
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _focusNode.requestFocus();
+  }
+
+  /// Tells the screen whether the pill currently holds something sendable.
+  void _notifyDraft() {
+    widget.onDraftChanged?.call(_hasText || widget.attachments.isNotEmpty);
+  }
+
+  /// The floating "queue message" action asked us to send the draft.
+  void _onExternalSubmit() {
+    if (!mounted) return;
+    unawaited(_send());
   }
 
   /// Recomputes the active `@`/`/` context from the current text + caret and
@@ -393,6 +455,10 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     }
     widget.onSend(text);
     _controller.clear();
+    // `clear()` fires the listener, which notifies the empty draft — but only
+    // when there WAS text. An attachment-only send leaves `_hasText` false
+    // throughout, so tell the screen explicitly.
+    if (text.isEmpty) _notifyDraft();
   }
 
   /// Starts or stops voice dictation. Recognized words stream into the field
@@ -449,6 +515,22 @@ class _ComposerBarState extends ConsumerState<ComposerBar> {
     // The `/` palette is the agent's own slash commands (agent/commands) plus
     // the built-in file hand-off + the user's templates.
     final templates = ref.watch(promptTemplatesLibraryProvider);
+
+    // Text handed back from the queue (a cancelled message, or a rescued
+    // draft). Applied after this frame — setting a TextEditingController
+    // during build would mutate state the field is currently laying out.
+    final threadId = widget.threadId;
+    if (threadId != null) {
+      ref.listen(composerHandoffProvider(threadId), (previous, next) {
+        final incoming = next.incoming;
+        if (incoming == null) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _acceptIncoming(incoming);
+          ref.read(composerHandoffsProvider.notifier).consumeIncoming(threadId);
+        });
+      });
+    }
 
     return SafeArea(
       top: false,
@@ -659,7 +741,6 @@ class _SuggestionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final isCommand = trigger.trigger == ComposerTrigger.command;
     final commands = isCommand
@@ -723,29 +804,13 @@ class _SuggestionPanel extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-      child: Material(
-        color: colors.surfaceContainerHigh,
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 260),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _SuggestionHeader(symbol: '@', title: title),
-              Divider(height: 1, color: colors.outlineVariant),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: body,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ComposerPaletteCard(
+      symbol: '@',
+      title: title,
+      maxHeight: 260,
+      // The workspace list stays flat; only the `/` palette lifts.
+      elevation: 0,
+      child: body,
     );
   }
 }
@@ -769,101 +834,22 @@ class _CommandPalette extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UxnanSpacing.sm),
-      child: Material(
-        key: const ValueKey('command-palette'),
-        color: colors.surfaceContainerHigh,
-        elevation: 3,
-        shadowColor: colors.shadow,
-        borderRadius: const BorderRadius.all(UxnanRadius.xl),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 320),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _SuggestionHeader(symbol: '/', title: title),
-              Divider(height: 1, color: colors.outlineVariant),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: commands.isEmpty
-                      ? _EmptyRow(label: emptyLabel)
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (final command in commands)
-                              _CommandRow(
-                                command: command,
-                                onTap: () => onPickCommand(command),
-                              ),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(height: UxnanSpacing.xs),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Shared visual header for the composer's two auxiliary palettes. The trigger
-/// glyph makes `/` commands and `@` workspace navigation recognizable without
-/// giving either surface a different hierarchy.
-class _SuggestionHeader extends StatelessWidget {
-  const _SuggestionHeader({required this.symbol, required this.title});
-
-  final String symbol;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final textTheme = theme.textTheme;
-    return Padding(
-      key: ValueKey('suggestion-header-$symbol'),
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.md,
-        UxnanSpacing.md,
-        UxnanSpacing.md,
-        UxnanSpacing.sm,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              borderRadius: const BorderRadius.all(UxnanRadius.md),
+    return ComposerPaletteCard(
+      key: const ValueKey('command-palette'),
+      symbol: '/',
+      title: title,
+      child: commands.isEmpty
+          ? _EmptyRow(label: emptyLabel)
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final command in commands)
+                  _CommandRow(
+                    command: command,
+                    onTap: () => onPickCommand(command),
+                  ),
+              ],
             ),
-            child: Text(
-              symbol,
-              style: textTheme.titleMedium?.copyWith(
-                color: colors.onPrimaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: UxnanSpacing.sm),
-          Expanded(
-            child: Text(
-              title,
-              style: textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

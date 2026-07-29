@@ -12,7 +12,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 542, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 556, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -45,6 +45,14 @@ push validation (FOR-HUMAN).
   run — in the store and on the `stream/content/block` wire — so a text run is
   never severed mid-word, live and re-synced order always match, and subagent
   text/usage never folds into the main message.
+- **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
+  queued (status `queued`) instead of clobbering it, and drains automatically on
+  completion; run options are frozen at queue time; the queue holds after a stop
+  or a failure until `queue/resume`/`queue/clear`; `turn/cancel` on a queued turn
+  marks it `cancelled` without ever reaching an adapter; capped at 10; live state
+  surfaced on `turn/list` + `stream/queue/updated`, and turns left `queued` by a
+  previous run are cancelled at startup. This is also what enforces one turn per
+  thread — the bridge previously started a second turn on top of the first.
 - **8 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
   Gemini CLI, Antigravity (Google's `agy`, the Gemini-CLI successor), Zero, and
   Grok. Each drives its **official local CLI** with
@@ -258,6 +266,19 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
+- [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
+      delivers a follow-up as its own turn once the current one ends — uniform
+      across all eight agents. What the CLIs additionally do is *steer*: inject the
+      message into the running turn at the next tool-call boundary (Claude Code's
+      TUI does this by default; Codex splits it as `Tab` = queue vs `Enter` =
+      steer). The bridge cannot: the one-shot agents (`claude -p --resume`, gemini,
+      pi, antigravity) have no input channel while they run — `spawn.ts` closes
+      stdin because those CLIs hang on an open pipe. It IS reachable for the
+      server-backed ones (Codex `app-server`, OpenCode `serve`, Zero/Grok ACP), so
+      it belongs behind a new `AgentCapabilities.steering` flag the phone can read,
+      alongside a `turn/steer` (or a `turn/send` mode) that the adapter maps to its
+      protocol. Needs: the capability in `shared/`, per-adapter support, and a
+      mobile affordance distinct from "queue". Unblocked — just not started.
 - [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
       are DONE (reasoning effort wired per agent + the per-model option schema in
       `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-

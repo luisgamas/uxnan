@@ -169,7 +169,7 @@ of Uxnan speaks. The bridge and relay consume it directly; the mobile app keeps
 hand-synced Dart equivalents. If two components ever need to agree on a message
 shape, they agree here.
 
-- **JSON-RPC**: envelope types + constructors, error codes (`-32000..-32008` +
+- **JSON-RPC**: envelope types + constructors, error codes (`-32000..-32009` +
   standard), typed method registry (build-time-locked to `METHOD_NAMES`).
 - **E2EE**: handshake messages, transcript builder, `SecureEnvelope`,
   `PairingPayload` v2 (with `hosts: string[]` for direct addressing).

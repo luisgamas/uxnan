@@ -5,6 +5,53 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a per-thread message queue (and the serialization hole it closes)
+
+The agent CLIs let you type a follow-up while they work and hold it for the
+current turn. The bridge now does the same for the phone — and doing so fixes a
+real hole: **`AgentManager.sendTurn` never checked whether a turn was already in
+flight.** It overwrote `#activeTurnByThread` and started the second turn on top
+of the first. OpenCode's adapter retired the earlier run (leaving it hanging on
+the phone forever); Claude Code, Gemini, pi and Antigravity run one-shot per
+turn, so it meant two CLI processes on the same `--resume` session. Only the UI
+refusing to send a second message kept it from happening.
+
+- **Queue instead of clobber.** A `turn/send` that arrives with a turn in flight
+  — or with a non-empty queue, even a paused one, since jumping ahead of
+  messages sent earlier would run them out of order — is persisted as a turn
+  with the new `queued` status and parked. It drains automatically on
+  `turn_completed`, taking the identical command/attachment/adapter path a
+  normal turn takes.
+- **Run options are frozen at queue time** (model, effort, access mode,
+  attachments): a follow-up runs the way it looked when it was written, not the
+  way the thread is configured minutes later.
+- **The queue holds after a stop or a failure** (`turnAborted` / `turnError`)
+  rather than firing the follow-ups at an agent the user just stopped or that
+  just broke. `queue/resume` and `queue/clear` are the two ways out.
+- **`turn/cancel` on a queued turn** never reaches an adapter: the turn leaves
+  the queue and is marked `cancelled` — kept in the thread, not deleted, so the
+  user's message stays visible with its mark. `cancelled` is deliberately
+  distinct from `aborted` (never ran vs. interrupted mid-flight).
+- **Capped at 10** queued turns per thread; `queue: false` opts out of queueing
+  and gets `AgentBusy` (`-32009`) instead.
+- **`turn/list`** now reports `queuedTurnIds` / `queuePaused` /
+  `queuePausedReason` alongside `activeTurnId`, and every change broadcasts
+  `stream/queue/updated` (whole state, not a delta) plus
+  `stream/turn/cancelled`.
+- **Startup cleanup.** The queue is live state and does not survive a restart
+  (neither does the turn it was waiting behind), so
+  `ThreadStore.cancelOrphanedQueuedTurns()` closes out any turn left `queued` on
+  disk as `cancelled` instead of stranding it.
+- `ThreadStore` gains `queueTurn` / `beginQueuedTurn` / `cancelQueuedTurn` /
+  `queuedTurnIds`, and `#setTurnStatus` only stamps `completedAt` for a terminal
+  status (promoting `queued` → `streaming` is a turn starting, not ending).
+- **`bridge/status` now advertises `features.messageQueue`**, so a client can
+  ask whether this bridge can queue instead of comparing version strings. A
+  client that guesses wrong makes an older bridge start a second concurrent turn
+  and kill the running one — which is exactly what a pre-queue bridge did when a
+  newer app offered the action.
+- 14 new tests (560 total). Spec: `architecture/02a` §5.8.13, `02b` §1.2–1.4.
+
 ### Fixed — an attachment on a `cwd`-less turn was written where no agent could read it
 
 - `materializeAttachments` fell back to the **OS temp dir** (with an absolute

@@ -779,6 +779,114 @@ class AppLocalizationsEs extends AppLocalizations {
   String get composerStop => 'Detener';
 
   @override
+  String get composerQueueMessage => 'Enviar en cola';
+
+  @override
+  String get queuedMessageWaiting => 'Esperando para enviarse';
+
+  @override
+  String get queuedMessageNext => 'Siguiente en la cola';
+
+  @override
+  String queuedMessagePosition(int position) {
+    return '$position en la cola';
+  }
+
+  @override
+  String get queuedMessageCancel => 'Cancelar este mensaje';
+
+  @override
+  String get queuedMessageEdit => 'Editar este mensaje';
+
+  @override
+  String rescuedDraftsAction(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count borradores',
+      one: '1 borrador',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get rescuedDraftsClearAll => 'Eliminar todos los borradores';
+
+  @override
+  String get rescuedDraftsClearAllTitle => '¿Eliminar todos los borradores?';
+
+  @override
+  String rescuedDraftsClearAllBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Se eliminarán estos $count borradores. No se puede deshacer.',
+      one: 'Se eliminará este borrador. No se puede deshacer.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get rescuedDraftsClearAllConfirm => 'Eliminar todos';
+
+  @override
+  String get cancelledMessage => 'Mensaje cancelado';
+
+  @override
+  String queuePausedAfterStop(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Hay $count mensajes esperando. Detuviste al agente, así que no se enviaron.',
+      one: 'Hay 1 mensaje esperando. Detuviste al agente, así que no se envió.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String queuePausedAfterError(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Hay $count mensajes esperando. El último turno falló, así que no se enviaron.',
+      one:
+          'Hay 1 mensaje esperando. El último turno falló, así que no se envió.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get queuedMessageRecovered => 'Mensaje de vuelta en el campo de texto';
+
+  @override
+  String get queuedMessageRecoveredRescued =>
+      'Mensaje de vuelta en el campo de texto; lo que escribías quedó guardado como borrador';
+
+  @override
+  String get queuedMessageRecoverFailed => 'No se pudo retirar ese mensaje';
+
+  @override
+  String get rescuedDraftsTitle => 'Borradores guardados';
+
+  @override
+  String get rescuedDraftDiscard => 'Descartar borrador';
+
+  @override
+  String get rescuedDraftRestored => 'Borrador de vuelta en el campo de texto';
+
+  @override
+  String get rescuedDraftComposerBusy =>
+      'Vacía el campo de texto para recuperar este borrador';
+
+  @override
+  String get queueResume => 'Enviarlos';
+
+  @override
+  String get queueDiscard => 'Descartar';
+
+  @override
   String get composerVoice => 'Entrada de voz';
 
   @override

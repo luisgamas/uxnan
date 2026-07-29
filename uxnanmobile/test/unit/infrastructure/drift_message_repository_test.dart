@@ -106,18 +106,17 @@ void main() {
 
     test('a row written by another build decodes instead of throwing',
         () async {
-      // The local database outlives a single build: a feature branch (the
-      // message queue) persists `deliveryState: cancelled`, a value this
-      // build's enum doesn't know. Reading it must degrade, not take the
-      // timeline down.
+      // The local database outlives a single build: a newer build (or a
+      // feature branch) persists a `deliveryState` this build's enum doesn't
+      // know. Reading it must degrade, not take the timeline down.
       await db.into(db.messagesTable).insert(
             MessagesTableCompanion.insert(
               id: 'foreign',
               threadId: 'th1',
               turnId: 't1',
               role: 'user',
-              contentsJson: '[{"type":"text","text":"queued then cancelled"}]',
-              deliveryState: 'cancelled',
+              contentsJson: '[{"type":"text","text":"written by a newer app"}]',
+              deliveryState: 'rescheduled',
               orderIndex: 1,
               createdAtMs: 1000,
             ),

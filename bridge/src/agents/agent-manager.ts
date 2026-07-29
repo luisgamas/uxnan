@@ -24,6 +24,8 @@ import {
   type ApprovalDecision,
   type ApprovalRequestBlock,
   type IAgentAdapter,
+  type QueuePausedReason,
+  type QueueStateResult,
   type TurnAttachment,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
@@ -122,7 +124,45 @@ export interface SendTurnOptions {
    * persisted to history. See {@link AgentCommandInvocation}.
    */
   command?: AgentCommandInvocation;
+  /**
+   * What to do when a turn is already in flight: `true` queue it explicitly,
+   * `false` reject with `AgentBusy`, absent queue it anyway. See
+   * `TurnSendParams.queue` — queueing is the default because the bridge can only
+   * drive one turn per thread.
+   */
+  queue?: boolean;
 }
+
+/** Outcome of {@link AgentManager.sendTurn} — mirrors `TurnSendResult`. */
+export interface SendTurnResult {
+  turnId: string;
+  /** True when the turn was queued behind an in-flight one instead of starting. */
+  queued?: boolean;
+  /** 1-based place in the queue when `queued` (1 = runs next). */
+  queuePosition?: number;
+}
+
+/**
+ * A turn waiting for the thread's in-flight turn to end. The user message is
+ * already persisted (status `queued`); what lives here is the run context the
+ * adapter will need, FROZEN at queue time — the model, effort, access mode and
+ * attachments the user had in front of them when they wrote it, not whatever is
+ * selected minutes later when it finally runs.
+ */
+interface QueuedTurn {
+  turnId: string;
+  assistantMessageId: string;
+  /** The prompt text as sent (empty for a command-only / image-only turn). */
+  userText: string;
+  options: SendTurnOptions;
+}
+
+/**
+ * How many turns one thread may hold in its queue. A cap keeps a runaway sender
+ * from burning through the model's context with messages the agent will read as
+ * one long, contradictory instruction list.
+ */
+const QUEUE_LIMIT = 10;
 
 export class AgentManager {
   readonly #adapters = new Map<AgentId, IAgentAdapter>();
@@ -133,6 +173,20 @@ export class AgentManager {
   readonly #agentByThread = new Map<string, AgentId>();
   /** threadId → in-flight turn id, so an approval reply can name the turn it answers. */
   readonly #activeTurnByThread = new Map<string, string>();
+  /**
+   * threadId → turns waiting for the in-flight one, in run order. LIVE state:
+   * it is not rebuilt after a bridge restart, which is why `queued` turns left
+   * on disk are cancelled at startup (see `ThreadStore.cancelOrphanedQueuedTurns`)
+   * rather than stranded.
+   */
+  readonly #queueByThread = new Map<string, QueuedTurn[]>();
+  /**
+   * threadId → why draining is held. Set when a turn is stopped by the user or
+   * fails WHILE something is queued: firing the follow-ups at an agent the user
+   * just stopped (or that just broke) is the one outcome nobody wants, so the
+   * queue waits for an explicit `resumeQueue`/`clearQueue`.
+   */
+  readonly #queuePausedByThread = new Map<string, QueuePausedReason>();
   /** turnId → temp attachment dir to remove once the turn ends (best-effort). */
   readonly #attachmentDirByTurn = new Map<string, string>();
   /** approvalId → resolver for a pending approval (covers the Claude `PreToolUse`
@@ -271,12 +325,20 @@ export class AgentManager {
     return args && args.length > 0 ? `/${command.name} ${args}` : `/${command.name}`;
   }
 
-  /** Start a turn: persist the user message, drive the adapter, return the turn id. */
+  /**
+   * Start a turn: persist the user message, drive the adapter, return the turn
+   * id — **or queue it** when the thread already has a turn in flight (or a
+   * non-empty queue). Queueing is what the agent CLIs do when you type a
+   * follow-up while they work, and here it is also the only safe answer: the
+   * bridge drives one turn per thread, and half the agents run one-shot per turn
+   * (`claude -p --resume`, gemini, pi, antigravity), so starting a second turn
+   * concurrently would put two CLI processes on the same session.
+   */
   async sendTurn(
     threadId: string,
     userText: string,
     options: SendTurnOptions = {},
-  ): Promise<{ turnId: string }> {
+  ): Promise<SendTurnResult> {
     const agentId = options.agentId ?? this.#options.defaultAgent;
     const adapter = this.#adapters.get(agentId);
     if (!adapter) {
@@ -300,10 +362,76 @@ export class AgentManager {
         : attachments.length > 0
           ? `[${attachments.length} image attachment${attachments.length > 1 ? 's' : ''}]`
           : persistBase;
+
+    // A queue that is merely PAUSED still queues: draining is held, so starting
+    // this turn now would run it ahead of messages the user sent earlier.
+    const queue = this.#queue(threadId);
+    if (this.#activeTurnByThread.has(threadId) || queue.length > 0) {
+      return this.#enqueueTurn(threadId, agentId, persistText, userText, options);
+    }
+
     const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
-    this.#assistantByTurn.set(started.turnId, started.assistantMessageId);
+    await this.#runTurn(threadId, agentId, adapter, {
+      turnId: started.turnId,
+      assistantMessageId: started.assistantMessageId,
+      userText,
+      options,
+    });
+    return { turnId: started.turnId };
+  }
+
+  /** Persists a turn as `queued` and parks it behind the in-flight one. */
+  async #enqueueTurn(
+    threadId: string,
+    agentId: AgentId,
+    persistText: string,
+    userText: string,
+    options: SendTurnOptions,
+  ): Promise<SendTurnResult> {
+    if (options.queue === false) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentBusy,
+        'a turn is already in flight on this thread; retry without `queue: false` to queue it',
+      );
+    }
+    const queue = this.#queue(threadId);
+    if (queue.length >= QUEUE_LIMIT) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentBusy,
+        `the thread's message queue is full (${QUEUE_LIMIT})`,
+      );
+    }
+    const queued = await this.#options.store.queueTurn(threadId, persistText, this.#options.now());
+    // The agent is recorded now so a `turn/cancel` for this queued turn — and any
+    // later cancel on the thread — reaches the right adapter even if it is the
+    // first thing this thread ever ran.
     this.#agentByThread.set(threadId, agentId);
-    this.#activeTurnByThread.set(threadId, started.turnId);
+    queue.push({
+      turnId: queued.turnId,
+      assistantMessageId: queued.assistantMessageId,
+      userText,
+      options: { ...options, agentId },
+    });
+    this.#notifyQueue(threadId);
+    return { turnId: queued.turnId, queued: true, queuePosition: queue.length };
+  }
+
+  /**
+   * Hands an already-persisted turn to its adapter and marks it in-flight.
+   * Shared by a turn that starts immediately and one promoted off the queue, so
+   * both go through the identical command/attachment/adapter path.
+   */
+  async #runTurn(
+    threadId: string,
+    agentId: AgentId,
+    adapter: IAgentAdapter,
+    turn: QueuedTurn,
+  ): Promise<void> {
+    const { turnId, assistantMessageId, userText, options } = turn;
+    const attachments = options.attachments ?? [];
+    this.#assistantByTurn.set(turnId, assistantMessageId);
+    this.#agentByThread.set(threadId, agentId);
+    this.#activeTurnByThread.set(threadId, turnId);
 
     if (!this.#started.has(agentId)) {
       await adapter.start({ agentId, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}) });
@@ -331,14 +459,14 @@ export class AgentManager {
     if (attachments.length > 0 && !adapter.handlesAttachments?.()) {
       try {
         const attachmentCwd = options.cwd ?? adapter.defaultCwd?.();
-        const materialized = await materializeAttachments(attachments, started.turnId, {
+        const materialized = await materializeAttachments(attachments, turnId, {
           ...(attachmentCwd !== undefined ? { cwd: attachmentCwd } : {}),
         });
         if (materialized.note) {
           agentText =
             agentText.length > 0 ? `${agentText}\n\n${materialized.note}` : materialized.note;
         }
-        if (materialized.dir) this.#attachmentDirByTurn.set(started.turnId, materialized.dir);
+        if (materialized.dir) this.#attachmentDirByTurn.set(turnId, materialized.dir);
       } catch (err) {
         this.#options.logger.warn(`attachment materialization failed: ${String(err)}`);
       }
@@ -346,7 +474,7 @@ export class AgentManager {
 
     await adapter.sendTurn({
       threadId,
-      turnId: started.turnId,
+      turnId,
       text: agentText,
       ...(options.service !== undefined ? { service: options.service } : {}),
       ...(options.effort !== undefined ? { effort: options.effort } : {}),
@@ -356,7 +484,6 @@ export class AgentManager {
       ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
       ...(options.command !== undefined ? { command: options.command } : {}),
     });
-    return { turnId: started.turnId };
   }
 
   /**
@@ -565,6 +692,11 @@ export class AgentManager {
   }
 
   async cancelTurn(threadId: string, turnId: string, agentId?: AgentId): Promise<void> {
+    // A QUEUED turn never reached an adapter, so cancelling it is purely local:
+    // drop it from the queue and mark it `cancelled` (kept in the thread, so the
+    // user's message stays visible with its mark). Checked first — routing it to
+    // an adapter would be a no-op that leaves the turn queued forever.
+    if (await this.#cancelQueuedTurn(threadId, turnId)) return;
     // Resolve the thread's OWN agent (as respondApproval/respondQuestion do), not
     // the default: a cancel for a thread running on a non-default agent must reach
     // that agent's adapter, otherwise the wrong adapter no-ops and the turn keeps
@@ -573,6 +705,145 @@ export class AgentManager {
     const adapter = this.#adapters.get(resolved);
     if (adapter) {
       await adapter.cancelTurn(threadId, turnId);
+    }
+  }
+
+  /**
+   * Removes [turnId] from [threadId]'s queue if it is there. Returns whether it
+   * was (so {@link cancelTurn} knows not to bother an adapter with it).
+   */
+  async #cancelQueuedTurn(threadId: string, turnId: string): Promise<boolean> {
+    const queue = this.#queueByThread.get(threadId);
+    const index = queue?.findIndex((entry) => entry.turnId === turnId) ?? -1;
+    if (!queue || index < 0) return false;
+    queue.splice(index, 1);
+    await this.#options.store.cancelQueuedTurn(threadId, turnId, this.#options.now());
+    this.#options.notify(makeNotification(StreamNotification.TurnCancelled, { threadId, turnId }));
+    // Dropping the last queued turn also lifts a pause: there is nothing left to
+    // hold, and leaving the flag set would show a "queue paused" banner over an
+    // empty queue.
+    if (queue.length === 0) this.#queuePausedByThread.delete(threadId);
+    this.#notifyQueue(threadId);
+    return true;
+  }
+
+  /** The thread's live queue state, as `turn/list` and `queue/*` report it. */
+  queueState(threadId: string): QueueStateResult {
+    const paused = this.#queuePausedByThread.get(threadId);
+    return {
+      queuedTurnIds: (this.#queueByThread.get(threadId) ?? []).map((entry) => entry.turnId),
+      paused: paused !== undefined,
+      ...(paused !== undefined ? { pausedReason: paused } : {}),
+    };
+  }
+
+  /** Lifts a pause and drains the queue (no-op when it was not paused). */
+  async resumeQueue(threadId: string): Promise<QueueStateResult> {
+    this.#queuePausedByThread.delete(threadId);
+    this.#notifyQueue(threadId);
+    await this.#drainQueue(threadId);
+    return this.queueState(threadId);
+  }
+
+  /** Drops every queued turn (each → `cancelled`) and clears the paused state. */
+  async clearQueue(threadId: string): Promise<QueueStateResult> {
+    const queue = this.#queueByThread.get(threadId) ?? [];
+    const dropped = queue.splice(0, queue.length);
+    this.#queuePausedByThread.delete(threadId);
+    const now = this.#options.now();
+    for (const entry of dropped) {
+      try {
+        await this.#options.store.cancelQueuedTurn(threadId, entry.turnId, now);
+        this.#options.notify(
+          makeNotification(StreamNotification.TurnCancelled, {
+            threadId,
+            turnId: entry.turnId,
+          }),
+        );
+      } catch (err) {
+        this.#options.logger.warn(`could not mark a queued turn cancelled: ${String(err)}`);
+      }
+    }
+    this.#notifyQueue(threadId);
+    return this.queueState(threadId);
+  }
+
+  /** The thread's queue, created on first use. */
+  #queue(threadId: string): QueuedTurn[] {
+    const existing = this.#queueByThread.get(threadId);
+    if (existing) return existing;
+    const created: QueuedTurn[] = [];
+    this.#queueByThread.set(threadId, created);
+    return created;
+  }
+
+  /** Broadcasts the thread's whole queue state (idempotent for the client). */
+  #notifyQueue(threadId: string): void {
+    const state = this.queueState(threadId);
+    this.#options.notify(
+      makeNotification(StreamNotification.QueueUpdated, {
+        threadId,
+        queuedTurnIds: state.queuedTurnIds,
+        paused: state.paused,
+        ...(state.pausedReason !== undefined ? { pausedReason: state.pausedReason } : {}),
+      }),
+    );
+  }
+
+  /**
+   * Holds the queue after a turn was stopped or failed. Only meaningful while
+   * something is queued — pausing an empty queue would surface a "paused" banner
+   * with nothing behind it.
+   */
+  #pauseQueue(threadId: string, reason: QueuePausedReason): void {
+    if ((this.#queueByThread.get(threadId)?.length ?? 0) === 0) return;
+    this.#queuePausedByThread.set(threadId, reason);
+    this.#notifyQueue(threadId);
+  }
+
+  /**
+   * Starts the next queued turn, if the thread is idle and not paused. Failures
+   * are contained: the turn that could not start is failed and the queue pauses,
+   * rather than the whole queue silently stalling with no visible reason.
+   */
+  async #drainQueue(threadId: string): Promise<void> {
+    if (this.#queuePausedByThread.has(threadId)) return;
+    if (this.#activeTurnByThread.has(threadId)) return;
+    const queue = this.#queueByThread.get(threadId);
+    const next = queue?.shift();
+    if (!next) return;
+
+    const agentId = next.options.agentId ?? this.#options.defaultAgent;
+    const adapter = this.#adapters.get(agentId);
+    const now = this.#options.now();
+    try {
+      if (!adapter) {
+        throw new RpcError(
+          JsonRpcErrorCode.AgentNotRunning,
+          `no adapter registered for agent '${agentId}'`,
+        );
+      }
+      await this.#options.store.beginQueuedTurn(threadId, next.turnId, now);
+      this.#notifyQueue(threadId);
+      await this.#runTurn(threadId, agentId, adapter, next);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.#options.logger.warn(`queued turn ${next.turnId} could not start: ${message}`);
+      this.#activeTurnByThread.delete(threadId);
+      this.#assistantByTurn.delete(next.turnId);
+      try {
+        await this.#options.store.failTurn(threadId, next.turnId, now);
+      } catch {
+        /* best-effort: the notification below is what the phone acts on */
+      }
+      this.#options.notify(
+        makeNotification(StreamNotification.TurnError, {
+          threadId,
+          turnId: next.turnId,
+          error: { code: JsonRpcErrorCode.BridgeError, message },
+        }),
+      );
+      this.#pauseQueue(threadId, 'turnError');
     }
   }
 
@@ -680,6 +951,8 @@ export class AgentManager {
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
+          // The turn ended cleanly — this is the moment a queued follow-up runs.
+          await this.#drainQueue(threadId);
           break;
         }
         case 'turn_error': {
@@ -710,6 +983,9 @@ export class AgentManager {
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'error', text: message });
+          // The agent broke (auth, balance, a dead CLI). Hold the queue instead
+          // of feeding follow-ups to something that just failed.
+          this.#pauseQueue(threadId, 'turnError');
           break;
         }
         case 'turn_aborted':
@@ -722,6 +998,9 @@ export class AgentManager {
           );
           this.#assistantByTurn.delete(turnId);
           void this.#cleanupAttachments(turnId);
+          // The user stopped this turn. They stopped it for a reason, so the
+          // follow-ups they queued earlier wait for an explicit resume.
+          this.#pauseQueue(threadId, 'turnAborted');
           break;
       }
     } catch (err) {
@@ -759,6 +1038,9 @@ export class AgentManager {
             }`,
           );
         }
+        // However this turn ended, it ended badly — hold the queue rather than
+        // starting the next turn on top of a thread we could not finalize.
+        this.#pauseQueue(threadId, 'turnError');
       }
     }
   }

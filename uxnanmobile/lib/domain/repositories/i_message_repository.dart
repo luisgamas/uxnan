@@ -16,6 +16,14 @@ abstract class IMessageRepository {
   /// Inserts or updates [messages] in a single batch.
   Future<void> saveMessages(List<Message> messages);
 
+  /// Removes the message with [id], if present.
+  ///
+  /// Deliberately narrow: the timeline is a record, so the only thing ever
+  /// really deleted is a message **taken back before the agent saw it** —
+  /// pulling a queued message into the composer to edit it, where leaving a
+  /// husk behind would be noise the user then has to clean up.
+  Future<void> deleteMessage(String id);
+
   /// Emits the message list for [threadId] whenever it changes, ordered
   /// ascending by index.
   Stream<List<Message>> watchMessages(String threadId);

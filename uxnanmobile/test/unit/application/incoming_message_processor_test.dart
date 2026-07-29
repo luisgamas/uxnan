@@ -4,6 +4,7 @@ import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/domain/enums/git_action_phase_status.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 
 void main() {
   const processor = IncomingMessageProcessor();
@@ -149,6 +150,46 @@ void main() {
       final event =
           processor.classify(note('stream/turn/aborted', {'turnId': 't1'}));
       expect(event, isA<TurnAbortedEvent>());
+    });
+
+    test('stream/turn/cancelled is its own event, not an abort', () {
+      final event = processor.classify(
+        note('stream/turn/cancelled', {'turnId': 't1', 'threadId': 'th1'}),
+      );
+      // A queued turn removed before it ran — distinct from a running turn the
+      // user stopped, because only one of the two leaves partial output.
+      expect(event, isA<TurnCancelledEvent>());
+      expect((event as TurnCancelledEvent).turnId, 't1');
+    });
+
+    test('stream/queue/updated carries the whole queue state', () {
+      final event = processor.classify(
+        note('stream/queue/updated', {
+          'threadId': 'th1',
+          'queuedTurnIds': ['t2', 't3'],
+          'paused': true,
+          'pausedReason': 'turnError',
+        }),
+      );
+      expect(event, isA<QueueUpdatedEvent>());
+      final queue = event as QueueUpdatedEvent;
+      expect(queue.queuedTurnIds, ['t2', 't3']);
+      expect(queue.paused, isTrue);
+      expect(queue.pausedReason, QueuePausedReason.turnError);
+    });
+
+    test('a malformed queue payload degrades to an empty queue', () {
+      final event = processor.classify(
+        note('stream/queue/updated', {
+          'threadId': 'th1',
+          'queuedTurnIds': 'not-a-list',
+        }),
+      );
+      final queue = event as QueueUpdatedEvent;
+      expect(queue.queuedTurnIds, isEmpty);
+      expect(queue.paused, isFalse);
+      // Not paused → no reason to report.
+      expect(queue.pausedReason, isNull);
     });
 
     test('stream/model/resolved carries the resolved model', () {

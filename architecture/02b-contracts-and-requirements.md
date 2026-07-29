@@ -96,19 +96,19 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 66 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 68 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 66 metodos request/response** + 8 notificaciones de streaming
+> **Total: 68 metodos request/response** + 10 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
 
-**Threads y turns (15):**
+**Threads y turns (17):**
 ```
 thread/list             -> lista de threads del PC, con filtro opcional
 thread/read             -> datos completos de un thread
@@ -124,8 +124,50 @@ thread/delete           -> eliminar thread y sus turns
 turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07):** al re-attachear, el telefono **re-siembra SIEMPRE** su buffer en vivo desde los `segments`/`content` acumulados que este `turn/list` reporta para el turno en vuelo — incluso si ya rastreaba ese `turnId` (los primeros deltas post-reconexion recrean el buffer solo con la cola nueva; el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el telefono ademas **reconcilia** el mensaje persistido contra el registro autoritativo del bridge con un `turn/read` (best-effort), de modo que la conversacion guardada converge siempre al intercalado exacto del bridge aunque la vista en vivo haya sido imperfecta.
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
-turn/cancel             -> cancelar turno en curso
+turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
+queue/resume            -> reanudar el drenado de la cola de un thread tras una pausa (el usuario detuvo un turno, o uno fallo). Arranca el siguiente turno encolado de inmediato. Result: QueueStateResult { queuedTurnIds, paused, pausedReason? }.
+queue/clear             -> descartar todos los turnos encolados del thread (cada uno -> `cancelled`) y levantar la pausa. Mismo Result que `queue/resume`.
 ```
+
+**Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge
+solo puede conducir **un turno por thread** — la mitad de los agentes corre
+one-shot por turno (`claude -p --resume`, gemini, pi, antigravity), asi que un
+segundo turno concurrente pondria dos procesos CLI sobre la misma sesion. Por
+eso un `turn/send` que llega con un turno en vuelo (o con la cola no vacia, aun
+pausada: saltarse los mensajes anteriores romperia su orden) **se encola** en
+vez de arrancar. Es tambien lo que hacen las propias CLI cuando escribes
+mientras trabajan.
+
+- `TurnSendParams.queue`: `true` encola explicitamente, `false` rechaza con
+  `AgentBusy` (`-32009`), **ausente encola igual** (el default seguro; protege
+  a un cliente antiguo que no conoce la cola).
+- `TurnSendResult`: `{ turnId, queued?, queuePosition? }` — el `turnId` es real
+  en ambos casos, solo que con status `queued` hasta que corre.
+- `TurnStatus` gana `queued` y `cancelled`. `cancelled` es deliberadamente
+  distinto de `aborted`: `aborted` es un turno que **estaba corriendo** y se
+  detuvo, `cancelled` uno que **estaba encolado** y se retiro antes de empezar.
+- `TurnList` gana `queuedTurnIds?`, `queuePaused?` y `queuePausedReason?` —
+  estado vivo del `AgentManager`, igual que `activeTurnId`, para que el telefono
+  re-attachee sus burbujas en espera al reconectar.
+- **Pausa:** si el usuario detiene el turno en curso (o este falla) con algo
+  encolado, el bridge **retiene** la cola en vez de disparar los follow-ups
+  contra un agente que se acaba de detener o romper; espera un `queue/resume`
+  (o `queue/clear`) explicito.
+- **Tope:** 10 turnos encolados por thread.
+- **Congelado al encolar:** modelo, effort, access mode y attachments son los
+  que el usuario tenia delante al escribir, no los que esten seleccionados
+  cuando el turno finalmente corra.
+- **No sobrevive a un reinicio del bridge** (la cola es estado vivo, igual que
+  el turno en vuelo que espera). Al arrancar, cualquier turno que quedo
+  `queued` en disco se marca `cancelled` — visiblemente no enviado — en vez de
+  quedar varado.
+- **Deteccion de capacidad (obligatoria para el cliente).** `bridge/status`
+  anuncia `features.messageQueue`. Un cliente **no debe** ofrecer encolar si el
+  bridge no lo anuncia: en un bridge sin cola, un segundo `turn/send` arranca un
+  turno **concurrente** y mata el que corria (OpenCode retira el run anterior;
+  los CLI one-shot acaban con dos procesos sobre la misma sesion `--resume`).
+  Ausente = asumir que no. Verificado en vivo contra un bridge previo a esta
+  funcionalidad.
 
 **Git (18):**
 ```
@@ -279,6 +321,7 @@ bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push
 | `-32006` | Session expired | Handshake `expiresAt` vencido, o sesion rotada |
 | `-32007` | Confirmation required | (Reservado; el flujo de approval usa `approval` content block, no este codigo) |
 | `-32008` | Resource not found | `threadId` / `turnId` / `checkpointId` desconocido |
+| `-32009` | Agent busy | Ya hay un turno en vuelo en el thread y el llamante pidio NO encolar (`turn/send` con `queue:false`), o la cola del thread esta llena (10). Solo se emite ante un opt-out explicito: el default es encolar |
 | `missing_transport` (en `PairingPayload`) | - | El payload no tiene ni `relay` ni `hosts` (validacion pairing) |
 
 ---
@@ -286,7 +329,7 @@ bridge/removeTrustedDevice       -> revocar confianza + drop session + drop push
 ### 1.4 Notificaciones de streaming (bridge -> phone)
 
 > **Lista canonica:** `../../shared/src/jsonrpc/notifications.ts`
-> (`StreamNotification`, 8 entradas). Son JSON-RPC notifications (sin `id`,
+> (`StreamNotification`, 10 entradas). Son JSON-RPC notifications (sin `id`,
 > unidireccionales). El telefono las decodifica via
 > `IncomingMessageProcessor` y las proyecta en la timeline via un reducer
 > sobre `TurnTimelineSnapshot`. Los parametros exactos viven en `shared/`.
@@ -299,8 +342,20 @@ stream/content/block        -> ContentBlockParams { threadId, turnId, messageId,
 stream/turn/completed       -> TurnCompletedParams { threadId, turnId, messageId, text, usage? }  (usage es TurnUsage)
 stream/turn/error           -> TurnErrorParams     { threadId, turnId, error: { code, message } }
 stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
+stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }                     (NUEVO 2026-07)
+stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
 ```
+
+**Notas sobre la cola de mensajes (2026-07):**
+- `stream/turn/cancelled`: un turno **encolado** se retiro antes de correr. No
+  hay salida parcial que finalizar (a diferencia de `stream/turn/aborted`): solo
+  cambia la burbuja del usuario, que se conserva marcada como cancelada.
+- `stream/queue/updated`: lleva el **estado completo** de la cola, no un delta,
+  de modo que un cliente que se perdio una (en background, a mitad de
+  reconexion) converge con la siguiente en vez de derivar. Un cliente que ve un
+  id que no conoce (encolado desde otro dispositivo) resincroniza el thread
+  igual que hace con cualquier turno desconocido.
 
 **Notas sobre los nuevos streams (2026-06):**
 - `stream/thinking/delta`: el agente emite "thinking" / "reasoning" como

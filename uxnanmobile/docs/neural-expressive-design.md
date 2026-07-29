@@ -453,6 +453,96 @@ With text:  send button (↑) appears beside the always-available voice action
 Running:    stop replaces send; voice remains an independent action
 ```
 
+**The floating shortcut slot above the pill.** Exactly one control occupies the
+strip between the composer chrome and the timeline, in this order of precedence:
+
+```text
+1. Jump to latest  — whenever the reader has scrolled up (circular, ambient tone)
+2. Queue actions   — Drafts (whenever saved drafts exist) and/or Queue message
+                     (whenever sending would queue and something is drafted).
+                     Either appears without the other; Drafts sits on the left.
+3. nothing         — the turn-context shelf below stays visible, as normal
+```
+
+Saved drafts claim the slot on their own: if they only appeared alongside the
+queue action, the only way back to them would be to manufacture a queued
+message. Jump-to-latest always wins — being lost in history is the state you
+most need a way out of, and the queue actions are still there once you are back
+at the bottom.
+
+**One gutter, one rhythm.** The pill insets itself horizontally (24 dp idle →
+16 dp focused) and the `/` and `@` palettes inherit that inset by being its
+children. Anything floating above the pill from OUTSIDE it — banners, the
+context shelf, the drafts palette — reproduces the same gutter through
+`_Centered`, and the floating slot sits the same 8 dp above the chrome that the
+palettes leave. Otherwise each surface ends up with its own width and spacing
+and the stack stops reading as one column.
+
+They are mutually exclusive by construction: the shelf reads the same state and
+collapses for 1 and 2, so the area above the pill never stacks controls. Both
+shortcuts share the elevated `surfaceContainerHighest` treatment, hairline
+outline and elevation 2, and the same 220 ms `easeOutBack` scale-in; the queue
+action is the emphasized (primary-tone) variant, because the user is reaching for
+it deliberately, and it is labelled rather than a bare glyph — "queue this" has
+no conventional icon the way a chevron means "scroll down".
+
+The queue action deliberately does **not** live in the pill, and Enter is
+deliberately **not** rebound to it: with `maxLines: 6` and
+`textInputAction: newline`, Enter inserts a line break, which is what someone
+drafting a multi-line message expects — including on a physical keyboard, which
+Flutter delivers through the same path. A third button in the pill would also
+break its 38/48 dp rhythm.
+
+**Queued and cancelled user bubbles.** A message waiting in the queue is **not
+part of the conversation yet**, and the layout says so: it is pinned to the
+bottom of the timeline — below the reply still streaming — for as long as it
+waits, in queue order. It is drawn on the soft elevated surface
+(`surfaceContainerHighest` with a hairline outline) rather than the user's
+`primaryContainer` tone, shows **a single ellipsized line** (a reminder of what
+is coming, not something to read), and carries a 26 dp **X** inside its
+top-right corner. A muted line beneath says where it sits in line.
+
+When the queue reaches it, an `AnimatedContainer` settles it into the full
+normal bubble over 220 ms and it drops into place at the point it was
+**delivered** — that motion is the confirmation it went out, so no toast is
+needed. A **cancelled** message returns to the normal bubble with a
+`UxnanColors.warning` note beneath it: it was never sent, but it stays part of
+the record.
+
+**The two corner actions.** A queued bubble carries a 28 dp **edit** and a 28 dp
+**cancel**, in that reading order — the recoverable action before the one that
+ends the message. They share one shape so they read as a control group, and the
+bubble reserves horizontal padding for the pair so the preview text never runs
+under them. They fade out with the queued state rather than vanishing the
+instant the message is delivered.
+
+The two do different things on purpose. **Edit** withdraws the message and hands
+its text to the composer, removing the bubble entirely: it is about to be
+re-typed, so a husk beside the text being rewritten is noise, not a record.
+**Cancel** leaves the bubble with the warning-toned note and touches nothing
+else — that record *is* the point of the action.
+
+**Saved drafts.** Editing a queued message while the composer holds text saves
+that text as a draft, so several queued messages can be edited in a row without
+losing one. They live behind a **Drafts** pill to the left of the queue action,
+not in a card permanently over the conversation, and it opens
+[`ComposerPaletteCard`](../lib/presentation/screens/conversation/composer/composer_palette_card.dart)
+— the same surface as `@` and `/`, shared rather than imitated: two lines per
+draft, tap to restore, per-row delete, clear-all in the header behind a
+destructive confirmation. A draft returns **only to an empty composer**: the
+point of saving it is that recovering text never destroys text, so the guard has
+no exception. Every move reports through a snackbar, because unlike the queue
+itself it happens in a control the user may not be looking at.
+
+**Motion.** Nothing on this surface should appear by snapping into existence.
+Timeline entries fade and lift 12 dp into place via `NeEnterTransition` (one
+shot per widget, then a pass-through — a long thread scrolls at full speed); a
+queued bubble cross-fades its one-line preview into the full message; the status
+line beneath it grows instead of jumping; the drafts palette opens with an
+`AnimatedSize`; and pills animate their tone between idle, selected and
+emphasized. Every one of these collapses to `Duration.zero` under
+`MediaQuery.disableAnimations`.
+
 The Git commit composer reuses these same focus states, including the 24→16 dp
 compact-screen side margins, 4→8 dp vertical padding, elevation 0→2, 220 ms
 ease-out transition, and reduced-motion fallback. It retains its task-specific

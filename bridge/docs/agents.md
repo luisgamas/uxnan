@@ -30,6 +30,30 @@ Protocol, NDJSON) over a long-lived `zero acp` / `grok agent stdio` process, and
 **OpenCode** speaks HTTP + SSE to a long-lived `opencode serve` process (their
 prompts travel in the request body / session request, never argv).
 
+### One turn per thread, and the queue that follows from it
+
+The bridge drives **one turn per thread**, and this is a hard constraint, not a
+policy: half the agents below are spawned fresh for every turn and resume their
+own session (`claude -p --resume`, gemini, pi, antigravity), so two concurrent
+turns would be two CLI processes writing to the same session file.
+
+So a `turn/send` that arrives while a turn is in flight is **queued** rather than
+started — the same thing the CLIs themselves do when you type a follow-up while
+they work. It runs on its own once the current turn completes, through the
+identical code path a normal turn takes, which means **queueing behaves the same
+for all eight agents** regardless of how their CLI is driven.
+
+What the queue deliberately does *not* do is **steer** — inject a message into
+the turn already running, the way Claude Code's TUI does between tool calls. The
+one-shot agents have no input channel at all while they run (stdin is closed), so
+steering could only ever work for the server-backed ones (Codex, OpenCode, Zero,
+Grok). Making it a per-agent capability is a follow-up, tracked in
+[`../FOR-DEV.md`](../FOR-DEV.md).
+
+Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
+[`../../architecture/02b-contracts-and-requirements.md`](../../architecture/02b-contracts-and-requirements.md)
+§1.2.
+
 ## Wired agents
 
 | Agent | CLI invocation | Continuity | Permission posture | Models |

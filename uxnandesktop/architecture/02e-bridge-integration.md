@@ -421,60 +421,113 @@ Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: Valid
 
 ### 4.4 Firmas JSON-RPC
 
-El archivo `shared/src/jsonrpc/methods.ts` define todas las firmas de metodos que la app movil puede invocar y que el bridge (standalone o embebido) debe implementar:
+`shared/src/jsonrpc/methods.ts` define todas las firmas que la app movil puede
+invocar y que el bridge (standalone o embebido) debe implementar.
+
+> **Fuente de verdad:** `shared/src/jsonrpc/methods.ts`
+> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **68
+> entradas**, bloqueadas entre si en build). El bloque de abajo es una copia de
+> lectura: si discrepa del paquete compartido, manda el paquete. La semantica de
+> cada metodo vive en
+> [`../../architecture/02b-contracts-and-requirements.md`](../../architecture/02b-contracts-and-requirements.md)
+> §1.2, y las 10 notificaciones de streaming en §1.4.
 
 ```typescript
 // shared/src/jsonrpc/methods.ts
-// Registro de todos los metodos JSON-RPC del ecosistema Uxnan
-
 export interface JsonRpcMethodRegistry {
-  // Threads
-  "thread/list":       { params: ListThreadsParams;    result: ThreadList };
-  "thread/read":       { params: { threadId: string };  result: Thread };
-  "thread/start":      { params: StartThreadParams;     result: Thread };
-  "thread/resume":     { params: { threadId: string };  result: void };
-  "thread/fork":       { params: ForkParams;            result: Thread };
-  "turn/list":         { params: TurnListParams;        result: TurnList };
-  "turn/send":         { params: TurnSendParams;        result: TurnResult };
+  // Threads y turns (17)
+  'thread/list':          { params: ListThreadsParams;         result: ThreadList };
+  'thread/read':          { params: { threadId: string };      result: Thread };
+  'thread/start':         { params: StartThreadParams;         result: Thread };
+  'thread/resume':        { params: { threadId: string };      result: void };
+  'thread/fork':          { params: ForkParams;                result: Thread };
+  'thread/setModel':      { params: ThreadSetModelParams;      result: void };
+  'thread/rename':        { params: ThreadRenameParams;        result: Thread };
+  'thread/setAccessMode': { params: ThreadSetAccessModeParams; result: Thread };
+  'thread/archive':       { params: { threadId: string };      result: Thread };
+  'thread/unarchive':     { params: { threadId: string };      result: Thread };
+  'thread/delete':        { params: { threadId: string };      result: void };
+  'turn/list':            { params: TurnListParams;            result: TurnList };
+  'turn/read':            { params: { turnId: string };        result: Turn };
+  'turn/send':            { params: TurnSendParams;            result: TurnSendResult };
+  'turn/cancel':          { params: { threadId: string; turnId: string }; result: void };
+  // Cola de mensajes (follow-ups enviados con un turno en vuelo)
+  'queue/resume':         { params: { threadId: string };      result: QueueStateResult };
+  'queue/clear':          { params: { threadId: string };      result: QueueStateResult };
 
-  // Git
-  "git/status":        { params: { cwd: string };       result: GitRepoStatus };
-  "git/diff":          { params: { cwd: string };       result: GitDiff };
-  "git/commit":        { params: GitCommitParams;       result: GitCommitResult };
-  "git/push":          { params: GitPushParams;         result: GitPushResult };
-  "git/pull":          { params: GitPullParams;         result: GitPullResult };
-  "git/checkout":      { params: GitCheckoutParams;     result: void };
-  "git/createBranch":  { params: GitBranchParams;       result: GitBranchResult };
-  "git/createWorktree":{ params: GitWorktreeParams;     result: GitWorktreeResult };
+  // Git (20)
+  'git/status':         { params: { cwd: string };         result: GitRepoStatus };
+  'git/diff':           { params: GitDiffParams;           result: GitDiff };
+  'git/commit':         { params: GitCommitParams;         result: GitCommitResult };
+  'git/push':           { params: GitPushParams;           result: GitPushResult };
+  'git/pull':           { params: GitPullParams;           result: GitPullResult };
+  'git/checkout':       { params: GitCheckoutParams;       result: void };
+  'git/createBranch':   { params: GitBranchParams;         result: GitBranchResult };
+  'git/createWorktree': { params: GitWorktreeParams;       result: GitWorktreeResult };
+  'git/stage':          { params: GitPathsParams;          result: void };
+  'git/unstage':        { params: GitPathsParams;          result: void };
+  'git/discard':        { params: GitPathsParams;          result: void };
+  'git/createPr':       { params: GitPrParams;             result: GitPrResult };
+  'git/undoCommit':     { params: { cwd: string };         result: void };
+  'git/branches':       { params: { cwd: string };         result: GitBranchList };
+  'git/switchBranch':   { params: GitSwitchBranchParams;   result: void };
+  'git/revert':         { params: GitRevertParams;         result: void };
+  'git/deleteBranch':   { params: GitDeleteBranchParams;   result: void };
+  'git/removeWorktree': { params: GitRemoveWorktreeParams; result: void };
+  'git/log':            { params: GitLogParams;            result: GitLogResult };
+  'git/commitShow':     { params: GitCommitShowParams;     result: GitCommitDetails };
 
-  // Workspace
-  "workspace/readFile":    { params: { path: string };      result: FileContent };
-  "workspace/readImage":   { params: { path: string };      result: ImageContent };
-  "workspace/list":        { params: { cwd: string };       result: WorkspaceListing };
-  "workspace/checkpoint":  { params: CheckpointParams;      result: Checkpoint };
-  "workspace/diffCheckpoint":  { params: { id: string };    result: CheckpointDiff };
-  "workspace/applyCheckpoint": { params: { id: string };    result: void };
-  "workspace/applyPatch":      { params: PatchParams;       result: ApplyResult };
+  // Workspace (10)
+  'workspace/readFile':        { params: { cwd: string; path: string }; result: FileContent };
+  'workspace/readImage':       { params: { cwd: string; path: string }; result: ImageContent };
+  'workspace/list':            { params: { cwd: string };       result: WorkspaceListing };
+  'workspace/searchFiles':     { params: SearchFilesParams;     result: WorkspaceSearchResult };
+  'workspace/browseDirs':      { params: BrowseDirsParams;      result: BrowseResult };
+  'workspace/checkpoint':      { params: CheckpointParams;      result: Checkpoint };
+  'workspace/diffCheckpoint':  { params: { id: string };        result: CheckpointDiff };
+  'workspace/applyCheckpoint': { params: { id: string };        result: void };
+  'workspace/applyPatch':      { params: PatchParams;           result: ApplyResult };
+  'workspace/exists':          { params: WorkspaceExistsParams; result: WorkspaceExistsResult };
 
-  // Projects
-  "project/list":      { params: void;                  result: Project[] };
-  "project/resolve":   { params: { cwd: string };       result: Project };
+  // Projects (2)
+  'project/list':    { params: void;            result: Project[] };
+  'project/resolve': { params: { cwd: string }; result: Project };
 
-  // Auth
-  "auth/status":       { params: void;                  result: AuthStatus };
-  "auth/login":        { params: { provider: string };  result: LoginSession };
-  "auth/logout":       { params: void;                  result: void };
+  // Agents (4)
+  'agent/list':       { params: void;                result: AgentListResult };
+  'agent/models':     { params: AgentModelsParams;   result: AgentModelsResult };
+  'agent/commands':   { params: AgentCommandsParams; result: AgentCommandsResult };
+  'agent/usageStats': { params: UsageStatsParams;    result: UsageStatsResult };
 
-  // Bridge control (desktop → bridge)
+  // Metrics (3) - ledger propiedad del bridge + respaldo sellado
+  'metrics/get':    { params: void;                result: MetricsSnapshot };
+  'metrics/export': { params: MetricsExportParams; result: MetricsExportResult };
+  'metrics/import': { params: MetricsImportParams; result: MetricsImportResult };
+
+  // Auth (3) - sanitizado; nunca lleva tokens/keys
+  'auth/status': { params: { agentId: AgentId }; result: AuthStatus };
+  'auth/login':  { params: { provider: string }; result: void };
+  'auth/logout': { params: void;                 result: void };
+
+  // Notifications / push (3)
+  'notifications/register':   { params: RegisterNotificationsParams; result: RegisterNotificationsResult };
+  'notifications/update':     { params: UpdateNotificationsParams;   result: void };
+  'notifications/unregister': { params: void;                        result: void };
+
+  // Bridge control (6, desktop -> bridge)
   // BridgeStatus incluye `latestVersion`/`updateAvailable` (chequeo npm del
-  // bridge). El bridge embebido debe conservarlos para que el telefono siga
-  // mostrando el aviso "actualiza el bridge" (ver bridge/src/update-check.ts).
-  "bridge/status":          { params: void;             result: BridgeStatus };
-  "bridge/generatePairingQr": { params: void;           result: PairingPayload };
-  "bridge/connectedPhones": { params: void;             result: ConnectedPhone[] };
-  "bridge/disconnectPhone": { params: { deviceId: string }; result: void };
-  "bridge/trustedDevices":  { params: void;             result: TrustedDevice[] };
-  "bridge/removeTrustedDevice": { params: { deviceId: string }; result: void };
+  // bridge) y `features` (capacidades opcionales, p.ej. `messageQueue`). El
+  // bridge embebido debe conservar ambos: el primero para que el telefono siga
+  // mostrando "actualiza el bridge" (ver bridge/src/update-check.ts), el
+  // segundo porque el cliente decide con el si puede ofrecer una funcion —
+  // ofrecer encolar contra un bridge que no sabe encolar arranca un turno
+  // concurrente y corrompe la sesion del agente.
+  'bridge/status':              { params: void;                 result: BridgeStatus };
+  'bridge/generatePairingQr':   { params: void;                 result: PairingPayload };
+  'bridge/connectedPhones':     { params: void;                 result: ConnectedPhone[] };
+  'bridge/disconnectPhone':     { params: { deviceId: string }; result: void };
+  'bridge/trustedDevices':      { params: void;                 result: TrustedDevice[] };
+  'bridge/removeTrustedDevice': { params: { deviceId: string }; result: void };
 }
 ```
 

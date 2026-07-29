@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a thread message queue (follow-ups sent while a turn is in flight)
+
+The agent CLIs all let you type a follow-up while they work and hold it for the
+current turn to end. The contract now describes the same thing for the phone,
+with the queue owned by the bridge (it must survive the app being backgrounded
+or killed — the whole point is to send and pocket the phone).
+
+- **`TurnStatus`** gains `queued` and `cancelled`. `cancelled` is deliberately
+  distinct from `aborted`: `aborted` is a turn that was *running* and got
+  stopped, `cancelled` is one that was *queued* and removed before it ever
+  started. A queued turn that is cancelled is kept in the thread, not deleted,
+  so the user's message stays visible and marked rather than vanishing.
+- **`TurnSendParams.queue`** — `true` queues explicitly behind an in-flight turn,
+  `false` rejects with the new `AgentBusy` error instead, and **absent queues
+  anyway**. Queueing is the safe default: the bridge can only drive one turn per
+  thread (half the agents run one-shot per turn, so a second concurrent turn
+  would put two CLI processes on the same session), and until now a second
+  `turn/send` silently clobbered the in-flight one.
+- **`TurnSendResult`** gains `queued` and `queuePosition` (1-based).
+- **`TurnList`** gains `queuedTurnIds`, `queuePaused` and `queuePausedReason` —
+  live bridge state a client re-attaches to on resync, exactly like
+  `activeTurnId`.
+- **`queue/resume`** and **`queue/clear`** (+ `QueueStateResult`) — after the
+  user stops a turn or one fails, the bridge holds the queue instead of firing
+  the follow-ups at a stopped or broken agent; these resume or drop it.
+- **`stream/turn/cancelled`** and **`stream/queue/updated`** notifications. The
+  latter carries the whole queue state rather than a delta, so a client that
+  missed one converges on the next instead of drifting.
+- **`JsonRpcErrorCode.AgentBusy`** (`-32009`).
+- **`BridgeStatus.features`** (`BridgeFeatures`, first entry `messageQueue`) —
+  additive capability advertisement so a newer client offers a feature only
+  where it works, instead of inferring it from the version string. Absent means
+  "assume none". This is not cosmetic for the queue: a client that offers to
+  queue against a bridge that cannot makes it start a second **concurrent** turn,
+  which corrupts the agent session (two CLI processes on one `--resume`, or
+  OpenCode retiring the running turn) — observed live against a bridge from
+  before this change.
+
 ### Added — `IAgentAdapter.handlesAttachments()` (optional)
 
 - Declares that an adapter delivers `SendTurnOptions.attachments` to its CLI

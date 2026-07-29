@@ -62,6 +62,11 @@ class DriftMessageRepository implements IMessageRepository {
   }
 
   @override
+  Future<void> deleteMessage(String id) async {
+    await (_db.delete(_db.messagesTable)..where((m) => m.id.equals(id))).go();
+  }
+
+  @override
   Stream<List<Message>> watchMessages(String threadId) {
     return (_db.select(_db.messagesTable)
           ..where((m) => m.threadId.equals(threadId))

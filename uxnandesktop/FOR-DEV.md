@@ -514,6 +514,7 @@ bridge (`../bridge/`) is already implemented and is the contract reference
 yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 (`bridge/FOR-DEV.md`).
 
+
 ### Backend (Rust)
 - [ ] Tauri **sidecar** for the Node bridge process; manage lifecycle
       (start/stop/restart/health).

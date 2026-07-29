@@ -21,6 +21,17 @@ export interface BridgeStatusInput {
   updateAvailable?: boolean;
 }
 
+/**
+ * Capabilities this build advertises to clients. Additive and hard-coded: a
+ * feature is listed here by the same change that implements it, so a client can
+ * ask "can this bridge do X?" instead of comparing version strings against a
+ * table it would have to keep in sync.
+ */
+const BRIDGE_FEATURES = {
+  // The per-thread message queue (architecture/02a §5.8.13).
+  messageQueue: true,
+} as const;
+
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
   return {
     version: input.version,
@@ -31,5 +42,6 @@ export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {
     uptimeMs: Math.max(0, input.now - input.startedAt),
     ...(input.latestVersion !== undefined ? { latestVersion: input.latestVersion } : {}),
     ...(input.updateAvailable ? { updateAvailable: true } : {}),
+    features: { ...BRIDGE_FEATURES },
   };
 }

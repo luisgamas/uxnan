@@ -28,7 +28,7 @@ value.
 | Agents that "run in the terminal" | `TERMINAL_ONLY_AGENTS` | real command-line coding agents only. The apps ship extra marks (Gemma, Kimi, …) that are **models, not CLIs** — they must not be listed as agents |
 | "30–100 MB of RAM" | `RAM_TARGET` | `uxnandesktop/README.md` → *Why it helps, even in alpha* |
 | "200–500 MB" for an Electron shell | `ELECTRON_RAM` | the same section — stated as a range those apps commonly idle in, **not** a benchmark of a named product |
-| "66 JSON-RPC methods, 8 notifications" | `BRIDGE_METHOD_COUNT`, `BRIDGE_NOTIFICATION_COUNT` | `bridge/README.md` → *Architecture*; re-derive from `shared/src/jsonrpc/` rather than trusting the old number |
+| "68 JSON-RPC methods, 10 notifications" | `BRIDGE_METHOD_COUNT`, `BRIDGE_NOTIFICATION_COUNT` | `bridge/README.md` → *Architecture*; re-derive from `shared/src/jsonrpc/` rather than trusting the old number |
 | `npm install -g uxnan-bridge` | `BRIDGE_INSTALL_COMMAND` | `bridge/README.md` → *Install* |
 | `xattr -dr com.apple.quarantine …` | `MACOS_QUARANTINE_COMMAND` | `uxnandesktop/docs/install-macos.md` → *Tier 2* |
 | Every outbound link | `links` | the paths must exist on `main` |

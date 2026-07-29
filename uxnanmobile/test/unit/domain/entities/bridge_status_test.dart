@@ -46,5 +46,30 @@ void main() {
       final status = BridgeStatus.fromJson(const {'relayConnected': 'yes'});
       expect(status.relayConnected, isFalse);
     });
+
+    test('reads the message-queue capability from features', () {
+      final status = BridgeStatus.fromJson(const {
+        'relayConnected': true,
+        'features': {'messageQueue': true},
+      });
+      expect(status.supportsMessageQueue, isTrue);
+    });
+
+    test('a bridge that advertises no features cannot queue', () {
+      // The safe default, and the one that matters: on a bridge without the
+      // queue, a second send starts a CONCURRENT turn and kills the running
+      // one, so the app must not offer to queue against it.
+      for (final json in const <Map<String, dynamic>>[
+        {'relayConnected': true},
+        {'relayConnected': true, 'features': <String, dynamic>{}},
+        {'relayConnected': true, 'features': 'nonsense'},
+        {
+          'relayConnected': true,
+          'features': {'messageQueue': false},
+        },
+      ]) {
+        expect(BridgeStatus.fromJson(json).supportsMessageQueue, isFalse);
+      }
+    });
   });
 }

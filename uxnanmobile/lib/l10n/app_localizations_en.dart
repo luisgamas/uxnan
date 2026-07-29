@@ -777,6 +777,113 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerStop => 'Stop';
 
   @override
+  String get composerQueueMessage => 'Queue message';
+
+  @override
+  String get queuedMessageWaiting => 'Waiting to be sent';
+
+  @override
+  String get queuedMessageNext => 'Next in the queue';
+
+  @override
+  String queuedMessagePosition(int position) {
+    return '$position in the queue';
+  }
+
+  @override
+  String get queuedMessageCancel => 'Cancel this message';
+
+  @override
+  String get queuedMessageEdit => 'Edit this message';
+
+  @override
+  String rescuedDraftsAction(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count drafts',
+      one: '1 draft',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get rescuedDraftsClearAll => 'Delete all drafts';
+
+  @override
+  String get rescuedDraftsClearAllTitle => 'Delete all drafts?';
+
+  @override
+  String rescuedDraftsClearAllBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'These $count drafts will be deleted. It can\'t be undone.',
+      one: 'This draft will be deleted. It can\'t be undone.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get rescuedDraftsClearAllConfirm => 'Delete all';
+
+  @override
+  String get cancelledMessage => 'Message cancelled';
+
+  @override
+  String queuePausedAfterStop(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count messages are waiting. You stopped the agent, so they weren\'t sent.',
+      one: '1 message is waiting. You stopped the agent, so it wasn\'t sent.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String queuePausedAfterError(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count messages are waiting. The last turn failed, so they weren\'t sent.',
+      one: '1 message is waiting. The last turn failed, so it wasn\'t sent.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get queuedMessageRecovered => 'Message back in the composer';
+
+  @override
+  String get queuedMessageRecoveredRescued =>
+      'Message back in the composer — what you were writing was saved as a draft';
+
+  @override
+  String get queuedMessageRecoverFailed => 'Couldn\'t take that message back';
+
+  @override
+  String get rescuedDraftsTitle => 'Saved drafts';
+
+  @override
+  String get rescuedDraftDiscard => 'Discard draft';
+
+  @override
+  String get rescuedDraftRestored => 'Draft back in the composer';
+
+  @override
+  String get rescuedDraftComposerBusy =>
+      'Clear the composer first to bring this draft back';
+
+  @override
+  String get queueResume => 'Send them';
+
+  @override
+  String get queueDiscard => 'Discard';
+
+  @override
   String get composerVoice => 'Voice input';
 
   @override

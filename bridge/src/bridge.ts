@@ -160,6 +160,16 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   await metrics
     .initialize()
     .catch((err: unknown) => logger.warn(`failed to initialize metrics ledger: ${String(err)}`));
+  // The message queue is live AgentManager state and does not survive a restart
+  // (neither does the turn it was waiting behind). Close out any turn left
+  // `queued` on disk so it reads as cancelled — visibly never sent — instead of
+  // sitting in the thread forever waiting for a queue that no longer exists.
+  await threadStore
+    .cancelOrphanedQueuedTurns(now())
+    .then((count) => {
+      if (count > 0) logger.info(`cancelled ${count} queued turn(s) left by a previous run`);
+    })
+    .catch((err: unknown) => logger.warn(`failed to close orphaned queued turns: ${String(err)}`));
   // Reads agent on-disk session logs when the store has no turns (§5.8.8).
   const sessionHistory = new SessionHistoryReader();
   // Single source of the pairing payload — shared by the QR and the manual-code
