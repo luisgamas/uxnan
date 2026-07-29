@@ -218,6 +218,46 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('a turn without a cwd writes the attachment into the ADAPTER working dir', async () => {
+  // Regression: the fallback used to be the OS temp dir with an absolute
+  // reference, which every sandboxed agent refuses to open (verified against
+  // Claude: "the read was blocked by a permission prompt"). The file must land
+  // where the CLI actually runs, so the reference stays workspace-relative.
+  const baseDir = join(tmpdir(), `uxnan-am-nocwd-${randomUUID()}`);
+  const adapterCwd = join(tmpdir(), `uxnan-am-adaptercwd-${randomUUID()}`);
+  await mkdir(adapterCwd, { recursive: true });
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1000,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  const adapter = new EchoAgentAdapter();
+  // The echo adapter has no cwd of its own; report one like the real adapters.
+  (adapter as unknown as { defaultCwd: () => string }).defaultCwd = () => adapterCwd;
+  manager.register(adapter);
+
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await manager.sendTurn(thread.id, 'look at this', {
+    attachments: [{ type: 'image', mimeType: 'image/png', base64Data: PNG_1x1 }],
+  });
+
+  await waitFor(async () => (await store.getTurn(turnId)).status === 'completed');
+  const turn = await store.getTurn(turnId);
+  const assistant = String(turn.messages.find((m) => m.role === 'assistant')?.content ?? '');
+  // Referenced relatively (inside the adapter's workspace), never as an
+  // absolute path under the OS temp dir.
+  assert.match(assistant, /Attached image/);
+  assert.ok(assistant.includes('.uxnan-attachments/'));
+  assert.ok(!assistant.includes(adapterCwd));
+
+  await waitFor(async () => !existsSync(join(adapterCwd, '.uxnan-attachments', turnId)));
+  await rm(adapterCwd, { recursive: true, force: true });
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('respondApproval drives the echo demo approval to completion', async () => {
   const baseDir = join(tmpdir(), `uxnan-am-appr-${randomUUID()}`);
   const store = new ThreadStore(new DaemonState(baseDir));

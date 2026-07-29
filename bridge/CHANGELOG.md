@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — an attachment on a `cwd`-less turn was written where no agent could read it
+
+- `materializeAttachments` fell back to the **OS temp dir** (with an absolute
+  reference) whenever `turn/send` carried no `cwd`. Every agent is confined to
+  its workspace, so the file was simply unreachable — verified against the real
+  CLI: Claude answers *"the read was blocked by a permission prompt"* for the
+  very same image under the temp dir, while it describes it correctly from a
+  workspace-relative path.
+- The fallback is now the **adapter's own working directory**, which is where
+  the CLI actually runs. A new optional `IAgentAdapter.defaultCwd()`
+  (implemented by all eight adapters) reports it, so the reference stays
+  workspace-relative and inside the sandbox. The temp dir remains a last resort
+  for an adapter that reports none.
+
+### Fixed — Antigravity and Grok now accept image attachments
+
+- Both declared `capabilities.images: false`, so the phone hid the "+" attach
+  action for them entirely. Verified against the real CLIs with a four-quadrant
+  probe image, which **both described correctly**: `agy` opens a workspace file
+  with its own tools (its models are the multimodal Gemini family), and Grok
+  does the same — its ACP `promptCapabilities.image: false` only rules out an
+  *inline* image block on `session/prompt`, which is not how the bridge delivers
+  an attachment. Both are now `images: true`.
+- Whether the *model* sees pixels or reasons about the bytes with tools is the
+  model's business (a non-multimodal OpenCode model still answers — it inspects
+  the file), now documented per agent in `docs/agents.md` → *Image attachments*,
+  alongside the delivery rules (spec: `architecture/02a` §5.8.12).
+
 ## [0.0.12-alpha.20260724] - 2026-07-24
 
 ### Added — Claude Opus 5 in the built-in Claude Code model list

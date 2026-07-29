@@ -103,6 +103,19 @@ export interface IAgentAdapter {
   /** Subscribe to streaming events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void;
 
+  /**
+   * The directory this adapter runs a turn in when the turn carries no `cwd`
+   * of its own (its configured {@link AgentConfig.cwd}, else the daemon's
+   * process directory). Optional; adapters that cannot report one leave it
+   * unset.
+   *
+   * The bridge needs it to place per-turn files — image attachments in
+   * particular — **inside** the directory the CLI is actually sandboxed to:
+   * every supported agent refuses to open a path outside its workspace, so a
+   * file written anywhere else is unreachable no matter how it is referenced.
+   */
+  defaultCwd?(): string | undefined;
+
   /** List the models this agent's CLI reports as available (optional). */
   listModels?(): Promise<AgentModel[]>;
 

@@ -68,7 +68,11 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   autonomous: true,
   // A client-owned `--conversation <uuid>` resumes a thread across turns.
   forking: true,
-  images: false,
+  // The bridge delivers an attachment as a file in the workspace, and `agy`
+  // opens it with its own file tools (its models are the multimodal Gemini
+  // family). Verified against `agy --add-dir <cwd> -p` with a four-quadrant
+  // probe image, which it described correctly.
+  images: true,
   // `agy -p` reports no per-turn token usage, so the context meter stays hidden.
   reportsContextUsage: false,
 };
@@ -165,6 +169,15 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   /** turnId → in-flight run, for cancellation. */
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
+
+  /**
+   * The directory a turn without its own `cwd` runs in — where the bridge must
+   * place per-turn attachment files so this CLI can open them (see
+   * `agents/attachments.ts`).
+   */
+  defaultCwd(): string {
+    return this.#defaultCwd;
+  }
 
   /** Native `agy` conversation id for a thread (surfaced as the thread's session id). */
   nativeSessionId(threadId: string): string | undefined {

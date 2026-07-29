@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `IAgentAdapter.defaultCwd()` (optional)
+
+- Reports the directory an adapter runs a turn in when the turn carries no `cwd`
+  of its own (its configured `AgentConfig.cwd`, else the daemon's process
+  directory). Optional, so an adapter that cannot report one is unaffected.
+- The bridge needs it to place per-turn files — image attachments in particular
+  — inside the directory the CLI is actually sandboxed to: every supported agent
+  refuses to open a path outside its workspace, so a file written anywhere else
+  is unreachable no matter how it is referenced. See `bridge/CHANGELOG.md` and
+  `architecture/02a` §5.8.12.
+
 ## [0.0.10-alpha.20260724] - 2026-07-24
 
 ### Clarified — `AgentModel` doc comments name the current Claude alias set

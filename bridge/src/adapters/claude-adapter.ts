@@ -367,6 +367,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   readonly #active = new Map<string, ActiveRun>();
   #defaultCwd = process.cwd();
 
+  /**
+   * The directory a turn without its own `cwd` runs in — where the bridge must
+   * place per-turn attachment files so this CLI can open them (see
+   * `agents/attachments.ts`).
+   */
+  defaultCwd(): string {
+    return this.#defaultCwd;
+  }
+
   /** Native Claude session id for a thread (on-disk history-fallback locator). */
   nativeSessionId(threadId: string): string | undefined {
     return this.#sessionByThread.get(threadId);

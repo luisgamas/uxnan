@@ -293,6 +293,15 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly #contextWindowByModel = new Map<string, number>();
   #windowsLoaded = false;
   #defaultCwd = process.cwd();
+
+  /**
+   * The directory a turn without its own `cwd` runs in — where the bridge must
+   * place per-turn attachment files so this CLI can open them (see
+   * `agents/attachments.ts`).
+   */
+  defaultCwd(): string {
+    return this.#defaultCwd;
+  }
   /** Long-lived app-server connection. Spawned lazily on first use. */
   #rpc: CodexAppServerRpc | null = null;
   #appServerInit: Promise<CodexAppServerRpc> | null = null;

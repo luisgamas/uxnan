@@ -1955,6 +1955,33 @@ attribution, revocation and migration semantics exist.
 
 ---
 
+#### 5.8.12 Entrega de adjuntos de imagen (`turn/send { attachments }`)
+
+Ningun CLI de agente acepta base64 inline por la via headless, pero **todos**
+los cableados pueden ABRIR un fichero local con sus propias herramientas de
+archivo/vision. Por eso el bridge materializa cada adjunto a disco y referencia
+la ruta en el prompt (`src/agents/attachments.ts`), sin manejo de imagen por
+adaptador.
+
+Reglas (no negociables, verificadas contra los CLIs reales):
+
+- El fichero se escribe **dentro del directorio de trabajo del agente**
+  (`<cwd>/.uxnan-attachments/<turnId>/`) y se referencia con ruta **relativa al
+  cwd**: los agentes estan confinados a su workspace y rechazan una ruta fuera
+  de el (Claude responde *"the read was blocked by a permission prompt"* para la
+  misma imagen colocada en el temp del SO).
+- Si el turno no trae `cwd`, se usa el del **adaptador**
+  (`IAgentAdapter.defaultCwd()`), que es donde el CLI se lanza realmente. El
+  temp del SO queda solo como ultimo recurso para un adaptador que no reporte
+  ninguno.
+- El directorio se borra al terminar el turno.
+- El mensaje que se persiste en el historial no filtra rutas temporales: un
+  turno solo-imagen guarda `[N image attachments]`.
+- `capabilities.images` declara si el agente puede recibirlos; el telefono
+  oculta el "+" cuando es `false`. Que el modelo *vea* los pixeles o razone
+  sobre los bytes con herramientas es cosa del modelo — un modelo no multimodal
+  igualmente responde inspeccionando el fichero.
+
 ### 5.9 Transporte seguro y mensajeria E2EE
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.
