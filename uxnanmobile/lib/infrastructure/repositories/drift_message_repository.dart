@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:uxnan/core/extensions/enum_ext.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -96,9 +97,15 @@ class DriftMessageRepository implements IMessageRepository {
       id: row.id,
       threadId: row.threadId,
       turnId: row.turnId,
-      role: MessageRole.values.byName(row.role),
+      // Decoded tolerantly: a row written by a build that knew an extra enum
+      // value (a feature branch, a downgrade after a rollback) must not take
+      // the timeline down. An unknown role reads as a neutral system block and
+      // an unknown delivery state as `delivered` — the row exists, so the
+      // honest default is "it is in the history", never "it failed".
+      role: MessageRole.values.byNameOr(row.role, MessageRole.system),
       contents: contents,
-      deliveryState: MessageDeliveryState.values.byName(row.deliveryState),
+      deliveryState: MessageDeliveryState.values
+          .byNameOr(row.deliveryState, MessageDeliveryState.delivered),
       orderIndex: row.orderIndex,
       fingerprint: row.fingerprint,
       createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAtMs),
