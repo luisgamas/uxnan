@@ -103,5 +103,46 @@ void main() {
       await sub.cancel();
       expect(emissions.last, ['a', 'b']);
     });
+
+    test('a row written by another build decodes instead of throwing',
+        () async {
+      // The local database outlives a single build: a feature branch (the
+      // message queue) persists `deliveryState: cancelled`, a value this
+      // build's enum doesn't know. Reading it must degrade, not take the
+      // timeline down.
+      await db.into(db.messagesTable).insert(
+            MessagesTableCompanion.insert(
+              id: 'foreign',
+              threadId: 'th1',
+              turnId: 't1',
+              role: 'user',
+              contentsJson: '[{"type":"text","text":"queued then cancelled"}]',
+              deliveryState: 'cancelled',
+              orderIndex: 1,
+              createdAtMs: 1000,
+            ),
+          );
+
+      final messages = await repo.getMessages('th1');
+      expect(messages.single.deliveryState, MessageDeliveryState.delivered);
+      expect(messages.single.role, MessageRole.user);
+    });
+
+    test('an unknown role falls back to a neutral system block', () async {
+      await db.into(db.messagesTable).insert(
+            MessagesTableCompanion.insert(
+              id: 'alien',
+              threadId: 'th1',
+              turnId: 't1',
+              role: 'moderator',
+              contentsJson: '[{"type":"text","text":"hi"}]',
+              deliveryState: 'delivered',
+              orderIndex: 1,
+              createdAtMs: 1000,
+            ),
+          );
+
+      expect((await repo.getMessages('th1')).single.role, MessageRole.system);
+    });
   });
 }

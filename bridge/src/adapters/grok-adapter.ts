@@ -72,8 +72,12 @@ const GROK_CAPABILITIES: AgentCapabilities = {
   approvals: true,
   // `agentCapabilities.loadSession` + `session/load` → resume across turns.
   forking: true,
-  // Grok's ACP `promptCapabilities.image` is false — no image inputs.
-  images: false,
+  // Grok's ACP `promptCapabilities.image` is false, so no *inline* image block
+  // can ride on `session/prompt` — but that is not how the bridge delivers an
+  // attachment: it writes the file into the workspace and references its path,
+  // and Grok opens it with its own file tools. Verified against `grok --print`
+  // with a four-quadrant probe image, which it described correctly.
+  images: true,
   // ACP `session/prompt` returns only `{ stopReason }`; no per-turn token usage
   // was observed (FOR-DEV: verify once a Grok turn can run — balance-blocked).
   reportsContextUsage: false,
@@ -189,6 +193,15 @@ export class GrokAdapter extends BaseAgentAdapter {
   #rpc: NdjsonRpc | null = null;
   #init: Promise<NdjsonRpc> | null = null;
   #defaultCwd = process.cwd();
+
+  /**
+   * The directory a turn without its own `cwd` runs in — where the bridge must
+   * place per-turn attachment files so this CLI can open them (see
+   * `agents/attachments.ts`).
+   */
+  defaultCwd(): string {
+    return this.#defaultCwd;
+  }
 
   /** Native Grok session id for a thread (on-disk history-fallback locator). */
   nativeSessionId(threadId: string): string | undefined {

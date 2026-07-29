@@ -219,6 +219,15 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly #contextWindowByModel = new Map<string, number>();
   #windowsLoaded = false;
   #defaultCwd = process.cwd();
+
+  /**
+   * The directory a turn without its own `cwd` runs in — where the bridge must
+   * place per-turn attachment files so this CLI can open them (see
+   * `agents/attachments.ts`).
+   */
+  defaultCwd(): string {
+    return this.#defaultCwd;
+  }
   /** When set (`UXNAN_OPENCODE_DEBUG=1`), log the turn/event flow to stderr. */
   readonly #debug: boolean;
 

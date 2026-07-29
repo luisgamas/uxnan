@@ -3,16 +3,23 @@
  *
  * The phone sends inline image attachments on `turn/send { attachments }`. No
  * agent CLI accepts inline base64 over the headless stdio path, but every
- * supported agent (Claude, Codex, OpenCode, pi, Gemini) can OPEN a local file
- * with its own file/vision tools. So the bridge materializes each attachment to
- * a file and references the path in the prompt — CLI-agnostic, no per-adapter
- * image handling required.
+ * supported agent (Claude, Codex, OpenCode, pi, Gemini, Antigravity, Zero,
+ * Grok) can OPEN a local file with its own file/vision tools. So the bridge
+ * materializes each attachment to a file and references the path in the prompt
+ * — CLI-agnostic, no per-adapter image handling required. Whether the agent
+ * then *sees* the pixels or reasons about the bytes is the model's business: a
+ * non-multimodal model still answers, it just inspects the file with tools.
  *
  * IMPORTANT: the file is written **inside the agent's working directory**
  * (`<cwd>/.uxnan-attachments/<turnId>/`) and referenced by a **cwd-relative**
  * path, because sandboxed agents confine file reads to the workspace (Gemini
  * `--approval-mode`, Codex `workspace-write`, Claude `acceptEdits`) and reject a
- * path outside it. The dir is cleaned up when the turn ends (see AgentManager).
+ * path outside it — verified: Claude answers "the read was blocked by a
+ * permission prompt" for the very same image placed under the OS temp dir. So
+ * a turn that carries no `cwd` falls back to the **adapter's** working
+ * directory (`IAgentAdapter.defaultCwd`); the temp dir below is a last resort
+ * for an adapter that reports none. The dir is cleaned up when the turn ends
+ * (see AgentManager).
  *
  * Source: architecture/02a-system-architecture.md §5.8 (agent turns) +
  * uxnanmobile/FOR-DEV.md → Conversation / timeline → Attach.

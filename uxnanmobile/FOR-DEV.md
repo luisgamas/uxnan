@@ -131,9 +131,13 @@ connected to live bridge data, validated on-device against a real bridge.
   icon shelf with a left-aligned 38 dp visual rhythm (48 dp touch targets) for
   data-driven reasoning options and color-coded approval mode;
   a compact in-turn circular **Agent responding…** cue; **image attachments**
-  in an anchored two-row "+" menu (photo library / camera, downscaled to 2048
-  px / q85, image-only message allowed, gated by the agent's `images`
-  capability).
+  in an anchored two-row "+" menu (photo library — **multi-selection**, up to
+  10 per message — / camera, downscaled to 2048 px / q85, image-only message
+  allowed, gated by the agent's `images` capability). Pending images sit
+  **inside** the pill above the field as a 56 dp horizontally scrolling strip
+  with a per-image ✕, and the pill morphs from its stadium ends to a 24 dp
+  rounded surface while they are there; once sent, the same strip (72 dp)
+  renders **above** the user bubble — tap to open the image full size.
 - **Per-PC threads** (`Thread.deviceId`) with per-agent filter chips, search /
   sort / density, archived-thread screen, per-thread actions (rename / archive /
   unarchive / delete / copy id), **Remove device** (unpair), **Copy thread ID**

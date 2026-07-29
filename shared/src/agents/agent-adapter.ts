@@ -103,6 +103,33 @@ export interface IAgentAdapter {
   /** Subscribe to streaming events. Returns an unsubscribe function. */
   onEvent(listener: (event: AgentStreamEvent) => void): () => void;
 
+  /**
+   * True when this adapter delivers `SendTurnOptions.attachments` to its CLI
+   * **itself** (a native image input), so the bridge must not materialize them
+   * to files nor append a path note to the prompt.
+   *
+   * Default (unset/false) is the CLI-agnostic path: the bridge writes each
+   * attachment into the agent's working directory and references it, which
+   * works for every agent whose file tools can open an image. An adapter opts
+   * in here when its protocol carries images natively AND its file tools
+   * cannot (Zero: ACP `promptCapabilities.image` accepts an inline image
+   * block, while its `read_file` is line-oriented text only).
+   */
+  handlesAttachments?(): boolean;
+
+  /**
+   * The directory this adapter runs a turn in when the turn carries no `cwd`
+   * of its own (its configured {@link AgentConfig.cwd}, else the daemon's
+   * process directory). Optional; adapters that cannot report one leave it
+   * unset.
+   *
+   * The bridge needs it to place per-turn files — image attachments in
+   * particular — **inside** the directory the CLI is actually sandboxed to:
+   * every supported agent refuses to open a path outside its workspace, so a
+   * file written anywhere else is unreachable no matter how it is referenced.
+   */
+  defaultCwd?(): string | undefined;
+
   /** List the models this agent's CLI reports as available (optional). */
   listModels?(): Promise<AgentModel[]>;
 
