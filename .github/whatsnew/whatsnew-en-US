@@ -1,4 +1,4 @@
 What's new in this update:
 
-• Push notifications now show the Uxnan mark in your status bar instead of a blank white square, whether the app is open or closed.
-• The model picker adds Claude's new Fable "(latest)" option, plus more exact versions to choose from: Opus 5, Opus 4.6, Opus 4.5 and Sonnet 4.5.
+• Send follow-up messages while the agent is still working. Each one waits its turn, shows its place in line, and can be edited or cancelled before the agent ever sees it.
+• Attach images to a message: pick several from your gallery or take a photo, review them inside the composer, and tap a sent image to open it full size.

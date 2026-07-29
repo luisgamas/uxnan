@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.15-alpha.20260729+20260729] - 2026-07-29
+
 ### Added — send follow-up messages while the agent is working
 
 The agent CLIs all let you keep typing while they work; the app made you wait
