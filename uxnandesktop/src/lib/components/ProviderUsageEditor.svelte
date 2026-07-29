@@ -25,6 +25,7 @@
   import { toast, toastError } from "$lib/toast";
   import UsageMeter from "./UsageMeter.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import InfoIcon from "@lucide/svelte/icons/info";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import EyeIcon from "@lucide/svelte/icons/eye";
@@ -218,6 +219,15 @@
       {/snippet}
     </TooltipSimple>
   </div>
+
+  <!-- The provider's CLI is discontinued upstream. It keeps working here (and
+       stays readable) but is no longer offered to new setups, so say why once. -->
+  {#if meta?.deprecated}
+    <div class={cn("flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5", text.meta)}>
+      <InfoIcon class={cn(icon.decorative, "mt-0.5 shrink-0")} />
+      <span>{i18n.t("providers.deprecatedDesc")}</span>
+    </div>
+  {/if}
 
   <!-- Live data (windows / credit / account) grouped on a single soft surface. -->
   {#if snapshot && (snapshot.windows.length > 0 || snapshot.credit || snapshot.account?.email || snapshot.account?.plan || snapshot.account?.organization)}

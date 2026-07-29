@@ -54,6 +54,12 @@ pub const OPENCODE_STATUS_PLUGIN: &str =
 pub const PI_STATUS_EXTENSION: &str = include_str!("../../static/hooks/uxnan-pi-status.js");
 
 /// The generic launcher wrappers (any CLI agent without a native hook surface).
+/// Per-event `curl` reporter with the agent kind passed as an argument — Grok and
+/// Antigravity are single native binaries (Rust / Go) with no Node guarantee, so
+/// they use this rather than the Node relay Claude and Gemini share.
+pub const EVENT_HOOK_SH: &str = include_str!("../../static/hooks/uxnan-event-hook.sh");
+pub const EVENT_HOOK_CMD: &str = include_str!("../../static/hooks/uxnan-event-hook.cmd");
+
 pub const WRAPPER_BASH: &str = include_str!("../../static/hooks/uxnan-hook-wrapper.sh");
 pub const WRAPPER_POWERSHELL: &str = include_str!("../../static/hooks/uxnan-hook-wrapper.ps1");
 pub const WRAPPER_CMD: &str = include_str!("../../static/hooks/uxnan-hook-wrapper.cmd");
@@ -69,6 +75,8 @@ const CODEX_HOOK_SH_FILENAME: &str = "uxnan-codex-hook.sh";
 const CODEX_HOOK_CMD_FILENAME: &str = "uxnan-codex-hook.cmd";
 const OPENCODE_PLUGIN_SRC_FILENAME: &str = "uxnan-opencode-status.js";
 const PI_EXTENSION_SRC_FILENAME: &str = "uxnan-pi-status.js";
+const EVENT_HOOK_SH_FILENAME: &str = "uxnan-event-hook.sh";
+const EVENT_HOOK_CMD_FILENAME: &str = "uxnan-event-hook.cmd";
 const WRAPPER_BASH_FILENAME: &str = "uxnan-hook-wrapper.sh";
 const WRAPPER_POWERSHELL_FILENAME: &str = "uxnan-hook-wrapper.ps1";
 const WRAPPER_CMD_FILENAME: &str = "uxnan-hook-wrapper.cmd";
@@ -92,12 +100,15 @@ const GEMINI_TIMEOUT_MS: u32 = 10_000;
 
 /// The agent kinds whose reporter lives in a JSON `hooks` block (so a managed
 /// entry can be matched + swept). OpenCode (a plugin) and Pi (an extension)
-/// don't live in a `hooks` block, so they aren't `AgentKind`s.
+/// don't live in a `hooks` block, so they aren't `AgentKind`s. Antigravity keys
+/// its config by hook *name* rather than by event, so it doesn't share this
+/// merge machinery either (see the Antigravity section).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {
     Claude,
     Codex,
     Gemini,
+    Grok,
 }
 
 /// Claude Code hook events → `hooks` block. `true` = attach an all-tools matcher
@@ -119,6 +130,41 @@ const CLAUDE_EVENTS: &[(&str, bool)] = &[
 
 /// Gemini CLI turn events. Gemini has no permission hook, so no `waiting`.
 const GEMINI_EVENTS: &[&str] = &["BeforeAgent", "AfterAgent", "BeforeTool", "AfterTool"];
+
+/// Grok hook events → `hooks` block, same grouped shape as Claude's (Grok loads a
+/// Claude settings file unchanged, so its vocabulary *is* Claude's). `true` =
+/// attach an all-tools matcher. `StopFailure` is Grok's own: a turn that died on
+/// an API error, which is a real `blocked` rather than an inferred one.
+const GROK_EVENTS: &[(&str, bool)] = &[
+    ("SessionStart", false),
+    ("UserPromptSubmit", false),
+    ("PreToolUse", true),
+    ("PostToolUse", true),
+    ("PostToolUseFailure", true),
+    ("Notification", false),
+    ("Stop", false),
+    ("StopFailure", false),
+    ("SessionEnd", false),
+    ("SubagentStart", false),
+    ("SubagentStop", false),
+];
+
+/// Antigravity's tool events, which take the grouped `matcher` + `hooks` shape.
+const ANTIGRAVITY_TOOL_EVENTS: &[&str] = &["PreToolUse", "PostToolUse"];
+
+/// Antigravity's loop events, which take a **flat** list of handler objects (no
+/// `matcher`/`hooks` wrapper) — its config format differs per event, verified
+/// against the CLI's own bundled `agy-customizations` guide.
+///
+/// There is deliberately no `waiting` source here: Antigravity exposes only
+/// execution-loop events — no prompt, permission or notification hook — so it can
+/// report `working` and `done` precisely and can never claim to need the user.
+const ANTIGRAVITY_LOOP_EVENTS: &[&str] = &["PreInvocation", "PostInvocation", "Stop"];
+
+/// The name our managed Antigravity hook is filed under in its `hooks.json`
+/// (which is keyed by hook name, not by event). Owning one key means install and
+/// uninstall are a single insert/remove that can't disturb anyone else's hooks.
+const ANTIGRAVITY_HOOK_NAME: &str = "uxnan-status";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -173,6 +219,29 @@ fn opencode_config_path() -> Option<PathBuf> {
     )
 }
 
+/// Grok merges every `*.json` under this directory, so our reporter gets a file
+/// of its own — install writes it, uninstall deletes it, and a user's own hooks
+/// are never read, rewritten or risked. Global hooks need no folder-trust grant.
+fn grok_hooks_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".grok")
+            .join("hooks")
+            .join("uxnan-status.json"),
+    )
+}
+
+/// Antigravity's machine-global customization directory. Its `hooks.json` lives
+/// here, and so does our reporter script — see [`antigravity_hook_command`] for
+/// why the script has to sit next to the config rather than in our own hooks dir.
+fn antigravity_config_dir() -> Option<PathBuf> {
+    Some(home_dir()?.join(".gemini").join("config"))
+}
+
+fn antigravity_hooks_path() -> Option<PathBuf> {
+    Some(antigravity_config_dir()?.join("hooks.json"))
+}
+
 fn pi_extension_path() -> Option<PathBuf> {
     Some(
         home_dir()?
@@ -199,6 +268,10 @@ pub struct HookInstall {
     pub opencode_plugin_script: String,
     /// Pi/OMP extension source (in the hooks dir; installed into Pi's dir).
     pub pi_extension_script: String,
+    /// Generic per-event `curl` reporter (POSIX) — Grok + Antigravity.
+    pub event_hook_sh: String,
+    /// Generic per-event `curl` reporter (Windows) — Grok + Antigravity.
+    pub event_hook_cmd: String,
     pub wrapper_bash: String,
     pub wrapper_powershell: String,
     pub wrapper_cmd: String,
@@ -211,6 +284,8 @@ pub struct HookInstall {
     pub gemini_settings_path: String,
     pub opencode_plugin_path: String,
     pub pi_extension_path: String,
+    pub grok_hooks_path: String,
+    pub antigravity_hooks_path: String,
 }
 
 /// The current install state of one agent's managed hook.
@@ -304,10 +379,12 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     let fish = write(WRAPPER_FISH_FILENAME, WRAPPER_FISH)?;
     let browser_bash = write(BROWSER_SHIM_BASH_FILENAME, BROWSER_SHIM_BASH)?;
     let browser_cmd = write(BROWSER_SHIM_CMD_FILENAME, BROWSER_SHIM_CMD)?;
+    let event_sh = write(EVENT_HOOK_SH_FILENAME, EVENT_HOOK_SH)?;
+    let event_cmd = write(EVENT_HOOK_CMD_FILENAME, EVENT_HOOK_CMD)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        for f in [&codex_sh, &bash, &fish, &browser_bash] {
+        for f in [&codex_sh, &bash, &fish, &browser_bash, &event_sh] {
             let _ = std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755));
         }
     }
@@ -320,6 +397,8 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
         codex_hook_cmd: path_str(&codex_cmd),
         opencode_plugin_script: path_str(&opencode),
         pi_extension_script: path_str(&pi),
+        event_hook_sh: path_str(&event_sh),
+        event_hook_cmd: path_str(&event_cmd),
         wrapper_bash: path_str(&bash),
         wrapper_powershell: path_str(&ps),
         wrapper_cmd: path_str(&cmd),
@@ -331,6 +410,8 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
         gemini_settings_path: opt(gemini_settings_path()),
         opencode_plugin_path: opt(opencode_plugin_path()),
         pi_extension_path: opt(pi_extension_path()),
+        grok_hooks_path: opt(grok_hooks_path()),
+        antigravity_hooks_path: opt(antigravity_hooks_path()),
     })
 }
 
@@ -391,6 +472,96 @@ fn gemini_hook_entry(relay: &str) -> Value {
     })
 }
 
+/// Windows' 8.3 short form of `path` (`C:\Users\JOHNSM~1\…`), or `None` when the
+/// OS can't produce one (8.3 generation is disabled on the volume, or the path
+/// doesn't exist yet).
+///
+/// Needed because Grok parses its hook `command` as a literal executable path
+/// followed by whitespace-separated arguments — it does **not** honour quoting,
+/// so a path containing a space cannot be expressed at all. Verified against the
+/// real CLI: quoted, `call`-wrapped and doubly-quoted forms are all skipped
+/// silently, while the 8.3 form runs. Users whose account name has no space never
+/// reach this.
+#[cfg(windows)]
+fn short_path(path: &str) -> Option<String> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+
+    let wide: Vec<u16> = std::ffi::OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // First call sizes the buffer (0 = the call failed, e.g. no 8.3 on this volume).
+    let len = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    if len == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; len as usize];
+    let written = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), len) };
+    if written == 0 || written as usize > buf.len() {
+        return None;
+    }
+    buf.truncate(written as usize);
+    Some(
+        std::ffi::OsString::from_wide(&buf)
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+#[cfg(not(windows))]
+fn short_path(_path: &str) -> Option<String> {
+    None
+}
+
+/// A script path in a form a CLI that can't parse quotes will accept: the path
+/// itself when it has no space, else its 8.3 short form. `None` when the path
+/// contains a space and the OS won't shorten it — the caller then reports the
+/// agent as unavailable instead of writing a hook that would silently never run.
+fn unquotable_path(path: &str) -> Option<String> {
+    let slashed = fwd(path);
+    if !slashed.contains(' ') {
+        return Some(slashed);
+    }
+    short_path(path)
+        .map(|s| fwd(&s))
+        .filter(|s| !s.contains(' '))
+}
+
+/// The Grok hook command: our per-event reporter plus the agent kind as its
+/// argument. Grok is a Rust binary with no Node guarantee, so this is the `curl`
+/// reporter rather than the Node relay.
+fn grok_hook_command(install: &HookInstall) -> Option<String> {
+    let script = if cfg!(windows) {
+        &install.event_hook_cmd
+    } else {
+        &install.event_hook_sh
+    };
+    Some(format!("{} grok", unquotable_path(script)?))
+}
+
+fn grok_hook_entry(command: &str) -> Value {
+    json!({
+        "type": "command",
+        "command": command,
+        "timeout": RELAY_TIMEOUT_SECS
+    })
+}
+
+/// The Antigravity hook command. Antigravity has the same no-quoting limitation
+/// as Grok, but its own docs pin the hook's working directory to the folder
+/// holding `hooks.json` — so the reporter is copied next to that config and
+/// invoked **dot-relative**. The command string then contains no path at all,
+/// which is what makes it survive a home directory with a space in it (verified
+/// against the real CLI both ways).
+fn antigravity_hook_command() -> String {
+    if cfg!(windows) {
+        format!(".\\{EVENT_HOOK_CMD_FILENAME} antigravity")
+    } else {
+        format!("./{EVENT_HOOK_SH_FILENAME} antigravity")
+    }
+}
+
 /// The Codex hook command string (the exact bytes folded into the trust hash).
 /// POSIX wraps `/bin/sh` behind an `[ -x ]` guard (a missing script is a silent
 /// no-op, never a `127`); Windows invokes the `.cmd` directly via Codex's `cmd`
@@ -436,6 +607,12 @@ fn is_managed_hook(hook: &Value, kind: AgentKind) -> bool {
                 || (text.contains(STATUS_RELAY_FILENAME) && text.contains("claude"))
         }
         AgentKind::Gemini => text.contains(STATUS_RELAY_FILENAME) && text.contains("gemini"),
+        // Matched on the reporter + the agent tag, so a moved hooks dir or a
+        // switch to/from the 8.3 short form still sweeps the stale entry.
+        AgentKind::Grok => {
+            (text.contains(EVENT_HOOK_SH_FILENAME) || text.contains(EVENT_HOOK_CMD_FILENAME))
+                && text.contains("grok")
+        }
         // `uxnan-codex-hook` is the current curl hook; the relay match sweeps the
         // legacy node-relay entry a prior build wrote for Codex.
         AgentKind::Codex => {
@@ -698,6 +875,191 @@ pub fn render_gemini_settings_json(relay: &str) -> Result<String, AppError> {
         merge_event(&mut doc, event, None, &entry, AgentKind::Gemini);
     }
     serde_json::to_string_pretty(&doc["hooks"]).map_err(AppError::Serde)
+}
+
+// ---------------------------------------------------------------------------
+// Grok (its own file under ~/.grok/hooks/)
+// ---------------------------------------------------------------------------
+
+/// The document written to `~/.grok/hooks/uxnan-status.json`.
+fn grok_hooks_doc(command: &str) -> Value {
+    let entry = grok_hook_entry(command);
+    let mut doc = json!({ "hooks": {} });
+    for (event, has_matcher) in GROK_EVENTS {
+        let matcher = if *has_matcher { Some("") } else { None };
+        merge_event(&mut doc, event, matcher, &entry, AgentKind::Grok);
+    }
+    doc
+}
+
+pub fn read_grok_hooks_status() -> AgentHooksStatus {
+    status_from_config(grok_hooks_path(), AgentKind::Grok, "uxnan-status.json")
+}
+
+pub fn install_grok_hooks(install: &HookInstall) -> Result<AgentHooksStatus, AppError> {
+    let path = grok_hooks_path()
+        .ok_or_else(|| AppError::Invalid("cannot resolve ~/.grok/hooks/".into()))?;
+    let Some(command) = grok_hook_command(install) else {
+        return Err(AppError::Invalid(format!(
+            "the hooks folder path contains a space and Windows won't shorten it \
+             ({}). Grok runs a hook command as a literal path and cannot quote it, \
+             so no hook can be installed from here.",
+            install.dir
+        )));
+    };
+    write_json_atomic(&path, &to_pretty(&grok_hooks_doc(&command)))?;
+    Ok(read_grok_hooks_status())
+}
+
+pub fn uninstall_grok_hooks() -> Result<AgentHooksStatus, AppError> {
+    let path = grok_hooks_path()
+        .ok_or_else(|| AppError::Invalid("cannot resolve ~/.grok/hooks/".into()))?;
+    // The file is entirely ours, so removing it is the whole uninstall — no
+    // user-authored hook can be sitting in it to preserve.
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    Ok(read_grok_hooks_status())
+}
+
+/// Render the file the ADE writes into `~/.grok/hooks/` (Settings "Show config").
+pub fn render_grok_hooks_json(install: &HookInstall) -> Result<String, AppError> {
+    let command = grok_hook_command(install).unwrap_or_else(|| "<unavailable>".to_string());
+    serde_json::to_string_pretty(&grok_hooks_doc(&command)).map_err(AppError::Serde)
+}
+
+// ---------------------------------------------------------------------------
+// Antigravity (a named entry in ~/.gemini/config/hooks.json)
+// ---------------------------------------------------------------------------
+
+/// Our named hook's value: one handler per event, in the shape each event wants
+/// (grouped with a `matcher` for the tool events, a flat list for the loop ones).
+fn antigravity_hook_value() -> Value {
+    let handler = json!({
+        "type": "command",
+        "command": antigravity_hook_command(),
+        "timeout": RELAY_TIMEOUT_SECS
+    });
+    let mut named = serde_json::Map::new();
+    for event in ANTIGRAVITY_LOOP_EVENTS {
+        named.insert((*event).to_string(), json!([handler.clone()]));
+    }
+    for event in ANTIGRAVITY_TOOL_EVENTS {
+        named.insert(
+            (*event).to_string(),
+            json!([{ "matcher": "*", "hooks": [handler.clone()] }]),
+        );
+    }
+    Value::Object(named)
+}
+
+/// `hooks.json` is a map of hook *name* → events, so our whole footprint is one
+/// key. Read it back rather than scanning text: a name is an exact match, unlike
+/// the substring sniffing the shared `hooks` block needs.
+fn antigravity_installed(text: &str) -> bool {
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .and_then(|doc| doc.get(ANTIGRAVITY_HOOK_NAME).cloned())
+        .is_some()
+}
+
+pub fn read_antigravity_hooks_status() -> AgentHooksStatus {
+    let Some(path) = antigravity_hooks_path() else {
+        return AgentHooksStatus {
+            installed: false,
+            file_exists: false,
+            unavailable: true,
+            detail: "home directory not resolvable".to_string(),
+        };
+    };
+    let path_str = path.to_string_lossy().into_owned();
+    match std::fs::read_to_string(&path) {
+        Ok(text) => AgentHooksStatus {
+            installed: antigravity_installed(&text),
+            file_exists: true,
+            unavailable: false,
+            detail: format!("hooks.json at {path_str}"),
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => AgentHooksStatus {
+            installed: false,
+            file_exists: false,
+            unavailable: false,
+            detail: format!("file not present at {path_str}"),
+        },
+        Err(err) => AgentHooksStatus {
+            installed: false,
+            file_exists: true,
+            unavailable: true,
+            detail: err.to_string(),
+        },
+    }
+}
+
+pub fn install_antigravity_hooks() -> Result<AgentHooksStatus, AppError> {
+    let dir = antigravity_config_dir()
+        .ok_or_else(|| AppError::Invalid("cannot resolve ~/.gemini/config/".into()))?;
+    let path = dir.join("hooks.json");
+
+    // The reporter lives beside the config because the command is dot-relative —
+    // see `antigravity_hook_command`. Same pattern as OpenCode's plugin and Pi's
+    // extension, which are also installed into the agent's own directory.
+    std::fs::create_dir_all(&dir)?;
+    let script = dir.join(if cfg!(windows) {
+        EVENT_HOOK_CMD_FILENAME
+    } else {
+        EVENT_HOOK_SH_FILENAME
+    });
+    write_if_changed(
+        &script,
+        if cfg!(windows) {
+            EVENT_HOOK_CMD
+        } else {
+            EVENT_HOOK_SH
+        },
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
+    }
+
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut doc: Value = serde_json::from_str(&existing).unwrap_or_else(|_| json!({}));
+    if !doc.is_object() {
+        doc = json!({});
+    }
+    doc[ANTIGRAVITY_HOOK_NAME] = antigravity_hook_value();
+    write_json_atomic(&path, &to_pretty(&doc))?;
+    Ok(read_antigravity_hooks_status())
+}
+
+pub fn uninstall_antigravity_hooks() -> Result<AgentHooksStatus, AppError> {
+    let dir = antigravity_config_dir()
+        .ok_or_else(|| AppError::Invalid("cannot resolve ~/.gemini/config/".into()))?;
+    let path = dir.join("hooks.json");
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        if let Ok(mut doc) = serde_json::from_str::<Value>(&text) {
+            if let Some(obj) = doc.as_object_mut() {
+                if obj.remove(ANTIGRAVITY_HOOK_NAME).is_some() {
+                    write_json_atomic(&path, &to_pretty(&doc))?;
+                }
+            }
+        }
+    }
+    // Our reporter copy goes too; anything else in that folder is not ours.
+    let script = dir.join(if cfg!(windows) {
+        EVENT_HOOK_CMD_FILENAME
+    } else {
+        EVENT_HOOK_SH_FILENAME
+    });
+    let _ = std::fs::remove_file(script);
+    Ok(read_antigravity_hooks_status())
+}
+
+/// Render the named hook the ADE writes (Settings "Show config").
+pub fn render_antigravity_hooks_json() -> Result<String, AppError> {
+    serde_json::to_string_pretty(&json!({ ANTIGRAVITY_HOOK_NAME: antigravity_hook_value() }))
+        .map_err(AppError::Serde)
 }
 
 // ---------------------------------------------------------------------------
@@ -965,15 +1327,88 @@ pub fn install_all(install: &HookInstall) {
     }
     let relay = &install.status_relay_script;
     log("claude", install_claude_hooks(relay));
-    log("gemini", install_gemini_hooks(relay));
     log("codex", install_codex_hooks(install));
     log("opencode", install_opencode_hooks());
     log("pi", install_pi_hooks());
+    log("grok", install_grok_hooks(install));
+    log("antigravity", install_antigravity_hooks());
+    // Gemini CLI is deliberately absent: it is discontinued upstream, so a fresh
+    // machine never gets its reporter. `install_gemini_hooks` stays wired for the
+    // Settings card, which is still offered to anyone who already has it
+    // installed so they can turn it off.
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn antigravity_hook_uses_a_path_free_command() {
+        // The whole point of the dot-relative form: the command carries no path,
+        // so a home directory with a space in it can't break it. Antigravity
+        // parses the command itself and honours no quoting — verified against the
+        // real CLI, where every quoted absolute form was skipped silently.
+        let cmd = antigravity_hook_command();
+        assert!(!cmd.contains(' ') || cmd.split(' ').count() == 2);
+        assert!(cmd.starts_with("./") || cmd.starts_with(".\\"));
+        assert!(cmd.ends_with(" antigravity"));
+    }
+
+    #[test]
+    fn antigravity_value_shapes_each_event_group() {
+        let v = antigravity_hook_value();
+        // Tool events take the grouped `matcher` + `hooks` wrapper…
+        assert!(v["PreToolUse"][0]["matcher"].is_string());
+        assert!(v["PreToolUse"][0]["hooks"].is_array());
+        // …while the loop events take a flat list of handlers.
+        assert_eq!(v["Stop"][0]["type"], json!("command"));
+        assert!(v["PreInvocation"][0]["command"].is_string());
+        // No prompt/permission event exists to subscribe to.
+        assert!(v.get("Notification").is_none());
+    }
+
+    #[test]
+    fn antigravity_install_key_is_detected_and_scoped() {
+        let doc = json!({ "someone-elses-hook": { "Stop": [] } });
+        assert!(!antigravity_installed(&doc.to_string()));
+        let mut doc = doc;
+        doc[ANTIGRAVITY_HOOK_NAME] = antigravity_hook_value();
+        let text = doc.to_string();
+        assert!(antigravity_installed(&text));
+        // Uninstall must leave the other hook alone.
+        let mut parsed: Value = serde_json::from_str(&text).unwrap();
+        parsed
+            .as_object_mut()
+            .unwrap()
+            .remove(ANTIGRAVITY_HOOK_NAME);
+        assert!(parsed.get("someone-elses-hook").is_some());
+        assert!(!antigravity_installed(&parsed.to_string()));
+    }
+
+    #[test]
+    fn grok_doc_subscribes_every_event_and_is_sweepable() {
+        let doc = grok_hooks_doc("C:/hooks/uxnan-event-hook.cmd grok");
+        for (event, _) in GROK_EVENTS {
+            assert!(doc["hooks"].get(event).is_some(), "missing {event}");
+        }
+        // The managed matcher has to recognise our own entry, or uninstall and
+        // re-install would stack duplicates.
+        let entry = &doc["hooks"]["Stop"][0]["hooks"][0];
+        assert!(is_managed_hook(entry, AgentKind::Grok));
+        assert!(!is_managed_hook(entry, AgentKind::Claude));
+    }
+
+    #[test]
+    fn unquotable_path_rejects_a_space_it_cannot_shorten() {
+        assert_eq!(
+            unquotable_path("C:\\hooks\\uxnan-event-hook.cmd").as_deref(),
+            Some("C:/hooks/uxnan-event-hook.cmd")
+        );
+        // A path that doesn't exist can't be shortened, so a spaced one yields
+        // `None` — the caller then reports the agent unavailable rather than
+        // writing a hook that would never fire.
+        assert_eq!(unquotable_path("/nope/a b/uxnan-event-hook.sh"), None);
+    }
 
     #[test]
     fn scripts_install_and_report_paths() {
@@ -983,7 +1418,11 @@ mod tests {
         assert!(Path::new(&install.codex_hook_sh).is_file());
         assert!(Path::new(&install.codex_hook_cmd).is_file());
         assert!(Path::new(&install.pi_extension_script).is_file());
+        assert!(Path::new(&install.event_hook_sh).is_file());
+        assert!(Path::new(&install.event_hook_cmd).is_file());
         assert!(install.codex_hooks_path.contains("hooks.json"));
+        assert!(install.grok_hooks_path.contains("uxnan-status.json"));
+        assert!(install.antigravity_hooks_path.contains("hooks.json"));
         assert!(install.pi_extension_path.contains(PI_EXTENSION_FILENAME));
         let _ = std::fs::remove_dir_all(&tmp);
     }

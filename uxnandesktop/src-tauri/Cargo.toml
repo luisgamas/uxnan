@@ -89,9 +89,15 @@ trash = "5"
 # paths without us re-implementing gitignore semantics. Synchronous → blocking pool.
 ignore = "0.4"
 
-# Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs).
+# Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs),
+# and GetShortPathNameW for the agent hooks — Grok parses a hook command as a
+# literal path with no quoting, so a hooks folder whose path contains a space is
+# only reachable through its 8.3 short form (agent_hooks.rs).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_System_Power"] }
+windows-sys = { version = "0.59", features = [
+  "Win32_System_Power",
+  "Win32_Storage_FileSystem",
+] }
 
 [dev-dependencies]
 tempfile = "3"

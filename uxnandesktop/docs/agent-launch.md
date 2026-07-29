@@ -138,11 +138,11 @@ in a POSIX shell and `"fix the bug"` under cmd. Just type the raw values in the
 ## Curated model lists (Claude & Gemini)
 
 Most agent CLIs enumerate their own models and the ADE asks them directly
-(`opencode models`, `pi --list-models`, `codex app-server` `model/list`). **Claude
-Code and Gemini cannot**, so the ADE ships hand-kept tables — `CLAUDE_MODELS` and
-`GEMINI_MODELS` in [`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) —
-that fill the model pickers in **Settings → AI commit** and **Settings → GitHub →
-AI PR body**.
+(`opencode models`, `agy models`, `grok models`, `pi --list-models`,
+`codex app-server` `model/list`). **Claude Code and Gemini cannot**, so the ADE
+ships hand-kept tables — `CLAUDE_MODELS` and `GEMINI_MODELS` in
+[`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) — that fill the model
+pickers in **Settings → AI commit** and **Settings → GitHub → AI PR body**.
 
 **Those tables have twins in the bridge, and every one of them is maintained by
 hand.** When Anthropic (or Google) ships or retires a model, update **both** sides
@@ -152,7 +152,7 @@ in the same change set — updating one leaves the other surface a version behin
 |---|---|---|
 | Desktop Claude | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
 | Bridge Claude | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the mobile app's model picker (`agent/models`) |
-| Desktop Gemini | `uxnandesktop/src-tauri/src/agentcli.rs` → `GEMINI_MODELS` | the ADE's AI commit-message / PR-body pickers |
+| Desktop Gemini | `uxnandesktop/src-tauri/src/agentcli.rs` → `GEMINI_MODELS` | only a config that still names Gemini — the CLI is discontinued and is no longer offered in those pickers |
 | Bridge Gemini | `bridge/src/adapters/gemini-adapter.ts` → `GEMINI_MODELS` | the mobile app's model picker |
 
 Keep the **same ids, labels and order** across a pair, newest/most capable first.

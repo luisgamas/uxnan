@@ -214,7 +214,7 @@ keys and no provider SDK.
 | Setting | What it does |
 |---|---|
 | **Enable AI PR authoring** | Master switch; adds the "Generate" button to the description field. **Off by default** — nothing runs unasked. |
-| **Agent** | Claude Code / Codex / Gemini CLI / OpenCode / Pi, with logos. Agents that aren't installed stay listed but **disabled**, labeled "not found", rather than silently missing. |
+| **Agent** | Claude Code / Codex / OpenCode / Grok / Antigravity, with logos. Agents that aren't installed stay listed but **disabled**, labeled "not found", rather than silently missing. |
 | **Model** | The agent's own models, discovered from its CLI. A **discovery failure shows the CLI's own message** — "this CLI is broken / not signed in" and "this agent has no models" are different problems. |
 | **Language** | `auto`, or a language stated verbatim in the prompt. |
 | **Instructions** | Free-form text appended to every draft's prompt. |
@@ -222,11 +222,18 @@ keys and no provider SDK.
 The agent/model/language/instructions are read from settings **on the backend** (like AI
 commit), so what runs is always what's configured.
 
-Model discovery notes, by agent: **Claude** and **Gemini** use a built-in list; **Codex**
-is queried live via `codex app-server` (`model/list`); **OpenCode** via `opencode models`;
-**Pi** via `pi --list-models`. Pi only lists models whose **provider is authenticated** —
-if it reports none, sign in to a provider (`/login`) or check that the app inherits the
-same API-key environment as your shell.
+Model discovery notes, by agent: **Claude** uses a built-in list; **Codex** is queried
+live via `codex app-server` (`model/list`); **OpenCode** via `opencode models`;
+**Antigravity** via `agy models`; **Grok** via `grok models`. Grok and Antigravity only
+answer once their CLI is signed in — if a list comes back empty, run the CLI once and
+sign in there.
+
+The offered agents are a **curated subset** of the CLIs the backend can drive headlessly
+(`src/lib/aiCommitPresets.ts`): an agent earns a place only once it also answers a model
+list, or its model picker sits empty and the entry looks broken. **Gemini CLI is no longer
+offered** — Google discontinued it in favour of Antigravity — though the backend can still
+run it, so a config that already names it keeps working and shows it flagged as
+discontinued until you pick another.
 
 Settings persist in `AppSettings.github` (`GithubSettings`); all fields default, so
 older state loads unchanged.

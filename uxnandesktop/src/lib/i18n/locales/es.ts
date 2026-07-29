@@ -553,6 +553,8 @@ export const es: Record<MessageKey, string> = {
   "providers.addProvider": "Agregar un proveedor",
   "providers.addPick": "Elegir un proveedor…",
   "providers.notDetected": "no detectado",
+  "providers.deprecatedDesc":
+    "Su fabricante descontinuó esta CLI, así que ya no se ofrece al agregar un proveedor; la tuya se sigue leyendo con normalidad.",
   "providers.empty": "Aún no hay proveedores. Agrega uno arriba para ver su uso.",
   "providers.showInStatusBar": "Mostrar en la barra de estado",
   "providers.noWindowsToPick": "Aún no hay ventanas de cuota — actualiza tras iniciar sesión.",
@@ -1031,6 +1033,7 @@ export const es: Record<MessageKey, string> = {
   "settings.addAllInstalled": "Agregar los instalados",
   "settings.agentAdded": "agregado",
   "settings.agentNotFound": "no encontrado",
+  "settings.agentDeprecated": "descontinuado — elige otro",
   "settings.detecting": "Verificando qué agentes están instalados…",
   "settings.yourAgents": "Tus agentes",
   "settings.addCustomAgent": "Agregar agente personalizado",
@@ -1064,6 +1067,12 @@ export const es: Record<MessageKey, string> = {
   "hooks.piTitle": "Pi",
   "hooks.piDesc":
     "Instala la extensión de estado del ADE en `~/.pi/agent/extensions` para que Pi reporte trabajando / listo en el propio proceso (no tiene señal de permiso).",
+  "hooks.grokTitle": "Grok",
+  "hooks.grokDesc":
+    "Escribe su propio archivo en `~/.grok/hooks/`, así que nunca toca tus hooks. Grok habla los eventos de Claude Code, de modo que reporta todo el rango — incluido un `blocked` real cuando un turno muere por un error de la API.",
+  "hooks.antigravityTitle": "Antigravity",
+  "hooks.antigravityDesc":
+    "Agrega un hook con nombre propio a `~/.gemini/config/hooks.json`. Antigravity solo expone su bucle de ejecución — sin evento de prompt ni de permiso — así que reporta trabajando / listo con precisión y nunca dice que te está esperando.",
   "hooks.statusInstalled": "Instalado en {path}",
   "hooks.statusInstalledShort": "Instalado",
   "hooks.statusNotInstalled": "No instalado",

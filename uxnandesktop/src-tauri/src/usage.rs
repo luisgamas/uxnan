@@ -14,6 +14,16 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// A coding CLI whose usage we can read from local files / its stored token.
+///
+/// FOR-DEV: Antigravity (`agy`) is missing here on purpose. Its quota lives
+/// behind the same Code Assist API [`read_gemini`] already calls, but `agy`
+/// stores its OAuth token in the OS keyring rather than on disk, so there is
+/// nothing to read without a new keyring dependency and a posture decision — see
+/// `FOR-DEV.md` → "Providers (usage statistics)".
+///
+/// `Gemini` is kept although the Gemini CLI is discontinued upstream: the
+/// frontend hides it from the picker but still reads it for anyone who activated
+/// it before (`src/lib/usageCatalog.ts`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UsageProvider {

@@ -1,15 +1,21 @@
 //! Optional AI commit-message generation (spec `02c` §4.5).
 //!
-//! Drives one of the supported coding-agent CLIs (Claude Code, Codex, Gemini,
-//! OpenCode, Pi — resolved by [`crate::agentcli`]) **non-interactively** (a
-//! one-shot subprocess, *not* a PTY) with the worktree's staged diff, and returns
-//! the drafted message. The user only picks an **agent** and a **model** in
-//! Settings → AI commit; no command/flags to configure. No provider API/SDK/keys
-//! — it runs the same local CLI the user already uses interactively.
+//! Drives one of the offered coding-agent CLIs (Claude Code, Codex, OpenCode,
+//! Grok, Antigravity — resolved by [`crate::agentcli`], curated list in
+//! `src/lib/aiCommitPresets.ts`) **non-interactively** (a one-shot subprocess,
+//! *not* a PTY) with the worktree's staged diff, and returns the drafted message.
+//! The user only picks an **agent** and a **model** in Settings → AI commit; no
+//! command/flags to configure. No provider API/SDK/keys — it runs the same local
+//! CLI the user already uses interactively.
+//!
+//! The run goes through [`crate::agentrun::run_headless`], the same one-shot
+//! runner the orchestration engine and automations use, so each CLI is handed its
+//! prompt the way it actually wants it (stdin / prompt file / argv) rather than
+//! always as a command-line argument.
 //!
 //! Guardrails: disabled by default; refuses when the agent isn't installed or
-//! nothing is staged; caps the diff fed to the agent; runs with stdin closed and
-//! a hard timeout (and `kill_on_drop`) so a hung CLI can never wedge the app.
+//! nothing is staged; caps the diff fed to the agent; runs under a hard timeout
+//! (with `kill_on_drop`) so a hung CLI can never wedge the app.
 
 use std::process::Stdio;
 use std::time::Duration;
@@ -20,8 +26,10 @@ use crate::agentcli::{self, AgentModel};
 use crate::error::AppError;
 use crate::model::{AiCommitSettings, GithubSettings};
 
-/// Maximum diff size (bytes) fed to the agent — keeps the prompt within CLI/arg
-/// limits and avoids paying for a huge context on a sprawling changeset.
+/// Maximum diff size (bytes) fed to the agent — avoids paying for a huge context
+/// on a sprawling changeset. It is no longer what keeps the prompt spawnable:
+/// the runner picks each CLI's own prompt channel, and only the argv-only agents
+/// are additionally capped there (`agentrun::MAX_PROMPT_BYTES`).
 const MAX_DIFF_BYTES: usize = 24_000;
 
 /// How long to wait for a generation run before giving up.
@@ -94,11 +102,13 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
         ));
     }
     let agent = cfg.agent_id.trim();
-    let Some(resolved) = agentcli::resolve(agent) else {
+    // Checked up front so an unconfigured agent fails before we read the diff,
+    // and with wording that points at the setting; the runner resolves it again.
+    if agentcli::resolve(agent).is_none() {
         return Err(AppError::Agent(format!(
             "the selected agent ('{agent}') isn't installed"
         )));
-    };
+    }
 
     let diff = crate::git::staged_diff(worktree_path).await?;
     if diff.trim().is_empty() {
@@ -108,15 +118,7 @@ pub async fn generate(worktree_path: &str, cfg: &AiCommitSettings) -> Result<Str
     }
 
     let prompt = build_prompt(cfg, &diff);
-    let args = agentcli::build_args(
-        agent,
-        &cfg.model,
-        agentcli::PromptSource::Argv(&prompt),
-        false,
-    )
-    .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
-
-    let raw = run_generate(&resolved, &args, worktree_path).await?;
+    let raw = run_agent(agent, &cfg.model, &prompt, worktree_path).await?;
     let message = sanitize_message(&raw);
     if message.is_empty() {
         return Err(AppError::Agent(
@@ -142,11 +144,13 @@ pub async fn draft_pr(
     if agent.is_empty() {
         return Err(AppError::Invalid("no AI agent configured".to_string()));
     }
-    let Some(resolved) = agentcli::resolve(agent) else {
+    // Same as `generate`: fail on the setting before doing any work, in wording
+    // that names the setting; the runner resolves the agent again itself.
+    if agentcli::resolve(agent).is_none() {
         return Err(AppError::Agent(format!(
             "the selected agent ('{agent}') isn't installed"
         )));
-    };
+    }
     if diff.trim().is_empty() {
         return Err(AppError::Invalid(
             "no changes to summarize for the PR".to_string(),
@@ -154,9 +158,7 @@ pub async fn draft_pr(
     }
     let prompt = build_pr_prompt(cfg, diff);
     let model = cfg.ai_model.as_deref().unwrap_or("");
-    let args = agentcli::build_args(agent, model, agentcli::PromptSource::Argv(&prompt), false)
-        .ok_or_else(|| AppError::Agent(format!("unsupported agent '{agent}'")))?;
-    let raw = run_generate(&resolved, &args, worktree_path).await?;
+    let raw = run_agent(agent, model, &prompt, worktree_path).await?;
     let body = sanitize_message(&raw);
     if body.is_empty() {
         return Err(AppError::Agent(
@@ -191,40 +193,39 @@ fn build_pr_prompt(cfg: &GithubSettings, diff: &str) -> String {
     p
 }
 
-/// Run the resolved agent for a generation turn (stdin closed, hard timeout,
-/// `kill_on_drop`); return stdout. Maps spawn / non-zero exit / timeout to
-/// [`AppError::Agent`].
-async fn run_generate(
-    resolved: &agentcli::Resolved,
-    args: &[String],
+/// Run `agent_id` for one generation turn and return its stdout, treating a
+/// non-zero exit as a failure carrying the CLI's own stderr.
+///
+/// The run itself is [`crate::agentrun::run_headless`] — the same one-shot runner
+/// the orchestration engine and automations use — so **how the prompt reaches the
+/// CLI is decided per agent** (`agentcli::prompt_delivery`) instead of always
+/// being an `argv` argument. That is not a tidiness point: a command line is
+/// bounded by the OS (~32 KiB total on Windows) and the prompt carries a diff, so
+/// the agents that can take it via stdin (Claude, Codex, OpenCode) or a prompt
+/// file (Grok) now do. It also makes Codex's behaviour deliberate rather than
+/// lucky — `codex exec` reads stdin *even when the prompt is a positional*, so it
+/// only avoided hanging because the old code happened to close stdin.
+///
+/// `autonomous` is `false`: writing a commit message or a PR body is a
+/// summarizing turn, and nothing here should be editing files unattended.
+async fn run_agent(
+    agent_id: &str,
+    model: &str,
+    prompt: &str,
     cwd: &str,
 ) -> Result<String, AppError> {
-    let mut cmd = crate::winproc::command(&resolved.program);
-    cmd.args(&resolved.prepend)
-        .args(args)
-        .current_dir(cwd)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+    let result = crate::agentrun::run_headless(
+        agent_id,
+        model,
+        prompt,
+        cwd,
+        Some(GENERATE_TIMEOUT.as_millis() as u64),
+        false,
+    )
+    .await?;
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| AppError::Agent(format!("failed to start the agent: {e}")))?;
-
-    let output = match tokio::time::timeout(GENERATE_TIMEOUT, child.wait_with_output()).await {
-        Ok(res) => res.map_err(|e| AppError::Agent(e.to_string()))?,
-        Err(_) => {
-            return Err(AppError::Agent(format!(
-                "the agent timed out after {}s",
-                GENERATE_TIMEOUT.as_secs()
-            )));
-        }
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let detail = stderr.trim();
+    if result.exit_code != Some(0) {
+        let detail = result.stderr.trim();
         let detail = if detail.is_empty() {
             "no error output".to_string()
         } else {
@@ -232,7 +233,7 @@ async fn run_generate(
         };
         return Err(AppError::Agent(format!("the agent failed: {detail}")));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    Ok(result.stdout)
 }
 
 /// Run a one-shot model-list command and return its stdout.
