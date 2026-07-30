@@ -549,6 +549,57 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 ## Deferred follow-ups (non-blocking) — by area
 
 **Terminal**
+- [ ] **OPTIONAL — persistent PTY host, so a session never has to be resumed at
+      all. Needs the maintainer's go-ahead before any code is written: it changes
+      what uxnan does while it is closed.**
+
+      *The idea.* Today the PTYs die with the app and a restored tab relaunches
+      the agent's CLI with its resume flag — the conversation comes back, but the
+      process was gone and the TUI has to redraw itself. If instead the PTYs lived
+      in a small **host process that outlives the window**, reopening uxnan would
+      just re-attach: the agent never stopped, nothing is typed into the shell,
+      and it works for a conversation that never happened *and* for whatever else
+      was running in a tab (a dev server, a watcher) — none of which the resume
+      path can bring back.
+
+      *Why it is a maintainer call, not a technical one.* It trades uxnan's
+      current posture — close it and nothing of ours is left running — for
+      continuity. The agent CLIs stay resident (idle, but resident) after quit.
+      Decide first: is that acceptable at all; on by default or opt-in; and what
+      ends the host's life (last session closed / an idle timeout / a "stop
+      everything on quit" switch). Everything below is wasted work until that is
+      answered.
+
+      *The route, if it is approved.* The groundwork is already in place, which is
+      why this is worth writing down rather than forgetting: `PtyManager::create`
+      (`src-tauri/src/pty.rs`) is **already create-or-attach** — a second create
+      for a live id keeps the running session — and every terminal tab already
+      persists a **stable `sid`** across restarts (`terminals.svelte.ts`, today
+      used to key its scrollback snapshot). Those are the two hard parts of the
+      idea already solved. What is missing:
+      - a host process. Reuse the pattern that already exists: the binary
+        branches on a flag in `main.rs` before Tauri builds a window (see
+        `--automation-run`), so `--pty-host` needs no second executable;
+      - a local transport with a token — named pipe on Windows, unix socket
+        elsewhere — plus a pid/health file, a **protocol version**, and
+        stale-host detection so a host left behind by a previous *version* is
+        retired instead of talked to;
+      - **output history in the host.** `pty.rs` deliberately keeps none today
+        (the frontend's xterm is the single source of scrollback — see the module
+        header, which explains why replaying raw PTY bytes was unsound). A host
+        must hold a bounded per-session ring and hand it over on attach, with an
+        aggregate memory cap and a documented drop policy;
+      - `pty_create` keyed on the tab's `sid` instead of its per-run tab id, so
+        "create or attach" survives a restart rather than only a webview reload;
+      - orphan handling: sessions whose tab no longer exists, and a host with no
+        client for a long time.
+
+      *What must NOT change.* The frontend contract — the same Tauri commands and
+      the same `pty:output:<id>` / `pty:exit:<id>` events — so the host stays
+      behind `pty.rs` and the UI needs no rewrite. And the current resume path
+      stays exactly as it is: it is the fallback for every case where the host
+      isn't there (machine rebooted, app updated, host crashed), so it is never
+      dead code.
 - [ ] Keyboard protocol — extend the Kitty/CSI-u surface beyond the current
       encoder: functional/navigation keys as CSI-u (arrows, F-keys, Home/End,
       keypad — they fall through to xterm's legacy encoding today), the
