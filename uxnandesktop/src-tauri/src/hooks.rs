@@ -636,7 +636,9 @@ async fn handle_hook(
     let Some(agent_id) = agent_id else {
         return StatusCode::BAD_REQUEST;
     };
-    let agent_type = header_str(&headers, AGENT_TYPE_HEADER).or_else(|| body_get("agentType"));
+    let agent_type = header_str(&headers, AGENT_TYPE_HEADER)
+        .or_else(|| body_get("agentType"))
+        .and_then(|t| normalize_agent_type(&t));
 
     // The raw provider event object: an explicit `source` field (relay/plugin
     // envelope) or the whole body (a raw event forwarded by a shell curl).
@@ -780,15 +782,38 @@ async fn handle_hook(
     StatusCode::NO_CONTENT
 }
 
+/// The placeholder an early build's shared Codex/Gemini bridge reported when its
+/// (since-removed) `UXNAN_AGENT_TYPE` env var was unset. It is not an agent id:
+/// accepting it mislabels the tab's captured session with a type that has no
+/// resume entry, and no `normalize_event` arm matches it, so the state is dropped
+/// too. The script itself is swept on startup (`agent_hooks`); this rejects the
+/// value at the door for a config we never rewrite.
+const PLACEHOLDER_AGENT_TYPE: &str = "agent";
+
+/// Canonicalize a reported agent type: trimmed and lowercased (a config may hold
+/// any casing), blank treated as absent, and the legacy placeholder rejected.
+/// An unrecognized-but-real type is kept — the generic wrapper takes the type as
+/// a user-supplied argument, so the server is deliberately not a whitelist.
+fn normalize_agent_type(raw: &str) -> Option<String> {
+    let t = raw.trim().to_ascii_lowercase();
+    if t.is_empty() || t == PLACEHOLDER_AGENT_TYPE {
+        return None;
+    }
+    Some(t)
+}
+
 /// Field names providers use for their session id, across the wired agents
-/// (Claude/Gemini: `session_id`; OpenCode plugin: `sessionID`; other spellings
-/// kept for robustness — the value is sanitized regardless of its source).
-const SESSION_ID_KEYS: [&str; 6] = [
+/// (Claude/Gemini: `session_id`; OpenCode plugin: `sessionID`; Antigravity:
+/// `conversationId`; other spellings kept for robustness — the value is
+/// sanitized regardless of its source).
+const SESSION_ID_KEYS: [&str; 8] = [
     "session_id",
     "sessionID",
     "sessionId",
     "session-id",
     "conversation_id",
+    "conversationId",
+    "conversationID",
     "conversation-id",
 ];
 /// Field names carrying a session/transcript FILE path (Pi resumes by file;
@@ -967,8 +992,30 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .ends_with("rollout-x.jsonl"));
+        // Antigravity: `conversationId` (camelCase) — the id `agy --conversation`
+        // takes. Its `conversation_id` snake spelling was accepted before this,
+        // but the CLI emits the camel one, so nothing was ever captured.
+        let agy = json!({ "conversationId": "0f6b9e14-77aa-4c1e-9f0e-2b3c4d5e6f70" });
+        assert_eq!(
+            extract_session(&agy, 2).expect("antigravity session").id,
+            "0f6b9e14-77aa-4c1e-9f0e-2b3c4d5e6f70"
+        );
         // No recognized key → None.
         assert!(extract_session(&json!({ "prompt": "hi" }), 1).is_none());
+    }
+
+    #[test]
+    fn agent_type_normalizes_and_rejects_the_legacy_placeholder() {
+        assert_eq!(normalize_agent_type("codex").as_deref(), Some("codex"));
+        // Casing/whitespace from a hand-edited config.
+        assert_eq!(normalize_agent_type("  Codex \n").as_deref(), Some("codex"));
+        // A custom wrapper agent keeps its user-chosen type: the server is not a
+        // whitelist, it only rejects the value that is provably not an agent.
+        assert_eq!(normalize_agent_type("my-cli").as_deref(), Some("my-cli"));
+        // The pre-relay bridge's fallback, in any casing → absent.
+        assert!(normalize_agent_type("agent").is_none());
+        assert!(normalize_agent_type("AGENT").is_none());
+        assert!(normalize_agent_type("   ").is_none());
     }
 
     #[test]

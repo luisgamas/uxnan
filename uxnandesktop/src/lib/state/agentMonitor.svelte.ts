@@ -28,6 +28,10 @@ const VISUAL_IDLE_MS = 3_000;
 class AgentMonitor {
   /** When each tab last produced output (epoch ms). */
   private lastOutputAt = new Map<string, number>();
+  /** Tabs an agent process has been detected in during this app run. Gates the
+   *  "agent exited" edge so a restore's first "no agent" report — emitted before
+   *  the resumed TUI has started — can't declare a live session dead. */
+  private agentSeen = new Set<string>();
   /** State inferred from each tab's terminal title (OSC), Layer 2. Reactive so
    *  the sidebar/tab indicators update when a title changes. */
   private titleState = $state<Record<string, AgentStatus>>({});
@@ -52,7 +56,20 @@ class AgentMonitor {
         // Keep the captured session's liveness current: whether an agent
         // process is (still) running in this tab decides if a restored/woken
         // tab AUTO-relaunches its session's TUI or only pre-types the resume.
-        if (tab.agentSession) tab.agentSession.live = !!e.payload.command;
+        //
+        // Only an OBSERVED exit — we saw the agent, then we didn't — marks a
+        // session dead. The backend emits on change from an empty map, so right
+        // after a restore every tab reports "no agent" once: the shell is up but
+        // the resumed TUI hasn't started yet. Believing that first report
+        // declared the just-restored sessions dead, and from then on they were
+        // only ever pre-typed — the tab you were working in survived (its hooks
+        // kept re-stamping it live) while the idle ones stopped coming back.
+        if (e.payload.command) {
+          this.agentSeen.add(tab.id);
+          terminals.noteAgentLiveness(tab.id, true);
+        } else if (this.agentSeen.delete(tab.id)) {
+          terminals.noteAgentLiveness(tab.id, false);
+        }
         // A tab launched via uxnan already carries its true identity (set from the
         // agent profile). Process detection can misidentify a wrapper agent by an
         // inner helper it spawns (e.g. OpenClaude→claude, Zero→a child), so never
@@ -115,6 +132,9 @@ class AgentMonitor {
     // Prune tracking for tabs that have closed.
     for (const id of this.lastOutputAt.keys()) {
       if (!live.has(id)) this.lastOutputAt.delete(id);
+    }
+    for (const id of this.agentSeen) {
+      if (!live.has(id)) this.agentSeen.delete(id);
     }
     for (const id of Object.keys(this.titleState)) {
       if (!live.has(id)) {

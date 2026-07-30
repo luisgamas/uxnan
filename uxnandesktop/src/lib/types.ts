@@ -260,6 +260,10 @@ export interface AppSettings {
   agentNotifications?: boolean;
   /** Keep the system awake while an agent is working (opt-in). Default off. */
   preventSleep?: boolean;
+  /** Name each agent session at launch for the CLIs that accept a caller-chosen
+   *  id, so a tab is resumable from the moment the agent starts rather than only
+   *  once a hook has reported one (see `agentSessionId.ts`). Default on. */
+  pinAgentSessions?: boolean;
   /** Auto-install the ADE-managed Claude Code hooks block on startup. Set false
    *  when the user uninstalls so it isn't re-added next launch. Default on. */
   autoInstallHooks?: boolean;
@@ -991,6 +995,10 @@ export type SavedTab =
         file?: string;
         /** TUI still running at close → restore auto-relaunches it. */
         live?: boolean;
+        /** An id uxnan named at launch that the provider hasn't reported back,
+         *  so the conversation was never written. Absent = provider-reported.
+         *  See `CapturedAgentSession.pending`. */
+        pending?: boolean;
         capturedAt: number;
       };
     }
@@ -1064,6 +1072,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   agentShellProfileId: null,
   agentNotifications: true,
   preventSleep: false,
+  pinAgentSessions: true,
   autoInstallHooks: true,
   language: "system",
   keybindings: {},

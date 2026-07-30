@@ -5,6 +5,59 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — agent sessions came back for one tab, and never for Codex
+
+- **A reporter from an older build was mislabelling every Codex session.** Its
+  pre-relay hook script (`uxnan-agent-status-hook.cjs`, shared by Codex and
+  Gemini CLI) is no longer shipped, but it stayed registered in
+  `~/.codex/hooks.json` and kept running: it read its agent type from a
+  `UXNAN_AGENT_TYPE` env var the ADE stopped injecting, so it reported the
+  literal `"agent"`. That is not an agent id — the tab's captured session was
+  stamped with a type the resume registry has no entry for (so Codex was never
+  offered a resume, however well its id had been captured), and no
+  `normalize_event` arm matched it either, so the state was dropped. Being a Node
+  program it also outran the current `curl` hook, so its POST usually landed last
+  and won. Startup now sweeps the legacy reporters from the hooks dir **and** from
+  every agent config, the server rejects the `"agent"` placeholder at the door,
+  and a report that names no agent no longer blanks an identity we already have
+  (it used to take the tab's resume command down with it).
+  Sessions **already captured** under that placeholder are repaired on the way
+  back rather than written off: the transcript path the same report carried says
+  which CLI it really was (`~/.codex/sessions/…`, `~/.claude/projects/…`, …), so
+  the tab recovers its agent and its resume. A session that can't be placed keeps
+  what it had — running the wrong CLI's command line is worse than offering
+  nothing.
+- **Antigravity's session id was thrown away.** Its hook reports
+  `conversationId`, the one spelling the server didn't accept (snake-case
+  `conversation_id` was). Both are read now.
+- **Only the tab you had been working in came back.** Whether a restored tab
+  auto-relaunches its agent or merely pre-types the resume hangs on a `live`
+  flag, and the flag was wrong twice over: writing it didn't mark the layout
+  dirty, so it reached disk only if something else happened to trigger a save;
+  and process detection emits on change from an empty map, so right after a
+  restore every tab reported "no agent" once — before the resumed TUI had
+  started — which declared the just-restored sessions dead. The tab you were
+  using survived on its own hook traffic while the idle ones quietly stopped
+  coming back. Liveness is now only lowered by an **observed** exit (we saw the
+  agent, then we didn't), and the write persists.
+
+### Added — Grok and Antigravity resume, and a session is named before it exists
+
+- **`grok --resume <id>` and `agy --conversation <id>`** joined the resume
+  registry (verified against each CLI's own help), so those tabs come back like
+  Claude's, Codex's, OpenCode's and Pi's.
+- **Sessions are named at launch instead of discovered afterwards.** A hook only
+  reports a session once the agent has actually done something, so a tab you
+  opened and never wrote to had nothing to come back to. For the CLIs that accept
+  a caller-chosen id — `claude`/`grok`/`pi --session-id`, `agy --conversation` —
+  uxnan now picks the id itself and stamps it on the tab as the agent starts.
+  Because `--session-id` and `--resume` are exact complements (each refuses the
+  other's case), a session the provider never wrote is reopened by claiming an id
+  rather than resuming one — and it claims a **fresh** id, since claiming the
+  same one twice is precisely what fails. Off switch: **Settings → Agents → Name
+  agent sessions at launch** (on by default; it adds one flag to the launched
+  command line).
+
 ## [0.0.24] - 2026-07-29
 
 ### Added

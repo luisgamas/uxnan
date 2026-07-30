@@ -77,6 +77,29 @@ const OPENCODE_PLUGIN_SRC_FILENAME: &str = "uxnan-opencode-status.js";
 const PI_EXTENSION_SRC_FILENAME: &str = "uxnan-pi-status.js";
 const EVENT_HOOK_SH_FILENAME: &str = "uxnan-event-hook.sh";
 const EVENT_HOOK_CMD_FILENAME: &str = "uxnan-event-hook.cmd";
+
+/// Reporter scripts earlier builds wrote into the hooks dir and no longer ship.
+/// They are swept from the dir (and from every agent config — see
+/// [`is_legacy_reporter`]) because a stale one is not merely dead weight: the
+/// pre-relay `uxnan-agent-status-hook.cjs` read its agent type from a
+/// `UXNAN_AGENT_TYPE` env var we stopped injecting, so it reported the literal
+/// `"agent"` — mislabelling the tab's captured session (which then has no resume
+/// entry) and dropping the state (no `normalize_event` arm matches).
+const LEGACY_SCRIPT_FILENAMES: &[&str] = &[
+    "uxnan-agent-status-hook.cjs",
+    "uxnan-claude-hook.cjs",
+    "uxnan-opencode-hook.cjs",
+    "uxnan-opencode-status-plugin.js",
+];
+
+/// Filename stems of the legacy reporters, matched inside a config's hook entry.
+/// Kept apart from [`LEGACY_SCRIPT_FILENAMES`] so the match survives a renamed
+/// extension, and stem-only so an absolute path in any spelling still hits.
+const LEGACY_REPORTER_STEMS: &[&str] = &[
+    "uxnan-agent-status-hook",
+    "uxnan-claude-hook",
+    "uxnan-opencode-hook",
+];
 const WRAPPER_BASH_FILENAME: &str = "uxnan-hook-wrapper.sh";
 const WRAPPER_POWERSHELL_FILENAME: &str = "uxnan-hook-wrapper.ps1";
 const WRAPPER_CMD_FILENAME: &str = "uxnan-hook-wrapper.cmd";
@@ -362,6 +385,10 @@ pub(crate) fn write_text_atomic(path: &Path, text: &str) -> Result<(), AppError>
 /// Settings UI needs. `+x` is set on the POSIX scripts a shell runs directly.
 pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     std::fs::create_dir_all(dir)?;
+    // Drop reporters earlier builds wrote here before writing the current set, so
+    // a config entry that still points at one becomes a no-op even if that config
+    // is never rewritten (an agent we don't auto-install for, say).
+    sweep_legacy_scripts(dir);
     let dir = dir.to_path_buf();
     let write = |name: &str, content: &str| -> Result<PathBuf, AppError> {
         let path = dir.join(name);
@@ -599,6 +626,13 @@ fn hook_text(hook: &Value) -> String {
 /// sweeps the stale entry without touching user-authored hooks).
 fn is_managed_hook(hook: &Value, kind: AgentKind) -> bool {
     let text = fwd(&hook_text(hook));
+    // A reporter from an earlier build is ours whatever config it sits in, so it
+    // is swept regardless of `kind` — the pre-relay one actively breaks the
+    // current install (see `LEGACY_SCRIPT_FILENAMES`), and Codex/Gemini shared it,
+    // so it carries no agent tag to match on.
+    if is_legacy_reporter(&text) {
+        return true;
+    }
     match kind {
         // `uxnan-claude-hook` is the legacy dedicated cjs (pre-relay); match it too
         // so an upgrade sweeps the stale entry that now points at a deleted script.
@@ -618,6 +652,28 @@ fn is_managed_hook(hook: &Value, kind: AgentKind) -> bool {
         AgentKind::Codex => {
             text.contains("uxnan-codex-hook")
                 || (text.contains(STATUS_RELAY_FILENAME) && text.contains("codex"))
+        }
+    }
+}
+
+/// Whether a hook entry's text references a reporter script an earlier build
+/// installed and we no longer ship. `text` must already be forward-slashed
+/// ([`fwd`]) and is matched case-insensitively — Windows configs hold the path in
+/// whatever spelling the writing build used.
+fn is_legacy_reporter(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    LEGACY_REPORTER_STEMS.iter().any(|s| lower.contains(s))
+}
+
+/// Delete the reporter scripts earlier builds left in our hooks dir. Exact
+/// filenames only (never a glob), and only inside the dir we own, so a file the
+/// user put there is never touched. Missing files are not an error — this runs
+/// on every startup.
+fn sweep_legacy_scripts(dir: &Path) {
+    for name in LEGACY_SCRIPT_FILENAMES {
+        let path = dir.join(name);
+        if path.is_file() {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
@@ -1519,6 +1575,61 @@ mod tests {
             merge_event(&mut doc, event, m, &entry, AgentKind::Claude);
         }
         assert!(contains_managed(&to_pretty(&doc), AgentKind::Claude));
+    }
+
+    #[test]
+    fn codex_sweeps_the_pre_relay_native_bridge() {
+        // The pre-relay bridge Codex and Gemini shared. It read its agent type
+        // from a `UXNAN_AGENT_TYPE` env var we no longer inject, so it reported
+        // the literal "agent": the tab's captured session was stamped with a type
+        // that has no resume entry (silently disabling resume for Codex), and the
+        // state was dropped for want of a matching `normalize_event` arm. Left
+        // registered it also outraces the current curl hook — node starts slower,
+        // so its POST lands last and wins.
+        let legacy = json!({
+            "type": "command",
+            "command": "node \"C:\\\\Users\\\\x\\\\hooks\\\\uxnan-agent-status-hook.cjs\"",
+            "statusMessage": "Reporting status to Uxnan"
+        });
+        // Swept whatever config it sits in: it carries no agent tag of its own.
+        assert!(is_managed_hook(&legacy, AgentKind::Codex));
+        assert!(is_managed_hook(&legacy, AgentKind::Gemini));
+        let mut doc = json!({
+            "hooks": {
+                "PostToolUse": [
+                    { "hooks": [legacy.clone()], "matcher": ".*" },
+                    // A user's own hook in the same bucket must survive.
+                    { "hooks": [{ "type": "command", "command": "mine.sh" }] }
+                ]
+            }
+        });
+        strip_managed(&mut doc, AgentKind::Codex);
+        let out = to_pretty(&doc);
+        assert!(
+            !out.contains("uxnan-agent-status-hook"),
+            "legacy bridge swept"
+        );
+        assert!(out.contains("mine.sh"), "user hook preserved");
+    }
+
+    #[test]
+    fn legacy_scripts_are_swept_from_our_hooks_dir_only_by_exact_name() {
+        let dir = std::env::temp_dir().join(format!("uxnan-sweep-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = dir.join("uxnan-agent-status-hook.cjs");
+        let current = dir.join(STATUS_RELAY_FILENAME);
+        // A same-prefix file we never wrote: exact names only, never a glob.
+        let foreign = dir.join("uxnan-agent-status-hook.cjs.bak");
+        for f in [&legacy, &current, &foreign] {
+            std::fs::write(f, "x").unwrap();
+        }
+        sweep_legacy_scripts(&dir);
+        assert!(!legacy.exists(), "legacy script removed");
+        assert!(current.exists(), "current script kept");
+        assert!(foreign.exists(), "unknown file untouched");
+        // Idempotent: a second pass over a clean dir is a no-op, not an error.
+        sweep_legacy_scripts(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
