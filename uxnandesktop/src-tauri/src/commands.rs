@@ -58,10 +58,12 @@ pub async fn quick_commands_set(
 // `pet.json` + spritesheet format the Codex CLI uses (so community packs load
 // unmodified). uxnan bundles only its own pet — see `pets.rs`.
 
-/// Resolve `<app-data>`, the root every pet path hangs off.
-fn pets_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, CommandError> {
+/// Resolve `<app-data>` — the root every persisted file hangs off, honouring the
+/// `UXNAN_DATA_DIR` override so a disposable profile really is self-contained.
+fn app_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, CommandError> {
     app.path()
         .app_data_dir()
+        .map(crate::datadir::resolve)
         .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))
 }
 
@@ -69,7 +71,7 @@ fn pets_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, CommandError> {
 /// [`pets_sheet`] so listing a large library stays cheap).
 #[tauri::command]
 pub async fn pets_list(app: AppHandle) -> Result<Vec<crate::pets::InstalledPet>, CommandError> {
-    let dir = pets_data_dir(&app)?;
+    let dir = app_data_dir(&app)?;
     tokio::task::spawn_blocking(move || crate::pets::list(&dir))
         .await
         .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
@@ -79,7 +81,7 @@ pub async fn pets_list(app: AppHandle) -> Result<Vec<crate::pets::InstalledPet>,
 /// One installed pet's spritesheet as an inline `data:<mime>;base64,…` URL.
 #[tauri::command]
 pub async fn pets_sheet(app: AppHandle, id: String) -> Result<String, CommandError> {
-    let dir = pets_data_dir(&app)?;
+    let dir = app_data_dir(&app)?;
     tokio::task::spawn_blocking(move || crate::pets::read_sheet(&dir, &id))
         .await
         .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
@@ -93,7 +95,7 @@ pub async fn pets_scan(
     app: AppHandle,
     source: String,
 ) -> Result<Vec<crate::pets::ImportablePet>, CommandError> {
-    let dir = pets_data_dir(&app)?;
+    let dir = app_data_dir(&app)?;
     tokio::task::spawn_blocking(move || crate::pets::scan(&dir, std::path::Path::new(&source)))
         .await
         .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
@@ -118,7 +120,7 @@ pub async fn pets_import(
     origin: String,
     overwrite: bool,
 ) -> Result<crate::pets::InstalledPet, CommandError> {
-    let dir = pets_data_dir(&app)?;
+    let dir = app_data_dir(&app)?;
     tokio::task::spawn_blocking(move || {
         crate::pets::import(&dir, std::path::Path::new(&source), &origin, overwrite)
     })
@@ -130,7 +132,7 @@ pub async fn pets_import(
 /// Delete an installed pet (idempotent).
 #[tauri::command]
 pub async fn pets_delete(app: AppHandle, id: String) -> Result<(), CommandError> {
-    let dir = pets_data_dir(&app)?;
+    let dir = app_data_dir(&app)?;
     tokio::task::spawn_blocking(move || crate::pets::delete(&dir, &id))
         .await
         .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?
@@ -1082,10 +1084,7 @@ pub(crate) async fn read_term_buffers(path: &std::path::Path) -> Option<serde_js
 /// the app then simply restores without scrollback).
 #[tauri::command]
 pub async fn term_buffers_get(app: AppHandle) -> Result<Option<serde_json::Value>, CommandError> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?;
+    let dir = app_data_dir(&app)?;
     Ok(read_term_buffers(&term_buffers_path(&dir)).await)
 }
 
@@ -1096,10 +1095,7 @@ pub async fn term_buffers_set(
     app: AppHandle,
     buffers: serde_json::Value,
 ) -> Result<(), CommandError> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| CommandError::new("IO_ERROR", e.to_string()))?;
+    let dir = app_data_dir(&app)?;
     let path = term_buffers_path(&dir);
     let text = serde_json::to_string(&buffers).map_err(AppError::from)?;
     tokio::task::spawn_blocking(move || agent_hooks::write_json_atomic(&path, &text))
