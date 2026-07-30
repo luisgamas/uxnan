@@ -102,9 +102,12 @@ cifrado y bridge-first.
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=white)
 
 Un **Agent Development Environment** ligero construido con Tauri 2, Rust y Svelte
-5. A diferencia de las alternativas basadas en Electron que consumen 200-500 MB
-de RAM solo por existir, este ADE usa el webview nativo del OS y apunta a 30-100
-MB de RAM.
+5. Renderiza con el webview nativo del sistema operativo en vez de empaquetar un
+segundo navegador, y de ahí sale la diferencia frente a las alternativas basadas
+en Electron: su propio núcleo ocupa ~40 MB, y una sesión típica ronda los
+**250 MB** — medidos, no estimados (Windows 11, WebView2 150, build release;
+método y cifras completas en
+[`uxnandesktop/docs/resource-benchmarks.md`](uxnandesktop/docs/resource-benchmarks.md)).
 
 La idea central: cada tarea vive en su propio git worktree con su propio agente
 corriendo en un pseudoterminal independiente. Puedo tener 5 agentes trabajando en

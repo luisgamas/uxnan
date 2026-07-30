@@ -26,8 +26,9 @@ value.
 | "7 agents in the picker" | `PHONE_AGENT_COUNT` | `uxnanmobile/README.md` → *Provider-agnostic, real multi-agent support* (Gemini CLI is wired but hidden) |
 | Agent names and marks | `WIRED_AGENTS` | the same two READMEs; logos copied from `uxnandesktop/static/agents/` and `uxnanmobile/assets/images/agents/` |
 | Agents that "run in the terminal" | `TERMINAL_ONLY_AGENTS` | real command-line coding agents only. The apps ship extra marks (Gemma, Kimi, …) that are **models, not CLIs** — they must not be listed as agents |
-| "30–100 MB of RAM" | `RAM_TARGET` | `uxnandesktop/README.md` → *Why it helps, even in alpha* |
-| "200–500 MB" for an Electron shell | `ELECTRON_RAM` | the same section — stated as a range those apps commonly idle in, **not** a benchmark of a named product |
+| "~250 MB of RAM" | `RAM_FOOTPRINT` | **measured**, not a target: `uxnandesktop/scripts/resources/baselines/windows/R02.json` (median of 5 repetitions, private bytes across the process tree). Re-measure with `npm run bench` before changing it, and keep the platform/build beside the figure |
+| "~40 MB core" | `RAM_CORE` | the same baseline — the Rust process alone, without the OS webview the UI renders in |
+| "200–500 MB" for an Electron shell | `ELECTRON_RAM` | stated as a range those apps commonly idle in, **not** a benchmark of a named product — nobody has measured one for this repo |
 | "68 JSON-RPC methods, 10 notifications" | `BRIDGE_METHOD_COUNT`, `BRIDGE_NOTIFICATION_COUNT` | `bridge/README.md` → *Architecture*; re-derive from `shared/src/jsonrpc/` rather than trusting the old number |
 | `npm install -g uxnan-bridge` | `BRIDGE_INSTALL_COMMAND` | `bridge/README.md` → *Install* |
 | `xattr -dr com.apple.quarantine …` | `MACOS_QUARANTINE_COMMAND` | `uxnandesktop/docs/install-macos.md` → *Tier 2* |
@@ -110,8 +111,10 @@ making sense.
 
 For anyone writing new copy:
 
-- **Say the specific thing.** "30–100 MB" beats "lightweight". "One git worktree
-  per task" beats "powerful workflow".
+- **Say the specific thing, and only if it is measured.** "~250 MB" beats
+  "lightweight" — but only because a benchmark produced it. A number nobody has
+  measured is worse than the adjective it replaced, because it can be checked.
+  "One git worktree per task" beats "powerful workflow".
 - **Name the pain before the fix.** The reader should recognise their own week in
   the problem section before the product is mentioned — especially people on
   modest hardware and people who refuse a single vendor's phone+desktop leash.

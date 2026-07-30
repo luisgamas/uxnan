@@ -15,8 +15,9 @@ companion phone app".
 
 - **Uxnan Desktop** — a terminal-native workspace (Tauri 2 + Rust + Svelte 5) that
   runs several CLI agents in parallel on the PC, each in its own git worktree and
-  pseudoterminal. It targets 30–100 MB of RAM by rendering through the operating
-  system's own webview, where a typical Electron shell idles at 200–500 MB. Any
+  pseudoterminal. It uses about 250 MB of RAM — a ~40 MB Rust core plus the
+  operating system's own webview — where a typical Electron shell, which bundles
+  a second browser, idles at 200–500 MB. Any
   CLI agent runs in it unmodified. Platforms: Windows (developed/tested), Linux
   (built in CI), macOS (experimental, unsigned — Gatekeeper blocks the first
   launch until authorised once).

@@ -101,6 +101,21 @@ export const TERMINAL_ONLY_AGENTS = [
 export const BRIDGE_METHOD_COUNT = 68;
 export const BRIDGE_NOTIFICATION_COUNT = 10;
 
-/** Memory envelope the desktop app targets, and what an Electron shell costs. */
-export const RAM_TARGET = "30–100 MB";
+/**
+ * What the desktop app actually costs, and what an Electron shell costs.
+ *
+ * `RAM_FOOTPRINT` is **measured**, not a target: the median of five repetitions
+ * of the "one project, one terminal" scenario on Windows 11 (WebView2
+ * 150.0.4078.105, release build), counting private committed bytes across the
+ * whole process tree so pages shared between the webview's processes are not
+ * counted twice. `RAM_CORE` is the Rust process on its own — everything above it
+ * is the OS webview the interface renders in.
+ *
+ * Source: `uxnandesktop/scripts/resources/baselines/windows/`. Re-measure before
+ * changing them, and keep the conditions beside the figure wherever it is shown:
+ * a memory number without its platform and build is not a claim anyone can
+ * defend. Method: `uxnandesktop/docs/resource-benchmarks.md`.
+ */
+export const RAM_FOOTPRINT = "~250 MB";
+export const RAM_CORE = "~40 MB";
 export const ELECTRON_RAM = "200–500 MB";

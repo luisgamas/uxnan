@@ -11,7 +11,7 @@ import {
   PullRequestPanel,
   UsageCard,
 } from "@/components/mockups/satellites";
-import { PHONE_AGENT_COUNT, RAM_TARGET } from "@/lib/site";
+import { PHONE_AGENT_COUNT, RAM_FOOTPRINT } from "@/lib/site";
 
 /**
  * Home “see it first” strip — Desktop + Mobile surfaces in one marquee.
@@ -22,7 +22,7 @@ const FEATURES: MockupMarqueeItem[] = [
     key: "light",
     product: "Desktop",
     title: "RAM for agents, not chrome",
-    body: `Targets ${RAM_TARGET} via the OS webview — no second browser bundled in.`,
+    body: `Measured at ${RAM_FOOTPRINT} on the OS webview — no second browser bundled in.`,
     visual: <MemoryCard className="w-[260px]" />,
   },
   {

@@ -13,7 +13,7 @@ import {
 } from "@/components/mockups/satellites";
 import { LinkButton } from "@/components/ui/button";
 import { useScrollProgress } from "@/lib/hooks";
-import { RAM_TARGET } from "@/lib/site";
+import { RAM_FOOTPRINT } from "@/lib/site";
 
 /**
  * The satellites that surround the main window once it has settled.
@@ -95,7 +95,7 @@ export function Hero() {
             Two independent apps for the CLI coding agents you already use — not
             another agent, not another vendor lock-in.{" "}
             <b className="font-medium text-foreground">Desktop</b> runs several on{" "}
-            {RAM_TARGET} so modest PCs stay in the game.{" "}
+            {RAM_FOOTPRINT} so modest PCs stay in the game.{" "}
             <b className="font-medium text-foreground">Mobile</b> steers those agents
             from your phone without their app, their stack, or their wall. Use one or
             both. Neither needs the other.
