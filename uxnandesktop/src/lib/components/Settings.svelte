@@ -28,6 +28,7 @@
   import { activatableUsageProviders, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
   import { statusMeta } from "$lib/usageFormat";
   import { detectAgents, usageDetect } from "$lib/api";
+  import { clearRemoteLogoCache } from "$lib/agentLogoCache";
   import { usage } from "$lib/state/usage.svelte";
   import type { UsageProvider } from "$lib/types";
   import * as Tabs from "$lib/components/ui/tabs";
@@ -80,6 +81,7 @@
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import DownloadIcon from "@lucide/svelte/icons/download";
   import PlusIcon from "@lucide/svelte/icons/plus";
+  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
@@ -221,19 +223,34 @@
   // --- Agents ---------------------------------------------------------------
   // Which catalog commands are installed (null = not checked yet).
   let installed = $state<Set<string> | null>(null);
+  let detectingAgents = $state(false);
   async function detectInstalled() {
+    detectingAgents = true;
     try {
       const found = await detectAgents(AGENT_CATALOG.map((c) => c.command));
       installed = new Set(found);
     } catch {
       installed = new Set(); // backend unreachable (e.g. web preview)
+    } finally {
+      detectingAgents = false;
     }
   }
-  // Check installation the first time the Agents pane is opened.
+  /** Re-check what's on PATH now. Detection is a live filesystem walk, so this is
+   *  all it takes for an agent installed (or uninstalled) since the app started to
+   *  appear or disappear. Also drops the fetched-logo cache, since a machine that
+   *  was offline earlier is exactly when a logo failed to load. */
+  function refreshAgents() {
+    clearRemoteLogoCache();
+    void detectInstalled();
+  }
+  // Re-check every time the Agents pane is opened — not just once per app run, or
+  // an agent uninstalled meanwhile keeps showing as available until a restart.
+  // Plain `let` (not `$state`) so tracking the edge can't re-trigger the effect.
+  let agentsPaneWasOpen = false;
   $effect(() => {
-    if (app.settingsOpen && app.settingsSection === "agents" && installed === null) {
-      void detectInstalled();
-    }
+    const open = app.settingsOpen && app.settingsSection === "agents";
+    if (open && !agentsPaneWasOpen) void detectInstalled();
+    agentsPaneWasOpen = open;
   });
 
   const isInstalled = (c: CatalogAgent) => installed?.has(c.command) ?? false;
@@ -1088,6 +1105,20 @@
               <div class="flex flex-wrap items-center justify-between gap-2 px-1">
                 <span class={text.section}>{i18n.t("settings.yourAgents")}</span>
                 <div class="flex items-center gap-1.5">
+                  <TooltipSimple title={i18n.t("settings.refreshAgents")}>
+                    {#snippet children(tp)}
+                      <Button
+                        {...tp}
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={detectingAgents}
+                        aria-label={i18n.t("settings.refreshAgents")}
+                        onclick={refreshAgents}
+                      >
+                        <RefreshCwIcon class={cn(icon.button, detectingAgents && "animate-spin")} />
+                      </Button>
+                    {/snippet}
+                  </TooltipSimple>
                   {#if addableCount > 0}
                     <Button variant="outline" size="sm" onclick={addAllInstalled}>
                       <PlusIcon data-icon="inline-start" />

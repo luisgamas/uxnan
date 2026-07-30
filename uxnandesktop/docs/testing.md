@@ -54,7 +54,10 @@ register / unregister + `Promise.allSettled` fan-out), `utils/pointerLock.ts`
 (the orphaned-body-pointer-lock guard: orphan detection + deferred modal open),
 `pathid.ts` (workspace path identity + the boot reconcile plan) and
 `agentResume.ts` (the per-CLI session-resume command registry + hostile-input
-rejection), `terminal/scrollback.ts` (the scrollback clamp) and
+rejection), `agentSessionId.ts` (which CLIs take a caller-chosen session id, and
+never pinning on top of args that already choose one), `agentLogoCache.ts` (the
+backend-fetched logo memo: one fetch per URL, failures remembered, concurrent
+asks collapsed), `terminal/scrollback.ts` (the scrollback clamp) and
 `terminal/windowsJunctionDetector.ts` (the Windows Redirection-Guard failure
 signature detector, incl. chunk-split matching) and `pets/` (the Codex-compatible
 manifest parser, frame timing, and the agent-state → animation mapping +
@@ -63,7 +66,7 @@ schedule + next-runs preview, the run/step display projections, the seeded
 example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
-vs merely still readable) — 380 tests in
+vs merely still readable) — 386 tests in
 `src/lib/**/*.test.ts`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see

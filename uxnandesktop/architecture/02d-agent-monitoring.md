@@ -136,8 +136,13 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   emitía un reporter pre-relay ya retirado; un informe **sin** tipo nunca borra
   la identidad ya establecida del tab (misma regla que la sesión), porque
   perderla se lleva por delante el comando de resume. Los reporters de builds
-  anteriores se barren del directorio de hooks y de la config de cada agente al
-  arrancar, y una sesión **ya persistida** con ese placeholder se repara al
+  anteriores se barren al arrancar por dos vías distintas: del **directorio de
+  hooks** por regla — se borra todo `uxnan-*` que esta build no acabe de escribir,
+  así que un renombrado futuro se limpia solo (los ficheros que no son nuestros,
+  como `endpoint.*`, quedan intactos) — y de la **config de cada agente** por una
+  lista de nombres retirados mantenida a mano, que es lo único que no se puede
+  deducir: renombrar un reporter obliga a añadir su nombre viejo ahí. Una sesión
+  **ya persistida** con ese placeholder se repara al
   volver el tab deduciendo el CLI de la ruta de transcript que venía en el mismo
   informe (`~/.codex/sessions/…`, `~/.claude/projects/…`, …); si no se puede
   ubicar se deja como está — lanzar la línea de otro CLI a ciegas es peor que no
