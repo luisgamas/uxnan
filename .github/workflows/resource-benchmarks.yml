@@ -1,0 +1,142 @@
+name: Resource benchmarks (uxnandesktop)
+
+# Measures uxnan's own footprint against the canonical scenarios
+# (`uxnandesktop/scripts/resources/`, documented in
+# `uxnandesktop/docs/resource-benchmarks.md`).
+#
+# On demand and nightly — never on a PR. A GitHub runner is a noisy, shared VM
+# with no GPU and an unpredictable neighbour, so its absolute numbers cannot gate
+# anything; what it gives is a cheap trend signal and proof that the harness
+# still runs. **This workflow never fails the build.** The gate that matters runs
+# on the reference hardware, against an approved baseline.
+#
+# Windows only for now: it is the only platform whose collector has been verified
+# on real hardware, and publishing a macOS or Linux figure nobody has looked at
+# would be exactly the unfounded claim this harness exists to prevent.
+#
+# R08 (GitHub panel) is never included: it needs a real `gh` login, and CI is
+# never handed one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Space-separated scenario ids, or 'all' for every unattended one"
+        required: false
+        default: "all"
+      repeats:
+        description: "Repetitions per scenario"
+        required: false
+        default: "3"
+      duration:
+        description: "Seconds of measurement per repetition (CI uses a short window)"
+        required: false
+        default: "60"
+  schedule:
+    # 04:20 UTC — off the hour, so it does not queue behind everyone else's cron.
+    - cron: "20 4 * * *"
+
+concurrency:
+  group: resource-benchmarks
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: uxnandesktop
+
+jobs:
+  benchmark:
+    name: benchmark (windows)
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: uxnandesktop/package-lock.json
+
+      - name: Set up Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: uxnandesktop/src-tauri
+
+      - name: Install frontend deps
+        run: npm ci
+
+      # `tauri build --no-bundle`, not a bare `cargo build --release`: without
+      # Tauri's `custom-protocol` feature the binary stays in dev mode and loads
+      # `http://localhost:1420`, so the app would run with no UI at all and the
+      # numbers would be meaningless. The harness checks the binary for embedded
+      # frontend assets and refuses such a build, but doing it right here means
+      # the check never has to fire.
+      - name: Build a measurable release binary
+        run: npm run bench:build
+
+      - name: Harness unit tests
+        run: npx vitest run scripts/
+
+      - name: Run the scenarios
+        shell: bash
+        run: |
+          set -u
+          scenarios="${{ github.event.inputs.scenarios || 'all' }}"
+          repeats="${{ github.event.inputs.repeats || '3' }}"
+          duration="${{ github.event.inputs.duration || '60' }}"
+          # A shared runner cannot honour a two-hour soak inside a job budget, and
+          # a truncated soak is not a soak — it is excluded rather than faked.
+          if [ "$scenarios" = "all" ]; then
+            list="R00 R01 R02 R03 R04 R05 R06 R09 R11"
+          else
+            list="$scenarios"
+          fi
+          echo "scenarios: $list (x$repeats, ${duration}s each)"
+          for id in $list; do
+            node scripts/resources/run.mjs \
+              --scenario "$id" \
+              --repeats "$repeats" \
+              --duration "$duration" \
+              --stabilize 15 \
+              --no-samples || echo "::warning::scenario $id did not complete cleanly"
+          done
+
+      - name: Render the report
+        if: always()
+        run: node scripts/resources/report.mjs || echo "::warning::no aggregates to report"
+
+      - name: Compare against the approved baseline
+        if: always()
+        run: |
+          node scripts/resources/compare.mjs --baseline scripts/resources/baselines/windows --file .resource-results/comparison.md || true
+
+      - name: Summarise on the run page
+        if: always()
+        shell: bash
+        run: |
+          {
+            if [ -f .resource-results/report.md ]; then cat .resource-results/report.md; fi
+            if [ -f .resource-results/comparison.md ]; then echo; cat .resource-results/comparison.md; fi
+            echo
+            echo "> Numbers from a shared GitHub runner. Trend signal only — the gate runs on reference hardware."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-benchmarks-windows
+          path: |
+            uxnandesktop/.resource-results/runs/
+            uxnandesktop/.resource-results/aggregates/
+            uxnandesktop/.resource-results/report.md
+            uxnandesktop/.resource-results/comparison.md
+          if-no-files-found: warn
+          retention-days: 30

@@ -47,6 +47,18 @@ screenshot/video for UI changes. "It builds" is not enough._
 > 3. Built `flutter build apk --release` and confirmed the QR scanner opens and
 >    scans without crashing (screenshot below).
 
+## Resource impact (`uxnandesktop` only)
+
+_Does this change spawn a process, open a webview, start a watcher, poll, cache,
+hold a socket, or run at startup? If so, name the
+[resource scenario](../uxnandesktop/docs/resource-benchmarks.md) that covers it
+and paste the measured numbers. If it costs nothing, say how you know. Delete
+this section for non-desktop PRs._
+
+> **Example:** Adds a 30 s poll. Covered by R01; measured on Windows over 5
+> repetitions: `ownRssP50Mb` 214 → 215, `cpuP95` 1.4 % → 1.6 %. The feature is
+> opt-in, so R09-style variants prove it costs nothing while disabled.
+
 ## Checklist
 
 - [ ] Lint/format pass for the touched component(s) (see `CONTRIBUTING.md`).
@@ -56,3 +68,4 @@ screenshot/video for UI changes. "It builds" is not enough._
 - [ ] Commits follow Conventional Commits — `type(scope): message`.
 - [ ] **If this is a `uxnanmobile` release:** `.github/whatsnew/whatsnew-{en-US,es-ES}` updated with short, non-technical notes (≤ 500 chars each).
 - [ ] If a `shared` contract changed, all consumers (bridge/relay/mobile) were updated in the same change.
+- [ ] If this adds a desktop process/watcher/poll/webview/cache, the resource scenario that covers it was run and the numbers are above.
