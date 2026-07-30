@@ -973,6 +973,9 @@ export const en = {
   "settings.preventSleep": "Prevent sleep while working",
   "settings.preventSleepDesc":
     "Keep the system awake while an agent is working (auto-releases after 2 h). macOS/Linux support is implemented but untested.",
+  "settings.pinAgentSessions": "Name agent sessions at launch",
+  "settings.pinAgentSessionsDesc":
+    "Give each session an id when the agent starts, so its tab comes back after a restart even if you never wrote a message. Adds one flag to the launched command, for the CLIs that support it (Claude Code, Grok, Pi, Antigravity).",
   "status.untested": "Untested on {os}",
   "status.untestedTooltip":
     "Uxnan is developed and validated on Windows. {os} support is implemented but not yet tested on real hardware (alpha).",

@@ -971,6 +971,9 @@ export const es: Record<MessageKey, string> = {
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
     "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). El soporte de macOS/Linux está implementado pero sin probar.",
+  "settings.pinAgentSessions": "Nombrar las sesiones al lanzarlas",
+  "settings.pinAgentSessionsDesc":
+    "Asigna un id a cada sesión cuando arranca el agente, para que su pestaña vuelva tras reiniciar aunque no hayas escrito ningún mensaje. Añade un parámetro al comando lanzado, en los CLI que lo permiten (Claude Code, Grok, Pi, Antigravity).",
   "status.untested": "Sin probar en {os}",
   "status.untestedTooltip":
     "Uxnan se desarrolla y valida en Windows. El soporte de {os} está implementado pero aún no se ha probado en hardware real (alpha).",
