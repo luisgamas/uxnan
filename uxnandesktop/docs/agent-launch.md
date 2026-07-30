@@ -135,25 +135,54 @@ in a POSIX shell and `"fix the bug"` under cmd. Just type the raw values in the
 
 ---
 
-## Curated model lists (Claude & Gemini)
+## Sessions named at launch
+
+For the CLIs that accept a caller-chosen session id, the ADE picks one and adds
+it to the command line it launches — `claude --session-id <uuid>`,
+`grok --session-id <uuid>`, `pi --session-id <id>`,
+`agy --conversation <uuid>` — and stamps it on the terminal tab straight away.
+That is what lets the tab come back after a restart **even if you never wrote a
+message**: session capture through hooks only learns an id once the agent has
+done something. Codex and OpenCode expose no such flag and stay hook-captured.
+
+Your own arguments always win: if they already choose a session (`--resume`,
+`--continue`, `--session`, `--session-id`, `--fork`, `--conversation`, …) the
+command line is left exactly as you configured it. Turn the behavior off in
+**Settings → Agents → Name agent sessions at launch** (on by default) — the only
+cost of leaving it on is one extra flag in the launched command.
+
+How a named session is reopened — and how one is captured for the CLIs that
+can't be told an id — is in [`agent-hooks.md`](agent-hooks.md#reference).
+
+---
+
+## Curated model lists (Claude)
 
 Most agent CLIs enumerate their own models and the ADE asks them directly
 (`opencode models`, `agy models`, `grok models`, `pi --list-models`,
-`codex app-server` `model/list`). **Claude Code and Gemini cannot**, so the ADE
-ships hand-kept tables — `CLAUDE_MODELS` and `GEMINI_MODELS` in
-[`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) — that fill the model
+`codex app-server` `model/list`). **Claude Code cannot**, so the ADE ships a
+hand-kept table — `CLAUDE_MODELS` in
+[`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) — that fills the model
 pickers in **Settings → AI commit** and **Settings → GitHub → AI PR body**.
+(`GEMINI_MODELS` sits beside it and is **frozen** — see the note below.)
 
-**Those tables have twins in the bridge, and every one of them is maintained by
-hand.** When Anthropic (or Google) ships or retires a model, update **both** sides
-in the same change set — updating one leaves the other surface a version behind:
+**That table has a twin in the bridge, and both are maintained by hand.** When
+Anthropic ships or retires a model, update **both** sides in the same change set —
+updating one leaves the other surface a version behind:
 
 | Model list | Where | Feeds |
 |---|---|---|
 | Desktop Claude | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
 | Bridge Claude | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the mobile app's model picker (`agent/models`) |
-| Desktop Gemini | `uxnandesktop/src-tauri/src/agentcli.rs` → `GEMINI_MODELS` | only a config that still names Gemini — the CLI is discontinued and is no longer offered in those pickers |
-| Bridge Gemini | `bridge/src/adapters/gemini-adapter.ts` → `GEMINI_MODELS` | the mobile app's model picker |
+
+> **Gemini CLI is deprecated — don't work on it.** `GEMINI_MODELS` (here and in
+> `bridge/src/adapters/gemini-adapter.ts`) is **frozen**: don't add models, don't
+> track upstream changes, don't build against it. The CLI is discontinued
+> upstream; its successor is **Antigravity** (`agy`), which uxnan drives as a real
+> agent and which lists its own models. What remains — the table, the catalog
+> entry, the hook reporter that is no longer auto-installed — exists only so
+> someone who already had it configured keeps working and can turn it off. It will
+> be removed from the project in a later pass.
 
 Keep the **same ids, labels and order** across a pair, newest/most capable first.
 Use canonical ids only: never append a date suffix or a routing variant (`…[1m]`,

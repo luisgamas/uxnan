@@ -70,6 +70,15 @@ Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
 All eight agents are wired; no further agent is planned right now (the recipe for
 wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md)).
 
+> **Gemini CLI is deprecated — don't spend work on it.** It is discontinued
+> upstream; its successor is **Antigravity** (`agy`), wired above as a real agent
+> that enumerates its own models. The phone already hides Gemini from the picker,
+> and its curated `GEMINI_MODELS` table (`src/adapters/gemini-adapter.ts`) is
+> **frozen**: don't add models, don't track upstream changes, don't build new
+> features against the adapter. What remains keeps an existing configuration
+> working, nothing more. It will be removed from the project in a later pass —
+> until then treat every Gemini path as read-only legacy.
+
 Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
 **not** used for turns — the one-shot `codex exec` entry point drives them — but
 the bridge does spawn `codex app-server` once to enumerate models (`initialize`

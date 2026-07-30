@@ -364,6 +364,14 @@ pub struct AppSettings {
     /// backend auto-releases after 2 h as a safety cap). Default off.
     #[serde(default)]
     pub prevent_sleep: bool,
+    /// Name each agent session at launch, for the CLIs that accept a
+    /// caller-chosen id (`claude`/`grok`/`pi --session-id`, `agy --conversation`).
+    /// The tab is then resumable from the moment the agent starts instead of only
+    /// once a hook has reported — which is what makes a conversation you never
+    /// started come back too. Adds one flag to the launched command line, so it
+    /// can be turned off. Default on; frontend-applied (`agentSessionId.ts`).
+    #[serde(default = "default_true")]
+    pub pin_agent_sessions: bool,
     /// Auto-install the ADE-managed Claude Code hooks block on startup (so precise
     /// agent states work out of the box). Set false when the user uninstalls, so
     /// it isn't re-added on the next launch. Default on.
@@ -986,6 +994,7 @@ impl Default for AppSettings {
             agent_shell_profile_id: None,
             agent_notifications: true,
             prevent_sleep: false,
+            pin_agent_sessions: true,
             auto_install_hooks: true,
             language: default_language(),
             keybindings: std::collections::HashMap::new(),
@@ -1198,7 +1207,15 @@ impl AppData {
             .find(|e| e.agent_id == report.agent_id)
         {
             entry.status = report.status;
-            entry.agent_type = report.agent_type;
+            // A report naming a (different) agent re-identifies the terminal — the
+            // same tab can host a new agent. One naming NONE never blanks an
+            // identity we already have: a reporter that omits the type (or whose
+            // type was rejected at ingestion) would otherwise strip the tab's
+            // agent, and with it the resume command its captured session maps to.
+            // Same rule as `session` below.
+            if report.agent_type.is_some() {
+                entry.agent_type = report.agent_type;
+            }
             entry.prompt = report.prompt;
             entry.tool = report.tool;
             entry.interrupted = report.interrupted;
@@ -1618,6 +1635,42 @@ mod tests {
             replaced.session.as_ref().map(|s| s.id.as_str()),
             Some("def-456")
         );
+    }
+
+    #[test]
+    fn upsert_agent_state_keeps_the_agent_type_unless_renamed() {
+        let mut data = AppData::default();
+        let typed = AgentReport {
+            agent_type: Some("codex".into()),
+            session: Some(AgentSession {
+                id: "019f-abc".into(),
+                file: None,
+                captured_at: 10,
+            }),
+            ..report("pty-1", AgentStatus::Working)
+        };
+        assert_eq!(
+            data.upsert_agent_state(typed, 10).agent_type.as_deref(),
+            Some("codex")
+        );
+        // A report with NO type must not blank the identity: the captured session
+        // is only resumable while we still know which CLI owns it.
+        let kept = data.upsert_agent_state(report("pty-1", AgentStatus::Done), 20);
+        assert_eq!(kept.agent_type.as_deref(), Some("codex"));
+        assert_eq!(
+            kept.session.as_ref().map(|s| s.id.as_str()),
+            Some("019f-abc")
+        );
+        // A report naming a different agent DOES re-identify the tab (the same
+        // terminal can host a new agent).
+        let renamed = data.upsert_agent_state(
+            AgentReport {
+                agent_type: Some("claude".into()),
+                ..report("pty-1", AgentStatus::Working)
+            },
+            30,
+        );
+        assert_eq!(renamed.agent_type.as_deref(), Some("claude"));
     }
 
     #[test]

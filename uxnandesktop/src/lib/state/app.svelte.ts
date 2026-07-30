@@ -36,6 +36,7 @@ import { orchestrationRun } from "$lib/state/orchestrationRun.svelte";
 import { flushAll } from "$lib/state/flushRegistry";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
+import { ownedSession } from "$lib/agentSessionId";
 import { currentOS } from "$lib/platform";
 import {
   BUILTIN_DARK,
@@ -685,7 +686,14 @@ class AppStore {
       shellProfile?.command?.trim() ||
       (currentOS() === "windows" ? "cmd.exe" : undefined);
     const kind = shellKind(shell);
-    const runCommand = buildRunCommand(command, agent.args, kind);
+    // Name the session ourselves when this CLI accepts a caller-chosen id, so the
+    // tab is resumable from the moment the agent starts. A hook only reports a
+    // session once the agent has actually done something, which left a
+    // conversation you opened and never used with nothing to come back to.
+    // Opt-out: Settings → Agents.
+    const owned =
+      this.settings.pinAgentSessions === false ? null : ownedSession(command, agent.args);
+    const runCommand = buildRunCommand(command, [...agent.args, ...(owned?.args ?? [])], kind);
     // Per-agent env vars → real environment on the spawned shell (inherited by
     // the agent). Blank keys are dropped; the backend prepends them before its
     // own `UXNAN_*` so those always win.
@@ -708,6 +716,21 @@ class AppStore {
       agentName: name,
       agentIcon: agentLogoKey(agent.icon, agent.command),
       agentCommand: agent.command.trim(),
+      // Stamp the session we just named on the tab, in the same breath as the
+      // launch: nothing else has to happen for this tab to be restorable. A hook
+      // report later overwrites it with the provider's own view (same id).
+      agentSession: owned
+        ? {
+            agent: owned.agent,
+            id: owned.id,
+            live: true,
+            // Ours until the provider reports it: nothing has been said to the
+            // agent yet, so the conversation doesn't exist on disk and the way
+            // back in is to claim the id again rather than resume it.
+            pending: true,
+            capturedAt: Math.floor(Date.now() / 1000),
+          }
+        : undefined,
       workspace: opts.workspace,
     });
   }

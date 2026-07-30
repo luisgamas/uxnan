@@ -1063,6 +1063,18 @@
                     />
                   {/snippet}
                 </SettingsRow>
+
+                <SettingsRow
+                  label={i18n.t("settings.pinAgentSessions")}
+                  description={i18n.t("settings.pinAgentSessionsDesc")}
+                >
+                  {#snippet control()}
+                    <Switch
+                      checked={app.settings.pinAgentSessions !== false}
+                      onCheckedChange={(c) => { app.settings.pinAgentSessions = c; persistNow(); }}
+                    />
+                  {/snippet}
+                </SettingsRow>
               </div>
             </SettingsSection>
 

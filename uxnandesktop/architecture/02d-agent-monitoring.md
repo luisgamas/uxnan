@@ -98,7 +98,9 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
 
 - **Captura de sesión del proveedor (resume):** cuando el payload de un evento
   trae la identidad de sesión del propio proveedor (`session_id` / `sessionID` /
-  `sessionId` / `session-id` / `conversation_id` / `conversation-id`, más un
+  `sessionId` / `session-id` / `conversation_id` / `conversationId` /
+  `conversationID` / `conversation-id` — Antigravity emite la grafía camelCase,
+  que era justo la que faltaba, más un
   archivo opcional en
   `session_file` / `sessionFile` / `transcript_path`), el servidor la extrae y
   **sanea como entrada hostil** (longitud acotada, charset conservador, sin `-`
@@ -107,21 +109,55 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   reenvían ellos mismos: el relay de Claude/Gemini pasa el JSON crudo íntegro,
   el plugin de OpenCode adjunta el `sessionID` de la sesión RAÍZ a cada evento
   de estado (una sesión hija de sub-agente nunca lo pisa), y la extensión de
-  Pi reenvía los campos explícitos `session_id`/`session_file` que observa. El
+  Pi reenvía los campos explícitos `session_id`/`session_file` que observa, y el
+  hook por evento de Grok/Antigravity reenvía su payload crudo. El
   evento difundido `agent:status-changed` **incluye la sesión** (espeja la
   entrada cacheada — omitirla fue exactamente el bug que desactivó el resume
   en silencio); el frontend la persiste con él
   además en el tab dueño (con el layout), y al restaurar/despertar ese tab
   lanza el comando de resume del CLI (`claude --resume <id>`,
-  `codex resume <id>`, `opencode --session <id>`, `pi --session <archivo|id>`;
+  `codex resume <id>`, `opencode --session <id>`, `grok --resume <id>`,
+  `agy --conversation <id>`, `pi --session <archivo|id>`;
   registro en `src/lib/agentResume.ts`) como comando de arranque: se
   **auto-ejecuta si la TUI seguía viva al cerrar/dormir** (el workspace vuelve
-  con sus TUIs abiertas — la detección de procesos `agent:detected` mantiene
-  al día el flag `live` de la sesión; el pane omite entonces el replay del
+  con sus TUIs abiertas; el pane omite entonces el replay del
   snapshot, la TUI redibuja su propia conversación), y solo queda pre-escrito
   si el agente ya había salido (un tab despertado SIN sesión reanudable limpia
-  su comando de lanzamiento sobrante en vez de re-dispararlo). Los ids de
+  su comando de lanzamiento sobrante en vez de re-dispararlo). El flag `live`
+  lo mantiene la detección de procesos (`agent:detected`), pero **solo una
+  salida observada** lo baja — el detector emite al cambiar partiendo de un mapa
+  vacío, así que tras restaurar informa una vez "sin agente" en cada tab, antes
+  de que arranque la TUI reanudada, y creerle daba por muertas justo las
+  sesiones recién restauradas. Los ids de
   sesión son identificadores, no credenciales.
+
+- **Tipo de agente saneado:** el tipo llega por cabecera/cuerpo y se
+  canonicaliza (trim + minúsculas) rechazando el placeholder `"agent"` que
+  emitía un reporter pre-relay ya retirado; un informe **sin** tipo nunca borra
+  la identidad ya establecida del tab (misma regla que la sesión), porque
+  perderla se lleva por delante el comando de resume. Los reporters de builds
+  anteriores se barren del directorio de hooks y de la config de cada agente al
+  arrancar, y una sesión **ya persistida** con ese placeholder se repara al
+  volver el tab deduciendo el CLI de la ruta de transcript que venía en el mismo
+  informe (`~/.codex/sessions/…`, `~/.claude/projects/…`, …); si no se puede
+  ubicar se deja como está — lanzar la línea de otro CLI a ciegas es peor que no
+  ofrecer nada.
+
+- **Sesiones nombradas al lanzar (`src/lib/agentSessionId.ts`):** la captura por
+  hook solo aprende el id cuando el agente ya hizo algo, así que un tab abierto
+  y nunca usado no tenía nada que recuperar. Para los CLI que aceptan un id
+  elegido por el llamador — `claude --session-id <uuid>`,
+  `grok --session-id <uuid>`, `pi --session-id <id>`,
+  `agy --conversation <uuid>` (verificados contra la ayuda de cada CLI) — uxnan
+  elige el id al lanzar y sella el tab en el acto. Ese id queda marcado
+  `pending` hasta que el proveedor lo reporta, porque los flags son
+  complementarios exactos (cada uno rechaza el caso del otro): un tab `pending`
+  se reabre **reclamando** un id en vez de reanudarlo, y reclama uno recién
+  acuñado (reclamar dos veces el mismo es justo lo que falla, y una conversación
+  sin usar no tiene historia que perder). Si los args del propio usuario ya
+  eligen sesión (`--resume`, `--continue`, `--session*`, `--fork*`,
+  `--conversation`), la línea se deja tal cual. Interruptor:
+  `AppSettings.pin_agent_sessions` (Ajustes → Agentes), por defecto activo.
 
 **Diagrama de flujo del hook HTTP:**
 

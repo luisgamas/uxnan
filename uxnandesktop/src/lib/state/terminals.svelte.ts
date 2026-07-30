@@ -17,7 +17,8 @@ import { listen } from "@tauri-apps/api/event";
 import { fsRename, termBuffersSet } from "$lib/api";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { disposeInstance, serializeInstance } from "$lib/terminal/instances";
-import { resumeCommand, type CapturedAgentSession } from "$lib/agentResume";
+import { repairedSession, resumeCommand, type CapturedAgentSession } from "$lib/agentResume";
+import { renewPendingSession } from "$lib/agentSessionId";
 import type { ProviderSession } from "$lib/types";
 import { isImagePath } from "$lib/diff";
 import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
@@ -194,6 +195,9 @@ export interface NewTabOptions {
   agentIcon?: string | null;
   /** The launched agent's executable (e.g. `claude`), for orchestration routing. */
   agentCommand?: string;
+  /** Session named by uxnan on this launch (`agentSessionId.ts`), stamped so the
+   *  tab is resumable before any hook has reported. */
+  agentSession?: CapturedAgentSession;
   groupId?: string;
   /** Workspace to open in (switches the active workspace first). */
   workspace?: string;
@@ -215,6 +219,7 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTa
     agentName: opts?.agentName,
     agentIcon: opts?.agentIcon,
     agentCommand: opts?.agentCommand,
+    agentSession: opts?.agentSession,
     exited: false,
   };
 }
@@ -431,7 +436,14 @@ function buildTab(t: SavedTab): GroupTab {
   // TUIs included. If the agent had already exited, the command is only
   // pre-typed (one Enter reopens; anything else dismisses). A stale session
   // just errors visibly in the CLI itself.
-  const resume = t.agentSession ? resumeCommand(t.agentSession) : null;
+  // Repair first (a session captured by a since-removed reporter names no usable
+  // agent and would offer no resume at all), then: a session we named but the
+  // agent never wrote comes back under a FRESH id, because it is reopened by
+  // claiming an id and claiming one twice is what fails (`renewPendingSession`).
+  // There is no history to lose there — it was never used.
+  const repaired = t.agentSession ? repairedSession(t.agentSession) : undefined;
+  const session = repaired?.pending ? renewPendingSession(repaired) : repaired;
+  const resume = session ? resumeCommand(session) : null;
   return {
     kind: "terminal",
     id: crypto.randomUUID(),
@@ -444,10 +456,8 @@ function buildTab(t: SavedTab): GroupTab {
     shell: t.shell,
     args: t.args,
     asleep: t.asleep,
-    agentSession: t.agentSession,
-    ...(resume
-      ? { runCommand: resume, runCommandExecute: t.agentSession?.live !== false }
-      : {}),
+    agentSession: session,
+    ...(resume ? { runCommand: resume, runCommandExecute: session?.live !== false } : {}),
     exited: false,
   };
 }
@@ -666,6 +676,13 @@ class TerminalStore {
     for (const tab of allTabs(tree)) {
       if (tab.kind === "terminal" && tab.asleep) {
         tab.asleep = false;
+        // As on restore: repair an unusable agent type, and a session we named
+        // that was never written comes back under a fresh id (it is reopened by
+        // claiming one, and claiming the same one twice is what fails).
+        if (tab.agentSession) {
+          const s = repairedSession(tab.agentSession);
+          tab.agentSession = s.pending ? renewPendingSession(s) : s;
+        }
         const resume = tab.agentSession ? resumeCommand(tab.agentSession) : null;
         if (resume) {
           // Sleep killed a live TUI → waking relaunches it automatically;
@@ -703,8 +720,26 @@ class TerminalStore {
       // A hook just fired, so the TUI is running right now; process detection
       // (`agent:detected`) keeps this current if the agent exits later.
       live: true,
+      // The provider itself is telling us about this session, so the
+      // conversation now exists — an id we named at launch stops being
+      // `pending` here, and from now on the tab resumes rather than re-claims.
       capturedAt: session.capturedAt,
     };
+  }
+
+  /** Record whether the agent that owns this tab's captured session is running
+   *  right now. It decides whether the resume AUTO-RUNS on the way back or is
+   *  only pre-typed, so it has to survive the app closing: the write nudges the
+   *  layout's persist effect, which watches the tree and not this nested field
+   *  (a plain mutation here used to reach disk only if something else happened
+   *  to trigger a save — which is why some tabs came back and others didn't).
+   *  Callers must only report `false` for an OBSERVED exit; see `agentMonitor`. */
+  noteAgentLiveness(tabId: string, live: boolean): void {
+    const tab = this.findTab(tabId);
+    if (!tab || tab.kind !== "terminal" || !tab.agentSession) return;
+    if (tab.agentSession.live === live) return;
+    tab.agentSession = { ...tab.agentSession, live };
+    this.workspaces = { ...this.workspaces };
   }
 
   /** The stored scrollback snapshot for a (re)mounting terminal, if any — the

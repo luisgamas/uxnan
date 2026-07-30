@@ -391,25 +391,72 @@ live.
 **Provider session capture (resume).** When a provider-event payload carries
 the provider's own session identity, the server also extracts it: the id from
 `session_id` / `sessionID` / `sessionId` / `session-id` / `conversation_id` /
-`conversation-id`, and an optional session/transcript file from
-`session_file` / `sessionFile` / `transcript_path`. The bundled reporters
+`conversationId` / `conversationID` / `conversation-id`, and an optional
+session/transcript file from `session_file` / `sessionFile` /
+`transcript_path`. The bundled reporters
 forward it themselves: the Claude/Gemini relay passes the raw hook JSON
 through untouched, the OpenCode plugin attaches the ROOT session's
 `sessionID` to every state event (a sub-agent child session never overwrites
-it), and the Pi extension rides the explicit `session_id`/`session_file`
-fields it observes on its event payloads. The broadcast
+it), the Pi extension rides the explicit `session_id`/`session_file`
+fields it observes on its event payloads, and Grok/Antigravity's per-event
+`curl` hook forwards their raw payload (Grok's `session_id`, Antigravity's
+camel-case `conversationId`). The broadcast
 `agent:status-changed` event mirrors the cached entry **including** the
 session — the frontend stamps the owning tab from that event. The id is validated as hostile input at ingestion (bounded
 length, conservative charset, no leading `-`) because it later reaches a shell
 command line: a restored or woken terminal tab runs the CLI's own resume
 command (`claude --resume <id>`, `codex resume <id>`, `opencode --session
-<id>`, `pi --session <file|id>`) as its startup command — **auto-run when the
+<id>`, `grok --resume <id>`, `agy --conversation <id>`,
+`pi --session <file|id>`) as its startup command — **auto-run when the
 agent's TUI was still alive at close/sleep** (the workspace comes back with
-its TUIs open), only pre-typed when the agent had already exited (liveness
-tracked by process detection). Captured session **ids are identifiers, not
+its TUIs open), only pre-typed when the agent had already exited. Liveness is
+tracked by process detection, and only an **observed** exit lowers it: right
+after a restore the detector reports "no agent" once for every tab, before the
+resumed TUI has started, and taking that at face value used to mark the
+restored sessions dead. Captured session **ids are identifiers, not
 credentials**; they
 are cached with the agent state in `state.json` (same 7-day TTL) and persisted
 on the owning tab with the terminal layout.
+
+Two wired agents are deliberately **not** resumable: **Gemini CLI** exposes no
+session resume (and is deprecated — see `AGENTS.md`), and **Zero** resumes only in
+its headless one-shot mode (`zero exec --resume [id]`); the interactive TUI a
+terminal tab runs rejects the flag. Both still have their sessions captured.
+
+**Sessions named at launch.** Capture-by-hook only learns an id once the agent
+has done something, so a tab you opened and never wrote to had nothing to bring
+back. For the CLIs that accept a caller-chosen id, uxnan names the session as it
+launches the agent and stamps the tab immediately
+(`src/lib/agentSessionId.ts`) — verified against each CLI's own help:
+`claude --session-id <uuid>`, `grok --session-id <uuid>`,
+`pi --session-id <id>`, `agy --conversation <uuid>`. Codex and OpenCode expose
+no equivalent and stay hook-captured. Such an id is marked `pending` until the
+provider reports it back, because the flags are exact complements —
+`claude --resume <unwritten-id>` answers "No conversation found" and
+`claude --session-id <written-id>` answers "Session ID … is already in use" — so
+a `pending` tab is reopened by **claiming** an id rather than resuming one, and
+it claims a freshly minted one (claiming the same id twice is the case that
+fails; an unused conversation has no history to lose). The user's own agent args
+win: if they already carry `--resume`, `--continue`, `--session*`, `--fork*` or
+`--conversation`, the command line is left exactly as configured. Turn the whole
+behavior off in **Settings → Agents → Name agent sessions at launch**
+(`pinAgentSessions`, on by default).
+
+A session **already persisted** under an unusable agent type (see the sweep
+below) is repaired when its tab comes back: the transcript path captured
+alongside it names the CLI it belongs to (`~/.codex/sessions/…`,
+`~/.claude/projects/…`, `~/.pi/…`, `~/.grok/…`, `~/.gemini/…`), which restores
+both the agent and its resume command. One that can't be placed is left alone —
+running another CLI's command line on a guess is worse than offering nothing.
+
+**Reporters from older builds are swept.** Scripts a previous version installed
+and the ADE no longer ships (`uxnan-agent-status-hook.cjs`,
+`uxnan-claude-hook.cjs`, `uxnan-opencode-hook.cjs`,
+`uxnan-opencode-status-plugin.js`) are deleted from the hooks dir on startup and
+matched as managed entries so they are stripped from every agent config the ADE
+touches. The pre-relay bridge in that list did real damage while it lingered: it
+read its agent type from a `UXNAN_AGENT_TYPE` env var the ADE no longer injects
+and so reported the literal `"agent"`, which the server now rejects outright.
 
 ---
 
