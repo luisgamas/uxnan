@@ -585,7 +585,12 @@ mod tests {
         assert!(config_path("unknown", home).is_none());
     }
 
-    // --- Regression tests: atomic + never-clobber writes (plan 001) ---------
+    // --- Regression tests: atomic + never-clobber writes --------------------
+    //
+    // Injecting our MCP entry rewrites a config file the *agent* owns, so the
+    // bar is that nothing else in it can be lost: unrelated top-level keys and
+    // sibling servers survive, and a failed write never leaves a truncated file
+    // behind.
 
     #[test]
     fn write_entry_preserves_unrelated_keys() {
