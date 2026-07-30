@@ -61,8 +61,14 @@ struct DefinitionsDoc {
 
 /// Resolve the app data directory **without** a Tauri handle, matching what
 /// `app.path().app_data_dir()` returns on each platform. Used by the headless
-/// runner, which has no app at all.
+/// runner, which has no app at all. Honours the same `UXNAN_DATA_DIR` override
+/// the app applies, so a run started from a disposable profile finds that
+/// profile's automations rather than the real ones.
 pub fn app_data_dir() -> Result<PathBuf, AppError> {
+    if let Some(dir) = crate::datadir::override_dir() {
+        return Ok(dir);
+    }
+
     #[cfg(target_os = "windows")]
     let base = std::env::var_os("APPDATA").map(PathBuf::from);
 

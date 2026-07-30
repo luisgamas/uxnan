@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 
-import { ELECTRON_RAM, links, RAM_TARGET, SITE_URL } from "@/lib/site";
+import { ELECTRON_RAM, links, RAM_CORE, RAM_FOOTPRINT, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 /**
@@ -12,8 +12,10 @@ import "./globals.css";
  */
 const siteUrl = SITE_URL;
 
-const description =
-  "Two independent apps for the CLI agents you already use. Uxnan Desktop runs them on 30–100 MB so modest PCs stay in the game. Uxnan Mobile steers those agents from your phone without a vendor app stack — end-to-end encrypted, open source.";
+// Interpolated from `site.ts` rather than typed out: this string is the meta
+// description, the OG card and the Twitter card, and a hand-written copy of a
+// claim is how the site ends up contradicting the app it describes.
+const description = `Two independent apps for the CLI agents you already use. Uxnan Desktop runs them in about ${RAM_FOOTPRINT} so modest PCs stay in the game. Uxnan Mobile steers those agents from your phone without a vendor app stack — end-to-end encrypted, open source.`;
 
 /** Social preview card (`public/og.png`), 1200×630. */
 const ogImage = {
@@ -109,7 +111,7 @@ const jsonLd = {
       name: "Uxnan Desktop",
       applicationCategory: "DeveloperApplication",
       operatingSystem: "Windows, macOS, Linux",
-      description: `A terminal-native workspace that runs several CLI coding agents in parallel on ${RAM_TARGET} of RAM, where a typical Electron shell uses ${ELECTRON_RAM}.`,
+      description: `A terminal-native workspace that runs several CLI coding agents in parallel in about ${RAM_FOOTPRINT} of RAM — a ${RAM_CORE} core plus the OS webview, rather than the second browser an Electron shell bundles (${ELECTRON_RAM}).`,
       url: `${siteUrl}/`,
       downloadUrl: links.releases,
       license: links.license,

@@ -18,7 +18,7 @@ cargo fmt --check              # formatting — must be clean (run `cargo fmt` t
 
 Unit tests live in-file under `#[cfg(test)]` (e.g. `model.rs`, `persistence.rs`,
 `git.rs`, `gitfast.rs`, `pty.rs`, `hooks.rs`, `agent_hooks.rs`, `procscan.rs`,
-`updater.rs`, `which.rs`, `pets.rs`); integration tests go in `src-tauri/tests/`. ~275
+`updater.rs`, `which.rs`, `pets.rs`); integration tests go in `src-tauri/tests/`. 377
 backend tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
@@ -66,11 +66,34 @@ schedule + next-runs preview, the run/step display projections, the seeded
 example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
-vs merely still readable) — 386 tests in
-`src/lib/**/*.test.ts`, config in
+vs merely still readable) — plus the **resource-benchmark harness** under
+`scripts/resources/lib/` (process-tree attribution own/managed/external, the
+result schema and its validation messages, percentile / CPU-rate / soak-slope
+maths, absolute budgets and the regression policy, the redaction gate, the
+scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — **517 tests**
+in `src/lib/**/*.test.ts` and `scripts/**/*.test.mjs`, config in
 `vitest.config.ts`. **Component tests** (Vitest + jsdom) and **E2E**
 (Playwright/WebdriverIO + tauri-driver) are still to come — see
 [`../FOR-DEV.md`](../FOR-DEV.md).
+
+## Resource benchmarks
+
+Type-checks and tests say the code is correct; they say nothing about what it
+costs. The scenario matrix that measures uxnan's own footprint — and the budgets
+and regression comparison built on it — is documented in
+[`resource-benchmarks.md`](resource-benchmarks.md):
+
+```bash
+cd uxnandesktop
+npm run bench:build                          # release, frontend embedded
+npm run bench -- --scenario R01 --repeats 5  # measure
+npm run bench:report                         # read it
+```
+
+Run it for any change that spawns a process, opens a webview, starts a watcher,
+polls, caches or runs at startup, and put the numbers in the PR (the template
+asks for them). Close every other uxnan window first — the harness refuses to
+measure otherwise, and the doc explains why.
 
 ## UI / behavior verification
 

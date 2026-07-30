@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R01",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 120,
+    "stabilizeS": 40,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 478.55,
+      "min": 474.68,
+      "max": 481.82,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 497.45,
+      "min": 494.16,
+      "max": 525.7,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 558.49,
+      "min": 554.5,
+      "max": 561.87,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 577.36,
+      "min": 574.11,
+      "max": 605.82,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 238.9,
+      "min": 237.32,
+      "max": 240.83,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 240.93,
+      "min": 239.09,
+      "max": 268.17,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 296.1,
+      "min": 294.33,
+      "max": 298.02,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 3.06,
+      "min": 0,
+      "max": 3.09,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 10.88,
+      "min": 4.86,
+      "max": 13.99,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 10.88,
+      "min": 4.78,
+      "max": 13.99,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 9,
+      "min": 9,
+      "max": 9,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 222,
+      "min": 221,
+      "max": 224,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 4442,
+      "min": 4438,
+      "max": 4449,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 121417,
+      "min": 121394,
+      "max": 121495,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 52,
+      "min": 39,
+      "max": 57,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 425,
+      "min": 343,
+      "max": 441,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 177,
+      "min": 167,
+      "max": 251,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "fixture repo at commit 7bc71b46fc8bf283e2277a9eb16ed3a7f4469358 (200 files)"
+  ]
+}

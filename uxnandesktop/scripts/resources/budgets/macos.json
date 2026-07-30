@@ -1,0 +1,15 @@
+{
+  "budgetVersion": 1,
+  "os": "macos",
+  "mode": "warn",
+  "_comment": [
+    "Empty on purpose: no baseline has been captured on macOS hardware, so every",
+    "scenario is reported as `unknown` rather than judged against a number invented",
+    "on another platform. A WebKit process tree and a WebView2 one are not",
+    "comparable, and macOS keeps the web content process outside the app's tree",
+    "entirely — the `own` bucket therefore means something different here and needs",
+    "its own measured ceilings.",
+    "Fill this in from a real run before claiming macOS support."
+  ],
+  "scenarios": {}
+}

@@ -404,6 +404,62 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
   de Homebrew/npm. La notarizacion con Apple Developer ID queda como via opcional
   futura. Detalle operativo en `docs/updates.md`; clave de firma en `FOR-HUMAN.md`.
 
+#### Banco de pruebas de recursos — ✅ Hecho (adición post-plan)
+
+La promesa de bajo consumo (`01-product-vision.md` §"Justificación de Tauri 2 sobre
+Electron") pasa de objetivo declarado a contrato medible. Vive en
+`scripts/resources/` y se documenta en `docs/resource-benchmarks.md`.
+
+- **Doce escenarios canónicos** (R00–R11): proceso frío, reposo, 1 y 4 terminales,
+  workspace dormido, agente trabajando, repositorio Git grande (10 000 archivos),
+  browser, GitHub, pet apagado/capa/overlay, soak de 2 h, y reinicio con
+  restauración. Cada uno declara pregunta, preparación determinista, ventana de
+  estabilización descartada y ventana de medición.
+- **Tres cubetas que nunca se suman**: `own` (la app + los auxiliares que crea su
+  runtime), `managed` (más shells, ConPTY, `git`/`gh`, sidecars) y `external` (lo
+  que el usuario ejecutó dentro de una shell). La atribución es **estructural** —
+  descenso padre/hijo desde un PID que el propio harness lanzó — nunca por nombre:
+  un proceso homónimo anterior no puede contarse, y uno renombrado no puede
+  escaparse. El nombre solo decide *en qué* cubeta cae un descendiente (¿es shell?,
+  ¿es auxiliar del webview?), replicando la lista de shells por las que desciende
+  `procscan.rs`.
+- **Los escenarios alcanzan su estado sembrando el perfil persistido de la app**
+  (`AppData` + `SavedTerminalLayout`) en un directorio desechable, no conduciendo
+  la UI. Eso los hace reproducibles hoy, sin esperar al driver E2E, y garantiza que
+  el banco jamás lea ni escriba el perfil real.
+- **`UXNAN_DATA_DIR`** (`src-tauri/src/datadir.rs`) es la única pieza de producción
+  que el banco necesita: reubica el directorio de datos para un proceso — app,
+  comandos que leen `<app-data>`, y runner headless de automatizaciones. Rechaza
+  rutas relativas (dependerían del directorio de trabajo, así que el mismo comando
+  podría apuntar a dos perfiles distintos). Un `env::var_os` al arranque; no altera
+  nada de lo medido.
+- **Fixtures locales, offline y deterministas**: repositorio Git generado cuyo hash
+  de commit es función de sus argumentos (autor, committer y ambas fechas fijados,
+  PRNG con semilla), agente sustituto que reproduce la *forma* de la carga de un
+  agente sin modelo, red ni credenciales, y una página fija servida en loopback.
+- **Presupuestos por plataforma** (absolutos; no comparables entre sistemas) más un
+  **comparador contra línea base** que solo falla si una métrica empeora en términos
+  relativos **y** absolutos a la vez. Arranca en `mode: "warn"`: recoge datos sin
+  bloquear hasta conocer el ruido del hardware de referencia.
+- **Privacidad**: los colectores no leen líneas de comando, entornos ni títulos de
+  ventana; cada documento se depura antes de escribirse (usuario, host y los
+  nombres de carpeta *bajo* el home, que son los nombres de proyecto) y la escritura
+  se **rechaza** si algo personal sobrevive. Sin telemetría ni red.
+- **Restricción conocida**: WebView2 mantiene un proceso navegador por carpeta de
+  datos de usuario, así que una segunda instancia de Uxnan adjunta sus renderers al
+  navegador de la primera y quedan fuera del árbol medido (el resultado reportaría
+  solo el proceso Rust, ~27 MB, omitiendo el webview entero). El harness se niega a
+  arrancar con otra instancia viva y marca inválida cualquier ejecución que nunca
+  vio un webview dentro de su propio árbol.
+- **CI** (`.github/workflows/resource-benchmarks.yml`): nocturno y bajo demanda en
+  un runner Windows; sube resultados y reporte, y **nunca falla el build** — una VM
+  compartida da señal de tendencia, no un gate.
+
+Pendientes en `FOR-DEV.md` → *Resource benchmarks — follow-ups*: promover la línea
+base de Windows y rellenar su presupuesto, pasar a `enforce` tras dos semanas de
+ejecuciones reales, ejecutar el colector Unix en hardware real, y automatizar
+R07/R08 cuando exista el driver E2E.
+
 #### Entregable
 
 ADE MVP completo, pulido y listo para uso diario.

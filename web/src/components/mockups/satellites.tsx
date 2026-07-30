@@ -1,6 +1,6 @@
 import { AgentMark, Bar, Chip, StatusDot, type AgentStatus } from "./primitives";
 import { AgentRow, ProjectGroup, type AgentEntry, type ProjectEntry } from "./sidebar";
-import { RAM_TARGET, WIRED_AGENTS } from "@/lib/site";
+import { RAM_FOOTPRINT, WIRED_AGENTS } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 /**
@@ -738,7 +738,7 @@ export function MemoryCard({ className }: { className?: string }) {
     >
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[12px] font-medium">App shell</span>
-        <span className="font-mono text-[12px] text-accent">{RAM_TARGET}</span>
+        <span className="font-mono text-[12px] text-accent">{RAM_FOOTPRINT}</span>
       </div>
       <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-sunken">
         <div

@@ -2,7 +2,7 @@ import { ArrowRight, Check, Monitor, Smartphone } from "lucide-react";
 
 import { Section, SectionHeading } from "./shared";
 import { LinkButton } from "@/components/ui/button";
-import { BRIDGE_INSTALL_COMMAND, links, PHONE_AGENT_COUNT, RAM_TARGET } from "@/lib/site";
+import { BRIDGE_INSTALL_COMMAND, links, PHONE_AGENT_COUNT, RAM_FOOTPRINT } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,7 +32,7 @@ export function TwoApps() {
             tagline="Agents on your machine — without eating it."
             href="#features"
             cta="See Desktop surfaces"
-            summary={`A terminal-native workspace that organises CLI agents, worktrees and review. Targets ${RAM_TARGET} so RAM stays with the agents, not a second browser inside the app.`}
+            summary={`A terminal-native workspace that organises CLI agents, worktrees and review. Measured at ${RAM_FOOTPRINT} — RAM stays with the agents, not with a second browser inside the app.`}
             requires="Standalone. No phone, no bridge, no account with us."
             points={[
               "Native OS webview — not Electron’s full Chromium tax",

@@ -5,6 +5,125 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a reproducible resource benchmark, so "it stays small" is a measurement
+
+- **The efficiency claim now has a harness behind it** (`scripts/resources/`,
+  documented in [`docs/resource-benchmarks.md`](docs/resource-benchmarks.md)):
+  twelve canonical scenarios (cold start, idle, 1 / 4 terminals, a sleeping
+  workspace, an agent working, a 10 000-file repo, browser, GitHub, pet off /
+  layer / overlay, a 2-hour soak, restart-and-restore), a versioned result
+  schema, per-platform budgets and a baseline comparator. `npm run bench`,
+  `npm run bench:report`, `npm run bench:compare`.
+- **Three buckets that are never summed.** `own` is the app plus its webview
+  helpers, `managed` adds the shells and sidecars uxnan spawned, `external` is
+  the agent CLI or program the user ran inside them. Attribution is structural —
+  parent/child descent from a PID the harness spawned itself — so a same-named
+  process that was already running can never be counted, and a renamed one can
+  never escape. `null` means "not measurable on this platform", never zero.
+- **Scenarios reach their state by seeding the app's own persisted profile**, so
+  they are reproducible without driving the UI: a `state.json` is written into a
+  throwaway directory and the app is pointed at it. The seeded profile also turns
+  off the updater check, provider polling, the pet and hook auto-install, so a
+  resting measurement measures resting.
+- **Fixtures are local, offline and deterministic**: a generated git repository
+  whose commit hash is a function of its arguments (pinned author, committer and
+  timestamps, seeded PRNG), a stand-in agent that reproduces an agent's *shape*
+  of load without a model, a network or credentials, and a fixed loopback page
+  for the browser.
+- **A result carries its conditions or it is not a result.** OS, webview version,
+  CPU, core count, power plan, build profile and commit are required by the
+  schema; a debug build is refused outright, because debug numbers are not
+  comparable with anything.
+- **Working set and private bytes are both published.** A webview tree is many
+  processes sharing one large code region, and a working-set sum counts those
+  pages once per process — so `*RssMb` over-states the machine's real burden even
+  though it stays the better like-for-like signal between runs. `*PrivateMb` sums
+  private committed bytes and double-counts nothing. Reporting only one of them
+  would be a quiet accounting choice; reporting both makes the gap visible.
+- **A memory slope is only reported over a window long enough to mean it**
+  (ten minutes). Fitted over a 45-second run, warm-up alone extrapolates to
+  thousands of MB/h — a fabricated leak is worse than a missing number.
+- **Three ways a run can look excellent and mean nothing are now refused.** The
+  binary is scanned for embedded frontend assets, because `cargo build --release`
+  alone leaves Tauri in dev mode: the window opens, the Rust backend runs, real
+  WebView2 processes spawn — and the UI is a connection-refused page pointing at
+  `localhost:1420`. Measured that way a one-terminal scenario reports ~27 MB and
+  no shell. Each scenario also asserts that the terminals its profile seeded
+  actually came back, which catches a broken restore path on its own and is the
+  second net under "the UI never booted".
+- **Nothing personal leaves the machine.** The collectors never read a command
+  line, an environment block or a window title; every document is scrubbed before
+  it is written (user, host, and the folder names *under* the home directory —
+  which are the project names) and the write is refused if anything personal
+  survives. No telemetry, no network.
+- **The gate starts in warn mode.** Absolute budgets live per platform, and the
+  regression comparison only fails when a metric moves by both a relative and an
+  absolute margin (>15 % *and* >10 MB / 2 pp CPU), so noise cannot trip it.
+  macOS and Linux budgets ship empty on purpose and report `unknown` rather than
+  borrowing a number measured on another platform.
+- **A first Windows baseline is approved and committed**
+  (`scripts/resources/baselines/windows/`, eleven scenarios × 5 repetitions,
+  release build, Windows 11 / WebView2 150 / i7-13620H), and `budgets/windows.json`
+  is derived from it with explicit margins. R07 and R08 need an operator and R10
+  (the two-hour soak) has never been run, so those three carry no budget entry and
+  report `unknown` — the distinction between "not judged" and "passed" is the
+  whole point. What the baseline shows:
+  - **sleeping a workspace really does give memory back** — 48 MB and 8 processes
+    between four live terminals and the same four asleep;
+  - **restart-and-restore comes back whole** — the restored session lands on the
+    same 15 managed processes and within 3 % of the memory of the session it
+    replaced;
+  - **the pet costs nothing while off**, 28 MB as a layer, and **88 MB plus double
+    the CPU as a desktop overlay**, where it is a second webview window (visible
+    as an eighth `own` process);
+  - **the agent's cost stays out of uxnan's figure** — the fixture agent is
+    reported in `external` at 48 MB working set / 27 MB private;
+  - **the published memory figure described the wrong thing.** "30–100 MB" is the
+    Rust process alone (~40 MB — the row Task Manager shows); the app also runs
+    six OS-webview processes that Windows lists under their own name, and the
+    honest total is **236 MB private cold, 252 MB with one terminal** (~500 MB if
+    you sum working sets, which counts the pages those six share once each).
+
+### Changed — the published memory figure now says what it measures
+
+- **"30–100 MB" became "~250 MB", everywhere at once**: both root READMEs, this
+  component's README (badge + a breakdown of why Task Manager shows ~40 MB), and
+  `web/src/lib/site.ts`, where `RAM_TARGET` is replaced by a measured
+  `RAM_FOOTPRINT` + `RAM_CORE` pair carrying the platform, build and method in a
+  doc comment. The site's hero, OG description, feature card and comparison copy
+  follow from those constants, and `web/docs/content.md` records where the number
+  comes from and how to re-derive it. The old figure was not wrong so much as
+  about a different thing — the core, not the app — and it was checkable in
+  thirty seconds by anyone with Task Manager, which is the worst property a public
+  number can have.
+- **A nightly / on-demand CI workflow** (`resource-benchmarks.yml`) runs the
+  unattended scenarios on a Windows runner and uploads the results. It never
+  fails the build: a shared VM gives a trend signal, not a gate.
+- The PR template now asks for the resource impact of any change that spawns a
+  process, opens a webview, starts a watcher, polls, caches, or runs at startup.
+
+### Added — `UXNAN_DATA_DIR`, for running the app against a disposable profile
+
+- The application data directory can be relocated for one process with
+  `UXNAN_DATA_DIR` (`src-tauri/src/datadir.rs`), honoured by the app, by every
+  command that reads `<app-data>`, and by the headless automation runner. It
+  exists so the benchmarks (and, later, an E2E driver) can start from a known
+  state *and* can never write into the real profile. A relative path is refused —
+  it would resolve against whatever the working directory happened to be, so the
+  same command could mean two different profiles — and the platform location is
+  used instead.
+
+### Known limitation — one uxnan at a time while benchmarking
+
+- **WebView2 keeps one browser process per user-data folder**, and uxnan's is
+  `%LOCALAPPDATA%\dev.luisgamas.uxnandesktop\EBWebView`. A second instance
+  attaches to the first one's browser process, so its renderers are spawned
+  outside the tree being sampled: the run would report the Rust process alone
+  (~27 MB) and silently omit the entire webview. The harness therefore refuses to
+  start while another instance is running, and marks any run that never grew a
+  webview inside its own tree as invalid. A benchmarking constraint only — it
+  does not affect normal use.
+
 ### Fixed — most agent logos never rendered, and the catalog didn't notice an uninstall
 
 - **Every logo that came from a favicon was blocked.** Only 7 of the 32 catalog

@@ -16,6 +16,9 @@ mod browse;
 mod browser;
 mod codex_trust;
 mod commands;
+// Public so the headless runner (`main.rs` → `automations::store`) resolves the
+// data directory through exactly the same override the app does.
+pub mod datadir;
 mod editors;
 mod error;
 mod fonts;
@@ -75,9 +78,11 @@ pub fn run() {
         // window config provides the first-run defaults.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
-            // Resolve the OS-specific app data directory and load (or default)
-            // the persisted state, then publish it as managed state.
-            let data_dir = app.path().app_data_dir()?;
+            // Resolve the app data directory (the OS-specific one, unless
+            // `UXNAN_DATA_DIR` points the process at a disposable profile) and
+            // load (or default) the persisted state, then publish it as managed
+            // state.
+            let data_dir = crate::datadir::resolve(app.path().app_data_dir()?);
             let persistence = PersistenceManager::new(&data_dir);
             let mut data = persistence.load().unwrap_or_else(|err| {
                 eprintln!("[uxnan-desktop] failed to load persisted state ({err}); starting fresh");

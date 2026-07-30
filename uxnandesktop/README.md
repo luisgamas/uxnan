@@ -12,7 +12,7 @@ CodeMirror 6.
 ![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)
 ![Svelte](https://img.shields.io/badge/Svelte_5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
-![RAM](https://img.shields.io/badge/RAM-~30%E2%80%93100_MB-2ea44f?style=for-the-badge)
+![RAM](https://img.shields.io/badge/RAM-~250_MB_measured-2ea44f?style=for-the-badge)
 ![i18n](https://img.shields.io/badge/i18n-EN_%7C_ES-blue?style=for-the-badge)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
@@ -28,11 +28,32 @@ CodeMirror 6.
 Uxnan Desktop is for developers who want a clear, multi-agent workflow without
 paying the resource cost of a full IDE or an Electron shell. Because it renders
 through the operating system's native webview instead of bundling its own browser,
-it targets **30–100 MB of RAM** where comparable Electron applications routinely
-sit at **200–500 MB**. That difference is the point: it is meant to be a practical
-choice on low-to-moderate-resource machines, not only on high-end workstations,
-while still offering an intuitive interface for running and reviewing several
-agents at once.
+it costs **about 250 MB of RAM** in a normal session, against the **200–500 MB**
+an Electron shell routinely idles at. That difference is the point: it is meant to
+be a practical choice on low-to-moderate-resource machines, not only on high-end
+workstations, while still offering an intuitive interface for running and
+reviewing several agents at once.
+
+That figure is measured, not asserted — and it is worth knowing how it breaks
+down, because the number Task Manager shows you is a different one:
+
+| | |
+|---|---|
+| `uxnan-desktop.exe`, the Rust core | **~40 MB** — this is the row you see in Task Manager |
+| the OS webview the interface renders in | six more processes, listed separately by Windows |
+| **the whole thing, private memory** | **~250 MB** (236 MB with nothing open) |
+
+Windows lists those webview processes under their own name, so uxnan looks far
+smaller than it is; summing the rows the way Task Manager displays them gives
+~500 MB, which over-counts, because the six share large parts of their memory.
+**~250 MB is the honest figure**: private memory across the whole tree, nothing
+counted twice.
+
+Measured on Windows 11 (x64), WebView2 150.0.4078.105, release build, five
+repetitions — a
+[reproducible benchmark](./docs/resource-benchmarks.md) with a scenario matrix,
+per-platform budgets and a regression gate is what keeps it that way. No figure is
+published here without the platform, build and method behind it.
 
 It is deliberately **not an IDE**. It is an orchestration, monitoring, and
 change-review layer, and any CLI agent works inside it without modification.
@@ -197,6 +218,7 @@ Detailed docs live in [`docs/`](./docs/):
 [release builds & packaging](./docs/build.md) ·
 [installing on macOS (experimental)](./docs/install-macos.md) ·
 [testing & verification](./docs/testing.md) ·
+[resource benchmarks](./docs/resource-benchmarks.md) ·
 [architecture orientation](./docs/architecture.md) ·
 [design tokens](./docs/design-tokens.md) ·
 [theming & appearance](./docs/theming.md) ·

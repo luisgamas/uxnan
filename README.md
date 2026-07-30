@@ -100,8 +100,12 @@ channel.
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=white)
 
 A lightweight **Agent Development Environment** built with Tauri 2, Rust and
-Svelte 5. Unlike Electron-based alternatives that consume 200-500 MB of RAM just
-by existing, this ADE uses the OS's native webview and targets 30-100 MB of RAM.
+Svelte 5. It renders through the operating system's native webview instead of
+bundling a second browser, which is where the difference against Electron-based
+alternatives comes from: its own core is ~40 MB, and a typical session sits
+around **250 MB** — measured, not estimated (Windows 11, WebView2 150, release
+build; method and full numbers in
+[`uxnandesktop/docs/resource-benchmarks.md`](uxnandesktop/docs/resource-benchmarks.md)).
 
 The core idea: each task lives in its own git worktree with its own agent running
 in an independent pseudoterminal. I can have 5 agents working in parallel without

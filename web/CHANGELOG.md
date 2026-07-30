@@ -11,6 +11,18 @@ grouped by the date they landed rather than by a version number.
 
 ### Changed
 
+- **The RAM claim is now a measurement.** `RAM_TARGET = "30–100 MB"` is replaced
+  by `RAM_FOOTPRINT = "~250 MB"` and `RAM_CORE = "~40 MB"`, taken from the desktop
+  app's first approved benchmark baseline (Windows 11, WebView2 150, release
+  build, median of five repetitions, private bytes across the whole process
+  tree). The old figure described the Rust core alone — the row Task Manager
+  shows — while the app also runs six OS-webview processes Windows lists under
+  their own name, so quoting the smaller number as the app's footprint was
+  disprovable by anyone who opened Task Manager. The hero, the OG/schema
+  description, the feature card and the two-apps summary all follow from those
+  constants, and `docs/content.md` records the source file and how to re-derive
+  it. The Electron range is unchanged and stays explicitly *not* a benchmark of
+  any named product.
 - **Contract counts refreshed to 68 methods / 10 notifications**
   (`BRIDGE_METHOD_COUNT`, `BRIDGE_NOTIFICATION_COUNT`). The mobile message queue
   added `queue/resume` + `queue/clear` and the `stream/turn/cancelled` +

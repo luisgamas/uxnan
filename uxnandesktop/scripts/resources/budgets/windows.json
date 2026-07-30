@@ -1,0 +1,307 @@
+{
+  "budgetVersion": 1,
+  "os": "windows",
+  "mode": "warn",
+  "_comment": [
+    "Absolute ceilings for Windows, derived from the approved baseline in",
+    "scripts/resources/baselines/windows/ (5 repetitions per scenario, release",
+    "build, quiet machine). Each limit is the measured median plus an explicit",
+    "margin: +15% warn / +35% fail for memory, +20/+40% for the managed bucket,",
+    "+25/+50% for handles. CPU P95 and launch latency get much wider bands (x2.5",
+    "/ x4 and x6 / x12, with floors) because they are the noisy metrics on a",
+    "desktop — a gate that fires on noise gets switched off, and then nothing is",
+    "measured at all.",
+    "",
+    "mode: 'warn' downgrades every `fail` to a warning, so CI reports without",
+    "blocking. Flip to 'enforce' after two weeks of real runs establish the noise",
+    "floor. Raising a limit afterwards needs the run that justifies it in the diff."
+  ],
+  "scenarios": {
+    "R00": {
+      "ownPrivateP50Mb": {
+        "warn": 272,
+        "fail": 319
+      },
+      "ownRssP50Mb": {
+        "warn": 551,
+        "fail": 647
+      },
+      "managedPrivateP50Mb": {
+        "warn": 284,
+        "fail": 331
+      },
+      "handlesP95": {
+        "warn": 4377,
+        "fail": 5252
+      },
+      "cpuP95": {
+        "warn": 8,
+        "fail": 15
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R01": {
+      "ownPrivateP50Mb": {
+        "warn": 275,
+        "fail": 323
+      },
+      "ownRssP50Mb": {
+        "warn": 551,
+        "fail": 647
+      },
+      "managedPrivateP50Mb": {
+        "warn": 356,
+        "fail": 415
+      },
+      "handlesP95": {
+        "warn": 5553,
+        "fail": 6663
+      },
+      "cpuP95": {
+        "warn": 28,
+        "fail": 44
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R02": {
+      "ownPrivateP50Mb": {
+        "warn": 290,
+        "fail": 341
+      },
+      "ownRssP50Mb": {
+        "warn": 582,
+        "fail": 683
+      },
+      "managedPrivateP50Mb": {
+        "warn": 309,
+        "fail": 360
+      },
+      "handlesP95": {
+        "warn": 4902,
+        "fail": 5882
+      },
+      "cpuP95": {
+        "warn": 16,
+        "fail": 26
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R03": {
+      "ownPrivateP50Mb": {
+        "warn": 316,
+        "fail": 371
+      },
+      "ownRssP50Mb": {
+        "warn": 661,
+        "fail": 776
+      },
+      "managedPrivateP50Mb": {
+        "warn": 353,
+        "fail": 411
+      },
+      "handlesP95": {
+        "warn": 5708,
+        "fail": 6849
+      },
+      "cpuP95": {
+        "warn": 18,
+        "fail": 29
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R04": {
+      "ownPrivateP50Mb": {
+        "warn": 261,
+        "fail": 306
+      },
+      "ownRssP50Mb": {
+        "warn": 541,
+        "fail": 635
+      },
+      "managedPrivateP50Mb": {
+        "warn": 272,
+        "fail": 317
+      },
+      "handlesP95": {
+        "warn": 4405,
+        "fail": 5286
+      },
+      "cpuP95": {
+        "warn": 12,
+        "fail": 19
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R05": {
+      "ownPrivateP50Mb": {
+        "warn": 312,
+        "fail": 366
+      },
+      "ownRssP50Mb": {
+        "warn": 606,
+        "fail": 711
+      },
+      "managedPrivateP50Mb": {
+        "warn": 331,
+        "fail": 387
+      },
+      "handlesP95": {
+        "warn": 4948,
+        "fail": 5937
+      },
+      "cpuP95": {
+        "warn": 88,
+        "fail": 141
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R06": {
+      "ownPrivateP50Mb": {
+        "warn": 284,
+        "fail": 333
+      },
+      "ownRssP50Mb": {
+        "warn": 566,
+        "fail": 664
+      },
+      "managedPrivateP50Mb": {
+        "warn": 302,
+        "fail": 352
+      },
+      "handlesP95": {
+        "warn": 4914,
+        "fail": 5897
+      },
+      "cpuP95": {
+        "warn": 33,
+        "fail": 52
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R09-layer": {
+      "ownPrivateP50Mb": {
+        "warn": 311,
+        "fail": 365
+      },
+      "ownRssP50Mb": {
+        "warn": 606,
+        "fail": 711
+      },
+      "managedPrivateP50Mb": {
+        "warn": 330,
+        "fail": 385
+      },
+      "handlesP95": {
+        "warn": 4913,
+        "fail": 5895
+      },
+      "cpuP95": {
+        "warn": 28,
+        "fail": 44
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R09-off": {
+      "ownPrivateP50Mb": {
+        "warn": 278,
+        "fail": 327
+      },
+      "ownRssP50Mb": {
+        "warn": 570,
+        "fail": 669
+      },
+      "managedPrivateP50Mb": {
+        "warn": 297,
+        "fail": 346
+      },
+      "handlesP95": {
+        "warn": 4904,
+        "fail": 5885
+      },
+      "cpuP95": {
+        "warn": 28,
+        "fail": 45
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R09-overlay": {
+      "ownPrivateP50Mb": {
+        "warn": 380,
+        "fail": 446
+      },
+      "ownRssP50Mb": {
+        "warn": 733,
+        "fail": 861
+      },
+      "managedPrivateP50Mb": {
+        "warn": 402,
+        "fail": 469
+      },
+      "handlesP95": {
+        "warn": 5258,
+        "fail": 6309
+      },
+      "cpuP95": {
+        "warn": 61,
+        "fail": 97
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R11": {
+      "ownPrivateP50Mb": {
+        "warn": 307,
+        "fail": 360
+      },
+      "ownRssP50Mb": {
+        "warn": 654,
+        "fail": 767
+      },
+      "managedPrivateP50Mb": {
+        "warn": 347,
+        "fail": 405
+      },
+      "handlesP95": {
+        "warn": 5742,
+        "fail": 6890
+      },
+      "cpuP95": {
+        "warn": 22,
+        "fail": 35
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    }
+  }
+}
