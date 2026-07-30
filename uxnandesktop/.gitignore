@@ -16,3 +16,8 @@ src-tauri/gen/schemas
 
 # pnpm
 pnpm-debug.log*
+
+# Resource benchmarks — raw results, generated fixtures and disposable app
+# profiles. Only approved summaries under scripts/resources/baselines/ are
+# committed (see docs/resource-benchmarks.md).
+/.resource-results

@@ -16,6 +16,10 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:build": "tauri build --no-bundle",
+    "bench": "node scripts/resources/run.mjs",
+    "bench:report": "node scripts/resources/report.mjs",
+    "bench:compare": "node scripts/resources/compare.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
