@@ -94,6 +94,12 @@ exact path is shown in **Settings → Agents → Hooks** ("Installed at …"):
 | macOS | `~/Library/Application Support/dev.luisgamas.uxnandesktop/hooks/` |
 | Linux | `~/.local/share/dev.luisgamas.uxnandesktop/hooks/` |
 
+Setting **`UXNAN_DATA_DIR`** to an absolute path moves `<app-data>` — and with it
+everything below it — for that one process. It exists so a launch can be given a
+disposable profile: the [resource benchmarks](resource-benchmarks.md) use it, and
+an E2E driver will. A relative path is ignored, since it would resolve against
+whatever the working directory happened to be.
+
 The reporters (one per agent, plus the generic wrapper) — full table in
 [`static/hooks/README.md`](../static/hooks/README.md):
 

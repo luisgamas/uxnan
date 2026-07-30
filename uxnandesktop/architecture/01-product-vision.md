@@ -267,7 +267,7 @@ El **Uxnan Relay** es un servidor Node.js que facilita la comunicación entre la
 | Tecnología | Qué es | Para qué la usamos | Ventajas clave |
 |---|---|---|---|
 | **Rust** | Lenguaje de programación de sistemas | Todo el backend pesado: gestión de git worktrees, procesos de terminales (PTY), servidor HTTP de hooks, monitoreo de agentes, filesystem, operaciones git, lógica de orquestación, persistencia. | Extrema ligereza y bajo uso de RAM/CPU. Seguridad de memoria (sin crashes por null/dangling pointers). Concurrencia segura con Tokio (runtime async). Excelente para crecer (SSH, Docker, etc.) sin perder rendimiento. FFI nativo para integrar con APIs del sistema operativo. |
-| **Tauri 2** | Framework para apps de escritorio | Une el frontend con el backend Rust y genera la app nativa multiplataforma. Provee el sistema de commands/events para comunicación backend-frontend. | Usa el webview nativo del sistema operativo (no bundlea Chromium). Instaladores de 5-15 MB vs 150-300 MB de Electron. Bajo consumo de RAM (30-100 MB típico). Seguridad fuerte con permisos explícitos por capability. Fácil de empaquetar y distribuir. |
+| **Tauri 2** | Framework para apps de escritorio | Une el frontend con el backend Rust y genera la app nativa multiplataforma. Provee el sistema de commands/events para comunicación backend-frontend. | Usa el webview nativo del sistema operativo (no bundlea Chromium). Instaladores de 5-15 MB vs 150-300 MB de Electron. Bajo consumo de RAM (~250 MB medidos, de los cuales ~40 MB son el proceso propio). Seguridad fuerte con permisos explícitos por capability. Fácil de empaquetar y distribuir. |
 | **Svelte 5** | Framework frontend | Construir toda la interfaz: sidebars, layout de tres paneles, tabs, splits, estado en tiempo real, command palette, etc. | `$state` y `$derived` (Runes) eliminan la necesidad de librerías de estado externas como Zustand o Redux. Menor runtime overhead que React o Vue. Excelente rendimiento en actualizaciones en tiempo real. Código simple y mantenible. |
 | **shadcn-svelte** | Colección de componentes UI | Botones, sidebars, tabs, modales, tablas, tooltips, command palette, dark mode, y más. | Componentes modernos, accesibles y personalizables. Ligero porque solo copias lo que usas (no hay dependencia de un paquete monolítico). Basado en Bits UI (equivalente de Radix para Svelte). Look profesional sin esfuerzo. |
 | **Tailwind CSS** | Framework de CSS utilitario | Estilos rápidos y consistentes de toda la aplicación. | Muy ligero gracias al purge automático de clases no usadas en producción. Alta velocidad de desarrollo. Fácil de mantener y escalar. Integración nativa con shadcn-svelte. |
@@ -307,7 +307,7 @@ Tauri 2 elimina el overhead de bundlear Chromium + Node.js (que es lo que hace E
 
 | Métrica | Electron (referencia) | Tauri 2 + Rust |
 |---|---|---|
-| **RAM en reposo** | 200-500 MB | 30-100 MB |
+| **RAM en reposo** | 200-500 MB | **~240 MB medidos** (nucleo Rust ~40 MB + webview del OS) |
 | **Tamaño del instalador** | 150-300 MB | 5-15 MB |
 | **Tiempo de arranque** | 2-5 segundos | < 1 segundo |
 | **Bundled runtime** | Chromium + Node.js completos | Webview del OS (ya instalado) |
@@ -315,7 +315,18 @@ Tauri 2 elimina el overhead de bundlear Chromium + Node.js (que es lo que hace E
 | **Overhead de IPC** | JSON serialization sobre IPC channel | Tauri commands con serialización Serde (más rápido) |
 | **Procesos de sistema** | 3+ procesos (main, renderer, GPU) | 1 proceso nativo + webview del OS |
 
-La diferencia de 200-500 MB a 30-100 MB de RAM es especialmente relevante para un ADE que gestiona N agentes en paralelo — cada agente ya consume memoria propia. Si el ADE base consume 400 MB antes de que los agentes empiecen a trabajar, el sistema se satura más rápido.
+Esa diferencia es especialmente relevante para un ADE que gestiona N agentes en paralelo — cada agente ya consume memoria propia. Si el ADE base consume 400 MB antes de que los agentes empiecen a trabajar, el sistema se satura más rápido.
+
+**Estas cifras son un objetivo verificable, no una impresión.** La promesa de bajo
+consumo se mide con un banco de pruebas reproducible (`scripts/resources/`,
+documentado en `docs/resource-benchmarks.md`): matriz de escenarios canónicos,
+esquema de resultado versionado, presupuestos por plataforma y comparador contra una
+línea base aprobada. El banco separa siempre tres costos que **nunca se suman** —
+**propio** (la app y los procesos auxiliares de su runtime), **gestionado** (más las
+shells y sidecars que Uxnan lanza) y **externo** (el CLI del agente que el usuario
+ejecutó dentro de una shell) — porque presentar la suma como "lo que cuesta Uxnan"
+sería exactamente la cifra engañosa que este documento no debe publicar. Todo número
+publicado va acompañado de plataforma, versión del webview, perfil de build y método.
 
 ### Justificación de Svelte 5 con Runes
 
@@ -457,6 +468,6 @@ Uxnan Desktop corre en **Windows, macOS y Linux** con el mismo codebase. Gracias
 | Terminal-céntrico | Cualquier agente CLI funciona sin integración |
 | Conectividad móvil | Bridge embebido opcional para Uxnan Mobile |
 | Cross-platform | Windows, macOS, Linux con instalador de 5-15 MB |
-| Ligero | 30-100 MB RAM vs 200-500 MB de alternativas Electron |
+| Ligero | ~250 MB de RAM medidos vs 200-500 MB de alternativas Electron |
 
 > **Referencia:** Para la arquitectura detallada de cada pilar, consultar: [02a — Arquitectura del Sistema](02a-system-architecture.md) (estructura de módulos, comunicación backend-frontend, persistencia), [02b — Motor de Terminales y PTY](02b-terminal-engine.md) (motor de terminales, xterm.js, PTY lifecycle), [02c — Git, Worktrees y Diffs](02c-git-worktrees.md) (worktree lifecycle, capa de ejecución git, polling, staging), [02d — Monitoreo y Orquestación de Agentes](02d-agent-monitoring.md) (hooks, notificaciones, multi-agente), [04 — Referencia Técnica](04-technical-reference.md) (fases, MVP, estimaciones).

@@ -17,7 +17,10 @@ status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **automations**, **pets**). 372 Rust backend tests + 386 frontend Vitest unit tests (pure logic); **no Svelte component or E2E tests yet**. macOS now ships an
+with" external editors/IDEs**, **automations**, **pets**, **a reproducible
+resource benchmark**). 377 Rust backend tests + 517 frontend Vitest unit tests
+(pure logic, the benchmark harness included); **no Svelte component or E2E tests
+yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -224,6 +227,55 @@ on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.
   **Caveat: the write side is implemented but not yet exercised against real GitHub
   data** (this repo has no PRs/issues/collaborators) — see *Validation status* under
   "GitHub integration — follow-ups" before trusting any of it in anger.
+- **Resource benchmark** (`scripts/resources/`) — twelve canonical scenarios, a
+  versioned result schema, structural own/managed/external process attribution,
+  deterministic offline fixtures (generated git repo, stand-in agent, loopback
+  page), per-platform budgets in warn mode, a baseline comparator, a redaction
+  gate that refuses to write anything personal, and a nightly/on-demand CI
+  workflow. Scenarios reach their state by seeding a disposable app profile
+  (`UXNAN_DATA_DIR`, `src-tauri/src/datadir.rs`), never by driving the UI.
+  See [`docs/resource-benchmarks.md`](docs/resource-benchmarks.md).
+  **Caveats: only Windows has been run on real hardware; R07/R08 still need an
+  operator; the gate is warn-only.** See "Resource benchmarks — follow-ups".
+
+## Resource benchmarks — follow-ups ☐
+
+**The harness is complete and runs.** What is left is coverage and confidence,
+not missing machinery.
+
+- [ ] **Re-measure the published figure on a modest machine.** The ~250 MB now
+      quoted everywhere comes from a 16 GB box, and WebView2 is more generous with
+      memory when there is memory to spare — so the number a low-RAM user actually
+      sees is probably lower, and is currently unknown. That is the machine the
+      claim is aimed at, so it is the machine it should be measured on.
+- [ ] **Leave the gate in warn mode for two weeks of real runs, then flip
+      `"mode": "enforce"`** in `budgets/windows.json`. The limits are derived
+      from the 2026-07-30 baseline with explicit margins (the rule is written
+      into the file), but flipping before the noise floor is known on a second
+      machine is how a gate earns a reputation for false positives and gets
+      switched off.
+- [ ] **Capture R07 and R08 with an operator, and run R10 once.** The Windows
+      baseline covers eleven scenarios; those three have no entry and correctly
+      report `unknown`. R10 in particular means there is currently **no evidence
+      either way** about long-run memory growth — the slope metrics exist and
+      have never been exercised on a real two-hour run.
+- [ ] **Run the Unix collector on real macOS and Linux hardware.** It is
+      implemented and shares the schema, but has never executed anywhere: until
+      it has, `budgets/{macos,linux}.json` stay empty and no figure for those
+      platforms may be published. macOS additionally needs its own definition of
+      the `own` bucket — WebKit's content process lives outside the app's tree,
+      so the Windows framing does not transfer.
+- [ ] **Automate R07 (browser) and R08 (GitHub) once an E2E driver exists.** Both
+      need a person to click today. The metric names will not change when they
+      flip to `auto`; R08 stays out of CI regardless, because it needs a real
+      `gh` login. Same for R04's *wake* half — the asleep cost is automatic, the
+      wake latency and scrollback fidelity are still on the checklist.
+- [ ] **Per-run WebView2 profile, if a way appears.** Tauri forces the webview
+      user-data folder to `LocalData/<identifier>` when a window config does not
+      set one, which is why two instances share a browser process and why the
+      harness has to refuse to run alongside another uxnan. Isolating it per run
+      would remove that precondition; it needs either a config-level
+      `dataDirectory` uxnan controls per launch or an upstream hook.
 
 ## Automations — follow-ups ☐
 
@@ -826,7 +878,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 372 Rust + 386 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 377 Rust + 517 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

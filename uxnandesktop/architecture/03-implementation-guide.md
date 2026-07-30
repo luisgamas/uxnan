@@ -24,7 +24,7 @@
 | Tecnologia | Que es | Para que la usamos | Ventajas clave |
 |------------|--------|---------------------|----------------|
 | **Rust** | Lenguaje de programacion de sistemas | Todo el nucleo pesado: gestion de git worktrees, procesos de terminales (PTY), servidor HTTP de hooks, monitoreo de agentes, filesystem, operaciones git, logica de orquestacion, persistencia. | Extrema ligereza y bajo uso de RAM/CPU. Seguridad de memoria (sin crashes por null/dangling pointers). Concurrencia segura con Tokio. Excelente para crecer (SSH, Docker, etc.) sin perder rendimiento. |
-| **Tauri 2** | Framework para apps de escritorio | Une el frontend con el backend Rust y genera la app nativa para Windows, macOS y Linux. Provee el sistema de commands/events para comunicacion backend-frontend. | Mucho mas ligero que Electron (usa webview del sistema, no Chromium). Bajo consumo de RAM (30-100MB tipico vs 200-500MB de Electron). Seguridad fuerte (permisos explicitos por capability). Facil de empaquetar y distribuir. |
+| **Tauri 2** | Framework para apps de escritorio | Une el frontend con el backend Rust y genera la app nativa para Windows, macOS y Linux. Provee el sistema de commands/events para comunicacion backend-frontend. | Mucho mas ligero que Electron (usa webview del sistema, no Chromium). Bajo consumo de RAM (~250MB medidos vs 200-500MB de Electron; el proceso propio son ~40MB). Seguridad fuerte (permisos explicitos por capability). Facil de empaquetar y distribuir. |
 | **Svelte 5** | Framework frontend | Construir la interfaz: sidebars, layout de tres paneles, tabs, splits, estado en tiempo real, command palette, etc. | Muy ligero (menos runtime overhead que React/Vue). `$state` y `$derived` (Runes) eliminan la necesidad de librerias de estado externas como Zustand. Excelente rendimiento en actualizaciones en tiempo real. Codigo simple y mantenible. |
 | **shadcn-svelte** | Coleccion de componentes UI para Svelte | Botones, sidebars, tabs, modales, tablas, tooltips, command palette, dark mode, etc. | Componentes modernos, accesibles y personalizables. Ligero (solo copias lo que usas). Basado en Bits UI (equivalente de Radix para Svelte). Look profesional sin esfuerzo. |
 | **Tailwind CSS** | Framework de CSS utilitario | Estilos rapidos y consistentes de toda la aplicacion. | Muy ligero (purge automatico de clases no usadas). Alta velocidad de desarrollo. Facil de mantener y escalar. |
@@ -1272,7 +1272,7 @@ La eleccion de Tauri 2 + Rust sobre Electron se justifica por diferencias signif
 
 | Metrica | Electron (referencia) | Tauri 2 + Rust |
 |---------|----------------------|----------------|
-| **RAM en reposo** | 200-500 MB | 30-100 MB |
+| **RAM en reposo** | 200-500 MB | **~240 MB medidos** (nucleo Rust ~40 MB + webview del OS) |
 | **Tamano del instalador** | 150-300 MB | 5-15 MB |
 | **Tiempo de arranque** | 2-5 segundos | <1 segundo |
 | **Bundled runtime** | Chromium + Node.js completos | Webview del OS (ya instalado) |
