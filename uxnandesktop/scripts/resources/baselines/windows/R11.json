@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R11",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 75,
+    "stabilizeS": 25,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 567.86,
+      "min": 557.34,
+      "max": 574.9,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 582.29,
+      "min": 562.71,
+      "max": 588.35,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 630.8,
+      "min": 620.21,
+      "max": 3875.42,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 647.21,
+      "min": 625.86,
+      "max": 3893.19,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 266.14,
+      "min": 259.52,
+      "max": 275.52,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 288.03,
+      "min": 273.89,
+      "max": 295.01,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 288.69,
+      "min": 278.86,
+      "max": 4038.94,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 0,
+      "min": 0,
+      "max": 1.61,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 8.71,
+      "min": 7.11,
+      "max": 18.74,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 8.64,
+      "min": 4.93,
+      "max": 10.35,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 15,
+      "min": 15,
+      "max": 37,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 252,
+      "min": 251,
+      "max": 810,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 4593,
+      "min": 4574,
+      "max": 14139,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 22,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 76294,
+      "min": 76257,
+      "max": 96423,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 53,
+      "min": 32,
+      "max": 62,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1305,
+      "min": 567,
+      "max": 1337,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 187,
+      "min": 172,
+      "max": 201,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "measured launch is the second one, against a profile the first launch already used",
+    "a warm-up launch wrote the session this run restores"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "budgetVersion": 1,
+  "os": "linux",
+  "mode": "warn",
+  "_comment": [
+    "Empty on purpose: no baseline has been captured on Linux hardware. WebKitGTK's",
+    "footprint differs from WebView2's by more than any regression worth gating on,",
+    "and the collector reports RSS (shared pages counted per process) rather than a",
+    "working set — so these ceilings must be measured here, not copied from Windows.",
+    "Fill this in from a real run before claiming Linux support."
+  ],
+  "scenarios": {}
+}

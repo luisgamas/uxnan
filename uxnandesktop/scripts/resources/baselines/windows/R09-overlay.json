@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R09",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": "overlay",
+    "durationS": 60,
+    "stabilizeS": 20,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 637.04,
+      "min": 635.33,
+      "max": 671.81,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 649.2,
+      "min": 648.11,
+      "max": 684.5,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 652.71,
+      "min": 651.21,
+      "max": 687.48,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 665.17,
+      "min": 663.84,
+      "max": 700.52,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 329.91,
+      "min": 328.26,
+      "max": 336.07,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 352.25,
+      "min": 349.85,
+      "max": 355.96,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 334.75,
+      "min": 333.1,
+      "max": 340.91,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 11.2,
+      "min": 9.36,
+      "max": 12.64,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 24.19,
+      "min": 22,
+      "max": 28.25,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 24.19,
+      "min": 22,
+      "max": 28.25,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 8,
+      "min": 8,
+      "max": 8,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 10,
+      "min": 10,
+      "max": 10,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 221,
+      "min": 221,
+      "max": 224,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 4206,
+      "min": 4183,
+      "max": 4213,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 76485,
+      "min": 76468,
+      "max": 76564,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 50,
+      "min": 36,
+      "max": 53,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 431,
+      "min": 362,
+      "max": 451,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1316,
+      "min": 1308,
+      "max": 1441,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 15232,
+      "min": 15195,
+      "max": 15300,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "pet variant: overlay",
+    "compare the three variants: 'off' must cost nothing at all",
+    "the app had to be force-killed: it did not close on request"
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R04",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 75,
+    "stabilizeS": 25,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 469.82,
+      "min": 459.18,
+      "max": 477.88,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 470.7,
+      "min": 463.54,
+      "max": 482.6,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 469.82,
+      "min": 459.18,
+      "max": 477.88,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 470.75,
+      "min": 463.54,
+      "max": 482.65,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 226.22,
+      "min": 213.3,
+      "max": 237.24,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 234.45,
+      "min": 228.54,
+      "max": 244.56,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 226.22,
+      "min": 213.3,
+      "max": 237.24,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 4.64,
+      "min": 4.14,
+      "max": 6.34,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 4.64,
+      "min": 4.14,
+      "max": 6.34,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 185,
+      "min": 185,
+      "max": 186,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 3524,
+      "min": 3515,
+      "max": 3530,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 76382,
+      "min": 76369,
+      "max": 76418,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 53,
+      "min": 50,
+      "max": 55,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 417,
+      "min": 402,
+      "max": 417,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 171,
+      "min": 165,
+      "max": 172,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "the same four regions as R03, restored asleep — compare against R03 for what sleep gives back",
+    "waking is a UI action: wake latency and fidelity are measured in the assisted checklist"
+  ]
+}

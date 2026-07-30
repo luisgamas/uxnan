@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R03",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 75,
+    "stabilizeS": 25,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 574.42,
+      "min": 522.25,
+      "max": 578.98,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 586.82,
+      "min": 535.88,
+      "max": 592.43,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 636.97,
+      "min": 584.85,
+      "max": 641.68,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 649.67,
+      "min": 598.8,
+      "max": 655.44,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 274.17,
+      "min": 269.65,
+      "max": 276.72,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 296.82,
+      "min": 292.47,
+      "max": 299.7,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 293.38,
+      "min": 288.93,
+      "max": 296.06,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 7.2,
+      "min": 6.33,
+      "max": 14.98,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 7.2,
+      "min": 6.33,
+      "max": 14.98,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 15,
+      "min": 15,
+      "max": 15,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 254,
+      "min": 237,
+      "max": 255,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 4566,
+      "min": 4460,
+      "max": 4583,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 76516,
+      "min": 76396,
+      "max": 76568,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 63,
+      "min": 45,
+      "max": 65,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 472,
+      "min": 414,
+      "max": 487,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1334,
+      "min": 1319,
+      "max": 1365,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 173,
+      "min": 167,
+      "max": 196,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "2×2 split: four regions, four live shells"
+  ]
+}

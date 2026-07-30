@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R09",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": "off",
+    "durationS": 60,
+    "stabilizeS": 20,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 495.32,
+      "min": 492.49,
+      "max": 497.13,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 499.55,
+      "min": 498.65,
+      "max": 503.19,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 511.17,
+      "min": 508.49,
+      "max": 512.89,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 515.83,
+      "min": 514.71,
+      "max": 519.56,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 241.65,
+      "min": 240.26,
+      "max": 243.12,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 255.41,
+      "min": 254.46,
+      "max": 258.35,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 246.83,
+      "min": 245.34,
+      "max": 247.99,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 3.1,
+      "min": 3.07,
+      "max": 3.13,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 11.11,
+      "min": 9.25,
+      "max": 15.7,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 11.11,
+      "min": 9.25,
+      "max": 15.7,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 9,
+      "min": 9,
+      "max": 9,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 213,
+      "min": 213,
+      "max": 217,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 3923,
+      "min": 3908,
+      "max": 3941,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 61386,
+      "min": 61358,
+      "max": 61411,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 55,
+      "min": 44,
+      "max": 59,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 416,
+      "min": 402,
+      "max": 438,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1277,
+      "min": 1273,
+      "max": 1331,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 173,
+      "min": 165,
+      "max": 175,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "pet variant: off",
+    "compare the three variants: 'off' must cost nothing at all"
+  ]
+}

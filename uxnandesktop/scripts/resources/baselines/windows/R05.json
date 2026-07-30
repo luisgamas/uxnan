@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R05",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 75,
+    "stabilizeS": 20,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 526.42,
+      "min": 508.2,
+      "max": 531.62,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 540.89,
+      "min": 524.21,
+      "max": 546.53,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 542.2,
+      "min": 524.24,
+      "max": 547.41,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 556.72,
+      "min": 540.04,
+      "max": 562.23,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 50.94,
+      "min": 48.11,
+      "max": 51.56,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 270.61,
+      "min": 253.73,
+      "max": 275.7,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 283.95,
+      "min": 277.41,
+      "max": 291.11,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 275.73,
+      "min": 259.84,
+      "max": 280.68,
+      "n": 5
+    },
+    "externalPrivateP50Mb": {
+      "median": 26.94,
+      "min": 26.66,
+      "max": 27.2,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 12.65,
+      "min": 7.82,
+      "max": 16.76,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 35.06,
+      "min": 34.41,
+      "max": 40.54,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 35.06,
+      "min": 33.62,
+      "max": 40.44,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 9,
+      "min": 9,
+      "max": 9,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 215,
+      "min": 213,
+      "max": 218,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 3958,
+      "min": 3930,
+      "max": 3977,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 76422,
+      "min": 76386,
+      "max": 76482,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 54,
+      "min": 46,
+      "max": 62,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 426,
+      "min": 419,
+      "max": 437,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1292,
+      "min": 1258,
+      "max": 1333,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 175,
+      "min": 172,
+      "max": 238,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "the fixture <user> is offline and deterministic; it runs inside a shell, so its cost lands in the `external` bucket and is never folded into uxnan's"
+  ]
+}

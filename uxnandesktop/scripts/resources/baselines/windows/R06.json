@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R06",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 90,
+    "stabilizeS": 30,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 491.74,
+      "min": 488.19,
+      "max": 503.3,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 502.41,
+      "min": 499.66,
+      "max": 526.65,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 507.44,
+      "min": 503.89,
+      "max": 518.98,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 518.13,
+      "min": 515.35,
+      "max": 542.33,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 246.41,
+      "min": 245.16,
+      "max": 255.92,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 248.48,
+      "min": 248.24,
+      "max": 271.44,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 251.24,
+      "min": 250.01,
+      "max": 260.74,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 2.3,
+      "min": 0,
+      "max": 4.63,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 12.82,
+      "min": 12.71,
+      "max": 15.52,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 12.82,
+      "min": 12.71,
+      "max": 15.52,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 9,
+      "min": 9,
+      "max": 9,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 210,
+      "min": 207,
+      "max": 211,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 3931,
+      "min": 3921,
+      "max": 3950,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 91423,
+      "min": 91388,
+      "max": 91569,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 47,
+      "min": 44,
+      "max": 56,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 436,
+      "min": 426,
+      "max": 484,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1303,
+      "min": 1287,
+      "max": 1312,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 186,
+      "min": 173,
+      "max": 273,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "fixture repo at commit e6d20ce3ceaf3e67de7c09d6bbfe07cda12e174a (10000 files, 250 modified)",
+    "covers the 3 s active-worktree watcher and the 15 s all-worktree sweep"
+  ]
+}

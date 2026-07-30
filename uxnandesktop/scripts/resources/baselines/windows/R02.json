@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "scenario": "R02",
+  "commit": "54d935e8",
+  "platform": {
+    "os": "windows",
+    "arch": "x64",
+    "osName": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "webview": "150.0.4078.105",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i7-13620H",
+    "cpuCores": 16,
+    "totalMemMb": 16076,
+    "powerPlan": "Equilibrado",
+    "nodeVersion": "v24.18.0",
+    "hostId": "2b9d89e1cf9f",
+    "infoError": null
+  },
+  "configuration": {
+    "buildProfile": "release",
+    "variant": null,
+    "durationS": 75,
+    "stabilizeS": 25,
+    "intervalMs": 1000,
+    "repetition": 1,
+    "mode": "auto"
+  },
+  "repeats": 5,
+  "metrics": {
+    "ownRssP50Mb": {
+      "median": 505.59,
+      "min": 492.7,
+      "max": 509.19,
+      "n": 5
+    },
+    "ownRssP95Mb": {
+      "median": 510.14,
+      "min": 496.71,
+      "max": 515.73,
+      "n": 5
+    },
+    "managedRssP50Mb": {
+      "median": 521.3,
+      "min": 508.43,
+      "max": 524.87,
+      "n": 5
+    },
+    "managedRssP95Mb": {
+      "median": 525.87,
+      "min": 517.35,
+      "max": 531.5,
+      "n": 5
+    },
+    "externalRssP50Mb": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "ownPrivateP50Mb": {
+      "median": 252.01,
+      "min": 239.93,
+      "max": 257.12,
+      "n": 5
+    },
+    "ownPrivateP95Mb": {
+      "median": 264.92,
+      "min": 253.02,
+      "max": 273.23,
+      "n": 5
+    },
+    "managedPrivateP50Mb": {
+      "median": 256.86,
+      "min": 244.84,
+      "max": 261.93,
+      "n": 5
+    },
+    "cpuP50": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "cpuP95": {
+      "median": 6.39,
+      "min": 4.7,
+      "max": 9.54,
+      "n": 5
+    },
+    "ownCpuP95": {
+      "median": 6.39,
+      "min": 4.7,
+      "max": 9.54,
+      "n": 5
+    },
+    "ownProcsP50": {
+      "median": 7,
+      "min": 7,
+      "max": 7,
+      "n": 5
+    },
+    "managedProcsP50": {
+      "median": 9,
+      "min": 9,
+      "max": 9,
+      "n": 5
+    },
+    "threadsP95": {
+      "median": 214,
+      "min": 198,
+      "max": 217,
+      "n": 5
+    },
+    "handlesP95": {
+      "median": 3921,
+      "min": 3802,
+      "max": 3934,
+      "n": 5
+    },
+    "orphanCount": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "durationMs": {
+      "median": 76425,
+      "min": 76389,
+      "max": 76487,
+      "n": 5
+    },
+    "launchToWindowMs": {
+      "median": 54,
+      "min": 50,
+      "max": 66,
+      "n": 5
+    },
+    "launchToBackendMs": {
+      "median": 431,
+      "min": 410,
+      "max": 450,
+      "n": 5
+    },
+    "launchToShellMs": {
+      "median": 1310,
+      "min": 1281,
+      "max": 1347,
+      "n": 5
+    },
+    "closeMs": {
+      "median": 171,
+      "min": 164,
+      "max": 175,
+      "n": 5
+    }
+  },
+  "verdict": "unknown",
+  "notes": [
+    "one region, one shell"
+  ]
+}
