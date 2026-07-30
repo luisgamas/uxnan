@@ -1042,6 +1042,7 @@ export const es: Record<MessageKey, string> = {
   "settings.agentNotFound": "no encontrado",
   "settings.agentDeprecated": "descontinuado — elige otro",
   "settings.detecting": "Verificando qué agentes están instalados…",
+  "settings.refreshAgents": "Volver a verificar qué agentes están instalados",
   "settings.yourAgents": "Tus agentes",
   "settings.addCustomAgent": "Agregar agente personalizado",
   "settings.noAgents":

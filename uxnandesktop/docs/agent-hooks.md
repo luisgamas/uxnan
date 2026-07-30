@@ -449,14 +449,20 @@ alongside it names the CLI it belongs to (`~/.codex/sessions/…`,
 both the agent and its resume command. One that can't be placed is left alone —
 running another CLI's command line on a guess is worse than offering nothing.
 
-**Reporters from older builds are swept.** Scripts a previous version installed
-and the ADE no longer ships (`uxnan-agent-status-hook.cjs`,
-`uxnan-claude-hook.cjs`, `uxnan-opencode-hook.cjs`,
-`uxnan-opencode-status-plugin.js`) are deleted from the hooks dir on startup and
-matched as managed entries so they are stripped from every agent config the ADE
-touches. The pre-relay bridge in that list did real damage while it lingered: it
-read its agent type from a `UXNAN_AGENT_TYPE` env var the ADE no longer injects
-and so reported the literal `"agent"`, which the server now rejects outright.
+**Reporters from older builds are swept.** On startup the ADE deletes every
+`uxnan-*` file in its hooks dir that the current build did not just write: the dir
+is app-data it owns, so anything else in it is a leftover — which means a reporter
+renamed in some future version cleans itself up, with no list to remember to
+update. Files it doesn't own, including the `endpoint.*` coordinates file and
+anything you put there yourself, are untouched.
+
+The *config* side can't be derived that way, so the retired reporter names
+(`uxnan-agent-status-hook`, `uxnan-claude-hook`, `uxnan-opencode-hook`) are
+matched by a hand-kept list and stripped from every agent config the ADE writes —
+**renaming a reporter means adding its old name to that list**. The pre-relay
+bridge that made this necessary did real damage while it lingered: it read its
+agent type from a `UXNAN_AGENT_TYPE` env var the ADE no longer injects and so
+reported the literal `"agent"`, which the server now rejects outright.
 
 ---
 

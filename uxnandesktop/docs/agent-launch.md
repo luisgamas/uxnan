@@ -29,8 +29,19 @@ In **Settings → Agents**:
 - **Available agents** lists the known catalog (Claude Code, Codex, Gemini CLI,
   OpenCode, …). The ADE detects which are **installed** on your `PATH`; click the
   **+** to add an installed one. **Add all installed** adds them in one click.
+  Detection re-runs each time you open the pane, and the **refresh** button in the
+  agents header re-runs it on demand — so an agent installed (or uninstalled)
+  while uxnan is open appears (or disappears) without restarting the app.
 - **Add custom agent** registers anything else by hand (a command on your `PATH`,
   or an absolute path to a script — e.g. a [hook wrapper](./agent-hooks.md)).
+
+Each agent's logo resolves in a chain: a custom image you set → a bundled SVG
+(`static/agents/`) → the product's favicon → a generic glyph. The favicon step is
+fetched by the **backend** and inlined as a `data:` URL, because the app's CSP
+allows no remote image host — a URL rendered directly by the webview is simply
+blocked (`src/lib/agentLogoCache.ts`). That step needs network the first time per
+app run; a bundled SVG never does, which is why adding more of them is tracked in
+[`FOR-HUMAN.md`](../FOR-HUMAN.md).
 
 Each agent profile has:
 

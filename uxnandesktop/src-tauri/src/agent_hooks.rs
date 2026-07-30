@@ -31,6 +31,7 @@
 //! (idempotent) and, when auto-install is on, merges the managed reporter into
 //! each agent's config — preserving every other user setting.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -78,23 +79,26 @@ const PI_EXTENSION_SRC_FILENAME: &str = "uxnan-pi-status.js";
 const EVENT_HOOK_SH_FILENAME: &str = "uxnan-event-hook.sh";
 const EVENT_HOOK_CMD_FILENAME: &str = "uxnan-event-hook.cmd";
 
-/// Reporter scripts earlier builds wrote into the hooks dir and no longer ship.
-/// They are swept from the dir (and from every agent config — see
-/// [`is_legacy_reporter`]) because a stale one is not merely dead weight: the
-/// pre-relay `uxnan-agent-status-hook.cjs` read its agent type from a
-/// `UXNAN_AGENT_TYPE` env var we stopped injecting, so it reported the literal
-/// `"agent"` — mislabelling the tab's captured session (which then has no resume
-/// entry) and dropping the state (no `normalize_event` arm matches).
-const LEGACY_SCRIPT_FILENAMES: &[&str] = &[
-    "uxnan-agent-status-hook.cjs",
-    "uxnan-claude-hook.cjs",
-    "uxnan-opencode-hook.cjs",
-    "uxnan-opencode-status-plugin.js",
-];
+/// Prefix every script we write into the hooks dir carries. The dir is ours, so
+/// a `uxnan-*` file we did NOT just write is by definition from an older build:
+/// [`sweep_foreign_scripts`] deletes those without needing a list to maintain.
+/// (Non-prefixed files we own — the `endpoint.*` coordinates file — are left
+/// alone by the same rule.)
+const SCRIPT_PREFIX: &str = "uxnan-";
 
-/// Filename stems of the legacy reporters, matched inside a config's hook entry.
-/// Kept apart from [`LEGACY_SCRIPT_FILENAMES`] so the match survives a renamed
-/// extension, and stem-only so an absolute path in any spelling still hits.
+/// Filename stems of reporters earlier builds installed, matched inside an agent
+/// **config** entry. Deleting the script is not enough: the entry that invokes it
+/// lives in the agent's own config, which we can only match by name — so unlike
+/// the dir sweep this list has to be maintained, and **renaming a reporter means
+/// adding its old stem here**. Stem-only so any path spelling or extension hits.
+///
+/// This is not hygiene for its own sake. The pre-relay `uxnan-agent-status-hook`
+/// read its agent type from a `UXNAN_AGENT_TYPE` env var we stopped injecting, so
+/// it reported the literal `"agent"` — mislabelling the tab's captured session
+/// (which then has no resume entry) and dropping the state (no `normalize_event`
+/// arm matches). It stayed registered in `~/.codex/hooks.json` long after the
+/// script stopped shipping, and being a Node program it outran the current curl
+/// hook, so its report usually won.
 const LEGACY_REPORTER_STEMS: &[&str] = &[
     "uxnan-agent-status-hook",
     "uxnan-claude-hook",
@@ -385,10 +389,6 @@ pub(crate) fn write_text_atomic(path: &Path, text: &str) -> Result<(), AppError>
 /// Settings UI needs. `+x` is set on the POSIX scripts a shell runs directly.
 pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     std::fs::create_dir_all(dir)?;
-    // Drop reporters earlier builds wrote here before writing the current set, so
-    // a config entry that still points at one becomes a no-op even if that config
-    // is never rewritten (an agent we don't auto-install for, say).
-    sweep_legacy_scripts(dir);
     let dir = dir.to_path_buf();
     let write = |name: &str, content: &str| -> Result<PathBuf, AppError> {
         let path = dir.join(name);
@@ -415,6 +415,29 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
             let _ = std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755));
         }
     }
+    // Everything this build ships is now on disk, so anything else of ours in
+    // here came from an older one — drop it. Done AFTER the writes so the keep
+    // list is derived from what we actually wrote rather than restated (a
+    // restated list is what drifts), which makes a future rename self-cleaning:
+    // the old name simply stops being written and is swept on the next launch.
+    sweep_foreign_scripts(
+        &dir,
+        &[
+            &relay,
+            &codex_sh,
+            &codex_cmd,
+            &opencode,
+            &pi,
+            &bash,
+            &ps,
+            &cmd,
+            &fish,
+            &browser_bash,
+            &browser_cmd,
+            &event_sh,
+            &event_cmd,
+        ],
+    );
     let path_str = |p: &Path| p.to_string_lossy().into_owned();
     let opt = |p: Option<PathBuf>| p.map(|p| path_str(&p)).unwrap_or_default();
     Ok(HookInstall {
@@ -665,15 +688,32 @@ fn is_legacy_reporter(text: &str) -> bool {
     LEGACY_REPORTER_STEMS.iter().any(|s| lower.contains(s))
 }
 
-/// Delete the reporter scripts earlier builds left in our hooks dir. Exact
-/// filenames only (never a glob), and only inside the dir we own, so a file the
-/// user put there is never touched. Missing files are not an error — this runs
-/// on every startup.
-fn sweep_legacy_scripts(dir: &Path) {
-    for name in LEGACY_SCRIPT_FILENAMES {
-        let path = dir.join(name);
-        if path.is_file() {
-            let _ = std::fs::remove_file(&path);
+/// Delete every `uxnan-*` script in our hooks dir that this build did not just
+/// write — by definition a leftover from an older one. `keep` is the set of files
+/// [`install_scripts_to`] produced this run.
+///
+/// Scoped three ways so it can only ever remove our own leavings: the dir is
+/// app-data we own, only files carrying [`SCRIPT_PREFIX`] are considered (so the
+/// `endpoint.*` coordinates file and anything a user dropped in survive), and
+/// only regular files are touched. Best-effort throughout — this runs on every
+/// startup and must never be able to fail a launch.
+fn sweep_foreign_scripts(dir: &Path, keep: &[&Path]) {
+    // Windows paths are case-insensitive; compare on the lowercased file name.
+    let keep: HashSet<String> = keep
+        .iter()
+        .filter_map(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_ascii_lowercase())
+        .collect();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if !name.starts_with(SCRIPT_PREFIX) || keep.contains(&name) {
+            continue;
+        }
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
 }
@@ -1613,22 +1653,35 @@ mod tests {
     }
 
     #[test]
-    fn legacy_scripts_are_swept_from_our_hooks_dir_only_by_exact_name() {
+    fn scripts_from_an_older_build_are_swept_without_a_list_to_maintain() {
         let dir = std::env::temp_dir().join(format!("uxnan-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let legacy = dir.join("uxnan-agent-status-hook.cjs");
         let current = dir.join(STATUS_RELAY_FILENAME);
-        // A same-prefix file we never wrote: exact names only, never a glob.
-        let foreign = dir.join("uxnan-agent-status-hook.cjs.bak");
-        for f in [&legacy, &current, &foreign] {
+        // A reporter we shipped once and don't any more…
+        let legacy = dir.join("uxnan-agent-status-hook.cjs");
+        // …and one under a name nobody has thought of yet: the whole point is that
+        // a future rename cleans itself up, with no list to remember to update.
+        let renamed_someday = dir.join("uxnan-whatever-we-rename-it-to.cjs");
+        // Ours by prefix, but NOT ours by ownership: the endpoint file the hook
+        // server writes, and a file the user dropped in.
+        let endpoint = dir.join("endpoint.cmd");
+        let user_file = dir.join("my-notes.txt");
+        for f in [&current, &legacy, &renamed_someday, &endpoint, &user_file] {
             std::fs::write(f, "x").unwrap();
         }
-        sweep_legacy_scripts(&dir);
-        assert!(!legacy.exists(), "legacy script removed");
-        assert!(current.exists(), "current script kept");
-        assert!(foreign.exists(), "unknown file untouched");
+        sweep_foreign_scripts(&dir, &[&current]);
+        assert!(current.exists(), "the script we just wrote is kept");
+        assert!(!legacy.exists(), "a retired reporter is swept");
+        assert!(
+            !renamed_someday.exists(),
+            "an unknown uxnan- script is swept"
+        );
+        assert!(endpoint.exists(), "the endpoint file is not ours to sweep");
+        assert!(user_file.exists(), "a user's own file is never touched");
         // Idempotent: a second pass over a clean dir is a no-op, not an error.
-        sweep_legacy_scripts(&dir);
+        sweep_foreign_scripts(&dir, &[&current]);
+        assert!(current.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

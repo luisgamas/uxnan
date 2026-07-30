@@ -1041,6 +1041,7 @@ export const en = {
   "settings.agentNotFound": "not found",
   "settings.agentDeprecated": "discontinued — pick another",
   "settings.detecting": "Checking which agents are installed…",
+  "settings.refreshAgents": "Check again which agents are installed",
   "settings.yourAgents": "Your agents",
   "settings.addCustomAgent": "Add custom agent",
   "settings.noAgents": "No agents yet. Add one above to launch it into any worktree.",

@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — most agent logos never rendered, and the catalog didn't notice an uninstall
+
+- **Every logo that came from a favicon was blocked.** Only 7 of the 32 catalog
+  agents ship a bundled SVG; the rest fall back to their product's favicon, and
+  that URL went straight into an `<img>` — which the app's CSP (`img-src 'self'
+  data: blob: asset:`) has always refused. So the fallback chain silently ended at
+  the generic Bot glyph for 25 agents, **`opencode` and `grok` among them**.
+  Widening the CSP wouldn't have been enough on its own either: the favicon
+  service answers `301` to a different host, so the allowance would have had to
+  cover the redirect target too. Logos are now fetched by the backend — the same
+  `image_fetch_data_url` command project and branch icons already use — and
+  rendered as `data:` URLs, which the existing CSP allows. Results (including
+  failures) are memoized for the session, and concurrent asks for the same logo
+  collapse into one fetch.
+- **Settings → Agents kept showing agents you had uninstalled.** Detection ran
+  once per app run, so a CLI removed while uxnan was open stayed listed as
+  installed — and one just installed stayed missing — until a restart. The pane
+  now re-checks every time it is opened, and a **refresh button** in the agents
+  header re-runs it on demand (which also retries any logo that failed while the
+  machine was offline). Detection was always a live filesystem walk; it was only
+  the asking that was stale.
+
+### Changed
+
+- **Scripts from an older build are swept from the hooks dir by rule, not by
+  list.** Anything named `uxnan-*` that the current build didn't just write is a
+  leftover and is deleted on startup, so a reporter renamed in some future version
+  cleans itself up instead of lingering until someone remembers to add it to a
+  list. What can't be derived — the old names matched inside each agent's *config*,
+  one of which is what silently disabled Codex resume — stays hand-kept and says
+  so. Files we don't own, including the hook server's `endpoint.*`, are untouched.
+
 ### Fixed — agent sessions came back for one tab, and never for Codex
 
 - **A reporter from an older build was mislabelling every Codex session.** Its
