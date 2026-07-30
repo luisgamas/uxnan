@@ -18,7 +18,7 @@ OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
 with" external editors/IDEs**, **automations**, **pets**, **a reproducible
-resource benchmark**). 377 Rust backend tests + 517 frontend Vitest unit tests
+resource benchmark**). 379 Rust backend tests + 517 frontend Vitest unit tests
 (pure logic, the benchmark harness included); **no Svelte component or E2E tests
 yet**. macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
@@ -878,7 +878,7 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 377 Rust + 517 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 379 Rust + 517 Vitest tests.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed

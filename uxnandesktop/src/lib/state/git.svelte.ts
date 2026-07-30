@@ -1,9 +1,9 @@
 // Git review state for the right panel (Svelte 5 runes).
 //
 // Holds the changed-file list, staging actions, the selected file's diff and the
-// commit message for the **active worktree**. The panel reloads on demand (after
-// each action, on a manual refresh, and when the active worktree changes); the
-// real-time 3 s status polling + Tauri events are a Phase 3 follow-up (FOR-DEV).
+// commit message for the **active worktree**. The panel reloads on demand and
+// applies the backend's live 3 s status snapshots, including HEAD changes made
+// by an agent or another Git client.
 
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -89,6 +89,13 @@ class GitStore {
   /** A remote fetch (checking for new upstream commits) is in flight. */
   fetching = $state(false);
   private listening = false;
+  /** Async guards cover fast A → B → A worktree switches and overlapping manual
+   *  refreshes; comparing only the path cannot reject the first A response. */
+  private loadSeq = 0;
+  private numstatSeq = 0;
+  /** Last HEAD seen for each watched path. Keeping the baseline per worktree
+   *  catches commits made while the user was looking at another workspace. */
+  private headsByPath = new Map<string, string | null>();
 
   /** Files with a staged change / with a working-tree (or untracked) change. */
   staged = $derived(this.files.filter((f) => f.staged));
@@ -103,14 +110,22 @@ class GitStore {
     try {
       await listen<GitStatusEvent>("git:status-changed", (e) => {
         const ev = e.payload;
+        if (ev.path !== this.path) return;
+
+        const hadHead = this.headsByPath.has(ev.path);
+        const previousHead = this.headsByPath.get(ev.path);
+        this.headsByPath.set(ev.path, ev.head);
         if (
-          ev.path !== this.path ||
-          this.busy ||
-          this.committing ||
-          this.syncing ||
-          this.fetching
-        )
-          return;
+          (hadHead && previousHead !== ev.head) ||
+          (!hadHead && history.loadedHeadDiffers(ev.path, ev.head))
+        ) {
+          // A clean tree can still have a new HEAD (external commit/amend). The
+          // changed snapshot is the signal History and GitHub were missing.
+          history.refreshIfLoaded(ev.path);
+          void github.refreshContext();
+        }
+
+        if (this.busy || this.committing || this.syncing || this.fetching) return;
         this.files = ev.files.map(classify);
         this.ahead = ev.ahead;
         this.behind = ev.behind;
@@ -131,12 +146,23 @@ class GitStore {
   /** Point the panel at a worktree (or clear it), load its status, and tell the
    *  backend watcher to poll it. */
   async load(path: string | null): Promise<void> {
+    const seq = ++this.loadSeq;
+    const pathChanged = this.path !== path;
     this.path = path;
     this.error = null;
     this.ahead = 0;
     this.behind = 0;
+    if (pathChanged) {
+      // Never display the previous worktree's files or line counts while the
+      // newly selected path is still loading.
+      this.files = [];
+      this.numstat = {};
+      this.numstatSeq++;
+    }
     void gitSetWatch(path).catch(() => {});
     if (!path) {
+      this.loading = false;
+      this.numstatSeq++;
       this.files = [];
       this.numstat = {};
       return;
@@ -144,22 +170,23 @@ class GitStore {
     this.loading = true;
     try {
       const files = (await gitStatus(path)).map(classify);
-      if (this.path !== path) return;
+      if (seq !== this.loadSeq || this.path !== path) return;
       this.files = files;
       void this.loadNumstat(path);
       const st = await worktreeStatus(path);
-      if (this.path !== path) return;
+      if (seq !== this.loadSeq || this.path !== path) return;
       this.ahead = st.ahead;
       this.behind = st.behind;
       // Keep the project card badge in sync (e.g. after a commit clears it).
       projects.setStatus(path, st);
     } catch (e) {
-      if (this.path !== path) return;
+      if (seq !== this.loadSeq || this.path !== path) return;
       this.error = msg(e);
       toastError(e);
       this.files = [];
+      this.numstat = {};
     } finally {
-      if (this.path === path) this.loading = false;
+      if (seq === this.loadSeq && this.path === path) this.loading = false;
     }
   }
 
@@ -171,9 +198,10 @@ class GitStore {
   /** Refresh the per-file added/deleted line counts (best-effort; only applied if
    *  we're still showing the same worktree when it resolves). */
   async loadNumstat(path: string): Promise<void> {
+    const seq = ++this.numstatSeq;
     try {
       const stats = await gitNumstat(path);
-      if (this.path !== path) return;
+      if (seq !== this.numstatSeq || this.path !== path) return;
       const map: Record<string, { added: number; deleted: number }> = {};
       for (const s of stats) map[s.path] = { added: s.added, deleted: s.deleted };
       this.numstat = map;
@@ -291,8 +319,9 @@ class GitStore {
     try {
       await gitCommit(path, message, this.amend, this.signOff);
       this.resetComposer();
-      history.markStale();
+      history.refreshIfLoaded(path);
       await this.refresh();
+      void github.refreshContext();
       // Our own git actions move more than this worktree's card: a commit here
       // changes what a sibling worktree is ahead/behind by, and those cards are
       // only re-read by the background sweep.
@@ -320,8 +349,9 @@ class GitStore {
     this.error = null;
     try {
       await fn(path);
-      history.markStale();
+      history.refreshIfLoaded(path);
       await this.refresh();
+      void github.refreshContext();
       projects.requestStatusSweep();
       toast.success(okMsg);
     } catch (e) {

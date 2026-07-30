@@ -3,8 +3,7 @@
 // Holds the paginated commit log for the **active worktree**, a client-side
 // filter, and the list/graph view toggle. The log is fetched on demand (when the
 // tab first shows a worktree, on "load more", and on a manual refresh); it is
-// marked stale by the git store after a commit/push/pull so it re-fetches the
-// next time the tab is shown.
+// refreshed by the git store after Uxnan or an external client moves HEAD.
 
 import { gitLog, gitShow } from "$lib/api";
 import { toastError } from "$lib/toast";
@@ -80,6 +79,9 @@ class HistoryStore {
   /** The path whose log is currently loaded (so `ensure` is a no-op when the tab
    *  re-mounts on the same worktree). `null` means "nothing loaded yet". */
   private loadedPath: string | null = null;
+  /** Guards every async page load, including the A → B → A switch case where a
+   *  path-only check cannot distinguish the first A response from the latest. */
+  private loadSeq = 0;
 
   /** Commits matching the current filter (everything when the filter is empty). */
   filtered = $derived.by(() => {
@@ -103,25 +105,30 @@ class HistoryStore {
 
   /** (Re)load the first page of the log for `path` (or clear it). */
   async load(path: string | null): Promise<void> {
+    const seq = ++this.loadSeq;
     this.path = path;
     this.loadedPath = path;
     this.error = null;
     this.commits = [];
     this.reachedEnd = false;
+    this.loadingMore = false;
     // A different worktree's expansions/file caches don't apply here.
     this.expanded = {};
     this.fileCache = {};
-    if (!path) return;
+    if (!path) {
+      this.loading = false;
+      return;
+    }
     this.loading = true;
     try {
       const page = await gitLog(path, PAGE, 0);
-      if (this.path !== path) return; // a newer load superseded this one
+      if (seq !== this.loadSeq || this.path !== path) return;
       this.commits = page;
       this.reachedEnd = page.length < PAGE;
     } catch (e) {
-      this.error = msg(e);
+      if (seq === this.loadSeq && this.path === path) this.error = msg(e);
     } finally {
-      this.loading = false;
+      if (seq === this.loadSeq) this.loading = false;
     }
   }
 
@@ -129,16 +136,17 @@ class HistoryStore {
   async loadMore(): Promise<void> {
     const path = this.path;
     if (!path || this.loadingMore || this.loading || this.reachedEnd) return;
+    const seq = this.loadSeq;
     this.loadingMore = true;
     try {
       const page = await gitLog(path, PAGE, this.commits.length);
-      if (this.path !== path) return;
+      if (seq !== this.loadSeq || this.path !== path) return;
       this.commits = [...this.commits, ...page];
       if (page.length < PAGE) this.reachedEnd = true;
     } catch (e) {
-      toastError(e);
+      if (seq === this.loadSeq && this.path === path) toastError(e);
     } finally {
-      this.loadingMore = false;
+      if (seq === this.loadSeq) this.loadingMore = false;
     }
   }
 
@@ -147,10 +155,27 @@ class HistoryStore {
     return this.load(this.path);
   }
 
-  /** Mark the loaded log stale so the next `ensure` re-fetches it. Called by the
-   *  git store after a commit/amend/push/pull changes history. */
-  markStale(): void {
-    this.loadedPath = null;
+  /** HEAD (or one of its decorations after push/pull) changed while this path's
+   *  log was already cached. Refresh it immediately, even if the tab is not the
+   *  visible one; otherwise invalidate it for the next `ensure`. */
+  refreshIfLoaded(path: string): void {
+    if (this.path === path && this.loadedPath === path) {
+      void this.load(path);
+    } else if (this.loadedPath === path) {
+      this.loadedPath = null;
+    }
+  }
+
+  /** Compare a first watcher snapshot with the log itself. This closes the tiny
+   *  startup window where History loaded before the watcher established its own
+   *  per-path HEAD baseline. */
+  loadedHeadDiffers(path: string, head: string | null): boolean {
+    return (
+      !this.loading &&
+      this.path === path &&
+      this.loadedPath === path &&
+      (this.commits[0]?.hash ?? null) !== head
+    );
   }
 }
 

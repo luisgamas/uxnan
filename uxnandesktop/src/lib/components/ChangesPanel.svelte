@@ -34,8 +34,8 @@
 
   type Area = "staged" | "changes";
 
-  // The active worktree's git status is loaded by the parent (RightPanel), which
-  // stays mounted across tab switches; this panel just renders the shared store.
+  // The active worktree's git status is loaded by the always-mounted page shell;
+  // this panel just renders the shared store.
   // Amend can reword the previous commit with nothing staged, so it relaxes the
   // "needs staged changes" requirement.
   const canCommit = $derived(

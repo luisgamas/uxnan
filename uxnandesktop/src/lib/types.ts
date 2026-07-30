@@ -838,6 +838,8 @@ export interface GitStatusEvent {
   files: FileChange[];
   ahead: number;
   behind: number;
+  /** Current HEAD commit; null for an unborn branch. */
+  head: string | null;
 }
 
 /** A worktree's working-tree status summary (mirror of Rust `WorktreeStatus`). */

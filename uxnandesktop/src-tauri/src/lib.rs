@@ -181,9 +181,9 @@ pub fn run() {
                         continue;
                     };
                     // One working-tree scan per tick: `status_with_summary`
-                    // returns the file list and the ahead/behind summary from a
-                    // single `git2` walk instead of two separate scans.
-                    let (files, status) = crate::git::status_with_summary(&path)
+                    // returns the file list, ahead/behind and HEAD from a single
+                    // `git2` walk plus a ref lookup instead of two tree scans.
+                    let (files, status, head) = crate::git::status_with_summary(&path)
                         .await
                         .unwrap_or_default();
                     let payload = GitStatusEvent {
@@ -191,6 +191,7 @@ pub fn run() {
                         files,
                         ahead: status.ahead,
                         behind: status.behind,
+                        head,
                     };
                     let snapshot = serde_json::to_string(&payload).ok();
                     if snapshot != last {
