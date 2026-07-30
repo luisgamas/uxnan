@@ -47,6 +47,10 @@ class GithubStore {
   contextPath = $state<string | null>(null);
   /** Whether a context load is in flight. */
   contextLoading = $state(false);
+  /** Advances after every successful active-context read, even when the JSON is
+   *  identical. The right-panel digest uses it as its poll tick for repo-wide
+   *  PR, run and issue lists, which are separate API reads. */
+  contextRevision = $state(0);
   /** Per-path context cache so recently-visited worktree cards keep their PR
    *  badge without re-fetching every switch. */
   contextByPath = $state<Record<string, RepoContext | null>>({});
@@ -206,9 +210,12 @@ class GithubStore {
    *  repo, when no path is active, or when not signed in. */
   async loadContext(path: string | null): Promise<void> {
     const seq = ++this.#ctxSeq;
+    const pathChanged = this.contextPath !== path;
     this.contextPath = path;
+    if (pathChanged) this.context = null;
     if (!path || !this.available) {
       this.context = null;
+      this.contextLoading = false;
       return;
     }
     this.contextLoading = true;
@@ -221,6 +228,7 @@ class GithubStore {
       if (!sameJson(ctx, this.contextByPath[path])) {
         this.contextByPath = { ...this.contextByPath, [path]: ctx };
       }
+      this.contextRevision += 1;
     } catch {
       if (seq !== this.#ctxSeq) return;
       this.context = null;

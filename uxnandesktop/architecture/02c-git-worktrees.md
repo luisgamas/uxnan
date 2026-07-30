@@ -156,6 +156,13 @@ El estado git se mantiene actualizado con un ciclo de polling:
 - **Detección de conflictos**: Se detecta si hay un merge, rebase o cherry-pick en curso.
 - **Estado upstream**: Se calcula cuántos commits está "ahead" y "behind" respecto a la rama remota.
 
+Cada snapshot emitido también incluye el commit `HEAD` actual. Esta consulta de
+referencia reutiliza el repositorio ya abierto para el escaneo de estado, por lo
+que no añade un segundo recorrido del working tree. Así, un commit o amend
+externo sobre un árbol limpio también cambia el snapshot: Cambios se mantiene al
+día, se refresca el Historial cacheado y se relee el contexto GitHub activo aunque
+la rama no tenga upstream y `ahead`/`behind` sigan en cero.
+
 La sidebar mantiene además una reconciliación ligera cada 3 segundos de la lista
 de worktrees de cada repositorio registrado. Esto cubre worktrees creados fuera
 del ADE por agentes o por Git; solo se reasigna una lista cuando cambian sus
@@ -363,7 +370,12 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    GitHub del proyecto y refresca (con tooltip que dice qué relee). Los iconos y
    tonos de estado son los de `$lib/githubDisplay`, compartidos con la vista
    inline. Solo aparece cuando el repo es de GitHub y el tab está habilitado
-   (`AppSettings.github.rightPanelTab`). Las vistas grandes (review/diff/logs) se
+   (`AppSettings.github.rightPanelTab`). Cada poll configurado de GitHub refresca
+   tanto el contexto de la rama como las tres listas del resumen del repositorio
+   (PR, ejecuciones de CI e issues), incluso si no cambiaron el nombre de la rama
+   ni el JSON del contexto. Las respuestas async llevan guardas de secuencia y se
+   limpian al cambiar de worktree, por lo que una petición lenta del repositorio
+   anterior no puede repintar el panel activo. Las vistas grandes (review/diff/logs) se
    abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
    centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se
    abre desde el menú **⋯** de cada tarjeta de proyecto y desde el menú contextual
@@ -376,11 +388,13 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    (`app.githubInline`; integración `gh`-backed; ver `docs/github.md`). La sección de
    ajustes/cuenta de GitHub vive en **Configuración → GitHub** (`GithubSettings.svelte`).
 
-El estado git del worktree activo se carga en el padre `RightPanel` (siempre
-montado), de modo que la pestaña Archivos colorea su árbol aunque la pestaña
-Cambios esté desmontada. La pestaña Historial mantiene su propio store
-(`history.svelte.ts`) que sobrevive al cambio de pestaña y se refresca tras
-commit/push/pull.
+El estado git del worktree activo se carga en el shell siempre montado
+(`+page.svelte`), de modo que la pestaña Archivos colorea su árbol aunque el
+panel derecho esté cerrado o la pestaña Cambios esté desmontada. La pestaña
+Historial mantiene su propio store (`history.svelte.ts`), que sobrevive al cambio
+de pestaña. Las operaciones commit/push/pull de Uxnan refrescan inmediatamente un
+log ya cargado, y el watcher de estado hace lo mismo cuando un commit externo
+cambia `HEAD`.
 
 ### 6.1 Árbol de Archivos
 
@@ -577,8 +591,11 @@ worktree activo. Características:
 - **Log paginado y virtualizado**: el backend devuelve commits del más reciente
   al más antiguo en orden topológico (`git_log(path, limit, skip)`); el frontend
   los renderiza con `VirtualList` y pagina con un botón **Cargar más**. El estado
-  vive en `history.svelte.ts` (sobrevive al cambio de pestaña; se marca obsoleto
-  tras commit/push/pull para refrescarse la próxima vez que se muestra).
+  vive en `history.svelte.ts` y sobrevive al cambio de pestaña. Las operaciones
+  commit/push/pull de Uxnan refrescan inmediatamente un log ya cargado. El watcher
+  de 3 segundos hace lo mismo cuando cambia el `HEAD` de su snapshot, cubriendo
+  commits y amends hechos por agentes o clientes Git externos; un log aún no
+  cargado conserva la carga perezosa hasta mostrarse por primera vez.
 - **Fila de commit**: badges de decoración (`HEAD`, ramas, `tag:`), resumen,
   hash corto, autor y **tiempo relativo localizado** (`Intl.RelativeTimeFormat`).
 - **Estados**: sin worktree, no es repo (el log falla), repo sin commits, sin
