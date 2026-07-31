@@ -67,7 +67,15 @@ jobs:
       - name: Svelte type-check
         run: npm run check
 
-      - name: Frontend unit tests (Vitest)
+      # Both Vitest projects: `node` (pure logic, the benchmark harness, the test
+      # fixtures) and `dom` (Svelte components in jsdom). Component tests are in
+      # the required gate from the start — they are fast, and they catch the
+      # mounting and wiring failures that unit tests structurally cannot.
+      #
+      # End-to-end (L4) is deliberately NOT here: it needs a release binary, a
+      # version-matched WebDriver and a machine with no other uxnan running. It
+      # runs on demand and nightly in `e2e-desktop.yml`.
+      - name: Frontend unit + component tests (Vitest)
         run: npm test
 
       - name: Frontend build (Vite)
