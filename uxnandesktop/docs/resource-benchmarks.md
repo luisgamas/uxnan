@@ -232,6 +232,7 @@ judged" and "passed".
 | R09 | Pet companion | auto | off / layer / overlay — "off" must cost nothing |
 | R10 | Soak (2 h) | auto | does anything grow: memory, handles, processes |
 | R11 | Restart and restore | auto | restore time and fidelity |
+| R12 | Resource observer overhead | auto | off / parked / sweep — parked must equal R02; the sweep is the only unattended cost |
 
 **auto** scenarios prepare a profile and let the app restore itself into the state
 under test — no UI driving, fully unattended, and what `--all` and CI run.
@@ -243,6 +244,16 @@ samples and records; the report labels the result as operator-driven. They becom
 
 R04's *asleep* cost is automatic; **wake latency and fidelity are still on the
 operator checklist**, because waking is a click.
+
+R12 measures the in-app resource monitor (`src-tauri/src/resources.rs`,
+`docs/resource-monitoring.md`) against its own promise: `off` and `parked` must
+be indistinguishable from R02 (a parked collector holds no timer and no OS
+handle), and `sweep` — the opt-in background orphan check at its fastest allowed
+15 s — is the one unattended cost the feature can have. The popover's 2 s
+cadence needs the panel open, so it rides the operator checklist. **Its Windows
+budget entry is provisional** (copied from R02, which *is* the claim under
+test) until a real baseline is captured — the harness refuses to run beside a
+live uxnan instance, so that capture has to happen with the app closed.
 
 ### How a scenario reaches its state
 

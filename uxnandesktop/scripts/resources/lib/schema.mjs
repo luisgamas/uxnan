@@ -40,6 +40,7 @@ export const SCENARIO_IDS = [
   "R09",
   "R10",
   "R11",
+  "R12",
 ];
 
 /**

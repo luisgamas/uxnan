@@ -278,6 +278,39 @@ export const SCENARIOS = [
       notes: ["measured launch is the second one, against a profile the first launch already used"],
     }),
   },
+
+  {
+    id: "R12",
+    title: "Resource observer overhead",
+    mode: "auto",
+    question:
+      "Does the resource monitor cost anything while parked, and what does the opt-in orphan sweep add?",
+    defaults: { durationS: 180, stabilizeS: 30 },
+    variants: ["off", "parked", "sweep"],
+    fixtures: { repo: { name: "small", files: 200, dirs: 20 } },
+    baseline: "R02",
+    prepare: ({ fixtures, variant = "parked" }) => ({
+      repos: [project({ id: "bench-small", name: "small", dir: fixtures.repo.dir })],
+      layout: layout(fixtures.repo.dir, { [fixtures.repo.dir]: shellsIn(fixtures.repo.dir, 1) }),
+      settingsOverrides: {
+        resources: {
+          enabled: variant !== "off",
+          orphanSweep: variant === "sweep",
+          orphanSweepSeconds: 15, // the sweep's worst allowed case
+        },
+      },
+      notes: [
+        `resource-monitor variant: ${variant}`,
+        "'off' and 'parked' must be indistinguishable from R02 — a parked collector holds no timer and no OS handle",
+        "'sweep' is the only unattended cost the feature can have; compare it against 'parked' for the sweep's price",
+        "the popover's fast cadence needs the panel open and is measured with the assisted checklist below",
+      ],
+    }),
+    checklist: [
+      "Open the status bar's backend popover and keep it open for two minutes (the 2 s cadence).",
+      "Close it and confirm CPU settles back to the resting figure within one interval.",
+    ],
+  },
 ];
 
 export function getScenario(id) {
