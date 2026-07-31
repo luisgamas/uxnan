@@ -20,13 +20,19 @@ mod commands;
 // data directory through exactly the same override the app does.
 pub mod datadir;
 mod editors;
-mod error;
+// Public so the GitHub integration tests (`tests/github_cli.rs`, offline, and
+// `tests/github_live.rs`, the ignored supervised sandbox suite) can match on
+// the crate's own error type.
+pub mod error;
 mod fonts;
 mod fs;
 mod fswatch;
 mod git;
 mod gitfast;
-mod github;
+// Public for the same integration tests: they drive the *production* gh layer —
+// against a scripted fake `gh` in the mandatory suite, and against the
+// allowlisted sandbox repository in the ignored live suite.
+pub mod github;
 mod hooks;
 mod mcp;
 mod mcpinject;
