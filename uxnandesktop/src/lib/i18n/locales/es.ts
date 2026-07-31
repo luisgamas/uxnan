@@ -468,6 +468,60 @@ export const es: Record<MessageKey, string> = {
   "settings.updates": "Actualizaciones",
   "settings.updatesDesc":
     "Elige cómo Uxnan Desktop busca, descarga e instala nuevas versiones.",
+  "settings.resources": "Recursos",
+  "settings.resourcesDesc":
+    "Una lectura local y explicable de lo que cuestan Uxnan, sus terminales y sus agentes en CPU y memoria. No se mide nada salvo que haya una superficie abierta, y nada sale de esta máquina.",
+
+  // Observabilidad de recursos (popover del backend + Ajustes → Recursos)
+  "resources.title": "Recursos",
+  "resources.samplingEvery": "cada {seconds} s",
+  "resources.loading": "Leyendo…",
+  "resources.empty": "Aún no hay muestras: se mide mientras este panel está abierto.",
+  "resources.unsupported": "Las métricas de recursos no están disponibles en esta plataforma.",
+  "resources.totalLabel": "Uxnan (todo)",
+  "resources.processesOne": "{n} proceso",
+  "resources.processesOther": "{n} procesos",
+  "resources.peak": "pico",
+  "resources.trendRising": "La memoria ha ido subiendo en los últimos minutos",
+  "resources.trendFalling": "La memoria ha ido bajando en los últimos minutos",
+  "resources.kindDesktop": "Aplicación",
+  "resources.kindTerminal": "Terminal",
+  "resources.ended": "terminado",
+  "resources.spike": "Muy por encima de su media reciente",
+  "resources.orphansOne": "{n} proceso superviviente",
+  "resources.orphansOther": "{n} procesos supervivientes",
+  "resources.orphanAge": "sobrevivió a su terminal {age}",
+  "resources.bestEffort":
+    "En esta plataforma las cifras son aproximadas (aún sin validar en hardware).",
+  "resources.settingsLink": "Ajustes de recursos",
+  "resources.enable": "Monitor de recursos",
+  "resources.enableDesc":
+    "Muestra la lectura de Recursos en el popover del backend. Solo se mide mientras ese panel está abierto, así que la función no cuesta nada en reposo.",
+  "resources.orphanSweep": "Vigilar procesos supervivientes",
+  "resources.orphanSweepDesc":
+    "Mantén una comprobación lenta en segundo plano para detectar un proceso que sobreviva a su terminal cerrada aunque no haya ningún panel abierto. El único modo que muestrea sin pedirlo.",
+  "resources.sweepInterval": "Intervalo de comprobación (segundos)",
+  "resources.sweepIntervalDesc": "Cada cuánto se ejecuta la comprobación en segundo plano (15–30 s).",
+  "resources.confidenceTitle": "Cómo se etiqueta la atribución",
+  "resources.confidenceExactName": "Exacta",
+  "resources.confidenceExact":
+    "Verificada por id de proceso y hora de inicio contra una terminal creada por Uxnan.",
+  "resources.confidenceInferredName": "Inferida",
+  "resources.confidenceInferred":
+    "Atribuida por la cadena de procesos padre bajo un proceso verificado: evidencia sólida, no prueba.",
+  "resources.confidenceUnknownName": "Desconocida",
+  "resources.confidenceUnknown":
+    "No se pudo verificar la identidad (por ejemplo, el id de proceso fue reciclado). No se afirman cifras.",
+  "resources.export": "Exportar diagnóstico",
+  "resources.exportDesc":
+    "Guarda una instantánea JSON saneada del resumen actual: etiquetas anónimas, sin rutas, sin líneas de comandos. Revisas los campos antes de escribir nada.",
+  "resources.exportButton": "Exportar…",
+  "resources.exportTitle": "Exportar diagnóstico de recursos",
+  "resources.exportFieldsIntro": "El archivo contendrá exactamente estos campos:",
+  "resources.exportSanitizedNote":
+    "Los nombres de workspaces y terminales se sustituyen por etiquetas opacas; los nombres de agente se conservan solo para agentes conocidos del catálogo. No se sube nada: tú eliges dónde se guarda el archivo.",
+  "resources.exportConfirm": "Guardar archivo…",
+  "resources.exportSaved": "Diagnóstico exportado.",
   "settings.browser": "Navegador",
   "settings.browserDesc":
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",
