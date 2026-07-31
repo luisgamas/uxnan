@@ -45,10 +45,25 @@ keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
 round-trip across a process boundary, seed-once, a truncated file degrading
 instead of panicking, nothing written outside its own root, and a path with
-spaces and non-ASCII characters. **388 backend tests** in total.
+spaces and non-ASCII characters; `github_cli.rs` (12 tests) drives the
+**production GitHub layer through real child processes** — a scripted stand-in
+`gh` on `PATH` answers with the shapes recorded in
+`tests/fixtures/github/mutation-outcomes.json` (each with its provenance), so
+merge refusals, degraded environments (signed out / offline / rate-limited /
+truncated JSON / old gh), the Windows `.cmd` resolution path and the
+non-interactive env all run for real with no network; and `github_live.rs`
+holds the **supervised live suite** (every test `#[ignore]`, armed only by
+`UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
+prove the guard refuses everything else; procedure in
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **421 backend tests**
+in total (plus the 7 ignored live tests and the ignored real-scheduler probe).
 
-The 378 unit tests cover the Serde model shape, persistence round-trip / atomicity /
-migration / backups, git + worktree ops (including creation, opt-in branch
+The 396 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+migration / backups, the GitHub layer's parsers — including **contract tests
+that feed them captured real `gh` output** frozen under `tests/fixtures/github/`
+(`src/github/fixture_tests.rs`; capture + sanitization tool in
+`scripts/github/capture-fixtures.mjs`, status in
+[`github-validation.md`](github-validation.md)), git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast
 path, the PTY lifecycle,
@@ -109,9 +124,15 @@ vs merely still readable) — plus the **resource-benchmark harness** under
 result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
 scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — and the **test fixtures**
-under `tests/fixtures/` (the fake `gh`, the PATH shim, the disposable and legacy
-profiles) and the **quality matrix** check. **565 tests** across both projects,
-config in `vitest.config.ts` / `vitest.dom.config.ts`.
+under `tests/fixtures/` (the fake `gh` — incl. its scripted gh-shaped failure
+outcomes — the PATH shim, the disposable and legacy profiles), the **GitHub
+validation tooling** (`scripts/github/lib.test.mjs`: the sandbox allowlist's
+refusals as real child processes, capture sanitization, the read/mutation
+classifier), the **GitHub command inventory** check
+(`tests/github-command-inventory.test.mjs` — every gh-backed function in
+`github.rs` must have an inventoried row whose evidence exists) and the
+**quality matrix** check. **591 tests** across both projects, config in
+`vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
 
@@ -167,7 +188,12 @@ npm run test:e2e         # close every other uxnan window first
 **Eight journeys, 24 tests, ~39 s for the suite**, verified green on consecutive
 runs with zero leftover processes: launch, session restore, terminals in a split,
 a sleeping workspace, a git project, an agent and the hook chain, the browser
-window, and a profile from an older build.
+window, and a profile from an older build. A ninth journey is **opt-in**:
+`github-fake.e2e.mjs` (enable with `UXNAN_E2E_FAKE_GH=1`) routes the app's `gh`
+to the fixture — answering with the captured real payloads — and asserts the
+GitHub chain over real IPC; it self-skips otherwise, and its first run is still
+pending (it shares the operator session described in
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)).
 
 Each spec is one journey and gets its own app, started from a profile seeded for
 it (`tests/e2e/journeys.mjs`). Setting a journey up by clicking through the UI
@@ -256,8 +282,8 @@ somebody's real data.
 
 | # | Check | Why it cannot be automated here | Last verified |
 |---|---|---|---|
-| 1 | `gh` sign-in, then read a PR, an issue and an Actions run | Needs a real GitHub account; the suite uses a fake `gh` that never reaches the network | — |
-| 2 | Create a PR, review it, merge it | Mutates a real repository | — |
+| 1 | `gh` sign-in, then read a PR, an issue and an Actions run | Needs a real GitHub account; the suite uses a fake `gh` that never reaches the network (the *parsers* are now contract-tested on captured real output — this row is the live-account walk) | — |
+| 2 | Create a PR, review it, merge it | Mutates a real repository — now scripted as the supervised sandbox suite (`github_live.rs` + `docs/github-sandbox-runbook.md`); record the date here when the first run happens | — |
 | 3 | Run each installed agent CLI in a terminal and confirm its status dot follows | Needs the CLIs installed and, for most, a paid account | — |
 | 4 | Install a signed update from the stable channel | Needs a signed artifact and a real release | — |
 | 5 | Install a signed update from the nightly channel | Same | — |
