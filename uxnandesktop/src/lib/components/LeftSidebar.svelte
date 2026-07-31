@@ -69,7 +69,8 @@
     const timer = setInterval(() => {
       void projects.refreshWorktrees();
       // …and keep every card's badges honest, not just the active worktree's:
-      // the sweep rate-limits itself (see `SWEEP_MS`) and skips a hidden window.
+      // both calls pace themselves from the resource-mode policy (see
+      // `resourceMode.policy.capabilities`) and the sweep skips a hidden window.
       void projects.sweepStatuses();
     }, 3000);
     // Coming back to the window is the moment the indicators are most likely

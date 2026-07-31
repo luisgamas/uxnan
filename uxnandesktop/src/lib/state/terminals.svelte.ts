@@ -576,6 +576,18 @@ class TerminalStore {
     return count;
   }
 
+  /** Number of *awake* terminal tabs in a workspace — the ones whose PTY a
+   *  sleep would actually stop (feeds the auto-sleep candidate snapshot). */
+  liveTerminalCount(key: string): number {
+    const tree = this.workspaces[key];
+    if (!tree) return 0;
+    let count = 0;
+    for (const tab of allTabs(tree)) {
+      if (tab.kind === "terminal" && !tab.asleep) count += 1;
+    }
+    return count;
+  }
+
   /** Switch the visible workspace (creating an empty entry if unknown).
    *  Switching INTO an asleep workspace wakes it — activation is the wake
    *  gesture. (Sleeping the already-active workspace shows its panes asleep;

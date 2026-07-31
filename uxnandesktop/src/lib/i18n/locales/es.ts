@@ -522,6 +522,14 @@ export const es: Record<MessageKey, string> = {
     "Los nombres de workspaces y terminales se sustituyen por etiquetas opacas; los nombres de agente se conservan solo para agentes conocidos del catálogo. No se sube nada: tú eliges dónde se guarda el archivo.",
   "resources.exportConfirm": "Guardar archivo…",
   "resources.exportSaved": "Diagnóstico exportado.",
+
+  // Modo de recursos (Ajustes → Recursos → Modo de recursos)
+  "resourceMode.autoSleep.suggestToast":
+    "“{name}” lleva un rato inactivo. ¿Dormir sus terminales para liberar recursos?",
+  "resourceMode.autoSleep.suggestAction": "Dormir",
+  "resourceMode.autoSleep.sleptToast":
+    "“{name}” se durmió para liberar recursos. Al abrirlo se despierta de nuevo.",
+  "resourceMode.autoSleep.blockedToast": "Un agente sigue trabajando ahí; se deja despierto.",
   "settings.browser": "Navegador",
   "settings.browserDesc":
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",

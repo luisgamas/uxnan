@@ -521,6 +521,14 @@ export const en = {
     "Workspace and terminal names are replaced with opaque labels; agent names are kept only for known catalog agents. Nothing is uploaded — you choose where the file is saved.",
   "resources.exportConfirm": "Save file…",
   "resources.exportSaved": "Diagnostics exported.",
+
+  // Resource mode (Settings → Resources → Resource mode)
+  "resourceMode.autoSleep.suggestToast":
+    "“{name}” has been inactive for a while — sleep its terminals to free resources?",
+  "resourceMode.autoSleep.suggestAction": "Sleep",
+  "resourceMode.autoSleep.sleptToast":
+    "“{name}” was put to sleep to free resources. Opening it wakes it again.",
+  "resourceMode.autoSleep.blockedToast": "An agent is still working there — leaving it awake.",
   "settings.browser": "Browser",
   "settings.browserDesc":
     "A lightweight in-app browser to preview and debug what your agents build, and to open the links they create.",
