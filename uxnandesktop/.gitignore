@@ -21,3 +21,9 @@ pnpm-debug.log*
 # profiles. Only approved summaries under scripts/resources/baselines/ are
 # committed (see docs/resource-benchmarks.md).
 /.resource-results
+
+# E2E: the WebDriver binary is downloaded per machine to match the installed
+# WebView2 (see tests/e2e/README.md), and run artifacts are per-run evidence.
+/tests/e2e/.drivers
+/tests/e2e/.artifacts
+/tests/e2e/.profile
