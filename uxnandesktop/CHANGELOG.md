@@ -5,6 +5,108 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a test pyramid: component tests, backend integration, and real end-to-end
+
+- **Five layers, each doing what the one below cannot** (`docs/testing.md`): L0
+  static, L1 unit, L2 Svelte components in jsdom, L3 backend against temp
+  directories, L4 the real app driven end to end, L5 a manual checklist for
+  accounts and hardware. The split exists for speed: almost everything is
+  provable in a layer costing milliseconds, which is what keeps the expensive
+  layers small enough to stay trustworthy.
+- **Vitest now runs as two projects** (`vitest.workspace.ts`): `node` keeps the
+  pure logic fast with no Svelte compiler and no jsdom, `dom` mounts real
+  components. Component tests are `*.svelte.test.ts`, which is also how the node
+  project knows to skip them. `npm test` runs both; `npm run test:node` /
+  `test:dom` run one.
+- **Component tests mock the IPC transport, not `api.ts`.** Using Tauri's own
+  `mockIPC` puts the seam *below* the API layer, so `src/lib/api.ts` runs for
+  real — its command names, its argument marshalling — and only the process on
+  the other side is fake. A renamed command fails a test instead of quietly
+  agreeing with a mock nobody updated. `src/test/tauri.ts` adds a typed handler
+  table (an unhandled command rejects loudly rather than returning `undefined`),
+  a call log, event emission and failure/latency injection; `src/test/render.ts`
+  pairs a component with a backend and tears both down together. **No production
+  code needed changing for any of this.**
+- **First component tests** on `UsageMeter` (props → output, including the
+  clamped bar and the nearly-empty one that must still be visible),
+  `SaveDiscardDialog` (every route out of the dialog resolves its promise —
+  including Escape, whose silence would hang a tab close forever) and
+  `AgentLogo` (the CSP-driven fallback chain: backend fetch, failure degrading to
+  the glyph, one call per URL).
+- **L3 backend integration** in `src-tauri/tests/automations_store.rs`: the store
+  against a real `TempDir`, through the crate's public surface only — round-trip
+  across a process boundary, seed-once, a truncated file degrading instead of
+  panicking, nothing written outside its own root, and a path with spaces and
+  non-ASCII characters.
+- **Test fixtures that cannot reach the real machine** (`tests/fixtures/`): a
+  deterministic fake `gh` that refuses to run without its latch, scrubs anything
+  credential-shaped from its log and fails loudly on an unstubbed command; a
+  **PATH shim** that resolves every CLI the app shells out to inside a directory
+  of fakes, so a test that forgets to stub one gets "blocked by the test harness"
+  instead of talking to real GitHub; and disposable + legacy app profiles for the
+  migration paths. The git repo, stand-in agent and loopback server are
+  **shared** with the resource benchmarks rather than copied — two generators
+  would drift, and the repo fixture is only useful because its hash is pinned.
+- **L4 end to end with WebdriverIO + `tauri-driver`** — **eight journeys, 24
+  tests, ~39 s**, green on consecutive runs with zero leftover processes: launch,
+  session restore, terminals in a split, a sleeping workspace, a git project, an
+  agent and the hook chain, the browser window, and a profile from an older
+  build. Each spec gets its own app, started from a profile seeded for it, so a
+  journey's *setup* costs nothing while its assertions still go through the real
+  UI, real IPC and a real backend. Playwright was the alternative and cannot drive a Tauri
+  window; it could serve the frontend, but a test that never crosses IPC is a
+  component test with a browser attached. The comparison, the pinned versions and
+  the stated limitations are in `docs/testing.md`; setup and cleanup rules in
+  `tests/e2e/README.md`.
+- **Two traps this layer hides, both found the hard way and both now guarded.**
+  `tauri-driver` hands the session a webview sitting at `about:blank` rather than
+  attaching to the window the app already navigated — every query then succeeds
+  and returns `<html><head></head><body></body></html>`, which reads as "the app
+  rendered nothing" while the app is running perfectly. The session now navigates
+  to the app's own origin, and the IPC bridge is live there (`invoke("ping")`
+  answers `"pong"` from Rust), so these are genuine end-to-end tests. Separately,
+  **`tauri:options.env` never reached the app**: a diagnostic run came up on the
+  developer's *real* profile, showing their actual projects. The variable is set
+  on the driver process now, and the suite refuses to run if the app under test
+  has any project in it — an isolation failure must not be something a reader has
+  to notice.
+- **A living quality matrix** (`tests/quality-matrix.json`) — machine-readable,
+  and checked against the repository by `tests/quality-matrix.test.mjs`: a flow
+  claiming a layer must cite a file that exists (globs must match something), a
+  partially covered flow must state its gap, and no flow may list a layer as both
+  covered and planned. It records what is *not* tested as carefully as what is.
+- **CI**: component tests join the required gate immediately (they are fast and
+  catch the wiring failures unit tests structurally cannot). E2E gets its own
+  on-demand/nightly Windows workflow (`e2e-desktop.yml`), deliberately not
+  blocking until it has a track record, uploading a screenshot and the page
+  source per failed test.
+- **A flake policy** in `docs/testing.md`: quarantine with an owner and a 14-day
+  limit, never a silent skip; keep the case at a lower layer if an E2E test is
+  removed; one retry, infrastructure only; fix the wait, not the timeout.
+- Totals: **565 Vitest** (was 517), **387 Rust** (377 unit + 10 integration) and
+  **24 E2E tests across 8 journeys**.
+- **The manual layer is written down too.** `docs/testing.md` carries an L5
+  checklist of the twelve things no automated layer can honestly cover — a real
+  `gh` account, a signed update, the OS scheduler firing with the app closed,
+  macOS and Linux hardware — each with *why* it cannot be automated here and a
+  column for when it was last verified. Anything on it that becomes automatable
+  should move up a layer and leave the table.
+
+### Known limitation — E2E cannot run alongside another uxnan
+
+- The same WebView2 constraint the resource benchmarks hit, and it bites harder
+  here: a second instance shares the browser process, so the automation session
+  drives a webview that is not this app's. It does not error — every query
+  returns `<html><head></head><body></body></html>`, which reads as "the app
+  renders nothing". The E2E config refuses to start and names the offending PID,
+  reusing the benchmarks' check rather than reimplementing it.
+- Teardown reaps **by PID, never by name**: this harness runs on machines where a
+  real `uxnan-desktop.exe` is very likely open — possibly the one hosting the
+  terminal the tests were started from — and a name-based sweep would take it
+  down along with everything running inside it. An app outliving its session is
+  matched on the run's own profile directory, killed, and reported, because a
+  leak is a teardown bug rather than a passing detail.
+
 ### Added — a reproducible resource benchmark, so "it stays small" is a measurement
 
 - **The efficiency claim now has a harness behind it** (`scripts/resources/`,

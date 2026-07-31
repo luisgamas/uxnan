@@ -18,9 +18,9 @@ OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
 with" external editors/IDEs**, **automations**, **pets**, **a reproducible
-resource benchmark**). 377 Rust backend tests + 517 frontend Vitest unit tests
-(pure logic, the benchmark harness included); **no Svelte component or E2E tests
-yet**. macOS now ships an
+resource benchmark**). 387 Rust tests (377 unit + 10 integration) + 565 frontend Vitest tests across
+two projects — pure logic and **Svelte component tests** — plus a **real E2E suite**
+(WebdriverIO + tauri-driver: 8 journeys, 24 tests, green on Windows). macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
@@ -848,9 +848,49 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       device.
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
-- [ ] E2E tests (Playwright / WebdriverIO + tauri-driver) **and** Svelte
-      **component** tests (Vitest + jsdom). The Vitest harness + **unit** tests
-      for pure logic now exist (`src/lib/*.test.ts`); component/E2E are still TODO.
+- [ ] **Grow the component and E2E layers.** Both harnesses exist and work; what
+      they cover is still thin — see *Test pyramid — follow-ups* below.
+
+## Test pyramid — follow-ups ☐
+
+**The harness is built and all five layers have real tests.** What is left is
+coverage and confidence, not machinery. `tests/quality-matrix.json` is the
+authoritative list of gaps — it is checked against the repo, so it cannot quietly
+go stale; these are the ones worth calling out.
+
+- [ ] **Component tests for the flows that carry the most risk**: `TerminalArea`
+      (splits, moving a tab without remounting its xterm), Settings (persistence
+      + migration through the UI), the GitHub panels, and the orchestration
+      builder. Three components have tests today; the matrix lists the rest as
+      `planned` with the reason.
+- [ ] **E2E for the actions a user takes, not just the states they arrive in.**
+      The eight journeys seed a state and assert it end to end; what none of them
+      does is *drive* the UI — create a worktree from the dialog, close a
+      terminal, wake a sleeping workspace, change a setting. Those need stable
+      handles on the controls, which is the next piece of work.
+- [ ] **Wake fidelity.** A sleeping workspace is proven to spawn no shells; that
+      the replayed scrollback matches what was captured is still only checked by
+      hand.
+- [ ] **The fixture agent's own reporter does not reach the hook server.** The
+      journey covers the chain by posting a report itself, which is what a
+      reporter does and what uxnan owns. Why the fixture's own POST never lands is
+      unresolved and worth knowing, since it is the same path a real CLI takes.
+- [ ] **Feed the legacy profiles to a booting app.** `tests/fixtures/appdata.mjs`
+      has the old shapes (missing `isGit`, no terminal profiles, tabs without a
+      `kind`, a truncated file) and nothing consumes them yet — so the migration
+      path is covered in Rust but never end to end.
+- [ ] **Make E2E a required gate** once `e2e-desktop.yml` has run green for a
+      fortnight. Blocking before it has a track record on that runner is how a
+      gate earns a reputation for false failures.
+- [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
+      and the browser panel are both separate windows. Find out before promising
+      coverage for either.
+- [ ] **macOS and Linux E2E.** `tauri-driver` supports Linux (WebKitWebDriver)
+      and does **not** support macOS. Neither has been run here, and the harness
+      does not claim a platform nobody has executed.
+- [ ] **Accessibility assertions.** The component layer queries by role and label,
+      which nudges in the right direction, but nothing yet asserts an accessible
+      name exists where one is required.
 
 ## Platform validation
 
@@ -878,7 +918,9 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 377 Rust + 517 Vitest tests.
+  keeps the default `{ubuntu, windows}`. 387 Rust + 565 Vitest tests (both
+  projects: pure logic and components). E2E runs in its own on-demand/nightly
+  Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
@@ -910,7 +952,8 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 ## Cross-cutting / standing rules
 
 - [ ] Tests for every public function (AGENTS.md, ALPHA) — Rust done; pure-logic
-      frontend modules covered by Vitest; **still add Svelte component tests**.
+      and **component** layers both covered by Vitest. What is thin is *which*
+      components; see the quality matrix.
 - [ ] Lint/format gate before "done": `cargo clippy` + `cargo fmt` + `npm run check`
       + `npm test`.
 - [ ] Tauri capabilities: expose only the commands a window needs; no arbitrary
