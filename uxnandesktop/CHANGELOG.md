@@ -41,7 +41,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   orphans, the parked loop under a paused clock, the export golden tests),
   3 integration tests against real spawned process trees, 24 pure-logic Vitest
   tests and 18 component tests (states, confidence marks, the export consent
-  flow). Totals: **607 Vitest**, **429 Rust** (416 unit + 13 integration).
+  flow). Totals: **608 Vitest**, **429 Rust** (416 unit + 13 integration).
   Full EN/ES i18n; the shared component-test harness gains
   `mountWithProviders` for components that need the app-level tooltip context.
 

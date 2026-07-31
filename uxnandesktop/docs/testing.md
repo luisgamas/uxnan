@@ -115,7 +115,7 @@ result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
 scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — and the **test fixtures**
 under `tests/fixtures/` (the fake `gh`, the PATH shim, the disposable and legacy
-profiles) and the **quality matrix** check. **607 tests** across both projects,
+profiles) and the **quality matrix** check. **608 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
