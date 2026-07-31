@@ -348,6 +348,25 @@ export interface AppSettings {
   /** Local resource observability (backend-popover summary + Settings →
    *  Resources). Absent = the defaults (enabled, no background sweep). */
   resources?: ResourceSettings;
+  /** Resource mode: the explicit efficiency/degradation profile plus
+   *  per-capability overrides. Absent = `balanced` (the pre-mode behavior).
+   *  Validated and resolved by `$lib/resources/policy`. */
+  resourceMode?: ResourceModeSettings;
+}
+
+/** Resource-mode settings (mirror of the Rust `ResourceModeSettings`). Every
+ *  field is optional so a partially-written blob still reads cleanly; the
+ *  policy engine (`$lib/resources/policy`) normalizes whatever is here —
+ *  unknown profiles fall back to `balanced`, invalid overrides to inherit. */
+export interface ResourceModeSettings {
+  /** `"efficient" | "balanced" | "performance"` (validated on read). */
+  profile?: string;
+  /** Per-capability overrides; `null`/absent = inherit from the preset. */
+  overrides?: Record<string, unknown>;
+  /** Feature flag for workspace auto-sleep. Off by default; the profile's
+   *  auto-sleep capability only applies while this is on. */
+  autoSleep?: boolean;
+  schemaVersion?: number;
 }
 
 /** Local resource observability settings (mirror of the Rust `ResourceSettings`).
@@ -1195,6 +1214,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   agentProfiles: [],
   pets: { enabled: true },
   resources: { enabled: true, orphanSweep: false, orphanSweepSeconds: 20 },
+  resourceMode: { profile: "balanced", overrides: {}, autoSleep: false, schemaVersion: 1 },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,
