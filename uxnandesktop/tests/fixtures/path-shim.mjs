@@ -89,6 +89,19 @@ export function shimmedPath(dir, { allow = [], env = {} } = {}) {
   };
 }
 
+/**
+ * A directory holding **only** the fake `gh` shim, for prepending to an
+ * otherwise-real PATH. The full `shimmedPath` replaces the world — right for
+ * unit tests, wrong for the E2E app, which needs its real shell, git and
+ * agents; the opt-in GitHub journey only needs `gh` re-routed. The caller
+ * still owns the latch (`UXNAN_FIXTURE_GH=1`) and the canned responses.
+ */
+export function ghShimDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  writeShim(dir, "gh", FAKES.gh);
+  return dir;
+}
+
 /** The OS's own directories: enough to start a process, and nothing more. */
 function systemDirs() {
   if (process.platform === "win32") {

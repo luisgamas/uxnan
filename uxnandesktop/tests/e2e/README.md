@@ -67,6 +67,13 @@ shell; the hook server refuses an untokened report and records a valid one),
 **browser** (a loopback page in a second window) and **migration** (a profile
 from an older build still opens with its projects).
 
+A ninth is **opt-in** and self-skips by default: **github-fake** (enable with
+`UXNAN_E2E_FAKE_GH=1`) routes the app's `gh` to the test fixture — prepending a
+gh-only shim to the driver's PATH, so every other CLI stays real — and asserts
+the GitHub status/PR/rate-limit chains over IPC against the captured real
+payloads from `../fixtures/github/`. No network, no account; see
+[`../../docs/github-validation.md`](../../docs/github-validation.md).
+
 Setup is seeded rather than clicked: twenty clicks to reach the thing you wanted
 to assert is how an E2E suite becomes slow and brittle. The assertions still go
 through the real UI, real IPC and a real backend.

@@ -1,0 +1,523 @@
+{
+  "$comment": [
+    "Command → outcome inventory of the GitHub integration: every `gh`",
+    "invocation `src-tauri/src/github.rs` can run, whether it mutates, what",
+    "confirmation stands in front of it, what parses its answer, who consumes",
+    "it, and how it is validated. `tests/github-command-inventory.test.mjs`",
+    "checks this file against the source: a public gh-backed function missing",
+    "here — or listed here but gone from the code — fails the suite, and every",
+    "cited evidence file must exist.",
+    "",
+    "`validation.live` values: `done (offline)` needs no live run; a test name",
+    "means the supervised sandbox suite covers it (src-tauri/tests/",
+    "github_live.rs, run per docs/github-sandbox-runbook.md); `pending:` names",
+    "what still blocks a first live execution."
+  ],
+  "source": "src-tauri/src/github.rs",
+  "updated": "2026-07-31",
+  "functions": [
+    {
+      "fn": "status",
+      "tauriCommand": "github_status",
+      "gh": "gh auth status --json hosts (fallback: gh auth status)",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "any authenticated token (works signed out: reports the state)",
+      "parser": "parse_auth_status_json / parse_auth_status (fallback)",
+      "ui": "Settings → GitHub Account/Session panel; gates every GitHub surface (githubStore.available)",
+      "validation": {
+        "contract": ["tests/fixtures/github/auth-status-json.json", "tests/fixtures/github/auth-status-text.json"],
+        "fake": ["src-tauri/tests/github_cli.rs"],
+        "live": "github_live_status_and_context_resolve_the_sandbox"
+      }
+    },
+    {
+      "fn": "repo_context",
+      "tauriCommand": "github_repo_context",
+      "gh": "gh pr view --json number,title,state,isDraft,url,mergeable,reviewDecision,statusCheckRollup,headRefName (plus git remote/branch reads)",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "pr_summary_from_json + check_summary_from_rollup",
+      "ui": "sidebar worktree PR badges; right-panel GitHub tab header",
+      "validation": {
+        "contract": ["tests/fixtures/github/pr-summary-132.json"],
+        "live": "github_live_status_and_context_resolve_the_sandbox"
+      }
+    },
+    {
+      "fn": "pr_branches",
+      "tauriCommand": "github_branches",
+      "gh": "gh repo view --json defaultBranchRef (plus git branch lists)",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read); degrades to git-only when signed out",
+      "parser": "inline defaultBranchRef.name extraction",
+      "ui": "CreatePrForm base/head pickers",
+      "validation": {
+        "contract": ["tests/fixtures/github/default-branch.json"],
+        "live": "github_live_status_and_context_resolve_the_sandbox"
+      }
+    },
+    {
+      "fn": "default_branch",
+      "tauriCommand": "(internal: github_branches, github_pr_checkout)",
+      "gh": "gh repo view --json defaultBranchRef",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read); falls back to git's remote-HEAD probe",
+      "parser": "inline defaultBranchRef.name extraction",
+      "ui": "CreatePrForm default base; PR-checkout dialog",
+      "validation": {
+        "contract": ["tests/fixtures/github/default-branch.json"]
+      }
+    },
+    {
+      "fn": "pr_list",
+      "tauriCommand": "github_pr_list",
+      "gh": "gh pr list --json <fields> --state <s> --limit <n> [--search <q>]",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "pr_list_item_from_json",
+      "ui": "GitHub view → Pull Requests; right-panel digest (5 recent)",
+      "validation": {
+        "contract": ["tests/fixtures/github/pr-list.json"],
+        "fake": ["src-tauri/tests/github_cli.rs"],
+        "live": "read live against luisgamas/uxnan during fixture capture"
+      }
+    },
+    {
+      "fn": "pr_view",
+      "tauriCommand": "github_pr_view",
+      "gh": "gh pr view <n> --json <detail fields>",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "pr_detail_from_json (+ reviews/comments/commits/files helpers)",
+      "ui": "PR review tab (Conversation + Files changed)",
+      "validation": {
+        "contract": ["tests/fixtures/github/pr-view-132.json"],
+        "fake": ["src-tauri/tests/github_cli.rs"],
+        "live": "github_live_pr_lifecycle_create_review_merge"
+      }
+    },
+    {
+      "fn": "pr_diff",
+      "tauriCommand": "github_pr_diff",
+      "gh": "gh pr diff <n>",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "passthrough → frontend splitCommitDiff ($lib/diffParse)",
+      "ui": "PR review tab → Files changed",
+      "validation": {
+        "contract": ["tests/fixtures/github/pr-diff-131.json", "src/lib/diffParse.test.ts"]
+      }
+    },
+    {
+      "fn": "pr_timeline",
+      "tauriCommand": "github_pr_timeline",
+      "gh": "gh api repos/{owner}/{repo}/issues/<n>/timeline --paginate --cache 20s",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "timeline_events_from_json / map_timeline_event",
+      "ui": "PR + issue conversation timelines",
+      "validation": {
+        "contract": ["tests/fixtures/github/pr-timeline-132.json"],
+        "live": "github_live_pr_lifecycle_create_review_merge"
+      }
+    },
+    {
+      "fn": "merge_info",
+      "tauriCommand": "github_merge_info",
+      "gh": "gh repo view --json <merge settings> + gh api repos/{owner}/{repo} + gh api repos/{owner}/{repo}/rules/branches/<base> + gh pr view <n> --json mergeStateStatus,mergeable,autoMergeRequest,headRefOid",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read); every probe degrades independently",
+      "parser": "apply_repo_merge_settings + apply_repo_rest + apply_branch_rules + merge_state_from_json",
+      "ui": "merge panel (methods, blocked reasons, auto/admin offers)",
+      "validation": {
+        "contract": [
+          "tests/fixtures/github/repo-view-merge.json",
+          "tests/fixtures/github/repo-rest.json",
+          "tests/fixtures/github/rules-branches-main.json",
+          "tests/fixtures/github/pr-merge-state-132.json"
+        ],
+        "live": "github_live_ruleset_blocks_then_admin_bypass_merges"
+      }
+    },
+    {
+      "fn": "labels",
+      "tauriCommand": "github_labels",
+      "gh": "gh label list --json name,color --limit 100",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "labels_from_json",
+      "ui": "issue-create label picker",
+      "validation": {
+        "contract": ["tests/fixtures/github/label-list.json"],
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "assignees",
+      "tauriCommand": "github_assignees",
+      "gh": "gh api repos/{owner}/{repo}/assignees",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "inline login list extraction",
+      "ui": "issue-create assignee picker",
+      "validation": {
+        "live": "pending: single-account sandbox has exactly one assignable login; shape covered by login_list unit tests"
+      }
+    },
+    {
+      "fn": "issue_list",
+      "tauriCommand": "github_issue_list",
+      "gh": "gh issue list --json <fields> --state <s> --limit <n> [--search <q>]",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "issue_list_item_from_json",
+      "ui": "GitHub view → Issues; right-panel digest",
+      "validation": {
+        "contract": ["tests/fixtures/github/issue-list.json"],
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "issue_view",
+      "tauriCommand": "github_issue_view",
+      "gh": "gh issue view <n> --json <detail fields>",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "issue_detail_from_json",
+      "ui": "issue detail (timeline + bottom bar)",
+      "validation": {
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "run_list",
+      "tauriCommand": "github_run_list",
+      "gh": "gh run list --json <fields> --limit <n> [--branch <b>]",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "run_list_item_from_json",
+      "ui": "GitHub view → Actions; right-panel CI digest",
+      "validation": {
+        "contract": ["tests/fixtures/github/run-list.json"],
+        "live": "github_live_actions_dispatch_cancel_and_log"
+      }
+    },
+    {
+      "fn": "run_log",
+      "tauriCommand": "github_run_log",
+      "gh": "gh run view <id> --log [--log-failed]",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "passthrough (terminal-style render)",
+      "ui": "Actions run log view",
+      "validation": {
+        "live": "github_live_actions_dispatch_cancel_and_log"
+      }
+    },
+    {
+      "fn": "rate_limit",
+      "tauriCommand": "github_rate_limit",
+      "gh": "gh api rate_limit",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "any authenticated token; does not consume quota",
+      "parser": "rate_limit_from_json",
+      "ui": "status-bar backend popover; Settings → GitHub",
+      "validation": {
+        "contract": ["tests/fixtures/github/rate-limit.json"],
+        "live": "github_live_status_and_context_resolve_the_sandbox"
+      }
+    },
+    {
+      "fn": "notifications_count",
+      "tauriCommand": "github_notifications_count",
+      "gh": "gh api notifications --jq length --cache 60s",
+      "kind": "read",
+      "confirm": "opt-in setting (an extra request)",
+      "scopes": "notifications (read; included in `repo` for classic tokens)",
+      "parser": "numeric parse of the jq output",
+      "ui": "backend popover unread badge + dot",
+      "validation": {
+        "live": "pending: needs unread notifications to assert a non-zero count; the zero case ran live during capture"
+      }
+    },
+    {
+      "fn": "pr_create",
+      "tauriCommand": "github_pr_create",
+      "gh": "gh pr create --title <t> --body <b> [--base <b>] [--head <h>] [--draft]",
+      "kind": "mutation",
+      "confirm": "Confirm PR actions setting (default ON) → confirm dialog; base==head blocked in code",
+      "scopes": "repo",
+      "parser": "stdout URL (the app returns it and re-reads the PR)",
+      "ui": "CreatePrForm (GitHub view + right panel)",
+      "validation": {
+        "fake": ["src-tauri/tests/github_cli.rs"],
+        "live": "github_live_pr_lifecycle_create_review_merge"
+      }
+    },
+    {
+      "fn": "pr_review",
+      "tauriCommand": "github_pr_review",
+      "gh": "gh pr review <n> --approve|--request-changes|--comment [--body <b>]",
+      "kind": "mutation",
+      "confirm": "explicit verb button; comment verb requires a body (validated in code)",
+      "scopes": "repo; GitHub refuses approve/request-changes on your own PR",
+      "parser": "exit status; stderr surfaced verbatim",
+      "ui": "PR bottom action bar",
+      "validation": {
+        "fake": ["src-tauri/tests/github_cli.rs"],
+        "live": "github_live_pr_lifecycle_create_review_merge (comment + self-approval refusal); approve/request-changes pending: needs a second account"
+      }
+    },
+    {
+      "fn": "pr_comment",
+      "tauriCommand": "github_pr_comment",
+      "gh": "gh pr comment <n> --body <b>",
+      "kind": "mutation",
+      "confirm": "explicit send from the reply box; empty body blocked in code",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "PR conversation reply box",
+      "validation": {
+        "live": "github_live_pr_lifecycle_create_review_merge"
+      }
+    },
+    {
+      "fn": "pr_close",
+      "tauriCommand": "github_pr_close",
+      "gh": "gh pr close <n>",
+      "kind": "mutation",
+      "confirm": "explicit Close-PR button",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "PR bottom action bar",
+      "validation": {
+        "live": "github_live_stale_head_merge_is_refused (cleanup step, verified open→closed)"
+      }
+    },
+    {
+      "fn": "pr_reopen",
+      "tauriCommand": "github_pr_reopen",
+      "gh": "gh pr reopen <n>",
+      "kind": "mutation",
+      "confirm": "explicit Reopen button (closed PRs only)",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "PR bottom action bar",
+      "validation": {
+        "live": "pending: covered indirectly (issue reopen validated; PR reopen shares the wrapper shape); add to a later supervised run"
+      }
+    },
+    {
+      "fn": "pr_merge",
+      "tauriCommand": "github_pr_merge",
+      "gh": "gh pr merge <n> --merge|--squash|--rebase [--delete-branch] [--auto] [--admin] [--match-head-commit <sha>]",
+      "kind": "mutation",
+      "confirm": "merge confirm (setting, default ON); admin bypass behind a danger confirm naming the branch; auto+admin combination blocked in code; --match-head-commit always sent by the UI",
+      "scopes": "repo (admin bypass additionally needs bypass rights; gh's error is the authority)",
+      "parser": "exit status; gh's refusal sentence surfaced verbatim",
+      "ui": "merge panel",
+      "validation": {
+        "fake": ["src-tauri/tests/github_cli.rs", "tests/fixtures/github/mutation-outcomes.json"],
+        "live": "github_live_pr_lifecycle_create_review_merge + github_live_stale_head_merge_is_refused + github_live_draft_refuses_merge_until_ready + github_live_ruleset_blocks_then_admin_bypass_merges; --auto arming pending: needs the sandbox's allow_auto_merge run"
+      }
+    },
+    {
+      "fn": "pr_disable_auto_merge",
+      "tauriCommand": "github_pr_disable_auto_merge",
+      "gh": "gh pr merge <n> --disable-auto",
+      "kind": "mutation",
+      "confirm": "explicit Turn-off button on an armed PR",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "merge panel (armed auto-merge state)",
+      "validation": {
+        "live": "pending: pairs with the --auto arming run (sandbox has allow_auto_merge enabled by setup)"
+      }
+    },
+    {
+      "fn": "pr_update_branch",
+      "tauriCommand": "github_pr_update_branch",
+      "gh": "gh pr update-branch <n> [--rebase]",
+      "kind": "mutation",
+      "confirm": "explicit Update-branch button (BEHIND state)",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "merge panel (BEHIND state)",
+      "validation": {
+        "live": "pending: needs a deliberately-behind branch in the sandbox (runbook extension)"
+      }
+    },
+    {
+      "fn": "pr_ready",
+      "tauriCommand": "github_pr_ready",
+      "gh": "gh pr ready <n> [--undo]",
+      "kind": "mutation",
+      "confirm": "explicit Mark-ready / Convert-to-draft button",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "merge panel (draft state)",
+      "validation": {
+        "live": "github_live_draft_refuses_merge_until_ready"
+      }
+    },
+    {
+      "fn": "pr_edit",
+      "tauriCommand": "github_pr_edit",
+      "gh": "gh pr edit <n> [--title <t>] [--body <b>]",
+      "kind": "mutation",
+      "confirm": "explicit save from the in-place editor; nothing-to-edit blocked in code",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "PR header pencil",
+      "validation": {
+        "live": "pending: issue_edit validates the shared edit_item wrapper live; a PR-side pass belongs to a later supervised run"
+      }
+    },
+    {
+      "fn": "issue_edit",
+      "tauriCommand": "github_issue_edit",
+      "gh": "gh issue edit <n> [--title <t>] [--body <b>]",
+      "kind": "mutation",
+      "confirm": "explicit save from the in-place editor",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "issue header pencil",
+      "validation": {
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "pr_add_reviewers",
+      "tauriCommand": "github_pr_add_reviewers",
+      "gh": "gh pr edit <n> --add-reviewer <login>…",
+      "kind": "mutation",
+      "confirm": "explicit request from the reviewers row; logins validated (no flag-shaped values)",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "PR reviewers row",
+      "validation": {
+        "live": "pending: needs a second account (you cannot request yourself); refusal shape covered by validate_arg_value unit tests"
+      }
+    },
+    {
+      "fn": "issue_create",
+      "tauriCommand": "github_issue_create",
+      "gh": "gh issue create --title <t> --body <b> [--label <l>]… [--assignee <a>]…",
+      "kind": "mutation",
+      "confirm": "explicit create from the issue form; labels/assignees validated (no flag-shaped values)",
+      "scopes": "repo",
+      "parser": "stdout URL",
+      "ui": "issue-create form",
+      "validation": {
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "issue_comment",
+      "tauriCommand": "github_issue_comment",
+      "gh": "gh issue comment <n> --body <b>",
+      "kind": "mutation",
+      "confirm": "explicit send; empty body blocked in code",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "issue bottom bar comment field",
+      "validation": {
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "issue_close",
+      "tauriCommand": "github_issue_close",
+      "gh": "gh issue close <n>",
+      "kind": "mutation",
+      "confirm": "explicit Close button",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "issue bottom bar",
+      "validation": {
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "issue_reopen",
+      "tauriCommand": "github_issue_reopen",
+      "gh": "gh issue reopen <n>",
+      "kind": "mutation",
+      "confirm": "explicit Reopen button",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "issue bottom bar",
+      "validation": {
+        "live": "github_live_issue_lifecycle_is_verified_remotely"
+      }
+    },
+    {
+      "fn": "issue_develop",
+      "tauriCommand": "github_issue_develop",
+      "gh": "gh issue develop <n> --name <branch>",
+      "kind": "mutation",
+      "confirm": "worktree settings + confirmation dialog (branch name validated before git sees it)",
+      "scopes": "repo",
+      "parser": "exit status; the worktree is then materialized locally",
+      "ui": "issue Start-work → worktree dialog",
+      "validation": {
+        "live": "pending: creates a remote branch + local worktree; belongs to a later supervised run with the full dialog flow"
+      }
+    },
+    {
+      "fn": "run_rerun",
+      "tauriCommand": "github_run_rerun",
+      "gh": "gh run rerun <id> [--failed]",
+      "kind": "mutation",
+      "confirm": "explicit Re-run / Re-run-failed button",
+      "scopes": "repo (+ workflow for workflow-file changes)",
+      "parser": "exit status",
+      "ui": "Actions run view",
+      "validation": {
+        "live": "pending: pairs with github_live_actions_dispatch_cancel_and_log (rerun of the settled sleep run) in a later supervised pass"
+      }
+    },
+    {
+      "fn": "run_cancel",
+      "tauriCommand": "github_run_cancel",
+      "gh": "gh run cancel <id>",
+      "kind": "mutation",
+      "confirm": "explicit Cancel button",
+      "scopes": "repo",
+      "parser": "exit status",
+      "ui": "Actions run view",
+      "validation": {
+        "live": "github_live_actions_dispatch_cancel_and_log"
+      }
+    },
+    {
+      "fn": "clone",
+      "tauriCommand": "github_clone",
+      "gh": "gh repo clone <repo> <dest>",
+      "kind": "read (network read; writes only to the local destination)",
+      "confirm": "no UI surface yet (FOR-DEV: Clone-from-GitHub UI entry)",
+      "scopes": "repo (read) for private repos; none for public",
+      "parser": "exit status; returns the destination path",
+      "ui": "none yet (backend + api wrapper only)",
+      "validation": {
+        "live": "clone_sandbox helper in every mutating github_live test"
+      }
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+{
+  "$comment": [
+    "How `gh` answers each WRITE operation — success and failure — modeled",
+    "faithfully on gh's real output formats so the app's mutation handling can",
+    "be exercised without mutating anything. The required suite must never",
+    "touch real GitHub (AGENTS.md), so these cases drive a scripted stand-in",
+    "`gh` in src-tauri/tests/github_cli.rs, through the production runner.",
+    "",
+    "Provenance discipline: every case states where its format comes from.",
+    "`confidence: source-exact` means the format string was read from the gh",
+    "source for the pinned version; `confidence: modeled` means the wrapper",
+    "format is source-exact but the API-authored message text inside it is",
+    "known behavior that the supervised sandbox run re-captures verbatim",
+    "(docs/github-sandbox-runbook.md). A modeled case is a claim to verify,",
+    "not a fact — that is what the live suite is for."
+  ],
+  "basis": {
+    "ghVersion": "gh version 2.95.0 (2026-06-17)",
+    "mergeMessages": "cli/cli v2.95.0 pkg/cmd/pr/merge/merge.go — success `%s %s pull request %s#%d (%s)`, auto-merge `%s Pull request %s#%d will be automatically merged%s when all requirements are met`, refusal `%s Pull request %s#%d is not mergeable: %s.` with reasons from blockedReason(); success/refusal lines print to stderr; failure icon is ASCII `X`",
+    "graphqlErrors": "cli/go-gh pkg/api/errors.go — `GraphQL: %s` joined with `, `, each message suffixed ` (%s)` with the mutation path",
+    "httpErrors": "cli/go-gh pkg/api/errors.go — `HTTP %d: %s (%s)` with the request URL",
+    "exitCodes": "gh help exit-codes — 0 ok, 1 error, 4 authentication failure"
+  },
+  "cases": [
+    {
+      "id": "merge-blocked-policy",
+      "operation": "pr merge (blocked by branch rules)",
+      "command": "gh pr merge 7 --squash --match-head-commit <sha>",
+      "confidence": "source-exact",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "X Pull request luisgamas/uxnan-gh-sandbox#7 is not mergeable: the base branch policy prohibits the merge.\n"
+    },
+    {
+      "id": "merge-blocked-behind",
+      "operation": "pr merge (head behind base)",
+      "command": "gh pr merge 7 --squash",
+      "confidence": "source-exact",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "X Pull request luisgamas/uxnan-gh-sandbox#7 is not mergeable: the head branch is not up to date with the base branch.\n"
+    },
+    {
+      "id": "merge-conflicting",
+      "operation": "pr merge (conflicts)",
+      "command": "gh pr merge 7 --merge",
+      "confidence": "source-exact",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "X Pull request luisgamas/uxnan-gh-sandbox#7 is not mergeable: the merge commit cannot be cleanly created.\n"
+    },
+    {
+      "id": "merge-stale-head",
+      "operation": "pr merge --match-head-commit with a stale head",
+      "command": "gh pr merge 7 --squash --match-head-commit 0123456789abcdef0123456789abcdef01234567",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)\n"
+    },
+    {
+      "id": "merge-draft",
+      "operation": "pr merge on a draft PR",
+      "command": "gh pr merge 8 --squash",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "GraphQL: Pull request Pull request is in draft state (mergePullRequest)\n"
+    },
+    {
+      "id": "merge-auto-not-allowed",
+      "operation": "pr merge --auto on a repo without auto-merge",
+      "command": "gh pr merge 7 --squash --auto",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "GraphQL: Pull request Auto merge is not allowed for this repository (enablePullRequestAutoMerge)\n"
+    },
+    {
+      "id": "merge-auto-armed",
+      "operation": "pr merge --auto (accepted; merges when requirements are met)",
+      "command": "gh pr merge 7 --squash --auto",
+      "confidence": "source-exact",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "✓ Pull request luisgamas/uxnan-gh-sandbox#7 will be automatically merged via squash when all requirements are met\n"
+    },
+    {
+      "id": "merge-admin-success",
+      "operation": "pr merge --admin (bypass accepted)",
+      "command": "gh pr merge 7 --squash --admin --match-head-commit <sha>",
+      "confidence": "source-exact",
+      "exit": 0,
+      "stdout": "",
+      "stderr": "✓ Squashed and merged pull request luisgamas/uxnan-gh-sandbox#7 (Exercise the merge surface)\n"
+    },
+    {
+      "id": "review-own-pr-approve",
+      "operation": "pr review --approve on your own PR (single-account limit)",
+      "command": "gh pr review 7 --approve",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "GraphQL: Can not approve your own pull request (addPullRequestReview)\n"
+    },
+    {
+      "id": "create-success",
+      "operation": "pr create (the URL is the result the app returns)",
+      "command": "gh pr create --title t --body b --base main --head feat/x",
+      "confidence": "source-exact",
+      "exit": 0,
+      "stdout": "https://github.com/luisgamas/uxnan-gh-sandbox/pull/7\n",
+      "stderr": "\nCreating pull request for feat/x into main in luisgamas/uxnan-gh-sandbox\n\n"
+    },
+    {
+      "id": "create-no-commits",
+      "operation": "pr create with no commits between base and head",
+      "command": "gh pr create --title t --body b --base main --head feat/empty",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "GraphQL: No commits between main and feat/empty (createPullRequest)\n"
+    },
+    {
+      "id": "logged-out",
+      "operation": "any repo read/write while signed out",
+      "command": "gh pr list",
+      "confidence": "modeled",
+      "exit": 4,
+      "stdout": "",
+      "stderr": "To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.\n"
+    },
+    {
+      "id": "offline",
+      "operation": "any networked call with no connectivity",
+      "command": "gh pr list",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com\n"
+    },
+    {
+      "id": "rate-limited",
+      "operation": "a read after exhausting the REST quota",
+      "command": "gh api repos/{owner}/{repo}/pulls",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "HTTP 403: API rate limit exceeded for user ID 77956428. If you reach out to GitHub Support for help, please include the request ID ABCD:1234. (https://api.github.com/repos/luisgamas/uxnan-gh-sandbox/pulls)\n"
+    },
+    {
+      "id": "partial-json",
+      "operation": "a gh killed mid-write (truncated JSON on stdout)",
+      "command": "gh pr list --json number,title",
+      "confidence": "modeled",
+      "exit": 0,
+      "stdout": "[{\"number\": 7, \"title\": \"cut off mid-st",
+      "stderr": ""
+    },
+    {
+      "id": "old-gh-unknown-json-field",
+      "operation": "a gh too old for a requested --json field",
+      "command": "gh pr view 7 --json mergeStateStatus",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "Unknown JSON field: \"mergeStateStatus\"\nAvailable fields:\n  additions\n  assignees\n  author\n  baseRefName\n  body\n"
+    },
+    {
+      "id": "old-gh-unknown-flag",
+      "operation": "a gh too old for `auth status --json` (pre-2.63 fallback path)",
+      "command": "gh auth status --json hosts",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "unknown flag: --json\n\nUsage:  gh auth status [flags]\n"
+    },
+    {
+      "id": "not-a-github-remote",
+      "operation": "a repo whose origin gh cannot resolve",
+      "command": "gh pr list",
+      "confidence": "modeled",
+      "exit": 1,
+      "stdout": "",
+      "stderr": "no git remotes found\n"
+    }
+  ]
+}

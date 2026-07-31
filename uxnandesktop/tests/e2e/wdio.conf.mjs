@@ -35,7 +35,8 @@ import { fileURLToPath } from "node:url";
 
 import { DRIVER_PATH, driverStatus } from "./setup-driver.mjs";
 import { checkNoForeignInstance, waitForExit } from "../../scripts/resources/lib/preflight.mjs";
-import { factsFor, seedFor } from "./journeys.mjs";
+import { FAKE_GH_RESPONSES, factsFor, seedFor } from "./journeys.mjs";
+import { ghShimDir } from "../fixtures/path-shim.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DESKTOP_ROOT = path.resolve(HERE, "..", "..");
@@ -227,6 +228,28 @@ function preflight() {
 preflight();
 
 const profile = makeProfile();
+/**
+ * OPT-IN: route the app's `gh` to the fixture for the GitHub journey.
+ *
+ * Only when the operator sets `UXNAN_E2E_FAKE_GH=1` (the github-fake spec
+ * self-skips without it): a directory holding *only* the fake `gh` shim is
+ * prepended to the driver's PATH — the app inherits it, so `gh` resolves to
+ * the fixture while every other CLI (shell, git, agents) stays real. The
+ * latch (`UXNAN_FIXTURE_GH=1`) arms the fake, and the canned answers are the
+ * file the journey writes (captured real payloads from tests/fixtures/github).
+ */
+function fakeGhEnv() {
+  if (process.env.UXNAN_E2E_FAKE_GH !== "1") return {};
+  const dir = ghShimDir(path.join(HERE, ".profile", "gh-shim"));
+  const PATH = `${dir}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ""}`;
+  return {
+    PATH,
+    Path: PATH, // Windows spells it either way; spawn matching is case-sensitive
+    UXNAN_FIXTURE_GH: "1",
+    UXNAN_FIXTURE_GH_RESPONSES: FAKE_GH_RESPONSES,
+  };
+}
+
 let driver = null;
 
 export const config = {
@@ -294,7 +317,7 @@ export const config = {
       // "delete worktree" would have deleted a real one. Setting it on the
       // driver instead does reach the app, and the suite asserts the profile is
       // the disposable one so this can never regress silently.
-      env: { ...process.env, UXNAN_DATA_DIR: profile.data },
+      env: { ...process.env, UXNAN_DATA_DIR: profile.data, ...fakeGhEnv() },
     });
     const log = fs.createWriteStream(path.join(ARTIFACTS, "tauri-driver.log"));
     driver.stdout?.pipe(log);

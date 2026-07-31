@@ -487,6 +487,17 @@ function processInline(n: SyntaxNode, src: string): MdInline | null {
       return imageInline(n, src);
     case "Autolink":
       return autolinkInline(n, src);
+    case "URL": {
+      // A GFM *bare* autolink ("see https://…") is emitted as a naked `URL`
+      // node with no wrapping `Autolink`. Falling through to `null` here
+      // silently DELETED the URL from the rendered output — caught by the
+      // captured real bot comment, whose "Failure details: <url>" line lost
+      // its link (contract test in markdown.test.ts). Inside a `Link`/`Image`
+      // the URL child never reaches this walk (it sits outside the label
+      // range), so this case fires for bare autolinks only.
+      const href = slice(src, n);
+      return { type: "link", href, title: null, children: [{ type: "text", value: href }] };
+    }
     case "HardBreak":
       return { type: "break" };
     case "Escape":

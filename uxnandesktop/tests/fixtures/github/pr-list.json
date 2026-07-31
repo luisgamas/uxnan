@@ -1,0 +1,783 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh pr list --json number,title,state,isDraft,url,author,headRefName,baseRefName,reviewDecision,updatedAt,statusCheckRollup --state all --limit 10",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": [
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/desktop-test-harness",
+      "isDraft": false,
+      "number": 132,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-31T06:01:35Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103346",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-31T05:58:01Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-31T06:03:04Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103349",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-31T05:58:01Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-31T06:00:10Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103332",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-31T05:58:00Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-31T06:03:04Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085866005",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-31T06:03:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "test(desktop): build the test pyramid — components, integration, fixtures and real E2E",
+      "updatedAt": "2026-07-31T06:06:49Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/132"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/right-panel-live-refresh",
+      "isDraft": false,
+      "number": 131,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T23:48:08Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30591492427/job/91034589556",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-30T23:45:27Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T23:50:11Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30591492427/job/91034589582",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-30T23:45:30Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T23:48:03Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30591492427/job/91034589598",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-30T23:45:28Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T23:50:12Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30591492427/job/91035322193",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-30T23:50:12Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "fix(desktop): keep right panel data live",
+      "updatedAt": "2026-07-31T05:41:09Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/131"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/desktop-resource-benchmarks",
+      "isDraft": false,
+      "number": 130,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T22:57:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30588789032/job/91026260117",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-30T22:55:00Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T22:55:58Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30588789038/job/91026260242",
+          "name": "verify / verify (node 20)",
+          "startedAt": "2026-07-30T22:55:07Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Web (marketing site)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T23:00:55Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30588789032/job/91026260042",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-30T22:55:00Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T22:56:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30588789038/job/91026260329",
+          "name": "verify / verify (node 22)",
+          "startedAt": "2026-07-30T22:55:07Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Web (marketing site)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T22:56:56Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30588789032/job/91026260076",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-30T22:55:01Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T23:00:55Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30588789032/job/91027301535",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-30T23:00:55Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "feat(desktop): measure the resource footprint instead of asserting it",
+      "updatedAt": "2026-07-30T23:11:07Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/130"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "fix/desktop-agents-settings",
+      "isDraft": false,
+      "number": 129,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T18:27:26Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30570240819/job/90964826431",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-30T18:24:16Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T18:28:37Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30570240819/job/90964826418",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-30T18:24:15Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T18:26:22Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30570240819/job/90964826360",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-30T18:24:15Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T18:28:37Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30570240819/job/90965911913",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-30T18:28:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "fix(svelte): show the agent logos the CSP was blocking, and re-detect installed agents",
+      "updatedAt": "2026-07-30T18:29:52Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/129"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "fix/desktop-agent-session-restore",
+      "isDraft": false,
+      "number": 128,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:42:59Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336110/job/90799060736",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-30T06:40:38Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:41:52Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336149/job/90799060875",
+          "name": "verify / verify (node 22 · ubuntu-latest)",
+          "startedAt": "2026-07-30T06:40:39Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:45:18Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336110/job/90799060744",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-30T06:40:54Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:41:42Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336149/job/90799060825",
+          "name": "verify / verify (node 24 · ubuntu-latest)",
+          "startedAt": "2026-07-30T06:40:39Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:43:09Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336110/job/90799060723",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-30T06:40:39Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:43:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336149/job/90799060864",
+          "name": "verify / verify (node 22 · windows-latest)",
+          "startedAt": "2026-07-30T06:40:45Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:42:37Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336149/job/90799060785",
+          "name": "verify / verify (node 24 · windows-latest)",
+          "startedAt": "2026-07-30T06:40:39Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:45:19Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336110/job/90799825042",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-30T06:45:19Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-30T06:43:07Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30520336149/job/90799461378",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-30T06:43:07Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        }
+      ],
+      "title": "fix(agent): restore agent sessions for every tab and every wired agent",
+      "updatedAt": "2026-07-30T15:19:34Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/128"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/desktop-work-enhancements",
+      "isDraft": false,
+      "number": 127,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:59:03Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30477634031/job/90663229345",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-29T17:56:37Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:01:06Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30477634031/job/90663229462",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-29T17:56:39Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:59:16Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30477634031/job/90663229485",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-29T17:56:50Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:01:06Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30477634031/job/90664405740",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-29T18:01:06Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "feat(desktop): reach GitHub from anywhere, a real right-panel digest, and honest sidebar indicators",
+      "updatedAt": "2026-07-29T19:40:44Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/127"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/mobile-image-attachments",
+      "isDraft": false,
+      "number": 126,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:06:24Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473542228/job/90649448800",
+          "name": "verify / verify (ubuntu)",
+          "startedAt": "2026-07-29T17:02:59Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Mobile (uxnanmobile · Flutter)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:04:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473540826/job/90649445445",
+          "name": "verify / verify (node 22 · ubuntu-latest)",
+          "startedAt": "2026-07-29T17:02:53Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:04:00Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473540826/job/90649445473",
+          "name": "verify / verify (node 24 · ubuntu-latest)",
+          "startedAt": "2026-07-29T17:02:59Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:05:09Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473540826/job/90649445513",
+          "name": "verify / verify (node 22 · windows-latest)",
+          "startedAt": "2026-07-29T17:02:53Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:05:02Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473540826/job/90649445457",
+          "name": "verify / verify (node 24 · windows-latest)",
+          "startedAt": "2026-07-29T17:02:56Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:06:24Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473542228/job/90650375874",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-29T17:06:24Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Mobile (uxnanmobile · Flutter)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T17:05:09Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30473540826/job/90650049888",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-29T17:05:09Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        }
+      ],
+      "title": "feat(mobile): image attachments in the composer and above the bubble, delivered to every agent",
+      "updatedAt": "2026-07-29T19:40:45Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/126"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/mobile-message-queue",
+      "isDraft": false,
+      "number": 125,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:32:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170952/job/90671887037",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-29T18:29:53Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:32:35Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480171129/job/90671888238",
+          "name": "verify / verify (ubuntu)",
+          "startedAt": "2026-07-29T18:29:53Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Mobile (uxnanmobile · Flutter)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:30:54Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170668/job/90671885856",
+          "name": "verify / verify (node 22 · ubuntu-latest)",
+          "startedAt": "2026-07-29T18:29:46Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:30:31Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480171387/job/90671888724",
+          "name": "verify / verify (node 20)",
+          "startedAt": "2026-07-29T18:29:47Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Web (marketing site)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:34:14Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170952/job/90671887100",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-29T18:29:50Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:30:56Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170668/job/90671886242",
+          "name": "verify / verify (node 24 · ubuntu-latest)",
+          "startedAt": "2026-07-29T18:29:52Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:30:31Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480171387/job/90671888915",
+          "name": "verify / verify (node 22)",
+          "startedAt": "2026-07-29T18:29:47Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Web (marketing site)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:31:57Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170952/job/90671887075",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-29T18:29:46Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:32:03Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170668/job/90671886125",
+          "name": "verify / verify (node 22 · windows-latest)",
+          "startedAt": "2026-07-29T18:29:50Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:32:33Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170668/job/90671886035",
+          "name": "verify / verify (node 24 · windows-latest)",
+          "startedAt": "2026-07-29T18:29:49Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:34:14Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170952/job/90673171978",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-29T18:34:15Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:32:36Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480171129/job/90672733854",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-29T18:32:36Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Mobile (uxnanmobile · Flutter)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-29T18:32:33Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30480170668/job/90672720179",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-29T18:32:33Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Node packages (shared, bridge, relay)"
+        }
+      ],
+      "title": "feat: send follow-up messages while the agent is working",
+      "updatedAt": "2026-07-29T19:40:47Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/125"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "feat/desktop-usage-antigravity",
+      "isDraft": false,
+      "number": 124,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-28T16:15:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30377179375/job/90335731093",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-28T16:13:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-28T16:18:33Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30377179375/job/90335731354",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-28T16:13:11Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-28T16:15:43Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30377179375/job/90335731449",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-28T16:13:07Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-28T16:18:34Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30377179375/job/90337218541",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-28T16:18:34Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "feat(desktop): retire the Gemini CLI across settings, add Grok and Antigravity where each CLI allows it",
+      "updatedAt": "2026-07-29T19:40:42Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/124"
+    },
+    {
+      "author": {
+        "is_bot": false,
+        "login": "luisgamas",
+        "name": "Luis Gamas"
+      },
+      "baseRefName": "main",
+      "headRefName": "fix/desktop-pets-polish",
+      "isDraft": false,
+      "number": 123,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "state": "MERGED",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-27T20:38:18Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30303246524/job/90101086986",
+          "name": "verify / verify (ubuntu-latest)",
+          "startedAt": "2026-07-27T20:35:48Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-27T20:39:49Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30303246524/job/90101087073",
+          "name": "verify / verify (windows-latest)",
+          "startedAt": "2026-07-27T20:35:42Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-27T20:37:53Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30303246524/job/90101086928",
+          "name": "verify / verify (macos-14)",
+          "startedAt": "2026-07-27T20:35:47Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-07-27T20:39:49Z",
+          "conclusion": "SKIPPED",
+          "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30303246524/job/90102081406",
+          "name": "pr-comment-on-failure",
+          "startedAt": "2026-07-27T20:39:49Z",
+          "status": "COMPLETED",
+          "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+        }
+      ],
+      "title": "fix(desktop): pet polish — no focus box, a carry run, honest states and a livelier pace",
+      "updatedAt": "2026-07-27T20:49:15Z",
+      "url": "https://github.com/luisgamas/uxnan/pull/123"
+    }
+  ]
+}

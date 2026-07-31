@@ -1,0 +1,63 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh pr view 132 --json number,title,state,isDraft,url,mergeable,reviewDecision,statusCheckRollup,headRefName",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": {
+    "headRefName": "feat/desktop-test-harness",
+    "isDraft": false,
+    "mergeable": "UNKNOWN",
+    "number": 132,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "state": "MERGED",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:01:35Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103346",
+        "name": "verify / verify (ubuntu-latest)",
+        "startedAt": "2026-07-31T05:58:01Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:03:04Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103349",
+        "name": "verify / verify (windows-latest)",
+        "startedAt": "2026-07-31T05:58:01Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:00:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103332",
+        "name": "verify / verify (macos-14)",
+        "startedAt": "2026-07-31T05:58:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:03:04Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085866005",
+        "name": "pr-comment-on-failure",
+        "startedAt": "2026-07-31T06:03:05Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      }
+    ],
+    "title": "test(desktop): build the test pyramid — components, integration, fixtures and real E2E",
+    "url": "https://github.com/luisgamas/uxnan/pull/132"
+  }
+}

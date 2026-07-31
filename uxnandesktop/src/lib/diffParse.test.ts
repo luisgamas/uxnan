@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { splitCommitDiff, commitFileDiff } from "./diffParse";
 
@@ -97,5 +99,40 @@ describe("commitFileDiff", () => {
 
   it("returns '' for an unknown path", () => {
     expect(commitFileDiff(MODIFIED, "nope.ts")).toBe("");
+  });
+});
+
+describe("splitCommitDiff against a captured real `gh pr diff`", () => {
+  // Frozen from `gh pr diff 131` on luisgamas/uxnan (see
+  // tests/fixtures/github/pr-diff-131.json for provenance): the PR-review
+  // "Files changed" tab feeds gh's real output straight into this parser, so
+  // its shapes — not a hand-made diff — are the contract.
+  const fixture = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "..", "..", "tests", "fixtures", "github", "pr-diff-131.json"),
+      "utf8",
+    ),
+  ) as { payloadText: string };
+
+  it("splits the real PR diff into its 16 files, headers intact", () => {
+    const files = splitCommitDiff(fixture.payloadText);
+    expect(files).toHaveLength(16);
+    for (const f of files) {
+      expect(f.diff.startsWith("diff --git ")).toBe(true);
+      expect(f.status).toBe("modified");
+      expect(f.path.length).toBeGreaterThan(0);
+    }
+    // gh prints paths repo-rooted (a/uxnandesktop/…), unlike the app's own
+    // worktree-relative git diffs — pin that so a regression is loud.
+    expect(files.map((f) => f.path)).toContain("uxnandesktop/docs/github.md");
+    expect(files.map((f) => f.path)).toContain("uxnandesktop/src/lib/state/github.svelte.ts");
+  });
+
+  it("extracts a single file's chunk from the real diff", () => {
+    const one = commitFileDiff(fixture.payloadText, "uxnandesktop/src/lib/state/github.svelte.ts");
+    expect(one.startsWith("diff --git ")).toBe(true);
+    expect(one).toContain("contextRevision");
+    // And nothing from the file that follows it in the full diff.
+    expect(one).not.toContain("history.svelte.ts");
   });
 });

@@ -237,6 +237,8 @@ Detailed docs live in [`docs/`](./docs/):
 [agent hooks (precise states)](./docs/agent-hooks.md) ·
 [integrated browser](./docs/browser.md) ·
 [GitHub integration](./docs/github.md) ·
+[GitHub validation status](./docs/github-validation.md) ·
+[GitHub sandbox runbook](./docs/github-sandbox-runbook.md) ·
 [pets (animated companions)](./docs/pets.md) ·
 [updates & release channels](./docs/updates.md) ·
 [Windows junctions & Redirection Guard](./docs/windows-junctions.md).

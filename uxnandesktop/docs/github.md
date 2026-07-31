@@ -6,10 +6,14 @@ issues, watching CI, and tying both to worktrees — all backed by the local
 
 ## Requirements & sign-in
 
-- Install the **GitHub CLI** (`gh`) and sign in once: `gh auth login`.
+- Install the **GitHub CLI** (`gh`) and sign in once: `gh auth login`. Developed and
+  validated against `gh` 2.95.0; any reasonably current gh works — the one
+  version-sensitive call (`gh auth status --json hosts`, gh ≥ 2.63) falls back to
+  parsing the prose banner on older versions.
 - That's it — the app **never stores or reads your token**. `gh` owns the OAuth token
   in your OS keychain; Uxnan only reads sanitized status (login / scopes / host) via
-  `gh auth status`. Check it in **Settings → GitHub → Account / Session**.
+  `gh auth status` (the structured `--json hosts` form first, prose as the
+  compatibility fallback). Check it in **Settings → GitHub → Account / Session**.
 - When `gh` is missing or logged-out, GitHub features show a clear "connect" state and
   every action still offers **Open on GitHub**.
 
@@ -275,6 +279,21 @@ All 38 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
 `github_rate_limit`, `github_notifications_count`, `github_clone`,
 `github_ai_draft_pr`. (`github_pr_timeline` serves both PRs and issues — a PR *is* an
 issue in the REST API.)
+
+## Validation status (validated / limited / pending)
+
+The integration's claims are backed by a layered validation effort — captured
+**real `gh` responses** frozen as parser contract tests, the production runner
+exercised through **real child processes** against gh-shaped stand-ins, an
+executable **supervised live suite** against a disposable sandbox repository,
+and a machine-checked **command inventory**. The honest per-area status —
+what is validated against real data, what against faithful stand-ins, and what
+is still *pending the supervised sandbox run* (mutations require maintainer
+supervision) — lives in **[`github-validation.md`](github-validation.md)**,
+with the sandbox procedure in
+**[`github-sandbox-runbook.md`](github-sandbox-runbook.md)**. Every `gh`
+invocation is logged locally (request id, redacted argv, exit, duration —
+never a token, never a body).
 
 ## Known limitations
 

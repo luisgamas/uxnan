@@ -1,0 +1,49 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh label list --json name,color --limit 100",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": [
+    {
+      "color": "d73a4a",
+      "name": "bug"
+    },
+    {
+      "color": "0075ca",
+      "name": "documentation"
+    },
+    {
+      "color": "cfd3d7",
+      "name": "duplicate"
+    },
+    {
+      "color": "a2eeef",
+      "name": "enhancement"
+    },
+    {
+      "color": "7057ff",
+      "name": "good first issue"
+    },
+    {
+      "color": "008672",
+      "name": "help wanted"
+    },
+    {
+      "color": "e4e669",
+      "name": "invalid"
+    },
+    {
+      "color": "d876e3",
+      "name": "question"
+    },
+    {
+      "color": "ffffff",
+      "name": "wontfix"
+    }
+  ]
+}

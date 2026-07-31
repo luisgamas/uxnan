@@ -5,6 +5,75 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — the GitHub integration validated against real data
+
+- **Captured real `gh` responses as parser contracts.** Every GitHub parser now
+  also runs against **frozen captures of what GitHub actually sent** — PR
+  list/detail/timeline/diff, the ruleset really guarding `main`, repo merge
+  settings, auth status (structured + prose), labels, runs (including a live
+  in-progress run's `"conclusion": ""`), rate limit — sanitized (emails, node
+  ids) and recorded with per-file provenance under `tests/fixtures/github/`.
+  Rust contract tests in `src-tauri/src/github/fixture_tests.rs`; frontend ones
+  in `markdown.test.ts` / `diffParse.test.ts`; the read-only capture tool is
+  `scripts/github/capture-fixtures.mjs` (it can never mutate: a read-allowlist
+  refuses any other invocation).
+- **A command → outcome inventory** (`tests/github-command-inventory.json`):
+  every `gh` invocation the backend can run — read vs mutation, the
+  confirmation in front of it, scopes, parser, UI consumer, and its validation
+  evidence — checked against the source by
+  `tests/github-command-inventory.test.mjs` so it cannot drift.
+- **CLI-contract integration tests** (`src-tauri/tests/github_cli.rs`): the
+  production gh layer driven through **real child processes** against a
+  scripted `gh` answering with faithfully-modeled shapes
+  (`tests/fixtures/github/mutation-outcomes.json`, each case citing its gh
+  source or marked for live re-capture): every merge refusal surfaces gh's own
+  sentence, signed-out / offline / rate-limited / truncated-JSON / old-gh
+  degrade with actionable messages, and the non-interactive env really reaches
+  the child.
+- **A supervised live suite + sandbox harness** for the write side (mutations
+  require maintainer supervision, so nothing here runs unattended):
+  `src-tauri/tests/github_live.rs` (all `#[ignore]`; armed only by
+  `UXNAN_GH_SANDBOX` naming the one allowlisted sandbox repo — anything else,
+  the production repo above all, is refused by name, and the guard's refusals
+  are themselves tested in the required suite) exercises PR/issue/merge/Actions
+  lifecycles **verifying every remote outcome by re-reading**; the harness
+  (`scripts/github/sandbox.mjs`) builds/protects/cleans the sandbox with
+  **dry-run as the default**, an `--execute` flag, a marker-topic double-check
+  before any mutation, and a failure artifact that blocks further execution
+  until a human cleans up. Procedure: `docs/github-sandbox-runbook.md`; per-area
+  status: `docs/github-validation.md`.
+- **An opt-in GitHub E2E journey** (`tests/e2e/specs/github-fake.e2e.mjs`,
+  enabled by `UXNAN_E2E_FAKE_GH=1`): the shipped app with `gh` routed to the
+  fixture (answering with the captured real payloads), asserting the
+  status/PR-list/rate-limit/issues chains over real IPC; self-skips otherwise.
+  The fake `gh` also learned scripted outcomes (`$outcome`: stdout/stderr/exit)
+  so tests can stage real refusal shapes.
+
+### Fixed
+
+- **Bare URLs in Markdown were silently deleted.** A GFM bare autolink
+  ("see https://…") arrives from the parser as a naked `URL` node; the renderer
+  dropped it, so a bot comment's "Failure details: <link>" lost its link
+  entirely. Found by the captured real bot comment the moment it became a
+  fixture; bare URLs now render as links (`src/lib/markdown.ts`).
+- **A `gh` installed as a `.cmd`/`.bat` shim never worked.** The install probe
+  resolves `PATHEXT`, but spawning searched for `gh.exe` only — so a
+  shim-installed gh showed as installed while every call failed "program not
+  found". The runner now resolves the concrete executable the same way the
+  probe does (`resolve_gh_program`), proven by an integration test that fails
+  without the fix.
+
+### Changed
+
+- **`gh auth status` is read structurally first** (`--json hosts`, gh ≥ 2.63,
+  picking the active account and never misreading a multi-account host), with
+  the prose-banner parser kept as the compatibility fallback for older gh —
+  per the project rule of never interpreting human text where gh offers JSON.
+  The whole fallback chain is exercised end to end in `github_cli.rs`.
+- **Every `gh` invocation now logs one sanitized line** (monotonic request id,
+  argv with user-authored values redacted and token shapes scrubbed, exit code,
+  duration; on failure the first stderr line) through a single spawn
+  choke-point — never the token, never stdout, never a body.
 ### Added — a platform support matrix: honest per-platform states, evidence-gated releases
 
 - **A machine-readable platform matrix** (`tests/platform-support.json`): every

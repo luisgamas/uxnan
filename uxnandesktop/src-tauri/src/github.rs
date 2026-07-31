@@ -70,11 +70,113 @@ pub fn gh_installed() -> bool {
     crate::which::is_command_available("gh")
 }
 
-/// Run `gh` (windowless on Windows) with an optional working directory, returning
-/// trimmed stdout on success. A non-zero exit maps to [`AppError::Github`] carrying
-/// the trimmed stderr. `dir` scopes repo-relative commands to a worktree.
-async fn gh(dir: Option<&str>, args: &[&str]) -> Result<String, AppError> {
-    let mut cmd = crate::winproc::command("gh");
+/// Monotonic id for correlating one `gh` invocation's log lines. Content-free by
+/// design: the id carries no repo, no argv, no payload — it exists so "started"
+/// and "finished" can be matched without logging anything twice.
+static GH_REQUEST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Flags whose *value* is user-authored text (a PR body, an issue title, an api
+/// field). Those values are redacted from every log line — a local log must
+/// never hold the text of somebody's private draft comment.
+const PRIVATE_VALUE_FLAGS: [&str; 8] = [
+    "--body",
+    "-b",
+    "--title",
+    "-t",
+    "--field",
+    "-f",
+    "-F",
+    "--raw-field",
+];
+
+/// Replace token-shaped substrings (`ghp_…`, `gho_…`, `github_pat_…`) so a log
+/// line can never carry a credential. We never *pass* one — `gh` owns the token
+/// — but a scrubber that relies on that is a scrubber that eventually logs one.
+fn scrub_secrets(text: &str) -> String {
+    const PREFIXES: [&str; 6] = ["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"];
+    /// Earliest `(start, end)` byte range of a token-shaped run, if any.
+    fn find_token(text: &str) -> Option<(usize, usize)> {
+        let mut best: Option<(usize, usize)> = None;
+        for prefix in PREFIXES {
+            let mut from = 0;
+            while let Some(rel) = text[from..].find(prefix) {
+                let start = from + rel;
+                let body = start + prefix.len();
+                let tail = &text.as_bytes()[body..];
+                let mut n = 0;
+                while n < tail.len() && (tail[n].is_ascii_alphanumeric() || tail[n] == b'_') {
+                    n += 1;
+                }
+                if n >= 16 {
+                    let candidate = (start, body + n);
+                    match best {
+                        Some((s, _)) if s <= candidate.0 => {}
+                        _ => best = Some(candidate),
+                    }
+                    break;
+                }
+                from = body;
+            }
+        }
+        best
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((start, end)) = find_token(rest) {
+        out.push_str(&rest[..start]);
+        out.push_str("<token>");
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Render an argv for a log line: values of [`PRIVATE_VALUE_FLAGS`] redacted,
+/// anything token-shaped scrubbed. Pure, so the redaction is unit-tested.
+fn redact_args_for_log(args: &[&str]) -> String {
+    let mut out: Vec<String> = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            out.push("<redacted>".to_string());
+            redact_next = false;
+            continue;
+        }
+        if PRIVATE_VALUE_FLAGS.contains(arg) {
+            out.push((*arg).to_string());
+            redact_next = true;
+            continue;
+        }
+        if let Some((flag, _)) = arg.split_once('=') {
+            if PRIVATE_VALUE_FLAGS.contains(&flag) {
+                out.push(format!("{flag}=<redacted>"));
+                continue;
+            }
+        }
+        out.push(scrub_secrets(arg));
+    }
+    out.join(" ")
+}
+
+/// Resolve the `gh` executable the way [`gh_installed`] does (PATH walk honoring
+/// `PATHEXT`), falling back to the bare name. This is not cosmetic: on Windows,
+/// `Command::new("gh")` searches PATH for `gh.exe` **only**, so a `gh` installed
+/// as a `.cmd`/`.bat` shim (a scoop/npm-style wrapper — or the test fixtures)
+/// would pass the install probe and then fail every actual invocation with
+/// "program not found". Resolving to the concrete path first makes the probe and
+/// the spawn agree.
+fn resolve_gh_program() -> std::path::PathBuf {
+    crate::which::resolve("gh").unwrap_or_else(|| std::path::PathBuf::from("gh"))
+}
+
+/// Spawn `gh` (windowless on Windows) and capture its output, whatever the exit
+/// status. This is the **single choke point** every GitHub feature goes
+/// through: non-interactive env, hard timeout, and one sanitized log line per
+/// invocation — a request id, the redacted argv, the exit code and the
+/// duration. Never the token (we don't have it), never stdout, never a body.
+async fn gh_raw(dir: Option<&str>, args: &[&str]) -> Result<std::process::Output, AppError> {
+    let id = GH_REQUEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let mut cmd = crate::winproc::command(resolve_gh_program());
     if let Some(dir) = dir {
         cmd.current_dir(dir);
     }
@@ -91,16 +193,50 @@ async fn gh(dir: Option<&str>, args: &[&str]) -> Result<String, AppError> {
         .env("PAGER", "")
         .kill_on_drop(true);
     cmd.args(args);
+    let argv = redact_args_for_log(args);
+    let started = std::time::Instant::now();
     // Hard ceiling so a stalled call can never leave the UI stuck loading.
     let output = match tokio::time::timeout(GH_TIMEOUT, cmd.output()).await {
-        Ok(res) => res.map_err(|e| AppError::Github(e.to_string()))?,
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            eprintln!("[uxnan-desktop] gh#{id} {argv} → spawn failed: {e}");
+            return Err(AppError::Github(e.to_string()));
+        }
         Err(_) => {
+            eprintln!(
+                "[uxnan-desktop] gh#{id} {argv} → timed out after {}s",
+                GH_TIMEOUT.as_secs()
+            );
             return Err(AppError::Github(format!(
                 "gh timed out after {}s",
                 GH_TIMEOUT.as_secs()
             )));
         }
     };
+    let ms = started.elapsed().as_millis();
+    let code = output
+        .status
+        .code()
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    if output.status.success() {
+        eprintln!("[uxnan-desktop] gh#{id} {argv} → exit {code} in {ms} ms");
+    } else {
+        // The first stderr line names the failure (gh's own explanation) without
+        // dumping a payload; scrubbed like everything else.
+        let first = String::from_utf8_lossy(&output.stderr);
+        let first = scrub_secrets(first.lines().next().unwrap_or("").trim());
+        eprintln!("[uxnan-desktop] gh#{id} {argv} → exit {code} in {ms} ms: {first}");
+    }
+    Ok(output)
+}
+
+/// Run `gh`, returning trimmed stdout on success. A non-zero exit maps to
+/// [`AppError::Github`] carrying the trimmed stderr — verbatim, because gh's
+/// own message ("Pull request … is not mergeable: …") is the actionable part.
+/// `dir` scopes repo-relative commands to a worktree.
+async fn gh(dir: Option<&str>, args: &[&str]) -> Result<String, AppError> {
+    let output = gh_raw(dir, args).await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let msg = if stderr.is_empty() {
@@ -153,8 +289,15 @@ pub struct GithubStatus {
     pub message: Option<String>,
 }
 
-/// Read the current GitHub sign-in status via `gh auth status`. Purely
-/// informational — no network mutation, no token exposure.
+/// Read the current GitHub sign-in status. Purely informational — no network
+/// mutation, no token exposure.
+///
+/// Structured first, prose second: `gh auth status --json hosts` (gh ≥ 2.63)
+/// answers with machine-readable state, so the human banner is only parsed on a
+/// gh old enough to lack `--json` there. The project rule is to never interpret
+/// human text where gh offers structured output — the prose path survives only
+/// as the compatibility fallback, and both parsers are contract-tested against
+/// captured real output.
 pub async fn status() -> GithubStatus {
     if !gh_installed() {
         return GithubStatus {
@@ -166,26 +309,49 @@ pub async fn status() -> GithubStatus {
             message: Some("GitHub CLI (`gh`) is not installed".to_string()),
         };
     }
-    // `gh auth status` prints to stdout on success and stderr when logged out; on
-    // some versions it's the reverse. Capture both and parse whatever we got. Same
-    // non-interactive env + timeout as `gh()` so a stalled status probe can't wedge
-    // the whole section (`available` gates the lists on it).
-    let mut cmd = crate::winproc::command("gh");
-    cmd.env("GH_PROMPT_DISABLED", "1")
-        .env("GH_NO_UPDATE_NOTIFIER", "1")
-        .env("GH_PAGER", "")
-        .env("PAGER", "")
-        .kill_on_drop(true)
-        .args(["auth", "status"]);
-    let result = tokio::time::timeout(GH_TIMEOUT, cmd.output()).await;
-    let combined = match result {
-        Ok(Ok(out)) => {
+    // With `--json`, gh exits 0 even when logged out (the state is in the JSON),
+    // so a non-zero exit or unparseable stdout means "this gh doesn't speak
+    // --json here" — fall back to the prose parser below.
+    if let Ok(out) = gh_raw(None, &["auth", "status", "--json", "hosts"]).await {
+        if out.status.success() {
+            match parse_auth_status_json(&String::from_utf8_lossy(&out.stdout)) {
+                JsonAuthProbe::SignedIn(parsed) => {
+                    return GithubStatus {
+                        gh_installed: true,
+                        authenticated: true,
+                        login: Some(parsed.login),
+                        host: Some(parsed.host),
+                        scopes: parsed.scopes,
+                        message: None,
+                    };
+                }
+                JsonAuthProbe::SignedOut => {
+                    return GithubStatus {
+                        gh_installed: true,
+                        authenticated: false,
+                        login: None,
+                        host: None,
+                        scopes: Vec::new(),
+                        message: Some("Not signed in — run `gh auth login`".to_string()),
+                    };
+                }
+                JsonAuthProbe::Unsupported => {}
+            }
+        }
+    }
+    // Fallback (gh < 2.63): `gh auth status` prints to stdout on success and
+    // stderr when logged out; on some versions it's the reverse. Capture both and
+    // parse whatever we got. Same non-interactive env + timeout as `gh()` so a
+    // stalled status probe can't wedge the whole section (`available` gates the
+    // lists on it).
+    let combined = match gh_raw(None, &["auth", "status"]).await {
+        Ok(out) => {
             let mut s = String::from_utf8_lossy(&out.stdout).to_string();
             s.push('\n');
             s.push_str(&String::from_utf8_lossy(&out.stderr));
             s
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             return GithubStatus {
                 gh_installed: true,
                 authenticated: false,
@@ -193,16 +359,6 @@ pub async fn status() -> GithubStatus {
                 host: None,
                 scopes: Vec::new(),
                 message: Some(e.to_string()),
-            };
-        }
-        Err(_) => {
-            return GithubStatus {
-                gh_installed: true,
-                authenticated: false,
-                login: None,
-                host: None,
-                scopes: Vec::new(),
-                message: Some("`gh auth status` timed out".to_string()),
             };
         }
     };
@@ -232,6 +388,67 @@ struct AuthStatus {
     host: String,
     login: String,
     scopes: Vec<String>,
+}
+
+/// What `gh auth status --json hosts` told us — or that it couldn't.
+#[derive(Debug, PartialEq, Eq)]
+enum JsonAuthProbe {
+    /// stdout wasn't the expected JSON (a gh too old for `--json` here).
+    Unsupported,
+    /// Valid JSON, but no usable account (logged out, or every account errored).
+    SignedOut,
+    SignedIn(AuthStatus),
+}
+
+/// Parse `gh auth status --json hosts` output, e.g.
+/// `{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com",
+/// "login":"…","scopes":"repo, workflow", …}]}}`. Prefers the **active** account
+/// with `state == "success"`, falling back to any successful one (a host can
+/// hold several accounts; only one is active). Pure — contract-tested against a
+/// captured real response.
+fn parse_auth_status_json(output: &str) -> JsonAuthProbe {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(output) else {
+        return JsonAuthProbe::Unsupported;
+    };
+    let Some(hosts) = v.get("hosts").and_then(|h| h.as_object()) else {
+        return JsonAuthProbe::Unsupported;
+    };
+    let accounts = hosts
+        .values()
+        .filter_map(|entries| entries.as_array())
+        .flatten()
+        .filter(|a| a.get("state").and_then(|s| s.as_str()) == Some("success"));
+    let mut fallback: Option<&serde_json::Value> = None;
+    let mut active: Option<&serde_json::Value> = None;
+    for account in accounts {
+        if account.get("active").and_then(|b| b.as_bool()) == Some(true) && active.is_none() {
+            active = Some(account);
+        }
+        if fallback.is_none() {
+            fallback = Some(account);
+        }
+    }
+    let Some(account) = active.or(fallback) else {
+        return JsonAuthProbe::SignedOut;
+    };
+    let login = str_field(account, "login");
+    let host = str_field(account, "host");
+    if login.is_empty() || host.is_empty() {
+        return JsonAuthProbe::SignedOut;
+    }
+    JsonAuthProbe::SignedIn(AuthStatus {
+        host,
+        login,
+        // A single comma-joined string ("gist, read:org, repo"), not an array.
+        scopes: account
+            .get("scopes")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+    })
 }
 
 /// Parse `gh auth status` output. Recognizes the "Logged in to `<host>` account
@@ -749,25 +966,31 @@ pub async fn pr_view(worktree_path: &str, number: &str) -> Result<PrDetail, AppE
         &["pr", "view", &number, "--json", PR_DETAIL_FIELDS],
     )
     .await?;
-    Ok(PrDetail {
+    Ok(pr_detail_from_json(&v))
+}
+
+/// Map a `gh pr view --json` object into a [`PrDetail`]. Pure, so the whole
+/// detail mapping is contract-tested against captured real output.
+fn pr_detail_from_json(v: &serde_json::Value) -> PrDetail {
+    PrDetail {
         number: v.get("number").and_then(|n| n.as_u64()).unwrap_or(0),
-        title: str_field(&v, "title"),
-        body: str_field(&v, "body"),
-        state: str_field(&v, "state"),
+        title: str_field(v, "title"),
+        body: str_field(v, "body"),
+        state: str_field(v, "state"),
         is_draft: v.get("isDraft").and_then(|b| b.as_bool()).unwrap_or(false),
-        url: str_field(&v, "url"),
-        author: login_field(&v, "author"),
-        base_ref_name: opt_str_field(&v, "baseRefName"),
-        head_ref_name: opt_str_field(&v, "headRefName"),
+        url: str_field(v, "url"),
+        author: login_field(v, "author"),
+        base_ref_name: opt_str_field(v, "baseRefName"),
+        head_ref_name: opt_str_field(v, "headRefName"),
         additions: v.get("additions").and_then(|n| n.as_u64()).unwrap_or(0),
         deletions: v.get("deletions").and_then(|n| n.as_u64()).unwrap_or(0),
         changed_files: v.get("changedFiles").and_then(|n| n.as_u64()).unwrap_or(0),
-        mergeable: opt_str_field(&v, "mergeable"),
-        merge_state_status: opt_str_field(&v, "mergeStateStatus"),
-        review_decision: opt_str_field(&v, "reviewDecision"),
-        created_at: opt_str_field(&v, "createdAt"),
-        updated_at: opt_str_field(&v, "updatedAt"),
-        labels: name_list(&v, "labels"),
+        mergeable: opt_str_field(v, "mergeable"),
+        merge_state_status: opt_str_field(v, "mergeStateStatus"),
+        review_decision: opt_str_field(v, "reviewDecision"),
+        created_at: opt_str_field(v, "createdAt"),
+        updated_at: opt_str_field(v, "updatedAt"),
+        labels: name_list(v, "labels"),
         files: files_from_json(v.get("files")),
         checks: check_items_from_rollup(v.get("statusCheckRollup")),
         checks_summary: check_summary_from_rollup(v.get("statusCheckRollup")),
@@ -775,7 +998,7 @@ pub async fn pr_view(worktree_path: &str, number: &str) -> Result<PrDetail, AppE
         reviews: reviews_from_json(v.get("reviews")),
         comments: comments_from_json(v.get("comments")),
         commits: commits_from_json(v.get("commits")),
-    })
+    }
 }
 
 /// Requested reviewers: user `login` or team `name`/`slug`.
@@ -1113,42 +1336,12 @@ async fn merge_policy(worktree_path: &str, base: &str) -> MergePolicy {
     )
     .await
     {
-        let flag = |key: &str| v.get(key).and_then(|b| b.as_bool()).unwrap_or(true);
-        let mut methods = Vec::new();
-        if flag("squashMergeAllowed") {
-            methods.push("squash".to_string());
-        }
-        if flag("mergeCommitAllowed") {
-            methods.push("merge".to_string());
-        }
-        if flag("rebaseMergeAllowed") {
-            methods.push("rebase".to_string());
-        }
-        if !methods.is_empty() {
-            policy.allowed_methods = methods;
-        }
-        policy.delete_branch_on_merge = v
-            .get("deleteBranchOnMerge")
-            .and_then(|b| b.as_bool())
-            .unwrap_or(false);
-        policy.can_administer = v
-            .get("viewerCanAdminister")
-            .and_then(|b| b.as_bool())
-            .unwrap_or(false);
-        // `MERGE` / `SQUASH` / `REBASE` → our lowercase method ids.
-        policy.default_method = v
-            .get("viewerDefaultMergeMethod")
-            .and_then(|m| m.as_str())
-            .map(|m| m.to_ascii_lowercase())
-            .filter(|m| matches!(m.as_str(), "merge" | "squash" | "rebase"));
+        apply_repo_merge_settings(&mut policy, &v);
     }
 
     // 2. Auto-merge is a REST-only field (`gh repo view --json` doesn't expose it).
     if let Ok(v) = gh_json(Some(worktree_path), &["api", "repos/{owner}/{repo}"]).await {
-        policy.auto_merge_allowed = v
-            .get("allow_auto_merge")
-            .and_then(|b| b.as_bool())
-            .unwrap_or(false);
+        apply_repo_rest(&mut policy, &v);
     }
 
     // 3. The base branch's own rules. This — not the classic
@@ -1178,6 +1371,48 @@ async fn merge_policy(worktree_path: &str, base: &str) -> MergePolicy {
         }
     }
     policy
+}
+
+/// Fold a `gh repo view --json` merge-settings object into the policy. Pure, so
+/// it's contract-tested against captured real output.
+fn apply_repo_merge_settings(policy: &mut MergePolicy, v: &serde_json::Value) {
+    let flag = |key: &str| v.get(key).and_then(|b| b.as_bool()).unwrap_or(true);
+    let mut methods = Vec::new();
+    if flag("squashMergeAllowed") {
+        methods.push("squash".to_string());
+    }
+    if flag("mergeCommitAllowed") {
+        methods.push("merge".to_string());
+    }
+    if flag("rebaseMergeAllowed") {
+        methods.push("rebase".to_string());
+    }
+    if !methods.is_empty() {
+        policy.allowed_methods = methods;
+    }
+    policy.delete_branch_on_merge = v
+        .get("deleteBranchOnMerge")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
+    policy.can_administer = v
+        .get("viewerCanAdminister")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
+    // `MERGE` / `SQUASH` / `REBASE` → our lowercase method ids.
+    policy.default_method = v
+        .get("viewerDefaultMergeMethod")
+        .and_then(|m| m.as_str())
+        .map(|m| m.to_ascii_lowercase())
+        .filter(|m| matches!(m.as_str(), "merge" | "squash" | "rebase"));
+}
+
+/// Fold the REST repository object into the policy — auto-merge is the one
+/// field only REST exposes. Pure.
+fn apply_repo_rest(policy: &mut MergePolicy, v: &serde_json::Value) {
+    policy.auto_merge_allowed = v
+        .get("allow_auto_merge")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
 }
 
 /// Fold a `/rules/branches/{branch}` response into the policy. Pure so the
@@ -1248,15 +1483,20 @@ async fn merge_state(worktree_path: &str, number: &str) -> Option<MergeState> {
     )
     .await
     .ok()?;
-    Some(MergeState {
-        status: opt_str_field(&v, "mergeStateStatus").unwrap_or_else(|| "UNKNOWN".to_string()),
-        mergeable: opt_str_field(&v, "mergeable"),
+    Some(merge_state_from_json(&v))
+}
+
+/// Map the merge-state probe's JSON into a [`MergeState`]. Pure.
+fn merge_state_from_json(v: &serde_json::Value) -> MergeState {
+    MergeState {
+        status: opt_str_field(v, "mergeStateStatus").unwrap_or_else(|| "UNKNOWN".to_string()),
+        mergeable: opt_str_field(v, "mergeable"),
         auto_merge_enabled: v
             .get("autoMergeRequest")
             .map(|a| !a.is_null())
             .unwrap_or(false),
-        head_oid: opt_str_field(&v, "headRefOid"),
-    })
+        head_oid: opt_str_field(v, "headRefOid"),
+    }
 }
 
 /// A repo label, for the issue-create picker.
@@ -1276,7 +1516,12 @@ pub async fn labels(worktree_path: &str) -> Result<Vec<Label>, AppError> {
         &["label", "list", "--json", "name,color", "--limit", "100"],
     )
     .await?;
-    Ok(v.as_array()
+    Ok(labels_from_json(&v))
+}
+
+/// Map a `gh label list --json name,color` array into [`Label`]s. Pure.
+fn labels_from_json(v: &serde_json::Value) -> Vec<Label> {
+    v.as_array()
         .map(|rows| {
             rows.iter()
                 .map(|r| Label {
@@ -1286,7 +1531,7 @@ pub async fn labels(worktree_path: &str) -> Result<Vec<Label>, AppError> {
                 .filter(|l| !l.name.is_empty())
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default()
 }
 
 /// Logins that can be assigned to an issue/PR in this repo.
@@ -1531,22 +1776,23 @@ pub async fn issue_list(
     }
     let v = gh_json(Some(worktree_path), &args).await?;
     Ok(v.as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|i| IssueListItem {
-                    number: i.get("number").and_then(|n| n.as_u64()).unwrap_or(0),
-                    title: str_field(i, "title"),
-                    state: str_field(i, "state"),
-                    url: str_field(i, "url"),
-                    author: login_field(i, "author"),
-                    labels: name_list(i, "labels"),
-                    assignees: login_list(i, "assignees"),
-                    updated_at: opt_str_field(i, "updatedAt"),
-                    comments: comment_count(i.get("comments")),
-                })
-                .collect()
-        })
+        .map(|arr| arr.iter().map(issue_list_item_from_json).collect())
         .unwrap_or_default())
+}
+
+/// Map a `gh issue list --json` row into an [`IssueListItem`]. Pure.
+fn issue_list_item_from_json(i: &serde_json::Value) -> IssueListItem {
+    IssueListItem {
+        number: i.get("number").and_then(|n| n.as_u64()).unwrap_or(0),
+        title: str_field(i, "title"),
+        state: str_field(i, "state"),
+        url: str_field(i, "url"),
+        author: login_field(i, "author"),
+        labels: name_list(i, "labels"),
+        assignees: login_list(i, "assignees"),
+        updated_at: opt_str_field(i, "updatedAt"),
+        comments: comment_count(i.get("comments")),
+    }
 }
 
 /// Full detail for one issue (body + metadata). Comments are fetched via `gh api`
@@ -1576,19 +1822,24 @@ pub async fn issue_view(worktree_path: &str, number: &str) -> Result<IssueDetail
         &["issue", "view", &number, "--json", ISSUE_DETAIL_FIELDS],
     )
     .await?;
-    Ok(IssueDetail {
+    Ok(issue_detail_from_json(&v))
+}
+
+/// Map a `gh issue view --json` object into an [`IssueDetail`]. Pure.
+fn issue_detail_from_json(v: &serde_json::Value) -> IssueDetail {
+    IssueDetail {
         number: v.get("number").and_then(|n| n.as_u64()).unwrap_or(0),
-        title: str_field(&v, "title"),
-        body: str_field(&v, "body"),
-        state: str_field(&v, "state"),
-        url: str_field(&v, "url"),
-        author: login_field(&v, "author"),
-        labels: name_list(&v, "labels"),
-        assignees: login_list(&v, "assignees"),
-        created_at: opt_str_field(&v, "createdAt"),
-        updated_at: opt_str_field(&v, "updatedAt"),
+        title: str_field(v, "title"),
+        body: str_field(v, "body"),
+        state: str_field(v, "state"),
+        url: str_field(v, "url"),
+        author: login_field(v, "author"),
+        labels: name_list(v, "labels"),
+        assignees: login_list(v, "assignees"),
+        created_at: opt_str_field(v, "createdAt"),
+        updated_at: opt_str_field(v, "updatedAt"),
         comments: comments_from_json(v.get("comments")),
-    })
+    }
 }
 
 /// Fetch the **timeline** of a PR or issue — GitHub's Timeline Events API. Since a
@@ -1868,23 +2119,26 @@ pub async fn run_list(
     }
     let v = gh_json(Some(worktree_path), &args).await?;
     Ok(v.as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|r| RunListItem {
-                    database_id: r.get("databaseId").and_then(|n| n.as_u64()).unwrap_or(0),
-                    name: str_field(r, "name"),
-                    display_title: str_field(r, "displayTitle"),
-                    status: str_field(r, "status"),
-                    conclusion: opt_str_field(r, "conclusion"),
-                    head_branch: opt_str_field(r, "headBranch"),
-                    workflow_name: opt_str_field(r, "workflowName"),
-                    event: opt_str_field(r, "event"),
-                    created_at: opt_str_field(r, "createdAt"),
-                    url: str_field(r, "url"),
-                })
-                .collect()
-        })
+        .map(|arr| arr.iter().map(run_list_item_from_json).collect())
         .unwrap_or_default())
+}
+
+/// Map a `gh run list --json` row into a [`RunListItem`]. Pure. An in-progress
+/// run really arrives with `"conclusion": ""` (observed live), which
+/// `opt_str_field` folds to `None`.
+fn run_list_item_from_json(r: &serde_json::Value) -> RunListItem {
+    RunListItem {
+        database_id: r.get("databaseId").and_then(|n| n.as_u64()).unwrap_or(0),
+        name: str_field(r, "name"),
+        display_title: str_field(r, "displayTitle"),
+        status: str_field(r, "status"),
+        conclusion: opt_str_field(r, "conclusion"),
+        head_branch: opt_str_field(r, "headBranch"),
+        workflow_name: opt_str_field(r, "workflowName"),
+        event: opt_str_field(r, "event"),
+        created_at: opt_str_field(r, "createdAt"),
+        url: str_field(r, "url"),
+    }
 }
 
 /// The plain-text log of a workflow run (`gh run view <id> --log`). Large; the
@@ -1935,6 +2189,11 @@ pub struct RateLimit {
 /// endpoint doesn't count against the limit.
 pub async fn rate_limit() -> Result<RateLimit, AppError> {
     let v = gh_json(None, &["api", "rate_limit"]).await?;
+    rate_limit_from_json(&v)
+}
+
+/// Extract the core window from a `rate_limit` response. Pure.
+fn rate_limit_from_json(v: &serde_json::Value) -> Result<RateLimit, AppError> {
     let core = v
         .get("resources")
         .and_then(|r| r.get("core"))
@@ -2040,6 +2299,12 @@ fn normalize_state(state: &str) -> &'static str {
         _ => "open",
     }
 }
+
+/// Contract tests: the same parsers, fed **captured real `gh` output** frozen
+/// under `tests/fixtures/github/` (see `scripts/github/capture-fixtures.mjs`).
+/// In their own file so this one stays about production code.
+#[cfg(test)]
+mod fixture_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2182,6 +2447,85 @@ mod tests {
     fn parse_auth_status_logged_out_is_none() {
         let out = "You are not logged into any GitHub hosts. Run gh auth login to authenticate.\n";
         assert!(parse_auth_status(out).is_none());
+    }
+
+    #[test]
+    fn parse_auth_status_json_signed_out_and_unsupported() {
+        // `--json` always exits 0; logged out is an empty hosts map.
+        assert_eq!(
+            parse_auth_status_json(r#"{"hosts":{}}"#),
+            JsonAuthProbe::SignedOut
+        );
+        // An account with auth trouble is not a sign-in.
+        assert_eq!(
+            parse_auth_status_json(
+                r#"{"hosts":{"github.com":[{"state":"error","active":true,"host":"github.com","login":"x"}]}}"#
+            ),
+            JsonAuthProbe::SignedOut
+        );
+        // A gh too old for `--json hosts` prints an error, not JSON → fall back
+        // to the prose parser instead of misreading it as signed out.
+        assert_eq!(
+            parse_auth_status_json("unknown flag: --json\n"),
+            JsonAuthProbe::Unsupported
+        );
+    }
+
+    #[test]
+    fn parse_auth_status_json_prefers_the_active_account() {
+        let out = r#"{"hosts":{"github.com":[
+            {"state":"success","active":false,"host":"github.com","login":"other","scopes":"repo"},
+            {"state":"success","active":true,"host":"github.com","login":"main","scopes":"gist, repo"}
+        ]}}"#;
+        match parse_auth_status_json(out) {
+            JsonAuthProbe::SignedIn(auth) => {
+                assert_eq!(auth.login, "main");
+                assert_eq!(auth.host, "github.com");
+                assert_eq!(auth.scopes, vec!["gist", "repo"]);
+            }
+            other => panic!("expected SignedIn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn scrub_secrets_replaces_token_shapes_only() {
+        assert_eq!(
+            scrub_secrets("Authorization: Bearer ghp_0123456789abcdefghij done"),
+            "Authorization: Bearer <token> done"
+        );
+        assert_eq!(
+            scrub_secrets("x-access-token:ghs_0123456789abcdefghij@github.com"),
+            "x-access-token:<token>@github.com"
+        );
+        assert_eq!(
+            scrub_secrets("github_pat_11ABCDEFG0123456789abcdefg rest"),
+            "<token> rest"
+        );
+        // Too short to be a token, or already masked: left alone.
+        assert_eq!(scrub_secrets("gho_short"), "gho_short");
+        assert_eq!(
+            scrub_secrets("gho_****************"),
+            "gho_****************"
+        );
+        assert_eq!(scrub_secrets("plain text"), "plain text");
+    }
+
+    #[test]
+    fn redact_args_hides_user_authored_values() {
+        let args = [
+            "pr",
+            "comment",
+            "42",
+            "--body",
+            "my private draft",
+            "--field=secret thing",
+        ];
+        // `--field=…` is redacted as a unit; the positional args stay readable.
+        assert_eq!(
+            redact_args_for_log(&args),
+            "pr comment 42 --body <redacted> --field=<redacted>"
+        );
+        assert_eq!(redact_args_for_log(&["pr", "list"]), "pr list");
     }
 
     #[test]

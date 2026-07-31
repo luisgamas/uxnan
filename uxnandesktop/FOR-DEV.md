@@ -16,13 +16,17 @@ standalone app** (three-panel shell, PTY terminals + splits, git worktrees, git
 status/diff/stage/commit/history, agent monitoring with the axum hook server +
 OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
-engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
-with" external editors/IDEs**, **automations**, **pets**, **a reproducible
+engine**, **user quick commands**, **GitHub integration (`gh`-backed, its read
+side validated against captured real GitHub data — `docs/github-validation.md`)**,
+**"Open with" external editors/IDEs**, **automations**, **pets**, **a reproducible
 resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
-background consumers**, `docs/resource-mode.md`). 443 Rust tests (430 unit + 13 integration) + 667 frontend Vitest tests across
-two projects — pure logic and **Svelte component tests** — plus a **real E2E suite**
-(WebdriverIO + tauri-driver: 8 journeys, 24 tests, green on Windows). macOS now ships an
+background consumers**, `docs/resource-mode.md`). 476 Rust tests (448 unit + 28
+integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
+probe) + 693 frontend Vitest tests across two projects — pure logic and **Svelte
+component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
+journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
+first run). macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
 on real hardware**. **Every platform claim now lives in the platform support
@@ -515,18 +519,49 @@ leaving it alone.
 
 ## GitHub integration — follow-ups ☐
 
-**Validation status — read this first.** The surface above is **implemented and
-type/unit-tested, but the write side is essentially unexercised against real GitHub
-data.** What *has* been verified: the pure logic (rulesets → allowed methods, branch/
-Markdown/model parsers) by unit tests, and the **read** calls (`gh repo view`,
-`gh api …/rules/branches`, `gh pr view --json mergeStateStatus`, `gh label list`,
-assignees) probed live against `luisgamas/uxnan`. What has **not** been run even once:
-**creating a PR, merging one, an admin bypass, arming/disarming auto-merge,
-update-branch, mark-ready, editing a PR/issue, requesting a reviewer, filing a labeled
-issue, and the PR/issue → worktree dialog end-to-end.** This repo has no open PRs, no
-issues and no collaborators, so those paths get exercised as real work appears — expect
-first-run bugs there, and treat each as unproven until it's actually been done once.
-The gaps below are known and deliberate, not discoveries waiting to happen.
+**Validation status — read this first.** The full per-area picture is
+[`docs/github-validation.md`](docs/github-validation.md); the short version:
+
+- **Read side: validated against real data.** Every parser runs against
+  **captured real `gh` responses** from `luisgamas/uxnan`, sanitized and frozen
+  in `tests/fixtures/github/` (`src-tauri/src/github/fixture_tests.rs` +
+  frontend contract tests; capture tool `scripts/github/capture-fixtures.mjs`).
+  A machine-checked **command inventory**
+  (`tests/github-command-inventory.json`) maps every gh invocation to its
+  parser, confirmation, UI consumer and evidence.
+- **Runner + failure modes: validated offline through real processes.**
+  `src-tauri/tests/github_cli.rs` drives the production layer against a
+  scripted `gh` (shapes + provenance in
+  `tests/fixtures/github/mutation-outcomes.json`): merge refusals, signed-out /
+  offline / rate-limited / truncated-JSON / old-gh degradation, the Windows
+  `.cmd` resolution fix, env hygiene.
+- [ ] **Write side: supervised sandbox run pending — mutations require
+      maintainer supervision.** The executable live suite exists
+      (`src-tauri/tests/github_live.rs`, all `#[ignore]`, armed only by
+      `UXNAN_GH_SANDBOX=luisgamas/uxnan-gh-sandbox`, production repo refused by
+      name) together with the sandbox harness
+      (`scripts/github/sandbox.mjs`, dry-run by default) and the step-by-step
+      procedure in [`docs/github-sandbox-runbook.md`](docs/github-sandbox-runbook.md).
+      Until that first supervised run: PR create/comment/merge (incl. stale-head,
+      draft→ready, ruleset-block → admin bypass), the issue lifecycle, and
+      Actions dispatch/cancel/log remain *claims validated offline*, not live
+      facts. The run also re-captures the `confidence: "modeled"` gh refusal
+      texts and flips the matrix cells (the runbook's step 10 lists every doc to
+      update).
+- [ ] **Single-account limits** (cause: no second GitHub account / cross-fork):
+      review **approve/request-changes** on someone else's PR, **reviewer
+      requests**, and cross-fork PRs can't be executed — the self-approval
+      *refusals* are covered offline and asserted live.
+- [ ] **Still unexercised even by the live suite** (add to a later supervised
+      pass): `pr_update_branch` (needs a deliberately-behind branch),
+      `pr_reopen`, PR-side `pr_edit`, `issue_develop` + the PR/issue → worktree
+      dialog end-to-end, auto-merge arm/disarm, `run_rerun`.
+- [ ] **Opt-in GitHub E2E journey first run**
+      (`tests/e2e/specs/github-fake.e2e.mjs`, `UXNAN_E2E_FAKE_GH=1`): written and
+      wired (fake gh answering with the captured real payloads), pending its
+      first execution — the E2E suite can't run beside another uxnan instance,
+      so it belongs to the same operator session as the runbook. Driving the
+      GitHub *views* by clicking (PR detail, merge dialog) stays a known E2E gap.
 
 The `gh`-backed integration above is otherwise complete for the standalone desktop app.
 Deferred:

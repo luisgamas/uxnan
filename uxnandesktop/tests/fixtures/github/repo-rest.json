@@ -1,0 +1,25 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh api repos/luisgamas/uxnan",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted",
+    "pruned to the keys the merge-policy probe reads: name, full_name, private, visibility, archived, default_branch, allow_auto_merge, allow_squash_merge, allow_merge_commit, allow_rebase_merge, delete_branch_on_merge"
+  ],
+  "payload": {
+    "name": "uxnan",
+    "full_name": "luisgamas/uxnan",
+    "private": false,
+    "visibility": "public",
+    "archived": false,
+    "default_branch": "main",
+    "allow_auto_merge": false,
+    "allow_squash_merge": true,
+    "allow_merge_commit": true,
+    "allow_rebase_merge": true,
+    "delete_branch_on_merge": false
+  }
+}

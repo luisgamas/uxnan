@@ -1,0 +1,603 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh api repos/luisgamas/uxnan/issues/132/timeline --paginate",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": [
+    {
+      "sha": "6623e9bb14b95116c34c03b92511ab3fab1fd742",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/6623e9bb14b95116c34c03b92511ab3fab1fd742",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/6623e9bb14b95116c34c03b92511ab3fab1fd742",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T04:31:04Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T04:31:04Z"
+      },
+      "tree": {
+        "sha": "f7952297c90f3c7abeb15743100e090fbb7c83e9",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/f7952297c90f3c7abeb15743100e090fbb7c83e9"
+      },
+      "message": "test(desktop): add a Svelte component test harness\n\nVitest now runs as two projects. `node` keeps the pure logic fast — no Svelte\ncompiler, no jsdom — and `dom` mounts real components; a module that needs a\n`document` to be tested is a module with UI concerns in it, so the split is\nalso a design signal. Component tests are `*.svelte.test.ts`, which is how the\nnode project knows to skip them.\n\nThe double sits **below** `src/lib/api.ts`, not in place of it. Mocking the API\nmodule would mean the mock becomes the assertion, and it drifts the first time a\ncommand is renamed. Tauri's own `mockIPC` replaces the IPC transport instead, so\n`api.ts` runs for real — its command names, its argument marshalling — and only\nthe process on the other side is fake.\n\n`src/test/tauri.ts` adds what a bare `mockIPC` lacks: a typed handler table\nwhere an unhandled command rejects loudly rather than returning `undefined`\n(which would surface later as a confusing null-deref inside the component), a\ncall log, event emission, and failure/latency injection. `render.ts` pairs a\ncomponent with a backend and tears both down together; `setup.dom.ts` fills\njsdom's gaps once and promotes an unknown-prop or lifecycle warning to a failure.\n\nThree config details that each cost a debugging session, all commented in place:\n`svelte.config.js` is ignored (its `vitePreprocess` needs a Vite environment a\nVitest worker does not have), `mainFields` prefers `module` (a dependency ships\nonly an `.mjs` while declaring a `main` that does not exist), and `conditions`\nmust list `svelte` alongside Vite's defaults.\n\nNo production code changed.",
+      "parents": [
+        {
+          "sha": "b1b148c34b50337429ddc3401a4f6739fc8e8d39",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/b1b148c34b50337429ddc3401a4f6739fc8e8d39",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/b1b148c34b50337429ddc3401a4f6739fc8e8d39"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "a38784b498b693667e6308fe852ddb6f505c9ce0",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/a38784b498b693667e6308fe852ddb6f505c9ce0",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/a38784b498b693667e6308fe852ddb6f505c9ce0",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T04:31:32Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T04:31:32Z"
+      },
+      "tree": {
+        "sha": "289d609eff5b7c61eecea08950d47bc917f82a4b",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/289d609eff5b7c61eecea08950d47bc917f82a4b"
+      },
+      "message": "test(desktop): cover three components at the behaviour level\n\nChosen for what they can get wrong, not for being easy to render.\n\n`UsageMeter` is shared by the provider cards and the status-bar popover, so a\nchange moves two surfaces at once: the number a user reads must match what the\nbackend reported, the bar must stay inside its track, and a nearly-empty bar must\nstill be visible — 0 % rendering as nothing looks like a broken widget.\n\n`SaveDiscardDialog` answers \"save, discard, or stay?\" through a promise the\ntab-close path is awaiting. Every route out of it must resolve that promise,\nEscape included: a route that resolves nothing leaves the caller awaiting forever\nand the tab simply never closes, with no error anywhere.\n\n`AgentLogo` exercises the whole seam — it renders, asks the real API layer for a\nlogo, and re-renders on the answer. Its fallback chain is also the kind of logic\nthat looks obviously correct and silently was not: every favicon-backed logo\nrendered as the generic glyph for a long time because the URL went straight into\nan `<img>` the CSP refused.",
+      "parents": [
+        {
+          "sha": "6623e9bb14b95116c34c03b92511ab3fab1fd742",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/6623e9bb14b95116c34c03b92511ab3fab1fd742",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/6623e9bb14b95116c34c03b92511ab3fab1fd742"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "0387f445423e7ab0e212e2ff91caa34499d23b7d",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/0387f445423e7ab0e212e2ff91caa34499d23b7d",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/0387f445423e7ab0e212e2ff91caa34499d23b7d",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T04:31:32Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T04:31:32Z"
+      },
+      "tree": {
+        "sha": "4ef7cc51ee574a0371394f569bc16de17b66d874",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/4ef7cc51ee574a0371394f569bc16de17b66d874"
+      },
+      "message": "test(desktop): add backend integration tests against a real filesystem\n\n`src-tauri/tests/` did not exist. The automations store is a good first tenant:\nthe headless runner and the app each open their own over the same directory, so\nthe round trip across a process boundary is a real contract rather than an\nimplementation detail.\n\nTen tests over a `TempDir`, using only the crate's public surface — which is what\nkeeps them integration tests instead of unit tests with a longer path. They cover\nthe round trip, replace-not-append, seed-once (including after the user deletes\nthe examples), a truncated file degrading rather than panicking, nothing written\noutside the store's own root, and a path with spaces and non-ASCII characters.\n\nThe automation is written out in full rather than via `Default`, so adding a\nrequired field to the model breaks this file — which is the point of a test over\na persisted shape.",
+      "parents": [
+        {
+          "sha": "a38784b498b693667e6308fe852ddb6f505c9ce0",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/a38784b498b693667e6308fe852ddb6f505c9ce0",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/a38784b498b693667e6308fe852ddb6f505c9ce0"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "5f176f58952f12da3570e9bbaa7b59ebe7744e07",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/5f176f58952f12da3570e9bbaa7b59ebe7744e07",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/5f176f58952f12da3570e9bbaa7b59ebe7744e07",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:34:39Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:34:39Z"
+      },
+      "tree": {
+        "sha": "e9dd53390f0895086c631459ad337e6f4bc48836",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/e9dd53390f0895086c631459ad337e6f4bc48836"
+      },
+      "message": "test(desktop): add fixtures a test cannot escape\n\nThe fake `gh` refuses to run without an explicit latch, scrubs anything\ncredential-shaped out of its log, and fails loudly on a command nobody stubbed\n— silence there would mean the caller parses an empty string and asserts\nsomething meaningless.\n\nThe PATH shim is the part that matters. It builds a directory holding only\nfakes, so every CLI the app shells out to resolves inside it and a test that\nforgets to stub one gets \"blocked by the test harness\" instead of talking to\nreal GitHub. `assertNoRealCli` re-checks that claim rather than trusting it. Two\nthings that look right and are not: resolving a name by spawning `where` cannot\nwork when the shimmed PATH no longer contains System32, and Node has refused to\nspawn `.cmd` directly since the BatBadBut hardening — so lookup is done in\nprocess and the shim tests go through a shell.\n\nAlso disposable and legacy app profiles for the migration paths, and a port test\ncovering the case the app avoids by never naming a port: asking for 0 survives a\ncrowded machine, asking for a taken one does not. The second half is what gives\nthe first half meaning.\n\nThe git repository, the stand-in agent and the loopback server are shared with\nthe resource benchmarks rather than copied — two generators would drift, and the\nrepo fixture is only useful because its commit hash is pinned.",
+      "parents": [
+        {
+          "sha": "0387f445423e7ab0e212e2ff91caa34499d23b7d",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/0387f445423e7ab0e212e2ff91caa34499d23b7d",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/0387f445423e7ab0e212e2ff91caa34499d23b7d"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "a417e33c3c21c831b7758aeee5d024a80bdc5a86",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/a417e33c3c21c831b7758aeee5d024a80bdc5a86",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/a417e33c3c21c831b7758aeee5d024a80bdc5a86",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:34:40Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:34:40Z"
+      },
+      "tree": {
+        "sha": "68d3aebcb4d6369d4059e2e008a6880a67c35cff",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/68d3aebcb4d6369d4059e2e008a6880a67c35cff"
+      },
+      "message": "test(desktop): make the coverage matrix a checked file, not a claim\n\nA coverage table in prose is worth what checks it, which is nothing: every row\ngets ticked and none gets verified. This one is data, and a test reads it back\nagainst the repository — a flow claiming a layer must cite a file that exists\n(globs must match something), a partially covered flow must state its gap, and\nno flow may list a layer as both covered and planned.\n\nIt records what is *not* tested as carefully as what is, because that is the\nhalf a reader cannot otherwise discover.",
+      "parents": [
+        {
+          "sha": "5f176f58952f12da3570e9bbaa7b59ebe7744e07",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/5f176f58952f12da3570e9bbaa7b59ebe7744e07",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/5f176f58952f12da3570e9bbaa7b59ebe7744e07"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:35:10Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:35:32Z"
+      },
+      "tree": {
+        "sha": "2bea4a3df95cc6043737532ae836aaec14e38a46",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/2bea4a3df95cc6043737532ae836aaec14e38a46"
+      },
+      "message": "test(desktop): drive the real app end to end\n\nEight journeys over a release binary, its Rust backend, a real WebView2 and real\nIPC: launch, session restore, terminals in a split, a sleeping workspace, a git\nproject, an agent and the hook chain, the browser window, and a profile written\nby an older build.\n\nEach spec is one journey with its own app, started from a profile seeded for it.\nSetting a journey up by clicking is how an E2E suite becomes slow and brittle —\ntwenty clicks to reach the thing you wanted to assert, any of which can break for\nan unrelated reason — so setup is seeded and the assertions still go through the\nreal UI, real IPC and a real backend.\n\nFour things about this layer that are not guessable, all commented where they\nbite:\n\n- `tauri-driver` hands you a webview at `about:blank`. It does not attach to the\n  window the app already navigated, so every query succeeds and returns an empty\n  document — which reads as \"the app rendered nothing\" while the app is running\n  perfectly. The session navigates to the app's own origin, and IPC is live\n  there: `invoke(\"ping\")` answers from Rust.\n- `tauri:options.env` never reached the app. A diagnostic run came up on the\n  developer's real profile, showing their actual projects; a journey that removed\n  a worktree would have removed a real one. The variable is set on the driver,\n  and `before` refuses to run unless the app shows exactly what was seeded.\n- WebdriverIO evaluates the config twice, once per process. A `mkdtemp` profile\n  therefore exists twice: the driver points at one, the seed writes the other,\n  and the app comes up empty whatever a journey asked for. The path is fixed.\n- The app is found by executable name, which is safe only because the pre-flight\n  refuses to start beside another instance. Matching the profile directory —\n  the apparently safer choice — matches nothing, since `UXNAN_DATA_DIR` is an\n  environment variable; what it did match was the PowerShell process running the\n  query, so the reaper spent several runs killing its own query and reporting\n  success.\n\nAssertions ask the backend over IPC rather than reading the screen: the UI is\nlocalised, so an assertion on visible text is an assertion on a translation. A\nterminal's contents are unreadable either way — xterm paints through WebGL — so\n\"is a shell alive\" is answered from the process tree.\n\nTeardown reaps by pid and waits for the processes to actually go. The agent\njourney closes the app on purpose, to prove the agent it started does not outlive\nit.\n\n24 tests, ~39 s for the suite, green on consecutive runs with nothing left\nbehind.",
+      "parents": [
+        {
+          "sha": "a417e33c3c21c831b7758aeee5d024a80bdc5a86",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/a417e33c3c21c831b7758aeee5d024a80bdc5a86",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/a417e33c3c21c831b7758aeee5d024a80bdc5a86"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "29037e0524ba32939259e4b8db97230d6b342575",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/29037e0524ba32939259e4b8db97230d6b342575",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/29037e0524ba32939259e4b8db97230d6b342575",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:36:19Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:36:19Z"
+      },
+      "tree": {
+        "sha": "fd1cb21c12f85905bf21949532b8620425f677f5",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/fd1cb21c12f85905bf21949532b8620425f677f5"
+      },
+      "message": "ci(desktop): run component tests in the gate, E2E on its own schedule\n\nComponent tests join the required job immediately: they are fast, and they catch\nthe mounting and wiring failures unit tests structurally cannot.\n\nE2E gets its own on-demand/nightly Windows workflow. It needs a release build, a\nWebDriver matched to the runner's WebView2 and a machine with no other uxnan\nrunning, and it is deliberately **not** blocking yet — requiring it before it has\na track record on that runner is how a gate earns a reputation for false failures\nand gets switched off. It uploads a screenshot and the page source per failed\ntest.\n\nThe build step is `tauri build --no-bundle`, not `cargo build --release`: without\nthe `custom-protocol` feature the binary stays in dev mode and loads\n`localhost:1420`, so the app would run with no UI and every assertion would fail\nfor the wrong reason.",
+      "parents": [
+        {
+          "sha": "6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "bc6c46846a8efda84ff21a444774cae5cfbebc30",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/bc6c46846a8efda84ff21a444774cae5cfbebc30",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/bc6c46846a8efda84ff21a444774cae5cfbebc30",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:36:19Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:36:19Z"
+      },
+      "tree": {
+        "sha": "f7ff499ac2251500b44a0762d1a118b9768e9cc4",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/f7ff499ac2251500b44a0762d1a118b9768e9cc4"
+      },
+      "message": "docs(desktop): document the test pyramid and the manual layer\n\n`docs/testing.md` gains the layer model (what each of L0–L5 proves, and which\none a given change needs), the component-test conventions, the driver decision\nwith the comparison that produced it, a flake policy — quarantine with an owner\nand a 14-day limit, keep the case at a lower layer, one retry for infrastructure\nonly, fix the wait rather than the timeout — and an **L5 checklist**: the twelve\nthings no automated layer can honestly cover, each with why it cannot be\nautomated here and a column for when it was last verified.\n\nThe spec side, per the drift rule: `04-technical-reference.md` records the\npyramid under Phase 5 as a post-plan addition, including what the implementation\ndid differently from the sketch it replaced.\n\nCounts re-derived rather than incremented on trust: 565 Vitest across two\nprojects, 387 Rust (377 unit + 10 integration), 24 E2E tests across 8 journeys.",
+      "parents": [
+        {
+          "sha": "29037e0524ba32939259e4b8db97230d6b342575",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/29037e0524ba32939259e4b8db97230d6b342575",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/29037e0524ba32939259e4b8db97230d6b342575"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "sha": "f65242d179584bae3eea081a4e588352385be6f2",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/f65242d179584bae3eea081a4e588352385be6f2",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/f65242d179584bae3eea081a4e588352385be6f2",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:48:31Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:48:31Z"
+      },
+      "tree": {
+        "sha": "48872fcd4c7ed0d151cab6ecee61d80fea2c1c42",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/48872fcd4c7ed0d151cab6ecee61d80fea2c1c42"
+      },
+      "message": "Merge remote-tracking branch 'origin/main' into feat/desktop-test-harness\n\n# Conflicts:\n#\tuxnandesktop/FOR-DEV.md",
+      "parents": [
+        {
+          "sha": "bc6c46846a8efda84ff21a444774cae5cfbebc30",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/bc6c46846a8efda84ff21a444774cae5cfbebc30",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/bc6c46846a8efda84ff21a444774cae5cfbebc30"
+        },
+        {
+          "sha": "4430538447ae02c9e234e09641bb676df99eb61e",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/4430538447ae02c9e234e09641bb676df99eb61e",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/4430538447ae02c9e234e09641bb676df99eb61e"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "url": "https://api.github.com/repos/luisgamas/uxnan/issues/comments/5139784525",
+      "html_url": "https://github.com/luisgamas/uxnan/pull/132#issuecomment-5139784525",
+      "issue_url": "https://api.github.com/repos/luisgamas/uxnan/issues/132",
+      "id": 5139784525,
+      "user": {
+        "login": "github-actions[bot]",
+        "id": 41898282,
+        "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+        "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+        "html_url": "https://github.com/apps/github-actions",
+        "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+        "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+        "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+        "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+        "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+        "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+        "type": "Bot",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "created_at": "2026-07-31T05:54:22Z",
+      "updated_at": "2026-07-31T05:54:22Z",
+      "body": "<!-- ci-failure-desktop -->\n### ❌ CI (Desktop) failed\nVerification of `uxnandesktop` (svelte-check / vite / cargo fmt·clippy·test) did not pass on `e1f1747`.\n\n- Failure details: https://github.com/luisgamas/uxnan/actions/runs/30607815228\n- Reproduce locally (in `uxnandesktop/`): `npm ci && npm run check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml`\n\n_Automated comment; it updates when the result changes._",
+      "author_association": "NONE",
+      "reactions": {
+        "url": "https://api.github.com/repos/luisgamas/uxnan/issues/comments/5139784525/reactions",
+        "total_count": 0,
+        "+1": 0,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "performed_via_github_app": {
+        "id": 15368,
+        "client_id": "Iv1.05c79e9ad1f6bdfa",
+        "slug": "github-actions",
+        "owner": {
+          "login": "github",
+          "id": 9919,
+          "avatar_url": "https://avatars.githubusercontent.com/u/9919?v=4",
+          "url": "https://api.github.com/users/github",
+          "html_url": "https://github.com/github",
+          "followers_url": "https://api.github.com/users/github/followers",
+          "following_url": "https://api.github.com/users/github/following{/other_user}",
+          "gists_url": "https://api.github.com/users/github/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/github/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/github/subscriptions",
+          "organizations_url": "https://api.github.com/users/github/orgs",
+          "repos_url": "https://api.github.com/users/github/repos",
+          "events_url": "https://api.github.com/users/github/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/github/received_events",
+          "type": "Organization",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "name": "GitHub Actions",
+        "description": "Automate your workflow from idea to production",
+        "external_url": "https://help.github.com/en/actions",
+        "html_url": "https://github.com/apps/github-actions",
+        "created_at": "2018-07-30T09:30:17Z",
+        "updated_at": "2026-06-18T16:17:48Z",
+        "permissions": {
+          "actions": "write",
+          "administration": "read",
+          "artifact_metadata": "write",
+          "attestations": "write",
+          "checks": "write",
+          "code_quality": "write",
+          "contents": "write",
+          "copilot_requests": "write",
+          "deployments": "write",
+          "discussions": "write",
+          "drives": "write",
+          "issues": "write",
+          "merge_queues": "write",
+          "metadata": "read",
+          "models": "read",
+          "packages": "write",
+          "pages": "write",
+          "pull_requests": "write",
+          "repository_hooks": "write",
+          "repository_projects": "write",
+          "security_events": "write",
+          "statuses": "write",
+          "vulnerability_alerts": "read"
+        },
+        "events": [
+          "branch_protection_rule",
+          "check_run",
+          "check_suite",
+          "create",
+          "delete",
+          "deployment",
+          "deployment_status",
+          "discussion",
+          "discussion_comment",
+          "fork",
+          "gollum",
+          "issues",
+          "issue_comment",
+          "label",
+          "merge_group",
+          "milestone",
+          "page_build",
+          "public",
+          "pull_request",
+          "pull_request_review",
+          "pull_request_review_comment",
+          "push",
+          "registry_package",
+          "release",
+          "repository",
+          "repository_dispatch",
+          "status",
+          "watch",
+          "workflow_dispatch",
+          "workflow_run"
+        ]
+      },
+      "minimized": null,
+      "event": "commented",
+      "actor": {
+        "login": "github-actions[bot]",
+        "id": 41898282,
+        "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+        "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+        "html_url": "https://github.com/apps/github-actions",
+        "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+        "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+        "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+        "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+        "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+        "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+        "type": "Bot",
+        "user_view_type": "public",
+        "site_admin": false
+      }
+    },
+    {
+      "sha": "2fef851eba1ad0609992bfff22a0d6ba098f2e16",
+      "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/2fef851eba1ad0609992bfff22a0d6ba098f2e16",
+      "html_url": "https://github.com/luisgamas/uxnan/commit/2fef851eba1ad0609992bfff22a0d6ba098f2e16",
+      "author": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:57:54Z"
+      },
+      "committer": {
+        "name": "Luis Gamas",
+        "email": "redacted@example.invalid",
+        "date": "2026-07-31T05:57:54Z"
+      },
+      "tree": {
+        "sha": "c574b6635e252f6a240a47d586b09c23dc417826",
+        "url": "https://api.github.com/repos/luisgamas/uxnan/git/trees/c574b6635e252f6a240a47d586b09c23dc417826"
+      },
+      "message": "fix(desktop): resolve the fake gh path the same way on every platform\n\nThe fixture test located `fake-gh.mjs` with `new URL(import.meta.url).pathname`\nand stripped the leading slash. That slash is a drive-letter artefact on Windows\nand *part of the path* everywhere else, so the test passed here and handed Node a\nrelative `home/runner/…` on the Linux and macOS runners — which it then resolved\nagainst the working directory, producing a doubled path and seven failures with\nnothing wrong underneath them.\n\n`fileURLToPath` is the API for this and has no platform branch.",
+      "parents": [
+        {
+          "sha": "f65242d179584bae3eea081a4e588352385be6f2",
+          "url": "https://api.github.com/repos/luisgamas/uxnan/git/commits/f65242d179584bae3eea081a4e588352385be6f2",
+          "html_url": "https://github.com/luisgamas/uxnan/commit/f65242d179584bae3eea081a4e588352385be6f2"
+        }
+      ],
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      },
+      "event": "committed"
+    },
+    {
+      "id": 28761122437,
+      "url": "https://api.github.com/repos/luisgamas/uxnan/issues/events/28761122437",
+      "actor": {
+        "login": "luisgamas",
+        "id": 77956428,
+        "avatar_url": "https://avatars.githubusercontent.com/u/77956428?v=4",
+        "url": "https://api.github.com/users/luisgamas",
+        "html_url": "https://github.com/luisgamas",
+        "followers_url": "https://api.github.com/users/luisgamas/followers",
+        "following_url": "https://api.github.com/users/luisgamas/following{/other_user}",
+        "gists_url": "https://api.github.com/users/luisgamas/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/luisgamas/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/luisgamas/subscriptions",
+        "organizations_url": "https://api.github.com/users/luisgamas/orgs",
+        "repos_url": "https://api.github.com/users/luisgamas/repos",
+        "events_url": "https://api.github.com/users/luisgamas/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/luisgamas/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "event": "merged",
+      "commit_id": "5d05643b46a640ac93805a6a8a3ace7c9ee07a3f",
+      "commit_url": "https://api.github.com/repos/luisgamas/uxnan/commits/5d05643b46a640ac93805a6a8a3ace7c9ee07a3f",
+      "created_at": "2026-07-31T06:03:38Z",
+      "performed_via_github_app": null
+    },
+    {
+      "id": 28761122571,
+      "url": "https://api.github.com/repos/luisgamas/uxnan/issues/events/28761122571",
+      "actor": {
+        "login": "luisgamas",
+        "id": 77956428,
+        "avatar_url": "https://avatars.githubusercontent.com/u/77956428?v=4",
+        "url": "https://api.github.com/users/luisgamas",
+        "html_url": "https://github.com/luisgamas",
+        "followers_url": "https://api.github.com/users/luisgamas/followers",
+        "following_url": "https://api.github.com/users/luisgamas/following{/other_user}",
+        "gists_url": "https://api.github.com/users/luisgamas/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/luisgamas/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/luisgamas/subscriptions",
+        "organizations_url": "https://api.github.com/users/luisgamas/orgs",
+        "repos_url": "https://api.github.com/users/luisgamas/repos",
+        "events_url": "https://api.github.com/users/luisgamas/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/luisgamas/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "event": "closed",
+      "commit_id": null,
+      "commit_url": null,
+      "created_at": "2026-07-31T06:03:38Z",
+      "state_reason": null,
+      "intent": null,
+      "performed_via_github_app": null
+    },
+    {
+      "id": 28761245562,
+      "url": "https://api.github.com/repos/luisgamas/uxnan/issues/events/28761245562",
+      "actor": {
+        "login": "luisgamas",
+        "id": 77956428,
+        "avatar_url": "https://avatars.githubusercontent.com/u/77956428?v=4",
+        "url": "https://api.github.com/users/luisgamas",
+        "html_url": "https://github.com/luisgamas",
+        "followers_url": "https://api.github.com/users/luisgamas/followers",
+        "following_url": "https://api.github.com/users/luisgamas/following{/other_user}",
+        "gists_url": "https://api.github.com/users/luisgamas/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/luisgamas/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/luisgamas/subscriptions",
+        "organizations_url": "https://api.github.com/users/luisgamas/orgs",
+        "repos_url": "https://api.github.com/users/luisgamas/repos",
+        "events_url": "https://api.github.com/users/luisgamas/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/luisgamas/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "event": "head_ref_deleted",
+      "commit_id": null,
+      "commit_url": null,
+      "created_at": "2026-07-31T06:06:49Z",
+      "performed_via_github_app": null
+    }
+  ]
+}

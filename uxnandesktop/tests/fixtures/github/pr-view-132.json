@@ -1,0 +1,485 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh pr view 132 --json number,title,body,state,isDraft,url,author,baseRefName,headRefName,additions,deletions,changedFiles,mergeable,reviewDecision,files,statusCheckRollup,labels,assignees,createdAt,updatedAt,comments,commits,reviews,reviewRequests",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": {
+    "additions": 14467,
+    "assignees": [],
+    "author": {
+      "is_bot": false,
+      "login": "luisgamas",
+      "name": "Luis Gamas"
+    },
+    "baseRefName": "main",
+    "body": "## Summary\n\nBuilds the test pyramid the desktop app did not have: Svelte component tests,\nbackend integration tests, fixtures a test cannot escape, a real end-to-end suite\ndriving the shipped app, and a coverage matrix that is checked rather than\nclaimed.\n\n## Affected component(s)\n\n- [ ] `shared` — contracts / JSON-RPC / E2EE schemas\n- [ ] `bridge` — PC daemon (uxnan-bridge)\n- [ ] `relay` — E2EE relay server (uxnan-relay)\n- [x] `uxnandesktop` — Tauri desktop app\n- [ ] `uxnanmobile` — Flutter mobile app\n- [x] Cross-cutting / tooling / CI / docs\n\n## Type of change\n\n- [ ] `fix` — bug fix\n- [ ] `feat` — new feature\n- [ ] `refactor` — no behavior change\n- [x] `docs`\n- [x] `test`\n- [x] `chore` / `ci` / `build`\n\n## The layers\n\nFive, each doing what the one below cannot. The split exists for speed: almost\neverything is provable in a layer costing milliseconds, which is what keeps the\nexpensive layers small enough to stay trustworthy.\n\n| | Layer | What it proves | Result |\n|---|---|---|---|\n| L0 | static | it compiles and lints | 1470 files, 0 errors / 0 warnings |\n| L1 | unit | pure logic is correct | part of 565 Vitest |\n| L2 | component | a Svelte component behaves | 20 tests, 3 components |\n| L3 | backend integration | real files, real git, real processes | 10 Rust + fixtures |\n| L4 | end to end | the whole app actually works | **24 tests, 8 journeys, ~39 s** |\n| L5 | real compatibility | accounts, signed artifacts, hardware | 12-item checklist |\n\n## Component tests mock the IPC transport, not `api.ts`\n\nMocking the API module would make the mock the assertion, and it drifts the first\ntime a command is renamed. Tauri's own `mockIPC` replaces the transport instead,\nso `src/lib/api.ts` runs for real — its command names, its argument marshalling —\nand only the process on the other side is fake. **No production code changed.**\n\n`src/test/tauri.ts` adds what a bare `mockIPC` lacks: a typed handler table where\nan unhandled command rejects loudly rather than returning `undefined`, a call\nlog, event emission, and failure/latency injection.\n\nThe three components were chosen for what they can get wrong: `UsageMeter` (two\nsurfaces share it), `SaveDiscardDialog` (every route out must resolve its promise\n— a route that resolves nothing hangs a tab close forever, with no error), and\n`AgentLogo` (a fallback chain that looked obviously correct and silently was\nnot).\n\n## Fixtures a test cannot escape\n\nThe fake `gh` refuses to run without a latch and scrubs credentials from its log.\nThe **PATH shim** resolves every CLI the app shells out to inside a directory of\nfakes, so a test that forgets to stub one gets \"blocked by the test harness\"\nrather than talking to real GitHub — `assertNoRealCli` re-checks that rather than\ntrusting it.\n\nThe git repository, the stand-in agent and the loopback server are **shared**\nwith the resource benchmarks rather than copied: two generators would drift, and\nthe repo fixture is only useful because its commit hash is pinned.\n\n## End to end, against the shipped app\n\nEight journeys — launch, session restore, terminals in a split, a sleeping\nworkspace, a git project, an agent and the hook chain, the browser window, a\nprofile from an older build. Each spec gets its own app, started from a profile\nseeded for it, so setup costs nothing while the assertions still go through the\nreal UI, real IPC and a real backend.\n\nAssertions ask the backend over IPC rather than reading the screen: the UI is\nlocalised, so an assertion on visible text is an assertion on a translation. A\nterminal's contents are unreadable either way — xterm paints through WebGL — so\n\"is a shell alive\" is answered from the process tree.\n\n### Four things about this layer that are not guessable\n\nEach cost a debugging session and is commented where it bites:\n\n1. **`tauri-driver` hands you a webview at `about:blank`.** It does not attach to\n   the window the app already navigated, so every query succeeds and returns an\n   empty document — which reads as \"the app rendered nothing\" while the app runs\n   perfectly. The session navigates to the app's own origin; IPC is live there\n   (`invoke(\"ping\")` answers from Rust), so these are genuine E2E tests.\n2. **`tauri:options.env` never reached the app.** A diagnostic run came up on the\n   developer's *real* profile, showing their actual projects — a journey that\n   removed a worktree would have removed a real one. The variable is set on the\n   driver now, and `before` refuses to run unless the app shows exactly what was\n   seeded.\n3. **WebdriverIO evaluates the config twice**, once per process, so a `mkdtemp`\n   profile exists twice: the driver points at one, the seed writes the other, and\n   the app comes up empty whatever the journey asked for. The path is fixed now.\n4. **The app is found by executable name**, safe only because the pre-flight\n   refuses to start beside another instance. Matching the profile directory — the\n   apparently safer choice — matches nothing, since `UXNAN_DATA_DIR` is an\n   environment variable; what it *did* match was the PowerShell process running\n   the query, so the reaper spent several runs killing its own query and\n   reporting success.\n\n## A coverage matrix that is checked\n\n`tests/quality-matrix.json` is machine-readable and verified against the\nrepository by a test: a flow claiming a layer must cite a file that exists (globs\nmust match something), a partially covered flow must state its gap, and no flow\nmay list a layer as both covered and planned. It records what is **not** tested\nas carefully as what is.\n\n## How was it tested?\n\n1. `npm run check` → 1470 files, **0 errors / 0 warnings**.\n2. `npm test` → **565 Vitest** across both projects (node + dom).\n3. `npm run build` → SPA build succeeds.\n4. `cd src-tauri && cargo test` → **387** (377 unit + 10 integration);\n   `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` clean.\n5. `npm run test:e2e` → **8/8 spec files, 24 tests, ~39 s**, green on consecutive\n   runs with **zero leftover processes**.\n\n## Resource impact (`uxnandesktop` only)\n\nNone at runtime. Everything here is test-only; no production code changed.\n\n## Checklist\n\n- [x] Lint/format pass for the touched component(s).\n- [x] Tests added or updated, and the suite passes.\n- [x] `CHANGELOG.md` updated.\n- [x] Docs / `architecture/` updated (spec-drift control: `04-technical-reference.md`\n      records the pyramid under Phase 5, including what differs from the sketch it\n      replaced).\n- [x] Commits follow Conventional Commits.\n- [ ] **If this is a `uxnanmobile` release:** n/a.\n- [x] If a `shared` contract changed, all consumers updated — n/a, none changed.\n- [x] Resource scenario run and numbers above — n/a, no runtime change.\n\n## What is deliberately not here\n\n- **No journey *drives* the UI.** They seed a state and assert it end to end;\n  creating a worktree from the dialog, closing a terminal, waking a workspace\n  need stable handles on the controls. That is the next piece of work.\n- **The fixture agent's own reporter does not reach the hook server.** The\n  journey covers the chain by posting a report itself — which is what a reporter\n  does, and the half uxnan owns — but why the fixture's own POST never lands is\n  unresolved and worth knowing.\n- **E2E is Windows-only.** `tauri-driver` does not support macOS at all and\n  Linux has never been run here; the harness does not claim a platform nobody has\n  executed.\n- **E2E is not a required gate yet**, by design — see the workflow comment.\n\nAll four are in `FOR-DEV.md` and in the quality matrix.\n",
+    "changedFiles": 41,
+    "comments": [
+      {
+        "author": {
+          "login": "github-actions"
+        },
+        "authorAssociation": "NONE",
+        "body": "<!-- ci-failure-desktop -->\n### ❌ CI (Desktop) failed\nVerification of `uxnandesktop` (svelte-check / vite / cargo fmt·clippy·test) did not pass on `e1f1747`.\n\n- Failure details: https://github.com/luisgamas/uxnan/actions/runs/30607815228\n- Reproduce locally (in `uxnandesktop/`): `npm ci && npm run check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml`\n\n_Automated comment; it updates when the result changes._",
+        "createdAt": "2026-07-31T05:54:22Z",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/luisgamas/uxnan/pull/132#issuecomment-5139784525",
+        "viewerDidAuthor": false
+      }
+    ],
+    "commits": [
+      {
+        "authoredDate": "2026-07-31T04:31:04Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T04:31:04Z",
+        "messageBody": "Vitest now runs as two projects. `node` keeps the pure logic fast — no Svelte\ncompiler, no jsdom — and `dom` mounts real components; a module that needs a\n`document` to be tested is a module with UI concerns in it, so the split is\nalso a design signal. Component tests are `*.svelte.test.ts`, which is how the\nnode project knows to skip them.\n\nThe double sits **below** `src/lib/api.ts`, not in place of it. Mocking the API\nmodule would mean the mock becomes the assertion, and it drifts the first time a\ncommand is renamed. Tauri's own `mockIPC` replaces the IPC transport instead, so\n`api.ts` runs for real — its command names, its argument marshalling — and only\nthe process on the other side is fake.\n\n`src/test/tauri.ts` adds what a bare `mockIPC` lacks: a typed handler table\nwhere an unhandled command rejects loudly rather than returning `undefined`\n(which would surface later as a confusing null-deref inside the component), a\ncall log, event emission, and failure/latency injection. `render.ts` pairs a\ncomponent with a backend and tears both down together; `setup.dom.ts` fills\njsdom's gaps once and promotes an unknown-prop or lifecycle warning to a failure.\n\nThree config details that each cost a debugging session, all commented in place:\n`svelte.config.js` is ignored (its `vitePreprocess` needs a Vite environment a\nVitest worker does not have), `mainFields` prefers `module` (a dependency ships\nonly an `.mjs` while declaring a `main` that does not exist), and `conditions`\nmust list `svelte` alongside Vite's defaults.\n\nNo production code changed.",
+        "messageHeadline": "test(desktop): add a Svelte component test harness",
+        "oid": "6623e9bb14b95116c34c03b92511ab3fab1fd742"
+      },
+      {
+        "authoredDate": "2026-07-31T04:31:32Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T04:31:32Z",
+        "messageBody": "Chosen for what they can get wrong, not for being easy to render.\n\n`UsageMeter` is shared by the provider cards and the status-bar popover, so a\nchange moves two surfaces at once: the number a user reads must match what the\nbackend reported, the bar must stay inside its track, and a nearly-empty bar must\nstill be visible — 0 % rendering as nothing looks like a broken widget.\n\n`SaveDiscardDialog` answers \"save, discard, or stay?\" through a promise the\ntab-close path is awaiting. Every route out of it must resolve that promise,\nEscape included: a route that resolves nothing leaves the caller awaiting forever\nand the tab simply never closes, with no error anywhere.\n\n`AgentLogo` exercises the whole seam — it renders, asks the real API layer for a\nlogo, and re-renders on the answer. Its fallback chain is also the kind of logic\nthat looks obviously correct and silently was not: every favicon-backed logo\nrendered as the generic glyph for a long time because the URL went straight into\nan `<img>` the CSP refused.",
+        "messageHeadline": "test(desktop): cover three components at the behaviour level",
+        "oid": "a38784b498b693667e6308fe852ddb6f505c9ce0"
+      },
+      {
+        "authoredDate": "2026-07-31T04:31:32Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T04:31:32Z",
+        "messageBody": "`src-tauri/tests/` did not exist. The automations store is a good first tenant:\nthe headless runner and the app each open their own over the same directory, so\nthe round trip across a process boundary is a real contract rather than an\nimplementation detail.\n\nTen tests over a `TempDir`, using only the crate's public surface — which is what\nkeeps them integration tests instead of unit tests with a longer path. They cover\nthe round trip, replace-not-append, seed-once (including after the user deletes\nthe examples), a truncated file degrading rather than panicking, nothing written\noutside the store's own root, and a path with spaces and non-ASCII characters.\n\nThe automation is written out in full rather than via `Default`, so adding a\nrequired field to the model breaks this file — which is the point of a test over\na persisted shape.",
+        "messageHeadline": "test(desktop): add backend integration tests against a real filesystem",
+        "oid": "0387f445423e7ab0e212e2ff91caa34499d23b7d"
+      },
+      {
+        "authoredDate": "2026-07-31T05:34:39Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:34:39Z",
+        "messageBody": "The fake `gh` refuses to run without an explicit latch, scrubs anything\ncredential-shaped out of its log, and fails loudly on a command nobody stubbed\n— silence there would mean the caller parses an empty string and asserts\nsomething meaningless.\n\nThe PATH shim is the part that matters. It builds a directory holding only\nfakes, so every CLI the app shells out to resolves inside it and a test that\nforgets to stub one gets \"blocked by the test harness\" instead of talking to\nreal GitHub. `assertNoRealCli` re-checks that claim rather than trusting it. Two\nthings that look right and are not: resolving a name by spawning `where` cannot\nwork when the shimmed PATH no longer contains System32, and Node has refused to\nspawn `.cmd` directly since the BatBadBut hardening — so lookup is done in\nprocess and the shim tests go through a shell.\n\nAlso disposable and legacy app profiles for the migration paths, and a port test\ncovering the case the app avoids by never naming a port: asking for 0 survives a\ncrowded machine, asking for a taken one does not. The second half is what gives\nthe first half meaning.\n\nThe git repository, the stand-in agent and the loopback server are shared with\nthe resource benchmarks rather than copied — two generators would drift, and the\nrepo fixture is only useful because its commit hash is pinned.",
+        "messageHeadline": "test(desktop): add fixtures a test cannot escape",
+        "oid": "5f176f58952f12da3570e9bbaa7b59ebe7744e07"
+      },
+      {
+        "authoredDate": "2026-07-31T05:34:40Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:34:40Z",
+        "messageBody": "A coverage table in prose is worth what checks it, which is nothing: every row\ngets ticked and none gets verified. This one is data, and a test reads it back\nagainst the repository — a flow claiming a layer must cite a file that exists\n(globs must match something), a partially covered flow must state its gap, and\nno flow may list a layer as both covered and planned.\n\nIt records what is *not* tested as carefully as what is, because that is the\nhalf a reader cannot otherwise discover.",
+        "messageHeadline": "test(desktop): make the coverage matrix a checked file, not a claim",
+        "oid": "a417e33c3c21c831b7758aeee5d024a80bdc5a86"
+      },
+      {
+        "authoredDate": "2026-07-31T05:35:10Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:35:32Z",
+        "messageBody": "Eight journeys over a release binary, its Rust backend, a real WebView2 and real\nIPC: launch, session restore, terminals in a split, a sleeping workspace, a git\nproject, an agent and the hook chain, the browser window, and a profile written\nby an older build.\n\nEach spec is one journey with its own app, started from a profile seeded for it.\nSetting a journey up by clicking is how an E2E suite becomes slow and brittle —\ntwenty clicks to reach the thing you wanted to assert, any of which can break for\nan unrelated reason — so setup is seeded and the assertions still go through the\nreal UI, real IPC and a real backend.\n\nFour things about this layer that are not guessable, all commented where they\nbite:\n\n- `tauri-driver` hands you a webview at `about:blank`. It does not attach to the\n  window the app already navigated, so every query succeeds and returns an empty\n  document — which reads as \"the app rendered nothing\" while the app is running\n  perfectly. The session navigates to the app's own origin, and IPC is live\n  there: `invoke(\"ping\")` answers from Rust.\n- `tauri:options.env` never reached the app. A diagnostic run came up on the\n  developer's real profile, showing their actual projects; a journey that removed\n  a worktree would have removed a real one. The variable is set on the driver,\n  and `before` refuses to run unless the app shows exactly what was seeded.\n- WebdriverIO evaluates the config twice, once per process. A `mkdtemp` profile\n  therefore exists twice: the driver points at one, the seed writes the other,\n  and the app comes up empty whatever a journey asked for. The path is fixed.\n- The app is found by executable name, which is safe only because the pre-flight\n  refuses to start beside another instance. Matching the profile directory —\n  the apparently safer choice — matches nothing, since `UXNAN_DATA_DIR` is an\n  environment variable; what it did match was the PowerShell process running the\n  query, so the reaper spent several runs killing its own query and reporting\n  success.\n\nAssertions ask the backend over IPC rather than reading the screen: the UI is\nlocalised, so an assertion on visible text is an assertion on a translation. A\nterminal's contents are unreadable either way — xterm paints through WebGL — so\n\"is a shell alive\" is answered from the process tree.\n\nTeardown reaps by pid and waits for the processes to actually go. The agent\njourney closes the app on purpose, to prove the agent it started does not outlive\nit.\n\n24 tests, ~39 s for the suite, green on consecutive runs with nothing left\nbehind.",
+        "messageHeadline": "test(desktop): drive the real app end to end",
+        "oid": "6c93d58fa24d10488cd0d5a6a2c41496f36bc4e8"
+      },
+      {
+        "authoredDate": "2026-07-31T05:36:19Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:36:19Z",
+        "messageBody": "Component tests join the required job immediately: they are fast, and they catch\nthe mounting and wiring failures unit tests structurally cannot.\n\nE2E gets its own on-demand/nightly Windows workflow. It needs a release build, a\nWebDriver matched to the runner's WebView2 and a machine with no other uxnan\nrunning, and it is deliberately **not** blocking yet — requiring it before it has\na track record on that runner is how a gate earns a reputation for false failures\nand gets switched off. It uploads a screenshot and the page source per failed\ntest.\n\nThe build step is `tauri build --no-bundle`, not `cargo build --release`: without\nthe `custom-protocol` feature the binary stays in dev mode and loads\n`localhost:1420`, so the app would run with no UI and every assertion would fail\nfor the wrong reason.",
+        "messageHeadline": "ci(desktop): run component tests in the gate, E2E on its own schedule",
+        "oid": "29037e0524ba32939259e4b8db97230d6b342575"
+      },
+      {
+        "authoredDate": "2026-07-31T05:36:19Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:36:19Z",
+        "messageBody": "`docs/testing.md` gains the layer model (what each of L0–L5 proves, and which\none a given change needs), the component-test conventions, the driver decision\nwith the comparison that produced it, a flake policy — quarantine with an owner\nand a 14-day limit, keep the case at a lower layer, one retry for infrastructure\nonly, fix the wait rather than the timeout — and an **L5 checklist**: the twelve\nthings no automated layer can honestly cover, each with why it cannot be\nautomated here and a column for when it was last verified.\n\nThe spec side, per the drift rule: `04-technical-reference.md` records the\npyramid under Phase 5 as a post-plan addition, including what the implementation\ndid differently from the sketch it replaced.\n\nCounts re-derived rather than incremented on trust: 565 Vitest across two\nprojects, 387 Rust (377 unit + 10 integration), 24 E2E tests across 8 journeys.",
+        "messageHeadline": "docs(desktop): document the test pyramid and the manual layer",
+        "oid": "bc6c46846a8efda84ff21a444774cae5cfbebc30"
+      },
+      {
+        "authoredDate": "2026-07-31T05:48:31Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:48:31Z",
+        "messageBody": "…ness\n\n# Conflicts:\n#\tuxnandesktop/FOR-DEV.md",
+        "messageHeadline": "Merge remote-tracking branch 'origin/main' into feat/desktop-test-har…",
+        "oid": "f65242d179584bae3eea081a4e588352385be6f2"
+      },
+      {
+        "authoredDate": "2026-07-31T05:57:54Z",
+        "authors": [
+          {
+            "email": "redacted@example.invalid",
+            "login": "luisgamas",
+            "name": "Luis Gamas"
+          }
+        ],
+        "committedDate": "2026-07-31T05:57:54Z",
+        "messageBody": "The fixture test located `fake-gh.mjs` with `new URL(import.meta.url).pathname`\nand stripped the leading slash. That slash is a drive-letter artefact on Windows\nand *part of the path* everywhere else, so the test passed here and handed Node a\nrelative `home/runner/…` on the Linux and macOS runners — which it then resolved\nagainst the working directory, producing a doubled path and seven failures with\nnothing wrong underneath them.\n\n`fileURLToPath` is the API for this and has no platform branch.",
+        "messageHeadline": "fix(desktop): resolve the fake gh path the same way on every platform",
+        "oid": "2fef851eba1ad0609992bfff22a0d6ba098f2e16"
+      }
+    ],
+    "createdAt": "2026-07-31T05:40:19Z",
+    "deletions": 2596,
+    "files": [
+      {
+        "path": ".github/workflows/e2e-desktop.yml",
+        "additions": 101,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": ".github/workflows/verify-desktop.yml",
+        "additions": 9,
+        "deletions": 1,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/.gitignore",
+        "additions": 7,
+        "deletions": 0,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/CHANGELOG.md",
+        "additions": 102,
+        "deletions": 0,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/FOR-DEV.md",
+        "additions": 51,
+        "deletions": 8,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/README.md",
+        "additions": 1,
+        "deletions": 0,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/architecture/04-technical-reference.md",
+        "additions": 63,
+        "deletions": 0,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/docs/testing.md",
+        "additions": 208,
+        "deletions": 9,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/package-lock.json",
+        "additions": 10034,
+        "deletions": 2575,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/package.json",
+        "additions": 15,
+        "deletions": 2,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/src-tauri/tests/automations_store.rs",
+        "additions": 230,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/src/lib/components/AgentLogo.svelte.test.ts",
+        "additions": 119,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/src/lib/components/SaveDiscardDialog.svelte.test.ts",
+        "additions": 123,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/src/lib/components/UsageMeter.svelte.test.ts",
+        "additions": 76,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/src/test/render.ts",
+        "additions": 74,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/src/test/setup.dom.ts",
+        "additions": 128,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/src/test/tauri.ts",
+        "additions": 178,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/README.md",
+        "additions": 100,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/helpers.mjs",
+        "additions": 189,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/journeys.mjs",
+        "additions": 210,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/setup-driver.mjs",
+        "additions": 123,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/agent.e2e.mjs",
+        "additions": 137,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/browser.e2e.mjs",
+        "additions": 88,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/launch.e2e.mjs",
+        "additions": 69,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/migration.e2e.mjs",
+        "additions": 42,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/restore.e2e.mjs",
+        "additions": 38,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/sleep-wake.e2e.mjs",
+        "additions": 31,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/terminal.e2e.mjs",
+        "additions": 53,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/specs/worktree.e2e.mjs",
+        "additions": 41,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/e2e/wdio.conf.mjs",
+        "additions": 441,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/fixtures/appdata.mjs",
+        "additions": 116,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/fixtures/fake-gh.mjs",
+        "additions": 128,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/fixtures/fixtures.test.mjs",
+        "additions": 214,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/fixtures/path-shim.mjs",
+        "additions": 192,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/fixtures/ports.test.mjs",
+        "additions": 70,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/fixtures/shared.mjs",
+        "additions": 42,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/quality-matrix.json",
+        "additions": 381,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/tests/quality-matrix.test.mjs",
+        "additions": 135,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/vitest.config.ts",
+        "additions": 7,
+        "deletions": 1,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "uxnandesktop/vitest.dom.config.ts",
+        "additions": 81,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "uxnandesktop/vitest.workspace.ts",
+        "additions": 20,
+        "deletions": 0,
+        "changeType": "ADDED"
+      }
+    ],
+    "headRefName": "feat/desktop-test-harness",
+    "isDraft": false,
+    "labels": [],
+    "mergeable": "UNKNOWN",
+    "number": 132,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviewRequests": [],
+    "reviews": [],
+    "state": "MERGED",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:01:35Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103346",
+        "name": "verify / verify (ubuntu-latest)",
+        "startedAt": "2026-07-31T05:58:01Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:03:04Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103349",
+        "name": "verify / verify (windows-latest)",
+        "startedAt": "2026-07-31T05:58:01Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:00:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085103332",
+        "name": "verify / verify (macos-14)",
+        "startedAt": "2026-07-31T05:58:00Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-07-31T06:03:04Z",
+        "conclusion": "SKIPPED",
+        "detailsUrl": "https://github.com/luisgamas/uxnan/actions/runs/30608248706/job/91085866005",
+        "name": "pr-comment-on-failure",
+        "startedAt": "2026-07-31T06:03:05Z",
+        "status": "COMPLETED",
+        "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+      }
+    ],
+    "title": "test(desktop): build the test pyramid — components, integration, fixtures and real E2E",
+    "updatedAt": "2026-07-31T06:06:49Z",
+    "url": "https://github.com/luisgamas/uxnan/pull/132"
+  }
+}
