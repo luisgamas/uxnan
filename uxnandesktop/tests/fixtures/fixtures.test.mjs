@@ -16,6 +16,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { assertNoRealCli, GUARDED_CLIS, shimmedPath } from "./path-shim.mjs";
@@ -25,7 +26,12 @@ import { FAKE_AGENT, FIXTURE_HTTP_SERVER } from "./shared.mjs";
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "uxnan-fixtures-test-"));
 afterAll(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
-const FAKE_GH = path.join(path.dirname(new URL(import.meta.url).pathname.slice(1)), "fake-gh.mjs");
+// `fileURLToPath`, not `new URL(…).pathname` — the latter's leading slash is part
+// of the path on POSIX and a Windows drive-letter artefact on Windows, so any
+// hand-rolled fix is right on exactly one platform. This one was: stripping it
+// gave `C:/…` here and a *relative* `home/runner/…` on the Linux runner, which
+// Node then resolved against the working directory.
+const FAKE_GH = path.join(path.dirname(fileURLToPath(import.meta.url)), "fake-gh.mjs");
 
 /** Run the fake gh directly, with the environment a test would give it. */
 function gh(args, env = {}) {
