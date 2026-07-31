@@ -14,7 +14,13 @@ export default defineConfig({
     alias: { $lib: fileURLToPath(new URL("./src/lib", import.meta.url)) },
   },
   test: {
+    name: "node",
     environment: "node",
-    include: ["src/**/*.test.ts", "scripts/**/*.test.mjs"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.mjs", "tests/**/*.test.mjs"],
+    // Component tests live beside their components as `*.svelte.test.ts` and
+    // belong to the `dom` project (`vitest.dom.config.ts`). Excluding them here
+    // keeps this suite free of the Svelte compiler and jsdom, which is the whole
+    // reason the two are separate.
+    exclude: ["**/node_modules/**", "**/*.svelte.test.ts"],
   },
 });
