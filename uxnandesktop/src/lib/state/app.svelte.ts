@@ -77,6 +77,7 @@ export type SettingsSection =
   | "browser"
   | "openWith"
   | "github"
+  | "resources"
   | "updates";
 
 /** A pane in the inline GitHub view (opened per-project from a project card).

@@ -1,11 +1,13 @@
 <script lang="ts">
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ProjectCard from "./ProjectCard.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import KeyChord from "./KeyChord.svelte";
+  import FreshnessHint from "./FreshnessHint.svelte";
   import SidebarProfile from "./SidebarProfile.svelte";
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder } from "$lib/state/dragReorder.svelte";
@@ -69,7 +71,8 @@
     const timer = setInterval(() => {
       void projects.refreshWorktrees();
       // …and keep every card's badges honest, not just the active worktree's:
-      // the sweep rate-limits itself (see `SWEEP_MS`) and skips a hidden window.
+      // both calls pace themselves from the resource-mode policy (see
+      // `resourceMode.policy.capabilities`) and the sweep skips a hidden window.
       void projects.sweepStatuses();
     }, 3000);
     // Coming back to the window is the moment the indicators are most likely
@@ -177,6 +180,12 @@
       {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
     </span>
+    {#if resourceMode.freshness.git}
+      <FreshnessHint
+        label={i18n.t("resourceMode.freshness.git")}
+        onrefresh={() => projects.refreshNow()}
+      />
+    {/if}
     <TooltipSimple title={`${i18n.t("sidebar.addProject")} (${addChord})`}>
       {#snippet children(props)}
         <Button

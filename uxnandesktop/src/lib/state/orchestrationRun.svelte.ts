@@ -21,6 +21,12 @@ import { terminals } from "./terminals.svelte";
 import { agentStatus } from "./agentStatus.svelte";
 import { orchestration } from "./orchestration.svelte";
 import { app } from "./app.svelte";
+import { resourceMode } from "./resourceMode.svelte";
+import { resources } from "./resources.svelte";
+import {
+  effectiveOrchestrationConcurrency,
+  orchestrationHeadroom,
+} from "$lib/resources/policy";
 import { notify } from "$lib/notify";
 import { i18n } from "$lib/i18n";
 import type { OrchestratorAgent } from "$lib/orchestration";
@@ -59,8 +65,10 @@ const TICK_MS = 700;
  *  grace, to reduce false "done" on a slow-to-start agent. */
 const PICKUP_GRACE_MS = 6000;
 
-/** Max steps a single run runs concurrently (backpressure across the DAG). */
-const MAX_CONCURRENCY = 4;
+// Max steps a single run runs concurrently (backpressure across the DAG) comes
+// from the resource-mode policy: 4 on Balanced (the pre-mode constant), 2 on
+// Efficient, and on Performance up to 6 — but only while the resource monitor
+// measures real headroom (see `effectiveConcurrency` below).
 
 /** How long an interactive step waits for its (busy) target agent to free up
  *  before it is force-dispatched anyway. Backpressure is a courtesy, not a gate —
@@ -392,6 +400,35 @@ class OrchestrationRunStore {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    this.syncBudgetLease(false);
+  }
+
+  /** Whether this engine currently holds the resource monitor's budget lease. */
+  private budgetLeaseHeld = false;
+
+  /** Hold the monitor's `budget` lease exactly while extended concurrency is
+   *  reachable (Performance profile + an active run): the headroom check needs
+   *  fresh samples, and holding the lease any longer would keep the sampler
+   *  running for a question nobody is asking. Idempotent per direction. */
+  private syncBudgetLease(wanted: boolean): void {
+    if (wanted === this.budgetLeaseHeld) return;
+    this.budgetLeaseHeld = wanted;
+    if (wanted) void resources.acquireBudget();
+    else void resources.releaseBudget();
+  }
+
+  /** The per-tick concurrency cap from the resource-mode policy. The extended
+   *  (Performance) ceiling applies only against measured headroom — a fresh
+   *  budget-lease summary whose uxnan-total CPU is known and low; no evidence
+   *  means the base cap. */
+  private effectiveConcurrency(now: number): number {
+    const policy = resourceMode.policy;
+    const extendable = policy.capabilities.orchestrationExtendedConcurrency !== null;
+    this.syncBudgetLease(extendable && this.activeRuns.length > 0);
+    return effectiveOrchestrationConcurrency(
+      policy,
+      extendable && orchestrationHeadroom(resources.summary, now),
+    );
   }
 
   /** One scheduler pass over every active run: promote → detect completion →
@@ -401,6 +438,7 @@ class OrchestrationRunStore {
     let changed = false;
     const now = Date.now();
     const agents = this.liveAgents;
+    const concurrency = this.effectiveConcurrency(now);
 
     for (const run of this.runs) {
       if (run.status !== "running" && run.status !== "paused") continue;
@@ -437,7 +475,7 @@ class OrchestrationRunStore {
             .map((s) => s.target.tabId)
             .filter((id): id is string => !!id),
         );
-        let budget = MAX_CONCURRENCY - runningCount;
+        let budget = concurrency - runningCount;
         for (const s of run.steps) {
           if (budget <= 0) break;
           if (s.status !== "ready" && s.status !== "blocked") continue;

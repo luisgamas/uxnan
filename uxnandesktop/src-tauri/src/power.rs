@@ -52,16 +52,29 @@ impl Default for SleepBlocker {
     }
 }
 
-/// Worker loop: owns the platform [`Inhibitor`] so any thread-affine request
-/// (Windows) and any child inhibitor process (macOS/Linux) stay on one thread.
-/// Blocks for commands; while a request is active it instead waits up to
-/// [`AUTO_RELEASE`] and then releases on timeout.
+/// What the worker drives: the platform [`Inhibitor`] in the app, a recorder in
+/// the state-machine tests (the OS calls themselves are covered by the host-OS
+/// test below — each CI runner exercises its own branch).
+trait Inhibit {
+    fn apply(&mut self, keep_awake: bool);
+}
+
+/// Worker loop entry: owns the platform [`Inhibitor`] so any thread-affine
+/// request (Windows) and any child inhibitor process (macOS/Linux) stay on one
+/// thread.
 fn worker(rx: mpsc::Receiver<bool>) {
+    worker_loop(rx, Inhibitor::new(), AUTO_RELEASE);
+}
+
+/// The state machine, generic over the inhibitor so it is testable: blocks for
+/// commands; while a request is active it instead waits up to `auto_release`
+/// and then releases on timeout. Applies a change only when the desired state
+/// actually flips.
+fn worker_loop<I: Inhibit>(rx: mpsc::Receiver<bool>, mut inhibitor: I, auto_release: Duration) {
     let mut active = false;
-    let mut inhibitor = Inhibitor::new();
     loop {
         let next = if active {
-            rx.recv_timeout(AUTO_RELEASE)
+            rx.recv_timeout(auto_release)
         } else {
             rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
         };
@@ -69,17 +82,17 @@ fn worker(rx: mpsc::Receiver<bool>) {
             Ok(want) => {
                 if want != active {
                     active = want;
-                    inhibitor.set(active);
+                    inhibitor.apply(active);
                 }
             }
             // Auto-release safety cap: drop the request even if still "working".
             Err(RecvTimeoutError::Timeout) => {
                 active = false;
-                inhibitor.set(false);
+                inhibitor.apply(false);
             }
             // Handle dropped: release and exit.
             Err(RecvTimeoutError::Disconnected) => {
-                inhibitor.set(false);
+                inhibitor.apply(false);
                 break;
             }
         }
@@ -94,7 +107,11 @@ impl Inhibitor {
     fn new() -> Self {
         Self
     }
-    fn set(&mut self, keep_awake: bool) {
+}
+
+#[cfg(windows)]
+impl Inhibit for Inhibitor {
+    fn apply(&mut self, keep_awake: bool) {
         use windows_sys::Win32::System::Power::{
             SetThreadExecutionState, ES_CONTINUOUS, ES_SYSTEM_REQUIRED,
         };
@@ -125,7 +142,11 @@ impl Inhibitor {
     fn new() -> Self {
         Self { child: None }
     }
-    fn set(&mut self, keep_awake: bool) {
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+impl Inhibit for Inhibitor {
+    fn apply(&mut self, keep_awake: bool) {
         if keep_awake {
             if self.child.is_none() {
                 self.child = spawn_inhibitor();
@@ -174,5 +195,99 @@ impl Inhibitor {
     fn new() -> Self {
         Self
     }
-    fn set(&mut self, _keep_awake: bool) {}
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+impl Inhibit for Inhibitor {
+    fn apply(&mut self, _keep_awake: bool) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Records every state the worker applies, standing in for the OS.
+    struct Recorder(Arc<Mutex<Vec<bool>>>);
+
+    impl Inhibit for Recorder {
+        fn apply(&mut self, keep_awake: bool) {
+            self.0.lock().unwrap().push(keep_awake);
+        }
+    }
+
+    fn spawn_loop(
+        auto_release: Duration,
+    ) -> (Sender<bool>, Arc<Mutex<Vec<bool>>>, thread::JoinHandle<()>) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let recorder = Recorder(log.clone());
+        let (tx, rx) = mpsc::channel::<bool>();
+        let handle = thread::spawn(move || worker_loop(rx, recorder, auto_release));
+        (tx, log, handle)
+    }
+
+    fn wait_until(log: &Arc<Mutex<Vec<bool>>>, expected: &[bool]) -> bool {
+        // Poll on an observable state rather than sleeping a fixed time — the
+        // worker applies commands asynchronously.
+        for _ in 0..200 {
+            if log.lock().unwrap().as_slice() == expected {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
+    #[test]
+    fn applies_only_real_state_changes() {
+        let (tx, log, handle) = spawn_loop(Duration::from_secs(60));
+        tx.send(true).unwrap();
+        tx.send(true).unwrap(); // duplicate: must not re-apply
+        tx.send(false).unwrap();
+        assert!(
+            wait_until(&log, &[true, false]),
+            "got {:?}",
+            log.lock().unwrap()
+        );
+        drop(tx); // exit path releases once more, unconditionally
+        handle.join().unwrap();
+        assert_eq!(log.lock().unwrap().as_slice(), &[true, false, false]);
+    }
+
+    #[test]
+    fn a_stuck_working_state_auto_releases_after_the_cap() {
+        let (tx, log, handle) = spawn_loop(Duration::from_millis(30));
+        tx.send(true).unwrap();
+        // No further message: the cap alone must release the request.
+        assert!(
+            wait_until(&log, &[true, false]),
+            "got {:?}",
+            log.lock().unwrap()
+        );
+        drop(tx);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn dropping_the_handle_releases_and_ends_the_worker() {
+        let (tx, log, handle) = spawn_loop(Duration::from_secs(60));
+        tx.send(true).unwrap();
+        assert!(wait_until(&log, &[true]), "got {:?}", log.lock().unwrap());
+        drop(tx);
+        handle.join().unwrap(); // the loop exited…
+        assert_eq!(log.lock().unwrap().last(), Some(&false)); // …after releasing
+    }
+
+    #[test]
+    fn the_real_inhibitor_toggles_on_this_host() {
+        // Executes the platform branch of whichever OS runs the suite — each CI
+        // runner covers its own: `SetThreadExecutionState` on Windows, a spawned
+        // `caffeinate` on macOS, `systemd-inhibit` on Linux (a silent no-op when
+        // the helper is absent). Proves the call/spawn/kill path holds together;
+        // whether the machine truly stays awake is hardware evidence and lives
+        // on the platform checklist (tests/platform-support.json).
+        let mut inhibitor = Inhibitor::new();
+        inhibitor.apply(true);
+        inhibitor.apply(false);
+    }
 }

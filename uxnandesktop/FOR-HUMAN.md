@@ -48,7 +48,13 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
         cert is the *optional* upgrade to a warning-free, notarized install.
       - **Linux** — optional GPG for `.deb`/`.rpm` (spec §5.1).
 
-      **Unrelated to the updater key** (free, already configured).
+      **Unrelated to the updater key** (free, already configured). The
+      creation / rotation / storage procedure for both kinds of secret — and
+      why none of them ever enters the repo — is documented in
+      `docs/updates.md` → *Keys & certificates*. When a certificate lands,
+      record its fingerprint/expiry in the platform matrix's `signing` block
+      (`tests/platform-support.json`) — announcing `signed` without it fails
+      the suite and the release gate.
 
 ## Deferred until later phases (no action needed yet)
 

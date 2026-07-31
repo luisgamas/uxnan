@@ -51,6 +51,9 @@ import type {
   ProviderUsage,
   QuickCommand,
   RepoData,
+  ResourceConsumerKind,
+  ResourceExport,
+  ResourceSummary,
   SavedRun,
   SavedTerminalLayout,
   TimelineEvent,
@@ -183,6 +186,37 @@ export function usageDetect(providers: UsageProvider[]): Promise<UsageProvider[]
  *  (`reset` / `nothing_to_reset` / `no_credit` / `already_redeemed`). */
 export function usageCodexRedeemReset(): Promise<string> {
   return invoke<string>("usage_codex_redeem_reset");
+}
+
+// --- Resource observability --------------------------------------------------
+
+/** The consolidated resource summary (from the buffered frames; no fresh
+ *  sample). The live feed is the `resources:summary` event while subscribed. */
+export function resourcesSummary(): Promise<ResourceSummary> {
+  return invoke<ResourceSummary>("resources_summary");
+}
+
+/** Take (or renew) a sampling lease. Leases expire on their own, so a surface
+ *  renews while open and releases on close. */
+export function resourcesSubscribe(token: string, kind: ResourceConsumerKind): Promise<void> {
+  return invoke<void>("resources_subscribe", { token, kind });
+}
+
+/** Release a sampling lease (idempotent). */
+export function resourcesUnsubscribe(token: string): Promise<void> {
+  return invoke<void>("resources_unsubscribe", { token });
+}
+
+/** Apply the resource mode's resolved parameters the monitor consumes (today
+ *  just the history budget in seconds; the backend clamps defensively). */
+export function resourcesSetPolicy(historySeconds: number): Promise<void> {
+  return invoke<void>("resources_set_policy", { historySeconds });
+}
+
+/** The sanitized diagnostics document. Nothing is saved backend-side: the UI
+ *  shows its `fields` list for consent and writes the file itself. */
+export function resourcesExport(): Promise<ResourceExport> {
+  return invoke<ResourceExport>("resources_export");
 }
 
 /** Coordinates of the local agent hook server (null until it's listening). */

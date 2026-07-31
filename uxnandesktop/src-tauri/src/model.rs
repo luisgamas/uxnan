@@ -506,6 +506,114 @@ pub struct AppSettings {
     /// (`SidebarProfile`), persisted opaquely. Absent by default.
     #[serde(default)]
     pub profile: Option<serde_json::Value>,
+    /// Local resource observability (`resources.rs`): the backend-popover summary
+    /// and Settings → Resources. All fields default, so older state loads
+    /// unchanged (the additive-field migration path every settings struct uses).
+    #[serde(default)]
+    pub resources: ResourceSettings,
+    /// Resource mode (Settings → Resources → Resource mode): the explicit
+    /// efficiency/degradation profile plus per-capability overrides. All fields
+    /// default (profile `balanced` = the pre-mode behavior), so older state
+    /// loads unchanged. Semantic validation lives in the frontend policy engine
+    /// (`src/lib/resources/policy.ts`); this struct only keeps the shape.
+    #[serde(default)]
+    pub resource_mode: ResourceModeSettings,
+}
+
+/// Local resource observability (CPU / memory / process attribution for uxnan,
+/// its terminals and agents — `resources.rs`).
+///
+/// The collector is demand-driven: with `enabled` on it still samples **only**
+/// while a surface consumes it (the backend popover being open), so the default
+/// configuration costs nothing at rest. The only background sampling is the
+/// opt-in orphan sweep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceSettings {
+    /// Master switch for the whole feature (popover section + Settings pane
+    /// data). With no consumer the collector stays parked either way; off also
+    /// hides the surfaces. Default on — a parked collector is free.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Background sweep that keeps sampling slowly with no UI open, so orphaned
+    /// processes (a subtree that outlived its closed terminal) are noticed
+    /// without the popover. Off by default: it is the one mode that costs
+    /// anything unasked.
+    #[serde(default)]
+    pub orphan_sweep: bool,
+    /// Sweep interval in seconds. Clamped to 15–30 when applied — below that the
+    /// sweep would compete with the popover cadence, above it an orphan would
+    /// linger unnoticed.
+    #[serde(default = "default_orphan_sweep_seconds")]
+    pub orphan_sweep_seconds: u32,
+}
+
+/// Default orphan-sweep interval (seconds), the middle of the allowed 15–30 band.
+fn default_orphan_sweep_seconds() -> u32 {
+    20
+}
+
+impl Default for ResourceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            orphan_sweep: false,
+            orphan_sweep_seconds: default_orphan_sweep_seconds(),
+        }
+    }
+}
+
+/// Resource mode: the explicit `efficient` / `balanced` / `performance`
+/// profile governing background work (git sweeps, GitHub/provider polling,
+/// orchestration concurrency, the resource monitor's history, the pet's idle
+/// motion, workspace auto-sleep), with per-capability `overrides`.
+///
+/// Deliberately loose here: `profile` is a plain string and override values
+/// are opaque JSON, because the **frontend policy engine**
+/// (`src/lib/resources/policy.ts`) is the single validator — an unknown
+/// profile resolves to `balanced` and an invalid override to "inherit" there,
+/// so the backend never re-derives (and never disagrees about) the semantics.
+/// The one backend consumer (the resource monitor's history budget) receives
+/// its already-resolved parameter over `resources_set_policy`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceModeSettings {
+    /// Selected profile. Default `balanced` — the pre-mode behavior.
+    #[serde(default = "default_resource_profile")]
+    pub profile: String,
+    /// Per-capability overrides; `null` (or absence) = inherit from the
+    /// preset. Unknown keys are dropped by the frontend on read, so stale keys
+    /// self-heal instead of accumulating.
+    #[serde(default)]
+    pub overrides: std::collections::HashMap<String, serde_json::Value>,
+    /// Feature flag for workspace auto-sleep. Off by default; the profile's
+    /// auto-sleep capability only applies while this is on, so turning it off
+    /// kills the behavior whatever the profile says (the rollback lever).
+    #[serde(default)]
+    pub auto_sleep: bool,
+    /// Schema version of this block. The frontend treats a version newer than
+    /// it knows as `balanced` with no overrides (rollback safety).
+    #[serde(default = "default_resource_mode_schema_version")]
+    pub schema_version: u32,
+}
+
+fn default_resource_profile() -> String {
+    "balanced".to_string()
+}
+
+fn default_resource_mode_schema_version() -> u32 {
+    1
+}
+
+impl Default for ResourceModeSettings {
+    fn default() -> Self {
+        Self {
+            profile: default_resource_profile(),
+            overrides: std::collections::HashMap::new(),
+            auto_sleep: false,
+            schema_version: default_resource_mode_schema_version(),
+        }
+    }
 }
 
 /// "Open with" configuration: user-added editors + hidden auto-detected ones.
@@ -1027,6 +1135,8 @@ impl Default for AppSettings {
             github: GithubSettings::default(),
             open_with: OpenWithSettings::default(),
             profile: None,
+            resources: ResourceSettings::default(),
+            resource_mode: ResourceModeSettings::default(),
         }
     }
 }
@@ -1528,6 +1638,46 @@ mod tests {
         assert!(json.contains("openWith"));
         let back: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(back.open_with, settings.open_with);
+    }
+
+    #[test]
+    fn resource_mode_defaults_to_balanced_with_no_overrides() {
+        let settings = AppSettings::default();
+        assert_eq!(settings.resource_mode.profile, "balanced");
+        assert!(settings.resource_mode.overrides.is_empty());
+        assert!(!settings.resource_mode.auto_sleep);
+        assert_eq!(settings.resource_mode.schema_version, 1);
+    }
+
+    #[test]
+    fn settings_deserialize_without_resource_mode_defaults_balanced() {
+        // State persisted before the resource mode existed must still load and
+        // land on the profile that changes nothing.
+        let json = r#"{"theme":"system","leftSidebarWidth":280,"rightSidebarWidth":350,
+            "leftSidebarOpen":true,"rightSidebarOpen":true}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.resource_mode, ResourceModeSettings::default());
+    }
+
+    #[test]
+    fn resource_mode_round_trips_camel_case_with_opaque_overrides() {
+        let mut cfg = ResourceModeSettings {
+            profile: "efficient".into(),
+            auto_sleep: true,
+            ..Default::default()
+        };
+        // Overrides are opaque JSON here (the frontend policy engine validates
+        // them); the backend must round-trip them byte-for-byte, nulls included.
+        cfg.overrides
+            .insert("orchestrationConcurrency".into(), serde_json::json!(2));
+        cfg.overrides
+            .insert("gitSweepIntervalMs".into(), serde_json::Value::Null);
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("autoSleep"));
+        assert!(json.contains("schemaVersion"));
+        assert!(!json.contains("auto_sleep"));
+        let back: ResourceModeSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, back);
     }
 
     #[test]

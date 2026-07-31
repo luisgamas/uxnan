@@ -23,7 +23,11 @@ import { fileURLToPath } from "node:url";
 import { findBinary, launchApp } from "./lib/app.mjs";
 import { Sampler, sleep, snapshotPids } from "./lib/sampler.mjs";
 import { readPlatform } from "./lib/platform.mjs";
-import { liveTerminalCount, writeProfile } from "./lib/profile.mjs";
+import {
+  liveTerminalCount,
+  resourceModeSettings,
+  writeProfile,
+} from "./lib/profile.mjs";
 import { autoScenarioIds, getScenario, SCENARIOS } from "./lib/scenarios.mjs";
 import { aggregateRepeats, newRun, summarizeRun, validateRun } from "./lib/schema.mjs";
 import { classifyTree, findOrphans } from "./lib/tree.mjs";
@@ -52,6 +56,7 @@ function parseArgs(argv) {
     stabilize: null,
     interval: null,
     variant: null,
+    resourceProfile: null,
     out: path.join(DESKTOP_ROOT, ".resource-results"),
     binary: null,
     buildProfile: "release",
@@ -69,6 +74,7 @@ function parseArgs(argv) {
       case "--stabilize": args.stabilize = Number(next()); break;
       case "--interval": args.interval = Number(next()); break;
       case "--variant": args.variant = next(); break;
+      case "--resource-profile": args.resourceProfile = next(); break;
       case "--out": args.out = path.resolve(next()); break;
       case "--binary": args.binary = path.resolve(next()); break;
       case "--profile": args.buildProfile = next(); break;
@@ -97,7 +103,12 @@ Options
   --duration <s>      override the measurement window
   --stabilize <s>     override the discarded warm-up window
   --interval <ms>     sampling interval (default 1000)
-  --variant <name>    scenario variant (R09: off | layer | overlay)
+  --variant <name>    scenario variant (R09: off | layer | overlay; R12: off | parked | sweep)
+  --resource-profile <name>
+                      pin a resource-mode preset for the run
+                      (efficient | balanced | performance; default: the app's
+                      own default, balanced — the per-preset efficiency matrix
+                      runs each scenario once per profile)
   --out <dir>         results directory (default .resource-results)
   --binary <path>     app binary to measure (default: the release build)
   --profile <name>    build profile recorded in the result (default release)
@@ -149,7 +160,9 @@ function startHttpFixture({ weight = "light" }) {
 // --- one repetition ---------------------------------------------------------
 
 async function runOnce({ scenario, rep, args, platform, commit, binary, fixtures, outDir }) {
-  const label = `${scenario.id}${args.variant ? `-${args.variant}` : ""}-r${rep + 1}`;
+  const label = `${scenario.id}${args.variant ? `-${args.variant}` : ""}${
+    args.resourceProfile ? `-${args.resourceProfile}` : ""
+  }-r${rep + 1}`;
   const workDir = path.join(outDir, "work", label);
   // Only ever inside our own output directory — the harness must not be able to
   // delete anything a mistyped flag could point it at.
@@ -160,6 +173,15 @@ async function runOnce({ scenario, rep, args, platform, commit, binary, fixtures
   const dataDir = path.join(workDir, "data");
 
   const prepared = scenario.prepare({ fixtures, variant: args.variant, workDir });
+  if (args.resourceProfile) {
+    // Pin the requested resource-mode preset in the seeded profile — the knob
+    // the per-preset efficiency matrix turns. Scenarios themselves never set
+    // `resourceMode`, so this cannot clobber a scenario's own overrides.
+    prepared.settingsOverrides = {
+      ...(prepared.settingsOverrides ?? {}),
+      resourceMode: resourceModeSettings(args.resourceProfile),
+    };
+  }
   writeProfile(dataDir, prepared);
   const expectedShells = liveTerminalCount(prepared.layout);
 
@@ -174,6 +196,7 @@ async function runOnce({ scenario, rep, args, platform, commit, binary, fixtures
     configuration: {
       buildProfile: args.buildProfile,
       variant: args.variant ?? null,
+      resourceProfile: args.resourceProfile ?? null,
       durationS,
       stabilizeS,
       intervalMs,
@@ -328,7 +351,9 @@ async function runScenario(scenario, args, ctx) {
   const budget = loadBudget(ctx.platform.os, args.out);
   const verdict = combineVerdicts(evaluateBudget(aggregate, budget));
   aggregate.verdict = verdict.status;
-  const name = `${scenario.id}${args.variant ? `-${args.variant}` : ""}`;
+  const name = `${scenario.id}${args.variant ? `-${args.variant}` : ""}${
+    args.resourceProfile ? `-${args.resourceProfile}` : ""
+  }`;
   writeResult(path.join(args.out, "aggregates", `${name}.json`), aggregate);
   return { aggregate, scenario, verdict };
 }
@@ -377,6 +402,10 @@ async function main() {
     process.stdout.write(usage());
     return 0;
   }
+
+  // Validate an explicit resource profile up front, so a typo fails before any
+  // fixture is built or the app is launched.
+  if (args.resourceProfile) resourceModeSettings(args.resourceProfile);
 
   const ids = args.all ? autoScenarioIds() : [args.scenario];
   const scenarios = ids.map(getScenario);

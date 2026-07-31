@@ -9,8 +9,10 @@
   // Unread notifications stay passively visible as a dot on the trigger, so the
   // signal the old button carried isn't lost behind a click.
   import * as Popover from "$lib/components/ui/popover";
+  import ResourceSummary from "$lib/components/ResourceSummary.svelte";
   import { app } from "$lib/state/app.svelte";
   import { github } from "$lib/state/github.svelte";
+  import { resources } from "$lib/state/resources.svelte";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -64,9 +66,18 @@
   let open = $state(false);
   let triggerTooltipOpen = $state(false);
 
-  /** Opening is the moment to re-read the two cheap GitHub values, so the
-   *  popover never shows a figure up to one poll interval old. */
+  // The resource section renders only while the feature is on; its sampling
+  // lease follows the popover's lifecycle (open = sample, closed = parked).
+  const showResources = $derived(resources.enabled);
+
+  /** Opening is the moment to re-read the two cheap GitHub values (so the
+   *  popover never shows a figure up to one poll interval old) and to take /
+   *  release the resource-sampling lease. */
   function onOpenChange(next: boolean): void {
+    if (showResources) {
+      if (next) void resources.open();
+      else void resources.close();
+    }
     if (!next || !showGithub) return;
     void github.refreshRateLimit();
     if (showUnread) void github.refreshNotifications();
@@ -125,6 +136,21 @@
         </span>
       </div>
     </div>
+
+    {#if showResources}
+      <ResourceSummary />
+      <button
+        type="button"
+        class="flex w-full items-center gap-1.5 border-t border-border/60 px-3 py-2 text-muted-foreground hover:text-foreground {text.meta}"
+        onclick={() => {
+          open = false;
+          app.openSettings("resources");
+        }}
+      >
+        <SettingsIcon class="size-3.5" />
+        {i18n.t("resources.settingsLink")}
+      </button>
+    {/if}
 
     {#if showGithub}
       <div class="flex flex-col gap-2 border-t border-border/60 p-3">

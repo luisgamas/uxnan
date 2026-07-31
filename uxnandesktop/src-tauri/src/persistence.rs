@@ -209,6 +209,30 @@ mod tests {
     }
 
     #[test]
+    fn save_into_an_obstructed_data_dir_errors_instead_of_panicking() {
+        // The "AppData not writable" case: the data directory cannot be created
+        // because a plain file sits where it should be. The save must surface an
+        // error (the UI reports it) — never panic, never write elsewhere.
+        let dir = tempfile::tempdir().unwrap();
+        let obstruction = dir.path().join("not-a-dir");
+        std::fs::write(&obstruction, b"in the way").unwrap();
+        let mgr = PersistenceManager::new(&obstruction);
+        assert!(mgr.save(&AppData::default()).is_err());
+        // The obstruction is untouched — nothing was clobbered trying.
+        assert_eq!(std::fs::read(&obstruction).unwrap(), b"in the way");
+    }
+
+    #[test]
+    fn load_of_a_corrupt_state_file_errors_instead_of_panicking() {
+        // A forced close mid-write can't corrupt state.json (write-rename), but a
+        // disk-level mangling still can. The load must fail cleanly; the rotating
+        // backups are the recovery path.
+        let (dir, mgr) = temp_manager();
+        std::fs::write(dir.path().join(STATE_FILE), b"{ definitely not json").unwrap();
+        assert!(mgr.load().is_err());
+    }
+
+    #[test]
     fn migrate_accepts_missing_version() {
         let value = serde_json::json!({
             "repos": [],

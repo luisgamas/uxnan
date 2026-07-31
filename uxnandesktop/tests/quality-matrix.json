@@ -359,6 +359,26 @@
       "gaps": "A signed-artifact round trip is L5 by nature."
     },
     {
+      "id": "platform-claims",
+      "flow": "Platform claims and the release gate",
+      "owner": "desktop",
+      "covered": [
+        "L1"
+      ],
+      "planned": [
+        "L5"
+      ],
+      "evidence": {
+        "L1": "tests/platform-support.test.mjs (the matrix checked against the repo + the announced-level gate), scripts/platform-support.mjs (the release-workflow gate)"
+      },
+      "platforms": {
+        "windows": "gate in the required suite",
+        "macos": "gate in the required suite",
+        "linux": "gate in the required suite"
+      },
+      "gaps": "The L5 half is the per-platform manual checklists inside tests/platform-support.json — macOS/Linux hardware is not available, which is exactly what the matrix records."
+    },
+    {
       "id": "resource-footprint",
       "flow": "Resource footprint",
       "owner": "desktop",
@@ -376,7 +396,56 @@
         "macos": "untested",
         "linux": "untested"
       },
-      "gaps": "R07/R08 need an operator; R10 (the 2 h soak) has never been run."
+      "gaps": "R07/R08 need an operator; R10 (the 2 h soak) has never been run; R12 (the resource monitor's own overhead) is wired but its baseline has not been captured — the harness refuses to run beside a live uxnan instance."
+    },
+    {
+      "id": "resource-observability",
+      "flow": "In-app resource monitor (attribution, sampling, export)",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/resources/format.test.ts, src/lib/resources/display.test.ts",
+        "L2": "src/lib/components/ResourceSummary.svelte.test.ts, src/lib/components/ResourceSettings.svelte.test.ts",
+        "L3": "src-tauri/src/resources.rs #[cfg(test)] (cadence, attribution, deltas, buffer, export golden tests) plus src-tauri/tests/resources_processes.rs (real spawned process trees)"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "No E2E journey opens the backend popover against the real binary yet (the suite cannot run beside a live uxnan instance, so it was not runnable while this feature was built); the popover lease -> sample -> park round trip is covered at L2/L3 instead. macOS/Linux metrics run the same portable sysinfo code but are unvalidated on hardware — the UI says 'best effort' there on purpose."
+    },
+    {
+      "id": "resource-mode",
+      "flow": "Resource mode (presets, overrides, governed consumers, auto-sleep)",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "planned": [
+        "L4",
+        "L5"
+      ],
+      "evidence": {
+        "L1": "src/lib/resources/policy.test.ts, src/lib/resources/autoSleep.test.ts, scripts/resources/lib/scenarios.test.mjs",
+        "L2": "src/lib/components/ResourceModeSection.svelte.test.ts",
+        "L3": "src-tauri/src/resources.rs #[cfg(test)] (the history budget's clamp/trim/summary), src-tauri/src/model.rs #[cfg(test)] (resource-mode settings defaults + round trip)"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "No E2E journey switches the preset against the real binary (the same live-instance constraint as the popover journey), and the per-preset efficiency matrix (--resource-profile) is wired but unmeasured for the same reason — it must run with the app closed. Workspace auto-sleep's automatic level needs a multi-platform soak with real live processes before its feature flag can ever be retired (L5), and the maintainer's on-device review of the new Settings section is still owed."
     }
   ]
 }

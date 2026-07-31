@@ -241,6 +241,17 @@ impl PtyManager {
             .collect()
     }
 
+    /// The shell process id of one live session, or `None` when the id is
+    /// unknown to the manager or the child has no pid (already reaped). Used to
+    /// register the terminal with the resource monitor right after spawn.
+    pub fn pid_of(&self, id: &str) -> Option<u32> {
+        self.sessions
+            .lock()
+            .unwrap()
+            .get(id)
+            .and_then(|s| s.child.lock().unwrap().process_id())
+    }
+
     /// Number of live sessions (used by tests).
     #[cfg(test)]
     fn len(&self) -> usize {

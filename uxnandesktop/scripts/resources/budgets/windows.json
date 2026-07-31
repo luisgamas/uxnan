@@ -9,12 +9,20 @@
     "margin: +15% warn / +35% fail for memory, +20/+40% for the managed bucket,",
     "+25/+50% for handles. CPU P95 and launch latency get much wider bands (x2.5",
     "/ x4 and x6 / x12, with floors) because they are the noisy metrics on a",
-    "desktop — a gate that fires on noise gets switched off, and then nothing is",
+    "desktop \u2014 a gate that fires on noise gets switched off, and then nothing is",
     "measured at all.",
     "",
     "mode: 'warn' downgrades every `fail` to a warning, so CI reports without",
     "blocking. Flip to 'enforce' after two weeks of real runs establish the noise",
-    "floor. Raising a limit afterwards needs the run that justifies it in the diff."
+    "floor. Raising a limit afterwards needs the run that justifies it in the diff.",
+    "",
+    "R12 is PROVISIONAL: its ceilings are copied verbatim from R02 (its baseline)",
+    "because the claim under test is exactly \"the parked resource monitor adds",
+    "nothing a budget can see\", and the real measured baseline is still owed \u2014",
+    "the harness refuses to run beside a live uxnan instance, so the capture",
+    "must happen with the app closed. FOR-DEV: replace these with measured",
+    "medians (+ the standard margins) on the first real R12 run \u2014 see",
+    "FOR-DEV.md \u2192 Resource monitor."
   ],
   "scenarios": {
     "R00": {
@@ -297,6 +305,32 @@
       "cpuP95": {
         "warn": 22,
         "fail": 35
+      },
+      "launchToWindowMs": {
+        "warn": 400,
+        "fail": 800
+      }
+    },
+    "R12": {
+      "ownPrivateP50Mb": {
+        "warn": 290,
+        "fail": 341
+      },
+      "ownRssP50Mb": {
+        "warn": 582,
+        "fail": 683
+      },
+      "managedPrivateP50Mb": {
+        "warn": 309,
+        "fail": 360
+      },
+      "handlesP95": {
+        "warn": 4902,
+        "fail": 5882
+      },
+      "cpuP95": {
+        "warn": 16,
+        "fail": 26
       },
       "launchToWindowMs": {
         "warn": 400,

@@ -45,7 +45,10 @@ keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
 round-trip across a process boundary, seed-once, a truncated file degrading
 instead of panicking, nothing written outside its own root, and a path with
-spaces and non-ASCII characters; `github_cli.rs` (12 tests) drives the
+spaces and non-ASCII characters; `resources_processes.rs` (3 tests) drives the
+resource monitor against **real spawned process trees** — live attribution, the
+start-time probe agreeing with the full table read, and the orphan flow (owner
+closed, child survives, cleared when it ends); `github_cli.rs` (12 tests) drives the
 **production GitHub layer through real child processes** — a scripted stand-in
 `gh` on `PATH` answers with the shapes recorded in
 `tests/fixtures/github/mutation-outcomes.json` (each with its provenance), so
@@ -55,22 +58,33 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **421 backend tests**
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **476 backend tests**
 in total (plus the 7 ignored live tests and the ignored real-scheduler probe).
 
-The 396 unit tests cover the Serde model shape, persistence round-trip / atomicity /
-migration / backups, the GitHub layer's parsers — including **contract tests
-that feed them captured real `gh` output** frozen under `tests/fixtures/github/`
-(`src/github/fixture_tests.rs`; capture + sanitization tool in
-`scripts/github/capture-fixtures.mjs`, status in
-[`github-validation.md`](github-validation.md)), git + worktree ops (including creation, opt-in branch
+The 448 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+migration / backups (including a corrupt state file and an obstructed data
+directory failing cleanly instead of panicking), the GitHub layer's parsers —
+including **contract tests that feed them captured real `gh` output** frozen
+under `tests/fixtures/github/` (`src/github/fixture_tests.rs`; capture +
+sanitization tool in `scripts/github/capture-fixtures.mjs`, status in
+[`github-validation.md`](github-validation.md)), git + worktree ops (including
+creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast
 path, the PTY lifecycle,
 the agent hook server, the integrated-browser scheme gate, process detection,
-the updater's per-channel endpoints, and the pets store (Codex-format manifest
+the updater's per-channel endpoints, the keep-awake state machine (fake
+inhibitor: flip-on-change, the auto-release cap, release-on-drop — plus one
+host-OS test that toggles the real inhibitor, so each CI runner exercises its
+own platform branch), the pet overlay's monitor-aware placement (an unplugged
+display's saved position rejected, the fallback corner provably on-screen), the
+pets store (Codex-format manifest
 parsing, path-traversal refusal, and the import copy staying scoped to the
-manifest + its spritesheet).
+manifest + its spritesheet), and the resource monitor (`resources.rs`: cadence
+resolution, pid+start-time attribution, CPU/I-O delta honesty, buffer bounds,
+orphan detection, the configurable history budget's clamp/trim, and the export
+sanitizer's golden + schema-allow-list tests), plus the resource-mode settings
+block (defaults, back-compat, camelCase round trip).
 
 ## Frontend (Svelte / TypeScript)
 
@@ -119,7 +133,13 @@ schedule + next-runs preview, the run/step display projections, the seeded
 example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
-vs merely still readable) — plus the **resource-benchmark harness** under
+vs merely still readable) and `platform.ts` (user-agent OS detection behind the
+untested-platform badge and every per-OS frontend default) and
+`resources/policy.ts` (the resource-mode policy
+engine: presets with Balanced pinned to the pre-mode constants, residue-free
+normalization/clamping, headroom gating and the effective poll intervals) and
+`resources/autoSleep.ts` (every auto-sleep guard under a fake clock) — plus
+the **resource-benchmark harness** under
 `scripts/resources/lib/` (process-tree attribution own/managed/external, the
 result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
@@ -130,9 +150,12 @@ validation tooling** (`scripts/github/lib.test.mjs`: the sandbox allowlist's
 refusals as real child processes, capture sanitization, the read/mutation
 classifier), the **GitHub command inventory** check
 (`tests/github-command-inventory.test.mjs` — every gh-backed function in
-`github.rs` must have an inventoried row whose evidence exists) and the
-**quality matrix** check. **591 tests** across both projects, config in
-`vitest.config.ts` / `vitest.dom.config.ts`.
+`github.rs` must have an inventoried row whose evidence exists), the
+**quality matrix** check and the **platform support matrix**
+check (`tests/platform-support.test.mjs` — every platform claim backed by
+evidence that exists, and the announced level gated to it; see
+[`platform-support.md`](platform-support.md)). **693 tests** across both
+projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
 
@@ -147,7 +170,10 @@ instead of quietly agreeing with a mock nobody updated.
   rather than returning `undefined`, which would surface later as a confusing
   null-deref inside the component.
 - `src/test/render.ts` — `mount()` (component + backend + `user-event`, all torn
-  down together) and `until()` for the waits that have no DOM signal.
+  down together), `mountWithProviders()` for components needing the app-level
+  context the root layout provides (bits-ui tooltips throw without their
+  provider — `ProviderHost.svelte`), and `until()` for the waits that have no
+  DOM signal.
 - `src/test/setup.dom.ts` — jsdom's gaps filled once (`matchMedia`,
   `ResizeObserver`, canvas), plus a console policy: an unknown-prop or
   lifecycle-outside-component warning **fails** the test; known third-party
@@ -279,6 +305,16 @@ machine — an unrecorded manual check is indistinguishable from one nobody did.
 
 **Never in the required CI job.** These need credentials, cost money, or mutate
 somebody's real data.
+
+**Platform claims have their own machine-readable record**: what each
+platform×feature pair has demonstrated (with date, sha, hardware, tester) lives
+in [`../tests/platform-support.json`](../tests/platform-support.json), checked
+by `tests/platform-support.test.mjs` and summarised in
+[`platform-support.md`](platform-support.md). The per-platform release
+checklists are **generated from it** (`node scripts/platform-support.mjs
+checklist`), and the release workflow refuses a build whose announced platform
+state exceeds the evidence (`… gate`). The table below is the cross-cutting
+manual list; recording one of its platform runs means updating that matrix.
 
 | # | Check | Why it cannot be automated here | Last verified |
 |---|---|---|---|

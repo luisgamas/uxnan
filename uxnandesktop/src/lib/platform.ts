@@ -4,12 +4,11 @@
 
 export type OS = "windows" | "macos" | "linux" | "other";
 
-export function currentOS(): OS {
-  if (typeof navigator === "undefined") return "other";
-  const ua = navigator.userAgent;
-  if (/Windows/i.test(ua)) return "windows";
-  if (/Mac/i.test(ua)) return "macos";
-  if (/Linux|X11/i.test(ua)) return "linux";
+export function currentOS(ua?: string): OS {
+  const agent = ua ?? (typeof navigator === "undefined" ? "" : navigator.userAgent);
+  if (/Windows/i.test(agent)) return "windows";
+  if (/Mac/i.test(agent)) return "macos";
+  if (/Linux|X11/i.test(agent)) return "linux";
   return "other";
 }
 

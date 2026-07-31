@@ -10,7 +10,9 @@
   import { anyAgentWorking } from "$lib/state/agentDisplay";
   import { unread } from "$lib/state/unread.svelte";
   import { pets } from "$lib/state/pets.svelte";
-  import { setPreventSleep } from "$lib/api";
+  import { autoSleep } from "$lib/state/autoSleep.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
+  import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
   import PetWindow from "$lib/components/PetWindow.svelte";
@@ -107,6 +109,24 @@
     if (petWindow) return;
     const active = app.settings.preventSleep === true && anyAgentWorking();
     void setPreventSleep(active).catch(() => {});
+  });
+
+  // Resource mode → backend: push the resolved history budget to the resource
+  // monitor (its one backend-side parameter). Re-runs on a profile/override
+  // change, so switching presets applies hot and reversibly.
+  $effect(() => {
+    if (petWindow) return;
+    if (app.backend !== "ready") return;
+    const seconds = resourceMode.policy.capabilities.resourceHistorySeconds;
+    void resourcesSetPolicy(seconds).catch(() => {});
+  });
+
+  // Workspace auto-sleep engine: one cheap evaluation per minute, gated inside
+  // by the profile's capability AND the explicit feature flag — armed here so
+  // enabling the flag needs no restart.
+  $effect(() => {
+    if (petWindow) return;
+    return autoSleep.start();
   });
 </script>
 
