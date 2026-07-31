@@ -1,0 +1,26 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh auth status --json hosts",
+  "capturedFrom": "github.com (host status)",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": {
+    "hosts": {
+      "github.com": [
+        {
+          "state": "success",
+          "active": true,
+          "host": "github.com",
+          "login": "luisgamas",
+          "tokenSource": "keyring",
+          "scopes": "gist, project, read:org, repo, workflow",
+          "gitProtocol": "https"
+        }
+      ]
+    }
+  }
+}

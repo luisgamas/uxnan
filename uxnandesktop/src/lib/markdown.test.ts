@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { renderMarkdown, type MdBlock, type MdInline } from "./markdown";
 
@@ -201,5 +203,66 @@ describe("renderMarkdown", () => {
     const details = alert.children.find((c) => c.type === "details");
     expect(details).toBeDefined();
     expect((details as Extract<MdBlock, { type: "details" }>).summary).toBe("Why?");
+  });
+});
+
+describe("renderMarkdown against a captured real bot comment", () => {
+  // Frozen from PR #132's github-actions conversation comment (see
+  // tests/fixtures/github/pr-view-132.json for provenance): the exact kind of
+  // body the renderer exists for — a hidden HTML machine marker followed by
+  // Markdown — captured from GitHub rather than typed into a test.
+  const body = (
+    JSON.parse(
+      fs.readFileSync(
+        path.join(__dirname, "..", "..", "tests", "fixtures", "github", "pr-view-132.json"),
+        "utf8",
+      ),
+    ) as { payload: { comments: { body: string }[] } }
+  ).payload.comments[0].body;
+
+  it("hides the bot's HTML comment marker instead of rendering it", () => {
+    expect(body).toContain("<!-- ci-failure-desktop -->");
+    const text = renderMarkdown(body)
+      .map((b) => JSON.stringify(b))
+      .join("\n");
+    expect(text).not.toContain("ci-failure-desktop");
+  });
+
+  it("renders the real structure: a heading, code spans and the failure link", () => {
+    const blocks = renderMarkdown(body);
+    const heading = blocks.find((b) => b.type === "heading");
+    expect(heading?.type).toBe("heading");
+    if (heading?.type === "heading") {
+      expect(heading.level).toBe(3);
+      expect(inlineText(heading.children)).toContain("CI (Desktop) failed");
+    }
+    const flat = JSON.stringify(blocks);
+    expect(flat).toContain("uxnandesktop"); // `uxnandesktop` code span survives
+    expect(flat).toContain("actions/runs/30607815228"); // the failure link
+  });
+});
+
+describe("GFM bare autolinks", () => {
+  it("renders a bare URL as a link instead of deleting it", () => {
+    // Lezer's GFM extension emits a naked `URL` node (no `Autolink` wrapper)
+    // for bare URLs; the walk used to drop it, which deleted the URL from the
+    // output entirely — found by the captured bot comment above.
+    const [p] = renderMarkdown("see https://example.com/x now");
+    expect(p.type).toBe("paragraph");
+    if (p.type === "paragraph") {
+      const link = p.children.find((n) => n.type === "link");
+      expect(link?.type).toBe("link");
+      if (link?.type === "link") {
+        expect(link.href).toBe("https://example.com/x");
+        expect(inlineText(link.children)).toBe("https://example.com/x");
+      }
+      expect(inlineText(p.children)).toBe("see https://example.com/x now");
+    }
+    // The angle-bracket form keeps working through the `Autolink` node.
+    const [angle] = renderMarkdown("go <https://y.z> now");
+    if (angle.type === "paragraph") {
+      const link = angle.children.find((n) => n.type === "link");
+      expect(link?.type === "link" && link.href).toBe("https://y.z");
+    }
   });
 });

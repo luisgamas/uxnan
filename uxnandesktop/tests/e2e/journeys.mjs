@@ -15,6 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { makeRepo } from "../fixtures/shared.mjs";
@@ -32,6 +33,25 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_ROOT = path.join(HERE, ".fixtures");
 const RESOURCE_FIXTURES = path.resolve(HERE, "..", "..", "scripts", "resources", "fixtures");
+
+/** Where the github-fake journey writes the fake gh's canned answers. The
+ *  driver env points `UXNAN_FIXTURE_GH_RESPONSES` here (a fixed path: env is
+ *  set at driver spawn, before any journey has run). */
+export const FAKE_GH_RESPONSES = path.join(FIXTURE_ROOT, "github-fake-responses.json");
+
+/** Give a fixture repo a github.com origin (idempotent). */
+function ensureGithubOrigin(dir) {
+  const url = "https://github.com/fixture-org/fixture-repo.git";
+  const probe = spawnSync("git", ["-C", dir, "remote", "get-url", "origin"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (probe.status === 0) {
+    spawnSync("git", ["-C", dir, "remote", "set-url", "origin", url], { windowsHide: true });
+  } else {
+    spawnSync("git", ["-C", dir, "remote", "add", "origin", url], { windowsHide: true });
+  }
+}
 
 /** A small deterministic git repository, generated once and reused. */
 function repo() {
@@ -147,6 +167,46 @@ export const JOURNEYS = {
 
   /** Nothing special; the spec opens the browser itself. */
   browser: () => ({ profile: {}, facts: {} }),
+
+  /**
+   * OPT-IN GitHub journey: a git project whose `origin` points at github.com,
+   * with every `gh` call answered by the fake (the driver's PATH is re-routed
+   * by `wdio.conf.mjs` when `UXNAN_E2E_FAKE_GH=1`; the spec self-skips
+   * otherwise). The canned answers are the **captured real payloads** from
+   * `tests/fixtures/github/`, so what the app parses end to end here is what
+   * GitHub actually sent once — no network, no account, and the remote is
+   * never contacted (gh is the only thing that would, and gh is the fake).
+   */
+  "github-fake": () => {
+    const r = repo();
+    // A GitHub-shaped origin so the repo-context probe engages. Never fetched:
+    // only `gh` would reach it, and `gh` is the fixture.
+    ensureGithubOrigin(r.dir);
+    const prList = JSON.parse(
+      fs.readFileSync(path.join(HERE, "..", "fixtures", "github", "pr-list.json"), "utf8"),
+    ).payload;
+    const rateLimit = JSON.parse(
+      fs.readFileSync(path.join(HERE, "..", "fixtures", "github", "rate-limit.json"), "utf8"),
+    ).payload;
+    fs.mkdirSync(path.dirname(FAKE_GH_RESPONSES), { recursive: true });
+    fs.writeFileSync(
+      FAKE_GH_RESPONSES,
+      JSON.stringify({ "pr list": prList, "api rate_limit": rateLimit, "issue list": [] }),
+      "utf8",
+    );
+    return {
+      profile: {
+        repos: [project({ id: "e2e-gh-repo", name: "fixture-repo", dir: r.dir })],
+      },
+      facts: {
+        repoDir: r.dir,
+        login: "fixture-user",
+        firstPr: { number: prList[0].number, title: prList[0].title },
+        prCount: prList.length,
+        rateLimit: rateLimit.resources.core.limit,
+      },
+    };
+  },
 
   /**
    * A profile written the way an older build wrote it. The app has to migrate

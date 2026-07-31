@@ -1,0 +1,17 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh pr view 132 --json mergeStateStatus,mergeable,autoMergeRequest,headRefOid",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": {
+    "autoMergeRequest": null,
+    "headRefOid": "2fef851eba1ad0609992bfff22a0d6ba098f2e16",
+    "mergeStateStatus": "UNKNOWN",
+    "mergeable": "UNKNOWN"
+  }
+}

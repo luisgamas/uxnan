@@ -22,6 +22,13 @@
  *   UXNAN_FIXTURE_GH_DELAY_MS=<n>   stall before answering (timeout tests)
  *   UXNAN_FIXTURE_GH_RESPONSES=<path>  JSON map of "<subcommand>" → payload
  *
+ * A payload is normally the stdout to answer with (a string, or JSON to
+ * stringify). It can also be a full **outcome** — `{"$outcome": {"exit": 1,
+ * "stdout": "…", "stderr": "…"}}` — which is how a test scripts a real gh
+ * *failure* shape (a blocked merge, a logged-out read) rather than just a
+ * success body. The canonical failure shapes live in
+ * `tests/fixtures/github/mutation-outcomes.json`, each with its provenance.
+ *
  * Arguments are logged, tokens are not: anything that looks like a credential is
  * replaced before it reaches the log, because a fixture that records secrets is
  * a fixture that eventually commits one.
@@ -90,6 +97,24 @@ function pick(table) {
 /** Answers that make the app's happy paths work with no configuration. */
 const DEFAULTS = {
   "--version": "gh version 2.0.0-uxnan-fixture (fake)\n",
+  // `auth status --json hosts` (the structured probe the app tries first):
+  // `hosts` is a *positional* to the matcher since `--json` is a flag, so the
+  // three-word key answers the JSON form and the two-word key the prose one.
+  "auth status hosts": JSON.stringify({
+    hosts: {
+      "github.com": [
+        {
+          state: "success",
+          active: true,
+          host: "github.com",
+          login: "fixture-user",
+          tokenSource: "keyring",
+          scopes: "repo, read:org",
+          gitProtocol: "https",
+        },
+      ],
+    },
+  }),
   "auth status": "github.com\n  ✓ Logged in to github.com account fixture-user (keyring)\n  - Token scopes: 'repo', 'read:org'\n",
   "api rate_limit": JSON.stringify({
     resources: { core: { limit: 5000, remaining: 4987, reset: 0 } },
@@ -117,6 +142,15 @@ async function main() {
         "Add one via UXNAN_FIXTURE_GH_RESPONSES so the test states what it expects.\n",
     );
     process.exit(65);
+  }
+
+  // A scripted outcome: stdout + stderr + exit code, the way the real gh
+  // shapes a refusal. Anything else is a plain success payload.
+  if (answer !== null && typeof answer === "object" && "$outcome" in answer) {
+    const outcome = answer.$outcome ?? {};
+    if (outcome.stdout) process.stdout.write(outcome.stdout);
+    if (outcome.stderr) process.stderr.write(outcome.stderr);
+    process.exit(Number(outcome.exit ?? 0));
   }
 
   process.stdout.write(typeof answer === "string" ? answer : `${JSON.stringify(answer)}\n`);

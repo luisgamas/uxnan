@@ -1,0 +1,55 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh api repos/luisgamas/uxnan/rules/branches/main",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": [
+    {
+      "type": "deletion",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "luisgamas/uxnan",
+      "ruleset_id": 17416679
+    },
+    {
+      "type": "non_fast_forward",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "luisgamas/uxnan",
+      "ruleset_id": 17416679
+    },
+    {
+      "type": "creation",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "luisgamas/uxnan",
+      "ruleset_id": 17416679
+    },
+    {
+      "type": "update",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "luisgamas/uxnan",
+      "ruleset_id": 17416679
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "required_reviewers": [],
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": [
+          "merge",
+          "squash"
+        ]
+      },
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "luisgamas/uxnan",
+      "ruleset_id": 17416679
+    }
+  ]
+}

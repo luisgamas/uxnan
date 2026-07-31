@@ -59,6 +59,16 @@ describe("the fake gh", () => {
     expect(JSON.parse(gh(["api", "rate_limit"]).stdout).resources.core.limit).toBe(5000);
   });
 
+  it("answers the structured auth probe the app tries first", () => {
+    // `gh auth status --json hosts` — the shape the production status() parses
+    // before falling back to the prose banner.
+    const out = JSON.parse(gh(["auth", "status", "--json", "hosts"]).stdout);
+    const account = out.hosts["github.com"][0];
+    expect(account.login).toBe("fixture-user");
+    expect(account.active).toBe(true);
+    expect(account.scopes).toContain("repo");
+  });
+
   it("is deterministic — the same call twice gives the same bytes", () => {
     expect(gh(["pr", "list"]).stdout).toBe(gh(["pr", "list"]).stdout);
   });
@@ -85,6 +95,32 @@ describe("the fake gh", () => {
     );
     const out = JSON.parse(gh(["pr", "list"], { UXNAN_FIXTURE_GH_RESPONSES: file }).stdout);
     expect(out[0].title).toBe("Specific");
+  });
+
+  it("scripts a full outcome — the real gh's refusal shapes, stderr and exit code intact", () => {
+    // The canonical shapes are the provenance-carrying cases in
+    // mutation-outcomes.json; a test wires one to a subcommand and the fake
+    // answers exactly like the real gh refusing that operation.
+    const outcomes = JSON.parse(
+      fs.readFileSync(
+        path.join(path.dirname(FAKE_GH), "github", "mutation-outcomes.json"),
+        "utf8",
+      ),
+    );
+    const blocked = outcomes.cases.find((c) => c.id === "merge-blocked-policy");
+    const file = path.join(TMP, "outcome-responses.json");
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        "pr merge": {
+          $outcome: { exit: blocked.exit, stdout: blocked.stdout, stderr: blocked.stderr },
+        },
+      }),
+    );
+    const out = gh(["pr", "merge", "7", "--squash"], { UXNAN_FIXTURE_GH_RESPONSES: file });
+    expect(out.status).toBe(1);
+    expect(out.stderr).toMatch(/is not mergeable: the base branch policy prohibits the merge/);
+    expect(out.stdout).toBe("");
   });
 
   it("logs the arguments it was given", () => {

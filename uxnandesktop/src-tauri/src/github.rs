@@ -2300,6 +2300,12 @@ fn normalize_state(state: &str) -> &'static str {
     }
 }
 
+/// Contract tests: the same parsers, fed **captured real `gh` output** frozen
+/// under `tests/fixtures/github/` (see `scripts/github/capture-fixtures.mjs`).
+/// In their own file so this one stays about production code.
+#[cfg(test)]
+mod fixture_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

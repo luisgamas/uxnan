@@ -1,0 +1,133 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh run list --json databaseId,name,displayTitle,status,conclusion,headBranch,workflowName,event,createdAt,url --limit 10",
+  "capturedFrom": "luisgamas/uxnan",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted"
+  ],
+  "payload": [
+    {
+      "conclusion": "",
+      "createdAt": "2026-07-31T07:18:45Z",
+      "databaseId": 30612399464,
+      "displayTitle": "Resource benchmarks (uxnandesktop)",
+      "event": "schedule",
+      "headBranch": "main",
+      "name": "Resource benchmarks (uxnandesktop)",
+      "status": "in_progress",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30612399464",
+      "workflowName": "Resource benchmarks (uxnandesktop)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-31T06:03:41Z",
+      "databaseId": 30608531497,
+      "displayTitle": "Merge pull request #132 from luisgamas/feat/desktop-test-harness",
+      "event": "push",
+      "headBranch": "main",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30608531497",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-31T05:57:58Z",
+      "databaseId": 30608248706,
+      "displayTitle": "test(desktop): build the test pyramid — components, integration, fixtures and real E2E",
+      "event": "pull_request",
+      "headBranch": "feat/desktop-test-harness",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30608248706",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "failure",
+      "createdAt": "2026-07-31T05:48:36Z",
+      "databaseId": 30607815228,
+      "displayTitle": "test(desktop): build the test pyramid — components, integration, fixtures and real E2E",
+      "event": "pull_request",
+      "headBranch": "feat/desktop-test-harness",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30607815228",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-30T23:58:18Z",
+      "databaseId": 30592137439,
+      "displayTitle": "Merge pull request #131 from luisgamas/feat/right-panel-live-refresh",
+      "event": "push",
+      "headBranch": "main",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30592137439",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-30T23:45:25Z",
+      "databaseId": 30591492427,
+      "displayTitle": "fix(desktop): keep right panel data live",
+      "event": "pull_request",
+      "headBranch": "feat/right-panel-live-refresh",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30591492427",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-30T23:10:48Z",
+      "databaseId": 30589678247,
+      "displayTitle": "Merge pull request #130 from luisgamas/feat/desktop-resource-benchmarks",
+      "event": "push",
+      "headBranch": "main",
+      "name": "Deploy — Web (Cloudflare Pages)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30589678247",
+      "workflowName": "Deploy — Web (Cloudflare Pages)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-30T23:10:48Z",
+      "databaseId": 30589678236,
+      "displayTitle": "Merge pull request #130 from luisgamas/feat/desktop-resource-benchmarks",
+      "event": "push",
+      "headBranch": "main",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30589678236",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-30T23:05:36Z",
+      "databaseId": 30589394073,
+      "displayTitle": "chore(rust): drop a stale reference from an mcpinject test comment",
+      "event": "push",
+      "headBranch": "main",
+      "name": "CI — Desktop (uxnandesktop · Tauri 2)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30589394073",
+      "workflowName": "CI — Desktop (uxnandesktop · Tauri 2)"
+    },
+    {
+      "conclusion": "success",
+      "createdAt": "2026-07-30T22:54:58Z",
+      "databaseId": 30588789038,
+      "displayTitle": "feat(desktop): measure the resource footprint instead of asserting it",
+      "event": "pull_request",
+      "headBranch": "feat/desktop-resource-benchmarks",
+      "name": "CI — Web (marketing site)",
+      "status": "completed",
+      "url": "https://github.com/luisgamas/uxnan/actions/runs/30588789038",
+      "workflowName": "CI — Web (marketing site)"
+    }
+  ]
+}

@@ -28,3 +28,7 @@ pnpm-debug.log*
 /tests/e2e/.artifacts
 /tests/e2e/.profile
 /tests/e2e/.fixtures
+
+# GitHub sandbox harness: the failure artifact a broken --execute run leaves
+# behind (per-machine evidence; its presence blocks further execution).
+/scripts/github/.sandbox-failure.json

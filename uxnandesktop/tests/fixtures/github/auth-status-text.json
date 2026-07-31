@@ -1,0 +1,13 @@
+{
+  "$comment": "Frozen capture of real `gh` output for the parser contract tests. Regenerate with scripts/github/capture-fixtures.mjs and review the diff.",
+  "capturedWith": "gh auth status",
+  "capturedFrom": "github.com (host status)",
+  "capturedAt": "2026-07-31",
+  "ghVersion": "gh version 2.95.0 (2026-06-17)",
+  "sanitized": [
+    "node_id/gravatar_id keys and string-valued (GraphQL) id keys stripped",
+    "email-shaped strings redacted",
+    "token already masked by gh itself"
+  ],
+  "payloadText": "github.com\n  ✓ Logged in to github.com account luisgamas (keyring)\n  - Active account: true\n  - Git operations protocol: https\n  - Token: gho_************************************\n  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'"
+}
