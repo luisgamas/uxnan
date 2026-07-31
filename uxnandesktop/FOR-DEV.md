@@ -18,7 +18,7 @@ OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
 with" external editors/IDEs**, **automations**, **pets**, **a reproducible
-resource benchmark**). 388 Rust tests (378 unit + 10 integration) + 565 frontend Vitest tests across
+resource benchmark**, **an in-app resource monitor**). 429 Rust tests (416 unit + 13 integration) + 607 frontend Vitest tests across
 two projects — pure logic and **Svelte component tests** — plus a **real E2E suite**
 (WebdriverIO + tauri-driver: 8 journeys, 24 tests, green on Windows). macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
@@ -276,6 +276,47 @@ not missing machinery.
       harness has to refuse to run alongside another uxnan. Isolating it per run
       would remove that precondition; it needs either a config-level
       `dataDirectory` uxnan controls per launch or an upstream hook.
+
+## Resource monitor — follow-ups ☐
+
+**The in-app resource monitor is built and tested** (`src-tauri/src/resources.rs`,
+`docs/resource-monitoring.md`): demand-driven sampling, pid+start-time
+attribution with explicit confidence, orphan detection, the popover + Settings
+surfaces, and the consent-first sanitized export. What is left is measurement
+and platform confidence, not machinery.
+
+- [ ] **Capture the R12 baseline and replace the provisional Windows budget.**
+      The scenario is wired end to end (`npm run bench -- --scenario R12
+      --variant off|parked|sweep`) and its budget entry is a verbatim copy of
+      R02's — which is exactly the claim under test ("parked adds nothing"),
+      but a copied ceiling is not a measurement. The harness (correctly)
+      refuses to run beside a live uxnan instance, so this **must run with the
+      app closed**; five repetitions per variant, then write the measured
+      medians + margins into `budgets/windows.json` (the `FOR-DEV:` note in its
+      `_comment` marks the spot).
+- [ ] **An L4 journey for the popover round trip.** No E2E spec opens the
+      backend popover against the real binary yet — the suite could not run
+      beside the live instance this feature was built next to, and an
+      unverifiable spec is worse than an honest gap. The journey is viable with
+      the existing WebdriverIO pattern (click the status-bar trigger, assert
+      the Resources section renders and the lease releases on close); until
+      then the round trip is covered at L2 (component) + L3 (monitor against
+      real processes), per `tests/quality-matrix.json` →
+      `resource-observability`.
+- [ ] **Validate the metrics on real macOS/Linux hardware.** The collector is
+      portable `sysinfo` and compiles everywhere, but only Windows figures have
+      been checked against reality — `capabilities.validated` is `false` off
+      Windows and the UI says "best effort" on purpose. Validating means: start
+      times round-trip (the identity scheme), CPU normalization looks sane, and
+      macOS's out-of-tree WebKit content process is measured for what the
+      `desktop` group misses there. Until then no non-Windows figure may be
+      published.
+- [ ] *(optional)* **A first consumer for the `budget` lease kind + the
+      internal event stream.** `ResourceMonitor::subscribe_events` broadcasts
+      every frame and the `budget` cadence (3 s) is implemented and tested, but
+      nothing subscribes with it yet — it is the designed hook for a future
+      resource-limits / orchestration-routing engine, kept in the contract so
+      that engine does not need a second sampler.
 
 ## Automations — follow-ups ☐
 
@@ -918,7 +959,7 @@ go stale; these are the ones worth calling out.
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 388 Rust + 565 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 429 Rust + 607 Vitest tests (both
   projects: pure logic and components). E2E runs in its own on-demand/nightly
   Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →

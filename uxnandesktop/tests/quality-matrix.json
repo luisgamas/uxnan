@@ -375,7 +375,31 @@
         "macos": "untested",
         "linux": "untested"
       },
-      "gaps": "R07/R08 need an operator; R10 (the 2 h soak) has never been run."
+      "gaps": "R07/R08 need an operator; R10 (the 2 h soak) has never been run; R12 (the resource monitor's own overhead) is wired but its baseline has not been captured — the harness refuses to run beside a live uxnan instance."
+    },
+    {
+      "id": "resource-observability",
+      "flow": "In-app resource monitor (attribution, sampling, export)",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/resources/format.test.ts, src/lib/resources/display.test.ts",
+        "L2": "src/lib/components/ResourceSummary.svelte.test.ts, src/lib/components/ResourceSettings.svelte.test.ts",
+        "L3": "src-tauri/src/resources.rs #[cfg(test)] (cadence, attribution, deltas, buffer, export golden tests) plus src-tauri/tests/resources_processes.rs (real spawned process trees)"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "No E2E journey opens the backend popover against the real binary yet (the suite cannot run beside a live uxnan instance, so it was not runnable while this feature was built); the popover lease -> sample -> park round trip is covered at L2/L3 instead. macOS/Linux metrics run the same portable sysinfo code but are unvalidated on hardware — the UI says 'best effort' there on purpose."
     }
   ]
 }

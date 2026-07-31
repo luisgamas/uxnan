@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — local resource observability: what uxnan, its terminals and its agents cost
+
+- **A demand-driven resource monitor** (`src-tauri/src/resources.rs`,
+  `docs/resource-monitoring.md`): CPU / memory / process attribution for the
+  desktop process, every PTY it spawned and the agents running inside them —
+  local only, never telemetry, never a general task manager. Attribution is
+  evidence-based (pid + start time + parent chain, plus the explicit link each
+  terminal registers at spawn with its workspace) and every figure carries a
+  confidence: **exact** (identity verified), **inferred** (parent-chain),
+  **unknown** (e.g. a recycled pid — the link is voided and nothing is
+  claimed). Absent data is never reported as zero.
+- **Zero cost unless consumed.** The sampler is fully parked (no timer, no OS
+  handle) until a consumer exists: 2 s while the backend popover is open (a
+  self-expiring lease the frontend renews), 3 s for a reserved budget consumer,
+  and the **opt-in** 15–30 s background orphan sweep — the only mode that runs
+  unasked. History is a ~10-minute in-memory circular buffer of aggregates;
+  nothing per-process is persisted.
+- **Surfaces**: the status bar's backend popover gains a compact *Resources*
+  section (Uxnan total with peak + memory trend, per-workspace and per-agent
+  rows with confidence marks, spike highlighting, ended groups frozen with a
+  note, and an amber warning for **processes that outlived their closed
+  terminal**); **Settings → Resources** holds the switches, explains the
+  confidence labels and hosts the diagnostics export.
+- **Consent-first sanitized export**: the dialog lists the JSON document's
+  exact fields before anything is written; workspace/terminal ids become
+  opaque labels, agent names survive only via a known-catalog allow-list, and
+  golden + schema-allow-list tests fail the build on any leak or un-reviewed
+  field. Command lines, environment, cwd and file names are never read at all.
+- **Benchmark scenario R12** measures the feature's own promise (off / parked
+  must equal the R02 baseline; the sweep is the only unattended cost), wired as
+  a one-command run with a provisional Windows budget until a real baseline is
+  captured with the app closed.
+- Tests: 38 Rust unit tests (cadence, attribution, deltas, buffer bounds,
+  orphans, the parked loop under a paused clock, the export golden tests),
+  3 integration tests against real spawned process trees, 24 pure-logic Vitest
+  tests and 18 component tests (states, confidence marks, the export consent
+  flow). Totals: **607 Vitest**, **429 Rust** (416 unit + 13 integration).
+  Full EN/ES i18n; the shared component-test harness gains
+  `mountWithProviders` for components that need the app-level tooltip context.
+
 ### Added — a test pyramid: component tests, backend integration, and real end-to-end
 
 - **Five layers, each doing what the one below cannot** (`docs/testing.md`): L0

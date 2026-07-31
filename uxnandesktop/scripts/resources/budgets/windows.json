@@ -20,8 +20,9 @@
     "because the claim under test is exactly \"the parked resource monitor adds",
     "nothing a budget can see\", and the real measured baseline is still owed \u2014",
     "the harness refuses to run beside a live uxnan instance, so the capture",
-    "must happen with the app closed. Replace these with measured medians (+",
-    "the standard margins) on the first real R12 run."
+    "must happen with the app closed. FOR-DEV: replace these with measured",
+    "medians (+ the standard margins) on the first real R12 run \u2014 see",
+    "FOR-DEV.md \u2192 Resource monitor."
   ],
   "scenarios": {
     "R00": {
