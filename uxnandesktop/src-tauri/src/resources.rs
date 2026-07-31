@@ -1245,7 +1245,9 @@ fn build_summary(state: &MonitorState, now_ms: u64) -> ResourceSummary {
         capabilities: capabilities(),
         sampling,
         updated_at_ms: latest.map(|f| f.at_ms),
-        buffer_seconds: state.history_secs.clamp(BUFFER_MIN_SECONDS, BUFFER_MAX_SECONDS) as u32,
+        buffer_seconds: state
+            .history_secs
+            .clamp(BUFFER_MIN_SECONDS, BUFFER_MAX_SECONDS) as u32,
         total,
         groups,
         orphans: latest.map(|f| f.orphans.clone()).unwrap_or_default(),
