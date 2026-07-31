@@ -22,6 +22,8 @@ import type {
 } from "$lib/types";
 import { app, type GithubSection } from "./app.svelte";
 import { projects } from "./projects.svelte";
+import { resourceMode } from "./resourceMode.svelte";
+import { effectiveGithubPollSeconds } from "$lib/resources/policy";
 import { samePath, canonicalFor } from "$lib/pathid";
 
 /** How many non-active worktrees may have their PR badge re-read per poll tick.
@@ -250,7 +252,12 @@ class GithubStore {
 
   /** Start polling the active worktree's context (+ rate limit / notifications)
    *  on the configured interval, paused when the window is hidden. Returns a
-   *  cleanup. Safe to call repeatedly (restarts the timer). */
+   *  cleanup. Safe to call repeatedly (restarts the timer).
+   *
+   *  The user's interval is scaled by the resource-mode policy (1× on
+   *  Balanced, relaxed on Efficient, tighter — floored — on Performance);
+   *  `0` stays manual-only whatever the profile. The caller's effect also
+   *  depends on the policy, so a profile switch restarts the timer. */
   startPolling(): () => void {
     this.stopPolling();
     const tick = () => {
@@ -261,7 +268,10 @@ class GithubStore {
       if (app.settings.github?.notificationsEnabled) void this.refreshNotifications();
       this.refreshOtherWorktreeBadges();
     };
-    const seconds = Math.max(0, app.settings.github?.pollSeconds ?? 45);
+    const seconds = effectiveGithubPollSeconds(
+      resourceMode.policy,
+      Math.max(0, app.settings.github?.pollSeconds ?? 45),
+    );
     if (seconds > 0) this.#timer = setInterval(tick, seconds * 1000);
     return () => this.stopPolling();
   }

@@ -47,6 +47,9 @@
     sheet: string;
     size: number;
     animate: boolean;
+    /** Decorative idle one-shots (dropped by the Efficient resource profile).
+     *  Optional so a main window from an older build still renders. */
+    flavour?: boolean;
     clickToFocus: boolean;
   }
   /** The live state, pushed whenever the most urgent agent report changes.
@@ -295,6 +298,7 @@
         animation={animationFor(live.state)}
         size={config.size}
         animate={config.animate}
+        flavour={config.flavour !== false}
         override={dragging
           ? (carryAnim ?? (dragPose === null ? DRAG_ANIMATION : null))
           : reaction}

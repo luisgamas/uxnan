@@ -37,6 +37,9 @@ mod pets;
 mod power;
 mod procscan;
 mod pty;
+// Public so the resource-observability integration tests (`tests/`) can drive
+// the monitor against real spawned processes through the crate's own API.
+pub mod resources;
 mod state;
 mod updater;
 mod usage;
@@ -101,7 +104,13 @@ pub fn run() {
             let focused = state.focused.clone();
             let hook_slot = state.hook.clone();
             let hook_install_slot = state.hook_install.clone();
+            let resources = state.resources.clone();
             app.manage(state);
+
+            // Resource observability sampler (`resources.rs`). Fully parked —
+            // no timer, no process-table walks — until a consumer subscribes
+            // (the backend popover) or the opt-in orphan sweep is enabled.
+            crate::resources::spawn_collector(app.handle().clone(), resources);
 
             // Start the local agent hook server (Layer 1). On success, publish its
             // url + token (+ the endpoint-file path it writes to `<data>/hooks/`)
@@ -249,6 +258,10 @@ pub fn run() {
                         let command = crate::procscan::detect_agent(&sys, pid, &commands);
                         if last.get(&pty_id) != Some(&command) {
                             last.insert(pty_id.clone(), command.clone());
+                            // Keep the resource monitor's terminal link in step,
+                            // so that terminal's subtree is attributed to the
+                            // agent (by kind) on the next resource sample.
+                            state.resources.set_terminal_agent(&pty_id, command.clone());
                             let _ = agent_handle
                                 .emit("agent:detected", AgentDetectedEvent { pty_id, command });
                         }
@@ -285,6 +298,11 @@ pub fn run() {
             commands::pet_window_hide,
             commands::pet_focus_main,
             commands::ping,
+            commands::resources_summary,
+            commands::resources_subscribe,
+            commands::resources_unsubscribe,
+            commands::resources_set_policy,
+            commands::resources_export,
             commands::usage_read,
             commands::usage_detect,
             commands::usage_codex_redeem_reset,

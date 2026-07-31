@@ -34,7 +34,71 @@ pub async fn update_settings(
     let mut data = state.data.write().await;
     data.settings = settings;
     state.persistence.save(&data).map_err(CommandError::from)?;
+    // Keep the resource monitor's cadence in step (no-op unless the resource
+    // settings actually changed — this command fires for every settings write).
+    state.resources.apply_settings(&data.settings.resources);
     Ok(data.clone())
+}
+
+// --- Resource observability (`resources.rs`) ---------------------------------
+
+/// The consolidated resource summary (from the buffered frames; no fresh
+/// sample). The live feed is the `resources:summary` event while subscribed.
+#[tauri::command]
+pub async fn resources_summary(
+    state: State<'_, AppState>,
+) -> Result<crate::resources::ResourceSummary, CommandError> {
+    Ok(state.resources.summary(crate::resources::now_ms()))
+}
+
+/// Take (or renew) a sampling lease. `token` identifies the consumer surface;
+/// leases expire on their own, so the frontend renews while its surface is open.
+#[tauri::command]
+pub async fn resources_subscribe(
+    state: State<'_, AppState>,
+    token: String,
+    kind: crate::resources::ConsumerKind,
+) -> Result<(), CommandError> {
+    state
+        .resources
+        .subscribe(&token, kind, crate::resources::now_ms());
+    Ok(())
+}
+
+/// Release a sampling lease (idempotent).
+#[tauri::command]
+pub async fn resources_unsubscribe(
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<(), CommandError> {
+    state.resources.unsubscribe(&token);
+    Ok(())
+}
+
+/// Apply the frontend-resolved resource-mode parameters the monitor consumes —
+/// today just the history budget (seconds of aggregated frames retained). The
+/// policy engine (`src/lib/resources/policy.ts`) is the single place presets
+/// and overrides resolve; the backend receives only the resulting parameter
+/// and clamps it defensively (see `ResourceMonitor::set_history_seconds`).
+#[tauri::command]
+pub async fn resources_set_policy(
+    state: State<'_, AppState>,
+    history_seconds: u32,
+) -> Result<(), CommandError> {
+    state
+        .resources
+        .set_history_seconds(history_seconds, crate::resources::now_ms());
+    Ok(())
+}
+
+/// The sanitized diagnostics document for a manual export. The frontend shows
+/// its `fields` list in a consent dialog and writes this exact document only
+/// after the user confirms — nothing is saved here.
+#[tauri::command]
+pub async fn resources_export(
+    state: State<'_, AppState>,
+) -> Result<crate::resources::ResourceExport, CommandError> {
+    Ok(state.resources.export(crate::resources::now_ms()))
 }
 
 /// Replace the full set of user-programmed quick commands. Create / edit /
@@ -370,6 +434,9 @@ pub async fn pty_create(
     env: Option<Vec<(String, String)>>,
     cols: u16,
     rows: u16,
+    // Workspace this terminal belongs to (the tab's workspace key), used only to
+    // attribute the shell's resource cost to its workspace (`resources.rs`).
+    workspace: Option<String>,
 ) -> Result<bool, CommandError> {
     let out_app = app.clone();
     let out_id = id.clone();
@@ -488,11 +555,11 @@ pub async fn pty_create(
         crate::mcpinject::prepare(&app, cwd.as_deref().unwrap_or_default()).await;
     }
 
-    state
+    let created = state
         .pty
         .create(
             crate::pty::PtySpec {
-                id,
+                id: id.clone(),
                 cwd,
                 shell,
                 args: args.unwrap_or_default(),
@@ -503,7 +570,20 @@ pub async fn pty_create(
             on_output,
             on_exit,
         )
-        .map_err(CommandError::from)
+        .map_err(CommandError::from)?;
+
+    // Register the fresh shell with the resource monitor: pid now, start time
+    // probed off-thread (fire-and-forget — attribution is best-effort and must
+    // never delay the spawn path).
+    if created {
+        if let Some(pid) = state.pty.pid_of(&id) {
+            let monitor = state.resources.clone();
+            tauri::async_runtime::spawn(crate::resources::register_terminal_probed(
+                monitor, id, pid, workspace,
+            ));
+        }
+    }
+    Ok(created)
 }
 
 /// Runtime info for the Settings → Browser MCP panel: the live `/mcp` endpoint +
@@ -683,6 +763,11 @@ pub async fn pty_resize(
 /// Kill a PTY's process and drop the session (idempotent).
 #[tauri::command]
 pub async fn pty_close(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
+    // Snapshot the terminal's last-known members first, so a subtree that
+    // survives the kill shows up as an orphan on the next resource sample.
+    state
+        .resources
+        .terminal_closed(&id, crate::resources::now_ms());
     state.pty.close(&id).map_err(CommandError::from)
 }
 

@@ -224,6 +224,8 @@ Detailed docs live in [`docs/`](./docs/):
 [testing & verification](./docs/testing.md) ·
 [end-to-end tests](./tests/e2e/README.md) ·
 [resource benchmarks](./docs/resource-benchmarks.md) ·
+[resource monitoring (in-app)](./docs/resource-monitoring.md) ·
+[resource mode (presets & degradation)](./docs/resource-mode.md) ·
 [architecture orientation](./docs/architecture.md) ·
 [design tokens](./docs/design-tokens.md) ·
 [theming & appearance](./docs/theming.md) ·

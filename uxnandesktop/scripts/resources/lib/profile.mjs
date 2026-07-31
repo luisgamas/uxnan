@@ -85,6 +85,24 @@ export function settings(overrides = {}) {
   };
 }
 
+/** The resource-mode profiles a run may pin (`ResourceModeSettings` in
+ *  `src-tauri/src/model.rs`). Mirrors the app's own set. */
+export const RESOURCE_PROFILES = ["efficient", "balanced", "performance"];
+
+/**
+ * A `resourceMode` settings block pinning one resource profile — the knob the
+ * per-preset efficiency matrix runs with (`--resource-profile`). No overrides
+ * and no auto-sleep flag: a measurement of a preset must measure the preset.
+ */
+export function resourceModeSettings(profile) {
+  if (!RESOURCE_PROFILES.includes(profile)) {
+    throw new Error(
+      `unknown resource profile ${JSON.stringify(profile)} (use ${RESOURCE_PROFILES.join(" | ")})`,
+    );
+  }
+  return { profile, overrides: {}, autoSleep: false, schemaVersion: 1 };
+}
+
 /** One terminal tab descriptor (`SavedTab`, kind `terminal`). */
 export function terminalTab({ title = "shell", cwd, asleep = false, shell, args, sid } = {}) {
   const d = defaultShell();

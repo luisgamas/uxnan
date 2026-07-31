@@ -71,6 +71,104 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   badge and every per-OS frontend default now takes an injectable agent string
   and answers `other` instead of guessing.
 - Totals: **397 Rust** (387 unit + 10 integration) and **570 Vitest** tests.
+### Added — resource mode: explicit efficiency presets with controlled degradation
+
+- **Three presets — `Efficient` / `Balanced` / `Performance` — govern uxnan's
+  background work** (Settings → Resources → Resource mode, `docs/resource-mode.md`).
+  A pure policy engine (`src/lib/resources/policy.ts`: `ResourceProfile`,
+  `ResourceCapabilities`, `ResolvedResourcePolicy`) resolves the preset plus
+  per-capability overrides into the values every consumer reads, so no
+  subsystem re-derives conditions from settings. **`Balanced` is the default
+  and mirrors the pre-mode constants exactly** (a policy test pins it), so
+  existing behavior does not change. The mode governs local infrastructure
+  only — never an agent's model/permissions, OS priority, or any process
+  uxnan did not spawn.
+- **Governed consumers, all hot-switchable and reversible:** the all-worktree
+  git status sweep (45 s / 15 s / 10 s) and the worktree-list reconcile poll;
+  GitHub polling (×4 on Efficient; ×0.5 floored at 30 s on Performance; `0`
+  stays manual); provider-usage refresh (×3 on Efficient); orchestration
+  concurrency (2 / 4 / 4–6); the resource monitor's history budget (180 s on
+  Efficient — a new `resources_set_policy` command feeds
+  `ResourceMonitor::set_history_seconds`, clamped 60–600 s, live in the
+  summary's `bufferSeconds`); and the pet's decorative idle one-shots (off on
+  Efficient; state changes always animate). Forced refreshes — focus, agent
+  activity, uxnan's own git actions, every manual refresh — always run.
+- **Performance's extra parallelism is evidence-gated:** the orchestration
+  engine is the first consumer of the resource monitor's `budget` lease (3 s),
+  held only while a run is active under a profile that allows extending, and
+  the 5th/6th concurrent step is granted only when a fresh summary shows
+  uxnan's own CPU is known and below 50 % — no measurement never counts as
+  capacity.
+- **Workspace auto-sleep, behind a feature flag (off by default), double-gated**
+  with the profile's level: `suggest` surfaces a toast whose action is the
+  user's confirmation; the opt-in `auto` level sleeps an idle workspace through
+  the existing sleep/wake lifecycle — except one with a working agent, which is
+  only ever *suggested*, mirroring the manual path's confirmation. Never the
+  active workspace, the Global space, an unmounted workspace, or one without a
+  last-active stamp; suggestions repeat at most every 30 min per workspace.
+- **Degradation is never silent:** surfaces whose cadence Efficient relaxes
+  show a freshness hint (sidebar projects header, right-panel GitHub tab, the
+  usage popover) whose tooltip explains the mode and whose click is a one-shot
+  **refresh now** that never changes the profile.
+- **Overrides without residue:** per-capability overrides (`null` = inherit)
+  with hard safety limits outside them, clamped on write, unknown/invalid
+  values dropped on read, a "use preset" affordance that deletes (not shadows)
+  the override, a reset-all, and a newer `schemaVersion` resolving to Balanced
+  with no overrides (the rollback posture). Persisted additively as
+  `AppSettings.resourceMode` — no schema bump.
+- **Per-preset efficiency matrix wired into the benchmark harness**
+  (`npm run bench -- --resource-profile efficient|balanced|performance`): the
+  preset is seeded into the scenario's disposable profile, recorded in the
+  result document and suffixed into file names. The actual capture must run
+  with the app closed (the harness refuses to run beside a live instance), so
+  no figures or budgets change yet — tracked in `FOR-DEV.md`.
+- Tests: 36 policy/auto-sleep unit tests (presets, the Balanced invariant,
+  residue-free normalization, headroom, every auto-sleep guard under a fake
+  clock), 8 component tests for the Settings section (accessible radio group,
+  EN/ES, keyboard selection, clamped overrides + use-preset + reset, the flag
+  gating, corrupt settings rendering as Balanced), 3 harness tests, and 5 Rust
+  tests (history clamp/trim/summary, settings defaults + round trip). Totals:
+  **655 Vitest**, **434 Rust** (421 unit + 13 integration). Full EN/ES i18n.
+
+### Added — local resource observability: what uxnan, its terminals and its agents cost
+
+- **A demand-driven resource monitor** (`src-tauri/src/resources.rs`,
+  `docs/resource-monitoring.md`): CPU / memory / process attribution for the
+  desktop process, every PTY it spawned and the agents running inside them —
+  local only, never telemetry, never a general task manager. Attribution is
+  evidence-based (pid + start time + parent chain, plus the explicit link each
+  terminal registers at spawn with its workspace) and every figure carries a
+  confidence: **exact** (identity verified), **inferred** (parent-chain),
+  **unknown** (e.g. a recycled pid — the link is voided and nothing is
+  claimed). Absent data is never reported as zero.
+- **Zero cost unless consumed.** The sampler is fully parked (no timer, no OS
+  handle) until a consumer exists: 2 s while the backend popover is open (a
+  self-expiring lease the frontend renews), 3 s for a reserved budget consumer,
+  and the **opt-in** 15–30 s background orphan sweep — the only mode that runs
+  unasked. History is a ~10-minute in-memory circular buffer of aggregates;
+  nothing per-process is persisted.
+- **Surfaces**: the status bar's backend popover gains a compact *Resources*
+  section (Uxnan total with peak + memory trend, per-workspace and per-agent
+  rows with confidence marks, spike highlighting, ended groups frozen with a
+  note, and an amber warning for **processes that outlived their closed
+  terminal**); **Settings → Resources** holds the switches, explains the
+  confidence labels and hosts the diagnostics export.
+- **Consent-first sanitized export**: the dialog lists the JSON document's
+  exact fields before anything is written; workspace/terminal ids become
+  opaque labels, agent names survive only via a known-catalog allow-list, and
+  golden + schema-allow-list tests fail the build on any leak or un-reviewed
+  field. Command lines, environment, cwd and file names are never read at all.
+- **Benchmark scenario R12** measures the feature's own promise (off / parked
+  must equal the R02 baseline; the sweep is the only unattended cost), wired as
+  a one-command run with a provisional Windows budget until a real baseline is
+  captured with the app closed.
+- Tests: 38 Rust unit tests (cadence, attribution, deltas, buffer bounds,
+  orphans, the parked loop under a paused clock, the export golden tests),
+  3 integration tests against real spawned process trees, 24 pure-logic Vitest
+  tests and 18 component tests (states, confidence marks, the export consent
+  flow). Totals: **608 Vitest**, **429 Rust** (416 unit + 13 integration).
+  Full EN/ES i18n; the shared component-test harness gains
+  `mountWithProviders` for components that need the app-level tooltip context.
 
 ### Added — a test pyramid: component tests, backend integration, and real end-to-end
 

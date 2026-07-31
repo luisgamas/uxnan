@@ -54,6 +54,7 @@ import {
   type SortMeta,
   type StatusLane,
 } from "$lib/sidebar-sort";
+import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
 
@@ -62,10 +63,11 @@ const msg = (e: unknown) =>
     ? String((e as { message: unknown }).message)
     : String(e);
 
-/** How often the background sweep re-reads every worktree's git status. Git is
- *  local and `worktree_status` is one `git2` walk, but this runs for every known
- *  worktree, so it's paced well below the 3 s single-worktree watcher. */
-const SWEEP_MS = 15_000;
+// The background sweep's pacing (how often every worktree's git status is
+// re-read) and the worktree-list reconcile's pacing both come from the resource
+// mode policy (`resourceMode.policy.capabilities` — 15 s / every driver tick on
+// Balanced, relaxed on Efficient, tighter on Performance). Forced refreshes
+// (focus, agent activity, our own git actions, the freshness hint) always run.
 
 const baseName = (p: string) =>
   p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? p;
@@ -450,6 +452,8 @@ class ProjectsStore {
     await app.persistSettings();
   }
   private worktreeRefreshInFlight = false;
+  /** When the last worktree-list reconcile pass started (policy pacing). */
+  #lastReconcile = 0;
   /** Single-flight + rate-limit state for the all-worktree status sweep. */
   #sweepInFlight = false;
   #lastSweep = 0;
@@ -508,9 +512,23 @@ class ProjectsStore {
    * filesystem event, so the sidebar uses a small polling pass. Only changed
    * lists are assigned, which keeps the sort settle window and row rendering
    * stable while still making externally-created worktrees appear promptly.
+   *
+   * Paced by the resource mode: on Balanced/Performance the policy interval is
+   * 0 (every driver tick — the pre-mode behavior); Efficient stretches it.
+   * `force` (a manual "refresh now") always runs.
    */
-  async refreshWorktrees(): Promise<void> {
+  async refreshWorktrees(force = false): Promise<void> {
     if (this.worktreeRefreshInFlight) return;
+    const proceed = shouldSweep({
+      inFlight: false, // the in-flight guard above already covers overlap
+      force,
+      hidden: false, // structural changes matter even unfocused (agent CLIs)
+      now: Date.now(),
+      lastSweep: this.#lastReconcile,
+      intervalMs: resourceMode.policy.capabilities.worktreeReconcileIntervalMs,
+    });
+    if (!proceed) return;
+    this.#lastReconcile = Date.now();
     this.worktreeRefreshInFlight = true;
     try {
       await Promise.all(
@@ -611,9 +629,10 @@ class ProjectsStore {
    *  disappeared. An agent working from another folder — or from the parent repo
    *  — left its target worktree's card showing nothing until you clicked it.
    *
-   *  Rate-limited to `SWEEP_MS`, skipped while the window is hidden, and
-   *  single-flight. `force` (agent activity, window focus, a git action of ours)
-   *  runs it now instead of waiting for the interval. */
+   *  Rate-limited to the resource-mode policy's sweep interval (15 s on
+   *  Balanced), skipped while the window is hidden, and single-flight. `force`
+   *  (agent activity, window focus, a git action of ours) runs it now instead
+   *  of waiting for the interval. */
   async sweepStatuses(force = false): Promise<void> {
     const proceed = shouldSweep({
       inFlight: this.#sweepInFlight,
@@ -621,7 +640,7 @@ class ProjectsStore {
       hidden: typeof document !== "undefined" && document.hidden,
       now: Date.now(),
       lastSweep: this.#lastSweep,
-      intervalMs: SWEEP_MS,
+      intervalMs: resourceMode.policy.capabilities.gitSweepIntervalMs,
     });
     if (!proceed) return;
     const paths = this.allWorktreePaths();
@@ -640,6 +659,14 @@ class ProjectsStore {
    *  the window regaining focus, and our own git actions. */
   requestStatusSweep(): void {
     void this.sweepStatuses(true);
+  }
+
+  /** Manual "refresh now" (the freshness hint's action): re-read the worktree
+   *  lists AND every status badge immediately. A one-shot that bypasses the
+   *  policy pacing without touching the selected profile. */
+  refreshNow(): void {
+    void this.refreshWorktrees(true);
+    this.requestStatusSweep();
   }
 
   /** Take the paths whose status changed since the last drain (the GitHub poll

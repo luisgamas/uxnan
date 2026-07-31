@@ -4,8 +4,10 @@
 // is a no-op when the list is empty, so an idle feature costs nothing.
 
 import { usageRead } from "$lib/api";
+import { effectiveUsageRefreshMinutes } from "$lib/resources/policy";
 import type { ProviderUsage, UsageProvider } from "$lib/types";
 import { app } from "./app.svelte";
+import { resourceMode } from "./resourceMode.svelte";
 
 class UsageStore {
   /** Latest snapshot per activated provider. */
@@ -56,23 +58,33 @@ class UsageStore {
     }
   }
 
-  /** Refresh when the current data is older than the configured interval (or
+  /** The effective refresh interval (min): the configured one scaled by the
+   *  resource-mode policy (1× on Balanced, longer on Efficient); `0` stays
+   *  manual-only whatever the profile. */
+  #effectiveMinutes(): number {
+    return effectiveUsageRefreshMinutes(
+      resourceMode.policy,
+      app.settings.usageRefreshMinutes ?? 5,
+    );
+  }
+
+  /** Refresh when the current data is older than the effective interval (or
    *  never fetched). Called when a surface that shows usage opens. */
   async ensureFresh(): Promise<void> {
-    const mins = app.settings.usageRefreshMinutes ?? 5;
+    const mins = this.#effectiveMinutes();
     const maxAge = mins > 0 ? mins * 60_000 : Number.POSITIVE_INFINITY;
     if (Date.now() - this.lastRefresh > maxAge) await this.refresh();
   }
 
-  /** (Re)start the background poll to match the configured interval + active
-   *  set. Call after the providers list or interval changes. `0` minutes (manual
-   *  only) or an empty active set stops polling. */
+  /** (Re)start the background poll to match the effective interval + active
+   *  set. Call after the providers list, the interval or the resource profile
+   *  changes. `0` minutes (manual only) or an empty active set stops polling. */
   reschedule(): void {
     if (this.#timer) {
       clearInterval(this.#timer);
       this.#timer = null;
     }
-    const mins = app.settings.usageRefreshMinutes ?? 5;
+    const mins = this.#effectiveMinutes();
     if (mins <= 0 || this.active().length === 0) return;
     this.#timer = setInterval(() => void this.refresh(), mins * 60_000);
   }

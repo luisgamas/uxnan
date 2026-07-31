@@ -24,6 +24,7 @@
   import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { app } from "$lib/state/app.svelte";
   import { pets } from "$lib/state/pets.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { petFocusMain, petWindowHide, petWindowShow } from "$lib/api";
   import { animationFor, type PetState } from "$lib/pets/status";
   import { i18n } from "$lib/i18n";
@@ -252,6 +253,9 @@
       sheet: s,
       size,
       animate: settings.animate !== false,
+      // Efficient mode drops the decorative idle one-shots (fewer wakeups);
+      // state changes still animate, so no information is lost.
+      flavour: resourceMode.policy.capabilities.petFlavour,
       clickToFocus: settings.clickToFocus !== false,
     });
   }
@@ -295,7 +299,7 @@
 
   $effect(() => {
     if (!overlayOn || !pet || !sheet) return;
-    const snapshot = JSON.stringify([pet && $state.snapshot(pet), sheet, size, settings.animate, settings.clickToFocus]);
+    const snapshot = JSON.stringify([pet && $state.snapshot(pet), sheet, size, settings.animate, settings.clickToFocus, resourceMode.policy.capabilities.petFlavour]);
     if (snapshot === sentConfig) return;
     sentConfig = snapshot;
     sendConfig();
@@ -377,6 +381,7 @@
           animation={animationFor(instance.state)}
           {size}
           animate={settings.animate !== false}
+          flavour={resourceMode.policy.capabilities.petFlavour}
           override={dragging
             ? (carryAnim ?? (dragPose === null ? DRAG_ANIMATION : null))
             : reaction}

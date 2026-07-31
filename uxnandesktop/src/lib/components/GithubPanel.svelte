@@ -9,6 +9,7 @@
   import { github } from "$lib/state/github.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { iconButton, text, surface } from "$lib/design";
@@ -25,6 +26,7 @@
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import CreatePrForm from "./CreatePrForm.svelte";
+  import FreshnessHint from "./FreshnessHint.svelte";
   import GithubWorktreeDialog from "./GithubWorktreeDialog.svelte";
   import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
   import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
@@ -196,6 +198,9 @@
           </Button>
         {/snippet}
       </TooltipSimple>
+      {#if resourceMode.freshness.github}
+        <FreshnessHint label={i18n.t("resourceMode.freshness.github")} onrefresh={refreshAll} />
+      {/if}
       <TooltipSimple title={i18n.t("github.panel.refreshTip")}>
         {#snippet children(props)}
           <Button

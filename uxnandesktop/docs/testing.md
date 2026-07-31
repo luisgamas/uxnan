@@ -45,11 +45,14 @@ keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
 round-trip across a process boundary, seed-once, a truncated file degrading
 instead of panicking, nothing written outside its own root, and a path with
-spaces and non-ASCII characters. **397 backend tests** in total (387 unit + 10
-integration; one more — the Windows Task Scheduler round-trip — is `#[ignore]`d
-and run by hand).
+spaces and non-ASCII characters; `resources_processes.rs` (3 tests) drives the
+resource monitor against **real spawned process trees** — live attribution, the
+start-time probe agreeing with the full table read, and the orphan flow (owner
+closed, child survives, cleared when it ends). **443 backend tests** in total
+(one more — the Windows Task Scheduler round-trip — is `#[ignore]`d and run by
+hand).
 
-The 387 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 430 unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), git + worktree ops (including
 creation, opt-in branch
@@ -61,10 +64,14 @@ the updater's per-channel endpoints, the keep-awake state machine (fake
 inhibitor: flip-on-change, the auto-release cap, release-on-drop — plus one
 host-OS test that toggles the real inhibitor, so each CI runner exercises its
 own platform branch), the pet overlay's monitor-aware placement (an unplugged
-display's saved position rejected, the fallback corner provably on-screen), and
-the pets store (Codex-format manifest
+display's saved position rejected, the fallback corner provably on-screen), the
+pets store (Codex-format manifest
 parsing, path-traversal refusal, and the import copy staying scoped to the
-manifest + its spritesheet).
+manifest + its spritesheet), and the resource monitor (`resources.rs`: cadence
+resolution, pid+start-time attribution, CPU/I-O delta honesty, buffer bounds,
+orphan detection, the configurable history budget's clamp/trim, and the export
+sanitizer's golden + schema-allow-list tests), plus the resource-mode settings
+block (defaults, back-compat, camelCase round trip).
 
 ## Frontend (Svelte / TypeScript)
 
@@ -114,8 +121,12 @@ example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
 vs merely still readable) and `platform.ts` (user-agent OS detection behind the
-untested-platform badge and every per-OS frontend default) — plus the
-**resource-benchmark harness** under
+untested-platform badge and every per-OS frontend default) and
+`resources/policy.ts` (the resource-mode policy
+engine: presets with Balanced pinned to the pre-mode constants, residue-free
+normalization/clamping, headroom gating and the effective poll intervals) and
+`resources/autoSleep.ts` (every auto-sleep guard under a fake clock) — plus
+the **resource-benchmark harness** under
 `scripts/resources/lib/` (process-tree attribution own/managed/external, the
 result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
@@ -124,7 +135,7 @@ under `tests/fixtures/` (the fake `gh`, the PATH shim, the disposable and legacy
 profiles) and the **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **570 tests** across both
+[`platform-support.md`](platform-support.md)). **667 tests** across both
 projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -140,7 +151,10 @@ instead of quietly agreeing with a mock nobody updated.
   rather than returning `undefined`, which would surface later as a confusing
   null-deref inside the component.
 - `src/test/render.ts` — `mount()` (component + backend + `user-event`, all torn
-  down together) and `until()` for the waits that have no DOM signal.
+  down together), `mountWithProviders()` for components needing the app-level
+  context the root layout provides (bits-ui tooltips throw without their
+  provider — `ProviderHost.svelte`), and `until()` for the waits that have no
+  DOM signal.
 - `src/test/setup.dom.ts` — jsdom's gaps filled once (`matchMedia`,
   `ResizeObserver`, canvas), plus a console policy: an unknown-prop or
   lifecycle-outside-component warning **fails** the test; known third-party

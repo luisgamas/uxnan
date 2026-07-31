@@ -101,3 +101,9 @@ windows-sys = { version = "0.59", features = [
 
 [dev-dependencies]
 tempfile = "3"
+# `test-util` enables tokio's paused virtual clock, which is how the resource
+# sampler's park/wake behavior is tested without real waits (`resources.rs`).
+tokio = { version = "1", features = ["test-util"] }
+# The resource-observability integration tests (`tests/resources_processes.rs`)
+# read real process facts through the same sysinfo the app uses.
+sysinfo = "0.33"

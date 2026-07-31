@@ -18,7 +18,9 @@ OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
 with" external editors/IDEs**, **automations**, **pets**, **a reproducible
-resource benchmark**). 397 Rust tests (387 unit + 10 integration) + 570 frontend Vitest tests across
+resource benchmark**, **an in-app resource monitor**, **a resource mode with
+explicit efficiency presets — Efficient / Balanced / Performance — governing the
+background consumers**, `docs/resource-mode.md`). 443 Rust tests (430 unit + 13 integration) + 667 frontend Vitest tests across
 two projects — pure logic and **Svelte component tests** — plus a **real E2E suite**
 (WebdriverIO + tauri-driver: 8 journeys, 24 tests, green on Windows). macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
@@ -280,6 +282,87 @@ not missing machinery.
       harness has to refuse to run alongside another uxnan. Isolating it per run
       would remove that precondition; it needs either a config-level
       `dataDirectory` uxnan controls per launch or an upstream hook.
+
+## Resource monitor — follow-ups ☐
+
+**The in-app resource monitor is built and tested** (`src-tauri/src/resources.rs`,
+`docs/resource-monitoring.md`): demand-driven sampling, pid+start-time
+attribution with explicit confidence, orphan detection, the popover + Settings
+surfaces, and the consent-first sanitized export. What is left is measurement
+and platform confidence, not machinery.
+
+- [ ] **Capture the R12 baseline and replace the provisional Windows budget.**
+      The scenario is wired end to end (`npm run bench -- --scenario R12
+      --variant off|parked|sweep`) and its budget entry is a verbatim copy of
+      R02's — which is exactly the claim under test ("parked adds nothing"),
+      but a copied ceiling is not a measurement. The harness (correctly)
+      refuses to run beside a live uxnan instance, so this **must run with the
+      app closed**; five repetitions per variant, then write the measured
+      medians + margins into `budgets/windows.json` (the `FOR-DEV:` note in its
+      `_comment` marks the spot).
+- [ ] **An L4 journey for the popover round trip.** No E2E spec opens the
+      backend popover against the real binary yet — the suite could not run
+      beside the live instance this feature was built next to, and an
+      unverifiable spec is worse than an honest gap. The journey is viable with
+      the existing WebdriverIO pattern (click the status-bar trigger, assert
+      the Resources section renders and the lease releases on close); until
+      then the round trip is covered at L2 (component) + L3 (monitor against
+      real processes), per `tests/quality-matrix.json` →
+      `resource-observability`.
+- [ ] **Validate the metrics on real macOS/Linux hardware.** The collector is
+      portable `sysinfo` and compiles everywhere, but only Windows figures have
+      been checked against reality — `capabilities.validated` is `false` off
+      Windows and the UI says "best effort" on purpose. Validating means: start
+      times round-trip (the identity scheme), CPU normalization looks sane, and
+      macOS's out-of-tree WebKit content process is measured for what the
+      `desktop` group misses there. Until then no non-Windows figure may be
+      published.
+- [ ] *(optional)* **A first Rust-side consumer for the internal event
+      stream.** The `budget` lease kind now has its consumer — the
+      orchestration engine's headroom check holds it while a run is active
+      under a resource profile with extended concurrency
+      (`docs/resource-mode.md`) — but `ResourceMonitor::subscribe_events`
+      (the Rust broadcast of every ingested frame) still has no backend
+      subscriber. It stays in the contract as the hook for a future
+      backend-side consumer (e.g. a Tokio-driven limits engine), so that
+      engine will not need a second sampler.
+
+## Resource mode — follow-ups ☐
+
+**The resource mode is built and tested** (`src/lib/resources/policy.ts`,
+`docs/resource-mode.md`): three presets with Balanced pinned to the pre-mode
+behavior, residue-free overrides, governed consumers (git sweeps,
+GitHub/provider polling, orchestration concurrency with headroom-gated
+extension, monitor history, pet flavour), freshness hints with manual refresh,
+and flag-gated workspace auto-sleep. What is left is measurement, soak and a
+few declared gaps — not machinery.
+
+- [ ] **Capture the per-preset efficiency matrix — must run with the app
+      closed.** The knob is wired (`npm run bench -- --resource-profile
+      efficient|balanced|performance`, seeded into the disposable profile and
+      recorded in the result document), but the harness (correctly) refuses to
+      run beside a live uxnan instance, so no preset has been measured yet.
+      Plan: R01/R04/R06/R09 per preset (R07/R08 assisted, R10 once), then
+      publish the internal table in `docs/resource-mode.md` and check the
+      acceptance bar there (Efficient improves at least one material metric
+      without breaking the core flow's latency; Balanced matches the existing
+      baseline). No figure or budget changes until those runs exist.
+- [ ] **Do NOT retire the auto-sleep feature flag until it has soaked on all
+      three platforms.** The flag (off by default) is the rollback lever; the
+      `auto` level additionally needs live-process verification (a real dev
+      server / watcher in a background workspace) on Windows, macOS and Linux
+      before the flag can even be discussed. Windows-only today. (The new
+      Settings section + freshness hints passed the maintainer's on-device
+      review on 2026-07-31.)
+- [ ] **An E2E journey for a hot preset switch.** No spec drives Settings →
+      Resource mode against the real binary (same live-instance constraint as
+      the popover journey above); the switch is covered at L1 (policy) + L2
+      (component) instead, per `tests/quality-matrix.json` → `resource-mode`.
+- [ ] **Ungoverned recurring work, declared:** the 1 s agent-detection tick and
+      the OSC title layer are deliberately outside the policy in v1 — pacing
+      them risks stale "needs you" states, which the mode must never cause
+      (see the inventory in `docs/resource-mode.md`). Revisit only with a
+      design that keeps attention states honest.
 
 ## Automations — follow-ups ☐
 
@@ -947,7 +1030,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 397 Rust + 570 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 443 Rust + 667 Vitest tests (both
   projects: pure logic and components). E2E runs in its own on-demand/nightly
   Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
