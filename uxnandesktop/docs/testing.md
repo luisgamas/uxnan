@@ -48,9 +48,9 @@ instead of panicking, nothing written outside its own root, and a path with
 spaces and non-ASCII characters; `resources_processes.rs` (3 tests) drives the
 resource monitor against **real spawned process trees** — live attribution, the
 start-time probe agreeing with the full table read, and the orphan flow (owner
-closed, child survives, cleared when it ends). **429 backend tests** in total.
+closed, child survives, cleared when it ends). **434 backend tests** in total.
 
-The 416 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 421 unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast
@@ -60,7 +60,9 @@ the updater's per-channel endpoints, the pets store (Codex-format manifest
 parsing, path-traversal refusal, and the import copy staying scoped to the
 manifest + its spritesheet), and the resource monitor (`resources.rs`: cadence
 resolution, pid+start-time attribution, CPU/I-O delta honesty, buffer bounds,
-orphan detection, and the export sanitizer's golden + schema-allow-list tests).
+orphan detection, the configurable history budget's clamp/trim, and the export
+sanitizer's golden + schema-allow-list tests), plus the resource-mode settings
+block (defaults, back-compat, camelCase round trip).
 
 ## Frontend (Svelte / TypeScript)
 
@@ -109,13 +111,17 @@ schedule + next-runs preview, the run/step display projections, the seeded
 example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
-vs merely still readable) — plus the **resource-benchmark harness** under
+vs merely still readable) and `resources/policy.ts` (the resource-mode policy
+engine: presets with Balanced pinned to the pre-mode constants, residue-free
+normalization/clamping, headroom gating and the effective poll intervals) and
+`resources/autoSleep.ts` (every auto-sleep guard under a fake clock) — plus
+the **resource-benchmark harness** under
 `scripts/resources/lib/` (process-tree attribution own/managed/external, the
 result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
 scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — and the **test fixtures**
 under `tests/fixtures/` (the fake `gh`, the PATH shim, the disposable and legacy
-profiles) and the **quality matrix** check. **608 tests** across both projects,
+profiles) and the **quality matrix** check. **655 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

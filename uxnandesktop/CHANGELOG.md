@@ -5,6 +5,65 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — resource mode: explicit efficiency presets with controlled degradation
+
+- **Three presets — `Efficient` / `Balanced` / `Performance` — govern uxnan's
+  background work** (Settings → Resources → Resource mode, `docs/resource-mode.md`).
+  A pure policy engine (`src/lib/resources/policy.ts`: `ResourceProfile`,
+  `ResourceCapabilities`, `ResolvedResourcePolicy`) resolves the preset plus
+  per-capability overrides into the values every consumer reads, so no
+  subsystem re-derives conditions from settings. **`Balanced` is the default
+  and mirrors the pre-mode constants exactly** (a policy test pins it), so
+  existing behavior does not change. The mode governs local infrastructure
+  only — never an agent's model/permissions, OS priority, or any process
+  uxnan did not spawn.
+- **Governed consumers, all hot-switchable and reversible:** the all-worktree
+  git status sweep (45 s / 15 s / 10 s) and the worktree-list reconcile poll;
+  GitHub polling (×4 on Efficient; ×0.5 floored at 30 s on Performance; `0`
+  stays manual); provider-usage refresh (×3 on Efficient); orchestration
+  concurrency (2 / 4 / 4–6); the resource monitor's history budget (180 s on
+  Efficient — a new `resources_set_policy` command feeds
+  `ResourceMonitor::set_history_seconds`, clamped 60–600 s, live in the
+  summary's `bufferSeconds`); and the pet's decorative idle one-shots (off on
+  Efficient; state changes always animate). Forced refreshes — focus, agent
+  activity, uxnan's own git actions, every manual refresh — always run.
+- **Performance's extra parallelism is evidence-gated:** the orchestration
+  engine is the first consumer of the resource monitor's `budget` lease (3 s),
+  held only while a run is active under a profile that allows extending, and
+  the 5th/6th concurrent step is granted only when a fresh summary shows
+  uxnan's own CPU is known and below 50 % — no measurement never counts as
+  capacity.
+- **Workspace auto-sleep, behind a feature flag (off by default), double-gated**
+  with the profile's level: `suggest` surfaces a toast whose action is the
+  user's confirmation; the opt-in `auto` level sleeps an idle workspace through
+  the existing sleep/wake lifecycle — except one with a working agent, which is
+  only ever *suggested*, mirroring the manual path's confirmation. Never the
+  active workspace, the Global space, an unmounted workspace, or one without a
+  last-active stamp; suggestions repeat at most every 30 min per workspace.
+- **Degradation is never silent:** surfaces whose cadence Efficient relaxes
+  show a freshness hint (sidebar projects header, right-panel GitHub tab, the
+  usage popover) whose tooltip explains the mode and whose click is a one-shot
+  **refresh now** that never changes the profile.
+- **Overrides without residue:** per-capability overrides (`null` = inherit)
+  with hard safety limits outside them, clamped on write, unknown/invalid
+  values dropped on read, a "use preset" affordance that deletes (not shadows)
+  the override, a reset-all, and a newer `schemaVersion` resolving to Balanced
+  with no overrides (the rollback posture). Persisted additively as
+  `AppSettings.resourceMode` — no schema bump.
+- **Per-preset efficiency matrix wired into the benchmark harness**
+  (`npm run bench -- --resource-profile efficient|balanced|performance`): the
+  preset is seeded into the scenario's disposable profile, recorded in the
+  result document and suffixed into file names. The actual capture must run
+  with the app closed (the harness refuses to run beside a live instance), so
+  no figures or budgets change yet — tracked in `FOR-DEV.md`.
+- Tests: 36 policy/auto-sleep unit tests (presets, the Balanced invariant,
+  residue-free normalization, headroom, every auto-sleep guard under a fake
+  clock), 8 component tests for the Settings section (accessible radio group,
+  EN/ES, keyboard selection, clamped overrides + use-preset + reset, the flag
+  gating, corrupt settings rendering as Balanced), 3 harness tests, and 5 Rust
+  tests (history clamp/trim/summary, settings defaults + round trip). Totals:
+  **655 Vitest**, **434 Rust** (421 unit + 13 integration). Full EN/ES i18n.
+
 ### Added — local resource observability: what uxnan, its terminals and its agents cost
 
 - **A demand-driven resource monitor** (`src-tauri/src/resources.rs`,

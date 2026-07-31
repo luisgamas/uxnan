@@ -59,6 +59,7 @@
   import GithubSettings from "./GithubSettings.svelte";
   import PetsSettings from "./PetsSettings.svelte";
   import ResourceSettings from "./ResourceSettings.svelte";
+  import ResourceModeSection from "./ResourceModeSection.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import { TERMINAL_SCROLLBACK_PRESETS } from "$lib/terminal/scrollback";
@@ -1680,7 +1681,10 @@
         {:else if app.settingsSection === "github"}
           <GithubSettings />
         {:else if app.settingsSection === "resources"}
-          <ResourceSettings />
+          <div class="flex flex-col gap-10">
+            <ResourceModeSection />
+            <ResourceSettings />
+          </div>
         {:else}
           <div class="flex flex-col gap-6">
           <SettingsSection title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>

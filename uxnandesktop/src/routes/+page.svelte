@@ -8,6 +8,8 @@
   import { git } from "$lib/state/git.svelte";
   import { github } from "$lib/state/github.svelte";
   import { openWith } from "$lib/state/openWith.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
+  import { usage } from "$lib/state/usage.svelte";
   import { fsSetWatch } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { matchAction } from "$lib/keybindings";
@@ -175,9 +177,24 @@
     void github.loadContext(projects.activeWorktreePath);
   });
   $effect(() => {
-    // Restart the poll when the interval setting changes; cleanup stops it.
+    // Restart the poll when the interval setting or the resource-mode policy
+    // changes; cleanup stops it.
     void app.settings.github?.pollSeconds;
+    void resourceMode.policy.capabilities.githubPollFactor;
     return github.startPolling();
+  });
+
+  // Re-arm the provider-usage poll when the resource profile changes its
+  // factor. Skipped on the first run on purpose: the background usage poll is
+  // armed lazily (from the Providers settings pane), and a boot-time reschedule
+  // here would change that pre-mode behavior.
+  let usageFactorSeen: number | null = null;
+  $effect(() => {
+    const factor = resourceMode.policy.capabilities.usageRefreshFactor;
+    untrack(() => {
+      if (usageFactorSeen !== null && usageFactorSeen !== factor) usage.reschedule();
+      usageFactorSeen = factor;
+    });
   });
 
   // Detect installed external editors once, so the "Open with" menus are ready

@@ -523,6 +523,49 @@ base de Windows y rellenar su presupuesto, pasar a `enforce` tras dos semanas de
 ejecuciones reales, ejecutar el colector Unix en hardware real, y automatizar
 R07/R08 cuando exista el driver E2E.
 
+#### Modo de recursos — ✅ Hecho (adición post-plan)
+
+Sobre el monitor de recursos en-app (`src-tauri/src/resources.rs`,
+`docs/resource-monitoring.md`) se construye un **modo de recursos** con presets
+explícitos — `Efficient` / `Balanced` / `Performance` — que gobierna el trabajo
+en segundo plano sin degradar en silencio (`docs/resource-mode.md`).
+
+- **Motor de políticas puro** (`src/lib/resources/policy.ts`:
+  `ResourceProfile`, `ResourceCapabilities`, `ResolvedResourcePolicy`): cada
+  consumidor lee la política resuelta en vez de replicar condiciones desde
+  settings. `Balanced` es el predeterminado y **replica exactamente las
+  constantes previas al modo** (un test lo fija), así que la migración no
+  cambia nada. Persistencia aditiva en `AppSettings.resourceMode`
+  (`{ profile, overrides, autoSleep, schemaVersion: 1 }`, `null` = heredar),
+  validación sin residuos (perfil desconocido → `balanced`, override
+  inválido → heredar, `schemaVersion` más nuevo → `balanced` sin overrides) y
+  límites duros de seguridad fuera de los overrides.
+- **Consumidores gobernados, en caliente y reversibles**: barrido de estado
+  Git de todos los worktrees + reconciliación de la lista, sondeo de
+  GitHub/proveedores (factores con suelo de 30 s; `0` sigue siendo manual),
+  concurrencia de orquestación (2/4/4–6), retención del historial del monitor
+  (nuevo comando `resources_set_policy` → `set_history_seconds`, 60–600 s) y
+  las animaciones decorativas de la mascota. Los refrescos forzados (foco,
+  actividad de agente, acciones git propias, todo botón manual) corren siempre.
+- **El paralelismo extra de `Performance` exige evidencia**: la orquestación es
+  el primer consumidor del *lease* `budget` del monitor (3 s), tomado solo con
+  una ejecución activa, y concede el 5.º/6.º paso solo si un resumen fresco
+  muestra CPU propia conocida y < 50 %.
+- **Auto-dormir workspaces tras doble compuerta** (nivel del preset + feature
+  flag apagado por defecto): sugerencias confirmadas por el usuario; el nivel
+  `auto` nunca duerme un workspace con agente trabajando (solo sugiere) y
+  reutiliza el ciclo sleep/wake existente de `terminals.svelte.ts`, sin
+  duplicar lifecycle.
+- **La degradación siempre se explica**: cada superficie relajada muestra un
+  indicador con «refrescar ahora» que no cambia el preset.
+- **Matriz de eficiencia por preset cableada en el banco**
+  (`--resource-profile`), pendiente de medirse con la app cerrada.
+
+Pendientes en `FOR-DEV.md` → *Resource mode — follow-ups*: capturar la matriz
+por preset (app cerrada), el soak multiplataforma del flag de auto-dormir, un
+E2E de cambio de preset y los detectores de agentes deliberadamente fuera de la
+política en v1.
+
 #### Entregable
 
 ADE MVP completo, pulido y listo para uso diario.

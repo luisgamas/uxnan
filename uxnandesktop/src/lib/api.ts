@@ -207,6 +207,12 @@ export function resourcesUnsubscribe(token: string): Promise<void> {
   return invoke<void>("resources_unsubscribe", { token });
 }
 
+/** Apply the resource mode's resolved parameters the monitor consumes (today
+ *  just the history budget in seconds; the backend clamps defensively). */
+export function resourcesSetPolicy(historySeconds: number): Promise<void> {
+  return invoke<void>("resources_set_policy", { historySeconds });
+}
+
 /** The sanitized diagnostics document. Nothing is saved backend-side: the UI
  *  shows its `fields` list for consent and writes the file itself. */
 export function resourcesExport(): Promise<ResourceExport> {

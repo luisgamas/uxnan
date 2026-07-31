@@ -44,8 +44,13 @@ pub const BUDGET_INTERVAL: Duration = Duration::from_secs(3);
 /// Allowed band for the opt-in background orphan sweep (seconds).
 pub const SWEEP_MIN_SECS: u32 = 15;
 pub const SWEEP_MAX_SECS: u32 = 30;
-/// How much aggregated history the circular buffer retains (seconds).
+/// How much aggregated history the circular buffer retains at most (seconds).
+/// Also the default; the resource mode may shorten it (never extend it) via
+/// [`ResourceMonitor::set_history_seconds`].
 const BUFFER_MAX_SECONDS: u64 = 600;
+/// Floor for the configurable history budget (seconds) — shorter than this the
+/// short-average/trend windows stop meaning anything.
+const BUFFER_MIN_SECONDS: u64 = 60;
 /// Hard frame-count cap for the buffer (safety net alongside the time cap).
 const BUFFER_MAX_FRAMES: usize = 640;
 /// Window for the "short average" statistics (ms).
@@ -371,6 +376,11 @@ struct PrevSeen {
 #[derive(Debug, Default)]
 struct MonitorState {
     config: MonitorConfig,
+    /// History budget (seconds) the buffer retains — [`BUFFER_MAX_SECONDS`] by
+    /// default, shortened by the resource mode's resolved policy
+    /// ([`ResourceMonitor::set_history_seconds`]). Always kept within
+    /// [`BUFFER_MIN_SECONDS`]..=[`BUFFER_MAX_SECONDS`] by construction.
+    history_secs: u64,
     terminals: HashMap<String, TerminalLink>,
     closed: Vec<ClosedLink>,
     leases: HashMap<String, Lease>,
@@ -421,11 +431,25 @@ impl ResourceMonitor {
         Arc::new(Self {
             state: Mutex::new(MonitorState {
                 config,
+                history_secs: BUFFER_MAX_SECONDS,
                 ..MonitorState::default()
             }),
             notify: Notify::new(),
             events,
         })
+    }
+
+    /// Apply the resource mode's resolved history budget (how much aggregated
+    /// history the buffer retains). Clamped to
+    /// [`BUFFER_MIN_SECONDS`]..=[`BUFFER_MAX_SECONDS`] — the mode may shorten
+    /// the buffer, never grow it past the observability contract. A shortened
+    /// budget trims immediately, so memory is released even while parked.
+    pub fn set_history_seconds(&self, secs: u32, now_ms: u64) {
+        let clamped = (secs as u64).clamp(BUFFER_MIN_SECONDS, BUFFER_MAX_SECONDS);
+        let mut state = self.state.lock().unwrap();
+        state.history_secs = clamped;
+        let history_secs = state.history_secs;
+        trim_frames(&mut state.frames, now_ms, history_secs);
     }
 
     /// Apply new settings; wakes the sampler only when the config changed.
@@ -653,7 +677,8 @@ impl ResourceMonitor {
             groups,
             orphans,
         });
-        trim_frames(&mut state.frames, now_ms);
+        let history_secs = state.history_secs;
+        trim_frames(&mut state.frames, now_ms, history_secs);
         state.last_frame_at_ms = Some(now_ms);
         state.last_interval_ms = interval_ms;
 
@@ -1061,8 +1086,9 @@ fn check_orphans(
 }
 
 /// Drop frames past the time window and the hard count cap.
-fn trim_frames(frames: &mut VecDeque<Frame>, now_ms: u64) {
-    let horizon = now_ms.saturating_sub(BUFFER_MAX_SECONDS * 1000);
+fn trim_frames(frames: &mut VecDeque<Frame>, now_ms: u64, history_secs: u64) {
+    let budget = history_secs.clamp(BUFFER_MIN_SECONDS, BUFFER_MAX_SECONDS);
+    let horizon = now_ms.saturating_sub(budget * 1000);
     while frames.front().map(|f| f.at_ms < horizon).unwrap_or(false) {
         frames.pop_front();
     }
@@ -1219,7 +1245,9 @@ fn build_summary(state: &MonitorState, now_ms: u64) -> ResourceSummary {
         capabilities: capabilities(),
         sampling,
         updated_at_ms: latest.map(|f| f.at_ms),
-        buffer_seconds: BUFFER_MAX_SECONDS as u32,
+        buffer_seconds: state
+            .history_secs
+            .clamp(BUFFER_MIN_SECONDS, BUFFER_MAX_SECONDS) as u32,
         total,
         groups,
         orphans: latest.map(|f| f.orphans.clone()).unwrap_or_default(),
@@ -2056,14 +2084,65 @@ mod tests {
         for i in 0..(BUFFER_MAX_FRAMES + 100) {
             frames.push_back(frame_at(i as u64, 1));
         }
-        trim_frames(&mut frames, BUFFER_MAX_FRAMES as u64 + 100);
+        trim_frames(
+            &mut frames,
+            BUFFER_MAX_FRAMES as u64 + 100,
+            BUFFER_MAX_SECONDS,
+        );
         assert!(frames.len() <= BUFFER_MAX_FRAMES);
 
         let mut frames: VecDeque<Frame> = VecDeque::new();
         frames.push_back(frame_at(0, 1));
         frames.push_back(frame_at(BUFFER_MAX_SECONDS * 1000 + 5_000, 1));
-        trim_frames(&mut frames, BUFFER_MAX_SECONDS * 1000 + 5_000);
+        trim_frames(
+            &mut frames,
+            BUFFER_MAX_SECONDS * 1000 + 5_000,
+            BUFFER_MAX_SECONDS,
+        );
         assert_eq!(frames.len(), 1, "frames older than the window are dropped");
+    }
+
+    #[test]
+    fn a_shorter_history_budget_trims_sooner_and_is_clamped() {
+        // A 180 s budget drops a frame 10 min old that the default would keep.
+        let now = BUFFER_MAX_SECONDS * 1000;
+        let mut frames: VecDeque<Frame> = VecDeque::new();
+        frames.push_back(frame_at(now - 400_000, 1)); // ~6.7 min old
+        frames.push_back(frame_at(now - 60_000, 1));
+        trim_frames(&mut frames, now, 180);
+        assert_eq!(frames.len(), 1, "the shortened window drops older frames");
+
+        // Below the floor the budget clamps up — a 1 s budget must not wipe
+        // everything the 60 s floor would keep.
+        let mut frames: VecDeque<Frame> = VecDeque::new();
+        frames.push_back(frame_at(now - 30_000, 1));
+        trim_frames(&mut frames, now, 1);
+        assert_eq!(frames.len(), 1, "the floor keeps a 30 s old frame");
+    }
+
+    #[test]
+    fn set_history_seconds_clamps_trims_and_reports_in_the_summary() {
+        let monitor = monitor_with(enabled_config());
+        monitor.subscribe("t", ConsumerKind::Popover, 0);
+        // Two frames 5 minutes apart; the default budget keeps both.
+        let table_a: ProcTable = HashMap::from([(1, row(None, Some(10)))]);
+        monitor.ingest(0, 1, table_a);
+        let table_b: ProcTable = HashMap::from([(1, row(None, Some(10)))]);
+        monitor.ingest(300_000, 1, table_b);
+        assert_eq!(monitor.summary(300_000).buffer_seconds, 600);
+
+        // Shortening to 180 s trims the older frame immediately (even parked)
+        // and the summary reports the live budget.
+        monitor.set_history_seconds(180, 300_000);
+        let summary = monitor.summary(300_000);
+        assert_eq!(summary.buffer_seconds, 180);
+        assert_eq!(summary.updated_at_ms, Some(300_000));
+
+        // Out-of-range values clamp instead of applying.
+        monitor.set_history_seconds(1, 300_000);
+        assert_eq!(monitor.summary(300_000).buffer_seconds, 60);
+        monitor.set_history_seconds(10_000, 300_000);
+        assert_eq!(monitor.summary(300_000).buffer_seconds, 600);
     }
 
     #[test]

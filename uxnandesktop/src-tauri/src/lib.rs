@@ -301,6 +301,7 @@ pub fn run() {
             commands::resources_summary,
             commands::resources_subscribe,
             commands::resources_unsubscribe,
+            commands::resources_set_policy,
             commands::resources_export,
             commands::usage_read,
             commands::usage_detect,

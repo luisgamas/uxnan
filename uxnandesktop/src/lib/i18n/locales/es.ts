@@ -522,6 +522,84 @@ export const es: Record<MessageKey, string> = {
     "Los nombres de workspaces y terminales se sustituyen por etiquetas opacas; los nombres de agente se conservan solo para agentes conocidos del catálogo. No se sube nada: tú eliges dónde se guarda el archivo.",
   "resources.exportConfirm": "Guardar archivo…",
   "resources.exportSaved": "Diagnóstico exportado.",
+
+  // Modo de recursos (Ajustes → Recursos → Modo de recursos)
+  "resourceMode.title": "Modo de recursos",
+  "resourceMode.desc":
+    "Elige cuánto trabajo en segundo plano mantiene Uxnan. Un preset gobierna solo infraestructura local (cadencias de refresco, sondeos, paralelismo, animación), nunca lo que pueden hacer tus agentes ni qué modelo usan.",
+  "resourceMode.profileGroup": "Perfil de recursos",
+  "resourceMode.profile.efficient": "Eficiente",
+  "resourceMode.profile.efficientDesc":
+    "Menos trabajo en segundo plano y menos memoria. Algunos datos se refrescan menos: cada superficie relajada lo indica y ofrece un refresco manual.",
+  "resourceMode.profile.balanced": "Equilibrado",
+  "resourceMode.profile.balancedDesc":
+    "El predeterminado: exactamente el comportamiento de siempre de Uxnan.",
+  "resourceMode.profile.performance": "Rendimiento",
+  "resourceMode.profile.performanceDesc":
+    "Datos más frescos y paralelismo extra solo mientras Uxnan mide margen real. Nunca agresivo.",
+  "resourceMode.effectsTitle": "Qué hace este preset",
+  "resourceMode.overriddenBadge": "modificado",
+  "resourceMode.effect.gitSweep": "Barrido de estado Git (worktrees en segundo plano)",
+  "resourceMode.effect.reconcile": "Comprobación de la lista de worktrees",
+  "resourceMode.effect.everySeconds": "cada {seconds} s",
+  "resourceMode.effect.github": "Sondeo de GitHub",
+  "resourceMode.effect.usage": "Refresco de uso de proveedores",
+  "resourceMode.effect.intervalNormal": "tu intervalo configurado",
+  "resourceMode.effect.intervalRelaxed": "{factor}× tu intervalo configurado",
+  "resourceMode.effect.intervalFresher": "hasta 2× más a menudo (nunca por debajo de 30 s)",
+  "resourceMode.effect.orchestration": "Paralelismo de orquestación",
+  "resourceMode.effect.orchestrationSteps": "{n} pasos a la vez",
+  "resourceMode.effect.orchestrationExtended": "{n} pasos a la vez ({max} con margen medido)",
+  "resourceMode.effect.history": "Historial del monitor de recursos",
+  "resourceMode.effect.historyMinutes": "{minutes} min",
+  "resourceMode.effect.pet": "Animaciones de reposo de la mascota",
+  "resourceMode.effect.petNormal": "normales",
+  "resourceMode.effect.petReduced": "reducidas (los cambios de estado se siguen animando)",
+  "resourceMode.effect.autoSleep": "Auto-dormir workspaces",
+  "resourceMode.effect.autoSleepOff": "apagado",
+  "resourceMode.effect.autoSleepSuggest": "sugerir tras {minutes} min inactivo",
+  "resourceMode.effect.autoSleepAuto": "dormir tras {minutes} min inactivo",
+  "resourceMode.effect.autoSleepFlagOff": "(el interruptor de abajo está apagado)",
+  "resourceMode.autoSleepFlag": "Auto-dormir workspaces",
+  "resourceMode.autoSleepFlagDesc":
+    "Experimental. Permite que Uxnan sugiera —o, en el nivel automático, realice— dormir workspaces inactivos. Dormir detiene los procesos de ese workspace (el scrollback y las sesiones de agente se conservan y se reanudan al despertar). Un workspace con un agente trabajando solo recibe una sugerencia: nunca se duerme sin tu confirmación.",
+  "resourceMode.advanced": "Ajustes finos (overrides)",
+  "resourceMode.advancedDesc":
+    "Fija una capacidad mientras el resto sigue al preset. “Usar preset” elimina el override, sin dejar restos.",
+  "resourceMode.usePreset": "Usar preset",
+  "resourceMode.reset": "Restablecer todos los overrides",
+  "resourceMode.override.gitSweep": "Intervalo del barrido Git (segundos)",
+  "resourceMode.override.gitSweepDesc":
+    "Cada cuánto se refrescan los indicadores de estado de los worktrees en segundo plano (5–600 s). El foco, la actividad de agentes y tus propias acciones git siempre refrescan al momento.",
+  "resourceMode.override.concurrency": "Paralelismo de orquestación",
+  "resourceMode.override.concurrencyDesc": "Pasos que una ejecución puede lanzar a la vez (1–8).",
+  "resourceMode.override.history": "Historial del monitor (segundos)",
+  "resourceMode.override.historyDesc":
+    "Cuánto historial de recursos conserva el buffer en memoria del monitor (60–600 s).",
+  "resourceMode.override.pet": "Animaciones de reposo de la mascota",
+  "resourceMode.override.petDesc":
+    "Gestos decorativos entre cambios de estado. Los cambios de estado siempre se animan.",
+  "resourceMode.override.autoSleepLevel": "Nivel de auto-dormir",
+  "resourceMode.override.autoSleepLevelDesc":
+    "Qué puede hacer auto-dormir mientras su interruptor de arriba está encendido.",
+  "resourceMode.level.off": "Apagado",
+  "resourceMode.level.suggest": "Sugerir",
+  "resourceMode.level.auto": "Automático",
+  "resourceMode.override.idle": "Umbral de inactividad de auto-dormir (minutos)",
+  "resourceMode.override.idleDesc":
+    "Cuánto debe llevar inactivo un workspace antes de que auto-dormir lo considere (5–480 min).",
+  "resourceMode.freshness.git":
+    "Modo de recursos: los estados de los worktrees se refrescan menos a menudo. Haz clic para refrescar ahora.",
+  "resourceMode.freshness.github":
+    "Modo de recursos: los datos de GitHub se refrescan menos a menudo. Haz clic para refrescar ahora.",
+  "resourceMode.freshness.usage":
+    "Modo de recursos: los datos de uso se refrescan menos a menudo. Haz clic para refrescar ahora.",
+  "resourceMode.autoSleep.suggestToast":
+    "“{name}” lleva un rato inactivo. ¿Dormir sus terminales para liberar recursos?",
+  "resourceMode.autoSleep.suggestAction": "Dormir",
+  "resourceMode.autoSleep.sleptToast":
+    "“{name}” se durmió para liberar recursos. Al abrirlo se despierta de nuevo.",
+  "resourceMode.autoSleep.blockedToast": "Un agente sigue trabajando ahí; se deja despierto.",
   "settings.browser": "Navegador",
   "settings.browserDesc":
     "Un navegador ligero dentro de la app para previsualizar y depurar lo que construyen tus agentes, y abrir los enlaces que crean.",

@@ -75,6 +75,22 @@ pub async fn resources_unsubscribe(
     Ok(())
 }
 
+/// Apply the frontend-resolved resource-mode parameters the monitor consumes —
+/// today just the history budget (seconds of aggregated frames retained). The
+/// policy engine (`src/lib/resources/policy.ts`) is the single place presets
+/// and overrides resolve; the backend receives only the resulting parameter
+/// and clamps it defensively (see `ResourceMonitor::set_history_seconds`).
+#[tauri::command]
+pub async fn resources_set_policy(
+    state: State<'_, AppState>,
+    history_seconds: u32,
+) -> Result<(), CommandError> {
+    state
+        .resources
+        .set_history_seconds(history_seconds, crate::resources::now_ms());
+    Ok(())
+}
+
 /// The sanitized diagnostics document for a manual export. The frontend shows
 /// its `fields` list in a consent dialog and writes this exact document only
 /// after the user confirms — nothing is saved here.

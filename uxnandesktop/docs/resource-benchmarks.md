@@ -42,6 +42,7 @@ modified.
 | `npm run bench:build` | build a measurable release binary (`tauri build --no-bundle`) |
 | `npm run bench -- --scenario <id>` | run one scenario |
 | `npm run bench -- --all` | every unattended scenario |
+| `npm run bench -- --resource-profile <p>` | pin a resource-mode preset (`efficient` \| `balanced` \| `performance`) for the run — the per-preset efficiency matrix ([`resource-mode.md`](resource-mode.md)); results are suffixed so presets never overwrite each other |
 | `npm run bench:report` | render `report.md` from the aggregates |
 | `npm run bench:compare` | compare the results against an approved baseline |
 
