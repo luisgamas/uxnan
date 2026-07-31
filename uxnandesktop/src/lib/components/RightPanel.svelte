@@ -1,8 +1,7 @@
 <script lang="ts">
-  // Right panel: two tabbed views over the active worktree. "Files" (first) is a
-  // lazy file tree of the whole working tree; "Changes" (second) is the git
-  // version-control review. Tab state is local; each panel keeps its own state in
-  // a store, so flipping tabs preserves the tree expansion and the commit draft.
+  // Right panel: Files, Changes, History and the optional GitHub digest over the
+  // active worktree. Tab state is local; persistent data lives in the relevant
+  // stores so flipping tabs preserves tree expansion and review state.
   import * as Tabs from "$lib/components/ui/tabs";
   import FileTreePanel from "./FileTreePanel.svelte";
   import ChangesPanel from "./ChangesPanel.svelte";

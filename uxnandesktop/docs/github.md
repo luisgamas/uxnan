@@ -257,6 +257,11 @@ discontinued until you pick another.
 Settings persist in `AppSettings.github` (`GithubSettings`); all fields default, so
 older state loads unchanged.
 
+The refresh interval drives the complete right-panel digest: the active branch's
+PR context plus the repository's five recent PRs, workflow runs and issues. Each
+list request is sequence-guarded, so switching worktrees cannot let a slower
+response from the previous repository overwrite the current panel.
+
 ## Backend commands
 
 All 38 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in

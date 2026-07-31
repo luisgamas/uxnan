@@ -18,7 +18,7 @@ OSC/process layers, settings/themes/i18n, multi-agent orchestration,
 **in-app auto-updater**, **browser-control MCP for agents**, **orchestration run
 engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
 with" external editors/IDEs**, **automations**, **pets**, **a reproducible
-resource benchmark**). 387 Rust tests (377 unit + 10 integration) + 565 frontend Vitest tests across
+resource benchmark**). 388 Rust tests (378 unit + 10 integration) + 565 frontend Vitest tests across
 two projects — pure logic and **Svelte component tests** — plus a **real E2E suite**
 (WebdriverIO + tauri-driver: 8 journeys, 24 tests, green on Windows). macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
@@ -918,7 +918,7 @@ go stale; these are the ones worth calling out.
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 387 Rust + 565 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 388 Rust + 565 Vitest tests (both
   projects: pure logic and components). E2E runs in its own on-demand/nightly
   Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →

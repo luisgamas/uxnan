@@ -158,12 +158,14 @@ pub fn worktree_status(path: &str) -> Result<WorktreeStatus, git2::Error> {
 }
 
 /// One-scan combination of [`status_files`] + [`worktree_status`]: the file
-/// list, plus a summary whose `dirty` is the list's length (same `IGNORED`
+/// list, a summary whose `dirty` is the list's length (same `IGNORED`
 /// filter) and whose ahead/behind comes from the cheap graph walk — so the
 /// 3 s watcher pays for one working-tree scan, not two. Because both parts read
 /// from the same `statuses()` walk, `summary.dirty == files.len()` holds by
-/// construction.
-pub fn status_with_summary(path: &str) -> Result<(Vec<FileChange>, WorktreeStatus), git2::Error> {
+/// construction. The current HEAD comes from the already-open repository.
+pub fn status_with_summary(
+    path: &str,
+) -> Result<(Vec<FileChange>, WorktreeStatus, Option<String>), git2::Error> {
     let repo = Repository::open(path)?;
     let mut opts = status_options();
     let statuses = repo.statuses(Some(&mut opts))?;
@@ -187,7 +189,15 @@ pub fn status_with_summary(path: &str) -> Result<(Vec<FileChange>, WorktreeStatu
         ahead,
         behind,
     };
-    Ok((files, summary))
+    // Reading HEAD is a ref lookup on the repository we already opened, not a
+    // second working-tree scan. Including it in the watch snapshot lets the
+    // frontend distinguish an external commit/amend from a merely clean tree.
+    let head = repo
+        .head()
+        .ok()
+        .and_then(|reference| reference.target())
+        .map(|oid| oid.to_string());
+    Ok((files, summary, head))
 }
 
 /// Render a `git2::Diff` to a unified-diff string (the format the frontend's
@@ -489,7 +499,7 @@ mod tests {
         std::fs::write(dir.join("b.txt"), "new\n").unwrap();
 
         let path = dir.to_string_lossy().to_string();
-        let (files, summary) = status_with_summary(&path).unwrap();
+        let (files, summary, head) = status_with_summary(&path).unwrap();
         let parts_files = status_files(&path).unwrap();
         let parts_status = worktree_status(&path).unwrap();
 
@@ -503,10 +513,44 @@ mod tests {
             (summary.ahead, summary.behind),
             (parts_status.ahead, parts_status.behind)
         );
+        assert_eq!(
+            head,
+            repo.head().unwrap().target().map(|oid| oid.to_string())
+        );
     }
 
-    /// Commit a file to `repo`, returning the new commit oid. Stages the whole
-    /// working tree onto the current `HEAD`.
+    #[test]
+    fn clean_external_commit_still_changes_the_watch_snapshot_head() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let repo = Repository::init(dir).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Tester").unwrap();
+        cfg.set_str("user.email", "t@t").unwrap();
+
+        commit_file(&repo, dir, "a.txt", "one\n", "first");
+        let path = dir.to_string_lossy().to_string();
+        let (before_files, before_status, before_head) = status_with_summary(&path).unwrap();
+
+        // Simulate an agent/Git client committing outside Uxnan. Both status
+        // summaries remain all-zero (clean, no upstream); HEAD is the only
+        // signal that can invalidate the right-panel History cache.
+        commit_file(&repo, dir, "a.txt", "one\ntwo\n", "second");
+        let (after_files, after_status, after_head) = status_with_summary(&path).unwrap();
+
+        assert!(before_files.is_empty());
+        assert!(after_files.is_empty());
+        assert_eq!(before_status, WorktreeStatus::default());
+        assert_eq!(after_status, WorktreeStatus::default());
+        assert_ne!(before_head, after_head);
+        assert_eq!(
+            after_head,
+            repo.head().unwrap().target().map(|oid| oid.to_string())
+        );
+    }
+
+    /// Commit a file to `repo`. Stages the whole working tree onto the current
+    /// `HEAD`.
     fn commit_file(repo: &Repository, dir: &std::path::Path, name: &str, content: &str, msg: &str) {
         std::fs::write(dir.join(name), content).unwrap();
         let mut index = repo.index().unwrap();

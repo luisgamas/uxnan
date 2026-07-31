@@ -43,6 +43,8 @@
   let prsLoading = $state(false);
   let issuesLoading = $state(false);
   let showCreate = $state(false);
+  let listsPath = $state<string | null>(null);
+  let listSeq = 0;
 
   // Worktree-from-issue, using the very dialog the section uses (branch name,
   // agent, folder preview) — it owns the `gh issue develop` call.
@@ -50,7 +52,11 @@
   let worktreeIssueNumber = $state<number | null>(null);
   let worktreeIssueTitle = $state("");
 
-  const ctx = $derived(github.context);
+  const activePath = $derived(projects.activeWorktreePath);
+  // Never render the previous worktree's repo while the next context request is
+  // in flight. The store clears on a path change too; this is the view-level
+  // invariant that keeps the digest scoped to exactly the active worktree.
+  const ctx = $derived(github.contextPath === activePath ? github.context : null);
   /** The repo the section should open on — a worktree's own path works for `gh`,
    *  but the section is per *project*, so it gets the project root. */
   const repoPath = $derived(projects.activeRepo?.path ?? null);
@@ -60,44 +66,59 @@
    *  is happening in this repo", and a branch filter is what made the CI list
    *  show the same handful of runs forever. */
   async function loadLists() {
-    const p = projects.activeWorktreePath;
-    if (!p || !github.available) {
+    const seq = ++listSeq;
+    const p = activePath;
+    if (p !== listsPath) {
+      listsPath = p;
       runs = [];
       prs = [];
       issues = [];
+      showCreate = false;
+    }
+    if (!p || !github.available || !ctx) {
+      runs = [];
+      prs = [];
+      issues = [];
+      runsLoading = false;
+      prsLoading = false;
+      issuesLoading = false;
       return;
     }
     runsLoading = true;
     prsLoading = true;
     issuesLoading = true;
-    // Independent: one failing list must not blank the other two.
-    void githubRunList(p, null, LIMIT)
-      .then((r) => (runs = r))
-      .catch(() => (runs = []))
-      .finally(() => (runsLoading = false));
-    void githubPrList(p, "all", null, LIMIT)
-      .then((r) => (prs = r))
-      .catch(() => (prs = []))
-      .finally(() => (prsLoading = false));
-    void githubIssueList(p, "all", null, LIMIT)
-      .then((r) => (issues = r))
-      .catch(() => (issues = []))
-      .finally(() => (issuesLoading = false));
+    // Independent results, applied atomically only if this is still the newest
+    // request for the same worktree. This closes the A → B → A stale-response
+    // race without making one failed list blank the other two.
+    const [nextRuns, nextPrs, nextIssues] = await Promise.allSettled([
+      githubRunList(p, null, LIMIT),
+      githubPrList(p, "all", null, LIMIT),
+      githubIssueList(p, "all", null, LIMIT),
+    ]);
+    if (seq !== listSeq || activePath !== p) return;
+    runs = nextRuns.status === "fulfilled" ? nextRuns.value : [];
+    prs = nextPrs.status === "fulfilled" ? nextPrs.value : [];
+    issues = nextIssues.status === "fulfilled" ? nextIssues.value : [];
+    runsLoading = false;
+    prsLoading = false;
+    issuesLoading = false;
   }
 
-  // Reload whenever the active worktree changes (its repo may differ), the branch
-  // context is refreshed, or sign-in becomes available — a late `gh` login has to
-  // fill the lists that loaded empty before it.
+  // Reload after every successful context poll, not only when the branch name
+  // changes: PRs, CI and issues can change while the checked-out branch stays
+  // exactly the same. Wait for the matching context load to settle first.
   $effect(() => {
-    void projects.activeWorktreePath;
-    void ctx?.branch;
+    void activePath;
     void github.available;
+    void github.contextRevision;
+    if (activePath && (github.contextPath !== activePath || github.contextLoading)) return;
     void loadLists();
   });
 
-  function refreshAll() {
-    void github.refreshContext();
-    void loadLists();
+  async function refreshAll() {
+    // The completed context refresh advances `contextRevision`, which drives the
+    // list reload above. Keeping one path avoids six duplicate `gh` calls.
+    await github.refreshContext();
   }
 
   function checkColor(state: string): string {
@@ -148,6 +169,10 @@
     <div class="flex flex-col items-center gap-2 px-3 py-10 text-center">
       <GitPullRequestIcon class="size-6 text-muted-foreground/50" />
       <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.panel.noWorktree")}</p>
+    </div>
+  {:else if github.contextLoading || github.contextPath !== activePath}
+    <div class="px-3 py-8 text-center">
+      <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.loading")}</p>
     </div>
   {:else if !ctx}
     <div class="px-3 py-8 text-center">

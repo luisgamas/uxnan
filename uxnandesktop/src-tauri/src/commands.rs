@@ -1506,6 +1506,9 @@ pub struct GitStatusEvent {
     pub files: Vec<git::FileChange>,
     pub ahead: u32,
     pub behind: u32,
+    /// Current HEAD commit. Changes even when a new local branch has no upstream
+    /// and its working tree is clean, which is what keeps History live.
+    pub head: Option<String>,
 }
 
 /// Set (or clear with `None`) the worktree the background watcher polls. The

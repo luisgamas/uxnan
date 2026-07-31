@@ -45,9 +45,9 @@ keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
 round-trip across a process boundary, seed-once, a truncated file degrading
 instead of panicking, nothing written outside its own root, and a path with
-spaces and non-ASCII characters. **387 backend tests** in total.
+spaces and non-ASCII characters. **388 backend tests** in total.
 
-The 377 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 378 unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast

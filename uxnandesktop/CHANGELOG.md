@@ -83,7 +83,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 - **A flake policy** in `docs/testing.md`: quarantine with an owner and a 14-day
   limit, never a silent skip; keep the case at a lower layer if an E2E test is
   removed; one retry, infrastructure only; fix the wait, not the timeout.
-- Totals: **565 Vitest** (was 517), **387 Rust** (377 unit + 10 integration) and
+- Totals: **565 Vitest** (was 517), **388 Rust** (378 unit + 10 integration) and
   **24 E2E tests across 8 journeys**.
 - **The manual layer is written down too.** `docs/testing.md` carries an L5
   checklist of the twelve things no automated layer can honestly cover — a real
@@ -225,7 +225,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   start while another instance is running, and marks any run that never grew a
   webview inside its own tree as invalid. A benchmarking constraint only — it
   does not affect normal use.
+### Fixed — right-panel Git and GitHub data could stay stale
 
+- **History now follows commits made outside Uxnan.** The 3-second Git snapshot
+  includes the current `HEAD` via a cheap ref lookup on the repository already
+  opened for status, so an agent commit or amend refreshes an already-loaded log
+  even on a clean branch without an upstream. Uxnan commit/push/pull actions also
+  refresh the cached log immediately. Async guards prevent slow History, Changes
+  and numstat responses from repainting a worktree after a fast A → B → A switch.
+- **The right-panel GitHub digest now follows its configured poll.** Previously
+  the poll refreshed only the active branch context; the five recent PRs, Actions
+  runs and issues reloaded only when the worktree or branch name changed. Every
+  completed context poll now refreshes all three lists, while request sequencing
+  and eager clearing prevent data from the previous repository appearing after a
+  worktree switch.
 ### Fixed — most agent logos never rendered, and the catalog didn't notice an uninstall
 
 - **Every logo that came from a favicon was blocked.** Only 7 of the 32 catalog

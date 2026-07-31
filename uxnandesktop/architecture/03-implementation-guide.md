@@ -195,7 +195,7 @@ Los commands siguen un patron request/response: el frontend pide, el backend res
 
 | Evento | Origen | Payload | Proposito |
 |--------|--------|---------|-----------|
-| `git:status-changed` | Timer Tokio (polling cada 3s) | Lista de archivos con estado (modified/staged/untracked) | Actualizar sidebar derecha con cambios del worktree activo |
+| `git:status-changed` | Timer Tokio (polling cada 3s) | Archivos, ahead/behind y `HEAD` actual | Mantener Cambios al día y refrescar Historial/GitHub tras commits o amends externos |
 | `agent:status-changed` | Servidor de hooks HTTP | ID del agente, nuevo estado (working/waiting/blocked/done) | Actualizar badges e indicadores en sidebar izquierda |
 | `pty:output:{id}` | PTY Manager | Bytes crudos del stdout del PTY | Alimentar xterm.js con output del terminal en tiempo real |
 | `notification:agent-completed` | Modulo de notificaciones | ID del agente, worktree, timestamp | Disparar notificacion nativa del OS |
@@ -1298,7 +1298,7 @@ if !window_visible.load(Ordering::Relaxed) {
 
 Al volver a enfocar la ventana, se ejecuta inmediatamente un ciclo de polling para actualizar el estado.
 
-Ademas, cada tick del watcher realiza **un unico recorrido del working tree** (no dos): una sola funcion combinada (`git::status_with_summary`, ruta rapida `gitfast::status_with_summary` con el mismo fallback `git2`->CLI) devuelve tanto la lista de archivos como el resumen ahead/behind desde el mismo `statuses()`. El conteo `dirty` es la longitud de esa lista, por lo que no hace falta un segundo escaneo.
+Ademas, cada tick del watcher realiza **un unico recorrido del working tree** (no dos): una sola funcion combinada (`git::status_with_summary`, ruta rapida `gitfast::status_with_summary` con el mismo fallback `git2`->CLI) devuelve tanto la lista de archivos como el resumen ahead/behind desde el mismo `statuses()`. El conteo `dirty` es la longitud de esa lista, por lo que no hace falta un segundo escaneo. El mismo snapshot incluye `HEAD` mediante una consulta barata de referencia sobre el repositorio ya abierto; así se detectan commits externos sobre un árbol limpio sin otro recorrido de estado.
 
 #### Escaneo de Procesos de Agentes (focus-gated + off-worker)
 

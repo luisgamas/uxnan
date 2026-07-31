@@ -589,15 +589,15 @@ async fn worktree_status_cli(worktree_path: &str) -> Result<WorktreeStatus, AppE
     Ok(parse_status_porcelain(&out))
 }
 
-/// Combined [`status_files`] + [`worktree_status`] in a single working-tree
-/// scan — for the 3 s status watcher, which needs both and would otherwise walk
-/// the tree twice per tick. Fast path: one `git2` scan
+/// Combined [`status_files`] + [`worktree_status`] plus the current HEAD in a
+/// single working-tree scan — for the 3 s status watcher, which needs all three
+/// and would otherwise walk the tree twice per tick. Fast path: one `git2` scan
 /// ([`crate::gitfast::status_with_summary`]). On a WSL path or a `git2` failure
 /// it falls back to running the two existing CLI fallbacks sequentially — the
 /// CLI path is the rare case, so paying for two scans there is acceptable.
 pub async fn status_with_summary(
     worktree_path: &str,
-) -> Result<(Vec<FileChange>, WorktreeStatus), AppError> {
+) -> Result<(Vec<FileChange>, WorktreeStatus, Option<String>), AppError> {
     // WSL repos go straight to the CLI (routed through wsl.exe); see worktree_status.
     if !crate::wsl::is_wsl_path(worktree_path) {
         let p = worktree_path.to_string();
@@ -609,7 +609,14 @@ pub async fn status_with_summary(
     }
     let files = status_files_cli(worktree_path).await?;
     let status = worktree_status_cli(worktree_path).await?;
-    Ok((files, status))
+    // WSL and the rare libgit2 fallback still carry HEAD in the same logical
+    // snapshot. `rev-parse` failing is expected for an unborn branch.
+    let head = git(worktree_path, &["rev-parse", "--verify", "HEAD"])
+        .await
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    Ok((files, status, head))
 }
 
 /// Parse `git status --porcelain=v1 --branch` output: the first `## ` line
