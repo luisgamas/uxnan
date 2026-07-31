@@ -347,9 +347,9 @@ few declared gaps — not machinery.
       three platforms.** The flag (off by default) is the rollback lever; the
       `auto` level additionally needs live-process verification (a real dev
       server / watcher in a background workspace) on Windows, macOS and Linux
-      before the flag can even be discussed. Windows-only today, and the
-      maintainer's on-device UI review of the new Settings section + toasts is
-      still owed (UI changes need visual approval before release).
+      before the flag can even be discussed. Windows-only today. (The new
+      Settings section + freshness hints passed the maintainer's on-device
+      review on 2026-07-31.)
 - [ ] **An E2E journey for a hot preset switch.** No spec drives Settings →
       Resource mode against the real binary (same live-instance constraint as
       the popover journey above); the switch is covered at L1 (policy) + L2
