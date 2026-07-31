@@ -1,0 +1,743 @@
+{
+  "$comment": [
+    "The platform support matrix: what each platform×feature pair has actually",
+    "demonstrated, with the evidence that demonstrates it. 'Supported' is never",
+    "used without a level, and a level is never claimed without evidence —",
+    "`platform-support.test.mjs` checks this file against the repository and",
+    "`scripts/platform-support.mjs gate` refuses a release whose announced state",
+    "exceeds it.",
+    "",
+    "Levels (ordered; each one presumes the previous):",
+    "  code-only     — pure/unit tests exist; the OS-specific interaction has",
+    "                  never executed on that platform.",
+    "  builds        — the platform artifact compiles green (and, where a CI",
+    "                  runner exists, the automated suites pass on it); the",
+    "                  feature has not been exercised as a running app there.",
+    "  smoke         — the app was installed/run on the platform and the flow",
+    "                  was walked at least once, with the run recorded.",
+    "  validated     — the full suite/walkthrough passed and, for the platform",
+    "                  claim, resources were measured (an approved baseline).",
+    "  signed        — artifacts carry a valid OS code-signing identity.",
+    "  release-ready — install/upgrade/uninstall + rollback approved on real",
+    "                  hardware, with configuration preserved and no leftovers.",
+    "",
+    "Rules enforced by the test: every cell cites evidence; smoke and above also",
+    "record date, sha, hardware and tester; a platform's `announced` level never",
+    "exceeds the weakest of its core feature cells; `signed`/`release-ready`",
+    "additionally require a `signing` evidence block on the platform. A claim",
+    "whose evidence has expired (see `docs/platform-support.md`) is degraded, not",
+    "defended."
+  ],
+  "version": 1,
+  "updated": "2026-07-31",
+  "levels": [
+    "code-only",
+    "builds",
+    "smoke",
+    "validated",
+    "signed",
+    "release-ready"
+  ],
+  "platforms": {
+    "windows-x64": {
+      "name": "Windows 11 x64",
+      "minimum": "Windows 10 with the WebView2 Evergreen runtime; exercised on Windows 11",
+      "announced": "smoke",
+      "notes": "The maintainer's daily platform: installed NSIS build in daily use, E2E suite green locally, approved resource baseline. `validated` is blocked by the unscripted install/upgrade/uninstall cycle, the manual-only wake-fidelity check and the unmeasured R07/R08/R10 scenarios; `signed` needs the paid Authenticode certificate (FOR-HUMAN.md)."
+    },
+    "macos-aarch64": {
+      "name": "macOS (Apple Silicon)",
+      "minimum": "macOS 11.0 (src-tauri/tauri.conf.json bundle.macOS.minimumSystemVersion)",
+      "announced": "builds",
+      "notes": "Experimental, ad-hoc-signed DMG. CI compiles the app and runs the full Rust + Vitest suites on a macos-14 runner, but the app has never been launched on real Apple hardware — docs/install-macos.md says so to users. No macOS resource baseline exists."
+    },
+    "macos-x64": {
+      "name": "macOS (Intel)",
+      "minimum": "macOS 11.0 (src-tauri/tauri.conf.json bundle.macOS.minimumSystemVersion)",
+      "announced": "builds",
+      "notes": "The Intel DMG is cross-compiled on an Apple Silicon runner (.github/workflows/release-desktop.yml); the x86_64 binary has never executed anywhere — not even its test suite. Everything macos-aarch64 still owes, this owes too, plus first execution."
+    },
+    "linux-x64": {
+      "name": "Linux x64 (Ubuntu LTS reference)",
+      "minimum": "A distribution with WebKitGTK 4.1 (Ubuntu 22.04 LTS or newer is the reference); other distributions are best-effort until there is evidence",
+      "announced": "builds",
+      "notes": "CI runs the full suites on ubuntu-latest and the release ships .deb/.AppImage/.rpm, but no human has installed or launched any of them. tauri-driver supports Linux (WebKitWebDriver), and has never been run here — the E2E harness does not claim a platform nobody executed on."
+    }
+  },
+  "coreFeatures": [
+    "clean-start",
+    "install-cycle",
+    "terminals",
+    "sleep-wake",
+    "git-worktrees",
+    "agent-hooks",
+    "updater",
+    "shutdown"
+  ],
+  "features": [
+    {
+      "id": "clean-start",
+      "name": "Clean first launch (empty profile)",
+      "status": {
+        "windows-x64": {
+          "level": "validated",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB, WebView2 150.0.4078.105 (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "E2E launch journey green (tests/e2e/specs/launch.e2e.mjs, suite recorded in docs/testing.md, 2026-07-30); cold-process cost measured and approved (scripts/resources/baselines/windows/R00.json, 54d935e8, 2026-07-30)."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "verify leg green on macos-14 — compile + full Rust/Vitest suites (.github/workflows/ci-desktop.yml run 30608531497); aarch64 DMG shipped in desktop-stable-v0.0.24 (2026-07-29, 039866bb). Never launched on real Apple hardware."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "x86_64 DMG cross-compiled and shipped in desktop-stable-v0.0.24 (.github/workflows/release-desktop.yml); the Intel binary has never executed anywhere."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "verify leg green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); .deb/.AppImage/.rpm shipped in desktop-stable-v0.0.24 (2026-07-29, 039866bb). Never installed or launched by a person."
+        }
+      }
+    },
+    {
+      "id": "install-cycle",
+      "name": "Install / upgrade / uninstall",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "The NSIS build is installed and in daily use on the maintainer's machine, upgraded through the in-app updater on every stable/nightly release since 0.0.10 (FOR-DEV.md, CI/CD — release). No scripted cycle: configuration preservation, uninstall cleanliness and leftover processes/scheduler tasks are unrecorded.",
+          "gaps": "Two recorded install→upgrade→uninstall cycles (previous stable → current) with config-preservation and no-leftovers checks are still owed; see the checklist."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner",
+          "tester": "ci",
+          "evidence": "Ad-hoc-signed DMG published (desktop-stable-v0.0.24); the Gatekeeper walkthrough exists as instructions (docs/install-macos.md) but has never been executed on real hardware."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "x86_64 DMG published (desktop-stable-v0.0.24); never opened on an Intel Mac."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": ".deb/.AppImage/.rpm published (desktop-stable-v0.0.24); no install of any of the three has been recorded."
+        }
+      }
+    },
+    {
+      "id": "terminals",
+      "name": "Terminals, splits, tabs and the keyboard protocol",
+      "status": {
+        "windows-x64": {
+          "level": "validated",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "E2E terminal journey — two panes in a split, a real shell behind each (tests/e2e/specs/terminal.e2e.mjs, 2026-07-30); PTY lifecycle unit tests (src-tauri/src/pty.rs); terminal cost measured and approved (scripts/resources/baselines/windows/R02.json, scripts/resources/baselines/windows/R03.json, 54d935e8)."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "portable-pty tests run green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); no interactive terminal has ever been opened on real Apple hardware."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "portable-pty tests run green on the ubuntu verify leg (.github/workflows/ci-desktop.yml run 30608531497); no interactive terminal opened on a real desktop."
+        }
+      }
+    },
+    {
+      "id": "sleep-wake",
+      "name": "Workspace sleep/wake with scrollback restore",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "E2E sleeping-workspace journey proves a slept workspace spawns no shells (tests/e2e/specs/sleep-wake.e2e.mjs, 2026-07-30); the asleep cost is measured and approved (scripts/resources/baselines/windows/R04.json, 54d935e8).",
+          "gaps": "Wake fidelity — that the replayed scrollback matches what was captured — is still only checked by hand (tests/quality-matrix.json, sleep-wake row)."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "Scrollback/serialize logic tested on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); the flow has never run as an app there."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "Same suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); the flow has never run as an app there."
+        }
+      }
+    },
+    {
+      "id": "git-worktrees",
+      "name": "Git, worktrees and review",
+      "status": {
+        "windows-x64": {
+          "level": "validated",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "E2E worktree journey — a real repository recognised, listed and read (tests/e2e/specs/worktree.e2e.mjs, 2026-07-30); git/worktree/staging suites against throwaway repos (src-tauri/src/git.rs, src-tauri/src/gitfast.rs); watcher + sweep cost on a large dirty checkout measured and approved (scripts/resources/baselines/windows/R06.json, 54d935e8)."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "The full git/gitfast suites run green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); never exercised as a running app on Apple hardware."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "The full git/gitfast suites run green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); never exercised as a running app there."
+        }
+      }
+    },
+    {
+      "id": "agent-hooks",
+      "name": "Agent launch, hook reporting and state",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "E2E agent journey — the agent runs under a shell, the endpoint file is written, an untokened report is refused, a valid one reaches the sidebar state (tests/e2e/specs/agent.e2e.mjs, 2026-07-30); hook-server suites (src-tauri/src/hooks.rs, src-tauri/src/agent_hooks.rs); agent-working cost measured and approved (scripts/resources/baselines/windows/R05.json, 54d935e8). Real CLIs report daily on the maintainer's machine.",
+          "gaps": "The fixture agent's own reporter never reaches the hook server (unresolved — FOR-DEV.md, test pyramid follow-ups); per-CLI reporter correctness is L5 by nature."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "Hook-server and reporter-install suites green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); no real agent has reported from Apple hardware, and Finder-launch PATH enrichment (src-tauri/src/path_env.rs) is untested there."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "Hook-server suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); no real agent has reported from a Linux desktop."
+        }
+      }
+    },
+    {
+      "id": "browser",
+      "name": "Integrated browser and DevTools",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "E2E browser journey opens a loopback page in the docked second window — the suite's only multi-window coverage (tests/e2e/specs/browser.e2e.mjs, 2026-07-30); scheme gate unit-tested (src-tauri/src/browser.rs).",
+          "gaps": "R07 (browser cost) still needs an operator; DevTools and real-site browsing are on the manual checklist (docs/testing.md, L5 row 11)."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "browser.rs suites green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); the docked-window glue has never been seen on macOS."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "browser.rs suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); the docked-window glue has never been seen on a Linux desktop."
+        }
+      }
+    },
+    {
+      "id": "pet-overlay",
+      "name": "Pet companion (layer and desktop overlay)",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "All three pet variants — off, layer and the separate overlay window — launched and measured under the approved baseline (scripts/resources/baselines/windows/R09-off.json, scripts/resources/baselines/windows/R09-layer.json, scripts/resources/baselines/windows/R09-overlay.json, 54d935e8, 2026-07-30); pure pet logic unit-tested (src/lib/pets/).",
+          "gaps": "No automated journey drives the overlay (multi-window E2E is unproven); drag/click/monitor behavior is manual (docs/testing.md, L5 row 10)."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "pets.rs suites green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); the transparent always-on-top overlay window has never been created on macOS."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "pets.rs suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); a transparent always-on-top window on Linux depends on the compositor and has never been tried."
+        }
+      }
+    },
+    {
+      "id": "keep-awake",
+      "name": "Keep-awake (opt-in)",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "SetThreadExecutionState path in daily use and recorded working on Windows (FOR-DEV.md, Platform validation); state-machine logic unit-tested (src-tauri/src/power.rs)."
+        },
+        "macos-aarch64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "The caffeinate branch compiles on the macos-14 verify leg; the keep-awake state machine is unit-tested and a host-OS test toggles the real inhibitor per runner (src-tauri/src/power.rs). Whether a Mac actually stays awake has never been verified on physical hardware."
+        },
+        "macos-x64": {
+          "level": "code-only",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (src-tauri/src/power.rs); never executed."
+        },
+        "linux-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "The systemd-inhibit branch compiles on ubuntu-latest; the keep-awake state machine is unit-tested and a host-OS test toggles the real inhibitor per runner (src-tauri/src/power.rs). A real inhibitor lock on a Linux desktop session has never been observed (CI runners have no logind session for it)."
+        }
+      }
+    },
+    {
+      "id": "automations",
+      "name": "Automations: headless runner + OS scheduler with the app closed",
+      "status": {
+        "windows-x64": {
+          "level": "validated",
+          "date": "2026-07-26",
+          "sha": "039866bb",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "Verified live end to end with the app closed — a real Task Scheduler task fired the headless runner driving a multi-agent graph (FOR-DEV.md, Status; CHANGELOG 0.0.23/0.0.24); store integration suite (src-tauri/tests/automations_store.rs); an ignored round-trip test against the real Task Scheduler exists (src-tauri/src/automations/, cargo test -- --ignored windows_round_trip)."
+        },
+        "macos-aarch64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "The LaunchAgent plist is produced by pure functions tested on every platform (src-tauri/src/automations/), but launchctl registration has never executed on a real Mac (FOR-DEV.md, Automations follow-ups)."
+        },
+        "macos-x64": {
+          "level": "code-only",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Same plist generators compiled into the x86_64 DMG (src-tauri/src/automations/); never executed."
+        },
+        "linux-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "The systemd user units are produced by pure functions tested on every platform (src-tauri/src/automations/), but systemctl --user registration has never executed on a real Linux session (FOR-DEV.md, Automations follow-ups)."
+        }
+      }
+    },
+    {
+      "id": "updater",
+      "name": "In-app updater (channels, signature, staged install)",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "Signed (minisign) self-updates verified by the maintainer on both channels on each release since 0.0.10 (FOR-DEV.md, CI/CD — release); per-channel endpoints unit-tested (src-tauri/src/updater.rs); channel/tag crossing rejected by test (src/lib/desktop-release-tag.test.ts) and by CI (.github/workflows/release-desktop-manifest.yml).",
+          "gaps": "The failure paths that need a hostile artifact — corrupt manifest, wrong-key signature — are exercised by the plugin's own verification, not by a recorded local run; see docs/updates.md (failure & rollback) and the checklist."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner",
+          "tester": "ci",
+          "evidence": "Updater artifacts (.app.tar.gz + .sig) built and published per release (desktop-stable-v0.0.24); a real self-update on macOS has never been observed (docs/install-macos.md calls the path experimental)."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "x64 updater artifacts built and published per release (desktop-stable-v0.0.24); never exercised."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "AppImage/deb updater artifacts + .sig built and published per release (desktop-stable-v0.0.24); a real self-update on a Linux desktop has never been observed."
+        }
+      }
+    },
+    {
+      "id": "hardened-paths",
+      "name": "Paths with spaces and non-ASCII characters",
+      "status": {
+        "windows-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64 (local + windows-latest runner)",
+          "tester": "ci",
+          "evidence": "The automations store round-trips a root with spaces and non-ASCII characters (src-tauri/tests/automations_store.rs); git suites run against temp dirs. No full-app walkthrough over a Unicode profile/worktree path has been recorded on any platform."
+        },
+        "macos-aarch64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "Same suites green on macos-14 (.github/workflows/ci-desktop.yml run 30608531497); no app-level pass."
+        },
+        "macos-x64": {
+          "level": "code-only",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiled into the shipped DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "Same suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); no app-level pass."
+        }
+      }
+    },
+    {
+      "id": "shutdown",
+      "name": "Shutdown with live agents; persistence under interruption",
+      "status": {
+        "windows-x64": {
+          "level": "smoke",
+          "date": "2026-07-30",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "The E2E agent journey closes the app and proves nothing outlives it (tests/e2e/specs/agent.e2e.mjs, 2026-07-30); atomic persistence with rotating backups and a truncated file degrading instead of panicking is suite-covered (src-tauri/src/persistence.rs, src-tauri/tests/automations_store.rs).",
+          "gaps": "A literal kill-during-write of the running app is not automated; the atomic-write + backup design is the defense, exercised at the file layer."
+        },
+        "macos-aarch64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "Persistence suites green on the macos-14 verify leg (.github/workflows/ci-desktop.yml run 30608531497); the app-level close path has never run on Apple hardware."
+        },
+        "macos-x64": {
+          "level": "builds",
+          "date": "2026-07-29",
+          "sha": "039866bb",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Compiles into the shipped x86_64 DMG (desktop-stable-v0.0.24); never executed."
+        },
+        "linux-x64": {
+          "level": "builds",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "Persistence suites green on ubuntu-latest (.github/workflows/ci-desktop.yml run 30608531497); the app-level close path has never run on a Linux desktop."
+        }
+      }
+    },
+    {
+      "id": "resources",
+      "name": "Resource footprint (R00–R11)",
+      "status": {
+        "windows-x64": {
+          "level": "validated",
+          "date": "2026-07-30",
+          "sha": "54d935e8",
+          "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB, WebView2 150.0.4078.105 (hostId 2b9d89e1cf9f)",
+          "tester": "maintainer",
+          "evidence": "Approved baseline: eleven scenarios, five release-build repetitions each (scripts/resources/baselines/windows/, scripts/resources/baselines/README.md).",
+          "gaps": "R07/R08 need an operator and R10 (the 2 h soak) has never run; the budget gate is warn-only (FOR-DEV.md, Resource benchmarks follow-ups)."
+        },
+        "macos-aarch64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (Apple Silicon)",
+          "tester": "ci",
+          "evidence": "The Unix collector is implemented and its parser unit-tested (scripts/resources/collectors/, scripts/resources/lib/), but it has never executed on macOS; budgets stay empty and no figure may be published (scripts/resources/baselines/README.md)."
+        },
+        "macos-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted macos-14 runner (cross-compiling to x86_64)",
+          "tester": "ci",
+          "evidence": "Same collector, same status (scripts/resources/collectors/); never executed."
+        },
+        "linux-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "GitHub-hosted ubuntu-latest runner",
+          "tester": "ci",
+          "evidence": "Same collector, same status (scripts/resources/collectors/); never executed on a Linux desktop."
+        }
+      }
+    },
+    {
+      "id": "wsl",
+      "name": "WSL repositories (Windows-hosted)",
+      "status": {
+        "windows-x64": {
+          "level": "code-only",
+          "date": "2026-07-31",
+          "sha": "5d05643b",
+          "hardware": "Windows 11 Pro 10.0.26200 x64 (local + windows-latest runner)",
+          "tester": "ci",
+          "evidence": "wsl.exe path routing is unit-tested (src-tauri/src/wsl.rs); no recorded walkthrough opens a \\\\wsl.localhost repository, creates a worktree in it and runs an agent (docs/testing.md, L5 row 9; tests/quality-matrix.json, project-worktree row)."
+        }
+      }
+    }
+  ],
+  "checklists": {
+    "windows-x64": [
+      {
+        "id": "win-install-cycle",
+        "advancesTo": "validated",
+        "item": "Record two full install→upgrade→uninstall cycles (previous stable → current, stable and nightly): configuration preserved, no leftover processes, no orphaned scheduler tasks, uninstall leaves no app files behind."
+      },
+      {
+        "id": "win-wake-fidelity",
+        "advancesTo": "validated",
+        "item": "Wake a slept workspace and confirm the replayed scrollback matches what was captured (R04 assisted checklist)."
+      },
+      {
+        "id": "win-resources-operator",
+        "advancesTo": "validated",
+        "item": "Capture R07 and R08 with an operator and run R10 (the 2 h soak) once; promote the aggregates."
+      },
+      {
+        "id": "win-updater-negative",
+        "advancesTo": "validated",
+        "item": "Exercise the updater failure path once against a staging channel: a tampered latest.json and a wrong-key .sig must both be refused and leave the installed version running (docs/updates.md, failure & rollback)."
+      },
+      {
+        "id": "win-authenticode",
+        "advancesTo": "signed",
+        "item": "Obtain and configure the Windows Authenticode certificate (FOR-HUMAN.md); verify SmartScreen accepts a signed installer."
+      },
+      {
+        "id": "win-release-ready",
+        "advancesTo": "release-ready",
+        "item": "On clean hardware (not the development machine): install, upgrade from the previous stable, roll back by reinstalling it, and uninstall — configuration preserved at every step."
+      }
+    ],
+    "macos-aarch64": [
+      {
+        "id": "mac-first-smoke",
+        "advancesTo": "smoke",
+        "item": "On real Apple Silicon hardware: install the DMG via the documented Gatekeeper walkthrough (docs/install-macos.md), launch, open a terminal, add a project, and confirm agent/gh/editor detection finds Homebrew-installed CLIs from a Finder launch."
+      },
+      {
+        "id": "mac-feature-smoke",
+        "advancesTo": "smoke",
+        "item": "Walk the platform-sensitive features once: notifications, keep-awake (a caffeinate process appears and disappears), the pet overlay window, the integrated browser, sleep/wake of a workspace."
+      },
+      {
+        "id": "mac-scheduler",
+        "advancesTo": "validated",
+        "item": "Register an automation, quit the app, and confirm the LaunchAgent fires the headless runner; then remove it and confirm launchctl is clean."
+      },
+      {
+        "id": "mac-self-update",
+        "advancesTo": "validated",
+        "item": "Apply a real self-update on both channels and confirm Gatekeeper does not re-quarantine it; record two install/upgrade cycles."
+      },
+      {
+        "id": "mac-resources",
+        "advancesTo": "validated",
+        "item": "Run the Unix resource collector for R00–R06/R09/R11 on the machine, define the macOS `own` bucket (WebKit's content process lives outside the app tree), and promote a baseline."
+      },
+      {
+        "id": "mac-signing",
+        "advancesTo": "signed",
+        "item": "Apple Developer ID + notarization (FOR-HUMAN.md); verify a notarized build opens with no Gatekeeper prompt."
+      }
+    ],
+    "macos-x64": [
+      {
+        "id": "macx64-first-run",
+        "advancesTo": "smoke",
+        "item": "Execute the cross-compiled x86_64 DMG on a real Intel Mac at all — it has never run anywhere; then repeat the macos-aarch64 checklist there."
+      }
+    ],
+    "linux-x64": [
+      {
+        "id": "linux-first-smoke",
+        "advancesTo": "smoke",
+        "item": "On Ubuntu LTS (or the reference distribution): install the .deb and the AppImage, launch under X11 and under Wayland, open a terminal, add a project."
+      },
+      {
+        "id": "linux-feature-smoke",
+        "advancesTo": "smoke",
+        "item": "Walk the platform-sensitive features once: notifications, keep-awake (systemd-inhibit held and released), the pet overlay (compositor-dependent), the integrated browser (WebKitGTK), sleep/wake."
+      },
+      {
+        "id": "linux-scheduler",
+        "advancesTo": "validated",
+        "item": "Register an automation, quit the app, and confirm the systemd user timer fires the headless runner; then remove it and confirm systemctl --user is clean. Also verify honest degradation on a system without systemd."
+      },
+      {
+        "id": "linux-e2e",
+        "advancesTo": "validated",
+        "item": "Run the E2E suite via tauri-driver + WebKitWebDriver for the first time (supported by the driver, never executed); record the result before claiming the layer."
+      },
+      {
+        "id": "linux-self-update",
+        "advancesTo": "validated",
+        "item": "Apply a real self-update (AppImage path) on both channels; record two install/upgrade cycles, including the .deb upgrade path."
+      },
+      {
+        "id": "linux-resources",
+        "advancesTo": "validated",
+        "item": "Run the Unix resource collector for R00–R06/R09/R11 and promote a baseline."
+      },
+      {
+        "id": "linux-signing",
+        "advancesTo": "signed",
+        "item": "Optional GPG signing for .deb/.rpm (FOR-HUMAN.md)."
+      }
+    ]
+  }
+}

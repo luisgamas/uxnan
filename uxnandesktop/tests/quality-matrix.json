@@ -358,6 +358,26 @@
       "gaps": "A signed-artifact round trip is L5 by nature."
     },
     {
+      "id": "platform-claims",
+      "flow": "Platform claims and the release gate",
+      "owner": "desktop",
+      "covered": [
+        "L1"
+      ],
+      "planned": [
+        "L5"
+      ],
+      "evidence": {
+        "L1": "tests/platform-support.test.mjs (the matrix checked against the repo + the announced-level gate), scripts/platform-support.mjs (the release-workflow gate)"
+      },
+      "platforms": {
+        "windows": "gate in the required suite",
+        "macos": "gate in the required suite",
+        "linux": "gate in the required suite"
+      },
+      "gaps": "The L5 half is the per-platform manual checklists inside tests/platform-support.json — macOS/Linux hardware is not available, which is exactly what the matrix records."
+    },
+    {
       "id": "resource-footprint",
       "flow": "Resource footprint",
       "owner": "desktop",
