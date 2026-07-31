@@ -92,10 +92,15 @@ pub struct AppState {
     pub mcp_prepared: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// MCP config files we wrote, recorded so they're undone on exit (best-effort).
     pub mcp_written: Arc<std::sync::Mutex<Vec<crate::mcpinject::Written>>>,
+    /// Local resource observability: the PTY-link registry, the adaptive
+    /// sampler's leases and the aggregated circular buffer (`resources.rs`).
+    /// Parked (no timer, no OS handle) unless a consumer subscribes.
+    pub resources: Arc<crate::resources::ResourceMonitor>,
 }
 
 impl AppState {
     pub fn new(persistence: PersistenceManager, data: AppData) -> Self {
+        let resources = crate::resources::ResourceMonitor::new((&data.settings.resources).into());
         Self {
             data: RwLock::new(data),
             persistence,
@@ -112,6 +117,7 @@ impl AppState {
             browser_url: Arc::new(std::sync::Mutex::new(None)),
             mcp_prepared: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             mcp_written: Arc::new(std::sync::Mutex::new(Vec::new())),
+            resources,
         }
     }
 }

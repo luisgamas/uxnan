@@ -410,7 +410,16 @@
       },
       ligatures: t.ligatures,
       webLinks: app.settings.browser?.terminalLinks ?? true,
-      spec: { cwd, shell, args, runCommand, runCommandExecute, env },
+      spec: {
+        cwd,
+        shell,
+        args,
+        runCommand,
+        runCommandExecute,
+        env,
+        // Attribution only (resource monitor): the workspace this tab lives in.
+        workspace: terminals.workspaceOfTab(id),
+      },
     }));
     if (destroyed) {
       // The pane died while the instance was being built (rapid open/close or a

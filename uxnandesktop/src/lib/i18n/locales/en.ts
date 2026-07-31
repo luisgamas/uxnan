@@ -467,6 +467,60 @@ export const en = {
   "settings.updates": "Updates",
   "settings.updatesDesc":
     "Choose how Uxnan Desktop checks for, downloads and installs new versions.",
+  "settings.resources": "Resources",
+  "settings.resourcesDesc":
+    "A local, explainable readout of what Uxnan, its terminals and its agents cost in CPU and memory. Nothing is measured unless a surface is open, and nothing ever leaves this machine.",
+
+  // Resource observability (backend popover + Settings → Resources)
+  "resources.title": "Resources",
+  "resources.samplingEvery": "every {seconds} s",
+  "resources.loading": "Reading…",
+  "resources.empty": "No samples yet — measuring starts while this panel is open.",
+  "resources.unsupported": "Resource metrics are not available on this platform.",
+  "resources.totalLabel": "Uxnan (everything)",
+  "resources.processesOne": "{n} process",
+  "resources.processesOther": "{n} processes",
+  "resources.peak": "peak",
+  "resources.trendRising": "Memory has been rising over the last minutes",
+  "resources.trendFalling": "Memory has been falling over the last minutes",
+  "resources.kindDesktop": "App",
+  "resources.kindTerminal": "Terminal",
+  "resources.ended": "ended",
+  "resources.spike": "Well above its recent average",
+  "resources.orphansOne": "{n} surviving process",
+  "resources.orphansOther": "{n} surviving processes",
+  "resources.orphanAge": "outlived its terminal by {age}",
+  "resources.bestEffort":
+    "Figures on this platform are best effort (not yet validated on hardware).",
+  "resources.settingsLink": "Resource settings",
+  "resources.enable": "Resource monitor",
+  "resources.enableDesc":
+    "Show the Resources readout in the backend popover. Measuring only runs while that panel is open, so the feature costs nothing at rest.",
+  "resources.orphanSweep": "Watch for surviving processes",
+  "resources.orphanSweepDesc":
+    "Keep a slow background check running so a process that outlives its closed terminal is noticed even with no panel open. The one mode that samples unasked.",
+  "resources.sweepInterval": "Check interval (seconds)",
+  "resources.sweepIntervalDesc": "How often the background check runs (15–30 s).",
+  "resources.confidenceTitle": "How attribution is labeled",
+  "resources.confidenceExactName": "Exact",
+  "resources.confidenceExact":
+    "Verified by process id and start time against a terminal Uxnan spawned.",
+  "resources.confidenceInferredName": "Inferred",
+  "resources.confidenceInferred":
+    "Attributed through the parent chain below a verified process — solid evidence, not proof.",
+  "resources.confidenceUnknownName": "Unknown",
+  "resources.confidenceUnknown":
+    "Identity could not be verified (for example, the process id was recycled). No figures are claimed.",
+  "resources.export": "Export diagnostics",
+  "resources.exportDesc":
+    "Save a sanitized JSON snapshot of the current summary — anonymized labels, no paths, no command lines. You review the fields before anything is written.",
+  "resources.exportButton": "Export…",
+  "resources.exportTitle": "Export resource diagnostics",
+  "resources.exportFieldsIntro": "The file will contain exactly these fields:",
+  "resources.exportSanitizedNote":
+    "Workspace and terminal names are replaced with opaque labels; agent names are kept only for known catalog agents. Nothing is uploaded — you choose where the file is saved.",
+  "resources.exportConfirm": "Save file…",
+  "resources.exportSaved": "Diagnostics exported.",
   "settings.browser": "Browser",
   "settings.browserDesc":
     "A lightweight in-app browser to preview and debug what your agents build, and to open the links they create.",

@@ -58,6 +58,7 @@
   import OpenWithSettings from "./OpenWithSettings.svelte";
   import GithubSettings from "./GithubSettings.svelte";
   import PetsSettings from "./PetsSettings.svelte";
+  import ResourceSettings from "./ResourceSettings.svelte";
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import { TERMINAL_SCROLLBACK_PRESETS } from "$lib/terminal/scrollback";
@@ -77,6 +78,7 @@
   import BotIcon from "@lucide/svelte/icons/bot";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
   import LanguagesIcon from "@lucide/svelte/icons/languages";
+  import ActivityIcon from "@lucide/svelte/icons/activity";
   import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import WebhookIcon from "@lucide/svelte/icons/webhook";
   import DownloadIcon from "@lucide/svelte/icons/download";
@@ -782,7 +784,10 @@
     },
     {
       titleKey: "settings.groupApp",
-      items: [{ id: "updates", key: "settings.updates", icon: DownloadIcon }],
+      items: [
+        { id: "resources", key: "settings.resources", icon: ActivityIcon },
+        { id: "updates", key: "settings.updates", icon: DownloadIcon },
+      ],
     },
   ] as const;
 </script>
@@ -1674,6 +1679,8 @@
           <OpenWithSettings />
         {:else if app.settingsSection === "github"}
           <GithubSettings />
+        {:else if app.settingsSection === "resources"}
+          <ResourceSettings />
         {:else}
           <div class="flex flex-col gap-6">
           <SettingsSection title={i18n.t("settings.terminal")} description={i18n.t("settings.terminalDesc")}>

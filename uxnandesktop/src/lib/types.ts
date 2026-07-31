@@ -345,6 +345,23 @@ export interface AppSettings {
   /** Left-sidebar footer profile card (avatar, name, description); clicking it
    *  opens the Settings / GitHub sections. All fields optional. */
   profile?: SidebarProfile;
+  /** Local resource observability (backend-popover summary + Settings →
+   *  Resources). Absent = the defaults (enabled, no background sweep). */
+  resources?: ResourceSettings;
+}
+
+/** Local resource observability settings (mirror of the Rust `ResourceSettings`).
+ *  The collector samples only while a surface consumes it; the opt-in orphan
+ *  sweep is the one background mode. */
+export interface ResourceSettings {
+  /** Master switch for the feature's surfaces + data. Default true (a parked
+   *  collector costs nothing). */
+  enabled?: boolean;
+  /** Background sweep that notices orphaned processes with no UI open.
+   *  Default false — the only mode that costs anything unasked. */
+  orphanSweep?: boolean;
+  /** Sweep interval in seconds; the backend clamps it to 15–30. */
+  orphanSweepSeconds?: number;
 }
 
 /** The configurable identity card in the left sidebar's footer: an avatar, a
@@ -1049,6 +1066,116 @@ export interface AppData {
   orchestrationRuns?: SavedRun[] | null;
 }
 
+// --- Resource observability (mirror of `src-tauri/src/resources.rs`) ---------
+
+/** Who a measured aggregate belongs to. `bridge`/`browser` are reserved. */
+export type ResourceOwnerKind =
+  | "desktop"
+  | "workspace"
+  | "terminal"
+  | "agent"
+  | "bridge"
+  | "browser"
+  | "unknown";
+
+/** How sure the attribution is: `exact` = pid + start time verified,
+ *  `inferred` = parent-chain evidence, `unknown` = identity not verifiable. */
+export type AttributionConfidence = "exact" | "inferred" | "unknown";
+
+/** Direction of a group's memory over the buffered window. */
+export type ResourceTrend = "rising" | "falling" | "steady" | "unknown";
+
+/** Consumer kinds a sampling lease can carry. */
+export type ResourceConsumerKind = "popover" | "budget";
+
+/** Which metrics this build/platform can provide; `validated` = measured on
+ *  real hardware (Windows only so far — elsewhere the figures are best effort). */
+export interface ResourceCapabilities {
+  cpu: boolean;
+  memory: boolean;
+  virtualMemory: boolean;
+  io: boolean;
+  startTime: boolean;
+  validated: boolean;
+}
+
+/** Whether/why/how fast the sampler is running. */
+export interface ResourceSamplingState {
+  active: boolean;
+  intervalMs?: number;
+  reason: "popover" | "budget" | "orphanSweep" | "off";
+}
+
+/** Instant + short-average + peak + trend for one series. `null` = the metric
+ *  is unknown for that point (never rendered as zero). */
+export interface ResourceMetricSummary {
+  processes: number;
+  cpuPercent: number | null;
+  cpuAvgPercent: number | null;
+  cpuPeakPercent: number | null;
+  residentBytes: number | null;
+  residentAvgBytes: number | null;
+  residentPeakBytes: number | null;
+  virtualBytes: number | null;
+  ioReadBytesPerSec: number | null;
+  ioWriteBytesPerSec: number | null;
+  trend: ResourceTrend;
+}
+
+/** One owner group (desktop / workspace / agent / …) as the UI consumes it. */
+export interface ResourceGroupSummary extends ResourceMetricSummary {
+  kind: ResourceOwnerKind;
+  /** Workspace path, agent command or terminal id — depending on `kind`. */
+  id?: string;
+  /** The workspace an agent/terminal group belongs to, when known. */
+  workspace?: string;
+  confidence: AttributionConfidence;
+  /** The group's processes ended; metrics are its last-known figures. */
+  ended: boolean;
+}
+
+/** A subtree that outlived its closed owner and is still alive. */
+export interface ResourceOrphan {
+  kind: ResourceOwnerKind;
+  id: string;
+  pids: number[];
+  cpuPercent: number | null;
+  residentBytes: number | null;
+  sinceMs: number;
+  confidence: AttributionConfidence;
+}
+
+/** The consolidated resource document (`resources_summary` + the
+ *  `resources:summary` event payload). */
+export interface ResourceSummary {
+  enabled: boolean;
+  capabilities: ResourceCapabilities;
+  sampling: ResourceSamplingState;
+  updatedAtMs?: number;
+  bufferSeconds: number;
+  /** Everything attributed to uxnan combined; absent until a first sample. */
+  total?: ResourceMetricSummary;
+  groups: ResourceGroupSummary[];
+  orphans: ResourceOrphan[];
+  terminalsLinked: number;
+}
+
+/** The sanitized manual-export document (`resources_export`). Ids are opaque
+ *  labels; `fields` is the consent list shown before saving. */
+export interface ResourceExport {
+  schemaVersion: number;
+  exportedAtMs: number;
+  platform: string;
+  appVersion: string;
+  capabilities: ResourceCapabilities;
+  sampling: ResourceSamplingState;
+  bufferSeconds: number;
+  fields: string[];
+  total?: ResourceMetricSummary;
+  groups: ResourceGroupSummary[];
+  orphans: ResourceOrphan[];
+}
+
 /** Mirror of the Rust `CommandError` returned across the command boundary. */
 export interface CommandError {
   message: string;
@@ -1067,6 +1194,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultProfileId: null,
   agentProfiles: [],
   pets: { enabled: true },
+  resources: { enabled: true, orphanSweep: false, orphanSweepSeconds: 20 },
   usageProviders: [],
   usageRefreshMinutes: 5,
   usageStatusBarEnabled: true,

@@ -122,6 +122,31 @@ describe("scenario preparation", () => {
   it("R11 asks for a warm-up launch, because a restore needs something to restore", () => {
     expect(getScenario("R11").warmup).toBe(true);
   });
+
+  it("R12 varies only the resource-monitor settings across its variants", () => {
+    const scenario = getScenario("R12");
+    const off = scenario.prepare({ fixtures: FIXTURES, variant: "off" });
+    const parked = scenario.prepare({ fixtures: FIXTURES, variant: "parked" });
+    const sweep = scenario.prepare({ fixtures: FIXTURES, variant: "sweep" });
+    expect(off.settingsOverrides.resources).toEqual({
+      enabled: false,
+      orphanSweep: false,
+      orphanSweepSeconds: 15,
+    });
+    expect(parked.settingsOverrides.resources).toEqual({
+      enabled: true,
+      orphanSweep: false,
+      orphanSweepSeconds: 15,
+    });
+    expect(sweep.settingsOverrides.resources).toEqual({
+      enabled: true,
+      orphanSweep: true,
+      orphanSweepSeconds: 15,
+    });
+    // Same one-shell layout as its R02 baseline, so the delta means something.
+    expect(scenario.baseline).toBe("R02");
+    expect(countRegions(parked.layout.workspaces[FIXTURES.repo.dir])).toBe(1);
+  });
 });
 
 describe("profile seeding", () => {

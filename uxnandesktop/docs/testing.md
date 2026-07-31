@@ -45,17 +45,22 @@ keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
 round-trip across a process boundary, seed-once, a truncated file degrading
 instead of panicking, nothing written outside its own root, and a path with
-spaces and non-ASCII characters. **388 backend tests** in total.
+spaces and non-ASCII characters; `resources_processes.rs` (3 tests) drives the
+resource monitor against **real spawned process trees** — live attribution, the
+start-time probe agreeing with the full table read, and the orphan flow (owner
+closed, child survives, cleared when it ends). **429 backend tests** in total.
 
-The 378 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 416 unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups, git + worktree ops (including creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast
 path, the PTY lifecycle,
 the agent hook server, the integrated-browser scheme gate, process detection,
-the updater's per-channel endpoints, and the pets store (Codex-format manifest
+the updater's per-channel endpoints, the pets store (Codex-format manifest
 parsing, path-traversal refusal, and the import copy staying scoped to the
-manifest + its spritesheet).
+manifest + its spritesheet), and the resource monitor (`resources.rs`: cadence
+resolution, pid+start-time attribution, CPU/I-O delta honesty, buffer bounds,
+orphan detection, and the export sanitizer's golden + schema-allow-list tests).
 
 ## Frontend (Svelte / TypeScript)
 
@@ -110,7 +115,7 @@ result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
 scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — and the **test fixtures**
 under `tests/fixtures/` (the fake `gh`, the PATH shim, the disposable and legacy
-profiles) and the **quality matrix** check. **565 tests** across both projects,
+profiles) and the **quality matrix** check. **608 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -126,7 +131,10 @@ instead of quietly agreeing with a mock nobody updated.
   rather than returning `undefined`, which would surface later as a confusing
   null-deref inside the component.
 - `src/test/render.ts` — `mount()` (component + backend + `user-event`, all torn
-  down together) and `until()` for the waits that have no DOM signal.
+  down together), `mountWithProviders()` for components needing the app-level
+  context the root layout provides (bits-ui tooltips throw without their
+  provider — `ProviderHost.svelte`), and `until()` for the waits that have no
+  DOM signal.
 - `src/test/setup.dom.ts` — jsdom's gaps filled once (`matchMedia`,
   `ResizeObserver`, canvas), plus a console policy: an unknown-prop or
   lifecycle-outside-component warning **fails** the test; known third-party

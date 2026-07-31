@@ -62,6 +62,9 @@ export interface TerminalSpawnSpec {
   /** Whether `runCommand` is auto-run (Enter appended) or only pre-typed. */
   runCommandExecute?: boolean;
   env?: [string, string][];
+  /** Workspace key the tab belongs to at spawn time — only so the backend's
+   *  resource monitor can attribute the shell's cost to its workspace. */
+  workspace?: string;
 }
 
 /** Everything needed to build a fresh instance. */
@@ -285,6 +288,8 @@ export async function spawnPty(
       env: spec.env,
       cols,
       rows,
+      // "" is the global workspace — meaningless as an attribution target.
+      workspace: spec.workspace || null,
     });
     // The PTY now exists at exactly `cols`×`rows`; record that as the known
     // grid, then flush any fit that settled while the spawn was in flight so

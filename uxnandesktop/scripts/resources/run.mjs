@@ -97,7 +97,7 @@ Options
   --duration <s>      override the measurement window
   --stabilize <s>     override the discarded warm-up window
   --interval <ms>     sampling interval (default 1000)
-  --variant <name>    scenario variant (R09: off | layer | overlay)
+  --variant <name>    scenario variant (R09: off | layer | overlay; R12: off | parked | sweep)
   --out <dir>         results directory (default .resource-results)
   --binary <path>     app binary to measure (default: the release build)
   --profile <name>    build profile recorded in the result (default release)

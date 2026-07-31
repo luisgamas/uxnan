@@ -16,6 +16,7 @@ import { render as tlRender, type RenderResult } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import type { Component } from "svelte";
 
+import ProviderHost from "./ProviderHost.svelte";
 import { installFakeBackend, type CommandTable, type FakeBackend } from "./tauri";
 
 /** Any Svelte 5 component, whatever its prop types. Tests pass props as a plain
@@ -51,6 +52,23 @@ export function mount(component: AnyComponent, options: MountOptions = {}): Moun
   const backend = installFakeBackend(options.commands);
   const user = userEvent.setup();
   const screen = tlRender(component, options.props ?? {}) as RenderResult<AnyComponent>;
+  return { screen, backend, user };
+}
+
+/**
+ * Like [`mount`], but under the app-level context providers a component
+ * normally inherits from the root layout (`ProviderHost.svelte`) — needed by
+ * anything rendering bits-ui tooltips, which throw without their provider.
+ */
+export function mountWithProviders(
+  component: AnyComponent,
+  options: MountOptions = {},
+): Mounted {
+  const backend = installFakeBackend(options.commands);
+  const user = userEvent.setup();
+  const screen = tlRender(ProviderHost as unknown as AnyComponent, {
+    props: { component, props: options.props ?? {} },
+  }) as RenderResult<AnyComponent>;
   return { screen, backend, user };
 }
 
