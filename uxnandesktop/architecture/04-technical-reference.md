@@ -404,6 +404,69 @@ Monitoreo en tiempo real de agentes. Badges en sidebar. Notificaciones nativas d
   de Homebrew/npm. La notarizacion con Apple Developer ID queda como via opcional
   futura. Detalle operativo en `docs/updates.md`; clave de firma en `FOR-HUMAN.md`.
 
+#### Pirámide de pruebas — ✅ Hecho (adición post-plan)
+
+`03-implementation-guide.md` bosquejaba Testing Library y Playwright; esto es lo
+que quedó implementado, y en qué se apartó de aquel boceto. Documentación
+operativa en `docs/testing.md`.
+
+- **Cinco capas**, cada una con un trabajo que la anterior no puede hacer: L0
+  estática, L1 unidad, L2 componentes Svelte en jsdom, L3 backend contra
+  directorios temporales, L4 la app real conducida de extremo a extremo, L5
+  checklist manual (cuentas, artefactos firmados, hardware físico). La separación
+  existe por velocidad: casi todo se demuestra en una capa de milisegundos, que es
+  lo que permite mantener pequeñas —y por tanto fiables— las capas caras.
+- **Vitest se divide en dos proyectos** (`vitest.workspace.ts`). El proyecto
+  `node` no carga el compilador de Svelte ni jsdom; el proyecto `dom` monta
+  componentes reales. Los tests de componente son `*.svelte.test.ts`.
+- **El doble se coloca por debajo de `api.ts`, no en su lugar.** Se usa el
+  `mockIPC` propio de Tauri, así que `src/lib/api.ts` se ejecuta de verdad —sus
+  nombres de comando, su serialización de argumentos— y solo es falso el proceso
+  del otro lado. Un comando renombrado rompe un test en lugar de coincidir
+  calladamente con un mock que nadie actualizó. **No hizo falta tocar código de
+  producción.**
+- **Driver E2E: WebdriverIO + `tauri-driver`**, decidido por spike y no por
+  preferencia, verificado en Windows: **ocho recorridos, 24 pruebas, ~39 s**, verdes en
+  ejecuciones consecutivas y sin procesos residuales (arranque, restauracion de
+  sesion, terminales en split, workspace dormido, proyecto git, agente y cadena
+  de hooks, ventana del browser, y un perfil de una build anterior). Cada spec
+  arranca su propia app desde un perfil sembrado para el, asi que preparar un
+  recorrido no cuesta clics y las aserciones siguen pasando por la UI real, IPC
+  real y backend real. Dos trampas
+  de esta capa quedaron cubiertas: `tauri-driver` entrega un webview en
+  `about:blank` en vez de engancharse a la ventana ya navegada —todo devuelve un
+  documento vacio y parece que la app no renderiza— y `tauri:options.env` **no
+  llegaba a la app**, que arrancaba leyendo el perfil real del desarrollador; la
+  sesion navega ahora al origen de la app (con IPC vivo: `invoke("ping")`
+  responde `"pong"`) y **se niega a ejecutar** si la app bajo prueba tiene algun
+  proyecto. Playwright era la
+  alternativa y **no puede** conducir una ventana Tauri; podría servir el frontend
+  por su cuenta, pero un test que nunca cruza IPC es un test de componente con un
+  navegador al lado, y llamarlo E2E sería justo el autoengaño que esta capa
+  pretende evitar. Comparativa, versiones fijadas y limitaciones declaradas en
+  `docs/testing.md`.
+- **Fixtures que no pueden alcanzar la máquina real**: un `gh` falso con pestillo
+  obligatorio que depura credenciales de su log, un **shim de PATH** que resuelve
+  cada CLI que la app invoca dentro de un directorio de dobles —un test que se
+  olvide de simular uno recibe "blocked by the test harness" en vez de hablar con
+  GitHub—, y perfiles de aplicación desechables y heredados. El repositorio Git,
+  el agente sustituto y el servidor loopback se **comparten** con el banco de
+  recursos en vez de duplicarse.
+- **Matriz de calidad viva** (`tests/quality-matrix.json`), legible por máquina y
+  verificada contra el repositorio: una fila que declara una capa debe citar un
+  fichero que exista, una fila parcialmente cubierta debe declarar su hueco, y
+  ninguna puede listar una capa como cubierta y planificada a la vez. Registra lo
+  que **no** está probado con el mismo cuidado que lo que sí.
+- **CI**: los tests de componente entran en el gate obligatorio desde el primer
+  día; E2E vive en `e2e-desktop.yml` (bajo demanda y nocturno, Windows), sin
+  bloquear hasta tener historial.
+- **Restricción conocida**: E2E no puede convivir con otra instancia de uxnan
+  —misma compartición del proceso navegador de WebView2 que ya afecta al banco de
+  recursos— y el teardown mata **por PID, nunca por nombre**, porque una barrida
+  por nombre se llevaría por delante el uxnan real del desarrollador.
+
+Pendientes en `FOR-DEV.md` → *Test pyramid — follow-ups*.
+
 #### Banco de pruebas de recursos — ✅ Hecho (adición post-plan)
 
 La promesa de bajo consumo (`01-product-vision.md` §"Justificación de Tauri 2 sobre

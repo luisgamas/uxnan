@@ -14,8 +14,12 @@
     "check:versions": "node scripts/check-version-sync.mjs",
     "check": "node scripts/check-runes.mjs && node scripts/check-version-sync.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "vitest run",
+    "test": "svelte-kit sync && vitest run",
+    "test:node": "vitest run --project node",
+    "test:dom": "svelte-kit sync && vitest run --project dom",
     "test:watch": "vitest",
+    "test:e2e:setup": "node tests/e2e/setup-driver.mjs",
+    "test:e2e": "wdio run tests/e2e/wdio.conf.mjs",
     "bench:build": "tauri build --no-bundle",
     "bench": "node scripts/resources/run.mjs",
     "bench:report": "node scripts/resources/report.mjs",
@@ -69,7 +73,15 @@
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/svelte": "^5.4.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.19.20",
+    "@wdio/cli": "^9.30.0",
+    "@wdio/local-runner": "^9.30.0",
+    "@wdio/mocha-framework": "^9.30.0",
+    "@wdio/spec-reporter": "^9.29.1",
+    "jsdom": "^30.0.1",
     "mode-watcher": "^1.1.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
@@ -77,6 +89,7 @@
     "tailwindcss": "^4.0.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "webdriverio": "^9.30.0"
   }
 }

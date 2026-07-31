@@ -1,0 +1,101 @@
+name: E2E — Desktop (uxnandesktop)
+
+# The end-to-end layer: a real release binary, a real WebView2, real IPC.
+# Documented in `uxnandesktop/tests/e2e/README.md`.
+#
+# On demand and nightly, never on a PR — and deliberately **not yet required**.
+# It needs a release build (minutes), a WebDriver matched to the runner's
+# WebView2, and a machine with no other uxnan running. Making it blocking before
+# it has a track record on this runner is how a gate earns a reputation for
+# false failures and gets switched off; the plan is to require it once it has run
+# green for a fortnight (tracked in `uxnandesktop/FOR-DEV.md`).
+#
+# Windows only. `tauri-driver` supports Linux and does not support macOS, and
+# neither has been exercised here — this workflow does not claim a platform
+# nobody has run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: "Spec file filter (empty runs them all)"
+        required: false
+        default: ""
+  schedule:
+    # 03:40 UTC, off the hour so it does not queue behind everyone else's cron.
+    - cron: "40 3 * * *"
+
+concurrency:
+  group: e2e-desktop
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: uxnandesktop
+
+jobs:
+  e2e:
+    name: e2e (windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: uxnandesktop/package-lock.json
+
+      - name: Set up Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: uxnandesktop/src-tauri
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      # `tauri build --no-bundle`, not `cargo build --release`: without Tauri's
+      # `custom-protocol` feature the binary stays in dev mode and loads
+      # http://localhost:1420, so the app would run with no UI and every
+      # assertion would fail for the wrong reason.
+      - name: Build a release binary with its frontend embedded
+        run: npm run bench:build
+
+      # Reads the runner's installed WebView2 version and fetches the matching
+      # driver. Not pinned in a file on purpose — the runner image updates its
+      # runtime, and a pinned version would break on their schedule.
+      - name: Fetch the matching WebDriver
+        run: npm run test:e2e:setup
+
+      - name: Run the end-to-end suite
+        shell: bash
+        run: |
+          set -u
+          filter="${{ github.event.inputs.spec }}"
+          if [ -n "$filter" ]; then
+            npx wdio run tests/e2e/wdio.conf.mjs --spec "$filter"
+          else
+            npm run test:e2e
+          fi
+
+      # Evidence, not noise: a screenshot and the page source per failed test,
+      # plus the driver log. The suite writes nothing else, and the profile it
+      # used is a temp directory that never leaves the runner.
+      - name: Upload failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-windows
+          path: uxnandesktop/tests/e2e/.artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

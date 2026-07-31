@@ -218,6 +218,7 @@ Detailed docs live in [`docs/`](./docs/):
 [release builds & packaging](./docs/build.md) ·
 [installing on macOS (experimental)](./docs/install-macos.md) ·
 [testing & verification](./docs/testing.md) ·
+[end-to-end tests](./tests/e2e/README.md) ·
 [resource benchmarks](./docs/resource-benchmarks.md) ·
 [architecture orientation](./docs/architecture.md) ·
 [design tokens](./docs/design-tokens.md) ·

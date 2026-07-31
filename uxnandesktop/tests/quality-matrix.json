@@ -1,0 +1,381 @@
+{
+  "$comment": [
+    "The living record of what is tested, at which layer, and — more usefully —",
+    "what is not. A prose table in a README drifts within weeks because nothing",
+    "reads it; this file is machine-readable so `quality-matrix.test.mjs` can",
+    "check it against reality and fail when the two disagree.",
+    "",
+    "Every plan that adds a feature adds or updates its row here. `covered` is",
+    "not a wish: a layer listed as covered must have a test that exists.",
+    "",
+    "Layers: L1 pure logic · L2 Svelte components in jsdom · L3 backend against",
+    "temp dirs · L4 the real app driven end to end · L5 manual, on real",
+    "accounts/hardware."
+  ],
+  "version": 1,
+  "updated": "2026-07-31",
+  "layers": {
+    "L1": {
+      "name": "unit",
+      "runner": "vitest --project node",
+      "gate": "required"
+    },
+    "L2": {
+      "name": "component",
+      "runner": "vitest --project dom",
+      "gate": "required"
+    },
+    "L3": {
+      "name": "backend integration",
+      "runner": "cargo test --test * + vitest node",
+      "gate": "required"
+    },
+    "L4": {
+      "name": "end to end",
+      "runner": "wdio run tests/e2e/wdio.conf.mjs",
+      "gate": "manual (Windows)"
+    },
+    "L5": {
+      "name": "real compatibility",
+      "runner": "by hand",
+      "gate": "checklist"
+    }
+  },
+  "flows": [
+    {
+      "id": "startup-restore",
+      "flow": "Startup and session restore",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L4"
+      ],
+      "planned": [
+        "L3"
+      ],
+      "evidence": {
+        "L1": "src/lib/pathid.test.ts, src/lib/agentResume.test.ts",
+        "L4": "tests/e2e/specs/launch.e2e.mjs, tests/e2e/specs/restore.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "No L3 test boots the backend against a seeded profile; the E2E journey covers the same ground end to end, which is arguably the better place for it."
+    },
+    {
+      "id": "terminal-lifecycle",
+      "flow": "Open and close a terminal",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3",
+        "L4"
+      ],
+      "planned": [
+        "L2"
+      ],
+      "evidence": {
+        "L1": "src/lib/terminal/scrollback.test.ts, src/lib/terminalArbiter.test.ts",
+        "L3": "src-tauri/src/pty.rs #[cfg(test)]",
+        "L4": "tests/e2e/specs/terminal.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "No component test mounts TerminalArea. Closing a terminal from the UI is not covered — the journey asserts the panes that restore, not the ones a user closes."
+    },
+    {
+      "id": "splits-and-tabs",
+      "flow": "Split, reorder and move tabs",
+      "owner": "desktop",
+      "covered": [
+        "L1"
+      ],
+      "planned": [
+        "L2",
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/state/terminals.svelte.ts logic via pathid/scrollback tests"
+      },
+      "platforms": {
+        "windows": "untested",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "Re-parenting a live xterm on a move is the risky part and has no automated coverage at all."
+    },
+    {
+      "id": "sleep-wake",
+      "flow": "Sleep and wake a workspace, with scrollback",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L4"
+      ],
+      "planned": [
+        "L2",
+        "L3"
+      ],
+      "evidence": {
+        "L1": "src/lib/terminal/scrollback.test.ts",
+        "L4": "tests/e2e/specs/sleep-wake.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The journey proves a sleeping workspace spawns no shells. Waking one — and whether the replayed scrollback matches what was captured — is still only checked by hand."
+    },
+    {
+      "id": "project-worktree",
+      "flow": "Add a project and create a worktree",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3",
+        "L4"
+      ],
+      "planned": [
+        "L2"
+      ],
+      "evidence": {
+        "L1": "src/lib/branchName.test.ts, src/lib/pathid.test.ts",
+        "L3": "src-tauri/src/git.rs #[cfg(test)] against throwaway repos",
+        "L4": "tests/e2e/specs/worktree.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested",
+        "wsl": "untested"
+      },
+      "gaps": "Creating a worktree from the UI is not covered; the journey asserts an existing repository is recognised, listed and read. WSL path routing has no test."
+    },
+    {
+      "id": "git-review",
+      "flow": "Status, diff, stage and commit",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3"
+      ],
+      "planned": [
+        "L2",
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/diffParse.test.ts",
+        "L3": "src-tauri/src/git.rs, src-tauri/src/gitfast.rs #[cfg(test)]"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "Hunk-level staging is covered in Rust but not through the UI."
+    },
+    {
+      "id": "agent-hooks",
+      "flow": "Agent hook reporting and state",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3",
+        "L4"
+      ],
+      "planned": [
+        "L2"
+      ],
+      "evidence": {
+        "L1": "src/lib/agentSessionId.test.ts, src/lib/agentLogoCache.test.ts",
+        "L3": "src-tauri/src/hooks.rs, src-tauri/src/agent_hooks.rs #[cfg(test)]",
+        "L4": "tests/e2e/specs/agent.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The journey covers the half uxnan owns: the agent runs under a shell, the endpoint file is written, an untokened report is refused and a valid one reaches the state the sidebar reads. Whether a *particular* CLI's reporter is installed and correct is a separate question, and belongs to L5."
+    },
+    {
+      "id": "orchestration",
+      "flow": "Orchestration DAG, gates and retry",
+      "owner": "desktop",
+      "covered": [
+        "L1"
+      ],
+      "planned": [
+        "L2",
+        "L3",
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/orchestration/run.test.ts, src/lib/orchestration.test.ts"
+      },
+      "platforms": {
+        "windows": "untested",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The engine's logic is well covered; nothing exercises it against real agent processes."
+    },
+    {
+      "id": "browser-panel",
+      "flow": "Integrated browser: open, route, close",
+      "owner": "desktop",
+      "covered": [
+        "L3",
+        "L4"
+      ],
+      "planned": [
+        "L2"
+      ],
+      "evidence": {
+        "L3": "src-tauri/src/browser.rs #[cfg(test)] (scheme gate)",
+        "L4": "tests/e2e/specs/browser.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The journey opens a loopback page in the browser window — the only multi-window coverage in the suite. Closing it, and the routing preference, are not covered."
+    },
+    {
+      "id": "settings-persistence",
+      "flow": "Settings, persistence and schema migration",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3",
+        "L4"
+      ],
+      "planned": [
+        "L2"
+      ],
+      "evidence": {
+        "L1": "src/lib/theme.test.ts, src/lib/quickCommands.test.ts",
+        "L3": "src-tauri/src/persistence.rs #[cfg(test)], src-tauri/tests/automations_store.rs",
+        "L4": "tests/e2e/specs/migration.e2e.mjs"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The journey boots the app over a profile shaped by an older build and asserts the projects survive. Changing a setting through the UI is not covered."
+    },
+    {
+      "id": "github",
+      "flow": "GitHub read and write",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3"
+      ],
+      "planned": [
+        "L2"
+      ],
+      "evidence": {
+        "L1": "src/lib/markdown.test.ts, src/lib/branchName.test.ts",
+        "L3": "tests/fixtures/fixtures.test.mjs (the fake gh itself)"
+      },
+      "platforms": {
+        "windows": "fixture only",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The write side has never run against real GitHub. L5 only, and opt-in."
+    },
+    {
+      "id": "automations",
+      "flow": "Automations and the OS scheduler",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L3"
+      ],
+      "planned": [
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/automations/*.test.ts",
+        "L3": "src-tauri/tests/automations_store.rs, src-tauri/src/automations/*.rs #[cfg(test)]"
+      },
+      "platforms": {
+        "windows": "verified by hand",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "Scheduler registration is verified manually on Windows only."
+    },
+    {
+      "id": "pets",
+      "flow": "Pet overlay and its events",
+      "owner": "desktop",
+      "covered": [
+        "L1"
+      ],
+      "planned": [
+        "L2",
+        "L4"
+      ],
+      "evidence": {
+        "L1": "src/lib/pets/*.test.ts"
+      },
+      "platforms": {
+        "windows": "measured (resource benchmark R09)",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "The overlay is a second window; multi-window E2E is unproven."
+    },
+    {
+      "id": "updater",
+      "flow": "In-app updater",
+      "owner": "desktop",
+      "covered": [
+        "L1"
+      ],
+      "planned": [
+        "L3"
+      ],
+      "evidence": {
+        "L1": "src/lib/updaterLogic.test.ts, src-tauri/src/updater.rs #[cfg(test)]"
+      },
+      "platforms": {
+        "windows": "verified by hand",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "A signed-artifact round trip is L5 by nature."
+    },
+    {
+      "id": "resource-footprint",
+      "flow": "Resource footprint",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L4"
+      ],
+      "planned": [],
+      "evidence": {
+        "L1": "scripts/resources/lib/*.test.mjs",
+        "L4": "scripts/resources/run.mjs (the benchmark launches and measures the real app — 55 verified runs; it does not use WebDriver, which is why it is unaffected by the E2E attachment problem)"
+      },
+      "platforms": {
+        "windows": "baseline approved",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "R07/R08 need an operator; R10 (the 2 h soak) has never been run."
+    }
+  ]
+}
