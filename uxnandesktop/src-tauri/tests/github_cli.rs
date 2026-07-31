@@ -56,6 +56,8 @@ fn use_path(dir: &Path) -> ShimGuard {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let original = std::env::var_os("PATH");
+    // `mut` is only exercised by the Windows block below.
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut parts: Vec<PathBuf> = vec![dir.to_path_buf()];
     #[cfg(windows)]
     {
