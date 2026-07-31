@@ -523,6 +523,75 @@ export const en = {
   "resources.exportSaved": "Diagnostics exported.",
 
   // Resource mode (Settings → Resources → Resource mode)
+  "resourceMode.title": "Resource mode",
+  "resourceMode.desc":
+    "Choose how much background work Uxnan keeps running. A preset governs local infrastructure only — refresh cadences, polling, parallelism, animation — never what your agents can do or which model they use.",
+  "resourceMode.profileGroup": "Resource profile",
+  "resourceMode.profile.efficient": "Efficient",
+  "resourceMode.profile.efficientDesc":
+    "Less background work and memory. Some data refreshes less often — every relaxed surface says so and offers a manual refresh.",
+  "resourceMode.profile.balanced": "Balanced",
+  "resourceMode.profile.balancedDesc": "The default: exactly the behavior Uxnan has always had.",
+  "resourceMode.profile.performance": "Performance",
+  "resourceMode.profile.performanceDesc":
+    "Fresher data, and extra parallelism only while Uxnan measures real headroom. Never aggressive.",
+  "resourceMode.effectsTitle": "What this preset does",
+  "resourceMode.overriddenBadge": "overridden",
+  "resourceMode.effect.gitSweep": "Git status sweep (background worktrees)",
+  "resourceMode.effect.reconcile": "Worktree list check",
+  "resourceMode.effect.everySeconds": "every {seconds} s",
+  "resourceMode.effect.github": "GitHub polling",
+  "resourceMode.effect.usage": "Provider usage refresh",
+  "resourceMode.effect.intervalNormal": "your configured interval",
+  "resourceMode.effect.intervalRelaxed": "{factor}× your configured interval",
+  "resourceMode.effect.intervalFresher": "up to 2× as often (never under 30 s)",
+  "resourceMode.effect.orchestration": "Orchestration parallelism",
+  "resourceMode.effect.orchestrationSteps": "{n} steps at once",
+  "resourceMode.effect.orchestrationExtended": "{n} steps at once ({max} with measured headroom)",
+  "resourceMode.effect.history": "Resource monitor history",
+  "resourceMode.effect.historyMinutes": "{minutes} min",
+  "resourceMode.effect.pet": "Pet idle animations",
+  "resourceMode.effect.petNormal": "normal",
+  "resourceMode.effect.petReduced": "reduced (state changes still play)",
+  "resourceMode.effect.autoSleep": "Workspace auto-sleep",
+  "resourceMode.effect.autoSleepOff": "off",
+  "resourceMode.effect.autoSleepSuggest": "suggest after {minutes} min idle",
+  "resourceMode.effect.autoSleepAuto": "sleep after {minutes} min idle",
+  "resourceMode.effect.autoSleepFlagOff": "(switch below is off)",
+  "resourceMode.autoSleepFlag": "Workspace auto-sleep",
+  "resourceMode.autoSleepFlagDesc":
+    "Experimental. Lets Uxnan suggest — or, at the automatic level, perform — sleeping workspaces that have been idle. Sleeping stops that workspace's processes (scrollback and agent sessions are kept and resume on wake). A workspace with a working agent is only ever suggested, never slept without your confirmation.",
+  "resourceMode.advanced": "Advanced overrides",
+  "resourceMode.advancedDesc":
+    "Pin one capability while everything else follows the preset. “Use preset” removes the override — nothing lingers.",
+  "resourceMode.usePreset": "Use preset",
+  "resourceMode.reset": "Reset all overrides",
+  "resourceMode.override.gitSweep": "Git sweep interval (seconds)",
+  "resourceMode.override.gitSweepDesc":
+    "How often background worktrees' status badges refresh (5–600 s). Focus, agent activity and your own git actions always refresh immediately.",
+  "resourceMode.override.concurrency": "Orchestration parallelism",
+  "resourceMode.override.concurrencyDesc": "Steps one run may execute at once (1–8).",
+  "resourceMode.override.history": "Monitor history (seconds)",
+  "resourceMode.override.historyDesc":
+    "How much resource history the monitor's in-memory buffer keeps (60–600 s).",
+  "resourceMode.override.pet": "Pet idle animations",
+  "resourceMode.override.petDesc":
+    "Decorative one-shots between state changes. State changes always animate.",
+  "resourceMode.override.autoSleepLevel": "Auto-sleep level",
+  "resourceMode.override.autoSleepLevelDesc":
+    "What auto-sleep may do while its switch above is on.",
+  "resourceMode.level.off": "Off",
+  "resourceMode.level.suggest": "Suggest",
+  "resourceMode.level.auto": "Automatic",
+  "resourceMode.override.idle": "Auto-sleep idle threshold (minutes)",
+  "resourceMode.override.idleDesc":
+    "How long a workspace must be inactive before auto-sleep considers it (5–480 min).",
+  "resourceMode.freshness.git":
+    "Resource mode: worktree statuses refresh less often. Click to refresh now.",
+  "resourceMode.freshness.github":
+    "Resource mode: GitHub data refreshes less often. Click to refresh now.",
+  "resourceMode.freshness.usage":
+    "Resource mode: usage data refreshes less often. Click to refresh now.",
   "resourceMode.autoSleep.suggestToast":
     "“{name}” has been inactive for a while — sleep its terminals to free resources?",
   "resourceMode.autoSleep.suggestAction": "Sleep",

@@ -8,6 +8,8 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { app } from "$lib/state/app.svelte";
   import { usage } from "$lib/state/usage.svelte";
+  import { resourceMode } from "$lib/state/resourceMode.svelte";
+  import FreshnessHint from "./FreshnessHint.svelte";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
@@ -101,20 +103,28 @@
           <div class="text-sm font-medium leading-tight text-foreground">{i18n.t("providers.usageTitle")}</div>
           <div class={text.meta}>{i18n.t("providers.usedCaption")}</div>
         </div>
-        <TooltipSimple bind:open={refreshTooltipOpen} title={i18n.t("providers.refreshNow")}>
-          {#snippet children(tp)}
-            <Button
-              {...tp}
-              variant="ghost"
-              size="icon-sm"
-              disabled={usage.loading}
-              aria-label={i18n.t("providers.refreshNow")}
-              onclick={() => void usage.refresh()}
-            >
-              <RefreshCwIcon class={cn("size-3.5", usage.loading && "animate-spin")} />
-            </Button>
-          {/snippet}
-        </TooltipSimple>
+        <span class="flex items-center gap-0.5">
+          {#if resourceMode.freshness.usage}
+            <FreshnessHint
+              label={i18n.t("resourceMode.freshness.usage")}
+              onrefresh={() => void usage.refresh()}
+            />
+          {/if}
+          <TooltipSimple bind:open={refreshTooltipOpen} title={i18n.t("providers.refreshNow")}>
+            {#snippet children(tp)}
+              <Button
+                {...tp}
+                variant="ghost"
+                size="icon-sm"
+                disabled={usage.loading}
+                aria-label={i18n.t("providers.refreshNow")}
+                onclick={() => void usage.refresh()}
+              >
+                <RefreshCwIcon class={cn("size-3.5", usage.loading && "animate-spin")} />
+              </Button>
+            {/snippet}
+          </TooltipSimple>
+        </span>
       </div>
 
       <div class="scrollbar-sleek flex max-h-80 flex-col divide-y divide-border/50 overflow-y-auto px-3">
