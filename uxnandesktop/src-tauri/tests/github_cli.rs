@@ -99,10 +99,15 @@ fn write_shim(dir: &Path, stdout: &str, stderr: &str, code: i32) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        // The test locks PATH down to the shim dir alone, so the script can
+        // rely only on shell builtins and absolute paths: the shim dir is
+        // embedded at write time (no `dirname`) and `cat` is `/bin/cat`,
+        // which exists on both macOS and usrmerge Linux.
         let script = format!(
-            "#!/bin/sh\nd=\"$(dirname \"$0\")\"\nprintf '%s ' \"$@\" > \"$d/gh-args.txt\"\n\
+            "#!/bin/sh\nd=\"{dir}\"\nprintf '%s ' \"$@\" > \"$d/gh-args.txt\"\n\
              printf 'GH_PROMPT_DISABLED=%s GH_PAGER=[%s]' \"$GH_PROMPT_DISABLED\" \"$GH_PAGER\" > \"$d/gh-env.txt\"\n\
-             cat \"$d/gh-stdout.txt\"\ncat \"$d/gh-stderr.txt\" >&2\nexit {code}\n"
+             /bin/cat \"$d/gh-stdout.txt\"\n/bin/cat \"$d/gh-stderr.txt\" >&2\nexit {code}\n",
+            dir = dir.display()
         );
         let path = dir.join("gh");
         std::fs::write(&path, script).expect("gh shim");
@@ -364,9 +369,14 @@ async fn status_falls_back_to_prose_on_a_gh_without_json_auth_status() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let script = "#!/bin/sh\nd=\"$(dirname \"$0\")\"\ncase \" $* \" in\n\
-             *\" --json \"*) cat \"$d/gh-json-stderr.txt\" >&2; exit 1 ;;\n\
-             *) cat \"$d/gh-prose-stdout.txt\"; exit 0 ;;\nesac\n";
+        // Builtins + absolute paths only — PATH holds nothing but this dir
+        // (see `write_shim` for the reasoning).
+        let script = format!(
+            "#!/bin/sh\nd=\"{dir}\"\ncase \" $* \" in\n\
+             *\" --json \"*) /bin/cat \"$d/gh-json-stderr.txt\" >&2; exit 1 ;;\n\
+             *) /bin/cat \"$d/gh-prose-stdout.txt\"; exit 0 ;;\nesac\n",
+            dir = shim.display()
+        );
         let path = shim.join("gh");
         std::fs::write(&path, script).expect("gh shim");
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
