@@ -25,7 +25,7 @@ retained OS handle (the `sysinfo` state is dropped on park). The cadences:
 |---|---|---|
 | Parked | — (nothing runs) | the default |
 | Popover open | 2 s | opening the backend popover takes a sampling lease |
-| Budget consumer | 3 s | reserved for a future limits/orchestration engine |
+| Budget consumer | 3 s | the orchestration engine's headroom check — held only while a run is active under a resource profile that allows extended concurrency ([`resource-mode.md`](resource-mode.md)) |
 | Orphan sweep | 15–30 s (default 20) | the **opt-in** background check |
 
 Leases are renewed by the frontend while its surface is open and **expire on
@@ -66,6 +66,10 @@ Per group: instant CPU (normalized to the whole machine), a ~60 s short
 average, the buffered peak, resident + virtual memory, I/O rates, and a memory
 **trend** over the buffer. History lives in an in-memory circular buffer capped
 at **10 minutes** of aggregated frames — never per-process, never persisted.
+The resource mode may shorten (never extend) that budget — 3 minutes on the
+Efficient profile, applied over `resources_set_policy` and clamped to
+60–600 s by the backend; the summary's `bufferSeconds` reports the live value
+(see [`resource-mode.md`](resource-mode.md)).
 A first sighting (or a gap after a parked window) reports CPU/I-O as unknown
 rather than a made-up number; a partially-unknown group's rate is unknown too
 (a partial sum shown as a fact would under-report).
@@ -108,10 +112,13 @@ confidence to *inferred* instead of inventing identity.
 
 ## For future consumers
 
-Every ingested frame's summary is also broadcast on an internal Rust channel
-(`ResourceMonitor::subscribe_events`), and a `budget` lease kind exists in the
-contract — that is the hook for resource-limit / orchestration-routing features
-to consume the same data without adding a second sampler.
+The `budget` lease kind now has its first real consumer: the orchestration
+engine's capacity check, which holds it while a run is active under a resource
+profile with extended concurrency and reads the summary events to decide
+whether Uxnan has CPU headroom ([`resource-mode.md`](resource-mode.md)). The
+internal Rust channel (`ResourceMonitor::subscribe_events`) still broadcasts
+every ingested frame's summary and remains the hook for a future
+backend-side consumer — nothing subscribes to it yet.
 
 ## Testing
 

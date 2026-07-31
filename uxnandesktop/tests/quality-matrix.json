@@ -400,6 +400,31 @@
         "linux": "untested"
       },
       "gaps": "No E2E journey opens the backend popover against the real binary yet (the suite cannot run beside a live uxnan instance, so it was not runnable while this feature was built); the popover lease -> sample -> park round trip is covered at L2/L3 instead. macOS/Linux metrics run the same portable sysinfo code but are unvalidated on hardware — the UI says 'best effort' there on purpose."
+    },
+    {
+      "id": "resource-mode",
+      "flow": "Resource mode (presets, overrides, governed consumers, auto-sleep)",
+      "owner": "desktop",
+      "covered": [
+        "L1",
+        "L2",
+        "L3"
+      ],
+      "planned": [
+        "L4",
+        "L5"
+      ],
+      "evidence": {
+        "L1": "src/lib/resources/policy.test.ts, src/lib/resources/autoSleep.test.ts, scripts/resources/lib/scenarios.test.mjs",
+        "L2": "src/lib/components/ResourceModeSection.svelte.test.ts",
+        "L3": "src-tauri/src/resources.rs #[cfg(test)] (the history budget's clamp/trim/summary), src-tauri/src/model.rs #[cfg(test)] (resource-mode settings defaults + round trip)"
+      },
+      "platforms": {
+        "windows": "verified",
+        "macos": "untested",
+        "linux": "untested"
+      },
+      "gaps": "No E2E journey switches the preset against the real binary (the same live-instance constraint as the popover journey), and the per-preset efficiency matrix (--resource-profile) is wired but unmeasured for the same reason — it must run with the app closed. Workspace auto-sleep's automatic level needs a multi-platform soak with real live processes before its feature flag can ever be retired (L5), and the maintainer's on-device review of the new Settings section is still owed."
     }
   ]
 }
