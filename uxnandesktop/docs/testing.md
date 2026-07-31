@@ -45,15 +45,24 @@ keeps them integration tests rather than unit tests with a longer path —
 `automations_store.rs` (10 tests) drives the store against a real `TempDir`:
 round-trip across a process boundary, seed-once, a truncated file degrading
 instead of panicking, nothing written outside its own root, and a path with
-spaces and non-ASCII characters. **388 backend tests** in total.
+spaces and non-ASCII characters. **397 backend tests** in total (387 unit + 10
+integration; one more — the Windows Task Scheduler round-trip — is `#[ignore]`d
+and run by hand).
 
-The 378 unit tests cover the Serde model shape, persistence round-trip / atomicity /
-migration / backups, git + worktree ops (including creation, opt-in branch
+The 387 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+migration / backups (including a corrupt state file and an obstructed data
+directory failing cleanly instead of panicking), git + worktree ops (including
+creation, opt-in branch
 cleanup on removal — local/remote/force — checking out an existing branch,
 staging, discard, hunk apply and commit against throwaway repos), the git2 fast
 path, the PTY lifecycle,
 the agent hook server, the integrated-browser scheme gate, process detection,
-the updater's per-channel endpoints, and the pets store (Codex-format manifest
+the updater's per-channel endpoints, the keep-awake state machine (fake
+inhibitor: flip-on-change, the auto-release cap, release-on-drop — plus one
+host-OS test that toggles the real inhibitor, so each CI runner exercises its
+own platform branch), the pet overlay's monitor-aware placement (an unplugged
+display's saved position rejected, the fallback corner provably on-screen), and
+the pets store (Codex-format manifest
 parsing, path-traversal refusal, and the import copy staying scoped to the
 manifest + its spritesheet).
 
@@ -104,14 +113,19 @@ schedule + next-runs preview, the run/step display projections, the seeded
 example automations, and the prompt-variable insertion) and
 `state/statusSweepRegistry.ts` (the all-worktree status sweep's pacing +
 its request registry) and `usageCatalog.ts` (which providers are still offered
-vs merely still readable) — plus the **resource-benchmark harness** under
+vs merely still readable) and `platform.ts` (user-agent OS detection behind the
+untested-platform badge and every per-OS frontend default) — plus the
+**resource-benchmark harness** under
 `scripts/resources/lib/` (process-tree attribution own/managed/external, the
 result schema and its validation messages, percentile / CPU-rate / soak-slope
 maths, absolute budgets and the regression policy, the redaction gate, the
 scenario table, the pre-flight checks that mark a run invalid, the Unix collector's awk parser and the git fixture's determinism) — and the **test fixtures**
 under `tests/fixtures/` (the fake `gh`, the PATH shim, the disposable and legacy
-profiles) and the **quality matrix** check. **565 tests** across both projects,
-config in `vitest.config.ts` / `vitest.dom.config.ts`.
+profiles) and the **quality matrix** check and the **platform support matrix**
+check (`tests/platform-support.test.mjs` — every platform claim backed by
+evidence that exists, and the announced level gated to it; see
+[`platform-support.md`](platform-support.md)). **570 tests** across both
+projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
 
@@ -253,6 +267,16 @@ machine — an unrecorded manual check is indistinguishable from one nobody did.
 
 **Never in the required CI job.** These need credentials, cost money, or mutate
 somebody's real data.
+
+**Platform claims have their own machine-readable record**: what each
+platform×feature pair has demonstrated (with date, sha, hardware, tester) lives
+in [`../tests/platform-support.json`](../tests/platform-support.json), checked
+by `tests/platform-support.test.mjs` and summarised in
+[`platform-support.md`](platform-support.md). The per-platform release
+checklists are **generated from it** (`node scripts/platform-support.mjs
+checklist`), and the release workflow refuses a build whose announced platform
+state exceeds the evidence (`… gate`). The table below is the cross-cutting
+manual list; recording one of its platform runs means updating that matrix.
 
 | # | Check | Why it cannot be automated here | Last verified |
 |---|---|---|---|

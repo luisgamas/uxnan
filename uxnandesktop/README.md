@@ -190,9 +190,12 @@ flowchart TB
 
 Uxnan Desktop is cross-platform by construction — Tauri 2 targets Windows, macOS
 and Linux — but **all current testing has been carried out directly on Windows**.
+The full state is recorded honestly, per platform and per feature, in the
+[platform support matrix](docs/platform-support.md) (machine-readable source in
+`tests/platform-support.json`, checked by the test suite and gating releases).
 
-- **Windows** — actively developed and tested; this is the validated platform
-  today.
+- **Windows** — actively developed and tested; this is the exercised platform
+  today (matrix level: `smoke`, with several features at `validated`).
 - **Linux** — expected to work and built in CI, but not yet exercised end-to-end
   by the maintainer. If you run it on Linux, your feedback and recommendations are
   genuinely welcome; please open an issue or a discussion so the experience can be
@@ -217,6 +220,7 @@ Detailed docs live in [`docs/`](./docs/):
 [development & running in debug](./docs/development.md) ·
 [release builds & packaging](./docs/build.md) ·
 [installing on macOS (experimental)](./docs/install-macos.md) ·
+[platform support matrix](./docs/platform-support.md) ·
 [testing & verification](./docs/testing.md) ·
 [end-to-end tests](./tests/e2e/README.md) ·
 [resource benchmarks](./docs/resource-benchmarks.md) ·

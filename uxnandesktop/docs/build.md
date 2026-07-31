@@ -7,6 +7,13 @@
 How to compile Uxnan Desktop for distribution. For day-to-day debug runs see
 [`development.md`](development.md).
 
+> **A build is not a validation.** What each platform has actually demonstrated
+> — `code-only` / `builds` / `smoke` / `validated` / `signed` / `release-ready`,
+> with evidence — is recorded in the
+> [platform support matrix](platform-support.md). Today: Windows `smoke`
+> (exercised daily, E2E + resource baseline), macOS and Linux `builds` (CI
+> compiles and tests them; no run on real hardware has been recorded).
+
 ## Build a release bundle
 
 ```bash

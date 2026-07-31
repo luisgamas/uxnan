@@ -5,6 +5,73 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a platform support matrix: honest per-platform states, evidence-gated releases
+
+- **A machine-readable platform matrix** (`tests/platform-support.json`): every
+  platform×feature pair records one of six escalating levels — `code-only`,
+  `builds`, `smoke`, `validated`, `signed`, `release-ready` — with the evidence
+  that demonstrates it (date, commit, hardware, tester). "Supported" is never
+  said without a level, and a green CI build is never promoted to `smoke`: a
+  build proves the artifact compiles, not that anyone ran it. Current announced
+  states: **Windows 11 x64 `smoke`** (E2E suite green locally, an approved
+  11-scenario resource baseline, the maintainer's installed daily-driver build
+  self-updating on both channels — several features individually `validated`),
+  **macOS (both architectures) and Linux `builds`** (CI compiles + runs the
+  full suites on their runners; no run on real hardware has ever been
+  recorded, and the matrix says so instead of implying otherwise).
+- **The matrix cannot quietly lie** (`tests/platform-support.test.mjs`, in the
+  required `npm test` gate): only the six levels exist; every cell cites
+  evidence and every cited file must exist; `smoke`+ requires date, sha,
+  hardware and tester; a platform's announced level can never exceed its
+  weakest core feature; `signed`+ requires a signing-evidence block; and the
+  human-readable page must agree with the source about every announced level.
+- **Release gate** (`scripts/platform-support.mjs`): `gate` exits non-zero when
+  an announced state exceeds the evidence — wired into `release-desktop.yml`
+  as a job the installers depend on — and `checklist` renders each platform's
+  release checklist (minimum versions, install/upgrade cycles, the exact
+  manual steps that advance it) from the source, so no hand-kept table can
+  contradict it.
+- **`docs/platform-support.md`** — the human-readable view: level definitions,
+  the summary and feature×platform tables, where CI ends and hardware begins,
+  a negative-scenario coverage table (unwritable data dir, corrupt state,
+  occupied ports, missing CLIs/`caffeinate`/`systemd-inhibit`, hostile
+  updates, channel crossing, unplugged monitors, old webviews, Gatekeeper/
+  SmartScreen), and the full OS-specific code inventory mapping every
+  `#[cfg]`/platform branch to its test or its checklist item. Linked from the
+  README, `build.md`, `install-macos.md` and `testing.md`.
+- **Updater failure & rollback path documented** (`docs/updates.md`): a corrupt
+  manifest fails `check()`, a wrong-key or tampered artifact fails minisign
+  verification *inside download* (nothing is ever staged), a stale staged
+  download is refused at install, and a manual rollback path exists via the
+  previous release's installers — plus the **key/certificate procedure**
+  (creation, rotation — including the signed hop that re-keys installed apps —
+  and storage rules that keep every secret out of the repo).
+
+### Added — platform-sensitive negative tests
+
+- **Keep-awake state machine under test** (`src-tauri/src/power.rs`): the
+  worker loop is now generic over the inhibitor, so a fake records that a
+  duplicate request is never re-applied, the 2 h auto-release cap fires on a
+  stuck `working`, and dropping the handle releases before exit. A host-OS
+  test also toggles the **real** inhibitor once, so each CI runner exercises
+  its own branch (`SetThreadExecutionState` / `caffeinate` /
+  `systemd-inhibit`) — previously this module had no tests at all.
+- **Pet placement is monitor-aware and provably so** (`src-tauri/src/commands.rs`):
+  the visibility test and the fallback resting corner are pure functions now —
+  a saved position on an unplugged display is rejected (including the
+  zero-monitors race), partial overlap counts as visible, and the fallback
+  corner is asserted to land on the monitor that produced it, on scaled and
+  offset monitors too.
+- **Persistence fails cleanly when the disk fights back**
+  (`src-tauri/src/persistence.rs`): saving into a data dir obstructed by a
+  plain file errors without panicking or clobbering, and a corrupt
+  `state.json` errors at load (the rotating backups are the recovery path).
+- **Frontend OS detection under test** (`src/lib/platform.ts` +
+  `platform.test.ts`): the user-agent parsing behind the untested-platform
+  badge and every per-OS frontend default now takes an injectable agent string
+  and answers `other` instead of guessing.
+- Totals: **397 Rust** (387 unit + 10 integration) and **570 Vitest** tests.
+
 ### Added — a test pyramid: component tests, backend integration, and real end-to-end
 
 - **Five layers, each doing what the one below cannot** (`docs/testing.md`): L0
