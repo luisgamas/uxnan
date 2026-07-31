@@ -41,8 +41,28 @@ jobs:
   verify:
     uses: ./.github/workflows/verify-desktop.yml
 
+  # Refuse to build a release whose announced platform state exceeds the
+  # recorded evidence (uxnandesktop/tests/platform-support.json — see
+  # uxnandesktop/docs/platform-support.md). Pure Node, no install step: the
+  # same rule also runs in the required `npm test` gate on every PR, so this is
+  # the belt to that suspender on the tagged commit itself.
+  platform-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Announced platform states must not exceed the evidence
+        run: node uxnandesktop/scripts/platform-support.mjs gate
+
   build:
-    needs: verify
+    needs: [verify, platform-gate]
     strategy:
       fail-fast: false # a failing mac leg must not drop the win/linux artifacts
       matrix:

@@ -20,12 +20,16 @@ engine**, **user quick commands**, **GitHub integration (`gh`-backed)**, **"Open
 with" external editors/IDEs**, **automations**, **pets**, **a reproducible
 resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
-background consumers**, `docs/resource-mode.md`). 434 Rust tests (421 unit + 13 integration) + 655 frontend Vitest tests across
+background consumers**, `docs/resource-mode.md`). 443 Rust tests (430 unit + 13 integration) + 667 frontend Vitest tests across
 two projects — pure logic and **Svelte component tests** — plus a **real E2E suite**
 (WebdriverIO + tauri-driver: 8 journeys, 24 tests, green on Windows). macOS now ships an
 **experimental, unsigned** build (Intel + Apple Silicon; CI verifies `{ubuntu,
 windows, macOS}`, release gate stays `{ubuntu, windows}`) but is **not yet validated
-on real hardware**. **Phase 6 (embedded bridge / mobile pairing) is NOT started.**
+on real hardware**. **Every platform claim now lives in the platform support
+matrix** (`tests/platform-support.json` + `docs/platform-support.md`, checked by
+the suite and gating releases): Windows announces `smoke`, macOS (both arches)
+and Linux announce `builds`. **Phase 6 (embedded bridge / mobile pairing) is NOT
+started.**
 
 **Built (DONE), in detail:**
 
@@ -977,14 +981,39 @@ go stale; these are the ones worth calling out.
 
 ## Platform validation
 
+**The record is the platform support matrix** — `tests/platform-support.json`
+(machine-readable: level + date + sha + hardware + tester per platform×feature,
+verified by `tests/platform-support.test.mjs` in the required suite) rendered in
+`docs/platform-support.md`, with per-platform release checklists generated from
+it (`node scripts/platform-support.mjs checklist`) and a release gate
+(`… gate`, wired into `release-desktop.yml`) that refuses to build installers
+when an announced state exceeds the evidence. Announced today: **Windows
+`smoke`** (several features `validated`), **macOS aarch64/x64 and Linux
+`builds`**. Everything below advances a cell in that matrix; record the run
+(date, sha, hardware, tester) when it happens.
+
 - [ ] **macOS** — an **experimental, unsigned** build now ships (two ad-hoc-signed
       DMGs, Intel + Apple Silicon; `docs/install-macos.md`), CI compiles + tests it on
-      both arch runners, and the Finder/Dock `PATH` gap is fixed (`path_env.rs`).
+      an Apple Silicon runner, and the Finder/Dock `PATH` gap is fixed (`path_env.rs`).
       Still **not validated on real hardware** by the maintainer — needs a smoke test
       of launch, agent/`gh`/editor detection, notifications, keep-awake and a
-      self-update on both architectures.
-- [ ] **keep-awake** is implemented for macOS/Linux but **untested** there
-      (`power.rs`); Windows works.
+      self-update on both architectures (the x86_64 binary has never executed
+      anywhere). Full checklist: `matrix → checklists.macos-aarch64 / macos-x64`.
+- [ ] **Linux** — full suites green on `ubuntu-latest` and installers ship, but
+      no human has installed/launched any of them; the systemd user timer, keep-awake,
+      the pet overlay under a compositor, and the first-ever Linux E2E run
+      (`tauri-driver` supports it) are all unexecuted. Full checklist:
+      `matrix → checklists.linux-x64`.
+- [ ] **Windows to `validated`** — what blocks the announced level from rising:
+      two recorded install→upgrade→uninstall cycles (config preserved, no
+      leftovers — cannot run on the dev machine while its live instance is the
+      thing being tested), the wake-fidelity check, R07/R08/R10, and one recorded
+      hostile-update run against a staging channel. Full checklist:
+      `matrix → checklists.windows-x64`.
+- [ ] **keep-awake** is implemented for macOS/Linux and its state machine +
+      spawn/kill path are now unit-tested (each CI runner toggles its own real
+      inhibitor once), but **whether the machine actually stays awake** is
+      untested there (`power.rs`); Windows works.
 - [ ] **Update UI (pinned sonner toast + in-Settings download/install) — visual +
       functional validation pending.** The former top banner is now a pinned
       sonner toast (`UpdateToast.svelte` + `updateToast.svelte.ts`) and the
@@ -1001,12 +1030,14 @@ go stale; these are the ones worth calling out.
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 434 Rust + 655 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 443 Rust + 667 Vitest tests (both
   projects: pure logic and components). E2E runs in its own on-demand/nightly
   Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
-  are set. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
+  are set. The build now also depends on the **platform-support gate**
+  (`node scripts/platform-support.mjs gate`): a release whose announced platform
+  state exceeds the matrix's evidence fails before any installer is built. Builds Windows + Linux + **experimental unsigned macOS** (two ad-hoc-signed
   DMGs, both built on Apple Silicon `macos-14` with the Intel `x86_64` DMG
   **cross-compiled**, `fail-fast: false`). Windows and macOS ship without OS
   code-signing (SmartScreen / Gatekeeper warnings).

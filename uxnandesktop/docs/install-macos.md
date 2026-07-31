@@ -10,6 +10,13 @@
 > [build it yourself](build.md) on your own Mac (a self-built app runs with no
 > prompt), and **issues / PRs that improve these installers — or help
 > non-technical users — are very welcome.**
+>
+> Where macOS stands overall — `builds` in the
+> [platform support matrix](platform-support.md): CI compiles the app and runs
+> the full test suites on an Apple Silicon runner, but **no one has recorded a
+> run on real Apple hardware yet**. The remaining steps (this walkthrough,
+> notifications, keep-awake, self-update, the automations LaunchAgent) are that
+> matrix's macOS checklist.
 
 ## Pick the right download
 

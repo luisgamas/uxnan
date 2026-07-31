@@ -222,6 +222,41 @@ pub async fn pets_delete(app: AppHandle, id: String) -> Result<(), CommandError>
 /// Label of the desktop pet overlay window (also the capability's scope).
 pub const PET_WINDOW_LABEL: &str = "pet";
 
+/// A monitor's rectangle in physical px: `(position, size)`.
+type MonitorRect = ((i32, i32), (u32, u32));
+
+/// Whether a window of `size` at `pos` (both physical px) would be visible on
+/// any of the given monitor rects.
+///
+/// Pure half of the pet-window placement, split out so the unplugged-monitor
+/// case is testable: a saved position that no longer intersects a live monitor
+/// must be rejected, or the pet comes back stranded off-screen.
+fn rect_on_any_monitor(pos: (i32, i32), size: (i32, i32), monitors: &[MonitorRect]) -> bool {
+    monitors.iter().any(|((mx, my), (mw, mh))| {
+        pos.0 + size.0 > *mx
+            && pos.0 < mx + *mw as i32
+            && pos.1 + size.1 > *my
+            && pos.1 < my + *mh as i32
+    })
+}
+
+/// The fallback resting spot: above a monitor's bottom-right corner, with an
+/// extra vertical margin that keeps the pet clear of a conventionally-placed
+/// taskbar (the monitor API reports full bounds, not the work area).
+fn resting_corner(
+    monitor_pos: (i32, i32),
+    monitor_size: (u32, u32),
+    scale: f64,
+    size: (i32, i32),
+) -> (i32, i32) {
+    let margin = (24.0 * scale) as i32;
+    let taskbar = (48.0 * scale) as i32;
+    (
+        monitor_pos.0 + monitor_size.0 as i32 - size.0 - margin,
+        monitor_pos.1 + monitor_size.1 as i32 - size.1 - margin - taskbar,
+    )
+}
+
 /// Show the desktop pet window, creating it on first use.
 ///
 /// `width`/`height` are logical px (the sprite box plus a little padding);
@@ -285,32 +320,30 @@ pub async fn pet_window_show(
         _ => None,
     };
     let on_screen = |p: &PhysicalPosition<i32>| {
-        app.available_monitors()
+        let monitors: Vec<MonitorRect> = app
+            .available_monitors()
             .ok()
             .into_iter()
             .flatten()
-            .any(|m| {
+            .map(|m| {
                 let mp = m.position();
                 let ms = m.size();
-                p.x + w > mp.x
-                    && p.x < mp.x + ms.width as i32
-                    && p.y + h > mp.y
-                    && p.y < mp.y + ms.height as i32
+                ((mp.x, mp.y), (ms.width, ms.height))
             })
+            .collect();
+        rect_on_any_monitor((p.x, p.y), (w, h), &monitors)
     };
     let pos = saved.filter(on_screen).or_else(|| {
         let m = app.primary_monitor().ok().flatten()?;
         let mp = m.position();
         let ms = m.size();
-        // Rest above the bottom-right corner; the extra vertical margin keeps
-        // the pet clear of a conventionally-placed taskbar (the monitor API
-        // reports full bounds, not the work area).
-        let margin = (24.0 * m.scale_factor()) as i32;
-        let taskbar = (48.0 * m.scale_factor()) as i32;
-        Some(PhysicalPosition::new(
-            mp.x + ms.width as i32 - w - margin,
-            mp.y + ms.height as i32 - h - margin - taskbar,
-        ))
+        let (x, y) = resting_corner(
+            (mp.x, mp.y),
+            (ms.width, ms.height),
+            m.scale_factor(),
+            (w, h),
+        );
+        Some(PhysicalPosition::new(x, y))
     });
     if let Some(pos) = pos {
         let _ = win.set_position(pos);
@@ -2507,9 +2540,53 @@ pub async fn github_ai_draft_pr(
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, fs_path_exists, pty_submit_payload, read_term_buffers, reorder_by_ids,
-        term_buffers_path,
+        bracketed_paste, fs_path_exists, pty_submit_payload, read_term_buffers,
+        rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
     };
+
+    #[test]
+    fn a_pet_position_on_an_unplugged_monitor_is_rejected() {
+        // One live 1920×1080 monitor at the origin; the saved spot belonged to a
+        // second display that is gone. The placement must fall back rather than
+        // strand the pet off-screen.
+        let monitors = [((0, 0), (1920_u32, 1080_u32))];
+        assert!(!rect_on_any_monitor((2200, 300), (200, 200), &monitors));
+        // No monitors at all (headless race while displays reconfigure): reject.
+        assert!(!rect_on_any_monitor((100, 100), (200, 200), &[]));
+    }
+
+    #[test]
+    fn a_pet_position_partly_on_a_live_monitor_is_kept() {
+        let monitors = [
+            ((0, 0), (1920_u32, 1080_u32)),
+            ((1920, 0), (1280_u32, 1024_u32)),
+        ];
+        assert!(rect_on_any_monitor((100, 100), (200, 200), &monitors));
+        // Half off the left edge still counts — some of the pet is visible.
+        assert!(rect_on_any_monitor((-100, 100), (200, 200), &monitors));
+        // On the secondary monitor.
+        assert!(rect_on_any_monitor((2000, 200), (200, 200), &monitors));
+        // Fully past every edge does not.
+        assert!(!rect_on_any_monitor((3300, 100), (200, 200), &monitors));
+    }
+
+    #[test]
+    fn the_fallback_resting_corner_lands_on_the_monitor() {
+        // The fallback must itself pass the visibility test, or the rescue path
+        // would re-strand the pet it just rescued — including on a scaled display
+        // and on a monitor that does not sit at the origin.
+        for (mpos, msize, scale) in [
+            ((0, 0), (1920_u32, 1080_u32), 1.0),
+            ((1920, 240), (2560_u32, 1440_u32), 1.5),
+        ] {
+            let size = (160, 176);
+            let corner = resting_corner(mpos, msize, scale, size);
+            assert!(
+                rect_on_any_monitor(corner, size, &[(mpos, msize)]),
+                "resting corner {corner:?} is off the monitor at {mpos:?} {msize:?} (scale {scale})"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn term_buffers_sidecar_round_trips_and_tolerates_corruption() {

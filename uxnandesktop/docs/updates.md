@@ -145,6 +145,85 @@ Then:
 > A tag with the wrong shape is rejected before installers are built. A manually
 > altered GitHub pre-release flag is rejected before the updater manifest changes.
 
+## Failure & rollback path
+
+What happens when an update is hostile or broken, and why the installed version
+survives every case:
+
+- **Corrupt / unparseable manifest** — `updater_check` (the plugin's `check()`)
+  fails to parse `latest.json` and returns an error; the UI reports it and the
+  app keeps running the installed version. A manifest **missing its `signature`
+  field** is rejected at deserialization for the same outcome.
+- **Invalid or wrong-key signature** — the plugin verifies the minisign
+  signature against `plugins.updater.pubkey` **inside `download`, before the
+  bytes are ever returned** (tauri-plugin-updater `verify_signature`). A
+  tampered installer or a signature made with any other key fails there:
+  nothing is staged, nothing is installed.
+- **Stale staged download** — if a newer release appears between download and
+  install, `updater_install` compares versions, refuses the stale bytes, and
+  asks for a fresh download (`src-tauri/src/updater.rs`).
+- **Channel switched by the user** — the endpoint is rebuilt from the selected
+  channel at runtime; the next check runs against the other channel's manifest,
+  which still has to carry a valid signature. CI prevents a release from ever
+  *feeding* the wrong channel (tag ↔ pre-release validation in
+  `release-desktop-manifest.yml`).
+- **An installed update misbehaves anyway** — every previous release keeps its
+  installers on GitHub Releases: roll back by installing the previous version's
+  installer by hand. The app's data directory is not touched by
+  install/uninstall, so configuration survives the round trip. (The updater
+  compares the numeric base version, so after a manual rollback it will offer
+  the newer version again — decline or stay on it deliberately.)
+
+None of these paths can leave the app without a working version: verification
+happens before staging, staging before install, and the installer only replaces
+the binary after the artifact passed its signature check.
+
+> Exercising the hostile cases end to end (a tampered `latest.json`, a
+> wrong-key `.sig`) needs a staging channel and a deliberately-bad artifact —
+> that is a recorded checklist item in the
+> [platform support matrix](platform-support.md), not something CI can safely
+> fabricate.
+
+## Keys & certificates: creation, rotation, storage
+
+Two unrelated secrets exist. Neither ever enters the repository — only their
+public halves do.
+
+**1. The updater minisign keypair (free, already configured).**
+
+- *Creation:* `npx tauri signer generate -w <keyfile>` (see “First-time setup”
+  above). Public key → `tauri.conf.json` (safe to commit); private key +
+  password → the `TAURI_SIGNING_PRIVATE_KEY` / `…_PASSWORD` GitHub Actions
+  secrets.
+- *Storage:* the private key lives **only** in the maintainer's password
+  manager and in the repo's Actions secrets. Never in the repo, never in logs,
+  never on a build machine's disk outside CI's secret store.
+- *Rotation:* generate a new keypair; put the new pubkey in `tauri.conf.json`
+  and ship **one release signed with the old key** carrying the new pubkey
+  (installed apps verify against their *bundled* pubkey, so an immediate key
+  swap would strand them). Once that release is the installed base, switch the
+  Actions secrets to the new private key. A **lost** private key is the same
+  operation minus the graceful hop: users on old builds must reinstall by hand
+  (their updater can no longer verify anything newer), which is why the key and
+  its password are backed up in the password manager.
+
+**2. OS code-signing identities (paid, optional, not configured).**
+
+- *What:* Windows Authenticode certificate; Apple Developer ID + notarization;
+  optional GPG for Linux packages. These remove the SmartScreen/Gatekeeper
+  warnings; the updater works without them. Tracked in
+  [`../FOR-HUMAN.md`](../FOR-HUMAN.md).
+- *Creation:* purchased/issued by the respective CA or Apple — a human-only
+  step (identity verification, payment).
+- *Storage:* as GitHub Actions secrets consumed by `release-desktop.yml`
+  (certificate + password), plus the vendor's own escrow (Apple ID / CA
+  account). Never committed, never echoed in workflow logs.
+- *Rotation / expiry:* certificates expire on the CA's schedule; renew through
+  the vendor, replace the Actions secrets, and record the new
+  fingerprint/expiry in the platform matrix's `signing` block when `signed` is
+  first announced. Timestamped Authenticode signatures keep already-shipped
+  installers valid after expiry.
+
 ## Without the signing key
 
 Everything degrades cleanly: builds still produce installers (just no
