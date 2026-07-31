@@ -506,6 +506,54 @@ pub struct AppSettings {
     /// (`SidebarProfile`), persisted opaquely. Absent by default.
     #[serde(default)]
     pub profile: Option<serde_json::Value>,
+    /// Local resource observability (`resources.rs`): the backend-popover summary
+    /// and Settings → Resources. All fields default, so older state loads
+    /// unchanged (the additive-field migration path every settings struct uses).
+    #[serde(default)]
+    pub resources: ResourceSettings,
+}
+
+/// Local resource observability (CPU / memory / process attribution for uxnan,
+/// its terminals and agents — `resources.rs`).
+///
+/// The collector is demand-driven: with `enabled` on it still samples **only**
+/// while a surface consumes it (the backend popover being open), so the default
+/// configuration costs nothing at rest. The only background sampling is the
+/// opt-in orphan sweep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceSettings {
+    /// Master switch for the whole feature (popover section + Settings pane
+    /// data). With no consumer the collector stays parked either way; off also
+    /// hides the surfaces. Default on — a parked collector is free.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Background sweep that keeps sampling slowly with no UI open, so orphaned
+    /// processes (a subtree that outlived its closed terminal) are noticed
+    /// without the popover. Off by default: it is the one mode that costs
+    /// anything unasked.
+    #[serde(default)]
+    pub orphan_sweep: bool,
+    /// Sweep interval in seconds. Clamped to 15–30 when applied — below that the
+    /// sweep would compete with the popover cadence, above it an orphan would
+    /// linger unnoticed.
+    #[serde(default = "default_orphan_sweep_seconds")]
+    pub orphan_sweep_seconds: u32,
+}
+
+/// Default orphan-sweep interval (seconds), the middle of the allowed 15–30 band.
+fn default_orphan_sweep_seconds() -> u32 {
+    20
+}
+
+impl Default for ResourceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            orphan_sweep: false,
+            orphan_sweep_seconds: default_orphan_sweep_seconds(),
+        }
+    }
 }
 
 /// "Open with" configuration: user-added editors + hidden auto-detected ones.
@@ -1027,6 +1075,7 @@ impl Default for AppSettings {
             github: GithubSettings::default(),
             open_with: OpenWithSettings::default(),
             profile: None,
+            resources: ResourceSettings::default(),
         }
     }
 }
