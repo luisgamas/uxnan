@@ -7,6 +7,8 @@ import { autoScenarioIds, getScenario, SCENARIOS } from "./scenarios.mjs";
 import { isShell } from "./tree.mjs";
 import {
   liveTerminalCount,
+  RESOURCE_PROFILES,
+  resourceModeSettings,
   STATE_SCHEMA_VERSION,
   terminalGrid,
   terminalTab,
@@ -169,6 +171,31 @@ describe("profile seeding", () => {
     expect(settings.pets.enabled).toBe(false);
     // Installing hook configs would write outside the scenario's own directory.
     expect(settings.autoInstallHooks).toBe(false);
+  });
+
+  it("pins a resource-mode preset with no overrides and no auto-sleep", () => {
+    // A measurement of a preset must measure the preset — nothing layered on.
+    for (const profile of RESOURCE_PROFILES) {
+      expect(resourceModeSettings(profile)).toEqual({
+        profile,
+        overrides: {},
+        autoSleep: false,
+        schemaVersion: 1,
+      });
+    }
+  });
+
+  it("rejects an unknown resource profile with the list of known ones", () => {
+    expect(() => resourceModeSettings("turbo")).toThrow(/unknown resource profile "turbo"/);
+  });
+
+  it("seeds a pinned resource profile into the state document", () => {
+    const dir = writeProfile(path.join(TMP, "profile-mode"), {
+      settingsOverrides: { resourceMode: resourceModeSettings("efficient") },
+    });
+    const { settings } = JSON.parse(fs.readFileSync(path.join(dir, "state.json"), "utf8"));
+    expect(settings.resourceMode.profile).toBe("efficient");
+    expect(settings.resourceMode.schemaVersion).toBe(1);
   });
 
   it("builds a balanced grid, so four terminals are four regions", () => {
