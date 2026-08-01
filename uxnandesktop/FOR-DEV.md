@@ -987,7 +987,15 @@ go stale; these are the ones worth calling out.
       path is covered in Rust but never end to end.
 - [ ] **Make E2E a required gate** once `e2e-desktop.yml` has run green for a
       fortnight. Blocking before it has a track record on that runner is how a
-      gate earns a reputation for false failures.
+      gate earns a reputation for false failures. **Its first scheduled run
+      (2026-08-01) failed as pure infrastructure**: all 9 specs died identically
+      in `Failed to create a session` (timeout POSTing `127.0.0.1:4444/session`)
+      — tauri-driver never accepted a session on `windows-latest`, so no spec
+      even started; the same 9-spec suite ran green locally the same night. The
+      runner needs provisioning work (msedgedriver ↔ installed-WebView2 version
+      matching is the first suspect — locally `test:e2e:setup` resolves the
+      driver against the machine's WebView2; the runner's Edge/WebView2 pairing
+      is unverified), and iterating on it needs push-per-attempt CI cycles.
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
       coverage for either.
