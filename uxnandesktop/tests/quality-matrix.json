@@ -289,11 +289,11 @@
         "L3": "src-tauri/src/github/fixture_tests.rs (production parsers against the captured real payloads), src-tauri/tests/github_cli.rs (the production runner through real child processes: merge refusals, degraded environments, .cmd resolution, env hygiene), tests/fixtures/fixtures.test.mjs (the fake gh itself, incl. scripted outcomes)"
       },
       "platforms": {
-        "windows": "read side validated on captured real data; write side offline-validated",
+        "windows": "read side validated on captured real data; write side offline-validated AND live-validated 2026-08-01 (supervised sandbox run, 7/7 live tests green, refusal texts re-captured)",
         "macos": "untested",
         "linux": "untested"
       },
-      "gaps": "Writes are validated through the production runner against gh-shaped stand-ins (tests/fixtures/github/mutation-outcomes.json, provenance recorded) and by an executable supervised live suite (src-tauri/tests/github_live.rs, all #[ignore], allowlisted to the sandbox repo) whose first run is pending - mutations require maintainer supervision (docs/github-sandbox-runbook.md). The opt-in E2E journey (tests/e2e/specs/github-fake.e2e.mjs, UXNAN_E2E_FAKE_GH=1) also awaits its first run. Approve/request-changes and reviewer requests need a second account (single-account limit; the refusals are covered)."
+      "gaps": "The supervised live suite ran green on 2026-08-01 (docs/github-validation.md records the run and its findings) and the opt-in E2E journey (tests/e2e/specs/github-fake.e2e.mjs, UXNAN_E2E_FAKE_GH=1) passed its first run the same day. Still open: auto-merge arm/disarm, update-branch and Actions re-run are not yet in the live suite (runbook extensions); the issue-develop dialog belongs to an on-device pass; approve/request-changes and reviewer requests need a second account (single-account limit; the refusals are covered)."
     },
     {
       "id": "automations",

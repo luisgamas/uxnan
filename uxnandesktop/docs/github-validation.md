@@ -64,27 +64,27 @@ surfaces gh's own `Unknown JSON field` message rather than hanging.
 
 | Area | Status | Evidence / cause |
 |---|---|---|
-| PR create (URL result; no-commits refusal) | **validated (faithful stand-in)**; live run **pending: supervised sandbox run** | `github_cli.rs`; `github_live_pr_lifecycle_create_review_merge` |
-| PR comment / review-comment | **pending: supervised sandbox run** | `github_live_pr_lifecycle_create_review_merge` |
+| PR create (URL result; no-commits refusal) | **validated (live, 2026-08-01)** + faithful stand-in | `github_live_pr_lifecycle_create_review_merge`; `github_cli.rs` |
+| PR comment / review-comment | **validated (live, 2026-08-01)** | `github_live_pr_lifecycle_create_review_merge` |
 | Review approve / request-changes | **unsupported: single account** (GitHub refuses them on your own PR — the *refusal* is asserted live and modeled offline) | `github_cli.rs` `approving_your_own_pr…`; live self-approval refusal in the PR lifecycle test |
-| Merge (squash/merge, `--match-head-commit`) | **validated (faithful stand-in)**; live run **pending: supervised sandbox run** | `github_cli.rs` merge table; `github_live_pr_lifecycle_create_review_merge` |
-| Stale-head refusal (push mid-review) | modeled offline; live run **pending: supervised sandbox run** (re-captures the real refusal text) | `merge-stale-head` case; `github_live_stale_head_merge_is_refused` |
-| Blocked-by-ruleset merge + admin bypass | modeled offline; live run **pending: supervised sandbox run** (sandbox `protect` phase) | `merge-blocked-policy` case; `github_live_ruleset_blocks_then_admin_bypass_merges` |
-| Draft: refuse merge → mark ready → merge | modeled offline; live run **pending: supervised sandbox run** | `merge-draft` case; `github_live_draft_refuses_merge_until_ready` |
-| Auto-merge arm / disarm | modeled offline (`merge-auto-armed`, `merge-auto-not-allowed`); live run **pending: supervised sandbox run** (setup enables `allow_auto_merge`) | inventory rows `pr_merge` / `pr_disable_auto_merge` |
-| Update branch (`BEHIND`) | **pending: supervised sandbox run** (needs a deliberately-behind branch; runbook extension) | inventory row `pr_update_branch` |
-| Issue create/edit/comment/close/reopen (labeled) | **pending: supervised sandbox run** | `github_live_issue_lifecycle_is_verified_remotely` |
-| Issue → worktree (`gh issue develop`) | **pending: supervised sandbox run** (full dialog flow belongs to the on-device pass) | inventory row `issue_develop` |
+| Merge (squash, `--match-head-commit`, `--delete-branch`, remote re-read `MERGED`) | **validated (live, 2026-08-01)** + faithful stand-in | `github_live_pr_lifecycle_create_review_merge`; `github_cli.rs` merge table |
+| Stale-head refusal (push mid-review) | **validated (live, 2026-08-01)** — the real text is `Pull Request is not mergeable`, **not** the modeled `Head branch was modified` guess; fixture re-captured | `merge-stale-head` case (now `source-exact`); `github_live_stale_head_merge_is_refused` |
+| Blocked-by-ruleset merge + admin bypass | **validated (live, 2026-08-01)** — block verbatim + `--admin` merge. Finding: a ruleset only honors `--admin` when it grants a bypass actor; without one gh fails with `Repository rule violations found` (the harness ruleset now mirrors production's admin `bypass_actors`) | `merge-blocked-policy` case; `github_live_ruleset_blocks_then_admin_bypass_merges` |
+| Draft: refuse merge → mark ready → merge | **validated (live, 2026-08-01)** — real refusal is `Pull Request is still a draft`; fixture re-captured | `merge-draft` case (now `source-exact`); `github_live_draft_refuses_merge_until_ready` |
+| Auto-merge arm / disarm | modeled offline (`merge-auto-armed`, `merge-auto-not-allowed`); live run **pending: not yet in the live suite** (runbook extension; setup already enables `allow_auto_merge`) | inventory rows `pr_merge` / `pr_disable_auto_merge` |
+| Update branch (`BEHIND`) | **pending: not yet in the live suite** (needs a deliberately-behind branch; runbook extension) | inventory row `pr_update_branch` |
+| Issue create/edit/comment/close/reopen (labeled) | **validated (live, 2026-08-01)** — every transition re-read remotely | `github_live_issue_lifecycle_is_verified_remotely` |
+| Issue → worktree (`gh issue develop`) | **pending: on-device dialog pass** (the full dialog flow belongs to the on-device pass) | inventory row `issue_develop` |
 | Reviewer requests (`--add-reviewer`) | **unsupported: single account** (cannot request yourself); arg validation unit-tested | inventory row `pr_add_reviewers` |
-| Actions dispatch/cancel/log | **pending: supervised sandbox run** | `github_live_actions_dispatch_cancel_and_log` |
-| Actions re-run | **pending: supervised sandbox run** (pairs with the cancel run) | inventory row `run_rerun` |
+| Actions dispatch/cancel/log | **validated (live, 2026-08-01)** — note: the very first dispatch on a fresh repo can race GitHub's workflow registration (one retry settled it) | `github_live_actions_dispatch_cancel_and_log` |
+| Actions re-run | **pending: not yet in the live suite** (pairs with the cancel run) | inventory row `run_rerun` |
 | Cross-fork PRs | **unsupported: single account** (no cross-account fork; also an open feature gap — see FOR-DEV) | inventory + FOR-DEV |
 
 ## Environments
 
 | Case | Status |
 |---|---|
-| Windows (this machine) | offline suites verified green; live suite pending its supervised run |
+| Windows (this machine) | offline suites green **and the supervised live run executed 2026-08-01: 7/7 live tests green** against `luisgamas/uxnan-gh-sandbox` (created, exercised and cleaned by the harness; every mutation verified by a remote re-read) |
 | macOS / Linux | untested (no hardware; same posture as the rest of the desktop app) |
 | WSL repos | known gap — GitHub features degrade to "not a GitHub repo" (FOR-DEV) |
 | GHES / non-standard hosts | untested — no GHES available; the code paths degrade (documented in `github.md`) |
@@ -95,20 +95,33 @@ surfaces gh's own `Unknown JSON field` message rather than hanging.
 An **opt-in** E2E journey (`tests/e2e/specs/github-fake.e2e.mjs`, enabled with
 `UXNAN_E2E_FAKE_GH=1`) boots the shipped app with `gh` routed to the fixture
 (the canned answers are the captured real payloads) and asserts the status /
-PR-list / rate-limit / empty-issues chains over real IPC. Its **first run is
-still pending** — the E2E suite cannot run beside another uxnan instance, so it
-runs in the same operator session as the sandbox runbook. Driving the GitHub
-*views* by clicking (open PR detail, merge dialog) stays a known E2E gap
-(FOR-DEV), as with the other journeys: assertions go through IPC.
+PR-list / rate-limit / empty-issues chains over real IPC. Its **first run
+passed on 2026-08-01** (in the same operator session as the sandbox runbook,
+with no other uxnan instance alive). Driving the GitHub *views* by clicking
+(open PR detail, merge dialog) stays a known E2E gap (FOR-DEV), as with the
+other journeys: assertions go through IPC.
 
-## What a supervised run must update
+## Supervised runs
 
-Running the runbook is not just execution — it closes the loop:
+**2026-08-01 — first run, all green.** Sandbox `luisgamas/uxnan-gh-sandbox`
+created by the harness (public, marker topic, sleep workflow, auto-merge
+enabled), the 7 live tests executed in runbook order, cleanup verified (0 open
+PRs/issues, `main` only, no failure artifact; the repo is parked and safe to
+delete). Three findings, all folded back into the code the same day:
 
-1. flip the `pending: supervised sandbox run` cells above (and in the
-   inventory) to validated, with the run date;
-2. re-capture the `confidence: "modeled"` stderr shapes in
-   `tests/fixtures/github/mutation-outcomes.json` with the real bytes the run
-   printed (the live tests print each refusal verbatim for exactly this);
-3. update `tests/quality-matrix.json`'s `github` row and
-   `docs/testing.md`'s L5 checklist rows 1–2 with the date.
+1. **Two modeled refusal texts were wrong** — stale-head really answers
+   `Pull Request is not mergeable` and draft really answers
+   `Pull Request is still a draft`; both fixtures now carry the live bytes
+   (`source-exact`) and the offline suite asserts them.
+2. **`--admin` cannot bypass a ruleset that grants no bypass actor** — gh fails
+   with `Repository rule violations found`. Production's ruleset grants the
+   Repository-admin role an `always` bypass, which is why admin merges work
+   there; the harness ruleset now mirrors that, and the failure text is a real
+   outcome the app can meet on foreign repos.
+3. **A fresh repo's first `workflow_dispatch` can race workflow registration**
+   (the run simply doesn't appear for a while); a retry settled it.
+
+A future run only needs the runbook extensions still marked pending above:
+auto-merge arm/disarm, update-branch, Actions re-run, and the on-device
+`issue develop` dialog pass. Re-running the whole suite stays routine — the
+harness is idempotent and the sandbox may be deleted or parked between runs.

@@ -379,6 +379,12 @@ function protectSteps(sandbox) {
     name: RULESET_NAME,
     target: "branch",
     enforcement: "active",
+    // Mirror production faithfully: without a bypass grant a ruleset refuses
+    // `gh pr merge --admin` outright ("Repository rule violations found"),
+    // which the first live run proved — the production ruleset grants the
+    // Repository admin role (actor_id 5) an "always" bypass, so the sandbox
+    // must too for the bypass path to be validatable at all.
+    bypass_actors: [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }],
     conditions: { ref_name: { include: ["~DEFAULT_BRANCH"], exclude: [] } },
     rules: [
       { type: "deletion" },

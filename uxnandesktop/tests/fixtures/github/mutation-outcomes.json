@@ -12,7 +12,12 @@
     "format is source-exact but the API-authored message text inside it is",
     "known behavior that the supervised sandbox run re-captures verbatim",
     "(docs/github-sandbox-runbook.md). A modeled case is a claim to verify,",
-    "not a fact — that is what the live suite is for."
+    "not a fact — that is what the live suite is for.",
+    "",
+    "2026-08-01 supervised sandbox run: merge-blocked-policy (incl. the",
+    "--admin hint line), merge-stale-head and merge-draft now carry the",
+    "live-captured bytes — note the stale-head and draft texts differed from",
+    "the modeled guesses, which is exactly what the re-capture is for."
   ],
   "basis": {
     "ghVersion": "gh version 2.95.0 (2026-06-17)",
@@ -29,7 +34,7 @@
       "confidence": "source-exact",
       "exit": 1,
       "stdout": "",
-      "stderr": "X Pull request luisgamas/uxnan-gh-sandbox#7 is not mergeable: the base branch policy prohibits the merge.\n"
+      "stderr": "X Pull request luisgamas/uxnan-gh-sandbox#7 is not mergeable: the base branch policy prohibits the merge.\nTo use administrator privileges to immediately merge the pull request, add the `--admin` flag.\n"
     },
     {
       "id": "merge-blocked-behind",
@@ -53,19 +58,19 @@
       "id": "merge-stale-head",
       "operation": "pr merge --match-head-commit with a stale head",
       "command": "gh pr merge 7 --squash --match-head-commit 0123456789abcdef0123456789abcdef01234567",
-      "confidence": "modeled",
+      "confidence": "source-exact",
       "exit": 1,
       "stdout": "",
-      "stderr": "GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)\n"
+      "stderr": "GraphQL: Pull Request is not mergeable (mergePullRequest)\n"
     },
     {
       "id": "merge-draft",
       "operation": "pr merge on a draft PR",
       "command": "gh pr merge 8 --squash",
-      "confidence": "modeled",
+      "confidence": "source-exact",
       "exit": 1,
       "stdout": "",
-      "stderr": "GraphQL: Pull request Pull request is in draft state (mergePullRequest)\n"
+      "stderr": "GraphQL: Pull Request is still a draft (mergePullRequest)\n"
     },
     {
       "id": "merge-auto-not-allowed",

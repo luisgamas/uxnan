@@ -318,8 +318,8 @@ manual list; recording one of its platform runs means updating that matrix.
 
 | # | Check | Why it cannot be automated here | Last verified |
 |---|---|---|---|
-| 1 | `gh` sign-in, then read a PR, an issue and an Actions run | Needs a real GitHub account; the suite uses a fake `gh` that never reaches the network (the *parsers* are now contract-tested on captured real output — this row is the live-account walk) | — |
-| 2 | Create a PR, review it, merge it | Mutates a real repository — now scripted as the supervised sandbox suite (`github_live.rs` + `docs/github-sandbox-runbook.md`); record the date here when the first run happens | — |
+| 1 | `gh` sign-in, then read a PR, an issue and an Actions run | Needs a real GitHub account; the suite uses a fake `gh` that never reaches the network (the *parsers* are now contract-tested on captured real output — this row is the live-account walk) | 2026-08-01 — live read chain green against the sandbox (`github_live_status_and_context…`) |
+| 2 | Create a PR, review it, merge it | Mutates a real repository — scripted as the supervised sandbox suite (`github_live.rs` + `docs/github-sandbox-runbook.md`) | 2026-08-01 — first supervised run, 7/7 live tests green (`docs/github-validation.md` → *Supervised runs*) |
 | 3 | Run each installed agent CLI in a terminal and confirm its status dot follows | Needs the CLIs installed and, for most, a paid account | — |
 | 4 | Install a signed update from the stable channel | Needs a signed artifact and a real release | — |
 | 5 | Install a signed update from the nightly channel | Same | — |

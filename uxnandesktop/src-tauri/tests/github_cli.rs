@@ -209,7 +209,7 @@ async fn merge_refusals_surface_ghs_own_explanation() {
         (
             "merge-stale-head",
             r#"{"method":"squash","matchHeadCommit":"0123456789abcdef0123456789abcdef01234567"}"#,
-            "Head branch was modified",
+            "Pull Request is not mergeable",
         ),
         ("merge-draft", r#"{"method":"squash"}"#, "draft"),
         (

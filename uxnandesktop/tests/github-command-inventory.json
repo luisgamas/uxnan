@@ -14,7 +14,7 @@
     "what still blocks a first live execution."
   ],
   "source": "src-tauri/src/github.rs",
-  "updated": "2026-07-31",
+  "updated": "2026-08-01 (first supervised live run executed — docs/github-validation.md → Supervised runs)",
   "functions": [
     {
       "fn": "status",
