@@ -264,22 +264,29 @@ not missing machinery.
       into the file), but flipping before the noise floor is known on a second
       machine is how a gate earns a reputation for false positives and gets
       switched off.
-- [ ] **Capture R07 and R08 with an operator, and run R10 once.** The Windows
-      baseline covers eleven scenarios; those three have no entry and correctly
-      report `unknown`. R10 in particular means there is currently **no evidence
-      either way** about long-run memory growth — the slope metrics exist and
-      have never been exercised on a real two-hour run.
+- [ ] **Capture R07 and R08 — preferably by automating them, not by an
+      operator.** R10 ran its first real two-hour soak on 2026-08-01 (own-RSS
+      slope 1.62 MB/h, zero orphans; budget entry recorded), so long-run growth
+      now has evidence. R07/R08 remain the only unmeasured scenarios: rather
+      than scheduling a person to click, convert them from `assisted` to `auto`
+      over the E2E driver that now exists (see the automation item below).
 - [ ] **Run the Unix collector on real macOS and Linux hardware.** It is
       implemented and shares the schema, but has never executed anywhere: until
       it has, `budgets/{macos,linux}.json` stay empty and no figure for those
       platforms may be published. macOS additionally needs its own definition of
       the `own` bucket — WebKit's content process lives outside the app's tree,
       so the Windows framing does not transfer.
-- [ ] **Automate R07 (browser) and R08 (GitHub) once an E2E driver exists.** Both
-      need a person to click today. The metric names will not change when they
-      flip to `auto`; R08 stays out of CI regardless, because it needs a real
-      `gh` login. Same for R04's *wake* half — the asleep cost is automatic, the
-      wake latency and scrollback fidelity are still on the checklist.
+- [ ] **Automate R07 (browser) and R08 (GitHub) over the E2E driver.** The
+      driver exists now (WebdriverIO + tauri-driver, plan-of-record since the
+      test pyramid landed), so the remaining work is design + wiring, not
+      waiting: the open question is how the harness drives its *measured* app
+      instance (the bench launches the binary itself, the driver launches via
+      `tauri-driver` — either the bench adopts a driver session for the
+      interaction phase, or the interaction is seeded state the app replays).
+      The metric names will not change when they flip to `auto`; R08 stays out
+      of CI regardless, because it needs a real `gh` login. Same for R04's
+      *wake* half — the asleep cost is automatic, the wake latency and
+      scrollback fidelity are still on the checklist.
 - [ ] **Per-run WebView2 profile, if a way appears.** Tauri forces the webview
       user-data folder to `LocalData/<identifier>` when a window config does not
       set one, which is why two instances share a browser process and why the
@@ -295,15 +302,6 @@ attribution with explicit confidence, orphan detection, the popover + Settings
 surfaces, and the consent-first sanitized export. What is left is measurement
 and platform confidence, not machinery.
 
-- [ ] **Capture the R12 baseline and replace the provisional Windows budget.**
-      The scenario is wired end to end (`npm run bench -- --scenario R12
-      --variant off|parked|sweep`) and its budget entry is a verbatim copy of
-      R02's — which is exactly the claim under test ("parked adds nothing"),
-      but a copied ceiling is not a measurement. The harness (correctly)
-      refuses to run beside a live uxnan instance, so this **must run with the
-      app closed**; five repetitions per variant, then write the measured
-      medians + margins into `budgets/windows.json` (the `FOR-DEV:` note in its
-      `_comment` marks the spot).
 - [ ] **An L4 journey for the popover round trip.** No E2E spec opens the
       backend popover against the real binary yet — the suite could not run
       beside the live instance this feature was built next to, and an
@@ -338,19 +336,11 @@ and platform confidence, not machinery.
 behavior, residue-free overrides, governed consumers (git sweeps,
 GitHub/provider polling, orchestration concurrency with headroom-gated
 extension, monitor history, pet flavour), freshness hints with manual refresh,
-and flag-gated workspace auto-sleep. What is left is measurement, soak and a
-few declared gaps — not machinery.
+and flag-gated workspace auto-sleep. The per-preset efficiency matrix was
+measured on 2026-08-01 and met its acceptance bar (`docs/resource-mode.md` →
+*Efficiency matrix*); what is left is soak and a few declared gaps — not
+machinery or measurement.
 
-- [ ] **Capture the per-preset efficiency matrix — must run with the app
-      closed.** The knob is wired (`npm run bench -- --resource-profile
-      efficient|balanced|performance`, seeded into the disposable profile and
-      recorded in the result document), but the harness (correctly) refuses to
-      run beside a live uxnan instance, so no preset has been measured yet.
-      Plan: R01/R04/R06/R09 per preset (R07/R08 assisted, R10 once), then
-      publish the internal table in `docs/resource-mode.md` and check the
-      acceptance bar there (Efficient improves at least one material metric
-      without breaking the core flow's latency; Balanced matches the existing
-      baseline). No figure or budget changes until those runs exist.
 - [ ] **Do NOT retire the auto-sleep feature flag until it has soaked on all
       three platforms.** The flag (off by default) is the rollback lever; the
       `auto` level additionally needs live-process verification (a real dev
@@ -535,33 +525,27 @@ leaving it alone.
   `tests/fixtures/github/mutation-outcomes.json`): merge refusals, signed-out /
   offline / rate-limited / truncated-JSON / old-gh degradation, the Windows
   `.cmd` resolution fix, env hygiene.
-- [ ] **Write side: supervised sandbox run pending — mutations require
-      maintainer supervision.** The executable live suite exists
-      (`src-tauri/tests/github_live.rs`, all `#[ignore]`, armed only by
-      `UXNAN_GH_SANDBOX=luisgamas/uxnan-gh-sandbox`, production repo refused by
-      name) together with the sandbox harness
-      (`scripts/github/sandbox.mjs`, dry-run by default) and the step-by-step
-      procedure in [`docs/github-sandbox-runbook.md`](docs/github-sandbox-runbook.md).
-      Until that first supervised run: PR create/comment/merge (incl. stale-head,
-      draft→ready, ruleset-block → admin bypass), the issue lifecycle, and
-      Actions dispatch/cancel/log remain *claims validated offline*, not live
-      facts. The run also re-captures the `confidence: "modeled"` gh refusal
-      texts and flips the matrix cells (the runbook's step 10 lists every doc to
-      update).
+- **Write side: validated live (2026-08-01).** The first supervised sandbox run
+  executed the full runbook against `luisgamas/uxnan-gh-sandbox` — 7/7 live
+  tests green (issue lifecycle, PR create/comment/merge with `--match-head-commit`,
+  stale-head and draft refusals, ruleset block → `--admin` bypass, Actions
+  dispatch/cancel/log), every mutation verified by a remote re-read, cleanup
+  verified, refusal texts re-captured as `source-exact` bytes, and the opt-in
+  E2E journey (`github-fake.e2e.mjs`) passed its first run the same session.
+  Findings and the run record: `docs/github-validation.md` → *Supervised runs*
+  (notably: two modeled refusal texts were wrong and are now the live bytes,
+  and a ruleset only honors `--admin` when it grants a bypass actor — the
+  harness now mirrors production's admin bypass grant).
 - [ ] **Single-account limits** (cause: no second GitHub account / cross-fork):
       review **approve/request-changes** on someone else's PR, **reviewer
       requests**, and cross-fork PRs can't be executed — the self-approval
       *refusals* are covered offline and asserted live.
-- [ ] **Still unexercised even by the live suite** (add to a later supervised
-      pass): `pr_update_branch` (needs a deliberately-behind branch),
-      `pr_reopen`, PR-side `pr_edit`, `issue_develop` + the PR/issue → worktree
-      dialog end-to-end, auto-merge arm/disarm, `run_rerun`.
-- [ ] **Opt-in GitHub E2E journey first run**
-      (`tests/e2e/specs/github-fake.e2e.mjs`, `UXNAN_E2E_FAKE_GH=1`): written and
-      wired (fake gh answering with the captured real payloads), pending its
-      first execution — the E2E suite can't run beside another uxnan instance,
-      so it belongs to the same operator session as the runbook. Driving the
-      GitHub *views* by clicking (PR detail, merge dialog) stays a known E2E gap.
+- [ ] **Still unexercised even by the live suite** (runbook extensions for a
+      later supervised pass): `pr_update_branch` (needs a deliberately-behind
+      branch), `pr_reopen`, PR-side `pr_edit`, `issue_develop` + the PR/issue →
+      worktree dialog end-to-end (on-device), auto-merge arm/disarm,
+      `run_rerun`. Driving the GitHub *views* by clicking (PR detail, merge
+      dialog) stays a known E2E gap.
 
 The `gh`-backed integration above is otherwise complete for the standalone desktop app.
 Deferred:

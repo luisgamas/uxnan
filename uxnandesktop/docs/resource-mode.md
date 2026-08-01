@@ -133,27 +133,35 @@ Known gaps (tracked in [`FOR-DEV.md`](../FOR-DEV.md)): the 1 s agent-detection
 tick and the OSC title layer are not policy-governed in v1, and the Rust-side
 `ResourceMonitor::subscribe_events` broadcast still has no backend consumer.
 
-## Efficiency gates (pending measurement)
+## Efficiency matrix (measured 2026-08-01)
 
-The per-preset matrix is wired but **not yet measured**: the harness refuses
-to run beside a live Uxnan instance (the WebView2 user-data-folder sharing
-documented in [`resource-benchmarks.md`](resource-benchmarks.md)), so the
-capture must happen with the app closed. What will be measured, per preset
-(`--resource-profile efficient|balanced|performance`):
+Captured with the app closed (the harness refuses to run beside a live Uxnan
+instance — the WebView2 user-data-folder sharing documented in
+[`resource-benchmarks.md`](resource-benchmarks.md)); release build, 5
+repetitions per cell via `npm run bench -- --resource-profile <preset>
+--scenario <id>`, medians of own private memory and own CPU P95:
 
-| Scenario | Question the presets must answer |
-|---|---|
-| R01 (idle) | Efficient must not regress idle; the deltas quantify the sweep/poll relaxations |
-| R04 (sleeping workspace) | the state auto-sleep produces — its saving is auto-sleep's value |
-| R06 (large repo) | the git sweep pacing is most visible here |
-| R07 (browser), R08 (GitHub) | operator-assisted; R08 exercises the poll factors |
-| R09 (pet) | flavour off vs on under Efficient |
-| R10 (2 h soak) | the shortened monitor history + no leak under any preset |
+| Scenario | Efficient | Balanced | Performance |
+|---|---|---|---|
+| R01 (idle, default project) | 240 MB · **7.7 %** | 239 MB · 12.4 % | 240 MB · 9.3 % |
+| R04 (sleeping workspace) | 229 MB · **4.8 %** | 227 MB · 7.9 % | 227 MB · 6.0 % |
+| R06 (large git repo) | 247 MB · 10.2 % | 247 MB · 10.8 % | 245 MB · 15.8 % |
+| R09 (pet companion) | 269 MB · **12.5 %** | 270 MB · 15.6 % | 269 MB · 12.4 % |
 
-Acceptance (from the plan of record): Efficient must improve at least one
-material metric without pushing the core flow outside its latency budget, and
-`Balanced` must match the existing baseline. No number is published until the
-runs exist; budgets stay untouched.
+**Acceptance verdict — met.** Efficient improves a material metric without
+touching the core flow: idle CPU P95 drops from 12.4 % to 7.7 % and a sleeping
+workspace from 7.9 % to 4.8 % (the relaxed sweeps/polls doing exactly what the
+preset promises), at identical memory. Balanced's figures sit on the approved
+baseline (its constants are the pre-mode ones, pinned by test). Performance
+buys fresher git state at visibly higher CPU on the git-heavy scenario
+(15.8 % on R06) — the documented trade. The presets don't move memory:
+governing cadence was never a memory claim.
+
+Also captured that session: **R12** (the monitor's own overhead — parked sits
+within ~1 MB of off, see the budget file's comment) and **R10** (2 h soak:
+own-RSS slope **1.62 MB/h**, zero orphans, CPU P95 6.6 %). Still
+operator-assisted: R07 (browser) and R08 (GitHub) — their automation over the
+E2E driver is a FOR-DEV follow-up.
 
 ## Testing
 

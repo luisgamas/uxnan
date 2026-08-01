@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — the first supervised live GitHub run: every write verb proven against the real service
+
+- **7/7 live tests green (2026-08-01)** against the disposable sandbox
+  `luisgamas/uxnan-gh-sandbox`, created / exercised / cleaned by the harness
+  with every mutation verified by a remote re-read: the read chain, the full
+  issue lifecycle, PR create → comment → review-comment → self-approval
+  refused → squash-merge with `--match-head-commit` → re-read `MERGED`, the
+  draft and stale-head refusals, ruleset block → `--admin` bypass, and Actions
+  dispatch / cancel / log. The run record and its findings:
+  `docs/github-validation.md` → *Supervised runs*.
+- **Two modeled refusal texts were wrong — now the live bytes.** GitHub really
+  answers `Pull Request is not mergeable` for a stale head (not the modeled
+  `Head branch was modified…`) and `Pull Request is still a draft` for a draft;
+  `tests/fixtures/github/mutation-outcomes.json` carries the captured bytes as
+  `source-exact` (plus the real `--admin` hint line on the policy block) and
+  the offline suite asserts them.
+- **Finding: `--admin` cannot bypass a ruleset that grants no bypass actor** —
+  gh fails with `Repository rule violations found`. Production's ruleset
+  grants the Repository-admin role an `always` bypass (why admin merges work
+  there); the sandbox harness ruleset now mirrors that, and the failure text
+  is a real outcome the app can meet on foreign repos.
+- The opt-in GitHub E2E journey (`github-fake.e2e.mjs`) passed its **first
+  run** the same session, over the shipped binary with `gh` answered by the
+  captured real payloads.
+
+### Added — the measured evidence the resource features promised
+
+- **R12 (the monitor's own overhead) captured** — 5 repetitions × 3 variants,
+  release build, app closed: parked sits within ~1 MB of off (the zero-cost
+  promise held) and the opt-in sweep adds ~1.4 MB. The provisional budget is
+  replaced by measured ceilings, keyed per variant (`R12-off/parked/sweep`) so
+  the comparator actually finds them.
+- **The per-preset efficiency matrix measured and its acceptance bar met**
+  (`docs/resource-mode.md` → *Efficiency matrix*): Efficient drops idle CPU
+  P95 from 12.4 % to 7.7 % and a sleeping workspace from 7.9 % to 4.8 % at
+  identical memory; Balanced sits on the approved baseline; Performance pays
+  its documented CPU price for fresher git state.
+- **R10's first real 2 h soak**: own-RSS slope **1.62 MB/h**, handles P95
+  4022, CPU P95 6.6 %, zero orphans — no evidence of long-run growth; a
+  measured `R10` budget entry now exists.
+- The full E2E suite re-ran green over the current binary in the same session.
+  Still assisted: R07 (browser) and R08 (GitHub) — automating them over the
+  E2E driver is the recorded follow-up.
+
 ### Added — the GitHub integration validated against real data
 
 - **Captured real `gh` responses as parser contracts.** Every GitHub parser now

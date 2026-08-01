@@ -43,7 +43,7 @@
       "name": "Windows 11 x64",
       "minimum": "Windows 10 with the WebView2 Evergreen runtime; exercised on Windows 11",
       "announced": "smoke",
-      "notes": "The maintainer's daily platform: installed NSIS build in daily use, E2E suite green locally, approved resource baseline. `validated` is blocked by the unscripted install/upgrade/uninstall cycle, the manual-only wake-fidelity check and the unmeasured R07/R08/R10 scenarios; `signed` needs the paid Authenticode certificate (FOR-HUMAN.md)."
+      "notes": "The maintainer's daily platform: installed NSIS build in daily use, E2E suite green locally (re-run 2026-08-01 incl. the opt-in GitHub journey), approved resource baseline plus the 2026-08-01 captures (R10 2 h soak: 1.62 MB/h slope, zero orphans; R12 observer overhead; the per-preset efficiency matrix). `validated` is blocked by the unscripted install/upgrade/uninstall cycle, the manual-only wake-fidelity check and the still-assisted R07/R08 scenarios; `signed` needs the paid Authenticode certificate (FOR-HUMAN.md)."
     },
     "macos-aarch64": {
       "name": "macOS (Apple Silicon)",
@@ -587,7 +587,7 @@
           "hardware": "Windows 11 Pro 10.0.26200 x64, i7-13620H, 16 GB, WebView2 150.0.4078.105 (hostId 2b9d89e1cf9f)",
           "tester": "maintainer",
           "evidence": "Approved baseline: eleven scenarios, five release-build repetitions each (scripts/resources/baselines/windows/, scripts/resources/baselines/README.md).",
-          "gaps": "R07/R08 need an operator and R10 (the 2 h soak) has never run; the budget gate is warn-only (FOR-DEV.md, Resource benchmarks follow-ups)."
+          "gaps": "R07/R08 remain assisted (automating them over the E2E driver is the FOR-DEV follow-up); R10 ran its first 2 h soak on 2026-08-01 (own-RSS slope 1.62 MB/h, zero orphans) and R12 + the per-preset matrix were captured the same session; the budget gate is warn-only (FOR-DEV.md, Resource benchmarks follow-ups)."
         },
         "macos-aarch64": {
           "level": "code-only",
@@ -645,7 +645,7 @@
       {
         "id": "win-resources-operator",
         "advancesTo": "validated",
-        "item": "Capture R07 and R08 with an operator and run R10 (the 2 h soak) once; promote the aggregates."
+        "item": "Capture R07 and R08 (preferably by automating them over the E2E driver); R10 ran 2026-08-01. Promote the aggregates."
       },
       {
         "id": "win-updater-negative",

@@ -43,7 +43,7 @@ a rewritten subsystem, or evidence older than ~6 months), the claim is
 
 | Platform | Minimum version | Announced level | Why not higher |
 |---|---|---|---|
-| `windows-x64` — Windows 11 x64 | Windows 10 + WebView2 Evergreen | `smoke` | `validated` blocked by: unscripted install/upgrade/uninstall cycle, wake-fidelity checked only by hand, R07/R08/R10 unmeasured. `signed` needs the paid Authenticode cert (`FOR-HUMAN.md`). |
+| `windows-x64` — Windows 11 x64 | Windows 10 + WebView2 Evergreen | `smoke` | `validated` blocked by: unscripted install/upgrade/uninstall cycle, wake-fidelity checked only by hand, R07/R08 still assisted (R10's 2 h soak and R12 were captured 2026-08-01). `signed` needs the paid Authenticode cert (`FOR-HUMAN.md`). |
 | `macos-aarch64` — macOS Apple Silicon | macOS 11.0 | `builds` | Experimental ad-hoc-signed DMG; CI compiles + runs the full suites on `macos-14`, but the app has never been launched on real Apple hardware. |
 | `macos-x64` — macOS Intel | macOS 11.0 | `builds` | Cross-compiled on an Apple Silicon runner; the x86_64 binary has never executed anywhere, not even its test suite. |
 | `linux-x64` — Ubuntu LTS reference | WebKitGTK 4.1 distro (Ubuntu 22.04+) | `builds` | Full suites pass on `ubuntu-latest` and installers ship, but no human has installed or launched any of them; the E2E driver supports Linux and has never been run. |

@@ -211,9 +211,16 @@ now reads **~250 MB** everywhere it appears — the two root READMEs, this
 component's README, and `web/src/lib/site.ts` (`RAM_FOOTPRINT` / `RAM_CORE`).
 Re-measure before changing it, and keep the platform and build beside it.
 
-R07, R08 and R10 have no baseline: two need an operator, and the soak has never
-been run. They report `unknown`, which is the honest distinction between "not
-judged" and "passed".
+R07 and R08 have no baseline yet — they still need an operator (automating
+them over the E2E driver is the FOR-DEV follow-up) and report `unknown`, the
+honest distinction between "not judged" and "passed". **R10 ran its first real
+2 h soak on 2026-08-01** (release build, app otherwise idle): own-RSS slope
+**1.62 MB/h**, handles P95 4022, CPU P95 6.6 %, **zero orphans** — no evidence
+of long-run growth — and its measured budget entry now exists. The same
+session captured **R12** (off / parked / sweep, 5 repetitions each: parked
+sits within ~1 MB of off, the sweep adds ~1.4 MB — the parked monitor's
+zero-cost promise held) and the **per-preset efficiency matrix**
+(`docs/resource-mode.md` → *Efficiency matrix*).
 
 ---
 
