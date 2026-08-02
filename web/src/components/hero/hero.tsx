@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Bot, FlaskConical, Gauge, Scale } from "lucide-react";
 
 import { GlyphField } from "./glyph-field";
 import { DownloadButton } from "@/components/site/download-button";
+import { RepoStatsLine } from "@/components/site/repo-stats-line";
 import { DesktopApp } from "@/components/mockups/desktop-app";
 import {
   AgentView,
@@ -13,7 +14,7 @@ import {
 } from "@/components/mockups/satellites";
 import { LinkButton } from "@/components/ui/button";
 import { useScrollProgress } from "@/lib/hooks";
-import { RAM_FOOTPRINT } from "@/lib/site";
+import { DESKTOP_TEST_COUNT, links, PHONE_AGENT_COUNT, RAM_FOOTPRINT } from "@/lib/site";
 
 /**
  * The satellites that surround the main window once it has settled.
@@ -74,6 +75,13 @@ export function Hero() {
             Free · Open source · MPL-2.0
           </p>
 
+          {/*
+            The one live counter on the page — the header carries no counter
+            of its own any more (see `header.tsx`), so this is what every
+            visitor, at every width, sees to know the repo is real.
+          */}
+          <RepoStatsLine className="mt-3.5" data-reveal data-reveal-delay="20" />
+
           <h1
             className="mx-auto mt-6 max-w-[18ch] text-[clamp(2.35rem,5.4vw,4.125rem)] font-semibold"
             data-reveal
@@ -86,19 +94,20 @@ export function Hero() {
           {/*
             Two products, named separately and given separate promises. They are
             not two halves of one thing, and the copy must never imply they are.
+            Kept to ~2 visual lines on purpose — confident and concrete, not a
+            pitch. The RAM figure lives in the proof strip below instead of
+            here, where it would compete with the actual headline: any CLI
+            agent, 7 of them first-class.
           */}
           <p
-            className="mx-auto mt-7 max-w-[52ch] text-[clamp(1.0625rem,1.6vw,1.1875rem)] leading-[1.7] text-muted-foreground"
+            className="mx-auto mt-7 max-w-[46ch] text-[clamp(1.0625rem,1.6vw,1.1875rem)] leading-[1.7] text-muted-foreground"
             data-reveal
             data-reveal-delay="140"
           >
-            Two independent apps for the CLI coding agents you already use — not
-            another agent, not another vendor lock-in.{" "}
-            <b className="font-medium text-foreground">Desktop</b> runs several on{" "}
-            {RAM_FOOTPRINT} so modest PCs stay in the game.{" "}
-            <b className="font-medium text-foreground">Mobile</b> steers those agents
-            from your phone without their app, their stack, or their wall. Use one or
-            both. Neither needs the other.
+            <b className="font-medium text-foreground">Desktop</b> runs any CLI
+            agent — {PHONE_AGENT_COUNT} with first-class support.{" "}
+            <b className="font-medium text-foreground">Mobile</b> reaches those{" "}
+            {PHONE_AGENT_COUNT} from your phone. Independent apps. No lock-in.
           </p>
 
           <div
@@ -122,6 +131,60 @@ export function Hero() {
               }
             />
           </div>
+
+          {/*
+            Honest proof, not testimonials — there are none yet, the project is
+            alpha. Four short, independently-checkable facts instead: each links
+            to the exact page that backs it.
+          */}
+          <ul
+            className="mx-auto mt-9 flex max-w-[42rem] flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[13.5px] text-muted-foreground"
+            data-reveal
+            data-reveal-delay="280"
+          >
+            <li>
+              <a
+                href={links.benchmarksGuide}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="flex items-center gap-1.5 hover:text-foreground"
+              >
+                <Gauge className="size-[14px] text-accent" aria-hidden />
+                <b className="font-medium text-foreground">{RAM_FOOTPRINT}</b>
+                measured, not promised
+              </a>
+            </li>
+            <li>
+              <a
+                href={links.testingGuide}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="flex items-center gap-1.5 hover:text-foreground"
+              >
+                <FlaskConical className="size-[14px] text-accent" aria-hidden />
+                <b className="font-medium text-foreground">
+                  {DESKTOP_TEST_COUNT.toLocaleString("en-US")}
+                </b>
+                automated tests
+              </a>
+            </li>
+            <li>
+              <a
+                href={links.license}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="flex items-center gap-1.5 hover:text-foreground"
+              >
+                <Scale className="size-[14px] text-accent" aria-hidden />
+                MPL-2.0 · open source
+              </a>
+            </li>
+            <li className="flex items-center gap-1.5">
+              <Bot className="size-[14px] text-accent" aria-hidden />
+              <b className="font-medium text-foreground">{PHONE_AGENT_COUNT}</b>
+              first-class agent CLIs
+            </li>
+          </ul>
         </div>
 
         {/*

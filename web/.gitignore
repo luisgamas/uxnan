@@ -6,3 +6,7 @@ next-env.d.ts
 .env*.local
 .vercel
 .DS_Store
+
+# "See it work" clips (docs/development.md) — real screen recordings, dropped
+# in locally or via CI, never committed as binaries.
+public/videos/

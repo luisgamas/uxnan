@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Github, Menu, X } from "lucide-react";
 
-import { GitHubStats } from "./github-stats";
+import { RepoStatsLine } from "./repo-stats-line";
 import { ThemeToggle } from "./theme-toggle";
 import { LinkButton } from "@/components/ui/button";
 import { useScrolledPast } from "@/lib/hooks";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "#problem", label: "Why" },
   { href: "#apps", label: "Apps" },
-  { href: "#features", label: "Look" },
+  { href: "#features", label: "Demo" },
   { href: "#faq", label: "FAQ" },
   { href: "/download/", label: "Download" },
 ];
@@ -82,13 +82,22 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
         )}
 
         <div className="ml-auto flex items-center gap-2.5">
-          <GitHubStats className="hidden xl:inline-flex" />
+          {/*
+            The only GitHub affordance the compact bar carries. There used to
+            be a live star/download pill here too (`hidden lg:inline-flex`),
+            which meant a phone visitor saw neither it nor this icon (`sm:grid`
+            hid this one below 640px) — the repo had no presence in the header
+            at all on a phone. The counters now live in exactly one place, the
+            hero's own stats line (visible at every width) plus the mobile
+            menu overlay below; this plain icon-link is visible at every width
+            in exchange, so there is always a way to reach the repo from here.
+          */}
           <a
             href={links.github}
             target="_blank"
             rel="noreferrer noopener"
             aria-label="Uxnan on GitHub"
-            className="hidden size-11 place-items-center rounded-xl border border-border bg-surface-raised text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground sm:grid"
+            className="grid size-11 place-items-center rounded-xl border border-border bg-surface-raised text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
           >
             <Github className="size-[18px]" aria-hidden />
           </a>
@@ -114,22 +123,58 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
         </div>
       </div>
 
+      {/*
+        A full-screen overlay, not a dropdown. The dropdown used to sit in
+        normal flow right under the compact bar — at typical phone heights
+        that meant the hamburger button and the hero's own CTAs were still
+        visible (and tappable) behind/around it, which read as unfinished.
+        This covers the viewport outright, above everything (`z-[60]`, over
+        the header's own `z-50`), with its own close control and a scroll-lock
+        on `document.body` for as long as it is open (see the effect above).
+      */}
       {menuOpen && !minimal && (
-        <div className="border-t border-border bg-background lg:hidden">
-          <nav className="shell flex flex-col py-4">
+        <div className="fixed inset-0 z-[60] flex flex-col bg-background lg:hidden">
+          <div className="shell flex h-[72px] shrink-0 items-center">
+            <Link
+              href="/"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2.5 font-semibold tracking-tight"
+            >
+              <img src="/logo.svg" alt="" aria-hidden className="size-8 rounded-lg" />
+              <span className="text-[17px]">Uxnan</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              aria-label="Close menu"
+              className="ml-auto grid size-11 place-items-center rounded-xl border border-border bg-surface-raised text-muted-foreground"
+            >
+              <X className="size-[18px]" />
+            </button>
+          </div>
+
+          <nav className="shell flex flex-1 flex-col justify-center gap-1 overflow-y-auto pb-16">
             {NAV.map((item) => (
               <a
                 key={item.href}
                 href={resolve(item.href)}
                 onClick={() => setMenuOpen(false)}
-                className="rounded-xl px-3 py-3.5 text-[16px] text-muted-foreground hover:bg-surface-sunken hover:text-foreground"
+                className="rounded-xl px-3 py-3.5 text-[22px] font-medium text-foreground hover:bg-surface-sunken"
               >
                 {item.label}
               </a>
             ))}
-            <LinkButton href="/download/" className="mt-3">
+            <LinkButton href="/download/" size="lg" className="mt-5 w-full">
               Download
             </LinkButton>
+
+            <div className="mt-10 border-t border-border/70 pt-8 text-center">
+              <p className="eyebrow justify-center">
+                <span className="size-1.5 rounded-full bg-positive" />
+                Free · Open source · MPL-2.0
+              </p>
+              <RepoStatsLine className="mt-4" />
+            </div>
           </nav>
         </div>
       )}

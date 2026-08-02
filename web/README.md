@@ -24,7 +24,7 @@ thing on them happens in the visitor's browser.
 
 | Route | What it carries |
 |---|---|
-| `/` | Decision funnel: hero (scroll mockups + OS-aware download), problem, two apps, enriched Desktop+Mobile mockup marquee, agents, FAQ, CTA |
+| `/` | Decision funnel, six sections plus the hero: hero (scroll mockups + OS-aware download + a proof strip), the problem, two apps, three real screen-recorded clips ("See it work"), the agent strip, FAQ, CTA |
 | `/download/` | Desktop installers (Windows / Linux / macOS × stable+nightly), Mobile + bridge |
 
 > **Two products, never one.** Uxnan Desktop and Uxnan Mobile share an ecosystem
@@ -43,14 +43,20 @@ thing on them happens in the visitor's browser.
   release asset, read from the public API at page load.
 - **Interface recreations, not screenshots.** The three-panel ADE, the project
   sidebar, the agent view with its sub-agents, the Files tree, a Claude Code
-  transcript, the pull-request panel, the provider meters and six phone screens
-  are all real DOM — sharp at any resolution, theme-aware, and animatable from the
-  scroll position. They are built from the apps' own component structure; see
+  transcript, the pull-request panel and two phone screens are all real DOM —
+  sharp at any resolution, theme-aware, and animatable from the scroll position.
+  They are built from the apps' own component structure; see
   [`docs/content.md`](./docs/content.md) for what that commits us to.
+- **Three real clips, not more mockups.** "See it work" plays three short,
+  silent screen recordings of the actual app (`public/videos/*.mp4`) — lazy,
+  muted, looping, paused under `prefers-reduced-motion` — instead of stretching
+  the DOM-recreation approach to cover every feature.
 - **A hero that reacts.** A canvas glyph field whose columns run shallow across
   the middle and deep at the edges, tinting towards the accent and receding
-  around the pointer; and a scroll-driven stage where the app window rises and
-  widens while the surrounding panels fly in.
+  around the pointer; a scroll-driven stage where the app window rises and
+  widens while the surrounding panels fly in; and a proof strip underneath the
+  call to action (measured RAM, the test count, the licence, the agent count),
+  each fact linking to the page that backs it.
 
 Everything degrades: with scripting off the whole page still renders and reads,
 and `prefers-reduced-motion` drops the pinned choreography for a plain stacked

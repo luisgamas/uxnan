@@ -22,8 +22,9 @@ Done today:
   chrome (`SiteShell`), with the header rewriting in-page anchors to `/#id` when
   it is not on the home page.
 - Home: hero (glyph field + scroll stage + OS-aware split download + macOS auth
-  card), problem, two-product cards, enriched Desktop+Mobile mockup marquee,
-  agents strip, FAQ, full-bleed CTA and revealing footer.
+  card + proof strip), problem, two-product cards, three real "See it work"
+  screen-recording clips, an agents strip (first-class CLIs + any-CLI pitch),
+  FAQ, full-bleed CTA and revealing footer.
 - **Interface recreations rebuilt from the apps' own components** — borderless
   project groups, two-line worktree rows with real git indicators, the agent view
   with sub-agents, a Files-first right panel with a git-coloured tree, and a

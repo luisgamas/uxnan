@@ -1,4 +1,4 @@
-import { Coffee, Github, Scale, ShieldCheck } from "lucide-react";
+import { Coffee, Scale, ShieldCheck, Star } from "lucide-react";
 
 import { DownloadButton } from "@/components/site/download-button";
 import { LinkButton } from "@/components/ui/button";
@@ -68,8 +68,8 @@ export function Cta() {
                 size="lg"
                 className="w-full sm:w-auto"
               >
-                <Github className="size-[18px]" aria-hidden />
-                Read the source
+                <Star className="size-[18px]" aria-hidden />
+                Star on GitHub
               </LinkButton>
             }
           />

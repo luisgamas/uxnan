@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { fetchReleaseData, type RepoStats } from "./releases";
+import { DOWNLOADS_FALLBACK, GITHUB_STARS_FALLBACK } from "./site";
+
 /** True only after hydration — guards anything that reads `window`. */
 export function useMounted() {
   const [mounted, setMounted] = useState(false);
@@ -132,11 +135,11 @@ export type Theme = "light" | "dark";
 
 /**
  * Light/dark toggle. The initial class is applied by the inline script in
- * `layout.tsx` before first paint; this hook only keeps React in sync with it
- * and persists the user's explicit choice.
+ * `layout.tsx` before first paint (dark by default); this hook only keeps React
+ * in sync with it and persists the user's explicit choice.
  */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("dark");
 
   useEffect(() => {
     setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
@@ -159,6 +162,39 @@ export function useTheme() {
   );
 
   return { theme, setTheme: apply, toggle };
+}
+
+/**
+ * Live repo stats — stars, and the summed download count of every release
+ * asset ever published — shared by every surface that shows them (the hero's
+ * own stats line, the mobile menu overlay) so there is exactly one fetch
+ * implementation and one fallback behaviour to keep honest.
+ *
+ * Starts from the static floors (`GITHUB_STARS_FALLBACK`, `DOWNLOADS_FALLBACK`)
+ * so a caller never renders a blank or a loading state, then swaps to the live
+ * numbers the moment the public API answers. A rate-limited or failed fetch
+ * just keeps the floor — see `docs/content.md`.
+ */
+export function useRepoStats(): RepoStats {
+  const [stats, setStats] = useState<RepoStats>({
+    stars: GITHUB_STARS_FALLBACK,
+    downloads: DOWNLOADS_FALLBACK,
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchReleaseData(controller.signal)
+      .then((data) => {
+        if (data.stats) setStats(data.stats);
+      })
+      .catch(() => {
+        /* Keep the static floor — a failed or rate-limited fetch is not a
+         * reason to show a blank or a broken counter. */
+      });
+    return () => controller.abort();
+  }, []);
+
+  return stats;
 }
 
 /** Closes a popover on outside click and on Escape. */

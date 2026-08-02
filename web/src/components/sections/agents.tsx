@@ -1,15 +1,21 @@
 import { Section } from "./shared";
 import { AgentMark } from "@/components/mockups/primitives";
 import {
+  PHONE_AGENT_COUNT,
   TERMINAL_ONLY_AGENTS,
   WIRED_AGENTS,
-  WIRED_AGENT_COUNT,
 } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
-/** Two drifting rows of CLI marks — the list is not a closed menu. */
+/**
+ * Two drifting rows of CLI marks — the list is not a closed menu.
+ *
+ * Only the first-class agents render here (`onPhone: true`), which also drops
+ * the one `WIRED_AGENTS` entry that must never appear on a marketing surface:
+ * the deprecated, phone-hidden Gemini CLI.
+ */
 const MARQUEE = [
-  ...WIRED_AGENTS.map((a) => ({ ...a, wired: true })),
+  ...WIRED_AGENTS.filter((a) => a.onPhone).map((a) => ({ ...a, wired: true })),
   ...TERMINAL_ONLY_AGENTS.map((a) => ({ ...a, wired: false })),
 ];
 
@@ -36,10 +42,10 @@ export function Agents() {
             data-reveal
             data-reveal-delay="120"
           >
-            <b className="font-medium text-foreground">{WIRED_AGENT_COUNT} CLIs</b>{" "}
-            are wired for remote control from the phone. Desktop is terminal-native —
-            anything you can start in a shell runs unmodified, including whatever
-            ships next month.
+            <b className="font-medium text-foreground">{PHONE_AGENT_COUNT} CLIs</b>{" "}
+            get first-class integration — live status, resumable sessions, their own
+            model list. Desktop is terminal-native — anything you can start in a
+            shell runs unmodified, including whatever ships next month.
           </p>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { ArrowRight, Check, Monitor, Smartphone } from "lucide-react";
 
 import { Section, SectionHeading } from "./shared";
+import { MemoryCard, Phone } from "@/components/mockups/satellites";
 import { LinkButton } from "@/components/ui/button";
 import { BRIDGE_INSTALL_COMMAND, links, PHONE_AGENT_COUNT, RAM_FOOTPRINT } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -31,16 +32,16 @@ export function TwoApps() {
             problem="Modest PCs still deserve modern agent workflows."
             tagline="Agents on your machine — without eating it."
             href="#features"
-            cta="See Desktop surfaces"
+            cta="See Desktop in motion"
             summary={`A terminal-native workspace that organises CLI agents, worktrees and review. Measured at ${RAM_FOOTPRINT} — RAM stays with the agents, not with a second browser inside the app.`}
             requires="Standalone. No phone, no bridge, no account with us."
             points={[
               "Native OS webview — not Electron’s full Chromium tax",
               "One worktree + terminal + agent per task",
-              "Any CLI agent runs unmodified",
               "Diffs, git and PRs without leaving the window",
             ]}
             platforms="Windows · Linux · macOS (experimental)"
+            visual={<MemoryCard className="w-full" />}
             delay={0}
           />
 
@@ -65,10 +66,10 @@ export function TwoApps() {
             points={[
               "Provider-agnostic — not locked to one company’s stack",
               "Direct to your PC when possible; optional self-hosted relay",
-              "Encrypted always — no plaintext mode",
-              "Git, files and finish notifications from the pocket",
+              "Encrypted always, git and files included",
             ]}
             platforms="Android · iOS coming soon"
+            visual={<Phone variant="conversation" className="h-[236px] w-[116px]" />}
             delay={90}
           />
         </div>
@@ -90,6 +91,7 @@ function AppCard({
   highlight,
   points,
   platforms,
+  visual,
   delay,
 }: {
   kind: "desktop" | "mobile";
@@ -104,6 +106,7 @@ function AppCard({
   highlight?: string;
   points: string[];
   platforms: string;
+  visual: React.ReactNode;
   delay: number;
 }) {
   const Icon = kind === "desktop" ? Monitor : Smartphone;
@@ -126,7 +129,17 @@ function AppCard({
       </div>
 
       <p className="mt-5 text-[14px] font-medium leading-snug text-accent">{problem}</p>
-      <p className="mt-3 text-[16px] leading-[1.75] text-muted-foreground">{summary}</p>
+
+      <div
+        className={cn(
+          "mt-6 flex items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-surface/50 p-6",
+          kind === "desktop" ? "min-h-[168px]" : "min-h-[268px]",
+        )}
+      >
+        {visual}
+      </div>
+
+      <p className="mt-6 text-[16px] leading-[1.75] text-muted-foreground">{summary}</p>
 
       <div className="mt-6 rounded-xl border border-border/70 bg-surface-raised/70 p-4">
         <p className="text-[12px] font-medium uppercase tracking-[0.09em] text-faint-foreground">

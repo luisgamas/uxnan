@@ -25,10 +25,12 @@ npm run dev -- -p 4321 # a different port
 Hot reload covers everything, including `globals.css`. Two things are worth
 knowing while you iterate:
 
-- **The theme is applied before React runs.** An inline script in
-  `src/app/layout.tsx` stamps `js` and (when stored) `dark` onto `<html>`, which
-  is why that element carries `suppressHydrationWarning`. If you change that
-  script, re-check the console for a hydration mismatch.
+- **The theme is applied before React runs, and dark is the default.** An
+  inline script in `src/app/layout.tsx` stamps `js` onto `<html>` and adds
+  `dark` unless `localStorage["uxnan-theme"]` is explicitly `"light"` — a
+  visitor's first paint is always dark, the toggle in the header is the only
+  way to opt into light. This is why `<html>` carries `suppressHydrationWarning`;
+  if you change that script, re-check the console for a hydration mismatch.
 - **The hero choreography is desktop-only.** Below 1024px the stage is a normal
   stacked layout. Resize past that breakpoint to exercise the pinned version.
 
@@ -67,6 +69,18 @@ pipeline. The knobs worth touching:
 
 It idles completely when scrolled out of view (an `IntersectionObserver`) and
 never starts at all under `prefers-reduced-motion`.
+
+## The "See it work" clips
+
+`src/components/mockups/feature-video.tsx` plays a short, silent, real screen
+recording of the app from `public/videos/<slug>.mp4` (H.264, no audio track —
+these are not tracked in git; drop them in locally or via CI). The `<video>`
+only gets its `src` once it scrolls near the viewport (`IntersectionObserver`,
+`rootMargin: "160px"`) and never autoplays under `prefers-reduced-motion`. Three
+clips are wired today (`launch-agent`, `agent-subagents`, `create-pr`, chosen in
+`src/components/sections/features.tsx`); if a file is missing the card simply
+shows an empty frame rather than a broken-media icon — check the dev server's
+terminal for a `404` on `/videos/*.mp4` to confirm which ones are still absent.
 
 ## Checking a change
 
