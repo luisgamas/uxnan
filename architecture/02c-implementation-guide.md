@@ -465,6 +465,12 @@ capabilities: {
 
 ### 2.4 Adaptador Gemini CLI (`gemini-cli-adapter.js`)
 
+> **LEGACY / DEPRECATED (2026-08):** esta sección queda como referencia
+> histórica del adapter. El bridge publica Gemini con
+> `deprecated:true, available:false`, rechaza turnos nuevos y no ofrece sus
+> modelos/comandos; uxnanmobile no contiene ni renderiza una superficie Gemini.
+> Antigravity (`agy`) es la integración vigente de Google.
+
 **Arquitectura del agente:** Gemini CLI es un agente open-source que usa un bucle ReAct (Reason and Act) con herramientas built-in y servidores MCP locales o remotos para completar tareas complejas. Soporta output en formato JSON estructurado y stream-JSON para integracion programatica.
 
 **Inicio del runtime:**
@@ -699,7 +705,6 @@ class UxnanColors {
   static const codexAgent = Color(0xFF00A67E);        // verde OpenAI
   static const openCodeAgent = Color(0xFF7C3AED);     // violeta
   static const claudeCodeAgent = Color(0xFFD97706);   // naranja Anthropic
-  static const geminiCliAgent = Color(0xFF4285F4);    // azul Google
   static const piAgentColor = Color(0xFF2563EB);      // azul pi
 }
 ```

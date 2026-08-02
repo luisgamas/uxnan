@@ -600,6 +600,11 @@ En ambos casos, el bridge maneja el flujo localmente y la app solo recibe el est
 
 #### 2.2.4 Gemini CLI (Google) — API Key
 
+> **Referencia histórica:** Gemini CLI está retirado. Desde 2026-08 el bridge
+> conserva este flujo solamente como código legacy marcado `deprecated` y no
+> permite iniciar turnos; el móvil descarta sus descriptors, threads, métricas y
+> proveedor de uso. Use Antigravity (`agy`) para conversaciones nuevas.
+
 Gemini CLI utiliza una Google API Key configurada en el entorno de la PC. No tiene flujo de login interactivo.
 
 ```
@@ -648,7 +653,7 @@ pi-agent soporta multiples proveedores de LLM (Anthropic, OpenAI, Google, etc.).
 | **Codex** | OAuth (OpenAI) | Si: login en navegador | No, nunca |
 | **OpenCode** | API Key (multi-proveedor) | No interactivo: configurar env var | No, nunca |
 | **Claude Code** | OAuth (claude.ai) o API Key | Si (OAuth) o no (API key) | No, nunca |
-| **Gemini CLI** | API Key (Google) | No interactivo: configurar env var | No, nunca |
+| ~~Gemini CLI~~ | Retirado; contrato legacy solamente | No se permite iniciar sesiones | No, nunca |
 | **pi-agent** | API Key (multi-proveedor) | No interactivo: configurar env var o agentConfig | No, nunca |
 
 ### 2.3 Pantallas y componentes de UI para autenticacion
@@ -692,7 +697,7 @@ Cuando `requiresLogin: true`, se muestra una card informativa dentro de la conve
 //   subtitulo: "Abra el navegador en su PC e inicie sesion con OpenAI"
 //   accion: boton "Iniciar login" que llama account/login/start
 
-// Para agentes con API key (OpenCode, Gemini CLI, pi-agent):
+// Para agentes con API key (OpenCode, pi-agent):
 //   titulo: "Configure la API key en su PC"
 //   subtitulo: "Ejecute en su terminal: export <API_KEY_VAR>=<su-key>"
 //   sin boton de accion (no hay flujo interactivo)
@@ -993,7 +998,7 @@ El bridge no usa variables de entorno propias obligatorias. Las credenciales de 
 |---|---|---|
 | `OPENAI_API_KEY` | Codex, OpenCode (si provider=openai) | API key de OpenAI |
 | `ANTHROPIC_API_KEY` | Claude Code, OpenCode (si provider=anthropic), pi-agent | API key de Anthropic |
-| `GOOGLE_API_KEY` | Gemini CLI, OpenCode (si provider=google) | API key de Google AI |
+| `GOOGLE_API_KEY` | OpenCode (si provider=google), pi-agent (si usa Google) | API key de Google AI |
 
 El bridge lee estas variables del entorno del proceso. La app movil **nunca** las conoce.
 
@@ -1267,7 +1272,6 @@ const adapters = {
   codex: require('./adapters/codex-adapter'),
   opencode: require('./adapters/opencode-adapter'),
   'claude-code': require('./adapters/claude-code-adapter'),
-  'gemini-cli': require('./adapters/gemini-cli-adapter'),
   'pi-agent': require('./adapters/pi-agent-adapter'),
   'mi-agente': require('./adapters/mi-agente-adapter'),   // <- nuevo
 };
@@ -1283,7 +1287,6 @@ enum AgentId {
   codex,
   opencode,
   claudeCode,
-  geminiCli,
   piAgent,
   miAgente,    // <- nuevo
   custom,

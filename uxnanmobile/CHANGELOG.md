@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — context-compaction milestones in conversations
+
+- The conversation timeline now renders a quiet, localized **Context compacted**
+  milestone exactly where the bridge persisted the event. It explains the
+  reported cause and, when available, the approximate before/after token count.
+- `CompactionContent` round-trips through the existing polymorphic content codec
+  and stays out of response copy, previews and fingerprints because it is
+  timeline metadata rather than assistant prose.
+
+### Changed — Gemini has no mobile product surface
+
+- Removed the Gemini agent enum branch, visual metadata, color, logo asset and
+  usage-provider card. The application boundary filters both new
+  `deprecated:true` descriptors and the legacy `gemini-cli` wire id, including
+  cached threads and profile activity, so older bridges cannot make Gemini
+  reappear.
+- Antigravity remains the supported Google agent.
+
 ## [0.0.15-alpha.20260729+20260729] - 2026-07-29
 
 ### Added — send follow-up messages while the agent is working

@@ -132,12 +132,18 @@ connected to live bridge data, validated on-device against a real bridge.
   hidden), so new agent commands appear with no app change.
 - **Context-usage indicator** (percentage when the model window is known, raw
   token count otherwise; **0 baseline** for agents with `reportsContextUsage`).
+- **Context-compaction milestones** — durable `CompactionContent` blocks render
+  at their real segment position with localized cause/token metadata. Codex,
+  Claude, OpenCode and pi report them; Zero/Grok ACP and Antigravity do not
+  expose a trustworthy signal, so mobile never guesses.
+- **Gemini fully retired from mobile** — no agent enum/visual/logo/provider
+  card; legacy descriptors, cached threads and profile activity are filtered.
 - **Per-agent sign-in status** (`auth/status`) — banner above the composer, red
   dot in the threads list, "Check sign-in" in the new-conversation card,
   auto-refresh on app resume.
 - **Interactive approval** (Approve / Reject / "always allow this session") with a
   spring `AnimatedSize` morph; validated end-to-end against Echo, Claude Code
-  (`PreToolUse` hook), Codex (`app-server`), Gemini (`BeforeTool` hook) and
+  (`PreToolUse` hook), Codex (`app-server`) and
   OpenCode (`opencode serve` `permission.asked`). Only pi has no pre-tool channel
   (it runs autonomously).
 - **Interactive question** (the agent's multiple-choice `question` tool) —
@@ -244,8 +250,8 @@ shipping.
 
 ## App+bridge seams (need a live bridge to finish/verify)
 
-- [ ] **Access-mode enforcement for non-Claude agents** — Claude, **Gemini and
-      Codex** now enforce the per-turn access mode (see `bridge/CHANGELOG.md`
+- [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**
+      now enforce the per-turn access mode (see `bridge/CHANGELOG.md`
       "per-turn access-mode enforcement"). Remaining: **Codex mid-thread re-apply**
       — the posture is set at `thread/start`, so changing the access mode partway
       through an existing Codex thread only affects threads started afterward
@@ -260,14 +266,14 @@ shipping.
       regression safety.
 - [ ] **OpenCode/pi interactive approvals** — blocked on the bridge side (their
       headless modes expose no pre-tool channel; see `bridge/FOR-DEV.md`). The app
-      already renders approvals for Echo/Claude/Codex/Gemini.
+      already renders approvals for Echo/Claude/Codex/OpenCode/Zero/Grok.
 - [ ] **AI-provider usage stats (`agent/usageStats`) — live verification.** The
       **bridge reader** (`bridge/src/usage/usage-reader.ts`) and the **mobile
       "Usage & credit" section** (profile: per-provider quota windows, plan,
       credit; `usageStatsProvider` + `ProviderUsage`, shown only when connected)
       are **implemented**. Remaining: **verify on-device against a real bridge**
       with signed-in providers — confirm each provider's live response maps
-      correctly (Codex / Claude / Copilot / Gemini / Grok) and the offline /
+      correctly (Codex / Claude / Copilot / Grok) and the offline /
       not-installed / auth-required / error states render right.
 
 ## iOS (all blocked on the first macOS build + FOR-HUMAN assets)

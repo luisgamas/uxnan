@@ -5,7 +5,7 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import type {
   AccessMode,
   AgentCommandInvocation,
@@ -44,6 +44,12 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     const pin = ctx.projects.agentConfigFor(cwd);
     const explicitAgent = optionalString(p, 'agentId') as AgentId | undefined;
     const agentId = explicitAgent ?? pin?.agentId ?? ctx.agentManager.defaultAgent;
+    if (ctx.agentManager.isDeprecated(agentId)) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentNotRunning,
+        `agent '${agentId}' is deprecated and cannot start new threads`,
+      );
+    }
     const explicitModel = optionalString(p, 'model');
     const model = explicitModel ?? (pin && agentId === pin.agentId ? pin.model : undefined);
     return ctx.threadStore.startThread(

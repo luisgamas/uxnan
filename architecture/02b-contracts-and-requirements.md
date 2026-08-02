@@ -117,7 +117,7 @@ thread/resume           -> reanudar thread existente (best-effort)
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion
 thread/rename           -> renombrar thread (devuelve el Thread actualizado). El móvil también lo usa una sola vez para convertir el primer prompt en título cuando el bridge aún devuelve un placeholder; un título explícito/manual no se reemplaza.
-thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Gemini CLI:** requestApproval=`--approval-mode default` + hook `BeforeTool` (cuando el endpoint del bridge es resoluble; si no, cae a la postura configurada), approveForMe=`auto_edit`, fullAccess=`yolo` (one-shot por turno → aplica siempre per-turn). **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio).
+thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio). **Gemini CLI:** retirado; no se crean hilos ni turnos y su postura histórica ya no se aplica.
 thread/archive          -> archivar thread (status -> archived, reversible)
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns
@@ -131,7 +131,7 @@ queue/clear             -> descartar todos los turnos encolados del thread (cada
 
 **Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge
 solo puede conducir **un turno por thread** — la mitad de los agentes corre
-one-shot por turno (`claude -p --resume`, gemini, pi, antigravity), asi que un
+one-shot por turno (`claude -p --resume`, pi, antigravity), asi que un
 segundo turno concurrente pondria dos procesos CLI sobre la misma sesion. Por
 eso un `turn/send` que llega con un turno en vuelo (o con la cola no vacia, aun
 pausada: saltarse los mensajes anteriores romperia su orden) **se encola** en
@@ -217,7 +217,7 @@ project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
-agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/Gemini/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`.
+agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`. Para cualquier agente `deprecated`, incluidos los bridges nuevos que conservan `gemini-cli`, devuelve `[]`.
 agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
 
@@ -364,7 +364,8 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
   default off).
 - `stream/content/block`: el `content` es un `MessageContent` polimorfico
   serializado (`command_execution` para Bash, `diff` para Edit/Write, un
-  bloque `tool` generico para el resto). El telefono lo decodifica con
+  bloque `tool` generico para el resto y `compaction` para un límite de
+  contexto realmente reportado por el agente). El telefono lo decodifica con
   el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
   **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
   del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
@@ -498,9 +499,6 @@ concreto depende del adaptador:
   requestApproval`, `mcpServer/elicitation/request`,
   `item/tool/requestUserInput` (+ legacy `applyPatchApproval`,
   `execCommandApproval`).
-- **Gemini CLI** — el bridge escribe
-  `<cwd>/.gemini/settings.json` con un hook `BeforeTool` que
-  `POST /agent-hook/approval` con el mismo shape que Claude.
 - **Echo (dev)** — el adaptador directamente llama a
   `requestApproval` cuando el texto es `approval-demo` y pausa el
   turno hasta que el usuario responde.
@@ -512,9 +510,9 @@ vivo**. Si el teléfono está en background/desconectado, la aprobación **esper
 modo que un turno que pide aprobación con la app cerrada nunca cae al `reject`
 por una tarjeta que el usuario no vio. Una reconexión otorga una ventana nueva;
 la última desconexión pausa la cuenta atrás. Para que el propio CLI no aborte el
-hook antes de que el usuario regrese, los hooks `PreToolUse` (Claude) y
-`BeforeTool` (Gemini) fijan un `timeout` amplio (1800 s), por encima del default
-~60 s del CLI.
+hook antes de que el usuario regrese, el hook `PreToolUse` (Claude) fija un
+`timeout` amplio (1800 s), por encima del default ~60 s del CLI. El hook legacy
+de Gemini no se instala.
 
 
 **`AgentModel`** (item de `agent/models`):
@@ -544,6 +542,7 @@ interface AgentCapabilities {
   forking: boolean;
   images: boolean;               // acepta TurnAttachment[] en sendTurn
   reportsContextUsage: boolean;  // emite `usage` en turn/completed
+  reportsCompaction?: boolean;   // emite `compaction` solo con señal nativa fiable
 }
 ```
 
@@ -558,10 +557,8 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
-// `gemini` permanece en la union a proposito: la Gemini CLI esta descontinuada
-// aguas arriba y el escritorio ya no la ofrece al agregar un proveedor, pero
-// sigue leyendose para quien ya la tenia activada. Retirarla de verdad seria un
-// cambio de contrato (shared + bridge + movil), no una edicion de catalogo.
+// `gemini` permanece como valor de contrato deprecated para el lector legacy
+// del bridge/escritorio; uxnanmobile lo descarta y no crea una provider card.
 type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini' | 'grok';
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 
@@ -866,6 +863,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | RF-THREAD-09 | Los mensajes duplicados (replay del bridge) deben ser deduplicados silenciosamente |
 | RF-THREAD-10 | El estado de la conversacion persiste localmente para acceso offline |
 | RF-THREAD-11 | Un thread nuevo conserva el título del bridge; si sigue siendo placeholder al primer prompt, el móvil deriva y sincroniza un título breve sin sobrescribir títulos manuales ni renombrarlo en prompts posteriores |
+| RF-THREAD-12 | Una compactación de contexto confirmada por el protocolo del agente se persiste como bloque estructurado y se marca en la timeline; el sistema no infiere compactaciones desde texto, errores o variaciones de tokens |
 
 ### 4.4 RF-COMP: Composer
 

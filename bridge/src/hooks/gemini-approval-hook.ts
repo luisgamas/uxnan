@@ -1,4 +1,7 @@
 /**
+ * @deprecated Retained only so old imports remain source-compatible. Bridge
+ * startup no longer writes or installs this hook because Gemini CLI is retired.
+ *
  * Gemini CLI `BeforeTool` approval hook.
  *
  * Gemini CLI uses the same hook contract as Claude Code (the CLI ships a
@@ -29,6 +32,7 @@ import { dirname } from 'node:path';
  * returns the path. Idempotent — overwrites each call so an updated bridge
  * ships a fresh script. Best-effort caller should handle write failures.
  */
+/** @deprecated Gemini CLI is retired; this hook is no longer installed. */
 export async function writeGeminiApprovalHook(scriptPath: string): Promise<string> {
   await mkdir(dirname(scriptPath), { recursive: true });
   await writeFile(scriptPath, GEMINI_APPROVAL_HOOK_SCRIPT, 'utf-8');

@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — durable context-compaction events
+
+- Codex `item/completed { type:'contextCompaction' }`, Claude Code
+  `system/compact_boundary`, OpenCode `session.compacted`, and pi's successful
+  `compaction_end` now become structured `compaction` content blocks. They use
+  the normal persisted block/segment path, so the marker survives reconnects
+  and `turn/list` reconciliation in the same position seen live.
+- Pi and Claude preserve their reported reason/token metadata. Codex and
+  OpenCode report a marker with `reason:'unknown'` because their event does not
+  carry a trustworthy cause. Zero/Grok's ACP updates and Antigravity's text-only
+  one-shot output expose no compaction event, so the bridge deliberately emits
+  nothing for them.
+- The four truthful integrations advertise `reportsCompaction:true`.
+
+### Changed — Gemini CLI is now non-runnable legacy
+
+- `agent/list` retains Gemini only as `deprecated:true, available:false` for
+  legacy inspection. `AgentManager` rejects new turns and returns no models or
+  commands for deprecated adapters. Antigravity remains the supported Google
+  agent.
+
 ## [0.0.13-alpha.20260729] - 2026-07-29
 
 ### Added — a per-thread message queue (and the serialization hole it closes)

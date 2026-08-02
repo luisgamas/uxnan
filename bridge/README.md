@@ -76,7 +76,7 @@ flowchart LR
       p2["project-b (git)"]
       p3["scripts/ (plain folder)"]
     end
-    clis["Official local CLIs<br/>opencode · claude · codex · pi · gemini · agy · zero · grok"]
+    clis["Supported local CLIs<br/>opencode · claude · codex · pi · agy · zero · grok"]
   end
 
   phone -- "E2EE" --> disc
@@ -93,8 +93,8 @@ flowchart LR
 
 ## How the bridge drives agents
 
-This is the mechanism behind "provider-agnostic": the bridge spawns each agent's
-official local CLI — `opencode`, `claude`, `codex`, `pi`, `gemini`, `agy`, `zero`, `grok` — as a
+This is the mechanism behind "provider-agnostic": the bridge spawns each supported
+agent's official local CLI — `opencode`, `claude`, `codex`, `pi`, `agy`, `zero`, `grok` — as a
 child process and drives it over stdio, exactly as you would in a terminal (Zero is
 driven over the Agent Client Protocol, `zero acp`). Prompts are
 passed as `argv` elements with `shell:false` (no shell injection), in the thread's
@@ -102,6 +102,10 @@ working directory. The bridge parses each CLI's native stream and re-emits it as
 structured events — `stream/content/block` (command / diff / tool) plus
 `stream/thinking/delta` (reasoning) — so the phone renders the same shape no
 matter which agent is running.
+
+`gemini-cli` remains a deprecated, unavailable descriptor only for legacy
+configuration and history compatibility. The bridge does not resolve or spawn
+it, install its hook, advertise models/commands, or accept new threads/turns.
 
 See [`FOR-HUMAN.md`](FOR-HUMAN.md) for the per-agent install / login
 prerequisites, and [`docs/agents.md`](docs/agents.md) for the details.
@@ -179,7 +183,8 @@ Task-focused guides live in [`docs/`](docs/):
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32009` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
-  Gemini CLI / Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
+  Antigravity / Zero / Grok, plus a non-runnable deprecated Gemini legacy
+  adapter); `AgentManager` orchestrates streaming and broadcasts `stream/*`
   notifications to connected phones.
 - **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
   directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay

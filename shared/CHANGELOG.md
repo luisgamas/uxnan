@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — explicit compaction and agent-deprecation contracts
+
+- Added the durable `CompactionContentBlock` (`type: 'compaction'`) with an
+  optional normalized reason and before/after token counts. Adapters carry it
+  through the existing `stream/content/block` path, so no parallel streaming
+  protocol is needed.
+- Added optional `AgentCapabilities.reportsCompaction` so clients can distinguish
+  a real protocol signal from agents where compaction is opaque.
+- Added optional `AgentDescriptor.deprecated`. A deprecated adapter remains
+  identifiable to legacy consumers but must not be offered for new work.
+- Marked the retained `gemini-cli` agent id and `gemini` usage provider as
+  deprecated contract values; Antigravity is the active successor.
+
 ## [0.0.11-alpha.20260729] - 2026-07-29
 
 ### Added — a thread message queue (follow-ups sent while a turn is in flight)

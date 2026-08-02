@@ -115,7 +115,9 @@ domestico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
 > `AgentModel[]` estructurado (en lugar de `string[]`), `respondApproval()`
 > para aprobaciones interactivas, `nativeSessionId()` para que el bridge
 > localice la sesion on-disk del agente, y `attachments` en `sendTurn()`.
-> `AgentCapabilities` ahora incluye `reportsContextUsage` y `images`.
+> `AgentCapabilities` ahora incluye `reportsContextUsage`, `reportsCompaction`
+> e `images`; `AgentDescriptor.deprecated?` retira un adapter sin romper el
+> contrato de instalaciones antiguas.
 > **(2026-07)** se agregaron `listCommands()`/`expandCommand()` para los
 > comandos "slash" del agente (`agent/commands`), `command?` en `sendTurn()`
 > para invocarlos, y `commands?` en `AgentCapabilities`.
@@ -127,7 +129,7 @@ Todos los adaptadores deben implementar la interfaz `IAgentAdapter` en el Bridge
 ```typescript
 interface IAgentAdapter {
   // Identidad
-  readonly agentId: string;          // "codex" | "opencode" | "claude-code" | "gemini-cli" | "antigravity-cli" | "pi-agent" | "zero" | "grok" | custom
+  readonly agentId: string;          // active: codex | opencode | claude-code | antigravity-cli | pi-agent | zero | grok | custom; gemini-cli is deprecated legacy-only
   readonly displayName: string;
   readonly version: string;
   readonly capabilities: AgentCapabilities;
@@ -219,6 +221,7 @@ interface AgentCapabilities {
   forking: boolean;                // soporta forking / reanudar threads
   images: boolean;                 // acepta TurnAttachment[] (image) en sendTurn
   reportsContextUsage: boolean;    // emite `usage` en turn/completed (ausente/false = no reporta uso)
+  reportsCompaction?: boolean;     // emite un bloque `compaction` solo ante una señal real del agente
   autonomous?: boolean;            // corre en modo autónomo ("YOLO") por defecto: actúa/edita sin pedir aprobación
 }
 
@@ -233,7 +236,7 @@ interface AgentCapabilities {
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
 //   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
-//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume; **BeforeTool hook** real approvals)
+//   ⛔ gemini-cli (adapter legacy: descriptor deprecated/unavailable; turnos nuevos rechazados)
 //   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; Google's Gemini-CLI successor; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
 //   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
@@ -414,7 +417,7 @@ enum GitActionKind {
   commit, push, pull, checkout, createBranch,
   createWorktree, revert, stackedPublish
 }
-enum AgentId { codex, opencode, claudeCode, geminiCli, piAgent, custom }
+enum AgentId { codex, opencode, claudeCode, antigravity, piAgent, zero, grok, custom }
 ```
 
 #### 5.1.3 Value objects
@@ -1376,6 +1379,13 @@ Reglas de streaming:
 > dentro de un clip; así despejan el área de lectura sin quedar visibles bajo el
 > velo translúcido. Los menús de opciones del turno no roban el foco del
 > composer y recalculan su anclaje si cambia la geometría del teclado.
+> Las compactaciones confirmadas por el agente se insertan como hitos tonales
+> `CompactionContent` dentro del orden real de `Message.segments`; no forman
+> parte del texto copiable ni de previews. Codex (`contextCompaction`), Claude
+> (`system/compact_boundary`), OpenCode (`session.compacted`) y pi
+> (`compaction_end` exitoso) emiten la señal. Zero/Grok por ACP y Antigravity no
+> exponen una señal fiable en la integración actual, por lo que el bridge no la
+> infiere a partir del texto ni del contador de tokens.
 
 #### 5.6.4 Reconciliacion de historial
 
@@ -1608,7 +1618,8 @@ bridge/
 │   │                               #   mdns-advertiser, local-hosts, trust-store, ...
 │   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
-│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/gemini/zero(+acp,approval)/grok(+acp,approval),
+│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/antigravity/zero(+acp,approval)/grok(+acp,approval),
+│   │                               #   gemini retained as deprecated legacy source only,
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
 │   │                               #   resolve-<agente>, spawn
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
@@ -1617,7 +1628,7 @@ bridge/
 │   ├── git/                        # git-runner, git-service
 │   ├── workspace/                  # workspace-service, browse-service, checkpoint-service, path-guard
 │   ├── push/                       # push-service, push-sender (FCM directo)
-│   ├── hooks/                      # claude-approval-hook, gemini-approval-hook (.cjs en runtime)
+│   ├── hooks/                      # claude-approval-hook; gemini hook source deprecated and never installed
 │   └── handlers/                   # git, workspace, thread-context, project, agent,
 │                                   #   account, notifications, bridge-control, desktop (stub)
 └── scripts/                        # install-service-{macos,windows,linux}
@@ -1889,7 +1900,8 @@ ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
 cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
 **Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
 → `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa) y **Grok**
+**Gemini legacy** (`~/.gemini/oauth_creds.json` → cloudcode-pa; contrato
+deprecated, nunca solicitado por mobile) y **Grok**
 (`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
 `status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
 los demas.
@@ -1994,7 +2006,7 @@ Reglas (no negociables, verificadas contra los CLIs reales):
 #### 5.8.13 Cola de mensajes por thread (`AgentManager`)
 
 El bridge conduce **un turno por thread**. No es una simplificacion: la mitad
-de los agentes corre one-shot por turno (`claude -p --resume`, gemini, pi,
+de los agentes corre one-shot por turno (`claude -p --resume`, pi,
 antigravity), asi que dos turnos concurrentes serian dos procesos CLI sobre la
 misma sesion nativa. Un `turn/send` que llega con un turno en vuelo se
 **encola** — el mismo comportamiento que las CLI cuando escribes mientras
@@ -2608,6 +2620,12 @@ class MermaidContent extends MessageContent {
 class SystemContent extends MessageContent {
   final String text;
   final SystemContentKind kind; // info | warning | error | debug
+}
+
+class CompactionContent extends MessageContent {
+  final CompactionReason reason; // manual | threshold | overflow | automatic | unknown
+  final int? tokensBefore;
+  final int? tokensAfter;
 }
 
 class CommandExecutionContent extends MessageContent {

@@ -15,8 +15,8 @@ process and talks to it over stdio — exactly as you would in a terminal. It do
 - embed a language/Agent SDK,
 - reuse/scrape the CLI's auth token, or proxy/resell access.
 
-Each CLI runs under whatever account/subscription **you** already authenticated it
-with (`claude`, `codex login`, OpenCode, `pi`, `gemini`). The bridge stores no tokens;
+Each supported CLI runs under whatever account/subscription **you** already authenticated it
+with (`claude`, `codex login`, OpenCode, `pi`, `agy`, Zero or Grok). The bridge stores no tokens;
 auth and billing are the CLI's own. This is the supported *headless* use of each
 CLI (`claude -p`, `codex app-server`, `opencode serve`) — so it does not require a
 separate paid account beyond what that CLI already has, and it is not an unofficial
@@ -34,14 +34,14 @@ prompts travel in the request body / session request, never argv).
 
 The bridge drives **one turn per thread**, and this is a hard constraint, not a
 policy: half the agents below are spawned fresh for every turn and resume their
-own session (`claude -p --resume`, gemini, pi, antigravity), so two concurrent
+own session (`claude -p --resume`, pi, antigravity), so two concurrent
 turns would be two CLI processes writing to the same session file.
 
 So a `turn/send` that arrives while a turn is in flight is **queued** rather than
 started — the same thing the CLIs themselves do when you type a follow-up while
 they work. It runs on its own once the current turn completes, through the
 identical code path a normal turn takes, which means **queueing behaves the same
-for all eight agents** regardless of how their CLI is driven.
+for all seven active agents** regardless of how their CLI is driven.
 
 What the queue deliberately does *not* do is **steer** — inject a message into
 the turn already running, the way Claude Code's TUI does between tool calls. The
@@ -62,22 +62,40 @@ Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
 | **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` (+ `interactive` via `codex app-server`) | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
-| **Gemini CLI** | `gemini -p --output-format stream-json --approval-mode <mode> --skip-trust` | `--resume <uuid>` | `permissionMode` → `--approval-mode auto_edit` / `plan` / `yolo` (+ `interactive` via a `BeforeTool` hook) | curated set (the `auto` alias + the CLI's `VALID_GEMINI_MODELS`) |
+| ~~Gemini CLI~~ (deprecated legacy) | retained adapter only; new turns rejected | legacy history only | unavailable (`deprecated:true`) | none exposed |
 | **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
 | **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model) |
 
-All eight agents are wired; no further agent is planned right now (the recipe for
+Seven agents are active; the eighth registered adapter (Gemini) is non-runnable
+legacy. No further agent is planned right now (the recipe for
 wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md)).
 
 > **Gemini CLI is deprecated — don't spend work on it.** It is discontinued
 > upstream; its successor is **Antigravity** (`agy`), wired above as a real agent
-> that enumerates its own models. The phone already hides Gemini from the picker,
+> that enumerates its own models. The phone removes every Gemini product surface,
 > and its curated `GEMINI_MODELS` table (`src/adapters/gemini-adapter.ts`) is
 > **frozen**: don't add models, don't track upstream changes, don't build new
-> features against the adapter. What remains keeps an existing configuration
-> working, nothing more. It will be removed from the project in a later pass —
-> until then treat every Gemini path as read-only legacy.
+> features against the adapter. What remains is reference/history code only:
+> `agent/list` marks it unavailable/deprecated and `AgentManager` rejects new
+> turns. It will be removed from the project in a later pass.
+
+### Context compaction
+
+Compactions use the ordinary structured-content path and therefore persist in
+`Message.segments` and replay through `turn/list`:
+
+| Agent | Native signal | Marker metadata |
+|---|---|---|
+| Codex | completed `contextCompaction` item | reason unknown |
+| Claude Code | `system/compact_boundary` | trigger + pre-compaction tokens |
+| OpenCode | `session.compacted` | reason unknown |
+| pi | successful `compaction_end` | reason + before/estimated-after tokens |
+| Zero / Grok | ACP exposes no compaction update | no marker |
+| Antigravity | text-only one-shot output exposes no structured signal | no marker |
+
+Never infer a compaction from prose, an overflow error or a token-count drop;
+that would put a false event into durable history.
 
 Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
 **not** used for turns — the one-shot `codex exec` entry point drives them — but
@@ -97,7 +115,7 @@ the phone renders them generically — Codex discovers them from the app-server
 
 **Interactive approvals** are wired for Echo, Claude Code (`PreToolUse` hook),
 Codex (`app-server` elicitations), OpenCode (`opencode serve` `permission.asked`),
-Gemini (`BeforeTool` hook), Zero and Grok (ACP `session/request_permission`);
+Zero and Grok (ACP `session/request_permission`);
 **pi** and **Antigravity** have no headless pre-tool channel (both run
 autonomously — Antigravity's `agy -p` auto-denies any tool that needs a prompt,
 so a `requestApproval` thread runs read-only `--mode plan` instead — see
@@ -123,7 +141,6 @@ The bridge discovers each agent's special ("slash") commands (`agent/commands` �
 | **Claude Code** | `slash_commands` from the `system/init` line (cached per turn) ∪ curated headless-safe built-ins (`compact`, `context`, `status`, `cost`, `usage`) ∪ `.claude/commands/*.md` scan | native — sent as `/name args`, resolved against the thread's `--resume` session |
 | **Zero**, **Grok** (ACP) | the ACP `available_commands_update` notification (captured, previously dropped) | native — via `session/prompt` |
 | **Codex** | scan `~/.codex/prompts/*.md` | bridge expands the template (`expandCommand`) — the app-server has no slash/compaction RPC |
-| **Gemini** | scan `.gemini/commands/*.toml` (+ `~/.gemini/commands`) | bridge expands (`--prompt` mode does not) |
 | **OpenCode** | scan `.opencode/command(s)/*.md` (+ `~/.config/opencode/command`) | bridge expands |
 | **pi**, **Antigravity** | — (no documented command surface) | — |
 
@@ -166,7 +183,6 @@ Two rules make the file-path delivery work, both verified against the real CLIs:
 | **Grok** | ✅ | opens it with its file tools — its ACP `promptCapabilities.image` is false, but that only rules out an *inline* image block, not a workspace file |
 | **Zero** | ✅ | **natively**: the attachment rides as an inline ACP image block (`{ type: "image", mimeType, data }`), because Zero's ACP advertises `promptCapabilities.image` while its `read_file` is line-oriented text — a path reference would have it read a PNG as garbage. No file is written for it |
 | **pi**, **OpenCode** | ✅ | the CLI opens it; whether the *model* sees pixels depends on the selected model — a non-multimodal one still answers by inspecting the file with tools |
-| **Gemini CLI** | ✅ | supported, but the agent is hidden from the phone's picker (superseded by Antigravity) |
 
 A non-multimodal model is not a bug: the attachment is delivered either way, the
 agent just reasons about the bytes instead of the picture. Pick a multimodal
@@ -254,7 +270,7 @@ windows need no edit for a model in an existing tier — `claudeContextWindow()`
 
 Follow the recipe in [`../FOR-DEV.md`](../FOR-DEV.md) (Agent adapters): capture the
 real CLI's machine-readable stream once, then copy the closest template — a
-**one-shot per-turn CLI** (`gemini-adapter.ts`/`pi-adapter.ts`, which spawn the CLI
+**one-shot per-turn CLI** (`pi-adapter.ts`, which spawns the CLI
 once per turn) or a **long-lived server** (`codex-adapter.ts`/`zero-adapter.ts`/
 `grok-adapter.ts` over stdio JSON-RPC, `opencode-adapter.ts` over `opencode serve`
 HTTP/SSE, when the CLI exposes a pre-tool approval channel). Adjust the args/request builder + event parser, register it in

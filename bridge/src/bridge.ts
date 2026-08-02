@@ -1,7 +1,8 @@
 /**
  * Bridge daemon orchestration: wires daemon state, identity, config, the
  * JSON-RPC router and handlers, the agent runtimes (OpenCode/Claude/Codex/pi/
- * Gemini/Antigravity/Zero/Grok + echo), the per-device outbound catch-up log, and
+ * Antigravity/Zero/Grok + echo, plus a non-runnable Gemini legacy descriptor),
+ * the per-device outbound catch-up log, and
  * the live E2EE transport (relay + direct LAN).
  *
  * Source: architecture/02a-system-architecture.md §5.8.2 (bridge entrypoint).
@@ -37,7 +38,6 @@ import { MetricsService } from './metrics/metrics-service.js';
 import { MetricsStore } from './metrics/metrics-store.js';
 import { AgentManager } from './agents/agent-manager.js';
 import { writeClaudeApprovalHook } from './hooks/claude-approval-hook.js';
-import { writeGeminiApprovalHook } from './hooks/gemini-approval-hook.js';
 import { EchoAgentAdapter } from './adapters/echo-agent-adapter.js';
 import { OpenCodeAdapter } from './adapters/opencode-adapter.js';
 import { resolveOpenCodeBinary } from './adapters/resolve-opencode.js';
@@ -48,7 +48,6 @@ import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
 import { GeminiAdapter } from './adapters/gemini-adapter.js';
-import { resolveGeminiBinary } from './adapters/resolve-gemini.js';
 import { AntigravityAdapter, antigravityPermissionMode } from './adapters/antigravity-adapter.js';
 import { resolveAntigravityBinary } from './adapters/resolve-antigravity.js';
 import { ZeroAdapter } from './adapters/zero-adapter.js';
@@ -259,7 +258,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
     (claudeSettings.interactiveApprovals ?? false) && config.lanEnabled;
   const hookState: { port?: number; token: string } = { token: randomUUID() };
   const claudeHookScriptPath = state.pathFor(join('hooks', 'claude-approval-hook.cjs'));
-  const geminiHookScriptPath = state.pathFor(join('hooks', 'gemini-approval-hook.cjs'));
   if (claudeInteractiveApprovals) {
     void writeClaudeApprovalHook(claudeHookScriptPath).catch((err: unknown) =>
       logger.warn(`failed to write the Claude approval hook: ${String(err)}`),
@@ -341,45 +339,19 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
     },
   );
-  // Gemini: real agent driven via `gemini -p --output-format stream-json` (see FOR-DEV.md).
+  // Deprecated Gemini CLI: keep the identifier registered only so legacy bridge
+  // configurations and stored threads remain readable. Do not resolve the binary
+  // or install hooks. AgentManager reports it unavailable and rejects new work;
+  // clients must hide descriptors marked `deprecated`.
   const geminiSettings = config.agents['gemini-cli'] ?? {};
-  const gemini = resolveGeminiBinary(geminiSettings.binaryPath);
-  // Interactive approvals for Gemini: opt-in (`agents['gemini-cli'].
-  // interactiveApprovals: true`) and only when the LAN server is enabled (the
-  // hook POSTs to the bridge's local HTTP endpoint). The adapter writes a
-  // `<cwd>/.gemini/settings.json` with a `BeforeTool` hook — Gemini uses the
-  // same hook contract as Claude Code (the CLI ships `gemini hooks migrate`
-  // for that).
-  const geminiInteractiveApprovals =
-    (geminiSettings.interactiveApprovals ?? false) && config.lanEnabled;
-  if (geminiInteractiveApprovals) {
-    void writeGeminiApprovalHook(geminiHookScriptPath).catch((err: unknown) =>
-      logger.warn(`failed to write the Gemini approval hook: ${String(err)}`),
-    );
-  }
   agentManager.register(
     new GeminiAdapter({
-      binaryPath: gemini.binaryPath,
-      prependArgs: gemini.prependArgs,
-      permissionMode: geminiSettings.permissionMode ?? 'acceptEdits',
-      ...(geminiInteractiveApprovals
-        ? {
-            approvalHook: {
-              token: hookState.token,
-              scriptPath: geminiHookScriptPath,
-              url: () =>
-                hookState.port !== undefined
-                  ? `http://127.0.0.1:${hookState.port}/agent-hook/approval`
-                  : undefined,
-            },
-          }
-        : {}),
-      ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+      binaryPath: geminiSettings.binaryPath ?? 'gemini',
     }),
     {
       displayName: 'Gemini',
-      available: gemini.available,
-      ...(geminiSettings.model !== undefined ? { defaultModel: geminiSettings.model } : {}),
+      available: false,
+      deprecated: true,
     },
   );
   // Antigravity: real agent driven via `agy … -p` (Google's successor to the

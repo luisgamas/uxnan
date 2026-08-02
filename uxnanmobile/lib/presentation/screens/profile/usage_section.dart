@@ -378,9 +378,6 @@ _ProviderVisuals _visualsFor(UsageProvider provider) {
     case UsageProvider.claude:
       agent = AgentId.claudeCode;
       label = 'Claude';
-    case UsageProvider.gemini:
-      agent = AgentId.geminiCli;
-      label = 'Gemini';
     case UsageProvider.grok:
       agent = AgentId.grok;
       label = 'Grok';

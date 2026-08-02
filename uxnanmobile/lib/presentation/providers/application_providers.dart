@@ -508,7 +508,6 @@ const List<String> _usageProviderIds = [
   'codex',
   'claude',
   'copilot',
-  'gemini',
   'grok',
 ];
 

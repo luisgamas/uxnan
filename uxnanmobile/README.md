@@ -36,8 +36,8 @@ this app:
 - **Provider-agnostic, real multi-agent support.** It is not tied to a single
   vendor. Seven real agents are selectable today — OpenCode, Claude Code, Codex,
   pi, Antigravity, Zero and Grok — and you select the agent and model per
-  conversation. (Google's Antigravity CLI replaces the now-deprecated Gemini CLI,
-  which the bridge still drives but the app hides from the picker.)
+  conversation. Google's Antigravity CLI replaces the retired Gemini CLI;
+  Gemini has no mobile enum, profile card, logo or conversation surface.
 - **Strong encryption that is never optional.** Every message to and from the PC
   travels through a real end-to-end encrypted channel (X25519 + Ed25519 +
   AES-256-GCM + HKDF). There is no "plaintext mode".
@@ -62,7 +62,8 @@ this app:
   as the empty-state hero.
 - **Parity with the bridge's main capabilities.** Streaming conversations with
   structured agent turns, interactive approvals, model and reasoning-effort
-  selection, a live context-usage indicator, a message scroll rail to jump
+  selection, a live context-usage indicator, durable markers where an agent
+  compacted earlier context, a message scroll rail to jump
   through your prompts, automatic first-prompt conversation titles that remain
   manually renameable, per-agent sign-in status, voice and image input, a full
   Git screen, and a searchable workspace file browser and viewer are all

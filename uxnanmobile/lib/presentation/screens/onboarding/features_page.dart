@@ -39,7 +39,7 @@ class FeaturesPage extends StatelessWidget {
           const SizedBox(height: UxnanSpacing.lg),
           _FeatureRow(
             icon: Icons.devices_rounded,
-            color: UxnanColors.geminiCliAgent,
+            color: UxnanColors.antigravityAgent,
             title: l10n.featureLocalFirstTitle,
             body: l10n.featureLocalFirstBody,
           ),

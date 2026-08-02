@@ -29,7 +29,8 @@
  *     `{ type:'message', message:{ role:'user'|'assistant'|'toolResult', content:
  *     [{type:'text'|'toolCall', ...}], toolCallId?, toolName?, ... } }`. Reasoning
  *     is stored inline as `think...think` inside the assistant text blocks.
- *   - **Gemini CLI** — `~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json`;
+ *   - **Gemini CLI (deprecated, legacy history reads only)** —
+ *     `~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json`;
  *     one JSON object per file with `{ sessionId, projectHash, startTime, lastUpdated,
  *     messages:[{id, timestamp, type:'user'|'gemini'|'info'|'error', content, thoughts?,
  *     toolCalls?}] }`. The filename's `<shortId>` is the FIRST 8 CHARS of the full
