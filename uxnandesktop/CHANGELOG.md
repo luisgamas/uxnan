@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.25] - 2026-08-02
+
 ### Added — richer, safer file previews
 
 - **The unified file tab now previews PDF documents** in the operating system's
