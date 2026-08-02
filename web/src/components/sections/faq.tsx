@@ -1,11 +1,7 @@
 import { Plus } from "lucide-react";
 
 import { Section, SectionHeading } from "./shared";
-import {
-  links,
-  PHONE_AGENT_COUNT,
-  WIRED_AGENT_COUNT,
-} from "@/lib/site";
+import { links, PHONE_AGENT_COUNT } from "@/lib/site";
 
 /**
  * Native `<details>` accordion: free a11y, works before hydration.
@@ -58,10 +54,11 @@ const QUESTIONS: { q: string; a: React.ReactNode }[] = [
     q: "Which agents work?",
     a: (
       <>
-        {WIRED_AGENT_COUNT} CLIs are wired for the phone path (including Gemini CLI,
-        kept wired but hidden in favour of Antigravity).{" "}
-        {PHONE_AGENT_COUNT} show in the mobile picker. On Desktop any CLI agent runs in
-        a terminal unmodified.
+        {PHONE_AGENT_COUNT} CLIs — Claude Code, Codex, OpenCode, Antigravity, Grok,
+        Zero and pi — get first-class integration (live status, resumable sessions,
+        their own model list) and show in the mobile picker. On Desktop, any CLI
+        agent runs in a terminal unmodified, so whatever you already use works the
+        day it ships.
       </>
     ),
   },

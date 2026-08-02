@@ -50,8 +50,9 @@ NEXT_PUBLIC_SITE_URL=https://uxnan.dev npm run build
 
 ## Bundle expectations
 
-The page ships around **140 kB of first-load JavaScript** (gzipped, React
-included). If a change pushes that meaningfully higher, it is worth asking
+The page ships around **135 kB of first-load JavaScript** (gzipped, React
+included — check `npm run build`'s own "First Load JS" column for the current
+number). If a change pushes that meaningfully higher, it is worth asking
 whether the feature earns it — on a site whose entire argument is that software
 should be light, the bundle is part of the message.
 

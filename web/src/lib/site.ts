@@ -49,6 +49,8 @@ export const links = {
   browserGuide: `https://github.com/${REPO_SLUG}/blob/main/uxnandesktop/docs/browser.md`,
   providersGuide: `https://github.com/${REPO_SLUG}/blob/main/uxnandesktop/docs/providers.md`,
   bridgeInstall: `https://github.com/${REPO_SLUG}/blob/main/bridge/docs/installation.md`,
+  testingGuide: `https://github.com/${REPO_SLUG}/blob/main/uxnandesktop/docs/testing.md`,
+  benchmarksGuide: `https://github.com/${REPO_SLUG}/blob/main/uxnandesktop/docs/resource-benchmarks.md`,
   playStore: "https://sink.gamas.workers.dev/uxnan-android",
   npmBridge: "https://www.npmjs.com/package/uxnan-bridge",
   sponsor: "https://sink.gamas.workers.dev/github-sponsor",
@@ -63,11 +65,23 @@ export const MACOS_QUARANTINE_COMMAND =
   'xattr -dr com.apple.quarantine "/Applications/Uxnan Desktop.app"';
 
 /**
- * The agent CLIs the bridge drives end-to-end. Each one is spawned as its own
- * official local binary — no provider HTTP API, no SDK, no key handed over.
+ * The agent CLIs with first-class integration — real-time status, resumable
+ * sessions and their own model list — driven via the bridge (mobile) or
+ * directly (desktop). Each is spawned as its own official local binary: no
+ * provider HTTP API, no SDK, no key handed over.
  *
- * `onPhone: false` marks a CLI that is still wired in the bridge but hidden from
- * the mobile picker (Gemini CLI is deprecated in favour of Antigravity's `agy`).
+ * This is deliberately **not** a cap on what Desktop can run: Desktop is
+ * terminal-native, so any CLI agent works unmodified the day it ships (see the
+ * Agents section and FAQ) — this array is only the smaller, first-class subset
+ * that also happens to be exactly what Mobile's picker offers.
+ *
+ * `onPhone: false` marks the one entry excluded from *every* visitor-facing
+ * surface on this site (the mobile picker, the marketing marquee, and every
+ * agent count): Gemini CLI is deprecated in favour of Antigravity's `agy` and
+ * must stay out of marketing (see `AGENTS.md` → "Gemini CLI is deprecated").
+ * It stays in this array only so `bridge/README.md`'s own "eight real agents
+ * wired" figure has a data source to check against — never read
+ * `WIRED_AGENTS.length` for a page claim, use `PHONE_AGENT_COUNT` below.
  */
 export const WIRED_AGENTS = [
   { id: "claudecode", name: "Claude Code", logo: "claudecode.svg", onPhone: true },
@@ -80,17 +94,24 @@ export const WIRED_AGENTS = [
   { id: "gemini-cli", name: "Gemini CLI", logo: "gemini.svg", onPhone: false },
 ] as const;
 
-export const WIRED_AGENT_COUNT = WIRED_AGENTS.length;
+/**
+ * The count of first-class agents — every `WIRED_AGENTS` entry with
+ * `onPhone: true`. This is the number every visitor-facing sentence on the
+ * site must use when it states an agent count, whether the sentence is about
+ * the mobile picker specifically or the first-class set in general.
+ */
 export const PHONE_AGENT_COUNT = WIRED_AGENTS.filter((a) => a.onPhone).length;
 
 /**
- * Extra coding-agent CLIs shown in the "any agent" strip.
+ * Extra coding-agent CLIs shown in the "any agent" strip — a sample proving
+ * the claim, not an exhaustive list.
  *
- * These are *not* wired into the bridge — they are here because the desktop ADE
- * is terminal-native, so they run inside it with no integration work. Only real
- * command-line agents belong in this list: the apps ship a few more marks (Gemma,
- * Kimi, …) but those are models, not CLIs, and claiming otherwise on a landing
- * page would be a lie the first curious visitor catches.
+ * These are *not* wired with first-class integration — they are here because
+ * the desktop ADE is terminal-native, so they run inside it with no
+ * integration work. Only real command-line agents belong in this list: the
+ * apps ship a few more marks (Gemma, Kimi, …) but those are models, not CLIs,
+ * and claiming otherwise on a landing page would be a lie the first curious
+ * visitor catches.
  */
 export const TERMINAL_ONLY_AGENTS = [
   { id: "goose", name: "Goose", logo: "goose.svg" },
@@ -119,3 +140,41 @@ export const BRIDGE_NOTIFICATION_COUNT = 10;
 export const RAM_FOOTPRINT = "~250 MB";
 export const RAM_CORE = "~40 MB";
 export const ELECTRON_RAM = "200–500 MB";
+
+/**
+ * The desktop app's own automated test suite — the honest "we have tests, here
+ * is the number" claim for an alpha project with no user testimonials yet.
+ *
+ * Source: `uxnandesktop/FOR-DEV.md` → *Status* and
+ * `uxnandesktop/docs/testing.md` (§ L1/L3 backend, § L2 frontend), which agree
+ * on both counts. Re-derive before changing: the backend figure is stated
+ * explicitly ("476 Rust tests"), the frontend figure is stated explicitly
+ * ("693 frontend Vitest tests" / "**693 tests** across both projects"). Neither
+ * includes the 24 WebdriverIO end-to-end tests, which are cited separately as
+ * qualitative proof ("a real end-to-end suite over the packaged app") rather
+ * than folded into the headline number.
+ */
+export const DESKTOP_RUST_TEST_COUNT = 476;
+export const DESKTOP_VITEST_TEST_COUNT = 693;
+export const DESKTOP_TEST_COUNT = DESKTOP_RUST_TEST_COUNT + DESKTOP_VITEST_TEST_COUNT;
+
+/**
+ * A best-effort static floor for the header's star counter, shown instantly on
+ * first paint and while `GitHubStats` waits on (or loses) the live GitHub API
+ * call — an anonymous visitor's browser is rate-limited to 60 requests/hour, so
+ * the nav must never just go blank. The live count replaces it the moment the
+ * fetch succeeds and is always used when it is higher; this is a floor, not a
+ * cap. Source: `https://api.github.com/repos/${REPO_SLUG}` (checked 2026-08-01
+ * — bump it occasionally so the pre-fetch number stays plausible).
+ */
+export const GITHUB_STARS_FALLBACK = 24;
+
+/**
+ * The same kind of static floor as `GITHUB_STARS_FALLBACK`, for the summed
+ * `download_count` across every asset of every published (non-draft) release —
+ * shown by the hero's stats line before the live fetch answers, or if it never
+ * does. Source: `gh api repos/${REPO_SLUG}/releases --paginate --jq '[.[] |
+ * select(.draft==false) | .assets[].download_count] | add'` (checked
+ * 2026-08-01 — bump it occasionally so the pre-fetch number stays plausible).
+ */
+export const DOWNLOADS_FALLBACK = 341;

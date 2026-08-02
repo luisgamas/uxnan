@@ -9,9 +9,11 @@
 /* ---------------------------------------------------------------------------
    Palette.
 
-   Light is the primary theme. Neutrals carry a faint blue cast (chroma ~0.01 at
-   hue 262) so white surfaces read as "cool paper" rather than clinical grey, and
-   the single accent hue is shared by the desktop app's blue.
+   Dark is the primary theme — new visitors land on it, and the light values
+   below are the opt-in (`.dark` is added to <html> by default in `layout.tsx`;
+   choosing light just removes it). Neutrals carry a faint blue cast (chroma
+   ~0.01 at hue 262) so surfaces never read as flat charcoal, and the single
+   accent hue is shared by the desktop app's blue.
    --------------------------------------------------------------------------- */
 :root {
   --radius: 0.875rem;
@@ -136,6 +138,23 @@
     line-height: 1.7;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    position: relative;
+  }
+
+  /* A near-invisible page-wide grain, so the near-black surfaces read as
+     material rather than flat digital fill. Fixed and `pointer-events: none`,
+     so it sits over the whole viewport (chrome included) without intercepting
+     a single click; a static SVG turbulence tile, not an animation, so it
+     costs nothing and needs no `prefers-reduced-motion` guard. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='180'%20height='180'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.85'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3C/filter%3E%3Crect%20width='100%25'%20height='100%25'%20filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
   }
 
   ::selection {

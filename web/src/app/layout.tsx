@@ -136,20 +136,21 @@ const jsonLd = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#101218" },
-  ],
+  // Dark is the default regardless of the OS preference (same rule the toggle
+  // itself follows — see `themeScript`), so the browser chrome hint is a single
+  // static colour rather than a `prefers-color-scheme` pair.
+  themeColor: "#101218",
   width: "device-width",
   initialScale: 1,
 };
 
 /**
- * Applies the stored theme before first paint. Light is the default: a visitor
- * with no stored preference always gets the light design, and the system's dark
- * preference is only honoured after they have chosen dark once.
+ * Applies the stored theme before first paint. Dark is the default: a visitor
+ * with no stored preference always gets the dark design, and light is only
+ * shown once they have explicitly chosen it — the system's own light/dark
+ * preference is never consulted, so the toggle is the one source of truth.
  */
-const themeScript = `(function(){var d=document.documentElement;d.classList.add("js");try{var t=localStorage.getItem("uxnan-theme");if(t==="dark"){d.classList.add("dark");d.style.colorScheme="dark";}else{d.style.colorScheme="light";}}catch(e){}})();`;
+const themeScript = `(function(){var d=document.documentElement;d.classList.add("js");try{var t=localStorage.getItem("uxnan-theme");if(t==="light"){d.style.colorScheme="light";}else{d.classList.add("dark");d.style.colorScheme="dark";}}catch(e){d.classList.add("dark");}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
