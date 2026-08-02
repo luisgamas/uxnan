@@ -1,6 +1,6 @@
 <script lang="ts">
   import "../app.css";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { applyTheme } from "$lib/theme";
@@ -12,6 +12,7 @@
   import { pets } from "$lib/state/pets.svelte";
   import { autoSleep } from "$lib/state/autoSleep.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
+  import { usage } from "$lib/state/usage.svelte";
   import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
@@ -119,6 +120,18 @@
     if (app.backend !== "ready") return;
     const seconds = resourceMode.policy.capabilities.resourceHistorySeconds;
     void resourcesSetPolicy(seconds).catch(() => {});
+  });
+
+  // Activated usage providers are opt-in, but once activated they must refresh
+  // even when Settings has not been opened since startup. Focus performs a
+  // stale-only catch-up after sleep; provider-specific timers honor overrides.
+  $effect(() => {
+    if (petWindow || app.backend !== "ready") return;
+    // start() reads provider snapshots while deciding what is stale. Keep those
+    // internal reads out of this lifecycle effect or every completed refresh
+    // would tear down and restart all timers.
+    untrack(() => usage.start());
+    return () => usage.stop();
   });
 
   // Workspace auto-sleep engine: one cheap evaluation per minute, gated inside

@@ -1159,9 +1159,9 @@ pub async fn fs_read_file(path: String) -> Result<crate::fs::FileContent, Comman
         .map_err(CommandError::from)
 }
 
-/// Read a local image file as an inline `data:<mime>;base64,…` URL for the
-/// editor's image preview (multimodal file viewer). Refuses non-images and
-/// anything over the preview size cap (see [`crate::fs::read_data_url`]).
+/// Read a local previewable file as an inline `data:<mime>;base64,…` URL for
+/// the multimodal viewer. Refuses anything except known images/PDFs and anything
+/// over the preview size cap (see [`crate::fs::read_data_url`]).
 #[tauri::command]
 pub async fn fs_read_data_url(path: String) -> Result<String, CommandError> {
     crate::fs::read_data_url(&path)
@@ -1304,16 +1304,23 @@ pub async fn fs_search_files(
 }
 
 /// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
-/// this only guards against a hostile/oversized URL streaming forever.
+/// this guards against a hostile/oversized URL streaming forever.
 const MAX_ICON_BYTES: u64 = 5 * 1024 * 1024;
+
+/// README screenshots and animated GIFs are legitimately larger than icons, but
+/// still need the same hard bound as local file previews.
+const MAX_REMOTE_PREVIEW_BYTES: u64 = 25 * 1024 * 1024;
 
 /// Download an image from an `http(s)` URL and return it as an inline
 /// `data:<mime>;base64,…` URL. Fetching in Rust (not the webview) sidesteps CORS
 /// and canvas-taint, so a project/branch icon picked "from URL" or a git-host
-/// avatar can be embedded and persisted offline. Rejects non-`http(s)` schemes,
-/// non-image content, and anything over [`MAX_ICON_BYTES`].
+/// avatar or README asset can be embedded. Rejects non-`http(s)` schemes,
+/// non-image content, and anything over the purpose-specific hard limit.
 #[tauri::command]
-pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
+pub async fn image_fetch_data_url(
+    url: String,
+    preview: Option<bool>,
+) -> Result<String, CommandError> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
     if !(url.starts_with("http://") || url.starts_with("https://")) {
@@ -1322,6 +1329,11 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
             "only http(s) image URLs are supported",
         ));
     }
+    let max_bytes = if preview.unwrap_or(false) {
+        MAX_REMOTE_PREVIEW_BYTES
+    } else {
+        MAX_ICON_BYTES
+    };
     let client = reqwest::Client::builder()
         .user_agent("uxnan-desktop")
         .timeout(std::time::Duration::from_secs(15))
@@ -1336,7 +1348,7 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
 
     // Content-Length (when present) short-circuits an oversized download.
     if let Some(len) = resp.content_length() {
-        if len > MAX_ICON_BYTES {
+        if len > max_bytes {
             return Err(CommandError::new(
                 "IMAGE_FETCH_FAILED",
                 "the image is too large",
@@ -1352,7 +1364,7 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
 
     // Stream the body chunk-by-chunk, enforcing the cap as it grows: a server
     // that lies about (or omits) Content-Length can't push more than
-    // MAX_ICON_BYTES into memory, and the client timeout bounds a slow trickle.
+    // max_bytes into memory, and the client timeout bounds a slow trickle.
     let mut bytes: Vec<u8> = Vec::new();
     let mut resp = resp;
     while let Some(chunk) = resp
@@ -1360,7 +1372,7 @@ pub async fn image_fetch_data_url(url: String) -> Result<String, CommandError> {
         .await
         .map_err(|e| CommandError::new("IMAGE_FETCH_FAILED", e.to_string()))?
     {
-        if (bytes.len() + chunk.len()) as u64 > MAX_ICON_BYTES {
+        if (bytes.len() + chunk.len()) as u64 > max_bytes {
             return Err(CommandError::new(
                 "IMAGE_FETCH_FAILED",
                 "the image is too large",

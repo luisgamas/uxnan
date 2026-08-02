@@ -18,9 +18,9 @@ use crate::error::AppError;
 /// shows a "too large to edit" notice instead.
 const MAX_EDIT_BYTES: u64 = 2 * 1024 * 1024;
 
-/// Largest image the preview will inline as a `data:` URL (25 MiB). Past this we
-/// refuse rather than base64-encode a huge blob into the webview.
-const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
+/// Largest image/PDF the preview will inline as a `data:` URL (25 MiB). Past
+/// this we refuse rather than base64-encode a huge blob into the webview.
+const MAX_PREVIEW_BYTES: u64 = 25 * 1024 * 1024;
 
 /// One entry in a directory listing (a sub-directory or a file).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -167,27 +167,32 @@ pub async fn read_file(path: &str) -> Result<FileContent, AppError> {
     }
 }
 
-/// Read a local **image** file and return it as an inline `data:<mime>;base64,…`
-/// URL for the editor's image preview (multimodal file viewer). The MIME is
-/// resolved from the extension ([`crate::git::image_mime`]) and, failing that,
-/// sniffed from the leading magic bytes ([`sniff_image_mime`]); a file that is
-/// neither is refused, so we never inline a non-image as one. Refuses anything
-/// over [`MAX_IMAGE_BYTES`]. Reading in Rust (not the webview) keeps this working
-/// regardless of the asset-protocol scope.
+/// Read a local previewable file and return it as an inline
+/// `data:<mime>;base64,…` URL. Known images and PDF documents are accepted by
+/// extension or magic bytes; every other type is refused. Reading in Rust (not
+/// the webview) keeps this working regardless of the asset-protocol scope.
 pub async fn read_data_url(path: &str) -> Result<String, AppError> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
     let meta = tokio::fs::metadata(path).await?;
-    if meta.len() > MAX_IMAGE_BYTES {
-        return Err(AppError::Invalid(
-            "the image is too large to preview".into(),
-        ));
+    if meta.len() > MAX_PREVIEW_BYTES {
+        return Err(AppError::Invalid("the file is too large to preview".into()));
     }
     let bytes = tokio::fs::read(path).await?;
-    let mime = crate::git::image_mime(path)
-        .or_else(|| sniff_image_mime(&bytes))
-        .ok_or_else(|| AppError::Invalid(format!("{path} is not a recognized image")))?;
+    let mime = preview_mime(path, &bytes)
+        .ok_or_else(|| AppError::Invalid(format!("{path} is not a recognized image or PDF")))?;
     Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
+}
+
+fn preview_mime(path: &str, bytes: &[u8]) -> Option<&'static str> {
+    crate::git::image_mime(path)
+        .or_else(|| {
+            path.rsplit_once('.')
+                .filter(|(_, ext)| ext.eq_ignore_ascii_case("pdf"))
+                .map(|_| "application/pdf")
+        })
+        .or_else(|| sniff_image_mime(bytes))
+        .or_else(|| bytes.starts_with(b"%PDF-").then_some("application/pdf"))
 }
 
 /// Best-effort image-type detection from the leading magic bytes, for files whose
@@ -531,7 +536,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reads_image_as_data_url_by_extension_and_by_sniff() {
+    async fn reads_preview_data_url_by_extension_and_by_sniff() {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
         let tmp = tempfile::tempdir().unwrap();
 
         // MIME from the extension — the payload need not be a real PNG.
@@ -545,6 +552,27 @@ mod tests {
         std::fs::write(&sniffed, [0x89, b'P', b'N', b'G', 0, 1, 2]).unwrap();
         let url = read_data_url(&sniffed.to_string_lossy()).await.unwrap();
         assert!(url.starts_with("data:image/png;base64,"));
+
+        let pdf = tmp.path().join("guide.PDF");
+        std::fs::write(&pdf, b"%PDF-1.7\n").unwrap();
+        let url = read_data_url(&pdf.to_string_lossy()).await.unwrap();
+        assert!(url.starts_with("data:application/pdf;base64,"));
+
+        let sniffed_pdf = tmp.path().join("document");
+        std::fs::write(&sniffed_pdf, b"%PDF-1.4\n").unwrap();
+        let url = read_data_url(&sniffed_pdf.to_string_lossy()).await.unwrap();
+        assert!(url.starts_with("data:application/pdf;base64,"));
+
+        // Animated images are passed through byte-for-byte, never decoded into
+        // a still frame. The browser remains responsible for animation.
+        let gif_bytes = b"GIF89a\x01\x00\x01\x00frame-one-frame-two;";
+        let gif = tmp.path().join("demo.gif");
+        std::fs::write(&gif, gif_bytes).unwrap();
+        let url = read_data_url(&gif.to_string_lossy()).await.unwrap();
+        assert_eq!(
+            url,
+            format!("data:image/gif;base64,{}", BASE64.encode(gif_bytes))
+        );
     }
 
     #[tokio::test]
@@ -558,7 +586,7 @@ mod tests {
 
         // Over the size cap → refused before any encoding (checked on metadata).
         let big = tmp.path().join("huge.png");
-        std::fs::write(&big, vec![0u8; (MAX_IMAGE_BYTES + 1) as usize]).unwrap();
+        std::fs::write(&big, vec![0u8; (MAX_PREVIEW_BYTES + 1) as usize]).unwrap();
         assert!(read_data_url(&big.to_string_lossy()).await.is_err());
     }
 

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
-import { renderMarkdown, type MdBlock, type MdInline } from "./markdown";
+import { parseSafeHtml, renderMarkdown, type MdBlock, type MdInline } from "./markdown";
 
 /** Flatten an inline run to its visible text (for terse assertions). */
 function inlineText(nodes: MdInline[]): string {
@@ -31,6 +31,17 @@ describe("renderMarkdown", () => {
     const h2c = (h2 as Extract<MdBlock, { type: "heading" }>).children;
     expect(h2c.at(-1)).toMatchObject({ type: "em" });
     expect(inlineText(h2c)).toBe("Sub two");
+    expect(h1).toMatchObject({ id: "title" });
+    expect(h2).toMatchObject({ id: "sub-two" });
+  });
+
+  it("creates stable unique GitHub-style heading anchors", () => {
+    const headings = renderMarkdown("# Hello, World!\n\n## Hello World\n\n# Diseño técnico");
+    expect(headings.map((h) => h.type === "heading" && h.id)).toEqual([
+      "hello-world",
+      "hello-world-1",
+      "diseño-técnico",
+    ]);
   });
 
   it("parses inline emphasis, strong, strike and code in a paragraph", () => {
@@ -51,6 +62,29 @@ describe("renderMarkdown", () => {
     expect(inlineText([link!])).toBe("docs");
     const img = kids.find((c) => c.type === "image");
     expect(img).toMatchObject({ type: "image", src: "./logo.png", alt: "a logo" });
+  });
+
+  it("preserves raw HTML images inside a loose README table", () => {
+    const blocks = renderMarkdown(`<table>
+<tr><td>
+
+<img src="assets/one.gif" alt="One" width="440" />
+
+</td><td>
+
+<img src="assets/two.gif" alt="Two" height="240" />
+
+</td></tr>
+</table>`);
+    const images = blocks
+      .filter((block): block is Extract<MdBlock, { type: "paragraph" }> => block.type === "paragraph")
+      .flatMap((block) => block.children)
+      .filter((child): child is Extract<MdInline, { type: "image" }> => child.type === "image");
+
+    expect(images).toEqual([
+      { type: "image", src: "assets/one.gif", alt: "One", title: null, width: "440" },
+      { type: "image", src: "assets/two.gif", alt: "Two", title: null, height: "240" },
+    ]);
   });
 
   it("parses an autolink as a link to itself", () => {
@@ -203,6 +237,68 @@ describe("renderMarkdown", () => {
     const details = alert.children.find((c) => c.type === "details");
     expect(details).toBeDefined();
     expect((details as Extract<MdBlock, { type: "details" }>).summary).toBe("Why?");
+  });
+});
+
+describe("parseSafeHtml", () => {
+  it("keeps the centered badge markup common in GitHub READMEs", () => {
+    const [paragraph] = parseSafeHtml(
+      '<p align="center"><a href="https://github.com/x"><img src="https://img.shields.io/badge/x-blue" alt="Build" width="120" /></a></p>',
+    );
+    expect(paragraph).toMatchObject({
+      type: "element",
+      tag: "p",
+      attrs: { align: "center" },
+      children: [{
+        type: "element",
+        tag: "a",
+        attrs: { href: "https://github.com/x" },
+        children: [{
+          type: "element",
+          tag: "img",
+          attrs: {
+            src: "https://img.shields.io/badge/x-blue",
+            alt: "Build",
+            width: "120",
+          },
+        }],
+      }],
+    });
+  });
+
+  it("drops executable HTML and all event/style attributes", () => {
+    const nodes = parseSafeHtml(
+      '<p onclick="steal()" style="position:fixed">safe<script>alert(1)</script><img src="javascript:bad" onerror="steal()"></p>',
+    );
+    expect(JSON.stringify(nodes)).toContain("safe");
+    expect(JSON.stringify(nodes)).not.toContain("alert");
+    expect(JSON.stringify(nodes)).not.toContain("onclick");
+    expect(JSON.stringify(nodes)).not.toContain("style");
+    expect(JSON.stringify(nodes)).not.toContain("javascript");
+  });
+
+  it("keeps relative links/images but rejects dangerous protocols", () => {
+    const nodes = parseSafeHtml(
+      '<a href="../docs/readme.md">Docs</a><img src="./logo.svg"><a href="data:text/html,bad">bad</a>',
+    );
+    const json = JSON.stringify(nodes);
+    expect(json).toContain("../docs/readme.md");
+    expect(json).toContain("./logo.svg");
+    expect(json).not.toContain("data:text/html");
+  });
+
+  it("ignores a stray closing tag without escaping its safe parent", () => {
+    const nodes = parseSafeHtml('<p align="center">before</unknown><strong>after</strong></p>');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({
+      type: "element",
+      tag: "p",
+      attrs: { align: "center" },
+      children: [
+        { type: "text", value: "before" },
+        { type: "element", tag: "strong", children: [{ type: "text", value: "after" }] },
+      ],
+    });
   });
 });
 

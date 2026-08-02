@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — richer, safer file previews
+
+- **The unified file tab now previews PDF documents** in the operating system's
+  native webview. Local PDFs travel through the same bounded backend path as
+  images (`fs_read_data_url`, 25 MiB maximum, extension or magic-byte validation)
+  and render from a `data:` URL; the CSP permits only `data:` objects and keeps
+  frames disabled. A clear fallback remains when a platform webview has no PDF
+  renderer.
+- **README-style Markdown renders as README-style Markdown.** A typed safe-HTML
+  parser now supports the small presentational subset common in repository
+  READMEs — centered paragraphs, links, images/badges, emphasis, headings, code
+  and keyboard tags — while dropping scripts, event handlers, inline styles,
+  embedded documents and unsafe URLs. Rendering remains ordinary Svelte markup;
+  no `{@html}` injection surface was introduced.
+- **Markdown navigation and code presentation are complete:** GitHub-style
+  heading anchors, in-document links, sibling-file links that open the existing
+  file tab, relative/local images, remote badges fetched through the bounded
+  image command, and language-aware fenced-code highlighting using the Lezer
+  parsers already shipped with the editor. Explicit README image dimensions are
+  preserved instead of being overridden by app CSS; local URL-encoded GIF paths
+  with `?raw=true` work, and raw-HTML images separated by blank lines inside
+  README tables are preserved instead of being dropped as inline HTML. Relative
+  assets resolve from native Windows, macOS/Linux, and UNC document paths; remote
+  animated GIFs use the preview's 25 MiB cap rather than the icon fetcher's 5 MiB
+  cap. The preview owns the full panel scroller and uses the same native overflow
+  treatment as the CodeMirror Edit and Changes views, with the scrollbar at the
+  right edge.
+- Preview capability is centralized in `filePreview.ts`: raster images and SVG
+  open in Preview, Markdown keeps source-first Edit + Preview, PDFs open in
+  Preview, and SVG remains editable source as well as a visual preview. See
+  `docs/file-viewer.md`.
+
+### Fixed — provider usage refresh and Codex reset reporting
+
+- **A Codex window at 1% used no longer appears as 100% used.** Codex's
+  `used_percent` is already expressed in percentage points; the reader no longer
+  treats values at or below 1 as fractions. Regression coverage includes both
+  `1` and `0.5` percentage points.
+- Provider polling now starts when the app starts, refreshes missing/stale data
+  when the window regains focus, and schedules one timer per activated provider
+  so its refresh override is actually honored. Manual mode (`0`) still performs
+  the initial read and explicit refreshes but creates no repeating timer.
+
 ### Added — the first supervised live GitHub run: every write verb proven against the real service
 
 - **7/7 live tests green (2026-08-01)** against the disposable sandbox

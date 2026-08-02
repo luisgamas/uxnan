@@ -184,10 +184,9 @@
     return github.startPolling();
   });
 
-  // Re-arm the provider-usage poll when the resource profile changes its
-  // factor. Skipped on the first run on purpose: the background usage poll is
-  // armed lazily (from the Providers settings pane), and a boot-time reschedule
-  // here would change that pre-mode behavior.
+  // Re-arm the provider-specific usage polls when the resource profile changes
+  // its factor. The initial schedule is installed by the root layout after app
+  // settings hydrate; this effect handles later profile changes only.
   let usageFactorSeen: number | null = null;
   $effect(() => {
     const factor = resourceMode.policy.capabilities.usageRefreshFactor;
