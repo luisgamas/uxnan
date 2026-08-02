@@ -11,6 +11,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import type { FileEditorState } from "$lib/state/files.svelte";
   import { isImagePath } from "$lib/diff";
+  import { filePreviewKind } from "$lib/filePreview";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
@@ -35,10 +36,7 @@
   // --- which views this file offers -----------------------------------------
   const isImg = $derived(isImagePath(tab.path));
   const isSvg = $derived(/\.svg$/i.test(tab.path));
-  const isMarkdown = $derived(/\.(md|markdown)$/i.test(tab.path));
-  const previewKind: "image" | "markdown" | null = $derived(
-    isImg ? "image" : isMarkdown ? "markdown" : null,
-  );
+  const previewKind = $derived(filePreviewKind(tab.path));
   // A raster image isn't editable text; nor is a binary / too-large / missing file.
   const canEdit = $derived(
     !(isImg && !isSvg) && !fileState.binary && !fileState.tooLarge && !fileState.error,
@@ -193,6 +191,7 @@
           path={tab.path}
           content={fileState.content}
           kind={previewKind}
+          worktree={tab.worktree}
           active={active && shown === "preview"}
         />
       </div>

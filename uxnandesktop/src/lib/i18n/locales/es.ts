@@ -975,6 +975,7 @@ export const es: Record<MessageKey, string> = {
   "preview.fit": "Ajustar a la vista",
   "preview.actualSize": "Tamaño real",
   "preview.markdownEmpty": "Nada que previsualizar.",
+  "preview.pdfUnsupported": "La vista web del sistema no puede mostrar documentos PDF.",
 
   // Renderizado de Markdown (alertas de GitHub + bloques <details>)
   "markdown.alert.note": "Nota",

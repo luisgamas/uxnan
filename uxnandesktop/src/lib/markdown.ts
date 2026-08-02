@@ -57,6 +57,10 @@ export interface MdImage {
   src: string;
   alt: string;
   title: string | null;
+  /** Present only for safe raw-HTML images. Markdown image syntax has no
+   * standard dimensions, while README tables commonly use `<img width=…>`. */
+  width?: string;
+  height?: string;
 }
 export type MdInline =
   | MdText
@@ -80,6 +84,8 @@ export interface MdListItem {
 export interface MdHeading {
   type: "heading";
   level: number;
+  /** GitHub-compatible, document-unique fragment id. */
+  id: string;
   children: MdInline[];
 }
 export interface MdParagraph {
@@ -143,10 +149,241 @@ export type MdBlock =
   | MdAlert
   | MdDetails;
 
+// --- safe HTML fragments ----------------------------------------------------
+
+/** Small allowlisted HTML surface used by project READMEs (centered headings,
+ * badges, linked images and basic inline formatting). The Svelte renderer still
+ * creates every element itself; source HTML is never injected into the DOM. */
+export type MdHtmlTag =
+  | "p"
+  | "div"
+  | "span"
+  | "a"
+  | "img"
+  | "strong"
+  | "b"
+  | "em"
+  | "i"
+  | "del"
+  | "s"
+  | "code"
+  | "kbd"
+  | "br"
+  | "hr"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "h4"
+  | "h5"
+  | "h6"
+  | "sub"
+  | "sup";
+
+export interface MdHtmlAttrs {
+  href?: string;
+  src?: string;
+  alt?: string;
+  title?: string;
+  width?: string;
+  height?: string;
+  align?: "left" | "center" | "right";
+}
+
+export type MdHtmlNode =
+  | { type: "text"; value: string }
+  | { type: "element"; tag: MdHtmlTag; attrs: MdHtmlAttrs; children: MdHtmlNode[] };
+
+const SAFE_HTML_TAGS = new Set<MdHtmlTag>([
+  "p", "div", "span", "a", "img", "strong", "b", "em", "i", "del", "s",
+  "code", "kbd", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "sub", "sup",
+]);
+const VOID_HTML_TAGS = new Set(["img", "br", "hr"]);
+const DROP_HTML_TAGS = new Set([
+  "script", "style", "iframe", "object", "embed", "form", "input", "button",
+  "textarea", "select", "option", "svg", "math", "video", "audio", "source",
+]);
+
+interface HtmlFrame {
+  name: string;
+  children: MdHtmlNode[];
+  drop: boolean;
+}
+
+/** Parse a raw HTML fragment into an allowlisted, attribute-sanitized tree.
+ * Unsupported presentation tags become transparent; executable/interactive
+ * containers and their contents are dropped. */
+export function parseSafeHtml(value: string): MdHtmlNode[] {
+  const root: MdHtmlNode[] = [];
+  const stack: HtmlFrame[] = [{ name: "", children: root, drop: false }];
+  const tokens = /<!--[\s\S]*?-->|<![^>]*>|<\/?[A-Za-z][^>]*>/g;
+  let pos = 0;
+
+  const appendText = (raw: string) => {
+    const frame = stack.at(-1)!;
+    if (!frame.drop && raw) frame.children.push({ type: "text", value: decodeHtml(raw) });
+  };
+
+  for (let match = tokens.exec(value); match; match = tokens.exec(value)) {
+    appendText(value.slice(pos, match.index));
+    pos = tokens.lastIndex;
+    const raw = match[0];
+    if (raw.startsWith("<!--") || raw.startsWith("<!")) continue;
+
+    const closing = /^<\//.test(raw);
+    const name = /^<\/?\s*([A-Za-z][\w:-]*)/.exec(raw)?.[1]?.toLowerCase();
+    if (!name) continue;
+    if (closing) {
+      let matchingFrame = -1;
+      for (let i = stack.length - 1; i > 0; i--) {
+        if (stack[i].name === name) {
+          matchingFrame = i;
+          break;
+        }
+      }
+      // Ignore stray closers. If a matching opener exists, close it and any
+      // malformed nested frames, mirroring the browser's forgiving behavior.
+      if (matchingFrame > 0) stack.length = matchingFrame;
+      continue;
+    }
+
+    const parent = stack.at(-1)!;
+    const selfClosing = /\/\s*>$/.test(raw) || VOID_HTML_TAGS.has(name);
+    if (DROP_HTML_TAGS.has(name)) {
+      if (!selfClosing) stack.push({ name, children: [], drop: true });
+      continue;
+    }
+    if (!SAFE_HTML_TAGS.has(name as MdHtmlTag)) {
+      if (!selfClosing) stack.push({ name, children: parent.children, drop: parent.drop });
+      continue;
+    }
+    if (parent.drop) {
+      if (!selfClosing) stack.push({ name, children: [], drop: true });
+      continue;
+    }
+
+    const node: MdHtmlNode = {
+      type: "element",
+      tag: name as MdHtmlTag,
+      attrs: safeHtmlAttrs(raw, name),
+      children: [],
+    };
+    parent.children.push(node);
+    if (!selfClosing) stack.push({ name, children: node.children, drop: false });
+  }
+  appendText(value.slice(pos));
+  return root;
+}
+
+function safeHtmlAttrs(raw: string, tag: string): MdHtmlAttrs {
+  const attrs: MdHtmlAttrs = {};
+  const body = raw
+    .replace(/^<\s*[A-Za-z][\w:-]*/, "")
+    .replace(/\/?>\s*$/, "");
+  const re = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+)))?/g;
+  for (let m = re.exec(body); m; m = re.exec(body)) {
+    const key = m[1].toLowerCase();
+    const val = decodeHtml(m[2] ?? m[3] ?? m[4] ?? "");
+    if (key === "align" && /^(left|center|right)$/i.test(val)) {
+      attrs.align = val.toLowerCase() as MdHtmlAttrs["align"];
+    } else if (key === "title" || key === "alt") {
+      attrs[key] = val.slice(0, 1_024);
+    } else if ((key === "width" || key === "height") && safeDimension(val)) {
+      attrs[key] = val;
+    } else if (key === "href" && tag === "a" && safeHref(val)) {
+      attrs.href = normalizeProtocolRelative(val);
+    } else if (key === "src" && tag === "img" && safeImageSrc(val)) {
+      attrs.src = normalizeProtocolRelative(val);
+    }
+  }
+  return attrs;
+}
+
+function safeDimension(value: string): boolean {
+  const match = /^(\d{1,4})(%)?$/.exec(value.trim());
+  if (!match) return false;
+  const n = Number(match[1]);
+  return match[2] ? n <= 100 : n <= 4096;
+}
+
+function normalizeProtocolRelative(value: string): string {
+  return value.startsWith("//") ? `https:${value}` : value;
+}
+
+function safeHref(value: string): boolean {
+  const v = value.trim();
+  if (!v || /[\u0000-\u001f]/.test(v)) return false;
+  if (/^(https?:|mailto:)/i.test(v) || v.startsWith("//")) return true;
+  return v.startsWith("#") || v.startsWith("/") || v.startsWith("./") ||
+    v.startsWith("../") || !/^[a-z][a-z\d+.-]*:/i.test(v);
+}
+
+function safeImageSrc(value: string): boolean {
+  const v = value.trim();
+  if (!v || /[\u0000-\u001f]/.test(v)) return false;
+  if (/^https?:/i.test(v) || v.startsWith("//")) return true;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml);base64,/i.test(v)) return true;
+  return v.startsWith("/") || v.startsWith("./") || v.startsWith("../") ||
+    !/^[a-z][a-z\d+.-]*:/i.test(v);
+}
+
+function decodeHtml(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0",
+  };
+  return value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (all, entity: string) => {
+    if (entity[0] !== "#") return named[entity.toLowerCase()] ?? all;
+    const hex = entity[1]?.toLowerCase() === "x";
+    const code = Number.parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return Number.isFinite(code) && code >= 0 && code <= 0x10ffff
+      ? String.fromCodePoint(code)
+      : all;
+  });
+}
+
 /** Parse Markdown source into a typed block AST for the Preview renderer. */
 export function renderMarkdown(src: string): MdBlock[] {
   const tree = parser.parse(src);
-  return blocks(tree.topNode, src);
+  const result = blocks(tree.topNode, src);
+  assignHeadingIds(result);
+  return result;
+}
+
+function assignHeadingIds(list: MdBlock[]): void {
+  const seen = new Map<string, number>();
+  const visit = (blocks: MdBlock[]) => {
+    for (const block of blocks) {
+      if (block.type === "heading") {
+        const base = headingSlug(inlineText(block.children)) || "section";
+        const count = seen.get(base) ?? 0;
+        block.id = count === 0 ? base : `${base}-${count}`;
+        seen.set(base, count + 1);
+      } else if (block.type === "blockquote" || block.type === "alert" || block.type === "details") {
+        visit(block.children);
+      } else if (block.type === "list") {
+        for (const item of block.items) visit(item.children);
+      }
+    }
+  };
+  visit(list);
+}
+
+function inlineText(nodes: MdInline[]): string {
+  return nodes.map((node) => {
+    if (node.type === "text" || node.type === "code") return node.value;
+    if (node.type === "image") return node.alt;
+    if (node.type === "break") return " ";
+    return inlineText(node.children);
+  }).join("");
+}
+
+function headingSlug(value: string): string {
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 // --- block walk --------------------------------------------------------------
@@ -179,7 +416,7 @@ function blocks(parent: SyntaxNode, src: string): MdBlock[] {
 function block(n: SyntaxNode, src: string): MdBlock[] | null {
   const name = n.name;
   if (/^ATXHeading[1-6]$/.test(name) || /^SetextHeading[12]$/.test(name)) {
-    return [{ type: "heading", level: Number(name.slice(-1)), children: inline(n, src) }];
+    return [{ type: "heading", level: Number(name.slice(-1)), id: "", children: inline(n, src) }];
   }
   switch (name) {
     case "Paragraph":
@@ -217,8 +454,8 @@ function block(n: SyntaxNode, src: string): MdBlock[] | null {
  *     source range verbatim, so an HTML block nested in a `>` quote arrives with a
  *     literal `> ` on every line after the first.
  *
- *  A complete `<details>` becomes a real disclosure; anything else stays raw text
- *  (escaped by the renderer — we never execute it). */
+ *  A complete `<details>` becomes a real disclosure; anything else remains a raw
+ *  fragment for the renderer's typed safe-HTML allowlist — it is never injected. */
 function htmlBlock(raw: string): MdBlock[] {
   const value = stripQuoteMarkers(raw).trim();
   if (!value || isOnlyComments(value)) return [];
@@ -485,6 +722,8 @@ function processInline(n: SyntaxNode, src: string): MdInline | null {
       return linkInline(n, src);
     case "Image":
       return imageInline(n, src);
+    case "HTMLTag":
+      return htmlImageInline(n, src);
     case "Autolink":
       return autolinkInline(n, src);
     case "URL": {
@@ -507,6 +746,26 @@ function processInline(n: SyntaxNode, src: string): MdInline | null {
     default:
       return null; // EmphasisMark / CodeMark / LinkMark / QuoteMark / … — no output
   }
+}
+
+/** Preserve a standalone safe `<img>` that Lezer places inside a Markdown
+ * paragraph. This is how images inside the common `<table> … blank lines …`
+ * README layout are represented. Other inline HTML keeps the previous safe
+ * behavior (the tag is omitted while its surrounding Markdown text remains). */
+function htmlImageInline(n: SyntaxNode, src: string): MdImage | null {
+  const nodes = parseSafeHtml(slice(src, n));
+  const image = nodes.length === 1 && nodes[0].type === "element" && nodes[0].tag === "img"
+    ? nodes[0]
+    : null;
+  if (!image?.attrs.src) return null;
+  return {
+    type: "image",
+    src: image.attrs.src,
+    alt: image.attrs.alt ?? "",
+    title: image.attrs.title ?? null,
+    ...(image.attrs.width ? { width: image.attrs.width } : {}),
+    ...(image.attrs.height ? { height: image.attrs.height } : {}),
+  };
 }
 
 function innerCode(n: SyntaxNode, src: string): string {
