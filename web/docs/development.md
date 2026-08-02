@@ -73,14 +73,16 @@ never starts at all under `prefers-reduced-motion`.
 ## The "See it work" clips
 
 `src/components/mockups/feature-video.tsx` plays a short, silent, real screen
-recording of the app from `public/videos/<slug>.mp4` (H.264, no audio track —
-these are not tracked in git; drop them in locally or via CI). The `<video>`
-only gets its `src` once it scrolls near the viewport (`IntersectionObserver`,
-`rootMargin: "160px"`) and never autoplays under `prefers-reduced-motion`. Three
-clips are wired today (`launch-agent`, `agent-subagents`, `create-pr`, chosen in
-`src/components/sections/features.tsx`); if a file is missing the card simply
-shows an empty frame rather than a broken-media icon — check the dev server's
-terminal for a `404` on `/videos/*.mp4` to confirm which ones are still absent.
+recording of the app from `public/videos/<slug>.mp4` (H.264, no audio track).
+The clips are **tracked in git** — the deployed site must ship them, so they
+travel with the branch that uses them; re-render them from the product-video
+compositions when the app's UI changes. The `<video>` only gets its `src` once
+it scrolls near the viewport (`IntersectionObserver`, `rootMargin: "160px"`)
+and never autoplays under `prefers-reduced-motion`. Three clips are wired today
+(`launch-agent`, `agent-subagents`, `create-pr`, chosen in
+`src/components/sections/features.tsx`); the other five slugs are committed
+alongside them, ready for future sections. If a referenced file were ever
+missing the card degrades to an empty frame rather than a broken-media icon.
 
 ## Checking a change
 

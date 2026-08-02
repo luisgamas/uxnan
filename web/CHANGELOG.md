@@ -162,11 +162,10 @@ breakage.
   `uxnandesktop/docs/agent-launch.md`, and two new "deliberately hedged" notes
   added: `PHONE_AGENT_COUNT` is not a cap on Desktop, and Gemini CLI must never
   appear on a rendered surface even as an example.
-- **`public/videos/` is now actually gitignored**, matching what
-  `docs/development.md` already claimed ("these are not tracked in git") —
-  it previously had no `.gitignore` entry, so nothing stopped the three "See
-  it work" MP4s from being committed as binaries the first time someone ran a
-  broad `git add`.
+- **The feature clips are tracked in git** (`public/videos/<slug>.mp4`, eight
+  H.264 silent recordings, ~4 MB total): the deployed site must ship them, so
+  they travel with the branch that uses them instead of existing only on the
+  maintainer's machine. `docs/development.md` documents the re-render path.
 - **Audited the inherited redesign for breakage** after `mockup-marquee.tsx`'s
   removal: no dangling imports, no orphaned mockup components (every file
   under `src/components/mockups/` is still reachable from `page.tsx`), no
@@ -199,7 +198,7 @@ and star the repo without the page feeling like a spec sheet.
   seconds", "Watch the whole team, not one chat", "Ship it without leaving the
   window" — lazy-loaded and played only once each clip nears the viewport
   (`src/components/mockups/feature-video.tsx`). Files live at
-  `public/videos/<slug>.mp4` and are not tracked in git.
+  `public/videos/<slug>.mp4`, tracked in git so every deploy ships them.
 - **The Two Apps cards each carry one visual now** instead of a denser bullet
   list: the Desktop card embeds the memory gauge mockup, the Mobile card embeds
   a Conversation phone screen.
