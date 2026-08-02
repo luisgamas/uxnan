@@ -223,9 +223,12 @@ auto-resume, live model discovery, and per-agent run options.
 It's a real client, not a status page: conversations **stream in live** and survive
 navigating away and back, a **message queue** lets you send follow-ups while an
 agent is still working, you can attach **images**, pick the **agent and model**
-per conversation, review and stage a **Git diff**, and get a **push notification**
-the moment an agent finishes — all over the same end-to-end encrypted channel the
-bridge speaks.
+per conversation, see protocol-confirmed **context compactions**, and keep every
+native progress/final response without losing earlier text (settled progress folds
+under **N previous messages**). You can also review and stage a **Git diff** and
+get a **push notification** the moment an agent finishes — all over the same
+end-to-end encrypted channel the bridge speaks. Mobile offers the seven active
+agents shown above; the retired Gemini CLI has no mobile product surface.
 
 **Status: Android is alpha-ready.** iOS is written but not yet shipped — it's
 waiting on Apple developer assets the project doesn't have yet.

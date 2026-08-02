@@ -39,7 +39,9 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   (+ `AgentCapabilities`), `SecureSession`, git entities, …
 - `domain/value_objects/message_content.dart` — the sealed `MessageContent`
   hierarchy + its tolerant JSON codec (text/code/image/tool/diff/mermaid/system/
-  command + `approval`/`plan`/`subagent` + `UnknownContent` fallback).
+  command + `approval`/`plan`/`subagent`/`compaction`/
+  `assistant_response_boundary` + `UnknownContent` fallback). Compaction and
+  response-boundary variants are zero-text timeline metadata.
 - `domain/repositories/` — `IThreadRepository`, `IMessageRepository`,
   `ITrustedDeviceRepository`, git log repo (interfaces only).
 - `application/coordinators/session_coordinator.dart` — connection lifecycle:
@@ -105,8 +107,15 @@ and composed in `application_providers.dart`. The important ones:
    `DomainEvent`s (turn started/delta/completed/error/aborted, git progress).
 3. `ThreadManager` applies streaming events to a `TurnTimelineSnapshot` (via a
    reducer), persists finalized messages to drift, and exposes the timeline as a
-   `BehaviorSubject` stream.
-4. The UI watches the derived stream providers and rebuilds reactively.
+   `BehaviorSubject` stream. A completion re-reads the authoritative turn and
+   reconciles terminal text additively, so a final payload cannot overwrite
+   earlier native assistant messages.
+4. `assistant_response_boundary` metadata keeps those native messages ordered;
+   `compaction` metadata marks only protocol-confirmed context compactions. Both
+   survive `turn/list` re-sync and are excluded from copy text and previews.
+5. The UI watches the derived stream providers and rebuilds reactively. During
+   streaming every assistant response stays visible; after completion, earlier
+   progress responses fold under the localized **N previous messages** disclosure.
 
 For a new thread, `ThreadManager` preserves the bridge-provided title. When the
 first textual user message is sent and that title is still empty, the thread id,
@@ -127,7 +136,9 @@ prompts cannot overwrite either the automatic title or a manual rename.
   so the app stays usable before the bridge implements a handler.
 - **Capability-aware UI.** The compact turn-context shelf (approval and model
   run options) and the "+" media menu are gated by the active agent's
-  capabilities; unknown capabilities remain permissive.
+  capabilities; unknown capabilities remain permissive. The deprecated
+  `gemini-cli` is an explicit exception: descriptors, cached threads, metrics and
+  provider usage are filtered before they reach any mobile product surface.
 - **drift migrations** are additive with explicit version bumps; see
   `local_database.dart`.
 

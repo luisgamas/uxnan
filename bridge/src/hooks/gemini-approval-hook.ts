@@ -40,9 +40,9 @@ export async function writeGeminiApprovalHook(scriptPath: string): Promise<strin
 }
 
 export const GEMINI_APPROVAL_HOOK_SCRIPT = String.raw`'use strict';
-// Gemini CLI BeforeTool approval hook — the bridge writes this script under
-// ~/.uxnan/hooks/ and references it from <cwd>/.gemini/settings.json when
-// the user enables interactive approvals (agents.gemini-cli.interactiveApprovals).
+// DEPRECATED legacy Gemini CLI BeforeTool approval hook. The bridge no longer
+// writes or installs this script; it remains embedded only for source/history
+// compatibility with older bridge builds.
 // Fail-safe: any error → deny.
 const http = require('node:http');
 let data = '';

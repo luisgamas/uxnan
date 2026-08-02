@@ -19,7 +19,8 @@ optional, self-hosted off-LAN fallback. Background push notifications are sent
 receiving them whether it reached the bridge directly or through a relay.
 
 > **Status:** alpha-functional on the primary path (LAN/Tailscale-direct,
-> bridge-direct push), with **eight real agents wired**. The detailed breakdown of
+> bridge-direct push), with **seven active real agents wired** plus one
+> unavailable legacy Gemini descriptor. The detailed breakdown of
 > what is built and what remains lives in [`FOR-DEV.md`](FOR-DEV.md); the release
 > history is in [`CHANGELOG.md`](CHANGELOG.md).
 

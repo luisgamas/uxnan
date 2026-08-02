@@ -1,6 +1,6 @@
 # Bridge — how agents are driven
 
-![Agents](https://img.shields.io/badge/wired_agents-8-2ea44f?style=for-the-badge)
+![Agents](https://img.shields.io/badge/active_agents-7-2ea44f?style=for-the-badge)
 ![Transport](https://img.shields.io/badge/driven_via-official_local_CLI-339933?style=for-the-badge&logo=gnometerminal&logoColor=white)
 ![No keys](https://img.shields.io/badge/no_API_%7C_no_SDK_%7C_no_keys-0a0a0a?style=for-the-badge)
 
@@ -60,7 +60,7 @@ Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
 | **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
-| **Codex** | `codex exec --json --skip-git-repo-check` | `exec resume <thread_id>` | `permissionMode` → `-s workspace-write` / `-s read-only` / `--dangerously-bypass-approvals-and-sandbox` (+ `interactive` via `codex app-server`) | `codex app-server` → `model/list` (account-aware) → `~/.codex/config.toml` fallback |
+| **Codex** | long-lived `codex app-server` (JSON-RPC over stdio) | persisted app-server thread id via `thread/start` | `accessMode` → app-server `approvalPolicy` + `sandbox` on `thread/start`; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | ~~Gemini CLI~~ (deprecated legacy) | retained adapter only; new turns rejected | legacy history only | unavailable (`deprecated:true`) | none exposed |
 | **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |

@@ -67,8 +67,9 @@
  *     with the subsequent `role:'toolResult'` message (by `toolCallId`).
  *     `think` tags embedded in the assistant text are extracted into
  *     `thinking`.
- *   - **Gemini CLI** — the `gemini` messages already include `toolCalls` with
- *     both args and result inline; each one maps to a structured block.
+ *   - **Gemini CLI (deprecated legacy reads only)** — the `gemini` messages
+ *     already include `toolCalls` with both args and result inline; each one
+ *     maps to a structured block.
  *
  * This is a best-effort, READ-ONLY fallback: it never writes, tolerates malformed
  * lines/files, and returns `null` when it cannot produce anything (the caller then

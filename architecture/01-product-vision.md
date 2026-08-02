@@ -1,7 +1,7 @@
 # Uxnan — Visión del Producto
 
-> **Versión:** 1.0.0  
-> **Fecha:** 2026-06-03  
+> **Versión:** 1.1.0
+> **Fecha:** 2026-08-02
 > **Estado:** Definición inicial — borrador técnico completo  
 > **Plataformas objetivo:** Android (principal), iOS (principal)  
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
@@ -28,7 +28,7 @@
 
 ### Diferenciadores clave
 
-- **Multi-agente y multi-proveedor:** compatible con OpenAI Codex CLI, OpenCode, Claude Code, Gemini CLI, pi-agent y cualquier agente futuro que exponga una interfaz JSON-RPC o JSONL compatible.
+- **Multi-agent and multi-provider:** the active set is OpenAI Codex CLI, OpenCode, Claude Code, pi, Antigravity, Zero and Grok, with an extensible adapter boundary for future compatible agents. Gemini CLI is retired and has no mobile surface.
 - **Sin lock-in de proveedor:** el modelo de abstracción del bridge normaliza las diferencias de protocolo entre agentes.
 - **Local-first y soberanía de datos:** el código, contexto y conversaciones nunca pasan por servidores de terceros. El producto es **bridge-first**: la ruta primaria es **LAN-direct** o **Tailscale-direct** (cero hosting, cero credenciales). El relay es **opcional y self-hosted** — cuando se usa, solo retransmite envelopes cifrados opacos. El push lo envía el **bridge** directamente (FCM HTTP v1) sobre cualquier transporte.
 - **E2EE real:** ni el relay (cuando se usa) ni el bridge ven el contenido en texto claro. La clave de sesión se deriva de un handshake X25519 + HKDF firmado con Ed25519; el QR codifica la identidad del bridge y opcionalmente sus direcciones directas (`hosts: string[]`) además de una URL de relay.
@@ -46,7 +46,7 @@
 
 ### 2.1 Problema que resuelve
 
-Los agentes de codificación modernos (OpenAI Codex CLI, Claude Code, OpenCode, Gemini CLI, pi-agent) corren en terminales de PC y son herramientas de alta productividad. Sin embargo, el desarrollador que se aleja de su escritorio pierde visibilidad y control sobre las tareas en curso.
+Modern coding agents (OpenAI Codex CLI, Claude Code, OpenCode, pi, Antigravity, Zero and Grok) run on the developer's PC and are high-productivity tools. When the developer leaves the desk, however, visibility and control over those tasks disappear.
 
 No existe hoy una solución móvil multiplataforma, agnóstica a proveedor, que:
 - Muestre el estado en tiempo real de sesiones de agentes activos en la PC.
@@ -62,7 +62,7 @@ La categoría de agentes de codificación CLI ha madurado significativamente:
 - **OpenAI Codex CLI (2025):** agente de OpenAI para tareas de software engineering. Disponible vía CLI y app de escritorio para Windows/macOS. Expone `thread/*`, `git/*`, `workspace/*` como métodos JSON-RPC. Arquitectura local-first con app-server propio.
 - **OpenCode (opencode.ai):** agente open-source con +160K GitHub stars y 7.5M desarrolladores mensuales. Arquitectura cliente/servidor donde el TUI es solo uno de los clientes posibles, diseñado explícitamente para que una app móvil pueda conectarse remotamente. Soporta múltiples LLM providers (Anthropic, OpenAI, Gemini, Bedrock, Groq, Azure, OpenRouter). Almacenamiento en SQLite.
 - **Claude Code (Anthropic):** agente de codificación con arquitectura multi-dispositivo. Incluye un sistema Bridge de 33+ archivos para "Remote Control" vía WebSocket/HTTPS tunnel autenticado. Soporta subagentes, MCP, skills, hooks. Sessions vía JSONL append-only.
-- **Gemini CLI (Google):** agente open-source bajo Apache 2.0, integrado con Gemini Code Assist. Usa bucle ReAct con herramientas built-in y servidores MCP locales/remotos. Expone output-format JSON y stream-json para integración programática.
+- **Antigravity (Google):** the active Google integration. Uxnan drives `agy` with caller-owned conversation continuity and model discovery. The predecessor Gemini CLI is retained only as deprecated bridge history/reference code and cannot start new work.
 - **pi-agent (earendil-works/pi):** agente minimalista con cuatro herramientas core (read, write, edit, bash). Tiene modo RPC con framing JSONL estricto, pensado para ser consumido por clientes externos. Soporta Anthropic, OpenAI, Google y otros. Sessions persistidas como JSONL en `~/.pi/agent/sessions/`.
 
 ### 2.3 Posicionamiento de Uxnan
@@ -119,8 +119,8 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 │          │        │         │        │       │        │             │
 │          ▼        ▼         ▼        ▼       ▼        ▼             │
 │       ┌──────────────────────────────────────────────────────┐      │
-│       │    Agent Adapter (Codex / OpenCode / Claude Code /   │      │
-│       │              Gemini CLI / pi-agent / custom)         │      │
+│       │    Agent Adapter (Codex / OpenCode / Claude / pi /   │      │
+│       │              Antigravity / Zero / Grok)              │      │
 │       └────────────────────────┬─────────────────────────────┘      │
 │                                │                                     │
 │       ┌────────────────────────▼─────────────────────────────┐      │
@@ -136,7 +136,7 @@ Uxnan no es un agente. Es el **cliente móvil** que permite al desarrollador con
 | **App móvil Uxnan** | Flutter / Dart | Cliente móvil: UI, transporte, estado |
 | **Uxnan Bridge** | Node.js daemon | Plano de control local en la PC; corre agentes y expone la API JSON-RPC al móvil |
 | **Uxnan Relay** | Node.js HTTP/WS | (Opcional, self-hosted) Relay de envelopes E2EE opacos como fallback off-LAN; push enviado por el bridge directamente |
-| **Agent Adapters** | Node.js | Adaptadores por agente (Codex, OpenCode, Claude Code, pi, Gemini CLI, Antigravity, Zero, Grok) |
+| **Agent Adapters** | Node.js | Active adapters for Codex, OpenCode, Claude Code, pi, Antigravity, Zero and Grok; Gemini is unavailable legacy metadata only |
 
 ### 3.3 Topologías de conexión
 
@@ -185,12 +185,15 @@ Uxnan no se acopla a un agente específico. El Bridge implementa un **Agent Adap
 
 | Agente | Protocolo nativo | Adaptación requerida | Estado objetivo |
 |---|---|---|---|
-| **OpenAI Codex CLI** | JSON-RPC 2.0 sobre WebSocket | Ninguna (protocolo nativo de referencia) | Soporte completo |
-| **OpenCode** | JSON-RPC / REST + cliente/servidor | Adaptación de sesiones SQLite | Soporte completo |
-| **Claude Code** | JSON-RPC + JSONL append-only | Bridge HTTPS tunnel + JSONL reader | Soporte completo |
-| **Gemini CLI** | ReAct + output-format stream-json | Adaptación de streaming ReAct | Soporte completo |
-| **pi-agent** | JSONL RPC (LF-delimited) | Reader JSONL `~/.pi/agent/sessions/` | Soporte completo |
-| **Custom / futuro** | — | Interfaz de adaptador extensible | Extensible |
+| **OpenAI Codex CLI** | `codex app-server` JSON-RPC over stdio | Long-lived thread/turn protocol | Active |
+| **OpenCode** | Local HTTP/SSE server | Long-lived session + permission events | Active |
+| **Claude Code** | Stream JSON over stdio | One process per turn + native resume | Active |
+| **pi** | JSONL over stdio | One process per turn + native session id | Active |
+| **Antigravity** | `agy` one-shot output | Caller-owned conversation id | Active |
+| **Zero** | ACP JSON-RPC over stdio | Long-lived ACP session | Active |
+| **Grok** | ACP JSON-RPC over stdio | Long-lived ACP session | Active |
+| ~~Gemini CLI~~ | Frozen legacy stream parser | Descriptor/history compatibility only | Deprecated and unavailable |
+| **Custom / future** | — | Extensible adapter interface | Extensible |
 
 ### 4.2 Capacidades por agente
 
@@ -205,6 +208,7 @@ interface AgentCapabilities {
   forking: boolean;                 // soporta forking / reanudar threads
   images: boolean;                  // acepta image attachments en sendTurn
   reportsContextUsage?: boolean;    // emite `usage` en turn/completed
+  reportsCompaction?: boolean;      // emite `compaction` solo con señal nativa
   autonomous?: boolean;             // corre en modo autónomo ("YOLO") por defecto
 }
 ```
@@ -394,7 +398,7 @@ El MVP debe cumplir los siguientes módulos completos:
 | Feature | Prioridad |
 |---|---|
 | Soporte Claude Code | Alta |
-| Soporte Gemini CLI | Alta |
+| Context-compaction milestones from native agent signals | Done |
 | Soporte pi-agent | Media |
 | SSH Terminal | Media |
 | Workspace checkpoints | Media |
@@ -423,7 +427,7 @@ El MVP debe cumplir los siguientes módulos completos:
 ### v1.1 — Completitud de agentes
 
 - Soporte Claude Code
-- Soporte Gemini CLI
+- Antigravity, Zero and Grok support; Gemini CLI retired from the mobile product
 - Soporte pi-agent
 - Mejorar diff viewer (syntax highlighting por lenguaje)
 - Slash commands en composer
