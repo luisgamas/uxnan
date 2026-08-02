@@ -23,6 +23,12 @@ CodeMirror 6.
 > The engineering roadmap and deferred work live in [`FOR-DEV.md`](FOR-DEV.md);
 > human-provided assets in [`FOR-HUMAN.md`](FOR-HUMAN.md).
 
+<p align="center">
+  <a href="https://github.com/luisgamas/uxnan/releases/latest">
+    <img alt="Download from GitHub Releases" src="https://img.shields.io/badge/Download-GitHub_Releases-24292e?style=for-the-badge&logo=github&logoColor=white"/>
+  </a>
+</p>
+
 ## Why it helps, even in alpha
 
 Uxnan Desktop is for developers who want a clear, multi-agent workflow without

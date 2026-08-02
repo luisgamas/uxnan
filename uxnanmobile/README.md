@@ -21,6 +21,12 @@ anywhere.
 > Full technical specification: [`../architecture/`](../architecture/00-index.md).
 > The architecture docs are the source of truth; this app implements them.
 
+<p align="center">
+  <a href="https://sink.gamas.workers.dev/uxnan-android">
+    <img alt="Get it on Google Play" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="64" />
+  </a>
+</p>
+
 ## What sets it apart
 
 There is no shortage of "control your agent from your phone" tools. Uxnan takes a
