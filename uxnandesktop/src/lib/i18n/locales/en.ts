@@ -973,6 +973,7 @@ export const en = {
   "preview.fit": "Fit to view",
   "preview.actualSize": "Actual size",
   "preview.markdownEmpty": "Nothing to preview.",
+  "preview.pdfUnsupported": "This system webview cannot display PDF documents.",
 
   // Markdown rendering (GitHub alerts + <details> disclosures)
   "markdown.alert.note": "Note",

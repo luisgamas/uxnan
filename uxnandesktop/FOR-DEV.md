@@ -21,9 +21,10 @@ side validated against captured real GitHub data — `docs/github-validation.md`
 **"Open with" external editors/IDEs**, **automations**, **pets**, **a reproducible
 resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
-background consumers**, `docs/resource-mode.md`). 476 Rust tests (448 unit + 28
+background consumers**, `docs/resource-mode.md`). 477 Rust tests (449 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 693 frontend Vitest tests across two projects — pure logic and **Svelte
+probe) + 726 frontend Vitest tests (719 passing + 7 platform-skipped) across two
+projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
 first run). macOS now ships an
@@ -75,6 +76,11 @@ started.**
   generation via a local CLI agent. The Changes header also offers **Check remote**
   (`git_fetch` → refreshed ahead/behind, read-only), so the *behind* count and the
   **Pull** button stop waiting on some other fetch.
+- **Unified multimodal file viewer** — one file tab owns Edit / Preview / Changes;
+  README-grade Markdown includes safe presentational HTML and badges, relative
+  links/images, anchors and highlighted fences; images include editable SVG; PDFs
+  use the native webview renderer through a validated, bounded data URL. Details:
+  [`docs/file-viewer.md`](docs/file-viewer.md).
 - **Agent monitoring (Phase 4)** — Layer 1 local HTTP hook server (`axum`, precise
   `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
   (OSC, path/word-boundary-hardened) + Layer 3 process-tree detection; colored
@@ -161,7 +167,9 @@ started.**
   usage API (never cookies / pasted keys). Tabbed UI with per-provider quota
   windows ("% used"), plan/account ("Authenticated as …" with click-to-reveal
   blur), credit, per-provider refresh interval + status-bar visibility, and a
-  status-bar gauge popover. Contract-first (`shared` `agent/usageStats`); the
+  status-bar gauge popover. Polling starts at boot, catches up on focus, honors
+  each provider's interval, and preserves Codex percentage-point semantics around
+  resets. Contract-first (`shared` `agent/usageStats`); the
   bridge/mobile side is Phase 6 (see below). **Gemini CLI** is still read but
   **hidden from the picker** (discontinued upstream — `deprecated` in
   `src/lib/usageCatalog.ts`); **Antigravity** is researched but not wired (its
@@ -921,13 +929,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
 - [ ] Multi-worktree external-change watching (the watcher follows the active
       worktree only).
 - [ ] Tab/region reorder + drag for the mixed `terminal|file|commit` tabs.
-- [ ] **Markdown preview polish (non-blocking).** The in-house renderer
-      (`markdown.ts` / `MarkdownView.svelte`) covers the common GFM surface; two
-      deferred niceties: (1) syntax-highlight fenced code per language — today code
-      blocks are plain monospace, though the Lezer language parsers are already
-      installed; (2) resolve in-document / relative *links* (heading anchors, and
-      links to sibling files → open that file's tab). Today only external links
-      open (via the OS) and only local *images* are resolved (`fs_read_data_url`).
 
 **Theming**
 - [ ] Import font *files* (.ttf/.otf/.woff2) via `@font-face` (today: installed

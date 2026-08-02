@@ -390,7 +390,10 @@
     usage.reschedule();
   }
   // A card edited a field (refresh interval / status-bar picks): persist soon.
-  const onProviderChange = () => schedulePersist();
+  const onProviderChange = () => {
+    schedulePersist();
+    usage.reschedule();
+  };
 
   // Combobox: providers not yet activated, with an "installed?" hint. Deprecated
   // providers are never offered — an already-activated one keeps its own tab.

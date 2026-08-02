@@ -58,10 +58,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **476 backend tests**
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **477 backend tests**
 in total (plus the 7 ignored live tests and the ignored real-scheduler probe).
 
-The 448 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 449 unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -114,8 +114,12 @@ readiness, context templates, cycle detection, validation + status derivation),
 normalization), `quickCommands.ts` (quick-command token substitution + scope
 filters), `terminalArbiter.ts` (terminal keyboard app-vs-TUI arbitration),
 `branchName.ts` (GitHub branch-name slugging + friendly auto-generated
-worktree branch names with collision-proof uniqueness), `markdown.ts` (GitHub-flavored
-Markdown: alerts, disclosures, hidden HTML comments), `relTime.ts` (localized
+worktree branch names with collision-proof uniqueness), `filePreview.ts`
+(extension-to-view capability), `markdown.ts` (GitHub-flavored Markdown: alerts,
+disclosures, hidden comments and the safe README HTML subset),
+`markdownHighlight.ts` (Lezer language selection + highlighted token runs),
+`usageSchedule.ts` (per-provider cadence and stale-snapshot decisions),
+`relTime.ts` (localized
 relative dates), `state/flushRegistry.ts` (the flush-on-close registry:
 register / unregister + `Promise.allSettled` fan-out), `utils/pointerLock.ts`
 (the orphaned-body-pointer-lock guard: orphan detection + deferred modal open),
@@ -154,8 +158,9 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **693 tests** across both
-projects, config in `vitest.config.ts` / `vitest.dom.config.ts`.
+[`platform-support.md`](platform-support.md)). **726 tests** across both projects
+(719 passing, 7 skipped), config in `vitest.config.ts` /
+`vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
 
@@ -178,6 +183,15 @@ instead of quietly agreeing with a mock nobody updated.
   `ResizeObserver`, canvas), plus a console policy: an unknown-prop or
   lifecycle-outside-component warning **fails** the test; known third-party
   teardown noise is suppressed.
+- `MarkdownView.svelte.test.ts` — README-style badges render through the typed
+  safe-HTML path, unsafe attributes/content stay absent, the full-width preview
+  uses the native overflow treatment shared with CodeMirror, explicit badge
+  dimensions survive app CSS, local/remote animated-image paths select the
+  correct backend mode, and relative sibling links dispatch through the real
+  file navigation callback.
+- `FilePreview.svelte.test.ts` — loose-table README GIFs resolve from Windows,
+  macOS, Linux, and UNC document paths and render the returned animated image
+  unchanged; `markdown.test.ts` covers multiple inline-HTML images in one table.
 
 House style: query the way a user finds things — role, label, text. Reach for
 `data-testid` only where there is genuinely no accessible handle. A test that

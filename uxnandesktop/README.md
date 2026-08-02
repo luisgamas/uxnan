@@ -93,6 +93,11 @@ available today are:
   by default, with a squash-merge safety net), WSL repositories routed through
   `wsl.exe`, and optional **AI-generated commit messages** drafted by a local CLI
   agent from your staged diff.
+- **A unified multimodal file viewer.** One tab carries Edit / Preview / Changes:
+  CodeMirror source, README-grade Markdown (badges, safe presentational HTML,
+  relative links and images, anchors, highlighted code), raster and SVG previews,
+  native PDF preview, and the file's working diff. See
+  [the file viewer](./docs/file-viewer.md).
 - **Open with your editor.** An **"Open with →"** entry on the project, worktree and
   file-tree menus launches the folder or file in an external editor or IDE — VS Code,
   Cursor, Windsurf, Zed, Sublime Text, the JetBrains IDEs and more are detected
@@ -117,7 +122,8 @@ available today are:
   discontinued **Gemini CLI**, still read but no longer offered). It reads
   each CLI's own signed-in token and calls the provider's official usage API (never
   cookies or pasted keys), polling **only the providers you activate**. A status-bar
-  gauge surfaces the meters you pick. See [provider usage](./docs/providers.md).
+  gauge surfaces the meters you pick; startup/focus catch-up and per-provider
+  intervals keep reset windows current. See [provider usage](./docs/providers.md).
 - **Integrated developer browser.** A complete in-app browser in a right-side panel
   (a real system webview docked to the app, so it loads any site and has real
   DevTools) to preview and debug what your agents build — `localhost` dev servers
@@ -237,6 +243,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[file viewer](./docs/file-viewer.md) ·
 [provider usage statistics](./docs/providers.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·
 [automations (unattended, recurring)](./docs/automations.md) ·

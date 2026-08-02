@@ -527,11 +527,25 @@ en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vist
     (dimensiones · tamaño). El backend `fs_read_data_url` lee el archivo local a un
     `data:` URL (MIME por extensión + *sniff* de bytes mágicos, tope 25 MiB). SVG se
     previsualiza como imagen y **también** se edita como código.
-  - **Markdown** se renderiza con un parser propio sobre `@lezer/markdown`
-    (`markdown.ts` → AST tipado; `MarkdownView.svelte` con marcado Svelte, **sin
-    `{@html}`** — el HTML crudo se muestra como texto escapado, sin superficie XSS).
-    `.md` abre en la fuente con un botón de Vista previa; los enlaces se abren
-    externamente y las imágenes locales se resuelven vía `fs_read_data_url`.
+  - **PDF** is validated by extension or `%PDF-` signature, transported through the
+    same bounded 25 MiB `data:` URL, and handed to the webview's native PDF renderer.
+    An explicit fallback appears when a platform webview has no PDF renderer. The CSP
+    allows only `object-src data:` and keeps `frame-src 'none'`.
+  - **Markdown** uses an in-house parser built on `@lezer/markdown` (`markdown.ts` →
+    typed AST; `MarkdownView.svelte` with Svelte markup and **no `{@html}`**). A safe
+    subset of presentational README HTML (alignment, links, images/badges, emphasis,
+    headings, code, and `kbd`) becomes typed nodes; scripts, events, styles, embedded
+    documents, and unsafe URLs are discarded. A `.md` file opens in source mode with
+    a Preview action and supports language-aware fenced-code highlighting,
+    GitHub-style heading ids, anchor navigation, and relative sibling-file links that
+    open the existing file tab. Local images use `fs_read_data_url` (including
+    URL-encoded paths and `?raw=true` suffixes); remote images use the shared HTTP
+    reader's bounded 25 MiB preview mode, preserving animated GIF bytes without
+    transcoding. Safe inline-HTML images inside loose README tables are preserved,
+    relative assets resolve against Windows, macOS/Linux, and UNC document paths,
+    and explicit HTML dimensions survive. The scroller fills the panel and uses the
+    same native overflow treatment as the CodeMirror Edit and Changes views, keeping
+    its bar at the right edge while the article remains centered.
 - **Cambios** — el diff de trabajo del archivo (unificado / lado a lado, staging por
   hunk, diff visual de imágenes), con un toggle **staged / sin stage** (`DiffPane.svelte`
   + `DiffViewerState`, sub-estado perezoso keyed por el id de la pestaña, liberado con
@@ -553,7 +567,7 @@ en lugar de abrir un diff aparte, y el diff se lee de git **una sola vez**. Vist
 |---|---|
 | `fs_list_dir(path)` | Lista un nivel de directorio (carpetas primero, luego archivos; `.git` oculto). |
 | `fs_read_file(path)` | Lee un archivo de texto para el editor (flags `binary` / `tooLarge`). |
-| `fs_read_data_url(path)` | Lee un archivo de imagen local a un `data:<mime>;base64,…` para la vista previa (MIME por extensión + sniff; tope 25 MiB; rechaza no-imágenes). |
+| `fs_read_data_url(path)` | Reads a local image or PDF into a preview `data:<mime>;base64,…` URL (extension + signature sniffing, 25 MiB cap, all other formats rejected). |
 | `fs_write_file(path, content)` | Sobrescribe un archivo (atómico: temp + rename). |
 | `git_diff_head(path, file)` | Diff working-tree-vs-`HEAD` de un archivo, para el medianil del editor. |
 | `reveal_path(path)` | Revela una ruta en el explorador de archivos del SO (plugin opener). |

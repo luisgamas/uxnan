@@ -574,8 +574,8 @@ export function fsReadFile(path: string): Promise<FileContent> {
   return invoke<FileContent>("fs_read_file", { path });
 }
 
-/** Read a local image file as an inline `data:<mime>;base64,…` URL for the
- *  editor's image preview. Rejects non-images and anything over the size cap. */
+/** Read a local previewable file (image/PDF) as an inline
+ *  `data:<mime>;base64,…` URL. Rejects other types and oversized files. */
 export function fsReadDataUrl(path: string): Promise<string> {
   return invoke<string>("fs_read_data_url", { path });
 }
@@ -658,9 +658,13 @@ export function zeroSession(cwd: string): Promise<ZeroSession | null> {
 }
 
 /** Download an image from an http(s) URL into an inline `data:` URL (fetched in
- *  the backend to sidestep CORS). Used for "icon from URL" and git-host avatars. */
-export function imageFetchDataUrl(url: string): Promise<string> {
-  return invoke<string>("image_fetch_data_url", { url });
+ *  the backend to sidestep CORS). Icon/avatar reads keep their 5 MiB cap;
+ *  document previews opt into the bounded 25 MiB preview cap. */
+export function imageFetchDataUrl(
+  url: string,
+  purpose: "icon" | "preview" = "icon",
+): Promise<string> {
+  return invoke<string>("image_fetch_data_url", { url, preview: purpose === "preview" });
 }
 
 /** Reveal a path in the OS file manager (Explorer / Finder / etc.). */

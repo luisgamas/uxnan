@@ -1110,8 +1110,9 @@ fn read_json(path: &Path) -> Option<serde_json::Value> {
     serde_json::from_str(&text).ok()
 }
 
-/// Build a window from a value carrying `used_percent` + `reset_at` +
-/// `limit_window_seconds` (the Codex shape), with a fallback window length.
+/// Build a window from Codex's `used_percent` + `reset_at` +
+/// `limit_window_seconds` shape. The field is already percentage points:
+/// `1` means one percent, not a 0..1 fraction.
 fn window_from_value(
     id: &str,
     label: &str,
@@ -1136,7 +1137,7 @@ fn window_from_value(
     Some(UsageWindow {
         id: id.to_string(),
         label: label.to_string(),
-        used_percent: clamp_pct(if pct <= 1.0 { pct * 100.0 } else { pct }),
+        used_percent: clamp_pct(pct),
         window_minutes: minutes,
         resets_at,
     })
@@ -1327,6 +1328,30 @@ mod tests {
         assert_eq!(clamp_pct(-5.0), 0.0);
         assert_eq!(clamp_pct(140.0), 100.0);
         assert_eq!(clamp_pct(42.5), 42.5);
+    }
+
+    #[test]
+    fn codex_used_percent_is_not_treated_as_a_fraction() {
+        let one = window_from_value(
+            "primary",
+            "Usage",
+            &serde_json::json!({
+                "used_percent": 1,
+                "limit_window_seconds": 18_000
+            }),
+            None,
+        )
+        .unwrap();
+        assert_eq!(one.used_percent, 1.0);
+
+        let half = window_from_value(
+            "primary",
+            "Usage",
+            &serde_json::json!({"used_percent": 0.5}),
+            None,
+        )
+        .unwrap();
+        assert_eq!(half.used_percent, 0.5);
     }
 
     #[test]

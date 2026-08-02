@@ -1,9 +1,12 @@
 <script lang="ts">
   // Preview pane for the file viewer's Preview mode: a rendered Markdown document
-  // or an image viewer (fit / zoom / actual-size + a dimensions·size meta line).
+  // an image viewer (fit / zoom / actual-size + a dimensions·size meta line), or
+  // a native PDF document surface.
   // Which one is decided by the owning tab from the file's type; SVG previews as
   // an image. Text stays editable via the tab's Edit mode.
   import { fsReadDataUrl } from "$lib/api";
+  import { fileParentDirectory, type FilePreviewKind } from "$lib/filePreview";
+  import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -18,11 +21,17 @@
     path,
     content = "",
     kind,
+    worktree = null,
     active = false,
-  }: { path: string; content?: string; kind: "image" | "markdown"; active?: boolean } =
-    $props();
+  }: {
+    path: string;
+    content?: string;
+    kind: FilePreviewKind;
+    worktree?: string | null;
+    active?: boolean;
+  } = $props();
 
-  const baseDir = $derived(path.slice(0, path.lastIndexOf("/")) || null);
+  const baseDir = $derived(fileParentDirectory(path));
 
   // --- image branch ----------------------------------------------------------
   let dataUrl = $state<string | null>(null);
@@ -33,9 +42,9 @@
   let zoom = $state<number | null>(null);
   const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
 
-  // Load the image data URL whenever the target changes (image previews only).
+  // Load visual binary data whenever the target changes (images/PDF only).
   $effect(() => {
-    if (kind !== "image") return;
+    if (kind === "markdown") return;
     const target = path;
     dataUrl = null;
     loadError = null;
@@ -93,13 +102,34 @@
       zoom = null;
     }
   }
+
+  function openLinkedFile(target: string): void {
+    terminals.openFile(target, worktree);
+  }
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 {#if kind === "markdown"}
   <div class="h-full min-h-0 bg-background">
-    <MarkdownView source={content} {baseDir} />
+    <MarkdownView source={content} {baseDir} onopenfile={openLinkedFile} />
+  </div>
+{:else if kind === "pdf"}
+  <div class="h-full min-h-0 bg-[var(--ux-panel-muted)]">
+    {#if loadError}
+      <p class={cn("p-4 text-center", text.meta)}>{loadError}</p>
+    {:else if !dataUrl}
+      <p class={cn("p-4 text-center", text.meta)}>{i18n.t("common.loading")}</p>
+    {:else}
+      <object
+        class="h-full w-full bg-background"
+        data={dataUrl}
+        type="application/pdf"
+        title={path.split("/").pop() ?? path}
+      >
+        <p class={cn("p-4 text-center", text.meta)}>{i18n.t("preview.pdfUnsupported")}</p>
+      </object>
+    {/if}
   </div>
 {:else}
   <div class="relative flex h-full min-h-0 flex-col bg-background">

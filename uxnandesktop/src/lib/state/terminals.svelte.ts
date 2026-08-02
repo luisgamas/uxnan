@@ -21,6 +21,7 @@ import { repairedSession, resumeCommand, type CapturedAgentSession } from "$lib/
 import { renewPendingSession } from "$lib/agentSessionId";
 import type { ProviderSession } from "$lib/types";
 import { isImagePath } from "$lib/diff";
+import { opensInPreview } from "$lib/filePreview";
 import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
 import { i18n } from "$lib/i18n";
 import { saveDiscard } from "$lib/state/confirm.svelte";
@@ -134,10 +135,10 @@ export function tabDisplayTitle(t: GroupTab): string {
   return t.title;
 }
 
-/** The view a freshly-opened file lands on: an image opens in Preview, everything
- *  else in the editor (Markdown too — source-first, with a Preview toggle). */
+/** The view a freshly-opened file lands on: visual binaries (images/PDF) open in
+ *  Preview, everything else in the editor (Markdown stays source-first). */
 function defaultFileView(path: string): FileView {
-  return isImagePath(path) ? "preview" : "edit";
+  return opensInPreview(path) ? "preview" : "edit";
 }
 
 /** Worktree-relative, forward-slash path of `absPath` under `worktree` (falls back

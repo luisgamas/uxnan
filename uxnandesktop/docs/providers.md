@@ -78,8 +78,16 @@ tooltip that was still waiting to appear.
 The desktop reads usage **natively in Rust** — `src-tauri/src/usage.rs`, exposed
 as the `usage_read` (fetch) and `usage_detect` (which providers are present)
 Tauri commands. There's no Node dependency and no background daemon; the frontend
-(`src/lib/state/usage.svelte.ts`) polls only the activated providers on the
-configured interval and on demand.
+(`src/lib/state/usage.svelte.ts`) performs an initial read for every activated
+provider, catches up missing or stale snapshots when the app regains focus, and
+maintains one timer per provider. A provider's override wins over the global
+interval; `0` disables only its repeating timer, not the initial or manual read.
+The active resource-mode policy may lengthen an inherited or explicit cadence.
+
+Provider percentages are normalized at the native boundary. In particular,
+Codex's `used_percent` values are percentage points already: `1` means 1% used,
+not a fractional 100%. This matters immediately after a quota reset, when the
+reported value commonly falls at or below one.
 
 Settings persisted in `AppSettings` (`src/lib/types.ts` ↔ `src-tauri/src/model.rs`):
 `usageProviders` (the activated list + each one's refresh override and status-bar
@@ -101,4 +109,4 @@ Phase 6 embedded bridge.
 - Rust: `cargo test usage::` (unit tests for percentage/epoch/label parsing) +
   `cargo clippy` + `cargo fmt --check`.
 - Frontend: `npm run check` (svelte-check) + `npm test` (includes
-  `usageFormat.test.ts`).
+  `usageFormat.test.ts` and `usageSchedule.test.ts`).
