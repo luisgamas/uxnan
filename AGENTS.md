@@ -369,9 +369,10 @@ Keep the two audiences separate so neither doc rots:
   method**, a **streaming notification**, an **agent**, a **module/file** — grep
   **every** doc for the affected number/list and update **all** occurrences in the
   same change set. Examples (these have bitten us): a new method bumps the
-  `N methods` count in `shared/README.md`, `bridge/README.md`, the root
-  `README.md` / `README.es.md`, **and** `architecture/02b` (the `METHOD_NAMES`
-  count *and* the method list); new tests bump the `N passing` / `N bridge + …`
+  `N methods` count in `shared/README.md`, `bridge/README.md`, **and**
+  `architecture/02b` (the `METHOD_NAMES` count *and* the method list) — the root
+  `README.md` / `README.es.md` is a conversion page and does not cite this
+  count; new tests bump the `N passing` / `N bridge + …`
   counts wherever they're cited — the affected component's `FOR-DEV.md` `## Status`
   and any `README.md` / `docs/` page that still quotes a count. Re-derive the number
   from the code (`grep -c` the registry / `test(`), don't trust the old one.

@@ -1,282 +1,344 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="Logo de Uxnan" width="72" />
+</p>
+
 <h1 align="center">Uxnan</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/STATUS-ALPHA-orange?style=for-the-badge" alt="Status" />
-  <img src="https://img.shields.io/badge/MONOREPO-5_PROYECTOS-blue?style=for-the-badge" alt="Monorepo" />
-  <img src="https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white" alt="E2EE" />
-  <img src="https://img.shields.io/badge/PLATAFORMAS-Android_%7C_iOS_%7C_Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge" alt="Plataformas" />
-  <img src="https://img.shields.io/badge/LICENCIA-MPL--2.0-2ea44f?style=for-the-badge" alt="Licencia" />
+  <sub><i>Uxnan: un nombre sin relación ni derivación de ningún producto existente.</i></sub>
 </p>
 
 <p align="center">
-  <a href="README.md"><b>Read in English</b></a>
+  <a href="https://github.com/luisgamas/uxnan/stargazers"><img src="https://img.shields.io/github/stars/luisgamas/uxnan?style=flat-square&color=f5c518&label=stars" alt="Estrellas en GitHub" /></a>
+  <a href="https://github.com/luisgamas/uxnan/releases/latest"><img src="https://img.shields.io/github/v/release/luisgamas/uxnan?style=flat-square&label=release%20desktop&color=2ea44f" alt="Último release de escritorio" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-MPL--2.0-2ea44f?style=flat-square" alt="Licencia MPL-2.0" /></a>
+  <img src="https://img.shields.io/badge/plataformas-Windows_%C2%B7_macOS_%C2%B7_Linux_%C2%B7_Android-6e7681?style=flat-square" alt="Plataformas" />
 </p>
-
-Uxnan (pronunciado /uʃ.nan/) es un ecosistema de herramientas que construyo para
-resolver un problema muy concreto que tengo como desarrollador: **controlar
-agentes de codificación con IA desde cualquier lugar, sin que mi hardware se
-convierta en un cuello de botella.**
 
 <p align="center">
-  <img src="assets/uxnan-branding.png" alt="Uxnan — controla tus agentes de codificación con IA desde cualquier lugar" width="100%" />
+  <a href="README.md">Read in English</a> · Español
 </p>
 
-## Por qué existe este proyecto
+<p align="center">
+  <b>Dos apps construidas alrededor de una idea: tus agentes de codificación no deberían<br />
+  necesitar toda tu atención, ni tu máquina más cara, para seguir avanzando.</b>
+</p>
 
-Trabajo con agentes de codificación CLI (Claude Code, Codex CLI, OpenCode, Gemini
-CLI, pi-agent) todos los días. Son herramientas extraordinarias, pero el flujo de
-trabajo actual tiene fricciones reales:
+<p align="center">
+  <b>Uxnan Desktop</b> corre y revisa varios agentes de codificación CLI en paralelo, cada<br />
+  uno en su propio git worktree, sin el costo de memoria de un IDE completo. <b>Uxnan<br />
+  Mobile</b> se empareja con un pequeño daemon cifrado en tu PC para que puedas revisar un<br />
+  agente, aprobar su siguiente paso o enviarle una nueva instrucción desde tu teléfono,<br />
+  sea desde el otro lado del cuarto o desde el otro lado del mundo. Son apps independientes: usa<br />
+  Desktop sola, Mobile sola, o ambas.
+</p>
 
-- **Cuando me alejo de la PC**, pierdo visibilidad total sobre lo que el agente
-  está haciendo. No puedo revisar su progreso, aprobar cambios o enviar nuevas
-  instrucciones desde el teléfono.
-- **Las soluciones de escritorio existentes son excelentes**, pero muchas asumen
-  hardware de gama alta. En mi setup actual, correr un IDE pesado + múltiples
-  agentes + un entorno Electron consume más recursos de los que puedo
-  permitirme.
-- **No existe una herramienta móvil agnóstica a proveedor** que funcione con
-  cualquier agente, no solo con uno en particular.
+<p align="center">
+  <a href="https://github.com/luisgamas/uxnan/releases/latest">
+    <img src="https://img.shields.io/badge/Descargar-Uxnan_Desktop-24292e?style=for-the-badge&logo=github&logoColor=white" alt="Descargar Uxnan Desktop" />
+  </a>
+  <a href="https://sink.gamas.workers.dev/uxnan-android">
+    <img src="https://img.shields.io/badge/Obtener-Uxnan_Mobile-01875f?style=for-the-badge&logo=googleplay&logoColor=white" alt="Obtener Uxnan Mobile en Google Play" />
+  </a>
+</p>
 
-Uxnan nace para resolver exactamente eso. No es un agente — es el **plano de
-control** para los agentes que ya uso.
+<p align="center">
+  <img src="assets/uxnan-project.png" alt="Uxnan Desktop corriendo cuatro worktrees de agentes en un monitor panorámico, junto a Uxnan Mobile mostrando conversaciones en vivo, estadísticas de perfil y los checks de GitHub de un repositorio" width="960" />
+</p>
 
-## Cómo encaja todo
+## Cómo se siente usarlo
 
-El teléfono nunca habla con un intermediario en la nube en claro. Se empareja con
-el **bridge** que corre en tu PC y se conecta **primero de forma directa** —por
-tu LAN o tu red Tailscale— y solo cae a un **relay** opcional y self-hosted
-cuando estás fuera de casa. Sea cual sea la ruta, cada byte va cifrado de extremo
-a extremo; el relay solo ve sobres sellados.
+<table>
+<tr>
+<td width="46%" valign="top">
 
-```text
-   📱 uxnanmobile                  💻 tu PC
-   (app Flutter)                   ┌──────────────────────────────┐
-        │                          │  bridge  ──▶  CLIs de agentes │
-        │   E2EE (X25519 +         │  (daemon)     claude · codex  │
-        ├──── Ed25519 + ──────────▶│               opencode · pi   │
-        │     AES-256-GCM)         │               gemini · zero   │
-        │                          └──────────────────────────────┘
-        │                                      ▲
-        └──── relay (opcional, ─────────────────┘
-              self-hosted, solo fuera de la LAN —
-              reenvía sobres sellados, no ve nada)
+### Lanza cualquier agente en su propio worktree
+Uxnan Desktop es terminal-céntrico, así que corre cualquier agente CLI: elige uno del catálogo (Claude Code, Codex, OpenCode, Pi, Grok, Antigravity, Zero) o registra cualquier otro a mano, y cae directo en una terminal aislada corriendo su propio binario oficial, bajo tu propia cuenta. Sin API keys, sin SDKs.
 
-   uxnandesktop — una app de escritorio aparte, ligera, para correr y revisar
-   esos mismos agentes en la propia PC. shared — los contratos que ambos hablan.
+[Lanzamiento y configuración de agentes →](uxnandesktop/docs/agent-launch.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/launch-agent.gif" alt="Eligiendo un agente del catálogo y lanzándolo en una terminal de worktree" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Arrastra un archivo directo a la terminal
+Arrastra cualquier archivo o carpeta del árbol sobre una terminal y su ruta se escribe ahí —entre comillas si lo necesita— así un agente nunca tiene que adivinar una ruta, y tú tampoco.
+
+[Git, worktrees y el árbol de archivos →](uxnandesktop/architecture/02c-git-worktrees.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/drag-file.gif" alt="Arrastrando un archivo del árbol de archivos sobre una terminal para insertar su ruta" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Abre un PR sin salir de tu terminal
+Haz push, elige `base ← head`, y crea el PR: uxnan lee las reglas de rama reales del repositorio y solo te ofrece los métodos de merge que en verdad tienes permitido usar.
+
+[Integración con GitHub →](uxnandesktop/docs/github.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/create-pr.gif" alt="Creando un pull request desde Uxnan Desktop" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Lee tu historial como un grafo
+Un carril de grafo de ramas corre junto al log de commits: haz clic en un commit para expandir sus archivos modificados, haz clic en un archivo para abrir solo esa porción del diff en vez de un blob gigante.
+
+[Git, worktrees y diffs →](uxnandesktop/architecture/02c-git-worktrees.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/history-graph.gif" alt="Navegando el historial de commits con un grafo de ramas" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Crea un worktree aislado en segundos
+Rama nueva, rama existente, o una ubicación personalizada: cada tarea obtiene su propio worktree y su propio agente, así nada choca con lo que ya tienes corriendo.
+
+[Creación de worktrees →](uxnandesktop/architecture/02c-git-worktrees.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/create-worktree.gif" alt="Creando un nuevo git worktree para una tarea" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Conoce tu cuota antes de que se acabe
+Uso de sesión, semanal y mensual para Codex, Claude, Copilot y Grok, leído directo del token con el que cada CLI ya inició sesión: nunca una key pegada, nunca una cookie.
+
+[Estadísticas de uso por proveedor →](uxnandesktop/docs/providers.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/provider-usage.gif" alt="Viendo las cuotas de uso de proveedores de IA en Ajustes" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Revisa PRs, issues y CI en pantalla completa
+Abre los Pull Requests, Issues y Actions de un proyecto en una vista enfocada que reemplaza el panel central: aprueba, haz merge, comenta o vuelve a correr un check sin cambiar de app.
+
+[Integración con GitHub →](uxnandesktop/docs/github.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/ci-pr-fullscreen.gif" alt="Revisando un pull request y sus checks de CI en la vista de GitHub a pantalla completa" width="440" />
+
+</td>
+</tr>
+<tr>
+<td width="46%" valign="top">
+
+### Mira a los subagentes trabajar bajo su padre
+Un subagente del Task tool de Claude Code (o una sesión hija de OpenCode) aparece en vivo como una fila anidada bajo el agente que lo generó, y el padre no marca "Listo" mientras un hijo sigue trabajando.
+
+[Hooks de agentes y estados precisos →](uxnandesktop/docs/agent-hooks.md)
+
+</td>
+<td width="54%" valign="top">
+
+<img src="assets/shorts/agent-subagents.gif" alt="Un subagente apareciendo como una fila anidada bajo su agente padre" width="440" />
+
+</td>
+</tr>
+</table>
+
+## También incluye
+
+- **Pets**: un compañero animado opcional que refleja lo que están haciendo tus agentes y te lleva a la terminal correcta con un clic. [docs →](uxnandesktop/docs/pets.md)
+- **Automations**: corridas multi-agente recurrentes que se disparan con su propio horario, registradas con el scheduler de tu propio sistema operativo, y funcionan incluso con uxnan cerrado. [docs →](uxnandesktop/docs/automations.md)
+- **Una huella medida, no adivinada**: el modo de recursos (Eficiente / Balanceado / Rendimiento) gobierna el trabajo en segundo plano, y la cifra contra la que se ajusta está medida: **~250 MB** de memoria privada en Windows 11 (WebView2 150, build release). [modo de recursos →](uxnandesktop/docs/resource-mode.md) · [método del benchmark →](uxnandesktop/docs/resource-benchmarks.md)
+- **Quick commands**: comandos de shell acotados a un proyecto o worktree, con variables de sustitución, lanzados desde un atajo en la barra superior. [detalles →](uxnandesktop/README.md)
+- **Duerme, despierta, y sigue donde lo dejaste**: las terminales de un workspace inactivo (scrollback incluido) vuelven exactamente como las dejaste, y las sesiones CLI de los agentes se auto-resumen. [motor de terminal →](uxnandesktop/architecture/02b-terminal-engine.md)
+- **Orquestación multi-agente**: difunde un mensaje a varios agentes a la vez, o encadénalos en una corrida durable con aprobaciones y reintentos. [docs →](uxnandesktop/docs/orchestration.md)
+- **Una interfaz completamente traducida**: cada pantalla en inglés y español, no solo un puñado de textos. [i18n →](uxnandesktop/docs/i18n.md)
+- **Auto-actualizaciones dentro de la app**: canales estable y nightly, descargados en segundo plano, instalados solo cuando tus agentes están inactivos. [docs →](uxnandesktop/docs/updates.md)
+
+## Funciona con cualquier agente CLI
+
+Uxnan Desktop es terminal-céntrico: si corre en una terminal, corre en uxnan.
+Agrega cualquier CLI como agente personalizado y se lanza como cualquier otro,
+sin trabajo de integración de por medio. Los siete de abajo traen
+**integración profunda de primera clase** de fábrica: estado preciso de
+working / blocked / waiting / done, auto-resume de sesión, descubrimiento de
+modelos en vivo, y knobs de ejecución por agente.
+
+<p align="center">
+  <kbd><img src="assets/agents/claudecode.svg" width="16" valign="middle" alt="" /> Claude Code</kbd>
+  <kbd><img src="assets/agents/codex.svg" width="16" valign="middle" alt="" /> Codex</kbd>
+  <kbd><img src="assets/agents/opencode.svg" width="16" valign="middle" alt="" /> OpenCode</kbd>
+  <kbd><img src="assets/agents/pi.svg" width="16" valign="middle" alt="" /> Pi</kbd>
+  <kbd><img src="assets/agents/grok.svg" width="16" valign="middle" alt="" /> Grok</kbd>
+  <kbd><img src="assets/agents/antigravity.svg" width="16" valign="middle" alt="" /> Antigravity</kbd><sup>*</sup>
+  <kbd><img src="assets/agents/zero.svg" width="16" valign="middle" alt="" /> Zero</kbd>
+  <kbd>+ cualquier agente CLI</kbd>
+</p>
+
+<p align="center">
+  <sub>*La integración de Antigravity es parcial: corre one-shot por turno y no tiene un canal de aprobación en vivo.</sub>
+</p>
+
+<p align="center">
+  Cada uno corre como el CLI local oficial de su proveedor, bajo la cuenta o suscripción<br />
+  con la que ya iniciaste sesión: uxnan no llama a ninguna API de proveedor, no guarda<br />
+  una key ni integra un SDK. Solo maneja la terminal, tal como lo harías tú.<br />
+  <b>Estos mismos siete son los que Uxnan Mobile maneja desde tu teléfono.</b>
+</p>
+
+---
+
+## Uxnan Mobile: tus agentes, en tu bolsillo
+
+<!-- image added manually by the maintainer -->
+<p align="center">
+  <img src="assets/uxnan-mobile.png" alt="Uxnan Mobile mostrando una conversación en streaming, el selector de agente y modelo, y un diff de Git" width="960" />
+</p>
+
+Es un cliente real, no una página de estado: las conversaciones **llegan en vivo**
+y sobreviven a navegar fuera y volver, una **cola de mensajes** te deja enviar
+seguimientos mientras un agente sigue trabajando, puedes adjuntar **imágenes**,
+elegir el **agente y el modelo** por conversación, revisar y hacer stage de un
+**diff de Git**, y recibir una **notificación push** en cuanto un agente termina,
+todo sobre el mismo canal cifrado de extremo a extremo que habla el bridge.
+
+**Estado: Android está alpha-ready.** iOS ya está escrito pero aún no se publica,
+espera assets de desarrollador de Apple que el proyecto todavía no tiene.
+
+### Cómo se conecta
+
+Uxnan Mobile **no** se empareja con Uxnan Desktop. Se empareja con
+**`uxnan-bridge`**, un pequeño daemon que corre en tu PC por su cuenta: no
+necesitas tener Desktop instalado para usar Mobile, ni viceversa:
+
+```bash
+npm install -g uxnan-bridge
+uxnan-bridge start
 ```
 
-## Qué hace cada componente
-
-Uxnan es un solo repositorio con cinco proyectos — más el sitio web público en
-[`web/`](web/README.md), que no publica ningún artefacto. Cada uno tiene su propio README
-con la historia completa; aquí va la versión corta y a dónde ir después.
-
-### 📱 `Uxnanmobile` — la app móvil
-
-![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
-![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
-![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![iOS](https://img.shields.io/badge/iOS-000000?style=for-the-badge&logo=apple&logoColor=white)
-
-Una app Flutter (Android + iOS) que convierte tu teléfono en un control remoto de
-los agentes en tu PC. Mira las conversaciones llegar en tiempo real, envía
-instrucciones, adjunta imágenes, dicta por voz, revisa diffs, haz commit y push,
-y recibe una notificación en cuanto un agente termina — todo sobre el canal
-cifrado y bridge-first.
-
-<a href="https://sink.gamas.workers.dev/uxnan-android">
-  <img alt="Disponible en Google Play" src="https://play.google.com/intl/es-419_us/badges/static/images/badges/es-419_badge_web_generic.png" height="64" />
-</a>
-
-→ **[Lee el README de la app móvil](uxnanmobile/README.md)**
+Eso levanta el daemon e imprime el QR de emparejamiento ahí mismo, en la
+terminal. Escanéalo desde la app (o escribe el código corto que imprime) y quedas
+emparejado. El teléfono se conecta **directo** por tu LAN o Tailscale primero, y
+solo cae a un relay opcional y self-hosted cuando estás fuera de esa red; sea
+cual sea la ruta, cada byte va sellado de extremo a extremo antes de salir de tu
+teléfono. Configuración completa en **[bridge/README.md](bridge/README.md)**.
 
 ---
 
-### 🖥️ `Uxnandesktop` — la app de escritorio
+## Instalación
 
-![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
-![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)
-![Svelte](https://img.shields.io/badge/Svelte_5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
-![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=white)
+### Uxnan Desktop
 
-Un **Agent Development Environment** ligero construido con Tauri 2, Rust y Svelte
-5. Renderiza con el webview nativo del sistema operativo en vez de empaquetar un
-segundo navegador, y de ahí sale la diferencia frente a las alternativas basadas
-en Electron: su propio núcleo ocupa ~40 MB, y una sesión típica ronda los
-**250 MB** — medidos, no estimados (Windows 11, WebView2 150, build release;
-método y cifras completas en
-[`uxnandesktop/docs/resource-benchmarks.md`](uxnandesktop/docs/resource-benchmarks.md)).
+Descarga el último release para tu plataforma desde
+**[GitHub Releases](https://github.com/luisgamas/uxnan/releases/latest)**:
 
-La idea central: cada tarea vive en su propio git worktree con su propio agente
-corriendo en un pseudoterminal independiente. Puedo tener 5 agentes trabajando en
-paralelo sin que uno bloquee a otro, cambiar entre ellos con un click (sin `git
-stash`, sin `git checkout`), y revisar los cambios de cada uno en un visor de
-diffs integrado (CodeMirror 6, unificado + lado a lado, staging por hunk) antes
-de hacer commit.
+| Plataforma | Qué descargar |
+|---|---|
+| Windows | el `.msi`, o el instalador NSIS `_x64-setup.exe` |
+| macOS *(experimental, sin firma)* | `_x64.dmg` (Intel) o `_aarch64.dmg` (Apple Silicon) |
+| Linux | `.deb`, `.AppImage`, o `.rpm` |
 
-No integra el SDK de ningún agente. Es terminal-centrico: cualquier agente CLI
-funciona sin modificación.
+Aviso honesto: los instaladores de Windows todavía no están firmados, así que
+SmartScreen avisará en el primer arranque (**Más información → Ejecutar de todas
+formas**), y las builds de macOS están sin firmar ni notarizar, así que Gatekeeper
+las bloquea hasta que autorizas la app una vez a mano. Ve la
+**[guía de instalación en macOS](uxnandesktop/docs/install-macos.md)**. Es el
+estado normal de un proyecto alpha sin certificado de firma pagado todavía, no
+una señal de que algo está mal. ¿Prefieres compilarla tú mismo? Ve
+**[compilar desde el código fuente](uxnandesktop/docs/build.md)**.
 
-<a href="https://github.com/luisgamas/uxnan/releases">
-  <img alt="Descargar desde GitHub Releases" src="https://img.shields.io/badge/Descargar-GitHub_Releases-24292e?style=for-the-badge&logo=github&logoColor=white"/>
-</a>
+### Uxnan Mobile
 
-> **La compilación de macOS es EXPERIMENTAL y sin firma** (DMGs separados para
-> Intel y Apple Silicon): macOS la marca como de un "desarrollador no
-> identificado", así que la autorizas a mano una sola vez
-> ([guía de instalación en macOS](uxnandesktop/docs/install-macos.md)). También
-> puedes [compilarla en tu propia Mac](uxnandesktop/docs/build.md); los issues/PRs
-> que mejoren los instaladores de macOS — o ayuden a usuarios no técnicos — son
-> muy bienvenidos.
+<p>
+  <a href="https://sink.gamas.workers.dev/uxnan-android">
+    <img alt="Disponible en Google Play" src="https://play.google.com/intl/es-419_us/badges/static/images/badges/es-419_badge_web_generic.png" height="64" />
+  </a>
+</p>
 
-→ **[Lee el README de la app de escritorio](uxnandesktop/README.md)**
+Android está en **[Google Play, open testing](https://sink.gamas.workers.dev/uxnan-android)**.
+iOS todavía no se publica, pero el código ya existe: es un proyecto Flutter, así
+que puedes compilarla y correrla tú mismo en tu propia Mac (ve
+**[uxnanmobile/README.md → Getting started](uxnanmobile/README.md#getting-started)**).
+Aviso: las notificaciones push podrían no funcionar en una compilación propia de
+iOS, porque las credenciales de firma de APNs no vienen incluidas en el repo.
 
----
+### El bridge (solo si quieres Mobile)
 
-### 🌉 `Bridge` — el daemon en tu PC
+```bash
+npm install -g uxnan-bridge
+```
 
-![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-000000?style=for-the-badge&logo=json&logoColor=white)
-![WebSocket](https://img.shields.io/badge/WebSocket-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
-
-El corazón del producto. Un pequeño daemon Node.js que corre en tu PC, mantiene
-la conexión cifrada de extremo a extremo con tu teléfono (protocolo E2EE: X25519
-+ HKDF + Ed25519 + AES-256-GCM) y maneja a los agentes por ti, lanzando el **CLI
-local oficial** de cada uno tal como lo harías en una terminal. Sin API de
-proveedor, sin SDK, sin keys: cada agente corre bajo la cuenta con la que ya
-iniciaste sesión.
-
-**Agentes reales cableados:** OpenCode, Claude Code, Codex, pi, Gemini CLI, Antigravity, Zero, Grok.
-
-→ **[Lee el README del bridge](bridge/README.md)**
+Ve **[bridge/README.md](bridge/README.md)** para el CLI completo, el autoarranque,
+y los prerequisitos de inicio de sesión por agente.
 
 ---
-
-### 🔁 `Relay` — el salto opcional fuera de la LAN
-
-![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
-![E2EE](https://img.shields.io/badge/E2EE_OPACO-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
-
-Un relay WebSocket diminuto y stateless que puedes self-hostear para cuando tu
-teléfono y tu PC no están en la misma red. Reenvía **sobres E2EE sellados** y
-nada más — nunca ve tu código, tus diffs, tus keys ni una línea de texto plano.
-La mayoría del tiempo ni lo necesitas.
-
-→ **[Lee el README del relay](relay/README.md)**
-
----
-
-### 📦 `Shared` — el lenguaje común
-
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON Schema](https://img.shields.io/badge/JSON_Schema-000000?style=for-the-badge&logo=json&logoColor=white)
-
-La única fuente de verdad para los **contratos JSON-RPC + E2EE** que habla cada
-parte de Uxnan. El bridge y el relay lo consumen directo; la app móvil mantiene
-equivalentes en Dart sincronizados a mano. Si dos componentes necesitan ponerse
-de acuerdo en la forma de un mensaje, se ponen de acuerdo aquí.
-
-- **JSON-RPC**: tipos de envelope + constructores, códigos de error
-  (`-32000..-32009` + estándar), registro de métodos tipado (locked en
-  build-time contra `METHOD_NAMES`).
-- **E2EE**: mensajes de handshake, transcript builder, `SecureEnvelope`,
-  `PairingPayload` v2 (con `hosts: string[]` para direccionamiento directo).
-- **Modelos de dominio** (thread/turn/message, git, workspace, project, auth,
-  session, approval) y **contratos de agente** (`IAgentAdapter`,
-  `AgentCapabilities`, `AgentConfig`).
-- **Validación**: validadores basados en Ajv para requests, responses, envelopes
-  E2EE, payloads de pairing y payloads de push.
-
-→ **[Lee el README de los contratos compartidos](shared/README.md)**
 
 ## Seguridad
 
-![X25519](https://img.shields.io/badge/X25519-Intercambio_de_Claves-2ea44f?style=for-the-badge)
-![Ed25519](https://img.shields.io/badge/Ed25519-Firmas-2ea44f?style=for-the-badge)
-![AES-256-GCM](https://img.shields.io/badge/AES--256--GCM-Cifrado-2ea44f?style=for-the-badge)
-![HKDF-SHA256](https://img.shields.io/badge/HKDF--SHA256-Derivación_de_Claves-2ea44f?style=for-the-badge)
-
-Aquí la privacidad no es una función, es el cimiento. Todo lo que viaja entre el
-teléfono y la PC pasa por un canal cifrado de extremo a extremo real: las claves
-de sesión salen de un intercambio efímero X25519, las identidades se autentican
-con firmas Ed25519 y el tráfico se sella con AES-256-GCM. El relay, cuando
-siquiera interviene, es puro transporte y jamás sostiene una clave. Las
-respuestas del bridge también van sanitizadas — el estado de sesión, por ejemplo,
-se reporta por agente y **nunca** devuelve un token.
-
-Si encuentras una vulnerabilidad, por favor no abras un issue público — revisa
-[`SECURITY.md`](SECURITY.md).
-
-## Estado
-
-![Phase](https://img.shields.io/badge/PHASE-ALPHA_(MVP_en_progreso)-orange?style=for-the-badge)
-
-Uxnan está en **alpha**, y el ciclo central ya funciona de extremo a extremo.
-Desde el teléfono puedo emparejarme con el bridge y mantener una conversación
-real en streaming con **ocho agentes** —OpenCode, Claude Code, Codex, pi,
-Gemini CLI, Antigravity, Zero y Grok— sobre el canal cifrado. La app de escritorio es alpha-funcional por
-sí sola. Las notificaciones push están vivas en Android (iOS depende de assets de
-Apple).
-
-Aquí va la foto rápida; el estado detallado y siempre al día de cada proyecto
-vive en su propio `FOR-DEV.md`:
-
-| Proyecto | Cómo está | Detalle |
-|---|---|---|
-| [`uxnanmobile/`](uxnanmobile/README.md) | MVP cableado, Android alpha-ready; iOS pendiente de assets de Apple | [estado](uxnanmobile/FOR-DEV.md) |
-| [`uxnandesktop/`](uxnandesktop/README.md) | Alpha-funcional como app standalone | [estado](uxnandesktop/FOR-DEV.md) |
-| [`bridge/`](bridge/README.md) | Implementado; 8 agentes reales cableados | [estado](bridge/FOR-DEV.md) |
-| [`relay/`](relay/README.md) | Implementado; opcional / self-hosted | [estado](relay/FOR-DEV.md) |
-| [`shared/`](shared/README.md) | Implementado; contratos bloqueados en CI | [README](shared/README.md) |
-
-Es software temprano, sin usuarios ni datos de producción todavía, así que las
-cosas aún pueden cambiar donde una idea mejor lo justifique.
+Cada byte entre tu teléfono y tu PC va sellado de extremo a extremo: un
+intercambio de claves X25519, identidades firmadas con Ed25519, y cifrado
+AES-256-GCM; el relay opcional solo ve sobres sellados, nunca tu código. Las
+acciones de GitHub pasan por tu propio CLI `gh`, que guarda su token OAuth en el
+keychain de tu sistema. Uxnan solo lee un estado de sesión sanitizado y nada
+más. ¿Encontraste una vulnerabilidad? Por favor no abras un issue público. Ve
+**[SECURITY.md](SECURITY.md)**.
 
 ## Apoya el proyecto
 
-Uxnan es gratis y de código abierto, hecho en abierto y en mi tiempo libre. Si te
-resulta útil y quieres ayudar a que siga avanzando, un café ayuda muchísimo — y
-de verdad se agradece. 🙏
+Uxnan es gratis, de código abierto, y hecho en mi tiempo libre. Si te resulta
+útil, una estrella me dice que la gente de verdad lo está usando, y un café
+ayuda de verdad a que siga avanzando. 🙏
 
 <p align="center">
   <a href="https://sink.gamas.workers.dev/buymeacoffee">
     <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/buy_me_a_coffe/buy_me_a_coffe_fill.png" height="40" alt="Buy Me a Coffee" />
   </a>
   <a href="https://sink.gamas.workers.dev/paypal-donations">
-    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/paypal/paypal_fill.png" height="40" alt="Donate via PayPal" />
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/paypal/paypal_fill.png" height="40" alt="Donar vía PayPal" />
   </a>
   <a href="https://sink.gamas.workers.dev/github-sponsor">
-    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/github_sponsor/github_sponsor_fill.png" height="40" alt="Sponsor on GitHub" />
+    <img src="https://raw.githubusercontent.com/luisgamas/buttons-design/main/github_sponsor/github_sponsor_fill.png" height="40" alt="Patrocinar en GitHub" />
   </a>
 </p>
 
-## Para colaboradores y desarrolladores
+## Contribuir
 
-Si quieres compilar, correr o contribuir a Uxnan, todo lo que necesitas vive
-fuera del README para que la documentación de arriba se mantenga enfocada:
-
-- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — cómo preparar el entorno, los
-  controles de calidad y cómo abrir un buen PR.
-- **[`AGENTS.md`](AGENTS.md)** — la única fuente de verdad para convenciones,
-  reglas de arquitectura y cómo se mantiene sincronizada la documentación. Léelo
-  antes de cualquier cambio no trivial.
-- **Docs por proyecto** — cada proyecto guarda guías enfocadas en su propio
-  `docs/` y un `CHANGELOG.md`: [`bridge/docs/`](bridge/docs/) ·
-  [`relay/docs/`](relay/docs/) · [`uxnanmobile/docs/`](uxnanmobile/docs/) ·
-  [`uxnandesktop/docs/`](uxnandesktop/docs/) · [`web/docs/`](web/docs/).
-- **La especificación** — los documentos de arquitectura son la fuente de verdad
-  del comportamiento entre componentes:
-  [`architecture/`](architecture/00-index.md) (móvil, bridge, relay, shared) y
-  [`uxnandesktop/architecture/`](uxnandesktop/architecture/00-index.md)
-  (escritorio).
-- **Releases y versionado** — [`VERSIONS.md`](VERSIONS.md).
+¿Quieres compilar, correr o contribuir a Uxnan? Empieza con
+**[CONTRIBUTING.md](CONTRIBUTING.md)** para la preparación y los controles de
+calidad, y **[AGENTS.md](AGENTS.md)**, la única fuente de verdad para
+convenciones y reglas de arquitectura. Cada componente también tiene su propio
+`README.md`, `docs/` y `CHANGELOG.md`:
+[`uxnandesktop/`](uxnandesktop/README.md) ·
+[`uxnanmobile/`](uxnanmobile/README.md) · [`bridge/`](bridge/README.md) ·
+[`relay/`](relay/README.md) · [`shared/`](shared/README.md).
 
 ## Licencia
 
 Uxnan se publica bajo la [Mozilla Public License 2.0](LICENSE).
-
----
-
-*Uxnan — un nombre sin relación ni derivación de ningún producto existente.*
