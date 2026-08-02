@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
+import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
@@ -24,6 +25,8 @@ sealed class MessageContent {
       TextContent.typeName => TextContent.fromJson(json),
       ThinkingContent.typeName => ThinkingContent.fromJson(json),
       CompactionContent.typeName => CompactionContent.fromJson(json),
+      AssistantResponseBoundaryContent.typeName =>
+        AssistantResponseBoundaryContent.fromJson(json),
       CodeContent.typeName => CodeContent.fromJson(json),
       ImageContent.typeName => ImageContent.fromJson(json),
       ToolUseContent.typeName => ToolUseContent.fromJson(json),
@@ -51,6 +54,54 @@ sealed class MessageContent {
 
   /// Serializes this content to JSON.
   Map<String, dynamic> toJson();
+}
+
+/// Zero-text metadata separating native assistant messages inside one turn.
+///
+/// It is persisted in the ordered content list so the conversation can keep
+/// earlier progress replies and collapse them without treating the marker as
+/// prose for previews, copying or fingerprints.
+class AssistantResponseBoundaryContent extends MessageContent
+    with EquatableMixin {
+  /// Creates an assistant response boundary.
+  const AssistantResponseBoundaryContent({
+    this.phase = AssistantResponsePhase.unknown,
+    this.itemId,
+  });
+
+  /// Decodes the bridge boundary block.
+  factory AssistantResponseBoundaryContent.fromJson(
+    Map<String, dynamic> json,
+  ) =>
+      AssistantResponseBoundaryContent(
+        phase: assistantResponsePhaseFromWire(json['phase']),
+        itemId: json['itemId'] as String?,
+      );
+
+  /// Native semantic phase, when exposed by the agent protocol.
+  final AssistantResponsePhase phase;
+
+  /// Native message/item id, when available.
+  final String? itemId;
+
+  /// Wire type discriminator.
+  static const String typeName = 'assistant_response_boundary';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'phase': assistantResponsePhaseToWire(phase),
+        if (itemId != null) 'itemId': itemId,
+      };
+
+  @override
+  List<Object?> get props => [phase, itemId];
 }
 
 /// A durable marker that the agent compacted earlier conversation context.

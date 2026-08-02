@@ -45,6 +45,9 @@ push validation (FOR-HUMAN).
   run — in the store and on the `stream/content/block` wire — so a text run is
   never severed mid-word, live and re-synced order always match, and subagent
   text/usage never folds into the main message.
+  Native assistant envelopes from Codex, Claude and pi are separated by durable
+  `assistant_response_boundary` blocks; terminal text is reconciled additively,
+  so an agent's final item cannot erase progress/commentary already shown.
 - **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
   queued (status `queued`) instead of clobbering it, and drains automatically on
   completion; run options are frozen at queue time; the queue holds after a stop

@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — assistant response boundaries
+
+- Added the durable `AssistantResponseBoundaryBlock` metadata contract. It
+  separates multiple native assistant messages produced inside one turn while
+  leaving their prose as ordinary ordered text segments.
+
 ### Added — explicit compaction and agent-deprecation contracts
 
 - Added the durable `CompactionContentBlock` (`type: 'compaction'`) with an

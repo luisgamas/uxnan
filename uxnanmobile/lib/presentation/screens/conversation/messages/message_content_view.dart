@@ -58,6 +58,7 @@ class MessageContentView extends StatelessWidget {
       // AssistantTurnView; rendered here too for completeness.
       final ThinkingContent c => _StandaloneThinkingSection(text: c.text),
       final CompactionContent c => _CompactionMarker(content: c),
+      AssistantResponseBoundaryContent() => const SizedBox.shrink(),
       final CodeContent c => _CodeBlock(content: c),
       final CommandExecutionContent c => _CommandCard(content: c),
       final SystemContent c => _SystemBanner(content: c),
@@ -1786,6 +1787,7 @@ class AssistantTurnView extends ConsumerStatefulWidget {
 
 class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
   String? _expandedProcess;
+  bool _previousResponsesExpanded = false;
 
   void _toggleProcess(String id) {
     setState(() => _expandedProcess = _expandedProcess == id ? null : id);
@@ -1798,6 +1800,39 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final thinking = StringBuffer();
     final diffs = <DiffContent>[];
     final prose = StringBuffer();
+    final responseGroups = <List<MessageContent>>[];
+    var response = <MessageContent>[];
+
+    // Native protocols may produce several assistant messages in one turn.
+    // Boundaries are zero-text metadata: during streaming every group remains
+    // visible; once settled, all but the last response move into one disclosure
+    // without changing the persisted content or the copy projection.
+    for (final content in message.contents) {
+      switch (content) {
+        case final ThinkingContent reasoning:
+          thinking.write(reasoning.text);
+        case final DiffContent diff:
+          diffs.add(diff);
+        case AssistantResponseBoundaryContent():
+          if (response.isNotEmpty) {
+            responseGroups.add(response);
+            response = <MessageContent>[];
+          }
+        case final TextContent text:
+          response.add(text);
+          if (text.text.isNotEmpty) {
+            if (prose.isNotEmpty) prose.write('\n\n');
+            prose.write(text.text);
+          }
+        default:
+          response.add(content);
+      }
+    }
+    if (response.isNotEmpty) responseGroups.add(response);
+    final collapsePrevious = !message.isStreaming && responseGroups.length > 1;
+    final visibleContents = collapsePrevious
+        ? responseGroups.last
+        : [for (final group in responseGroups) ...group];
     // Ordered segments: work-log cards and prose/other blocks IN THE ORDER the
     // agent produced them, so a work log sits just above the response it
     // precedes and interleaved responses don't collapse into one block.
@@ -1807,6 +1842,19 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final pendingText = StringBuffer();
     var pendingTextIsStreaming = false;
     var workLogIndex = 0;
+
+    if (collapsePrevious) {
+      segments.add(
+        _PreviousResponsesSection(
+          responses: responseGroups.sublist(0, responseGroups.length - 1),
+          threadId: message.threadId,
+          expanded: _previousResponsesExpanded,
+          onToggle: () => setState(
+            () => _previousResponsesExpanded = !_previousResponsesExpanded,
+          ),
+        ),
+      );
+    }
 
     void gap() {
       if (segments.isNotEmpty) {
@@ -1842,12 +1890,8 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       );
     }
 
-    for (final content in message.contents) {
+    for (final content in visibleContents) {
       switch (content) {
-        case final ThinkingContent reasoning:
-          thinking.write(reasoning.text);
-        case final DiffContent diff:
-          diffs.add(diff);
         case CommandExecutionContent() || ToolUseContent():
           flushText();
           pendingCommands.add(content);
@@ -1856,8 +1900,6 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           if (text.text.isNotEmpty) {
             if (pendingText.isNotEmpty) pendingText.write('\n\n');
             pendingText.write(text.text);
-            if (prose.isNotEmpty) prose.write('\n\n');
-            prose.write(text.text);
           }
           pendingTextIsStreaming = text.isStreaming;
         default:
@@ -1902,6 +1944,138 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Collapses assistant progress/commentary messages that preceded the final
+/// response in the same turn. Nothing is summarized or discarded: expansion
+/// renders the original ordered content blocks verbatim.
+class _PreviousResponsesSection extends StatelessWidget {
+  const _PreviousResponsesSection({
+    required this.responses,
+    required this.threadId,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final List<List<MessageContent>> responses;
+  final String threadId;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final duration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
+    final label = l10n.conversationPreviousMessages(responses.length);
+
+    return Semantics(
+      container: true,
+      button: true,
+      expanded: expanded,
+      label: label,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            key: const ValueKey('previous-responses-toggle'),
+            onTap: onToggle,
+            borderRadius: const BorderRadius.all(UxnanRadius.full),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+              child: Row(
+                children: [
+                  Expanded(child: Divider(color: colors.outlineVariant)),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Text(
+                    label,
+                    style: textTheme.labelMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UxnanSpacing.xs),
+                  AnimatedRotation(
+                    turns: expanded ? 0.5 : 0,
+                    duration: duration,
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(child: Divider(color: colors.outlineVariant)),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: UxnanSpacing.sm),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerLow,
+                        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(UxnanSpacing.md),
+                        child: _PreviousResponsesBody(
+                          responses: responses,
+                          threadId: threadId,
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviousResponsesBody extends StatelessWidget {
+  const _PreviousResponsesBody({
+    required this.responses,
+    required this.threadId,
+  });
+
+  final List<List<MessageContent>> responses;
+  final String threadId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var responseIndex = 0;
+            responseIndex < responses.length;
+            responseIndex++) ...[
+          if (responseIndex > 0) ...[
+            const SizedBox(height: UxnanSpacing.md),
+            Divider(color: Theme.of(context).colorScheme.outlineVariant),
+            const SizedBox(height: UxnanSpacing.md),
+          ],
+          for (var contentIndex = 0;
+              contentIndex < responses[responseIndex].length;
+              contentIndex++) ...[
+            if (contentIndex > 0) const SizedBox(height: UxnanSpacing.sm),
+            MessageContentView(
+              content: responses[responseIndex][contentIndex],
+              threadId: threadId,
+            ),
+          ],
+        ],
+      ],
     );
   }
 }

@@ -16,6 +16,7 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -1592,20 +1593,25 @@ class ThreadManager {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
     if (live == null) return;
-    // The finalized message must carry the bridge's AUTHORITATIVE final text
-    // ([finalText], the full answer), never just whatever the live buffer
-    // happened to catch — a buffer rebuilt after a mid-turn reconnect may hold
-    // only the post-reconnect tail. Reconcile the two:
+    // Reconcile the terminal adapter text with the live buffer without ever
+    // deleting prose the user already saw. Most adapters return the complete
+    // accumulated answer, but some protocols return only their last native
+    // assistant item. In that divergent case keep both, separated by durable
+    // response metadata; the immediate `turn/read` below then converges to the
+    // bridge's exact record.
     //  - buffer text == finalText → the live interleave is complete; keep it.
     //  - buffer text is a strict PREFIX of finalText → only the tail was
     //    missed; extend the trailing run so the interleave survives intact.
-    //  - anything else (buffer empty, or it holds only a mid-turn tail) → use
-    //    finalText with the live blocks (blocks-first); `_reconcileTurn` then
-    //    restores the bridge's exact interleave right after.
+    //  - terminal text is already contained in the buffer → keep the buffer.
+    //  - buffer empty → append the terminal text after any received blocks.
+    //  - anything else → retain it as another response, never replace.
     final liveText =
         live.segments.whereType<TextContent>().map((t) => t.text).join();
     final List<MessageContent> baseContents;
-    if (finalText == null || finalText.isEmpty || liveText == finalText) {
+    if (finalText == null ||
+        finalText.isEmpty ||
+        liveText == finalText ||
+        liveText.contains(finalText)) {
       baseContents = _assistantContentsOrdered(
         live.thinking,
         live.segments,
@@ -1618,11 +1624,35 @@ class ThreadManager {
         live.segments,
         streaming: false,
       );
-    } else {
-      baseContents = _assistantContents(
-        finalText,
+    } else if (liveText.isNotEmpty && finalText.contains(liveText)) {
+      final at = finalText.indexOf(liveText);
+      live.expandText(
+        prefix: finalText.substring(0, at),
+        suffix: finalText.substring(at + liveText.length),
+      );
+      baseContents = _assistantContentsOrdered(
         live.thinking,
-        live.segments.where((c) => c is! TextContent).toList(),
+        live.segments,
+        streaming: false,
+      );
+    } else if (liveText.isEmpty) {
+      live.appendText(finalText);
+      baseContents = _assistantContentsOrdered(
+        live.thinking,
+        live.segments,
+        streaming: false,
+      );
+    } else {
+      live
+        ..addBlock(
+          const AssistantResponseBoundaryContent(
+            phase: AssistantResponsePhase.finalAnswer,
+          ),
+        )
+        ..appendText(finalText);
+      baseContents = _assistantContentsOrdered(
+        live.thinking,
+        live.segments,
         streaming: false,
       );
     }
@@ -1870,7 +1900,7 @@ class ThreadManager {
   }
 
   /// Whether two content lists carry the same blocks in the same order, by an
-  /// `isStreaming`-agnostic `(type, plain text)` signature per block. Used to
+  /// `isStreaming`-agnostic content equality. Used to
   /// decide if a stored assistant message must be rewritten on re-sync — it is
   /// true when only the streaming flag differs (no rewrite) and false when the
   /// order or content changed (e.g. a turn stored blocks-first now arrives
@@ -1881,7 +1911,17 @@ class ThreadManager {
   ) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
-      if (a[i].type != b[i].type || a[i].asPlainText != b[i].asPlainText) {
+      final left = a[i];
+      final right = b[i];
+      if (left.type != right.type) return false;
+      if (left is TextContent && right is TextContent) {
+        if (left.text != right.text) return false;
+      } else if (left is ThinkingContent && right is ThinkingContent) {
+        if (left.text != right.text) return false;
+      } else if (left != right) {
+        // Metadata-only blocks (response boundaries and compactions) have an
+        // empty plain-text projection, so compare their complete value instead
+        // of accidentally treating every instance as identical.
         return false;
       }
     }
@@ -1971,6 +2011,22 @@ class _LiveTurn {
     } else {
       segments.add(TextContent(delta));
     }
+  }
+
+  /// Adds terminal text that surrounded a partial live buffer (typically after
+  /// reconnect) while preserving every structured block's relative position.
+  void expandText({required String prefix, required String suffix}) {
+    final firstText = segments.indexWhere((content) => content is TextContent);
+    final lastText =
+        segments.lastIndexWhere((content) => content is TextContent);
+    if (firstText < 0 || lastText < 0) {
+      appendText(prefix + suffix);
+      return;
+    }
+    final first = segments[firstText] as TextContent;
+    segments[firstText] = TextContent(prefix + first.text);
+    final last = segments[lastText] as TextContent;
+    segments[lastText] = TextContent(last.text + suffix);
   }
 
   /// Adds a structured block. When [beforeText] is set (the block came from a

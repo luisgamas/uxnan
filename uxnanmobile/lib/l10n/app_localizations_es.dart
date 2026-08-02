@@ -2708,5 +2708,16 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String conversationPreviousMessages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count mensajes anteriores',
+      one: '1 mensaje anterior',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get licensesError => 'No se pudieron cargar las licencias.';
 }

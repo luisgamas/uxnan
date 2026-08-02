@@ -381,3 +381,29 @@ test('completeTurn extends the trailing run when the final text has an unstreame
   assert.equal(assistant?.content, 'first second and tail');
   await rm(baseDir, { recursive: true, force: true });
 });
+
+test('completeTurn never erases streamed responses when terminal text diverges', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendDelta(thread.id, turnId, 'Progress update.', 3);
+  await store.appendBlock(
+    thread.id,
+    turnId,
+    { type: 'assistant_response_boundary', phase: 'commentary' },
+    4,
+  );
+  // A misbehaving adapter supplies only its last response at completion.
+  await store.completeTurn(thread.id, turnId, 'Final answer.', 5);
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'Progress update.Final answer.');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'text', text: 'Progress update.' },
+    { type: 'assistant_response_boundary', phase: 'commentary' },
+    { type: 'assistant_response_boundary', phase: 'final_answer' },
+    { type: 'text', text: 'Final answer.' },
+  ]);
+  await rm(baseDir, { recursive: true, force: true });
+});

@@ -86,6 +86,7 @@ import {
 import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
 import { codexReasoningText, type CodexFileChange } from './codex-tools.js';
 import {
+  assistantResponseBoundaryBlock,
   commandBlock,
   compactionBlock,
   fileChangeBlock,
@@ -208,8 +209,10 @@ interface ActiveRun {
   /** The Codex app-server's turn id (used by `turn/interrupt`). */
   codexTurnId: string | null;
   threadId: string;
-  /** Accumulated final-text of the last `agentMessage` item-completed, for `turn/completed`. */
-  lastAgentText: string;
+  /** Text already streamed for each native `agentMessage` item. */
+  agentTextByItem: Map<string, string>;
+  /** Every assistant item concatenated in production order for completion. */
+  allAgentText: string;
   /** Model the turn ran on, for looking up its context window on completion. */
   model?: string;
 }
@@ -443,7 +446,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       bridgeTurnId: turnId,
       codexTurnId: null,
       threadId,
-      lastAgentText: '',
+      agentTextByItem: new Map(),
+      allAgentText: '',
       ...(typeof model === 'string' ? { model } : {}),
     });
     // Warm the per-model context-window cache (once) so completion can emit a
@@ -625,10 +629,29 @@ export class CodexAdapter extends BaseAgentAdapter {
     const itype = item['type'];
     switch (itype) {
       case 'agentMessage': {
-        // Final assembled text arrives here; deltas already streamed, so we
-        // record it for `turn/completed` to fall back to.
+        // Codex can produce several distinct assistant messages in one turn
+        // (commentary/progress followed by `final_answer`). Reconcile each
+        // item's assembled text against its own deltas, then persist a durable
+        // boundary. The terminal turn event must never replace the accumulated
+        // prose with only the last item.
         const text = typeof item['text'] === 'string' ? (item['text'] as string) : '';
-        run.lastAgentText = text;
+        const itemId = typeof item['id'] === 'string' ? (item['id'] as string) : '';
+        const key = itemId || '__unidentified_agent_message__';
+        const streamed = run.agentTextByItem.get(key) ?? '';
+        const unseen = unseenCompleteText(streamed, text);
+        if (unseen) this.#emitAgentDelta(run, key, unseen);
+        if (text.length > 0 || streamed.length > 0) {
+          const rawPhase = item['phase'];
+          const phase =
+            rawPhase === 'commentary' || rawPhase === 'final_answer' ? rawPhase : 'unknown';
+          this.emit({
+            type: 'block',
+            threadId: run.threadId,
+            turnId: run.bridgeTurnId,
+            data: { content: assistantResponseBoundaryBlock(phase, itemId || undefined) },
+          });
+        }
+        run.agentTextByItem.delete(key);
         return;
       }
       case 'reasoning': {
@@ -780,7 +803,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       threadId: run.threadId,
       turnId: run.bridgeTurnId,
       data: {
-        text: run.lastAgentText,
+        text: run.allAgentText,
         ...(tokens !== undefined
           ? { usage: { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) } }
           : {}),
@@ -790,7 +813,7 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   /**
    * Return the current in-flight run (mutable reference) so item-completed
-   * handlers can accumulate per-run state (`lastAgentText`, etc.) directly on
+   * handlers can accumulate per-run state directly on
    * the stored object. Returns `null` when no turn is active.
    */
   #activeRun(): ActiveRun | null {
@@ -799,7 +822,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   /** Helper: locate the current in-flight run keyed by bridge turnId. */
-  #currentRun(): { turnId: string; threadId: string; cwd: string; lastAgentText: string } | null {
+  #currentRun(): { turnId: string; threadId: string; cwd: string } | null {
     for (const run of this.#active.values()) {
       // There should be exactly one in-flight run for a single adapter; the
       // bridge serializes turns per thread, so this picks the first one.
@@ -807,16 +830,27 @@ export class CodexAdapter extends BaseAgentAdapter {
         turnId: run.bridgeTurnId,
         threadId: run.threadId,
         cwd: this.#defaultCwd,
-        lastAgentText: run.lastAgentText,
       };
     }
     return null;
   }
 
-  #emitDelta(_p: Record<string, unknown>, delta: string): void {
-    const run = this.#currentRun();
+  #emitDelta(p: Record<string, unknown>, delta: string): void {
+    const run = this.#activeRun();
     if (!run) return;
-    this.emit({ type: 'delta', threadId: run.threadId, turnId: run.turnId, data: { text: delta } });
+    const itemId = typeof p['itemId'] === 'string' ? (p['itemId'] as string) : '';
+    this.#emitAgentDelta(run, itemId || '__unidentified_agent_message__', delta);
+  }
+
+  #emitAgentDelta(run: ActiveRun, itemKey: string, delta: string): void {
+    run.agentTextByItem.set(itemKey, (run.agentTextByItem.get(itemKey) ?? '') + delta);
+    run.allAgentText += delta;
+    this.emit({
+      type: 'delta',
+      threadId: run.threadId,
+      turnId: run.bridgeTurnId,
+      data: { text: delta },
+    });
   }
 
   #emitThinking(_p: Record<string, unknown>, delta: string): void {
@@ -1133,4 +1167,14 @@ export function parseCodexConfigModels(toml: string): AgentModel[] {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Return only text missing from an item's delta stream. A divergent assembled
+ * item is appended whole: duplicate prose is preferable to silently deleting
+ * text the user already saw, and the normal protocol path is exact/prefix.
+ */
+function unseenCompleteText(streamed: string, complete: string): string {
+  if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
+  return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
 }

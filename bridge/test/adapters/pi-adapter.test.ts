@@ -167,12 +167,18 @@ test('PiAdapter emits thinking deltas and pairs tool_execution start/end into a 
   const blocks = events
     .filter((e) => e.type === 'block')
     .map((e) => (e.data as { content: Record<string, unknown> }).content);
-  assert.equal(blocks.length, 1);
-  assert.deepEqual(blocks[0], {
+  const command = blocks.find((block) => block['type'] === 'command_execution');
+  const boundary = blocks.find((block) => block['type'] === 'assistant_response_boundary');
+  assert.equal(blocks.length, 2);
+  assert.deepEqual(command, {
     type: 'command_execution',
     command: 'ls',
     status: 'completed',
     output: 'a.txt\nb.txt',
+  });
+  assert.deepEqual(boundary, {
+    type: 'assistant_response_boundary',
+    phase: 'unknown',
   });
 });
 
@@ -252,6 +258,32 @@ test('PiAdapter streams text_delta as deltas and completes with the text + usage
   assert.deepEqual(args.slice(0, 3), ['-p', '--mode', 'json']);
   assert.equal(args.includes('--session-id'), false);
   assert.equal(args[args.length - 1], 'hi');
+});
+
+test('PiAdapter preserves multiple assistant messages including non-streamed text', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    SESSION,
+    '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Checking."}}',
+    assistantEnd('Checking.'),
+    assistantEnd('Done.'),
+    AGENT_END,
+  ]);
+
+  const events = await done;
+  assert.deepEqual(
+    events.filter((event) => event.type === 'delta').map((event) => (event.data as any).text),
+    ['Checking.', 'Done.'],
+  );
+  assert.equal(events.filter((event) => event.type === 'block').length, 2);
+  assert.equal(
+    (events.find((event) => event.type === 'turn_completed')?.data as { text: string }).text,
+    'Checking.Done.',
+  );
 });
 
 test('PiAdapter reuses the captured session id with --session-id next turn', async () => {

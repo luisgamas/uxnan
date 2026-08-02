@@ -4922,6 +4922,12 @@ abstract class AppLocalizations {
   /// **'Context reduced from {before} to about {after} tokens.'**
   String conversationCompactionTokens(String before, String after);
 
+  /// Disclosure label for earlier assistant responses produced within the same turn.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 previous message} other{{count} previous messages}}'**
+  String conversationPreviousMessages(int count);
+
   /// Shown when the license registry failed to load.
   ///
   /// In en, this message translates to:

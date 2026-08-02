@@ -9,6 +9,7 @@ import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
@@ -553,6 +554,52 @@ void main() {
     expect((finalized.contents[0] as TextContent).text, 'first ');
     expect(finalized.contents[1], isA<CommandExecutionContent>());
     expect((finalized.contents[2] as TextContent).text, 'second and tail');
+  });
+
+  test('a divergent terminal text cannot erase responses already shown live',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turn-lossless', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turn-lossless',
+          threadId: 'th1',
+          delta: 'Progress update.',
+        ),
+      )
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turn-lossless',
+          threadId: 'th1',
+          content: AssistantResponseBoundaryContent(
+            phase: AssistantResponsePhase.commentary,
+          ),
+        ),
+      )
+      // Simulate an adapter that incorrectly reports only its last native
+      // assistant message in the terminal event.
+      ..add(
+        const TurnCompletedEvent(
+          turnId: 'turn-lossless',
+          threadId: 'th1',
+          text: 'Final answer.',
+        ),
+      );
+    await _settle();
+
+    final finalized = manager.timeline.messages
+        .firstWhere((message) => message.id == 'stream-turn-lossless');
+    expect(
+      finalized.contents.whereType<TextContent>().map((text) => text.text),
+      ['Progress update.', 'Final answer.'],
+    );
+    expect(
+      finalized.contents.whereType<AssistantResponseBoundaryContent>().length,
+      2,
+    );
   });
 
   test(

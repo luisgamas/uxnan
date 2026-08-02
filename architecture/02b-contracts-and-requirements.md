@@ -379,6 +379,11 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
     (`thread-store.appendBlock`), de modo que la vista en vivo y el re-sync
     rinden el intercalado identico. Ausente/false = caso secuencial (el
     bloque cae en una frontera real de texto y se anexa en orden de llegada).
+  - `assistant_response_boundary` (2026-08, additive): zero-text metadata marking
+    the end of one native assistant message inside a turn. Codex supplies
+    `commentary` / `final_answer`; Claude and pi supply `unknown` boundaries.
+    Clients preserve it in ordered segments, exclude it from copy/previews, and
+    may collapse earlier completed responses without discarding their content.
 - `Message.segments?`: en el re-sync (`turn/list`) el bridge ya no entrega el
   texto (`content`) y los bloques (`blocks`) por separado — eso perdia el
   ORDEN en que se intercalaron y hacia que un turno recuperado mostrara todo
@@ -616,6 +621,8 @@ interface ApprovalRequestBlock {
 - `diff` (Edit/Write/MultiEdit/NotebookEdit; +/- counts; unified hunks)
 - `tool` (cualquier otra herramienta; output truncado)
 - `thinking` (razonamiento del agente; colapsable, default off)
+- `assistant_response_boundary` (metadata separating native assistant messages;
+  zero text, durable, excluded from copy/previews)
 - `image` (inline, base64)
 - `approval` (bloque interactivo: Approve / Reject / "always allow this session")
 - `plan` (checklist; solo informacional, no bloquea)
@@ -864,6 +871,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | RF-THREAD-10 | El estado de la conversacion persiste localmente para acceso offline |
 | RF-THREAD-11 | Un thread nuevo conserva el título del bridge; si sigue siendo placeholder al primer prompt, el móvil deriva y sincroniza un título breve sin sobrescribir títulos manuales ni renombrarlo en prompts posteriores |
 | RF-THREAD-12 | Una compactación de contexto confirmada por el protocolo del agente se persiste como bloque estructurado y se marca en la timeline; el sistema no infiere compactaciones desde texto, errores o variaciones de tokens |
+| RF-THREAD-13 | Multiple native assistant messages inside one turn are preserved in order; terminal reconciliation is additive, and completed earlier responses may collapse without deleting or rewriting them |
 
 ### 4.4 RF-COMP: Composer
 

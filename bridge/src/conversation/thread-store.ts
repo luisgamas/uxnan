@@ -507,10 +507,7 @@ export class ThreadStore {
       const turn = this.#turn(threads, threadId, turnId);
       if (finalText !== undefined) {
         const assistant = turn.messages.find((m) => m.role === 'assistant');
-        if (assistant) {
-          assistant.text = finalText;
-          reconcileSegmentsWithText(assistant, finalText);
-        }
+        if (assistant) reconcileAssistantWithFinalText(assistant, finalText);
       }
       turn.status = 'completed';
       turn.completedAt = now;
@@ -741,25 +738,34 @@ function appendTextSegment(assistant: StoredMessage, delta: string): void {
 }
 
 /**
- * Make the ordered `segments` agree with the turn's authoritative [finalText]
- * (the `turn/completed` text, which replaces the streamed deltas). When the
+ * Reconcile a terminal adapter text with prose already streamed into the
+ * assistant message. Streamed text is user-visible and therefore immutable:
+ * a terminal event may extend it or repeat a subset, but may never erase it.
+ * When the
  * streamed text runs already concatenate to [finalText] — the normal case — the
  * interleave is left untouched. When they concatenate to a strict PREFIX of
  * [finalText] (the completion text carries a tail the deltas never streamed,
  * e.g. an adapter that reports a fuller final message), the missing tail is
  * appended as/onto the trailing text run so the interleave survives intact.
- * Only when the final text genuinely diverges are the text runs dropped and a
- * single trailing text run appended after the blocks (the best possible order
- * without streamed positions). A no-op when no `segments` were ever built (a
- * plain-text turn with no blocks).
+ * A genuinely divergent terminal text is retained as another response item,
+ * after an explicit boundary. This deliberately favors a possible duplicate
+ * over deleting content the user already saw.
  */
-function reconcileSegmentsWithText(assistant: StoredMessage, finalText: string): void {
-  const segments = assistant.segments;
-  if (!segments || segments.length === 0) return;
-  const streamed = segments.filter(isTextSegment).reduce((acc, s) => acc + s.text, '');
-  if (streamed === finalText) return;
-  if (streamed.length > 0 && finalText.startsWith(streamed)) {
+function reconcileAssistantWithFinalText(assistant: StoredMessage, finalText: string): void {
+  const streamed = assistant.text;
+  if (streamed === finalText || (finalText.length > 0 && streamed.includes(finalText))) return;
+
+  if (streamed.length === 0) {
+    assistant.text = finalText;
+    appendTextSegment(assistant, finalText);
+    return;
+  }
+
+  if (finalText.startsWith(streamed)) {
     const tail = finalText.slice(streamed.length);
+    assistant.text = finalText;
+    const segments = assistant.segments;
+    if (!segments || segments.length === 0) return;
     const last = segments[segments.length - 1];
     if (isTextSegment(last)) {
       last.text += tail;
@@ -768,7 +774,23 @@ function reconcileSegmentsWithText(assistant: StoredMessage, finalText: string):
     }
     return;
   }
-  const blocks = segments.filter((s) => !isTextSegment(s));
-  assistant.segments =
-    finalText.length > 0 ? [...blocks, { type: 'text', text: finalText }] : blocks;
+
+  const streamedAt = finalText.indexOf(streamed);
+  if (streamedAt >= 0) {
+    assistant.text = finalText;
+    const segments = assistant.segments;
+    if (!segments || segments.length === 0) return;
+    const firstText = segments.find(isTextSegment);
+    const lastText = [...segments].reverse().find(isTextSegment);
+    if (firstText) firstText.text = finalText.slice(0, streamedAt) + firstText.text;
+    if (lastText) lastText.text += finalText.slice(streamedAt + streamed.length);
+    return;
+  }
+
+  if (finalText.length === 0) return;
+  const boundary = { type: 'assistant_response_boundary', phase: 'final_answer' };
+  assistant.blocks = [...(assistant.blocks ?? []), boundary];
+  const segments = (assistant.segments ??= [{ type: 'text', text: streamed }]);
+  segments.push(boundary, { type: 'text', text: finalText });
+  assistant.text = streamed + finalText;
 }

@@ -1668,6 +1668,13 @@
       "after": { "type": "String" }
     }
   },
+  "conversationPreviousMessages": "{count, plural, =1{1 previous message} other{{count} previous messages}}",
+  "@conversationPreviousMessages": {
+    "description": "Disclosure label for earlier assistant responses produced within the same turn.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "licensesError": "Couldn't load the licenses.",
   "@licensesError": {
     "description": "Shown when the license registry failed to load."

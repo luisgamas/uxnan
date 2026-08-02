@@ -43,7 +43,7 @@ import {
   type ClaudeToolUse,
 } from './claude-tools.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
-import { compactionBlock } from './content-blocks.js';
+import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -546,7 +546,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     let full = '';
-    let sawPartial = false;
+    // Deltas belonging to the current native assistant-message envelope. Claude
+    // may emit several envelopes in one turn around tool use; reconciling each
+    // envelope independently prevents a later non-streamed message from being
+    // skipped merely because an earlier one streamed.
+    let currentAssistantText = '';
     let sawModel = false;
     let resolvedModel: string | undefined;
     let errored = false;
@@ -634,19 +638,33 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         resolvedModel = event.model;
         this.emit({ type: 'model_resolved', threadId, turnId, data: { text: event.model } });
       } else if (event.kind === 'delta' && event.text) {
-        sawPartial = true;
         full += event.text;
+        currentAssistantText += event.text;
         openTextIndex = event.blockIndex ?? -1;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
         // Reasoning chunk — streamed to the phone (and persisted) separately from
         // the answer so it can be shown in a collapsible "thinking" section.
         this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'assistant_text' && event.text && !sawPartial) {
-        // Fallback when token streaming produced no deltas: emit the complete
-        // assistant message text as one chunk.
-        full += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'assistant_text') {
+        // The complete native message follows its partial stream. Emit only an
+        // unseen suffix (or the whole message when this envelope had no
+        // deltas), then preserve its boundary for the mobile disclosure UI.
+        const complete = event.text ?? '';
+        const unseen = unseenAssistantText(currentAssistantText, complete);
+        if (unseen) {
+          full += unseen;
+          this.emit({ type: 'delta', threadId, turnId, data: { text: unseen } });
+        }
+        if (currentAssistantText.length > 0 || complete.length > 0) {
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: assistantResponseBoundaryBlock() },
+          });
+        }
+        currentAssistantText = '';
       } else if (event.kind === 'result') {
         if (event.isError) {
           errored = true;
@@ -658,17 +676,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
           });
         } else {
           completed = true;
-          // Prefer the streamed text (`full`) — it's the complete narration the
-          // user saw. `result.result` is often only the final segment of a
-          // tool-using turn, so using it would shrink the message on re-sync and
-          // drop earlier paragraphs. Fall back to `result.result` only when no
-          // partials streamed.
-          const finalText =
-            sawPartial && full.length > 0
-              ? full
-              : event.text && event.text.length > 0
-                ? event.text
-                : full;
+          // Prefer the accumulated assistant envelopes (`full`) — they are the
+          // complete narration the user saw. `result.result` is often only the
+          // final segment of a tool-using turn, so using it would shrink the
+          // message on re-sync and drop earlier paragraphs.
+          const finalText = full.length > 0 ? full : (event.text ?? '');
           const tokens = claudeUsageTokens(event.usage ?? lastUsage);
           const window = claudeContextWindow(resolvedModel ?? model);
           const usage =
@@ -822,4 +834,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function unseenAssistantText(streamed: string, complete: string): string {
+  if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
+  return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
 }

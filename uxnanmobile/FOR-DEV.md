@@ -105,6 +105,8 @@ connected to live bridge data, validated on-device against a real bridge.
 - **Structured agent turns** — assistant replies without a bubble, consecutive
   text merged, borderless tonal **Work log (N)** / **Thinking** process
   disclosures (collapsed by default and exclusively expanded per turn),
+  durable native response boundaries that keep every progress/final message,
+  a localized **N previous messages** disclosure for settled earlier replies,
   collapsible **Changed files (N) · +a −d** with per-file diffs, **Copy
   response**, **Last edits** strip above the composer; **Thinking** remains
   settings-gated. Long user text defaults to a ten-line expandable preview and

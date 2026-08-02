@@ -62,7 +62,9 @@ this app:
   as the empty-state hero.
 - **Parity with the bridge's main capabilities.** Streaming conversations with
   structured agent turns, interactive approvals, model and reasoning-effort
-  selection, a live context-usage indicator, durable markers where an agent
+  selection, lossless multi-message turns whose earlier progress replies fold
+  into an expandable **N previous messages** section after completion, a live
+  context-usage indicator, durable markers where an agent
   compacted earlier context, a message scroll rail to jump
   through your prompts, automatic first-prompt conversation titles that remain
   manually renameable, per-agent sign-in status, voice and image input, a full

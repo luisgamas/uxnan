@@ -902,5 +902,6 @@
   "conversationCompactionAutomatic": "El contexto anterior se resumió automáticamente.",
   "conversationCompactionUnknown": "Los mensajes anteriores se resumieron para liberar contexto.",
   "conversationCompactionTokens": "El contexto se redujo de {before} a cerca de {after} tokens.",
+  "conversationPreviousMessages": "{count, plural, =1{1 mensaje anterior} other{{count} mensajes anteriores}}",
   "licensesError": "No se pudieron cargar las licencias."
 }

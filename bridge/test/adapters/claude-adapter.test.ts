@@ -495,6 +495,33 @@ test('ClaudeCodeAdapter keeps the full streamed text when result.result is only 
   assert.equal((completed?.data as { text: string }).text, 'Let me check. The answer is 42.');
 });
 
+test('ClaudeCodeAdapter preserves every assistant envelope and its boundary', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Checking."}}}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Checking."}]}}',
+    // This second envelope has no partial event: it must not be skipped merely
+    // because the first envelope streamed.
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Done."}]}}',
+    '{"type":"result","subtype":"success","result":"Done.","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  assert.deepEqual(
+    events.filter((event) => event.type === 'delta').map((event) => (event.data as any).text),
+    ['Checking.', 'Done.'],
+  );
+  assert.equal(events.filter((event) => event.type === 'block').length, 2);
+  assert.equal(
+    (events.find((event) => event.type === 'turn_completed')?.data as { text: string }).text,
+    'Checking.Done.',
+  );
+});
+
 test('parseClaudeLine extracts the resolved model from the init event', () => {
   assert.equal(
     parseClaudeLine('{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}')
@@ -727,11 +754,20 @@ test('ClaudeCodeAdapter flags a subagent block landing mid-text as beforeText', 
 
   const events = await done;
   const blocks = events.filter((e) => e.type === 'block');
-  assert.equal(blocks.length, 2);
+  const activityBlocks = blocks.filter(
+    (event) =>
+      (event.data as { content: { type?: string } }).content.type !== 'assistant_response_boundary',
+  );
+  const boundaries = blocks.filter(
+    (event) =>
+      (event.data as { content: { type?: string } }).content.type === 'assistant_response_boundary',
+  );
+  assert.equal(activityBlocks.length, 2);
+  assert.equal(boundaries.length, 1);
   // the subagent block that landed mid-run is flagged beforeText…
-  assert.equal((blocks[0]!.data as { beforeText?: boolean }).beforeText, true);
+  assert.equal((activityBlocks[0]!.data as { beforeText?: boolean }).beforeText, true);
   // …the sequential main block is not
-  assert.equal((blocks[1]!.data as { beforeText?: boolean }).beforeText, undefined);
+  assert.equal((activityBlocks[1]!.data as { beforeText?: boolean }).beforeText, undefined);
   // and the main text run streamed whole, never polluted by subagent content
   const deltas = events
     .filter((e) => e.type === 'delta')

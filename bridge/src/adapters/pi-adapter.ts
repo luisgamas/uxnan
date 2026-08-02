@@ -37,7 +37,7 @@ import type {
 import { BaseAgentAdapter } from './base-adapter.js';
 import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
-import { compactionBlock } from './content-blocks.js';
+import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /** Hard cap on the `--list-models` spawn before giving up. */
@@ -374,6 +374,7 @@ export class PiAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     let full = '';
+    let currentAssistantText = '';
     let finalText = '';
     let tokens: number | undefined;
     let errored = false;
@@ -445,6 +446,7 @@ export class PiAdapter extends BaseAgentAdapter {
         });
       } else if (event.kind === 'delta' && event.text) {
         full += event.text;
+        currentAssistantText += event.text;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
         this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
@@ -464,7 +466,23 @@ export class PiAdapter extends BaseAgentAdapter {
           });
         }
       } else if (event.kind === 'final') {
-        if (event.text) finalText = event.text;
+        if (event.text) {
+          finalText = event.text;
+          const unseen = unseenAssistantText(currentAssistantText, event.text);
+          if (unseen) {
+            full += unseen;
+            this.emit({ type: 'delta', threadId, turnId, data: { text: unseen } });
+          }
+        }
+        if (currentAssistantText.length > 0 || (event.text?.length ?? 0) > 0) {
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: assistantResponseBoundaryBlock() },
+          });
+        }
+        currentAssistantText = '';
         if (event.tokens !== undefined) tokens = event.tokens;
         if (event.isError) {
           errored = true;
@@ -567,6 +585,11 @@ export class PiAdapter extends BaseAgentAdapter {
       });
     });
   }
+}
+
+function unseenAssistantText(streamed: string, complete: string): string {
+  if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
+  return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
 }
 
 function extractAssistantText(content: unknown): string {

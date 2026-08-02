@@ -1,12 +1,15 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.2
-> **Fecha:** 2026-07-21
+> **Version:** 1.2.3
+> **Fecha:** 2026-08-02
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
-> **Executive summary (1.2.2):** profile activity is owned by a complete,
+> **Executive summary (1.2.3):** native assistant messages inside one turn are
+> preserved losslessly through durable response-boundary metadata; terminal
+> payloads reconcile additively and mobile collapses completed progress replies
+> without discarding them. Profile activity is owned by a complete,
 > global-per-PC bridge ledger. Conversation deletion never subtracts historical
 > metrics; export/import includes conversations, messages, reported tokens,
 > sessions and Git actions. Phone transport identity remains installation-local
@@ -1353,6 +1356,10 @@ Reglas de streaming:
 - El auto-scroll esta activo mientras el usuario no haya scrolleado hacia arriba.
 - Si el usuario scrollea durante streaming, el auto-scroll se pausa.
 - Al completar el turno, si el usuario esta cerca del fondo, auto-scroll se reactiva.
+- A terminal event reconciles with accumulated text additively; it never replaces
+  divergent prose already streamed or persisted.
+- Multiple native assistant messages remain visible while streaming. Once the
+  turn settles, all but the final response collapse into one expandable section.
 
 > ✅ **Implementación actual:** `ConversationScreen` usa una política explícita
 > de auto-follow. Cualquier drag manual se impone inmediatamente a los eventos
@@ -2626,6 +2633,11 @@ class CompactionContent extends MessageContent {
   final CompactionReason reason; // manual | threshold | overflow | automatic | unknown
   final int? tokensBefore;
   final int? tokensAfter;
+}
+
+class AssistantResponseBoundaryContent extends MessageContent {
+  final AssistantResponsePhase phase; // commentary | finalAnswer | unknown
+  final String? itemId;                // native item/message id when available
 }
 
 class CommandExecutionContent extends MessageContent {

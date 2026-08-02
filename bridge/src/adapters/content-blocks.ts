@@ -9,6 +9,8 @@
  * `MessageContent` types.
  */
 import type {
+  AssistantResponseBoundaryBlock,
+  AssistantResponsePhase,
   ApprovalRequestBlock,
   ApprovalRisk,
   CompactionContentBlock,
@@ -16,6 +18,18 @@ import type {
   QuestionItem,
   QuestionRequestBlock,
 } from '@uxnan/shared';
+
+/** Marks the end of one native assistant response item within a turn. */
+export function assistantResponseBoundaryBlock(
+  phase: AssistantResponsePhase = 'unknown',
+  itemId?: string,
+): AssistantResponseBoundaryBlock {
+  return {
+    type: 'assistant_response_boundary',
+    phase,
+    ...(itemId !== undefined && itemId.length > 0 ? { itemId } : {}),
+  };
+}
 
 /** A durable marker for a context compaction the agent explicitly reported. */
 export function compactionBlock(

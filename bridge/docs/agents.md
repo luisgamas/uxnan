@@ -97,6 +97,20 @@ Compactions use the ordinary structured-content path and therefore persist in
 Never infer a compaction from prose, an overflow error or a token-count drop;
 that would put a false event into durable history.
 
+### Multiple assistant responses in one turn
+
+Codex app-server may complete several `agentMessage` items before the turn ends;
+Claude and pi may likewise close multiple native assistant envelopes. The bridge
+keeps every response as ordered text and inserts a zero-text
+`assistant_response_boundary` block between them. Codex preserves its native
+`commentary` / `final_answer` phase and item id; Claude and pi use `unknown` when
+their stream exposes no equivalent semantic phase.
+
+Terminal payloads are reconciled additively: repeated or extending text is
+deduplicated, while divergent final text becomes another response instead of
+replacing content already streamed. Mobile excludes boundary metadata from
+copy/previews and uses it only to collapse earlier responses after completion.
+
 Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
 **not** used for turns — the one-shot `codex exec` entry point drives them — but
 the bridge does spawn `codex app-server` once to enumerate models (`initialize`

@@ -6,6 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — preserve every response produced during a turn
+
+- Assistant progress/commentary no longer disappears when a terminal event
+  carries only the agent's final native message. Live finalization and bridge
+  re-sync now reconcile additively, retaining ordered prose and work blocks.
+- Settled turns with multiple native assistant messages show a localized
+  **N previous messages** divider. Earlier messages are collapsed by default
+  and expand in place; while the agent is streaming they remain fully visible.
+- Added durable response-boundary decoding so the disclosure survives app and
+  bridge restarts. Codex supplies exact commentary/final phases; Claude Code and
+  Pi supply their native message boundaries.
+
 ### Added — context-compaction milestones in conversations
 
 - The conversation timeline now renders a quiet, localized **Context compacted**

@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — terminal events can no longer erase earlier agent responses
+
+- Codex now accumulates every `agentMessage` item instead of replacing the turn
+  with the last item at `turn/completed`. Its native `commentary` and
+  `final_answer` phases are persisted as response boundaries.
+- Claude Code and Pi now reconcile each native assistant-message envelope
+  independently, including envelopes that did not stream deltas, and persist
+  their boundaries. Agents whose protocols expose one accumulated response
+  continue unchanged.
+- `ThreadStore.completeTurn` is lossless for every adapter: a terminal text may
+  extend or repeat streamed prose, but a divergent last-message payload is
+  appended as another response and never deletes text already shown to a user.
+
 ### Added — durable context-compaction events
 
 - Codex `item/completed { type:'contextCompaction' }`, Claude Code

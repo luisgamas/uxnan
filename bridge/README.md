@@ -103,6 +103,10 @@ structured events — `stream/content/block` (command / diff / tool) plus
 `stream/thinking/delta` (reasoning) — so the phone renders the same shape no
 matter which agent is running.
 
+Codex, Claude and pi also emit durable assistant-response boundaries. The
+bridge reconciles terminal payloads additively, preserving every progress and
+final message in native order instead of replacing the turn with its last item.
+
 `gemini-cli` remains a deprecated, unavailable descriptor only for legacy
 configuration and history compatibility. The bridge does not resolve or spawn
 it, install its hook, advertise models/commands, or accept new threads/turns.

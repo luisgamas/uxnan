@@ -2693,5 +2693,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String conversationPreviousMessages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count previous messages',
+      one: '1 previous message',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get licensesError => 'Couldn\'t load the licenses.';
 }

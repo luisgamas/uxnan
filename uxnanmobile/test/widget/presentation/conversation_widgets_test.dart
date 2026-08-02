@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
+import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
 import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
@@ -510,6 +511,50 @@ void main() {
     expect(find.text('Work log'), findsNWidgets(2));
     expect(find.textContaining('First part.'), findsOneWidget);
     expect(find.textContaining('Second part.'), findsOneWidget);
+  });
+
+  testWidgets('settled assistant turn collapses earlier native responses',
+      (tester) async {
+    final message = Message(
+      id: 'm-responses',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('First progress update.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'one',
+        ),
+        TextContent('Second progress update.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'two',
+        ),
+        TextContent('Final answer.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.finalAnswer,
+          itemId: 'three',
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 previous messages'), findsOneWidget);
+    expect(find.textContaining('First progress update.'), findsNothing);
+    expect(find.textContaining('Second progress update.'), findsNothing);
+    expect(find.textContaining('Final answer.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('previous-responses-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('First progress update.'), findsOneWidget);
+    expect(find.textContaining('Second progress update.'), findsOneWidget);
+    expect(find.textContaining('Final answer.'), findsOneWidget);
   });
 
   testWidgets('assistant turn shows a collapsible thinking section',

@@ -37,6 +37,7 @@ export * from './models/session.js';
 export * from './models/approval.js';
 export * from './models/question.js';
 export * from './models/compaction.js';
+export * from './models/assistant-response.js';
 export * from './models/usage.js';
 export * from './models/metrics.js';
 
