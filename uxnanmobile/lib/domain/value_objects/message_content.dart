@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -22,6 +23,7 @@ sealed class MessageContent {
     return switch (json['type']) {
       TextContent.typeName => TextContent.fromJson(json),
       ThinkingContent.typeName => ThinkingContent.fromJson(json),
+      CompactionContent.typeName => CompactionContent.fromJson(json),
       CodeContent.typeName => CodeContent.fromJson(json),
       ImageContent.typeName => ImageContent.fromJson(json),
       ToolUseContent.typeName => ToolUseContent.fromJson(json),
@@ -49,6 +51,61 @@ sealed class MessageContent {
 
   /// Serializes this content to JSON.
   Map<String, dynamic> toJson();
+}
+
+/// A durable marker that the agent compacted earlier conversation context.
+///
+/// This is metadata, not assistant prose: it stays out of previews, copying and
+/// fingerprints while remaining ordered among the message's timeline segments.
+class CompactionContent extends MessageContent with EquatableMixin {
+  /// Creates a context-compaction marker.
+  const CompactionContent({
+    this.reason = ContextCompactionReason.unknown,
+    this.tokensBefore,
+    this.tokensAfter,
+  });
+
+  /// Decodes the bridge's `compaction` content block.
+  factory CompactionContent.fromJson(Map<String, dynamic> json) =>
+      CompactionContent(
+        reason: contextCompactionReasonFromWire(json['reason']),
+        tokensBefore: _nonNegativeInt(json['tokensBefore']),
+        tokensAfter: _nonNegativeInt(json['tokensAfter']),
+      );
+
+  /// Why compaction happened, when the agent reported it.
+  final ContextCompactionReason reason;
+
+  /// Context tokens immediately before compaction, when known.
+  final int? tokensBefore;
+
+  /// Estimated context tokens immediately after compaction, when known.
+  final int? tokensAfter;
+
+  /// Wire type discriminator.
+  static const String typeName = 'compaction';
+
+  @override
+  String get type => typeName;
+
+  @override
+  String get asPlainText => '';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': typeName,
+        'reason': reason.name,
+        if (tokensBefore != null) 'tokensBefore': tokensBefore,
+        if (tokensAfter != null) 'tokensAfter': tokensAfter,
+      };
+
+  @override
+  List<Object?> get props => [reason, tokensBefore, tokensAfter];
+}
+
+int? _nonNegativeInt(Object? value) {
+  if (value is! num || !value.isFinite || value < 0) return null;
+  return value.round();
 }
 
 /// Plain or streaming text.

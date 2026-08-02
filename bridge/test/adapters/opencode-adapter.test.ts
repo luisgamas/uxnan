@@ -282,6 +282,22 @@ test('OpenCodeAdapter streams text deltas and completes on session.idle', async 
   assert.equal((completed?.data as { usage?: { tokens: number } }).usage?.tokens, 1500);
 });
 
+test('OpenCodeAdapter emits session.compacted as a compaction block', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  server.emit('session.compacted', { sessionID: 'ses_1' });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+
+  await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, { type: 'compaction', reason: 'unknown' });
+});
+
 test('OpenCodeAdapter reconciles a whole-part text update without double-emitting', async () => {
   const server = new FakeServer();
   const adapter = makeAdapter(server);

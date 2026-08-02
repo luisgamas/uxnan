@@ -8,10 +8,12 @@ import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -55,6 +57,7 @@ class MessageContentView extends StatelessWidget {
       // Thinking is normally lifted into the turn's dedicated section by
       // AssistantTurnView; rendered here too for completeness.
       final ThinkingContent c => _StandaloneThinkingSection(text: c.text),
+      final CompactionContent c => _CompactionMarker(content: c),
       final CodeContent c => _CodeBlock(content: c),
       final CommandExecutionContent c => _CommandCard(content: c),
       final SystemContent c => _SystemBanner(content: c),
@@ -74,6 +77,107 @@ class MessageContentView extends StatelessWidget {
   }
 }
 
+/// A quiet, non-interactive milestone in the conversation timeline showing
+/// where the agent summarized earlier context to make room for more work.
+class _CompactionMarker extends StatelessWidget {
+  const _CompactionMarker({required this.content});
+
+  final CompactionContent content;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final detail = switch (content.reason) {
+      ContextCompactionReason.manual => l10n.conversationCompactionManual,
+      ContextCompactionReason.threshold => l10n.conversationCompactionThreshold,
+      ContextCompactionReason.overflow => l10n.conversationCompactionOverflow,
+      ContextCompactionReason.automatic => l10n.conversationCompactionAutomatic,
+      ContextCompactionReason.unknown => l10n.conversationCompactionUnknown,
+    };
+    final tokenDetail =
+        content.tokensBefore != null && content.tokensAfter != null
+            ? l10n.conversationCompactionTokens(
+                NumberFormat.compact().format(content.tokensBefore),
+                NumberFormat.compact().format(content.tokensAfter),
+              )
+            : null;
+    final semantics = [
+      l10n.conversationCompactionTitle,
+      detail,
+      if (tokenDetail != null) tokenDetail,
+    ].join('. ');
+
+    return Semantics(
+      container: true,
+      label: semantics,
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: colors.outlineVariant)),
+          const SizedBox(width: UxnanSpacing.sm),
+          Flexible(
+            flex: 4,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLow,
+                borderRadius: const BorderRadius.all(UxnanRadius.lg),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.compress_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            l10n.conversationCompactionTitle,
+                            style: textTheme.labelLarge?.copyWith(
+                              color: colors.onSurface,
+                            ),
+                          ),
+                          Text(
+                            detail,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          if (tokenDetail != null)
+                            Text(
+                              tokenDetail,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(child: Divider(color: colors.outlineVariant)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Renders an [ApprovalContent]: the requested action, its risk, and the
 /// interactive Approve / Reject / "always allow this session" controls. The
 /// card morphs (spring `AnimatedSize`) from the actions into a settled status
@@ -85,8 +189,8 @@ class MessageContentView extends StatelessWidget {
 /// `ApprovalResponseStore`) so the card stays in its resolved state across
 /// scrolls and app restarts — the action buttons never reappear.
 ///
-/// Live end-to-end: the bridge emits `approval` blocks (Claude/Codex/Gemini
-/// hooks, OpenCode via `opencode serve`) and accepts `turn/send { approvalResponse }`.
+/// Live end-to-end: the bridge emits `approval` blocks (Claude/Codex hooks,
+/// OpenCode via `opencode serve`) and accepts `turn/send { approvalResponse }`.
 class _ApprovalCard extends ConsumerWidget {
   const _ApprovalCard({required this.content, this.threadId});
   final ApprovalContent content;

@@ -77,6 +77,17 @@ test('parseClaudeLine maps the documented event shapes', () => {
   });
   assert.deepEqual(
     parseClaudeLine(
+      '{"type":"system","subtype":"compact_boundary","session_id":"s","compact_metadata":{"trigger":"manual","pre_tokens":12345}}',
+    ),
+    {
+      kind: 'compaction',
+      sessionId: 's',
+      compactionReason: 'manual',
+      tokensBefore: 12345,
+    },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
       '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}}',
     ),
     { kind: 'delta', sessionId: 's', text: 'hi' },
@@ -110,6 +121,28 @@ test('parseClaudeLine maps the documented event shapes', () => {
     parseClaudeLine('{"type":"stream_event","event":{"type":"message_start"}}')?.kind,
     'other',
   );
+});
+
+test('ClaudeCodeAdapter emits compact_boundary as a compaction block', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: '/compact' });
+  last().feed([
+    '{"type":"system","subtype":"compact_boundary","session_id":"s","compact_metadata":{"trigger":"manual","pre_tokens":12345}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Compacted","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, {
+    type: 'compaction',
+    reason: 'manual',
+    tokensBefore: 12345,
+  });
 });
 
 test('ClaudeCodeAdapter streams text_delta as deltas and completes with the result text', async () => {

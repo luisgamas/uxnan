@@ -87,6 +87,7 @@ import { CodexAppServerRpc, RpcError } from './codex-app-server.js';
 import { codexReasoningText, type CodexFileChange } from './codex-tools.js';
 import {
   commandBlock,
+  compactionBlock,
   fileChangeBlock,
   toolBlock,
   unifiedDiffBlock,
@@ -101,6 +102,7 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  reportsCompaction: true,
   commands: true,
 };
 
@@ -727,7 +729,6 @@ export class CodexAdapter extends BaseAgentAdapter {
         return;
       }
       case 'webSearch':
-      case 'contextCompaction':
       case 'plan':
       case 'userMessage':
       case 'enteredReviewMode':
@@ -736,6 +737,14 @@ export class CodexAdapter extends BaseAgentAdapter {
         // no structured block is needed. The full history-fallback path
         // (session-history.ts) will still surface them via the on-disk
         // rollout reader.
+        return;
+      case 'contextCompaction':
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.bridgeTurnId,
+          data: { content: compactionBlock() },
+        });
         return;
       default:
         return;

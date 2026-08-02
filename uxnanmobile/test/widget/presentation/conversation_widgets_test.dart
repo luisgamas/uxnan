@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
@@ -78,6 +79,30 @@ void main() {
     expect(find.byType(MessageContentView), findsNWidgets(2));
     expect(find.byType(MarkdownBody), findsOneWidget);
     expect(find.byType(HighlightView), findsOneWidget);
+  });
+
+  testWidgets('context compaction renders as a localized timeline marker',
+      (tester) async {
+    const content = CompactionContent(
+      reason: ContextCompactionReason.threshold,
+      tokensBefore: 120000,
+      tokensAfter: 42000,
+    );
+
+    await tester.pumpWidget(_wrap(const MessageContentView(content: content)));
+
+    expect(find.text('Context compacted'), findsOneWidget);
+    expect(
+      find.text(
+        "Earlier context was summarized after reaching the agent's limit.",
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Context reduced from 120K to about 42K tokens.'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.compress_rounded), findsOneWidget);
   });
 
   testWidgets('waiting assistant turn shows the responding label and loader',

@@ -30,6 +30,7 @@ import type {
   AgentId,
   AgentModel,
   AgentModelOption,
+  CompactionReason,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { scanCustomCommands } from './command-scan.js';
@@ -42,6 +43,7 @@ import {
   type ClaudeToolUse,
 } from './claude-tools.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import { compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -62,6 +64,7 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  reportsCompaction: true,
   commands: true,
 };
 
@@ -175,7 +178,15 @@ interface ActiveRun {
 
 /** A normalized Claude Code event extracted from one stream-json line. */
 export interface ClaudeEvent {
-  kind: 'init' | 'delta' | 'thinking' | 'assistant_text' | 'tool_result' | 'result' | 'other';
+  kind:
+    | 'init'
+    | 'compaction'
+    | 'delta'
+    | 'thinking'
+    | 'assistant_text'
+    | 'tool_result'
+    | 'result'
+    | 'other';
   sessionId?: string;
   text?: string;
   /**
@@ -207,6 +218,10 @@ export interface ClaudeEvent {
   isError?: boolean;
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
+  /** Only set for `system/compact_boundary`. */
+  compactionReason?: CompactionReason;
+  /** Context tokens immediately before a compact boundary, when reported. */
+  tokensBefore?: number;
   /** Only set for `assistant_text`: any tool invocations in the message. */
   toolUses?: ClaudeToolUse[];
   /** Only set for `tool_result`: results the agent fed back from its tools. */
@@ -260,6 +275,27 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
   } as const;
   switch (parsed['type']) {
     case 'system': {
+      if (parsed['subtype'] === 'compact_boundary') {
+        const metadata = isRecord(parsed['compact_metadata'])
+          ? parsed['compact_metadata']
+          : undefined;
+        const trigger = metadata?.['trigger'];
+        const compactionReason: CompactionReason =
+          trigger === 'manual'
+            ? 'manual'
+            : trigger === 'auto' || trigger === 'automatic'
+              ? 'automatic'
+              : 'unknown';
+        const preTokens = metadata?.['pre_tokens'];
+        return {
+          kind: 'compaction',
+          ...base,
+          compactionReason,
+          ...(typeof preTokens === 'number' && preTokens >= 0
+            ? { tokensBefore: Math.round(preTokens) }
+            : {}),
+        };
+      }
       const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined;
       const slashCommands = Array.isArray(parsed['slash_commands'])
         ? parsed['slash_commands'].filter((c): c is string => typeof c === 'string')
@@ -580,7 +616,18 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
       }
       if (subagent) return; // everything below folds into the MAIN message only
-      if (event.kind === 'init' && event.model && !sawModel) {
+      if (event.kind === 'compaction') {
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: {
+            content: compactionBlock(event.compactionReason, {
+              ...(event.tokensBefore !== undefined ? { tokensBefore: event.tokensBefore } : {}),
+            }),
+          },
+        });
+      } else if (event.kind === 'init' && event.model && !sawModel) {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.
         sawModel = true;

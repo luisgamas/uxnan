@@ -107,6 +107,41 @@ test('parsePiLine maps the documented event shapes', () => {
   assert.equal(errored?.isError, true);
   assert.equal(errored?.errorText, 'boom');
   assert.equal(parsePiLine(AGENT_END)?.kind, 'end');
+  assert.deepEqual(
+    parsePiLine(
+      '{"type":"compaction_end","reason":"threshold","aborted":false,"result":{"tokensBefore":90000,"estimatedTokensAfter":32000}}',
+    ),
+    {
+      kind: 'compaction',
+      compactionReason: 'threshold',
+      tokensBefore: 90000,
+      tokensAfter: 32000,
+    },
+  );
+});
+
+test('PiAdapter emits successful compaction_end as a compaction block', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"compaction_end","reason":"overflow","aborted":false,"result":{"tokensBefore":90000,"estimatedTokensAfter":32000}}',
+    assistantEnd('done'),
+    AGENT_END,
+  ]);
+
+  const events = await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, {
+    type: 'compaction',
+    reason: 'overflow',
+    tokensBefore: 90000,
+    tokensAfter: 32000,
+  });
 });
 
 test('PiAdapter emits thinking deltas and pairs tool_execution start/end into a block', async () => {

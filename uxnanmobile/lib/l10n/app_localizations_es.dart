@@ -2680,5 +2680,33 @@ class AppLocalizationsEs extends AppLocalizations {
   String get settingsUpdatesVersionGroup => 'Versión';
 
   @override
+  String get conversationCompactionTitle => 'Contexto compactado';
+
+  @override
+  String get conversationCompactionManual =>
+      'Pediste al agente que resumiera el contexto anterior.';
+
+  @override
+  String get conversationCompactionThreshold =>
+      'El contexto anterior se resumió al alcanzar el límite del agente.';
+
+  @override
+  String get conversationCompactionOverflow =>
+      'El contexto anterior se resumió al superar la ventana disponible.';
+
+  @override
+  String get conversationCompactionAutomatic =>
+      'El contexto anterior se resumió automáticamente.';
+
+  @override
+  String get conversationCompactionUnknown =>
+      'Los mensajes anteriores se resumieron para liberar contexto.';
+
+  @override
+  String conversationCompactionTokens(String before, String after) {
+    return 'El contexto se redujo de $before a cerca de $after tokens.';
+  }
+
+  @override
   String get licensesError => 'No se pudieron cargar las licencias.';
 }

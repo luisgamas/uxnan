@@ -471,6 +471,32 @@ test('CodexAdapter maps a commandExecution item to a command_execution block', a
   assert.equal(block?.content['output'], 'a\nb');
 });
 
+test('CodexAdapter maps contextCompaction to a compaction block', async () => {
+  const { adapter, server } = setup();
+  const { done, until } = collect(adapter);
+
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted(until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: { item: { type: 'contextCompaction' } },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+
+  const events = await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, { type: 'compaction', reason: 'unknown' });
+});
+
 test('CodexAdapter maps a fileChange item to a diff block (uses the inline diff when present)', async () => {
   const { adapter, server } = setup();
   const { done, until } = collect(adapter);

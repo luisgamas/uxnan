@@ -11,9 +11,24 @@
 import type {
   ApprovalRequestBlock,
   ApprovalRisk,
+  CompactionContentBlock,
+  CompactionReason,
   QuestionItem,
   QuestionRequestBlock,
 } from '@uxnan/shared';
+
+/** A durable marker for a context compaction the agent explicitly reported. */
+export function compactionBlock(
+  reason: CompactionReason = 'unknown',
+  opts: { tokensBefore?: number; tokensAfter?: number } = {},
+): CompactionContentBlock {
+  return {
+    type: 'compaction',
+    reason,
+    ...(opts.tokensBefore !== undefined ? { tokensBefore: opts.tokensBefore } : {}),
+    ...(opts.tokensAfter !== undefined ? { tokensAfter: opts.tokensAfter } : {}),
+  };
+}
 
 /** Cap tool/command output carried on the wire so a big read doesn't bloat it. */
 const MAX_OUTPUT = 4000;
