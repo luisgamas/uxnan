@@ -158,8 +158,8 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **737 tests** across both projects
-(730 passing, 7 skipped), config in `vitest.config.ts` /
+[`platform-support.md`](platform-support.md)). **746 tests** across both projects
+(739 passing, 7 skipped), config in `vitest.config.ts` /
 `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)

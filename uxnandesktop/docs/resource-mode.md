@@ -115,6 +115,7 @@ evidence points at the benchmark scenarios
 | All-worktree status sweep | `projects.sweepStatuses` | ≥ 15 s (3 s driver tick in `LeftSidebar`) | skipped hidden; forced by focus / agent activity / own git actions | R06 | `gitSweepIntervalMs` |
 | Worktree-list reconcile | `projects.refreshWorktrees` | every 3 s tick | forced by `refreshNow` | R06 | `worktreeReconcileIntervalMs` |
 | GitHub context/rate-limit/badge poll | `github.startPolling` | user setting (45 s), hidden-paused; ≤ 2 badge reads per tick | armed while the app runs, `0` = manual | R08 | `githubPollFactor` (+ 30 s floor) |
+| GitHub launch fill (one-shot) | `github.prime` | once per arm/sign-in, batches of 2, ≤ 24 reads | skipped when the interval is `0` (manual) | R08 | `githubPollFactor` scales the cap (Efficient ≈ 6) |
 | Provider-usage poll | `usage.reschedule` | user setting (5 min), armed lazily | `0` = manual; surfaces call `ensureFresh` on open | — | `usageRefreshFactor` |
 | Orchestration engine tick | `orchestrationRun` | 700 ms **while a run is active**, parks idle | run start/stop | — | concurrency cap (2/4/4–6), not the tick |
 | Resource-monitor sampler | `src-tauri/src/resources.rs` | parked; popover 2 s / budget 3 s / opt-in orphan sweep 15–30 s | leases (TTL 90 s) | R12 | `resourceHistorySeconds`; the budget lease is the headroom feed |

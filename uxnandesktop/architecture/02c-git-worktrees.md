@@ -185,12 +185,26 @@ imports (mismo patrón que `flushRegistry`).
 
 **Insignias de PR fuera del worktree activo.** El contexto de GitHub también se
 cargaba solo para el worktree activo. El poll de `github` refresca ahora, además,
-hasta `BADGE_TICK_CAP` (2) worktrees no activos por ciclo: primero aquellos cuyo
-estado git acaba de cambiar (`projects.takeChangedPaths()` — cuando una rama gana
-commits o se publica es justo cuando aparece o cambia su PR) y, si sobra cupo, uno
-en rotación. Cada contexto es una llamada a `gh` contra el rate limit, de ahí el
+hasta `BADGE_TICK_CAP` (2) worktrees no activos por ciclo. El orden de prioridad
+vive en `pickBadgeTargets` (`githubRefresh.ts`, TS puro y con tests): **primero
+los que no tienen insignia alguna** —información ausente pesa más que información
+vieja—, después aquellos cuyo estado git acaba de cambiar
+(`projects.takeChangedPaths()` — cuando una rama gana commits o se publica es
+justo cuando aparece o cambia su PR) y, si sobra cupo, uno en rotación. Una ruta
+señalada que no entra en el cupo se **arrastra** al ciclo siguiente en lugar de
+perderse: el store de proyectos la entrega una sola vez y nada volvería a
+anunciarla. Cada contexto es una llamada a `gh` contra el rate limit, de ahí el
 tope por ciclo; `loadContextFor` escribe únicamente en la caché por ruta que
 alimenta las insignias, sin tocar el `context` que lee el panel derecho.
+
+Como `setInterval` dispara *después* del intervalo, al arrancar la app todo lo que
+depende del poll (medidor de rate limit, contador de notificaciones e insignias de
+los worktrees no activos) quedaba vacío durante un intervalo completo y luego se
+llenaba de dos en dos. `github.prime()` hace una **pasada única acotada** en cuanto
+el poll se arma o se resuelve el inicio de sesión —lo que ocurra más tarde—: lotes
+del mismo ancho que un ciclo normal, con tope `PRIME_MAX_PATHS` (24) escalado por
+el factor de GitHub del perfil de recursos. Un intervalo de `0` (solo manual) queda
+fuera, como cualquier otra lectura automática.
 
 **Un refresco de fondo no puede quitar nada.** Es la regla que gobierna al panel
 derecho de GitHub y se aplica en tres sitios:

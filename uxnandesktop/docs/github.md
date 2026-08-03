@@ -288,6 +288,24 @@ may never destroy what is on screen or what the user has typed.** In practice:
   different things). Any remount restores it; only creating the PR or pressing
   **Cancel** drops it.
 
+### Which worktrees get read, and when
+
+Every context is a `gh` invocation against the account's rate limit, so a tick
+reads at most `BADGE_TICK_CAP` (2) non-active worktrees. `pickBadgeTargets`
+(`src/lib/githubRefresh.ts`) orders them: worktrees showing **no badge at all**
+first (missing information beats stale information), then the ones whose **git
+status just changed** (a push or new commits is when a branch gains or updates a
+PR), then a **rotation** so an untouched repo is still re-read eventually. A
+signalled path that doesn't fit a tick is carried to the next one — the projects
+store hands each change over exactly once.
+
+`setInterval` fires *after* its interval, so at launch a bounded **one-shot fill**
+runs as soon as polling arms (or as soon as sign-in resolves, whichever is later):
+the rate-limit gauge, the notifications count, and every worktree with no badge
+yet, in batches no wider than a normal tick and capped at `PRIME_MAX_PATHS` (24)
+scaled by the resource profile's GitHub factor. Setting the interval to `0`
+(manual only) opts out of this too.
+
 ## Backend commands
 
 All 38 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
@@ -324,5 +342,7 @@ never a token, never a body).
 - **GitLab / other hosts:** not covered (the `gh`-based approach is GitHub-only).
 - **Native (no-`gh`) sign-in:** an OAuth **device-flow** login + OS-keychain token —
   which would remove the `gh` dependency — is a planned follow-up (see `FOR-DEV.md`).
-- Sidebar-card PR badges are shown for **visited** worktrees (from the context cache),
-  not eagerly for every worktree.
+- Sidebar-card PR badges are filled by the launch pass and the poll's
+  missing-first ordering (above), both bounded — with many worktrees, or on the
+  Efficient profile, the last badges still arrive over several ticks rather than
+  all at once.

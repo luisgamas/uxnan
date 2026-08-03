@@ -23,7 +23,7 @@ resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
 background consumers**, `docs/resource-mode.md`). 477 Rust tests (449 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 737 frontend Vitest tests (730 passing + 7 platform-skipped) across two
+probe) + 746 frontend Vitest tests (739 passing + 7 platform-skipped) across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its

@@ -32,6 +32,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   created, or the user presses **Cancel**. Re-reading the branch list no longer
   overwrites a base or head the user already picked.
 
+### Fixed — sidebar indicators fill in at launch instead of trickling
+
+- **A freshly-opened app no longer shows a sidebar with missing PR badges for
+  minutes.** `setInterval` fires *after* its interval, so everything the GitHub
+  poll owns — the rate-limit gauge, the unread-notifications count, and every
+  non-active worktree's PR badge — stayed empty for a full poll interval and then
+  filled two badges at a time (with several worktrees, minutes before the last
+  one appeared). A bounded one-shot pass now fills what is empty as soon as
+  polling arms or sign-in resolves, in batches no wider than a normal tick, capped
+  by the resource profile. Manual-only polling (interval `0`) opts out of it, like
+  every other automatic read.
+- **The badge poll now prioritises missing information over stale information.**
+  A worktree showing no badge at all is read before one whose badge is merely
+  old, and a worktree whose git status just changed but didn't fit the tick's
+  budget is carried to the next tick instead of being dropped (the projects store
+  hands each change over exactly once, so nothing re-announced it).
+
 ## [0.0.25] - 2026-08-02
 
 ### Added — richer, safer file previews
