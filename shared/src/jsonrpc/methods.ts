@@ -37,6 +37,7 @@ import type {
   ImageContent,
   PatchChange,
   TurnAttachment,
+  WorkspaceFileTarget,
   WorkspaceExistsResult,
   WorkspaceListing,
   SearchFilesParams,
@@ -410,6 +411,10 @@ export interface JsonRpcMethodRegistry {
   'workspace/readImage': { params: { cwd: string; path: string }; result: ImageContent };
   'workspace/list': { params: { cwd: string }; result: WorkspaceListing };
   'workspace/searchFiles': { params: SearchFilesParams; result: WorkspaceSearchResult };
+  'workspace/resolveFileLink': {
+    params: { cwd: string; href: string };
+    result: WorkspaceFileTarget;
+  };
   'workspace/browseDirs': { params: BrowseDirsParams; result: BrowseResult };
   'workspace/checkpoint': { params: CheckpointParams; result: Checkpoint };
   'workspace/diffCheckpoint': { params: { id: string }; result: CheckpointDiff };

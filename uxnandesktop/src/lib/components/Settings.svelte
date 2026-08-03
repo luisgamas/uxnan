@@ -27,7 +27,8 @@
   import { AGENT_CATALOG, agentLogoKey, type CatalogAgent } from "$lib/agentCatalog";
   import { activatableUsageProviders, usageProvider, defaultStatusBarPick } from "$lib/usageCatalog";
   import { statusMeta } from "$lib/usageFormat";
-  import { detectAgents, usageDetect } from "$lib/api";
+  import { detectAgents, usageDetect, revealPath } from "$lib/api";
+  import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { clearRemoteLogoCache } from "$lib/agentLogoCache";
   import { usage } from "$lib/state/usage.svelte";
   import type { UsageProvider } from "$lib/types";
@@ -98,6 +99,7 @@
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CheckIcon from "@lucide/svelte/icons/check";
+  import FileTextIcon from "@lucide/svelte/icons/file-text";
   import ZapIcon from "@lucide/svelte/icons/zap";
   import PawPrintIcon from "@lucide/svelte/icons/paw-print";
 
@@ -790,6 +792,7 @@
       titleKey: "settings.groupApp",
       items: [
         { id: "resources", key: "settings.resources", icon: ActivityIcon },
+        { id: "diagnostics", key: "settings.diagnostics", icon: FileTextIcon },
         { id: "updates", key: "settings.updates", icon: DownloadIcon },
       ],
     },
@@ -1687,6 +1690,61 @@
           <div class="flex flex-col gap-10">
             <ResourceModeSection />
             <ResourceSettings />
+          </div>
+        {:else if app.settingsSection === "diagnostics"}
+          <div class="flex flex-col gap-6">
+            <SettingsSection
+              title={i18n.t("settings.diagnostics")}
+              description={i18n.t("settings.diagnosticsDesc")}
+            >
+              <div class="divide-y divide-border/60">
+                <SettingsRow
+                  label={i18n.t("diagnostics.lastSession")}
+                  description={diagnostics.previousSessionUnclean
+                    ? i18n.t("diagnostics.lastSessionUnclean")
+                    : i18n.t("diagnostics.lastSessionClean")}
+                >
+                  {#snippet control()}
+                    <span
+                      class={cn(
+                        "inline-flex items-center gap-1.5",
+                        text.body,
+                        diagnostics.previousSessionUnclean
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {#if diagnostics.previousSessionUnclean}
+                        <TriangleAlertIcon class={icon.decorative} />
+                        {i18n.t("diagnostics.statusUnclean")}
+                      {:else}
+                        <CheckIcon class={icon.decorative} />
+                        {i18n.t("diagnostics.statusClean")}
+                      {/if}
+                    </span>
+                  {/snippet}
+                </SettingsRow>
+                <SettingsRow
+                  label={i18n.t("diagnostics.logFile")}
+                  description={diagnostics.logPath ?? i18n.t("diagnostics.logUnavailable")}
+                >
+                  {#snippet control()}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!diagnostics.logPath}
+                      onclick={() => {
+                        const path = diagnostics.logPath;
+                        if (path) void revealPath(path).catch(() => {});
+                      }}
+                    >
+                      <FileTextIcon data-icon="inline-start" />
+                      {i18n.t("diagnostics.revealLog")}
+                    </Button>
+                  {/snippet}
+                </SettingsRow>
+              </div>
+            </SettingsSection>
           </div>
         {:else}
           <div class="flex flex-col gap-6">

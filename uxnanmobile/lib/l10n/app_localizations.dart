@@ -4928,6 +4928,54 @@ abstract class AppLocalizations {
   /// **'Version'**
   String get settingsUpdatesVersionGroup;
 
+  /// Title of the durable marker shown where an agent compacted conversation context.
+  ///
+  /// In en, this message translates to:
+  /// **'Context compacted'**
+  String get conversationCompactionTitle;
+
+  /// Detail for a manually requested context compaction.
+  ///
+  /// In en, this message translates to:
+  /// **'You asked the agent to summarize earlier context.'**
+  String get conversationCompactionManual;
+
+  /// Detail for a threshold-triggered context compaction.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier context was summarized after reaching the agent\'s limit.'**
+  String get conversationCompactionThreshold;
+
+  /// Detail for an overflow-triggered context compaction.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier context was summarized after exceeding the available window.'**
+  String get conversationCompactionOverflow;
+
+  /// Detail for an automatic context compaction.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier context was summarized automatically.'**
+  String get conversationCompactionAutomatic;
+
+  /// Generic detail when the agent did not report why it compacted context.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier messages were summarized to free context.'**
+  String get conversationCompactionUnknown;
+
+  /// Optional token counts shown under a context compaction marker.
+  ///
+  /// In en, this message translates to:
+  /// **'Context reduced from {before} to about {after} tokens.'**
+  String conversationCompactionTokens(String before, String after);
+
+  /// Disclosure label for earlier assistant responses produced within the same turn.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 previous message} other{{count} previous messages}}'**
+  String conversationPreviousMessages(int count);
+
   /// Shown when the license registry failed to load.
   ///
   /// In en, this message translates to:

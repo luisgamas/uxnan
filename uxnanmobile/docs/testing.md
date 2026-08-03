@@ -103,9 +103,11 @@ These need a real device and/or a live bridge+relay; defer until reachable:
   restore and an iOS device restore require re-pairing (the secure phone identity
   must not migrate), then confirm profile activity rehydrates from the bridge.
 - **Live bridge contracts:** the exact JSON shapes of `thread/list`,
-  `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent` payloads
-  are decoded with **tolerant** parsers; confirm field names against a real
-  bridge / a real Codex/Claude turn.
+  `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent`/
+  `compaction`/`assistant_response_boundary` payloads are decoded with
+  **tolerant** parsers; confirm field names against a real bridge / a real
+  Codex/Claude turn. Regression tests must also prove legacy Gemini descriptors,
+  threads, metrics and provider usage never regain a mobile surface.
 - **Native build correctness** beyond compilation (run the APK on a device).
 
 When you add a feature that can only be fully verified this way, leave a

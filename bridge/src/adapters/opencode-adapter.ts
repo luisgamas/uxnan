@@ -48,7 +48,12 @@ import {
 } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
-import { extractPlanSteps, planBlock, type PlanStepBlock } from './content-blocks.js';
+import {
+  compactionBlock,
+  extractPlanSteps,
+  planBlock,
+  type PlanStepBlock,
+} from './content-blocks.js';
 import { reasoningValue } from './run-options.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 import {
@@ -73,6 +78,7 @@ const OPENCODE_CAPABILITIES: AgentCapabilities = {
   // OpenCode reports per-step token counts (`step-finish.tokens` / the assistant
   // message `tokens`), surfaced as `usage.tokens` so the phone shows context use.
   reportsContextUsage: true,
+  reportsCompaction: true,
   commands: true,
 };
 
@@ -234,6 +240,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   /** Native OpenCode session id for a thread (on-disk history-fallback locator). */
   nativeSessionId(threadId: string): string | undefined {
     return this.#sessionByThread.get(threadId);
+  }
+
+  /**
+   * Read a persisted OpenCode session through the official serve API. This is
+   * also able to see turns written by OpenCode Desktop/another CLI because all
+   * clients share OpenCode's session database.
+   */
+  async readSessionMessages(sessionId: string, cwd?: string): Promise<unknown[]> {
+    const server = await this.#ensureServer(cwd ?? this.#defaultCwd);
+    return server.getMessages(sessionId);
   }
 
   constructor(options: OpenCodeAdapterOptions = {}) {
@@ -474,6 +490,17 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         return this.#onMessageUpdated(p);
       case 'session.error':
         return this.#onSessionError(p);
+      case 'session.compacted': {
+        const run = this.#runBySession.get(str(p['sessionID']));
+        if (!run || run.finished) return;
+        this.emit({
+          type: 'block',
+          threadId: run.threadId,
+          turnId: run.turnId,
+          data: { content: compactionBlock() },
+        });
+        return;
+      }
       case 'session.idle':
         return this.#onSessionIdle(p);
       default:

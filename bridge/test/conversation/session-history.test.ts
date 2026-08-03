@@ -1271,3 +1271,113 @@ test('gemini: toolCalls inline become structured blocks (write_file + run_shell_
     await cleanup();
   }
 });
+
+test('opencode: reads the official serve message API and ignores a live assistant record', async () => {
+  const reader = new SessionHistoryReader({
+    openCodeMessages: async () => [
+      {
+        info: { id: 'u1', role: 'user', time: { created: 1000 } },
+        parts: [{ type: 'text', text: 'from OpenCode Desktop' }],
+      },
+      {
+        info: { id: 'a1', role: 'assistant', finish: 'stop', time: { created: 1001 } },
+        parts: [
+          { type: 'reasoning', text: 'checking' },
+          { type: 'text', text: 'completed answer' },
+        ],
+      },
+      {
+        info: { id: 'u2', role: 'user', time: { created: 2000 } },
+        parts: [{ type: 'text', text: 'still running' }],
+      },
+      {
+        info: { id: 'a2', role: 'assistant', time: { created: 2001 } },
+        parts: [{ type: 'text', text: 'partial answer' }],
+      },
+    ],
+  });
+  const turns = await reader.readTurns(
+    { agentId: 'opencode', agentSessionId: 'ses_external', cwd: '/repo' },
+    'th-opencode',
+  );
+  assert.equal(turns?.length, 2);
+  assert.equal(turns?.[0]?.messages[1]?.content, 'completed answer');
+  assert.equal(turns?.[0]?.messages[1]?.thinking, 'checking');
+  assert.equal(turns?.[1]?.messages.length, 1, 'the unfinished answer is not imported');
+});
+
+test('zero: parses persisted ACP message events', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = 'zero-session-1';
+    await writeLines(join(home, '.local', 'share', 'zero', 'sessions', sid, 'events.jsonl'), [
+      {
+        id: `${sid}:1`,
+        sessionId: sid,
+        sequence: 1,
+        type: 'message',
+        createdAt: '2026-08-01T12:00:00Z',
+        payload: { role: 'user', content: 'from Zero TUI' },
+      },
+      {
+        id: `${sid}:2`,
+        sessionId: sid,
+        sequence: 2,
+        type: 'message',
+        createdAt: '2026-08-01T12:00:01Z',
+        payload: { role: 'assistant', content: 'zero answer' },
+      },
+    ]);
+    const turns = await new SessionHistoryReader({ homeDir: home }).readTurns(
+      { agentId: 'zero', agentSessionId: sid },
+      'th-zero',
+    );
+    assert.equal(turns?.length, 1);
+    assert.deepEqual(
+      turns?.[0]?.messages.map((message) => [message.role, message.content]),
+      [
+        ['user', 'from Zero TUI'],
+        ['assistant', 'zero answer'],
+      ],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test('grok: imports only ACP turns closed by turn_completed', async () => {
+  const { home, cleanup } = await fakeHome();
+  try {
+    const sid = '019fa5ab-5769-7391-965c-14aa144b43dd';
+    const file = join(home, '.grok', 'sessions', 'C%3A%5Crepo', sid, 'updates.jsonl');
+    const update = (timestamp: string, sessionUpdate: string, text?: string) => ({
+      timestamp,
+      method: 'session/update',
+      params: {
+        sessionId: sid,
+        update: {
+          sessionUpdate,
+          ...(text !== undefined ? { content: { type: 'text', text } } : {}),
+        },
+      },
+    });
+    await writeLines(file, [
+      update('2026-08-01T12:00:00Z', 'user_message_chunk', 'from Grok TUI'),
+      update('2026-08-01T12:00:01Z', 'agent_thought_chunk', 'thinking'),
+      update('2026-08-01T12:00:02Z', 'agent_message_chunk', 'grok answer'),
+      update('2026-08-01T12:00:03Z', 'turn_completed'),
+      update('2026-08-01T12:01:00Z', 'user_message_chunk', 'not finished'),
+      update('2026-08-01T12:01:01Z', 'agent_message_chunk', 'partial'),
+    ]);
+    const turns = await new SessionHistoryReader({ homeDir: home }).readTurns(
+      { agentId: 'grok', agentSessionId: sid },
+      'th-grok',
+    );
+    assert.equal(turns?.length, 1);
+    assert.equal(turns?.[0]?.messages[0]?.content, 'from Grok TUI');
+    assert.equal(turns?.[0]?.messages[1]?.content, 'grok answer');
+    assert.equal(turns?.[0]?.messages[1]?.thinking, 'thinking');
+  } finally {
+    await cleanup();
+  }
+});

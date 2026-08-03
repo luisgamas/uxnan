@@ -5,8 +5,10 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.7 / §5.8.9.
  */
-import { readFile, readdir, stat, mkdir, writeFile, rm } from 'node:fs/promises';
-import { dirname, extname, relative, resolve } from 'node:path';
+import { readFile, readdir, stat, mkdir, writeFile, rm, realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import type {
   ApplyResult,
@@ -17,8 +19,14 @@ import type {
   WorkspaceListing,
   WorkspaceMatch,
   WorkspaceSearchResult,
+  WorkspaceFileTarget,
 } from '@uxnan/shared';
-import { isSensitiveName, resolveWithinRoot } from './path-guard.js';
+import {
+  assertSafeWorkspacePath,
+  isSensitiveName,
+  isWithinRoot,
+  resolveWithinRoot,
+} from './path-guard.js';
 import { runGit } from '../git/git-runner.js';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -36,6 +44,41 @@ const IMAGE_MIME: Record<string, string> = {
 };
 
 export class WorkspaceService {
+  /**
+   * Resolve a file href from assistant Markdown into the existing viewer's
+   * `cwd + relative path` pair. Relative links start at the conversation cwd;
+   * absolute links and `..` references may land in another worktree. The
+   * canonical target must exist, be a regular file, and pass the same
+   * `.git`/sensitive-name guard as every workspace read.
+   */
+  async resolveFileLink(cwd: string, href: string): Promise<WorkspaceFileTarget> {
+    const rawPath = localPathFromHref(href);
+    const candidates = [rawPath, withoutLineSuffix(rawPath)].filter(
+      (value, index, all) => value.length > 0 && all.indexOf(value) === index,
+    );
+
+    let target: string | null = null;
+    for (const candidate of candidates) {
+      const expanded = expandHome(candidate);
+      const unresolved = isAbsolute(expanded) ? expanded : resolve(cwd, expanded);
+      try {
+        target = await realpath(unresolved);
+        break;
+      } catch {
+        // A common agent citation is `path/to/file.ts:42`; retry without the
+        // line/column suffix before reporting the file as missing.
+      }
+    }
+    if (target === null) {
+      throw new RpcError(JsonRpcErrorCode.ResourceNotFound, 'linked file not found');
+    }
+
+    assertSafeWorkspacePath(target);
+    await this.#assertExistingFile(target);
+    const root = await this.#viewerRoot(cwd, target);
+    return { cwd: root, path: toRelative(root, target) };
+  }
+
   async readFile(root: string, relPath: string): Promise<FileContent> {
     const abs = resolveWithinRoot(root, relPath);
     const isPdf = extname(abs).toLowerCase() === '.pdf';
@@ -263,6 +306,84 @@ export class WorkspaceService {
       throw new RpcError(JsonRpcErrorCode.BridgeError, 'file is too large to read');
     }
   }
+
+  async #assertExistingFile(abs: string): Promise<void> {
+    let info;
+    try {
+      info = await stat(abs);
+    } catch {
+      throw new RpcError(JsonRpcErrorCode.ResourceNotFound, 'linked file not found');
+    }
+    if (!info.isFile()) {
+      throw RpcError.invalidParams('linked path is not a file');
+    }
+  }
+
+  /** Prefer the conversation root, then the target's git worktree, then its directory. */
+  async #viewerRoot(cwd: string, target: string): Promise<string> {
+    let conversationRoot = resolve(cwd);
+    try {
+      conversationRoot = await realpath(conversationRoot);
+    } catch {
+      // An absolute link can remain usable after the original cwd disappears.
+    }
+    if (isWithinRoot(conversationRoot, target)) return conversationRoot;
+
+    try {
+      const { stdout } = await runGit(dirname(target), ['rev-parse', '--show-toplevel']);
+      const gitRoot = await realpath(stdout.trim());
+      if (isWithinRoot(gitRoot, target)) return gitRoot;
+    } catch {
+      // Non-git targets use their containing directory as a narrow read root.
+    }
+    return dirname(target);
+  }
+}
+
+function localPathFromHref(href: string): string {
+  let value = href.trim();
+  if (value.length === 0 || value.includes('\0')) {
+    throw RpcError.invalidParams('href must be a local file path');
+  }
+  if (
+    (value.startsWith('<') && value.endsWith('>')) ||
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  if (/^file:/i.test(value)) {
+    try {
+      const url = new URL(value);
+      url.hash = '';
+      return fileURLToPath(url);
+    } catch {
+      throw RpcError.invalidParams('invalid file URL');
+    }
+  }
+  // A drive letter is a path on Windows, not a URI scheme.
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) && !/^[a-zA-Z]:[\\/]/.test(value)) {
+    throw RpcError.invalidParams('href is not a local file link');
+  }
+  const hash = value.indexOf('#');
+  if (hash >= 0) value = value.slice(0, hash);
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw RpcError.invalidParams('invalid percent-encoding in file link');
+  }
+}
+
+function expandHome(path: string): string {
+  if (path === '~') return homedir();
+  if (path.startsWith('~/') || path.startsWith('~\\')) {
+    return join(homedir(), path.slice(2));
+  }
+  return path;
+}
+
+function withoutLineSuffix(path: string): string {
+  return path.replace(/:\d+(?::\d+)?$/, '');
 }
 
 function toRelative(root: string, abs: string): string {

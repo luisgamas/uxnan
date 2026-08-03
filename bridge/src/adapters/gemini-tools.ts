@@ -1,4 +1,7 @@
 /**
+ * @deprecated Legacy Gemini CLI tool mapping retained for stored-session and
+ * source compatibility only. New Gemini work cannot be dispatched.
+ *
  * Maps Gemini CLI tool events (`tool_use` + `tool_result` from the `stream-json`
  * output) onto the shared structured content blocks the phone renders in the Work
  * log and Changed files. Mirrors `codex-tools.ts` / `pi-tools.ts`.

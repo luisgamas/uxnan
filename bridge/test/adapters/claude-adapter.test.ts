@@ -77,6 +77,17 @@ test('parseClaudeLine maps the documented event shapes', () => {
   });
   assert.deepEqual(
     parseClaudeLine(
+      '{"type":"system","subtype":"compact_boundary","session_id":"s","compact_metadata":{"trigger":"manual","pre_tokens":12345}}',
+    ),
+    {
+      kind: 'compaction',
+      sessionId: 's',
+      compactionReason: 'manual',
+      tokensBefore: 12345,
+    },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
       '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}}',
     ),
     { kind: 'delta', sessionId: 's', text: 'hi' },
@@ -110,6 +121,28 @@ test('parseClaudeLine maps the documented event shapes', () => {
     parseClaudeLine('{"type":"stream_event","event":{"type":"message_start"}}')?.kind,
     'other',
   );
+});
+
+test('ClaudeCodeAdapter emits compact_boundary as a compaction block', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: '/compact' });
+  last().feed([
+    '{"type":"system","subtype":"compact_boundary","session_id":"s","compact_metadata":{"trigger":"manual","pre_tokens":12345}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Compacted","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, {
+    type: 'compaction',
+    reason: 'manual',
+    tokensBefore: 12345,
+  });
 });
 
 test('ClaudeCodeAdapter streams text_delta as deltas and completes with the result text', async () => {
@@ -462,6 +495,33 @@ test('ClaudeCodeAdapter keeps the full streamed text when result.result is only 
   assert.equal((completed?.data as { text: string }).text, 'Let me check. The answer is 42.');
 });
 
+test('ClaudeCodeAdapter preserves every assistant envelope and its boundary', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"stream_event","session_id":"s","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Checking."}}}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Checking."}]}}',
+    // This second envelope has no partial event: it must not be skipped merely
+    // because the first envelope streamed.
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Done."}]}}',
+    '{"type":"result","subtype":"success","result":"Done.","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  assert.deepEqual(
+    events.filter((event) => event.type === 'delta').map((event) => (event.data as any).text),
+    ['Checking.', 'Done.'],
+  );
+  assert.equal(events.filter((event) => event.type === 'block').length, 2);
+  assert.equal(
+    (events.find((event) => event.type === 'turn_completed')?.data as { text: string }).text,
+    'Checking.Done.',
+  );
+});
+
 test('parseClaudeLine extracts the resolved model from the init event', () => {
   assert.equal(
     parseClaudeLine('{"type":"system","subtype":"init","session_id":"s","model":"claude-opus-4-8"}')
@@ -694,11 +754,20 @@ test('ClaudeCodeAdapter flags a subagent block landing mid-text as beforeText', 
 
   const events = await done;
   const blocks = events.filter((e) => e.type === 'block');
-  assert.equal(blocks.length, 2);
+  const activityBlocks = blocks.filter(
+    (event) =>
+      (event.data as { content: { type?: string } }).content.type !== 'assistant_response_boundary',
+  );
+  const boundaries = blocks.filter(
+    (event) =>
+      (event.data as { content: { type?: string } }).content.type === 'assistant_response_boundary',
+  );
+  assert.equal(activityBlocks.length, 2);
+  assert.equal(boundaries.length, 1);
   // the subagent block that landed mid-run is flagged beforeText…
-  assert.equal((blocks[0]!.data as { beforeText?: boolean }).beforeText, true);
+  assert.equal((activityBlocks[0]!.data as { beforeText?: boolean }).beforeText, true);
   // …the sequential main block is not
-  assert.equal((blocks[1]!.data as { beforeText?: boolean }).beforeText, undefined);
+  assert.equal((activityBlocks[1]!.data as { beforeText?: boolean }).beforeText, undefined);
   // and the main text run streamed whole, never polluted by subagent content
   const deltas = events
     .filter((e) => e.type === 'delta')
@@ -727,4 +796,162 @@ test('ClaudeCodeAdapter never folds subagent text or usage into the main message
   assert.deepEqual(deltas, ['main answer']);
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { usage?: { tokens: number } }).usage?.tokens, 15);
+});
+
+// --- background tasks: the turn is not over while the CLI still has work ---
+//
+// The shapes below are the ones a real `claude -p --output-format stream-json`
+// emits when the model starts a background task (`Bash` with
+// `run_in_background`) and then ends its turn: the CLI keeps running, and if
+// that work finishes within its few seconds of grace it WAKES THE MODEL and a
+// second complete turn follows on the same process. If it does not finish in
+// time the CLI kills the task (`status:"stopped"`) and exits.
+
+/** Collect a whole run, settling only after a terminal event has had time to be
+ *  followed by another one — the duplicate completion is the bug under test. */
+function collectRun(adapter: ClaudeCodeAdapter): { done: Promise<AgentStreamEvent[]> } {
+  const events: AgentStreamEvent[] = [];
+  let resolve!: (e: AgentStreamEvent[]) => void;
+  const done = new Promise<AgentStreamEvent[]>((r) => (resolve = r));
+  adapter.onEvent((event) => {
+    events.push(event);
+    if (event.type === 'turn_completed' || event.type === 'turn_error') {
+      setTimeout(() => resolve(events), 10);
+    }
+  });
+  return { done };
+}
+
+/** The warning blocks emitted during a run. */
+function warnings(events: AgentStreamEvent[]): AgentStreamEvent[] {
+  return events.filter(
+    (e) =>
+      e.type === 'block' && (e.data as { content?: { kind?: string } }).content?.kind === 'warning',
+  );
+}
+
+test('a turn is not completed while a background task the model started is still live', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collectRun(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'start it' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s","model":"claude-haiku-4-5-20251001"}',
+    '{"type":"system","subtype":"background_tasks_changed","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"bkm","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Started it; I will report back. "}]}}',
+    // The model's turn ends here — but the work it started is still running.
+    '{"type":"result","subtype":"success","is_error":false,"result":"Started it; I will report back. ","session_id":"s"}',
+    // The task finishes in time, so the CLI wakes the model for a second turn.
+    '{"type":"system","subtype":"task_updated","task_id":"bkm","session_id":"s"}',
+    '{"type":"system","subtype":"task_notification","status":"completed","task_id":"bkm","session_id":"s"}',
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"The job finished."}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"The job finished.","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const completions = events.filter((e) => e.type === 'turn_completed');
+  // Exactly one. Completing at the first `result` ends the turn mid-work: the
+  // phone drops its "responding" state, the queue drains a follow-up into a CLI
+  // that is still running, and the wake-up turn lands on a closed turn.
+  assert.equal(completions.length, 1);
+  // And it carries BOTH replies — `result.result` only ever holds the latest
+  // turn's text, so the first reply survives only in the accumulated narration.
+  const text = (completions[0]?.data as { text: string }).text;
+  assert.match(text, /Started it/);
+  assert.match(text, /The job finished\./);
+  assert.equal(warnings(events).length, 0, 'nothing was interrupted, so nothing is reported');
+});
+
+test('background work the CLI kills is reported instead of passing as a clean turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collectRun(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'start something long' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"bnc","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Running in the background."}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Running in the background.","session_id":"s"}',
+    // The work outlived the CLI's grace period, so it was killed, not finished.
+    '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"bnc","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  const warning = warnings(events)[0];
+  assert.ok(warning, 'the user is told the background work did not finish');
+  assert.match((warning?.data as { content: { text: string } }).content.text, /interrupted/i);
+});
+
+test('a background task still open when the CLI exits counts as interrupted', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collectRun(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'go' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"system","subtype":"task_started","task_id":"a","session_id":"s"}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"started","session_id":"s"}',
+    // No notification at all — the process simply goes away with the task open.
+  ]);
+
+  const events = await done;
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  assert.equal(warnings(events).length, 1);
+});
+
+test('a turn with no background task still completes at its result, unchanged', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collectRun(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  last().feed([
+    '{"type":"system","subtype":"init","session_id":"s"}',
+    '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"Answer"}]}}',
+    '{"type":"result","subtype":"success","is_error":false,"result":"Answer","session_id":"s"}',
+  ]);
+
+  const events = await done;
+  const completions = events.filter((e) => e.type === 'turn_completed');
+  assert.equal(completions.length, 1);
+  assert.equal((completions[0]?.data as { text: string }).text, 'Answer');
+  assert.equal(warnings(events).length, 0);
+});
+
+test('parseClaudeLine tells background-task lines apart from an init', () => {
+  // Every `system` line used to parse as `init`, which is how the background
+  // signal was thrown away — and why a second `init` (the CLI waking the model)
+  // was indistinguishable from a fresh session.
+  assert.deepEqual(
+    parseClaudeLine('{"type":"system","subtype":"task_started","task_id":"x","session_id":"s"}'),
+    { kind: 'task_started', sessionId: 's', taskId: 'x' },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
+      '{"type":"system","subtype":"task_notification","status":"completed","task_id":"x","session_id":"s"}',
+    ),
+    { kind: 'task_ended', sessionId: 's', taskId: 'x', taskStatus: 'completed' },
+  );
+  assert.deepEqual(
+    parseClaudeLine(
+      '{"type":"system","subtype":"task_notification","status":"stopped","task_id":"x","session_id":"s"}',
+    ),
+    { kind: 'task_ended', sessionId: 's', taskId: 'x', taskStatus: 'stopped' },
+  );
+  // A system line we do not act on must not masquerade as an init.
+  assert.deepEqual(
+    parseClaudeLine('{"type":"system","subtype":"background_tasks_changed","session_id":"s"}'),
+    { kind: 'other', sessionId: 's' },
+  );
+  // The real init still parses exactly as before.
+  assert.deepEqual(parseClaudeLine('{"type":"system","subtype":"init","session_id":"s"}'), {
+    kind: 'init',
+    sessionId: 's',
+  });
 });

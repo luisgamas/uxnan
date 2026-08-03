@@ -403,6 +403,72 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   assert.equal(threadStart.params.sandbox, 'workspace-write');
 });
 
+test('CodexAdapter preserves commentary and final assistant items with boundaries', async () => {
+  const { adapter, server } = setup();
+  const { done, until } = collect(adapter);
+
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'do it' });
+  await waitForTurnStarted(until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: { itemId: 'msg-1', delta: 'I am checking.' },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: {
+        item: {
+          id: 'msg-1',
+          type: 'agentMessage',
+          phase: 'commentary',
+          text: 'I am checking.',
+        },
+      },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: { itemId: 'msg-2', delta: 'Everything is done.' },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: {
+        item: {
+          id: 'msg-2',
+          type: 'agentMessage',
+          phase: 'final_answer',
+          text: 'Everything is done.',
+        },
+      },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+
+  const events = await done;
+  assert.deepEqual(
+    events.filter((event) => event.type === 'delta').map((event) => (event.data as any).text),
+    ['I am checking.', 'Everything is done.'],
+  );
+  assert.deepEqual(
+    events.filter((event) => event.type === 'block').map((event) => (event.data as any).content),
+    [
+      { type: 'assistant_response_boundary', phase: 'commentary', itemId: 'msg-1' },
+      { type: 'assistant_response_boundary', phase: 'final_answer', itemId: 'msg-2' },
+    ],
+  );
+  assert.equal(
+    (events.find((event) => event.type === 'turn_completed')?.data as { text: string }).text,
+    'I am checking.Everything is done.',
+  );
+});
+
 test('CodexAdapter routes reasoning-summaryTextDelta to thinking events', async () => {
   const { adapter, server } = setup();
   const { done, until } = collect(adapter);
@@ -469,6 +535,32 @@ test('CodexAdapter maps a commandExecution item to a command_execution block', a
   assert.equal(block?.content['command'], 'ls');
   assert.equal(block?.content['status'], 'completed');
   assert.equal(block?.content['output'], 'a\nb');
+});
+
+test('CodexAdapter maps contextCompaction to a compaction block', async () => {
+  const { adapter, server } = setup();
+  const { done, until } = collect(adapter);
+
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  await waitForTurnStarted(until);
+  server.feed([
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: { item: { type: 'contextCompaction' } },
+    }),
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'turn/completed',
+      params: { turn: { status: 'completed' } },
+    }),
+  ]);
+
+  const events = await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, { type: 'compaction', reason: 'unknown' });
 });
 
 test('CodexAdapter maps a fileChange item to a diff block (uses the inline diff when present)', async () => {

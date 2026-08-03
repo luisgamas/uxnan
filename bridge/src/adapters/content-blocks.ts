@@ -9,11 +9,40 @@
  * `MessageContent` types.
  */
 import type {
+  AssistantResponseBoundaryBlock,
+  AssistantResponsePhase,
   ApprovalRequestBlock,
   ApprovalRisk,
+  CompactionContentBlock,
+  CompactionReason,
   QuestionItem,
   QuestionRequestBlock,
 } from '@uxnan/shared';
+
+/** Marks the end of one native assistant response item within a turn. */
+export function assistantResponseBoundaryBlock(
+  phase: AssistantResponsePhase = 'unknown',
+  itemId?: string,
+): AssistantResponseBoundaryBlock {
+  return {
+    type: 'assistant_response_boundary',
+    phase,
+    ...(itemId !== undefined && itemId.length > 0 ? { itemId } : {}),
+  };
+}
+
+/** A durable marker for a context compaction the agent explicitly reported. */
+export function compactionBlock(
+  reason: CompactionReason = 'unknown',
+  opts: { tokensBefore?: number; tokensAfter?: number } = {},
+): CompactionContentBlock {
+  return {
+    type: 'compaction',
+    reason,
+    ...(opts.tokensBefore !== undefined ? { tokensBefore: opts.tokensBefore } : {}),
+    ...(opts.tokensAfter !== undefined ? { tokensAfter: opts.tokensAfter } : {}),
+  };
+}
 
 /** Cap tool/command output carried on the wire so a big read doesn't bloat it. */
 const MAX_OUTPUT = 4000;
@@ -264,6 +293,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function errorBlock(text: string): Record<string, unknown> {
   return { type: 'system', text: truncateOutput(text), kind: 'error' };
+}
+
+/**
+ * A system **warning** block: something the user needs to know about the turn
+ * that is not a failure of the turn itself.
+ *
+ * Used for background work an agent left running that its CLI then killed —
+ * the turn did produce its reply, so `errorBlock` would overstate it, but the
+ * work the agent promised silently did not happen. Same `SystemContent` wire
+ * shape as `errorBlock` with `kind:'warning'`, which the phone already renders
+ * with its own icon and colour.
+ */
+export function warningBlock(text: string): Record<string, unknown> {
+  return { type: 'system', text: truncateOutput(text), kind: 'warning' };
 }
 
 /** A generic `tool` block (a non-shell, non-edit tool call and its output). */

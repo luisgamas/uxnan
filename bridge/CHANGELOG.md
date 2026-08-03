@@ -5,6 +5,112 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a turn no longer ends while the agent is still working
+
+An agent that says *"I left that running, I'll report back"* was being reported
+to the phone as finished. Verified against the real `claude` CLI, timed: it
+emits its end-of-turn `result` and **keeps running**, and when the background
+work finishes in time it **wakes the model** and produces a second, complete
+turn on the same process. The bridge was ending the turn at the first `result`.
+
+- **Background tasks are now tracked, so a `result` with live work does not end
+  the turn.** `system` stream lines are no longer all parsed as `init`: a
+  `task_started` / `task_notification` pair is recognized, and while a task is
+  live the completion is held until the CLI produces its follow-up turn or
+  exits. One `turn_completed` per turn, carrying **both** replies — the CLI's
+  `result` only ever holds the latest turn's text, so the first reply survived
+  only in the accumulated narration.
+- **Work the CLI killed is reported instead of passing as a clean success.**
+  The CLI gives background work only a few seconds' grace after the turn ends
+  and then kills it (`status:"stopped"`) — measured at ~4–6 s, with the work
+  genuinely lost. The turn now carries a warning block saying the agent left
+  work running and it was interrupted, rather than the phone showing a clean
+  finish over lost work. A task still open when the process exits counts the
+  same way.
+- **A turn that has ended stays ended** (`ThreadStore`). `appendDelta`,
+  `appendThinking`, `appendBlock` and `completeTurn` now ignore a turn in a
+  terminal status instead of mutating it: a second completion could previously
+  **overwrite the reply the user had already read**, and late output landed on a
+  closed turn. This guard is adapter-agnostic on purpose — every adapter except
+  Antigravity ends its turn on a protocol event while its CLI keeps running, so
+  late output is reachable for all of them.
+- **The message queue is not drained twice** (`AgentManager`). A duplicate
+  terminal event would have started the next queued turn against a CLI that was
+  still running — the exact serialization the queue exists to enforce.
+
+New `warningBlock` content block (`kind:'warning'`, the `SystemContent` shape the
+phone already renders); no wire contract changed, so no client update is needed.
+
+### Added — safe cross-worktree file-link resolution
+
+- Added `workspace/resolveFileLink { cwd, href }`, which canonicalizes a local
+  path cited by an agent and returns the `cwd + relative path` pair consumed by
+  Mobile's existing file viewer.
+- Relative links resolve from the conversation cwd. Absolute paths, `file:`
+  URLs and `..` references may target another worktree; the target's Git root
+  becomes the viewer root, with a narrow containing-directory fallback for
+  non-Git files.
+- The resolver requires an existing regular file and rejects remote schemes,
+  `.git` internals and sensitive path segments. Percent-encoded paths,
+  fragments and common `:line[:column]` citations are normalized.
+- `path-guard` now rejects a sensitive name in **any** segment below a
+  workspace root, not just the file's own name, so a read can no longer reach
+  into a `.env/` directory. Segments above the root are left alone: the user
+  chose that root, and judging its ancestors would deny every read of a project
+  that merely lives under a matching folder name.
+
+### Added — native-session turns converge back into Uxnan
+
+- `turn/list` now reconciles the agent-owned transcript on every idle read,
+  even when the bridge already has stored turns. Completed prompts and answers
+  written from Codex Desktop/CLI, OpenCode Desktop, Claude Code, pi, Zero or
+  Grok therefore join the same Uxnan thread without duplicating bridge-owned
+  turns or replacing their richer segments, queue state or usage.
+- Codex, Claude and pi use their persisted JSONL transcripts. OpenCode reads
+  the official `opencode serve` session-message endpoint (with its legacy JSON
+  store as a compatibility fallback). Zero reads `events.jsonl`; Grok rebuilds
+  only ACP turns closed by `turn_completed` from `updates.jsonl`.
+- Native-only turns receive deterministic ids and are refreshed additively on
+  later reads. Missing native history never deletes bridge history, and a
+  native transcript is not consulted while that bridge thread has a live turn.
+- Antigravity remains explicitly unsupported for cross-client history: its
+  conversation database stores opaque payloads and `agy` exposes no reliable
+  history/export command, so the bridge does not guess.
+
+### Fixed — terminal events can no longer erase earlier agent responses
+
+- Codex now accumulates every `agentMessage` item instead of replacing the turn
+  with the last item at `turn/completed`. Its native `commentary` and
+  `final_answer` phases are persisted as response boundaries.
+- Claude Code and Pi now reconcile each native assistant-message envelope
+  independently, including envelopes that did not stream deltas, and persist
+  their boundaries. Agents whose protocols expose one accumulated response
+  continue unchanged.
+- `ThreadStore.completeTurn` is lossless for every adapter: a terminal text may
+  extend or repeat streamed prose, but a divergent last-message payload is
+  appended as another response and never deletes text already shown to a user.
+
+### Added — durable context-compaction events
+
+- Codex `item/completed { type:'contextCompaction' }`, Claude Code
+  `system/compact_boundary`, OpenCode `session.compacted`, and pi's successful
+  `compaction_end` now become structured `compaction` content blocks. They use
+  the normal persisted block/segment path, so the marker survives reconnects
+  and `turn/list` reconciliation in the same position seen live.
+- Pi and Claude preserve their reported reason/token metadata. Codex and
+  OpenCode report a marker with `reason:'unknown'` because their event does not
+  carry a trustworthy cause. Zero/Grok's ACP updates and Antigravity's text-only
+  one-shot output expose no compaction event, so the bridge deliberately emits
+  nothing for them.
+- The four truthful integrations advertise `reportsCompaction:true`.
+
+### Changed — Gemini CLI is now non-runnable legacy
+
+- `agent/list` retains Gemini only as `deprecated:true, available:false` for
+  legacy inspection. `AgentManager` rejects new turns and returns no models or
+  commands for deprecated adapters. Antigravity remains the supported Google
+  agent.
+
 ### Changed — reliable PDF delivery for the mobile workspace viewer
 
 - `workspace/readFile` now identifies `.pdf` files by extension and returns

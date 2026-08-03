@@ -36,8 +36,8 @@ this app:
 - **Provider-agnostic, real multi-agent support.** It is not tied to a single
   vendor. Seven real agents are selectable today — OpenCode, Claude Code, Codex,
   pi, Antigravity, Zero and Grok — and you select the agent and model per
-  conversation. (Google's Antigravity CLI replaces the now-deprecated Gemini CLI,
-  which the bridge still drives but the app hides from the picker.)
+  conversation. Google's Antigravity CLI replaces the retired Gemini CLI;
+  Gemini has no mobile enum, profile card, logo or conversation surface.
 - **Strong encryption that is never optional.** Every message to and from the PC
   travels through a real end-to-end encrypted channel (X25519 + Ed25519 +
   AES-256-GCM + HKDF). There is no "plaintext mode".
@@ -62,7 +62,10 @@ this app:
   as the empty-state hero.
 - **Parity with the bridge's main capabilities.** Streaming conversations with
   structured agent turns, interactive approvals, model and reasoning-effort
-  selection, a live context-usage indicator, a message scroll rail to jump
+  selection, lossless multi-message turns whose earlier progress replies fold
+  into an expandable **N previous messages** section after completion, a live
+  context-usage indicator, durable markers where an agent
+  compacted earlier context, a message scroll rail to jump
   through your prompts, automatic first-prompt conversation titles that remain
   manually renameable, per-agent sign-in status, voice and image input, a full
   Git screen, and a searchable workspace file browser are all available from
@@ -72,6 +75,12 @@ this app:
   Android and iOS. While a reply is pending, its waiting label has a
   subtle skeleton sweep; after the first token only the live loader remains,
   moving after the latest streamed token like a writing cursor.
+- **One native session, whichever client you use.** Keep a conversation open in
+  Mobile and completed turns written from Codex Desktop/CLI, OpenCode Desktop,
+  Claude Code, pi, Zero or Grok join the same timeline within a few seconds.
+  Mobile stores both the external prompt and its answer without duplicating its
+  own messages. Antigravity is excluded because `agy` has no reliable readable
+  transcript; cross-client token streaming is not claimed.
 - **Your activity, at a glance.** A profile with a GitHub-style contribution
   heatmap and stat tiles — conversations, agents used, time connected, longest
   session and more — aggregated **locally** across every paired PC, plus a

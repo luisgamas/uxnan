@@ -6,14 +6,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
+import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
+import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
+import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -26,11 +30,12 @@ Message _msg(
   required MessageRole role,
   String text = '',
   String threadId = 'th1',
+  String turnId = '',
 }) =>
     Message(
       id: id,
       threadId: threadId,
-      turnId: '',
+      turnId: turnId,
       role: role,
       contents: [TextContent(text)],
       deliveryState: MessageDeliveryState.delivered,
@@ -54,6 +59,7 @@ void main() {
   Object? turnListResult;
   // Test-settable `turn/read` result (null → empty, the no-op reconcile).
   Object? turnReadResult;
+  Object? agentListResult;
   late ThreadManager manager;
 
   setUp(() {
@@ -65,6 +71,7 @@ void main() {
     turnSendParams = null;
     turnListResult = null;
     turnReadResult = null;
+    agentListResult = null;
     manager = ThreadManager(
       threadRepository: threadRepo,
       messageRepository: messageRepo,
@@ -87,11 +94,16 @@ void main() {
           'project/list' => [
               {'id': 'p1', 'name': 'App', 'cwd': '/projects/app'},
             ],
-          'agent/list' => {
-              'agents': [
-                {'agentId': 'codex', 'displayName': 'Codex', 'available': true},
-              ],
-            },
+          'agent/list' => agentListResult ??
+              {
+                'agents': [
+                  {
+                    'agentId': 'codex',
+                    'displayName': 'Codex',
+                    'available': true,
+                  },
+                ],
+              },
           'auth/status' => {
               'agentId': params?['agentId'],
               'requiresLogin': true,
@@ -139,6 +151,160 @@ void main() {
 
     expect(manager.timeline.messages.map((m) => m.id).toList(), ['m1', 'm2']);
   });
+
+  test(
+    'resync persists native-only user and assistant messages '
+    'without duplicates',
+    () async {
+      turnListResult = {
+        'turns': [
+          {
+            'id': 'native-session#t1',
+            'status': 'completed',
+            'messages': [
+              {
+                'role': 'user',
+                'content': 'written from Codex Desktop',
+                'createdAt': 1000,
+              },
+              {
+                'role': 'assistant',
+                'content': 'external answer',
+                'createdAt': 1001,
+              },
+            ],
+          },
+        ],
+        'total': 1,
+      };
+
+      await manager.selectThread('th1');
+      await _settle();
+      await manager.resyncActive();
+      await _settle();
+
+      final persisted = await messageRepo.getMessages('th1');
+      expect(persisted.map((message) => message.role), [
+        MessageRole.user,
+        MessageRole.assistant,
+      ]);
+      expect(persisted.map(_text), [
+        'written from Codex Desktop',
+        'external answer',
+      ]);
+      expect(persisted.map((message) => message.turnId).toSet(), {
+        'native-session#t1',
+      });
+    },
+  );
+
+  test(
+    'resync preserves a Mobile-authored user message matched by turn id',
+    () async {
+      await messageRepo.saveMessage(
+        _msg(
+          'local-user-id',
+          order: 0,
+          role: MessageRole.user,
+          text: 'written from Mobile',
+          turnId: 'bridge-turn',
+        ),
+      );
+      turnListResult = {
+        'turns': [
+          {
+            'id': 'bridge-turn',
+            'status': 'completed',
+            'messages': [
+              {
+                'role': 'user',
+                'content': 'written from Mobile',
+                'createdAt': 1000,
+              },
+              {
+                'role': 'assistant',
+                'content': 'bridge answer',
+                'createdAt': 1001,
+              },
+            ],
+          },
+        ],
+        'total': 1,
+      };
+
+      await manager.selectThread('th1');
+      await _settle();
+
+      final persisted = await messageRepo.getMessages('th1');
+      final users = persisted
+          .where((message) => message.role == MessageRole.user)
+          .toList();
+      expect(users, hasLength(1));
+      expect(users.single.id, 'local-user-id');
+      expect(persisted.map(_text), contains('bridge answer'));
+    },
+  );
+
+  test(
+    'connected active conversation polls for external native-session turns',
+    () async {
+      final phases = StreamController<ConnectionPhase>.broadcast();
+      Object result = <String, dynamic>{
+        'turns': const <Object?>[],
+        'total': 0,
+      };
+      final pollingManager = ThreadManager(
+        threadRepository: threadRepo,
+        messageRepository: messageRepo,
+        domainEvents: events.stream,
+        connectionPhases: phases.stream,
+        externalSyncInterval: const Duration(milliseconds: 10),
+        sendRequest: (method, [params]) async => RpcMessage.response(
+          id: 'poll',
+          result: method == 'turn/list' ? result : const <String, dynamic>{},
+        ),
+      );
+      try {
+        await pollingManager.selectThread('th1');
+        await _settle();
+        result = {
+          'turns': [
+            {
+              'id': 'native-session#t2',
+              'status': 'completed',
+              'messages': [
+                {
+                  'role': 'user',
+                  'content': 'later external prompt',
+                  'createdAt': 2000,
+                },
+                {
+                  'role': 'assistant',
+                  'content': 'later external answer',
+                  'createdAt': 2001,
+                },
+              ],
+            },
+          ],
+          'total': 1,
+        };
+        phases.add(ConnectionPhase.connected);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        final messages = await messageRepo.getMessages('th1');
+        expect(
+          messages.map(_text),
+          containsAll([
+            'later external prompt',
+            'later external answer',
+          ]),
+        );
+      } finally {
+        await pollingManager.dispose();
+        await phases.close();
+      }
+    },
+  );
 
   test('applies a streaming turn: started, deltas, completed', () async {
     await manager.selectThread('th1');
@@ -546,6 +712,52 @@ void main() {
     expect((finalized.contents[2] as TextContent).text, 'second and tail');
   });
 
+  test('a divergent terminal text cannot erase responses already shown live',
+      () async {
+    await manager.selectThread('th1');
+    await _settle();
+
+    events
+      ..add(const TurnStartedEvent(turnId: 'turn-lossless', threadId: 'th1'))
+      ..add(
+        const MessageDeltaEvent(
+          turnId: 'turn-lossless',
+          threadId: 'th1',
+          delta: 'Progress update.',
+        ),
+      )
+      ..add(
+        const ContentBlockEvent(
+          turnId: 'turn-lossless',
+          threadId: 'th1',
+          content: AssistantResponseBoundaryContent(
+            phase: AssistantResponsePhase.commentary,
+          ),
+        ),
+      )
+      // Simulate an adapter that incorrectly reports only its last native
+      // assistant message in the terminal event.
+      ..add(
+        const TurnCompletedEvent(
+          turnId: 'turn-lossless',
+          threadId: 'th1',
+          text: 'Final answer.',
+        ),
+      );
+    await _settle();
+
+    final finalized = manager.timeline.messages
+        .firstWhere((message) => message.id == 'stream-turn-lossless');
+    expect(
+      finalized.contents.whereType<TextContent>().map((text) => text.text),
+      ['Progress update.', 'Final answer.'],
+    );
+    expect(
+      finalized.contents.whereType<AssistantResponseBoundaryContent>().length,
+      2,
+    );
+  });
+
   test(
       'a completed turn reconciles against the bridge record (turn/read) so '
       'the stored message converges to the authoritative interleave', () async {
@@ -949,6 +1161,30 @@ void main() {
     expect(sentMethods, contains('thread/list'));
   });
 
+  test('threadsStream filters a cached legacy Gemini thread', () async {
+    await threadRepo.saveThread(
+      const Thread(
+        id: 'legacy-gemini',
+        title: 'Legacy',
+        agentId: 'gemini-cli',
+        syncState: ThreadSyncState.synced,
+        status: ThreadStatus.active,
+      ),
+    );
+    await threadRepo.saveThread(
+      const Thread(
+        id: 'visible-codex',
+        title: 'Visible',
+        agentId: 'codex',
+        syncState: ThreadSyncState.synced,
+        status: ThreadStatus.active,
+      ),
+    );
+
+    final threads = await manager.threadsStream.first;
+    expect(threads.map((thread) => thread.id), ['visible-codex']);
+  });
+
   test('loadProjects parses the project list', () async {
     final projects = await manager.loadProjects();
     expect(projects.single.id, 'p1');
@@ -961,6 +1197,23 @@ void main() {
     expect(agents.single.agentId, 'codex');
     expect(agents.single.available, isTrue);
     expect(sentMethods, contains('agent/list'));
+  });
+
+  test('loadAgents filters deprecated and legacy Gemini descriptors', () async {
+    agentListResult = {
+      'agents': [
+        {'agentId': 'codex', 'displayName': 'Codex', 'available': true},
+        {
+          'agentId': 'gemini-cli',
+          'displayName': 'Gemini',
+          'available': false,
+          'deprecated': true,
+        },
+      ],
+    };
+
+    final agents = await manager.loadAgents();
+    expect(agents.map((agent) => agent.agentId), ['codex']);
   });
 
   test('loadAuthStatus sends auth/status with the agentId and parses it',

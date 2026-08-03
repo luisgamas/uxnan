@@ -53,8 +53,9 @@ dependencies:
   # docs/file-viewer.md.
   jovial_svg: ^1.1.30
   logger: ^2.4.0 # structured logging
-  # Markdown AST, used directly for the GitHub extension set + code-block
-  # builder (already a transitive dep of flutter_markdown_plus).
+  # Markdown AST, used directly for the GitHub extension set, the code-block
+  # builder and the custom inline syntax for agent-provided local file paths
+  # (already a transitive dep of flutter_markdown_plus).
   markdown: ^7.3.1
   material_loading_indicator: ^1.0.0 # M3 Expressive rounded-shape morph loader
   mobile_scanner: ^6.0.11 # QR scanner (CameraX/MLKit, AVFoundation)

@@ -1566,3 +1566,12 @@ export interface RateLimit {
   used: number;
   reset: number;
 }
+
+/** What the app knows about its own post-mortem diagnostics (`diagnostics.rs`).
+ *  Mirrors the Rust `DiagnosticsReport`. */
+export interface DiagnosticsReport {
+  /** Absolute path of the live log file; `null` if the sink failed to start. */
+  logPath: string | null;
+  /** True when the previous session never reached its clean exit path. */
+  previousSessionUnclean: boolean;
+}
