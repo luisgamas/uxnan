@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.16-alpha.20260803+20260803] - 2026-08-03
+
 ### Added — agent file links open in the workspace viewer
 
 - Assistant Markdown links, bare local paths and inline-code file references

@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.26] - 2026-08-03
+
 ### Added — the app now records its own failures
 
 - **A rolling app log** under `<app data>/logs/` (2 MiB per file, 3 rotations

@@ -1,4 +1,6 @@
 Novedades de esta actualización:
 
-• Envía mensajes de seguimiento mientras el agente trabaja. Cada uno espera su turno, muestra su lugar en la fila y puedes editarlo o cancelarlo antes de que el agente lo vea.
-• Adjunta imágenes a un mensaje: elige varias de tu galería o toma una foto, revísalas dentro del campo de escritura y toca una imagen enviada para verla a tamaño completo.
+• Abre un archivo desde el chat: toca el archivo que menciona el agente y se abre en tu teléfono, aunque esté en otra carpeta de tu PC.
+• Un visor de archivos mucho mejor: Markdown como se ve en GitHub, PDF, GIF animados, SVG e imágenes con zoom.
+• Las conversaciones ahora recogen el trabajo que hiciste en la app del agente en tu PC.
+• Las respuestas se formatean mientras llegan y ya nada de lo que dijo un agente se reemplaza.

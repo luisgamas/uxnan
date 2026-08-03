@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.12-alpha.20260803] - 2026-08-03
+
 ### Added — workspace file-link target contract
 
 - Added `workspace/resolveFileLink { cwd, href }` and

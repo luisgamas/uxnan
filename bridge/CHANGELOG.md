@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.14-alpha.20260803] - 2026-08-03
+
 ### Fixed — a turn no longer ends while the agent is still working
 
 An agent that says *"I left that running, I'll report back"* was being reported
