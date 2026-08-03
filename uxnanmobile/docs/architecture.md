@@ -119,9 +119,12 @@ and composed in `application_providers.dart`. The important ones:
    supported client arrive as ordinary user + assistant messages. Concurrent
    reconnect/navigation/resume reads are deduplicated, local user messages are
    matched by turn id, and no polling occurs while the bridge owns a live turn.
-6. The UI watches the derived stream providers and rebuilds reactively. During
-   streaming every assistant response stays visible; after completion, earlier
-   progress responses fold under the localized **N previous messages** disclosure.
+6. The UI watches the derived stream providers and rebuilds reactively. Partial
+   assistant prose and settled prose both pass through the shared
+   `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch
+   from visible source syntax when a turn completes. During streaming every
+   assistant response stays visible; after completion, earlier progress
+   responses fold under the localized **N previous messages** disclosure.
 
 For a new thread, `ThreadManager` preserves the bridge-provided title. When the
 first textual user message is sent and that title is still empty, the thread id,

@@ -2111,7 +2111,11 @@ class _AgentRespondingStatus extends StatelessWidget {
   }
 }
 
-/// Keeps the active loader inline after the latest streamed character.
+/// Renders partial prose through the same Markdown path as the settled answer.
+///
+/// Keeping one renderer for both states prevents completed Markdown syntax from
+/// flashing as source text until the turn finishes. The loader remains beside
+/// the live block without becoming part of the selectable response.
 class _StreamingProse extends StatelessWidget {
   const _StreamingProse({required this.text});
 
@@ -2120,24 +2124,20 @@ class _StreamingProse extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return SelectableText.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: text),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: const EdgeInsets.only(left: UxnanSpacing.xs),
-              child: PolygonLoader(
-                size: 14,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Flexible(child: _TextBlock(content: TextContent(text))),
+        Padding(
+          padding: const EdgeInsets.only(
+            left: UxnanSpacing.xs,
           ),
-        ],
-      ),
-      style: textTheme.bodyMedium?.copyWith(color: colors.onSurface),
+          child: PolygonLoader(
+            size: 14,
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

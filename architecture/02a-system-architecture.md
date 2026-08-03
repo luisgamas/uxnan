@@ -1116,7 +1116,10 @@ class TurnTimelineSnapshot {
 
 #### 5.4.7 Markdown y contenido enriquecido
 
-- **Markdown:** `flutter_markdown` — soportado Android + iOS. Renderer completo con soporte de syntax highlighting y bloques de codigo.
+- **Markdown:** `flutter_markdown_plus` — supported on Android + iOS. Partial
+  streaming prose and settled prose use the same `MarkdownBody` renderer and
+  shared style sheet, preventing a source-text-to-formatted-layout swap when a
+  turn completes. Syntax highlighting and code blocks remain supported.
 - **Mermaid:** renderizado via `flutter_inappwebview` con un HTML embebido que carga mermaid.js localmente. Ambas plataformas.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
@@ -1360,6 +1363,9 @@ Reglas de streaming:
   divergent prose already streamed or persisted.
 - Multiple native assistant messages remain visible while streaming. Once the
   turn settles, all but the final response collapse into one expandable section.
+- Text deltas render through the same Markdown path as settled prose; the live
+  loader is adjacent UI, never response text or a reason to fall back to a plain
+  `SelectableText` surface.
 
 > ✅ **Implementación actual:** `ConversationScreen` usa una política explícita
 > de auto-follow. Cualquier drag manual se impone inmediatamente a los eventos

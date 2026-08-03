@@ -76,6 +76,11 @@ not a stream of text**. This implies:
 3. The interface *communicates state*: when the model processes, the UI moves in a way
    that reflects that cognitive activity (Gemini's pulsing "glowbar" is an example).
 
+The editorial object must remain visually continuous while it is being written:
+partial assistant prose uses the same Markdown renderer and typography as its
+settled state. A live activity cue may accompany it, but completion must not
+replace visible source markers with a newly formatted layout.
+
 ### 1.3 Your Usage Context (Without the Glass Effect)
 
 This guide assumes you implement **the structural and compositional principles** of

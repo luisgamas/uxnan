@@ -126,14 +126,18 @@ void main() {
     expect(find.text('Agent responding…'), findsOneWidget);
   });
 
-  testWidgets('streaming text keeps the loader after the latest token',
+  testWidgets('streaming text renders markdown while keeping the loader',
       (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+
     final message = Message(
       id: 'streaming',
       threadId: 'th1',
       turnId: 't1',
       role: MessageRole.assistant,
-      contents: const [TextContent('Working', isStreaming: true)],
+      contents: const [TextContent('**Working**', isStreaming: true)],
       deliveryState: MessageDeliveryState.delivered,
       orderIndex: 0,
       createdAt: DateTime(2026),
@@ -144,12 +148,13 @@ void main() {
 
     expect(find.byType(PolygonLoader), findsOneWidget);
     expect(find.text('Agent responding…'), findsNothing);
-    final streamingText = tester.widget<SelectableText>(
-      find.byType(SelectableText),
+    final markdown = tester.widget<MarkdownBody>(
+      find.byType(MarkdownBody),
     );
-    final children = streamingText.textSpan!.children!;
-    expect((children.first as TextSpan).text, 'Working');
-    expect(children.last, isA<WidgetSpan>());
+    expect(markdown.data, '**Working**');
+    expect(markdown.selectable, isTrue);
+    expect(find.text('Working'), findsOneWidget);
+    expect(find.text('**Working**'), findsNothing);
   });
 
   testWidgets('renders approval, plan and subagent cards', (tester) async {

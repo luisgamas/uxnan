@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — streamed responses render Markdown immediately
+
+- Assistant prose now uses the shared `MarkdownBody` renderer while tokens are
+  still arriving, so completed emphasis, headings, lists, links and other
+  Markdown no longer flash as source syntax and then restyle when the turn
+  settles.
+- The live activity loader remains beside the rendered block without becoming
+  part of the selectable response. Settled and streaming prose now share the
+  same Markdown style sheet and visual path.
+
 ### Changed — expanded turn controls use the full phone-width ribbon
 
 - The conversation ribbon keeps its existing default: the effort/permission
