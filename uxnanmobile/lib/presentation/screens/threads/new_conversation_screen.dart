@@ -26,16 +26,13 @@ import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 /// source of truth for which agents exist; this set is only a client-side
 /// curtain drawn over that list.
 ///
-///  * `echo`       — the built-in dev/reference agent, never a real choice.
-///  * `gemini-cli` — Google deprecated the standalone Gemini CLI in favour of
-///    the Antigravity CLI (`agy`). We hide it here instead of ripping the
-///    wiring out, so the whole Gemini stack (the [AgentId] value + wire id, its
-///    logo, label and brand colour) stays in place and can be re-enabled in one
-///    line.
+///  * `echo` — the built-in dev/reference agent, never a real choice.
 ///
-/// To bring Gemini back into the picker, simply delete the `'gemini-cli'` entry
-/// below — nothing else on the mobile side needs to change.
-const Set<String> _hiddenAgentIds = {'echo', 'gemini-cli'};
+/// Retired agents are filtered at the application boundary, before this screen
+/// receives them; this local set only covers non-product development adapters.
+const Set<String> _hiddenAgentIds = {
+  'echo',
+};
 
 /// Full-screen Material 3 dialog to start a new conversation: pick the working
 /// directory, compare the available agents directly, choose an optional model,
@@ -283,11 +280,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                       error: (_, __) =>
                           _Error(message: l10n.newThreadLoadFailed),
                       data: (items) {
-                        // Curtain over the bridge's agent list (see
-                        // [_hiddenAgentIds]): hides the Echo dev agent and the
-                        // deprecated Gemini CLI.
+                        // Keep development adapters and every retired wire id
+                        // out even when a test override or an older bridge
+                        // bypasses ThreadManager's application-boundary filter.
                         final visible = items
-                            .where((a) => !_hiddenAgentIds.contains(a.agentId))
+                            .where(
+                              (a) =>
+                                  isMobileAgentSupported(a.agentId) &&
+                                  !_hiddenAgentIds.contains(a.agentId),
+                            )
                             .toList();
                         if (visible.isEmpty) {
                           return _Empty(message: l10n.newThreadNoAgents);

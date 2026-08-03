@@ -45,6 +45,9 @@ push validation (FOR-HUMAN).
   run — in the store and on the `stream/content/block` wire — so a text run is
   never severed mid-word, live and re-synced order always match, and subagent
   text/usage never folds into the main message.
+  Native assistant envelopes from Codex, Claude and pi are separated by durable
+  `assistant_response_boundary` blocks; terminal text is reconciled additively,
+  so an agent's final item cannot erase progress/commentary already shown.
 - **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
   queued (status `queued`) instead of clobbering it, and drains automatically on
   completion; run options are frozen at queue time; the queue holds after a stop
@@ -53,9 +56,10 @@ push validation (FOR-HUMAN).
   surfaced on `turn/list` + `stream/queue/updated`, and turns left `queued` by a
   previous run are cancelled at startup. This is also what enforces one turn per
   thread — the bridge previously started a second turn on top of the first.
-- **8 real agents wired** — OpenCode (default), Claude Code, Codex, pi,
-  Gemini CLI, Antigravity (Google's `agy`, the Gemini-CLI successor), Zero, and
-  Grok. Each drives its **official local CLI** with
+- **7 active real agents wired** — OpenCode (default), Claude Code, Codex, pi,
+  Antigravity (Google's `agy`), Zero, and Grok. The Gemini CLI adapter remains
+  registered only as unavailable/deprecated legacy and rejects new turns. Each
+  active integration drives its **official local CLI** with
   `shell:false`, parses the native stream, and emits structured
   `stream/content/block` events (command / diff / tool) plus
   `stream/thinking/delta` (reasoning). Most spawn the CLI over stdio; the
@@ -65,11 +69,15 @@ push validation (FOR-HUMAN).
   reusing the Codex NDJSON transport, with **real `session/request_permission`
   approvals**), and **OpenCode** HTTP + SSE over `opencode serve` (loopback). No
   further agent is planned right now.
+- **Context compaction markers** — real native signals from Codex, Claude,
+  OpenCode and pi are normalized into durable `compaction` content blocks.
+  Zero/Grok ACP and Antigravity expose no trustworthy signal, so no event is
+  inferred for them.
 - **Per-thread agent/project selection** + per-project agent/model pins
   (`projectAgents` config); per-model run-option knobs advertised on
   `agent/models`; per-turn token usage on `stream/turn/completed`.
 - **Agent commands** — `agent/commands` discovery + `turn/send` `command`
-  invocation. Custom prompt-template commands (Codex/Gemini/OpenCode) are scanned
+  invocation. Custom prompt-template commands (Codex/OpenCode) are scanned
   and expanded by the bridge (`command-scan.ts`); native control commands run via
   the CLI's own mechanism — Claude Code (`slash_commands` from `system/init` ∪
   curated built-ins ∪ `.claude/commands`, sent as `/name args` with `--resume`)
@@ -78,6 +86,9 @@ push validation (FOR-HUMAN).
 - **Full thread lifecycle** — `thread/rename|archive|unarchive|delete`.
 - **Plug-and-play folder browsing** — `workspace/browseDirs` with a
   `browseRoots` config.
+- **Cross-worktree file-link resolution** — `workspace/resolveFileLink` turns a
+  path an agent cited into the viewer's `cwd + path`, picking the target's own
+  Git root when the file lives outside the conversation's worktree.
 - **Direct FCM push from the bridge** — primary path, persisted across restarts,
   per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
   (no creds = silent no-op; foreground local notifications still work).
@@ -85,7 +96,7 @@ push validation (FOR-HUMAN).
   auth-file existence only.
 - **Interactive approval intake** — Echo demo + Claude Code opt-in `PreToolUse`
   hook + Codex via the `codex app-server` turn protocol + OpenCode via
-  `opencode serve` `permission.asked` + Gemini `BeforeTool` hook + Zero and Grok
+  `opencode serve` `permission.asked` + Zero and Grok
   via ACP `session/request_permission`; all routed through one `requestApproval`
   round-trip, validated end-to-end.
 - **Image attachments** — CLI-agnostic file-path, sandbox-safe (written into the
@@ -93,8 +104,10 @@ push validation (FOR-HUMAN).
   and referenced relatively, since every agent refuses a path outside its
   workspace). Accepted by every wired agent (`capabilities.images`) except the
   echo demo; see `docs/agents.md` → *Image attachments*.
-- **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
-  Gemini JSONL/JSON stores.
+- **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
+  Zero and Grok. Every idle read merges completed native-only turns into the
+  bridge store; OpenCode uses its official local server endpoint and the other
+  agents use their persisted transcripts. Gemini remains legacy-read-only.
 - **Bridge control** — `bridge/status` (real `relayConnected`),
   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
   registration), `bridge/trustedDevices`, `bridge/connectedPhones`,
@@ -198,7 +211,7 @@ push validation (FOR-HUMAN).
       runs tools autonomously and emits tool events only **after** the tool ran — no
       pre-tool channel to gate them, so pi surfaces `autonomous: true` (chip + banner)
       instead of approvals. Echo + Claude (`PreToolUse` hook) + Codex (`app-server`) +
-      OpenCode (`opencode serve` `permission.asked`) + Gemini (`BeforeTool` hook) +
+      OpenCode (`opencode serve` `permission.asked`) +
       Zero (`zero acp` `session/request_permission`) all have real per-action
       approvals. Real pi approvals would need its `--mode rpc`
       (two-way, adapter refactor); revisit when pi ships a stable pre-tool channel on
@@ -218,12 +231,11 @@ push validation (FOR-HUMAN).
       `thread/start`, so the new posture only applies to threads started after the
       change. Resolve by confirming (against a live `codex app-server`) whether
       `turn/start` accepts an approval/sandbox override per turn, or restart the
-      app-server thread when the mode changes. (Gemini has no such caveat — it
-      spawns one CLI per turn.)
+      app-server thread when the mode changes.
 - [ ] **Claude/Codex approval follow-ups** — map `approveSession` to a real
       session-scoped allow on the Claude hook path (today every tool re-asks; Codex's
       app-server already remembers `approved_for_session`); a per-turn allow-list so
-      repeated identical tools aren't re-prompted; document that the Claude/Gemini
+      repeated identical tools aren't re-prompted; document that the Claude
       hook URL needs the LAN port resolved (handled by the lazy `url()` after
       `startLan`, but worth a note).
 - [ ] **Image attachments — follow-ups** — native per-CLI image input (a dedicated
@@ -235,8 +247,6 @@ push validation (FOR-HUMAN).
       their file tools rather than vision), and by **Codex on-device** through
       the phone. **Zero** takes them natively (inline ACP image block) — unit
       tested, but not yet run end to end because the account is credit-blocked.
-      **Gemini CLI** is unverified: its local install is broken
-      (`MODULE_NOT_FOUND`) and the agent is hidden from the phone's picker.
 - [ ] **`auth/login` / `auth/logout`** — still stubs (driving a CLI's interactive
       login/logout). `auth/status` is done (sanitized, file-existence heuristic). An
       authoritative `requiresLogin` would run the CLI's own `whoami`/auth command
@@ -251,16 +261,15 @@ push validation (FOR-HUMAN).
 
 ## Conversation history
 
-- [ ] **On-disk history fallback — ordered `segments`.** The live/stored path
+- [ ] **Native-session history — ordered `segments`.** The live/stored path
       (`thread-store.ts`) emits `Message.segments` (interleaved text↔work-log
       order), so a phone reconnecting to a still-running bridge recovers the real
-      order. The **on-disk `turn/list` fallback** (`session-history.ts`, used only
-      after a bridge restart with an empty `threads.json`) still emits
-      `content` + `blocks` separately, so a recovered turn renders blocks-first
+      order. The native-history readers in `session-history.ts` still emit
+      `content` + `blocks` separately, so an imported external turn renders blocks-first
       (the phone falls back to `_assistantContents`). Reconstruct `segments` from
       each CLI log's real text↔tool order (Claude `tool_use` is interleaved in the
       assistant `content`; Codex/pi attach tool blocks after the text; OpenCode
-      parts are read in file order; Gemini bundles `toolCalls` per message) and
+      parts are read in file order) and
       attach them to each `RawMessage`. See the `FOR-DEV:` marker in
       `session-history.ts`.
 
@@ -268,11 +277,11 @@ push validation (FOR-HUMAN).
 
 - [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
       delivers a follow-up as its own turn once the current one ends — uniform
-      across all eight agents. What the CLIs additionally do is *steer*: inject the
+      across all seven active agents. What the CLIs additionally do is *steer*: inject the
       message into the running turn at the next tool-call boundary (Claude Code's
       TUI does this by default; Codex splits it as `Tab` = queue vs `Enter` =
-      steer). The bridge cannot: the one-shot agents (`claude -p --resume`, gemini,
-      pi, antigravity) have no input channel while they run — `spawn.ts` closes
+      steer). The bridge cannot: the one-shot agents (`claude -p --resume`, pi,
+      antigravity) have no input channel while they run — `spawn.ts` closes
       stdin because those CLIs hang on an open pipe. It IS reachable for the
       server-backed ones (Codex `app-server`, OpenCode `serve`, Zero/Grok ACP), so
       it belongs behind a new `AgentCapabilities.steering` flag the phone can read,
@@ -295,11 +304,6 @@ push validation (FOR-HUMAN).
       phone shows no context meter for Zero. Read usage from `zero usage` (or Zero's
       on-disk session store) and emit `usage` on `stream/turn/completed` so the meter
       lights up. See the `FOR-DEV:` marker in `zero-adapter.ts`.
-- [ ] **Zero on-disk history fallback** — there is no `SessionHistoryReader` for
-      Zero's ACP sessions yet, so a `turn/list` after a bridge restart returns nothing
-      for a Zero thread (live/in-memory history still works). Parse Zero's on-disk ACP
-      session store (via `session/load`) and wire it into `session-history.ts` like the
-      Claude/Codex/OpenCode/pi/Gemini readers.
 - [ ] **Interactive `ask_user` for Zero** — Zero's `ask_user` tool is **non-interactive
       over ACP**: Zero's ACP agent (`internal/acp/agent.go`) wires no `OnAskUser` handler,
       so the loop auto-completes the call with "proceed with your best assumption" and
@@ -323,15 +327,10 @@ push validation (FOR-HUMAN).
       `reportsContextUsage:false` (no per-turn usage was observed over ACP). If Grok
       exposes usage (its `/context` command implies it tracks it), emit `usage` on
       `stream/turn/completed` so the phone's context meter lights up.
-- [ ] **Grok on-disk history fallback** — there is no `SessionHistoryReader` for
-      Grok's ACP sessions yet, so a `turn/list` after a bridge restart returns nothing
-      for a Grok thread (live/in-memory history still works). Parse Grok's on-disk
-      session store (`~/.grok/…`, via `session/load`) and wire it into
-      `session-history.ts` like the Claude/Codex/OpenCode/pi/Gemini readers.
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot
-per-turn CLI** (spawns once per turn) copy `gemini-adapter.ts` or `pi-adapter.ts`;
+per-turn CLI** (spawns once per turn) copy `pi-adapter.ts`;
 for a **long-lived server** with a pre-tool approval channel copy `codex-adapter.ts`
 or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE over
 `opencode serve`).
@@ -346,15 +345,15 @@ or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE ov
    injection).
 3. Register it in `startBridge` with display metadata + availability. Then wire it
    into `agent/models` (discovery), the `*-tools.ts` block mapper (structured
-   content), `SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if
+   content), `SessionHistoryReader` (native-session `turn/list` convergence), and approvals if
    the CLI exposes a pre-tool channel.
 
-- [ ] **Antigravity on-disk history fallback** — like Grok, `AntigravityAdapter`
-      has no `SessionHistoryReader`, so a `turn/list` after a bridge restart falls
-      back to the bridge's own thread store (live/in-memory history still works). If
-      an on-disk reader is wanted, parse `agy`'s conversation store
-      (`~/.gemini/antigravity-cli/…`) and wire it into `session-history.ts` like the
-      Claude/Codex/OpenCode/pi/Gemini readers.
+- [ ] **Antigravity native-session history** — `agy` exposes no history/export
+      command and its `~/.gemini/antigravity-cli/conversations/<uuid>.db` stores
+      opaque step payloads, so `SessionHistoryReader` deliberately does not infer
+      messages from it. Revisit only if Antigravity exposes a stable supported
+      transcript API or documented payload schema; do not reverse-engineer
+      brittle blobs into user-visible history.
 
 ## Daemon lifecycle & ops
 

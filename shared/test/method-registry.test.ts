@@ -5,6 +5,7 @@ import { METHOD_NAMES, isKnownMethod } from '../src/index.js';
 test('isKnownMethod recognizes registered methods', () => {
   assert.ok(isKnownMethod('git/status'));
   assert.ok(isKnownMethod('bridge/generatePairingQr'));
+  assert.ok(isKnownMethod('workspace/resolveFileLink'));
 });
 
 test('isKnownMethod rejects unknown methods', () => {

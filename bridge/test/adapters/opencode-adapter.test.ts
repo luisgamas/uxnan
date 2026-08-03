@@ -29,6 +29,7 @@ class FakeServer implements IOpenCodeServer {
   readonly replies: { id: string; reply: PermissionReply }[] = [];
   readonly rejectedQuestions: string[] = [];
   readonly questionReplies: { id: string; answers: string[][] }[] = [];
+  messages: unknown[] = [];
   lastPermission: OpenCodePermissionRule[] | undefined;
   nextSessionId = 'ses_1';
 
@@ -44,6 +45,9 @@ class FakeServer implements IOpenCodeServer {
   promptAsync(sessionId: string, body: OpenCodePromptBody): Promise<void> {
     this.prompts.push({ sessionId, body });
     return Promise.resolve();
+  }
+  getMessages(): Promise<unknown[]> {
+    return Promise.resolve(this.messages);
   }
   abort(sessionId: string): Promise<void> {
     this.aborted.push(sessionId);
@@ -76,6 +80,13 @@ class FakeServer implements IOpenCodeServer {
     for (const l of this.#listeners) l({ type, properties });
   }
 }
+
+test('readSessionMessages uses the official serve history endpoint', async () => {
+  const server = new FakeServer();
+  server.messages = [{ info: { id: 'm1', role: 'user' }, parts: [] }];
+  const adapter = makeAdapter(server);
+  assert.deepEqual(await adapter.readSessionMessages('ses_external', '/repo'), server.messages);
+});
 
 /** A spawnFn whose child closes immediately with empty output (for `opencode models --verbose`). */
 function immediateSpawn(feed?: string[]): (command: string, args: string[]) => SpawnedProcess {
@@ -280,6 +291,22 @@ test('OpenCodeAdapter streams text deltas and completes on session.idle', async 
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { text: string }).text, 'Hello world');
   assert.equal((completed?.data as { usage?: { tokens: number } }).usage?.tokens, 1500);
+});
+
+test('OpenCodeAdapter emits session.compacted as a compaction block', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'hi' });
+  server.emit('session.compacted', { sessionID: 'ses_1' });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+
+  await done;
+  const block = events.find((event) => event.type === 'block')?.data as
+    | { content: Record<string, unknown> }
+    | undefined;
+  assert.deepEqual(block?.content, { type: 'compaction', reason: 'unknown' });
 });
 
 test('OpenCodeAdapter reconciles a whole-part text update without double-emitting', async () => {

@@ -28,21 +28,32 @@ file is optional; create it to override. Defaults live in
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
 | `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
 
+> **`browseRoots` bounds browsing, not reading.** A paired phone already reads
+> any `cwd` it names (`workspace/readFile` confines the read to that `cwd`, not
+> to a global allowlist), so `workspace/resolveFileLink` follows the same
+> posture: it resolves a file the agent cited wherever it actually is — which is
+> the point, since an agent working in one worktree routinely writes into
+> another. What it never does is serve `.git` internals or a sensitive name
+> (`.env*`, `*.pem`/`*.key`, `id_rsa*`, `credentials.json`, `.npmrc`) in any
+> segment of the path, and it refuses anything that is not an existing regular
+> file. The trust boundary is the pairing itself.
+
 ### Per-agent overrides (`agents.<id>`)
 
-`<id>` is one of the wired agent ids: `opencode`, `claude-code`, `codex`,
-`gemini-cli`, `antigravity-cli`, `pi-agent`, `zero`, `grok`. These are the
-canonical `AgentId` values — note `gemini-cli`, `antigravity-cli` and `pi-agent`
-(not `gemini` / `antigravity` / `pi`). The same id strings are used for
-`defaultAgent` and `projectAgents[].agentId`.
+`<id>` is one of the active agent ids: `opencode`, `claude-code`, `codex`,
+`antigravity-cli`, `pi-agent`, `zero`, `grok`. These are the canonical `AgentId`
+values — note `antigravity-cli` and `pi-agent` (not `antigravity` / `pi`). The
+same id strings are used for `defaultAgent` and `projectAgents[].agentId`.
+`gemini-cli` may still occur in an old config, but it resolves only to an
+unavailable/deprecated descriptor and cannot be selected for new work.
 
 | Field | Purpose |
 |---|---|
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
-| `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by agents that enumerate their own models (OpenCode, Codex, pi, Gemini CLI, Antigravity, Zero, Grok). |
-| `permissionMode` | Headless posture for agents that gate tools: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to each CLI's own flags — Claude (`--permission-mode` / `--dangerously-skip-permissions`), Codex (`-s workspace-write` / `read-only` / `--dangerously-bypass-approvals-and-sandbox`), Gemini (`--approval-mode auto_edit` / `plan` / `yolo`), pi (its built-in tool posture / `--tools` / `--approve`), and Antigravity (`--dangerously-skip-permissions`; `default` also maps to autonomous, since headless `agy` can only edit with skip-permissions — a read-only `--mode plan` is reachable per-thread via the `requestApproval` access mode). OpenCode does not gate tools, so it ignores this field. |
-| `interactiveApprovals` | Opt-in interactive tool approvals for **Claude Code and Gemini CLI** (default false; requires `lanEnabled`). When true, every tool the agent runs prompts you **on the phone** (Approve / Reject) before it executes: the bridge injects a `PreToolUse` hook for Claude (and a `BeforeTool` hook for Gemini) that holds the tool until you answer (5-min timeout → deny). For Claude it overrides `permissionMode` (forcing `--permission-mode default` so the hook is the gate). Leave it off for unattended runs. |
+| `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by active agents that enumerate their own models (OpenCode, Codex, pi, Antigravity, Zero, Grok). |
+| `permissionMode` | Headless fallback posture for adapters that consume this config: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to Claude, Codex, pi and Antigravity. The per-thread `accessMode` is authoritative when the adapter supports it; OpenCode, Zero and Grok use their live protocol permission surfaces instead of this field. Legacy Gemini settings are ignored because its adapter is never started. |
+| `interactiveApprovals` | Opt-in `PreToolUse` approvals for **Claude Code** (default false; requires `lanEnabled`). When true, every tool Claude runs prompts on the phone before execution. The CLI hook permits a 30-minute request, while the bridge's decision countdown is five connected minutes and then denies. It overrides Claude's fallback `permissionMode` while active. Legacy Gemini hook settings are ignored and no hook is installed. |
 
 ### Per-project agent/model pins (`projectAgents`)
 
@@ -54,7 +65,7 @@ optional default model for it.
 | Field | Purpose |
 |---|---|
 | `cwd` | Absolute project directory the pin applies to (matched by resolved path). |
-| `agentId` | Agent the project defaults to (`opencode` / `claude-code` / `codex` / `gemini-cli` / `antigravity-cli` / `pi-agent` / `zero` / `grok`). |
+| `agentId` | Active agent the project defaults to (`opencode` / `claude-code` / `codex` / `antigravity-cli` / `pi-agent` / `zero` / `grok`). A legacy `gemini-cli` pin is rejected when starting a thread. |
 | `model` | Optional default model for that agent. |
 
 When the phone starts a thread (`thread/start`) **without** an explicit

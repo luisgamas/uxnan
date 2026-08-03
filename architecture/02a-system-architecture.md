@@ -1,12 +1,15 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.2
-> **Fecha:** 2026-07-21
+> **Version:** 1.2.3
+> **Fecha:** 2026-08-02
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
-> **Executive summary (1.2.2):** profile activity is owned by a complete,
+> **Executive summary (1.2.3):** native assistant messages inside one turn are
+> preserved losslessly through durable response-boundary metadata; terminal
+> payloads reconcile additively and mobile collapses completed progress replies
+> without discarding them. Profile activity is owned by a complete,
 > global-per-PC bridge ledger. Conversation deletion never subtracts historical
 > metrics; export/import includes conversations, messages, reported tokens,
 > sessions and Git actions. Phone transport identity remains installation-local
@@ -115,7 +118,9 @@ domestico. El bridge lo anuncia en el QR solo si `relayEnabled = true`
 > `AgentModel[]` estructurado (en lugar de `string[]`), `respondApproval()`
 > para aprobaciones interactivas, `nativeSessionId()` para que el bridge
 > localice la sesion on-disk del agente, y `attachments` en `sendTurn()`.
-> `AgentCapabilities` ahora incluye `reportsContextUsage` y `images`.
+> `AgentCapabilities` ahora incluye `reportsContextUsage`, `reportsCompaction`
+> e `images`; `AgentDescriptor.deprecated?` retira un adapter sin romper el
+> contrato de instalaciones antiguas.
 > **(2026-07)** se agregaron `listCommands()`/`expandCommand()` para los
 > comandos "slash" del agente (`agent/commands`), `command?` en `sendTurn()`
 > para invocarlos, y `commands?` en `AgentCapabilities`.
@@ -127,7 +132,7 @@ Todos los adaptadores deben implementar la interfaz `IAgentAdapter` en el Bridge
 ```typescript
 interface IAgentAdapter {
   // Identidad
-  readonly agentId: string;          // "codex" | "opencode" | "claude-code" | "gemini-cli" | "antigravity-cli" | "pi-agent" | "zero" | "grok" | custom
+  readonly agentId: string;          // active: codex | opencode | claude-code | antigravity-cli | pi-agent | zero | grok | custom; gemini-cli is deprecated legacy-only
   readonly displayName: string;
   readonly version: string;
   readonly capabilities: AgentCapabilities;
@@ -168,7 +173,7 @@ interface IAgentAdapter {
   listCommands?(cwd?: string): Promise<AgentCommand[]>;         // name, description?, argumentHint?, source, headlessSupported?
   expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;  // solo custom prompt-template agents; nativos (Claude/ACP) no lo implementan
 
-  // Identidad de la sesion nativa del agente (para fallback on-disk en turn/list)
+  // Native session identity used for completed-turn convergence in turn/list.
   nativeSessionId?(threadId: string): string | null;
 
   // Git
@@ -219,6 +224,7 @@ interface AgentCapabilities {
   forking: boolean;                // soporta forking / reanudar threads
   images: boolean;                 // acepta TurnAttachment[] (image) en sendTurn
   reportsContextUsage: boolean;    // emite `usage` en turn/completed (ausente/false = no reporta uso)
+  reportsCompaction?: boolean;     // emite un bloque `compaction` solo ante una señal real del agente
   autonomous?: boolean;            // corre en modo autónomo ("YOLO") por defecto: actúa/edita sin pedir aprobación
 }
 
@@ -233,7 +239,7 @@ interface AgentCapabilities {
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
 //   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
-//   ✅ gemini-cli (`gemini -p --output-format stream-json`; --session-id + --resume; **BeforeTool hook** real approvals)
+//   ⛔ gemini-cli (adapter legacy: descriptor deprecated/unavailable; turnos nuevos rechazados)
 //   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; Google's Gemini-CLI successor; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
 //   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
@@ -414,7 +420,7 @@ enum GitActionKind {
   commit, push, pull, checkout, createBranch,
   createWorktree, revert, stackedPublish
 }
-enum AgentId { codex, opencode, claudeCode, geminiCli, piAgent, custom }
+enum AgentId { codex, opencode, claudeCode, antigravity, piAgent, zero, grok, custom }
 ```
 
 #### 5.1.3 Value objects
@@ -1110,7 +1116,13 @@ class TurnTimelineSnapshot {
 
 #### 5.4.7 Markdown y contenido enriquecido
 
-- **Markdown:** `flutter_markdown` — soportado Android + iOS. Renderer completo con soporte de syntax highlighting y bloques de codigo.
+- **Markdown:** `flutter_markdown_plus` — supported on Android + iOS. Partial
+  streaming prose and settled prose use the same `MarkdownBody` renderer and
+  shared style sheet, preventing a source-text-to-formatted-layout swap when a
+  turn completes. Explicit Markdown links, bare local paths and inline-code
+  paths share one tap callback. Local paths open the workspace file viewer;
+  remote links are copied rather than launched. Syntax highlighting and code
+  blocks remain supported.
 - **Mermaid:** renderizado via `flutter_inappwebview` con un HTML embebido que carga mermaid.js localmente. Ambas plataformas.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
@@ -1350,6 +1362,13 @@ Reglas de streaming:
 - El auto-scroll esta activo mientras el usuario no haya scrolleado hacia arriba.
 - Si el usuario scrollea durante streaming, el auto-scroll se pausa.
 - Al completar el turno, si el usuario esta cerca del fondo, auto-scroll se reactiva.
+- A terminal event reconciles with accumulated text additively; it never replaces
+  divergent prose already streamed or persisted.
+- Multiple native assistant messages remain visible while streaming. Once the
+  turn settles, all but the final response collapse into one expandable section.
+- Text deltas render through the same Markdown path as settled prose; the live
+  loader is adjacent UI, never response text or a reason to fall back to a plain
+  `SelectableText` surface.
 
 > ✅ **Implementación actual:** `ConversationScreen` usa una política explícita
 > de auto-follow. Cualquier drag manual se impone inmediatamente a los eventos
@@ -1374,8 +1393,20 @@ Reglas de streaming:
 > "jump to latest" aparece, la franja de contexto del turno y el aviso de modo
 > autónomo (si existe) se deslizan hacia el composer, se desvanecen y colapsan
 > dentro de un clip; así despejan el área de lectura sin quedar visibles bajo el
-> velo translúcido. Los menús de opciones del turno no roban el foco del
-> composer y recalculan su anclaje si cambia la geometría del teclado.
+> velo translúcido. En la franja visible al fondo, los controles del turno
+> permanecen plegados a la izquierda y los indicadores de edits/contexto a la
+> derecha; al desplegar los primeros, los indicadores informativos salen con
+> fade + desplazamiento y ceden progresivamente todo el ancho compacto, y
+> reaparecen al plegar. La transición usa motion M3E compartido y se vuelve
+> inmediata con reduced motion. Los menús de opciones del turno no roban el
+> foco del composer y recalculan su anclaje si cambia la geometría del teclado.
+> Las compactaciones confirmadas por el agente se insertan como hitos tonales
+> `CompactionContent` dentro del orden real de `Message.segments`; no forman
+> parte del texto copiable ni de previews. Codex (`contextCompaction`), Claude
+> (`system/compact_boundary`), OpenCode (`session.compacted`) y pi
+> (`compaction_end` exitoso) emiten la señal. Zero/Grok por ACP y Antigravity no
+> exponen una señal fiable en la integración actual, por lo que el bridge no la
+> infiere a partir del texto ni del contador de tokens.
 
 #### 5.6.4 Reconciliacion de historial
 
@@ -1608,16 +1639,17 @@ bridge/
 │   │                               #   mdns-advertiser, local-hosts, trust-store, ...
 │   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
-│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/gemini/zero(+acp,approval)/grok(+acp,approval),
+│   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/antigravity/zero(+acp,approval)/grok(+acp,approval),
+│   │                               #   gemini retained as deprecated legacy source only,
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
 │   │                               #   resolve-<agente>, spawn
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
 │   ├── agents/attachments.ts       # imagenes inline → archivos en el cwd
-│   ├── conversation/               # thread-store, session-history (fallback JSONL)
+│   ├── conversation/               # thread-store, native-session history convergence
 │   ├── git/                        # git-runner, git-service
 │   ├── workspace/                  # workspace-service, browse-service, checkpoint-service, path-guard
 │   ├── push/                       # push-service, push-sender (FCM directo)
-│   ├── hooks/                      # claude-approval-hook, gemini-approval-hook (.cjs en runtime)
+│   ├── hooks/                      # claude-approval-hook; gemini hook source deprecated and never installed
 │   └── handlers/                   # git, workspace, thread-context, project, agent,
 │                                   #   account, notifications, bridge-control, desktop (stub)
 └── scripts/                        # install-service-{macos,windows,linux}
@@ -1770,6 +1802,7 @@ La implementación sigue el sistema Neural Expressive
 async function handleReadFile({ path }) { ... }          // lee archivo del disco
 async function handleReadImage({ path }) { ... }         // lee imagen, codifica base64
 async function handleListWorkspace({ cwd }) { ... }      // lista archivos del proyecto
+async function handleResolveFileLink({ cwd, href }) { ... } // resolve agent citation for viewer
 async function handleCaptureCheckpoint({ threadId }) { ... }
 async function handleDiffCheckpoint({ checkpointId }) { ... }
 async function handleApplyCheckpoint({ checkpointId }) { ... }
@@ -1792,8 +1825,19 @@ cerca del centro del viewport (limitada por los extremos normales del scroll),
 de modo que el usuario no ve una animación de desplazamiento y al volver del
 visor encuentra el archivo inmediatamente.
 
-Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
-`workspace/readImage` son consumidas hoy por:
+`workspace/resolveFileLink { cwd, href }` resolves a file citation on the PC,
+where the filesystem and platform-specific path rules are authoritative.
+Relative paths start at the conversation cwd. Absolute paths, `file:` URLs and
+`..` references may land in a sibling worktree: when the target is outside the
+conversation root, the bridge returns the target's Git top-level as the new
+viewer `cwd` (or the containing directory for a non-Git file) plus a relative
+`path`. The canonical target must exist and be a regular file; fragments,
+percent encoding and common `:line[:column]` suffixes are normalized. `.git`
+internals and sensitive path segments remain denied.
+
+Las RPCs `workspace/list`, `workspace/searchFiles`,
+`workspace/resolveFileLink`, `workspace/readFile` y `workspace/readImage` son
+consumidas hoy por:
 
 - **Folder browser en la app** (`NewConversationScreen` /
   `WorkspaceBrowserSheet`, en `presentation/screens/threads/`) — el selector
@@ -1810,9 +1854,10 @@ Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
   placeholder), accesado
   desde un `IconSurface` `folder_open_rounded` en la app-bar de
   `ConversationScreen` al lado del botón de `GitScreen`. Las
-  rutas se validan en el bridge por `path-guard`
-  (§5.8.9/infra) que confina los reads al root del workspace y
-  excluye archivos sensibles.
+  rutas se validan en el bridge por `path-guard` (§5.8.9/infra).
+  Conversation links first resolve to a canonical viewer root; every
+  subsequent read remains confined to that root and excludes `.git` and
+  sensitive files.
 
 Cada entrada de `workspace/list` (`WorkspaceEntry` en `shared/`) lleva
 `name` + `type` (`file`/`dir`) y, en archivos, `size` y `mtime` (epoch ms,
@@ -1827,38 +1872,45 @@ los estados git (added/modified/deleted/untracked) conservan su color
 convencional. El ADE de escritorio replica el atenuado con su propio
 `FsEntry.ignored` (tipo local, vía git2 `is_path_ignored`).
 
-#### 5.8.8 Fallback JSONL (session-jsonl-history)
+#### 5.8.8 Native-session history convergence
 
-Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos de sesion en disco de cada agente:
+`turn/list` reconciles the agent-owned transcript before reading the bridge
+store whenever that thread has no bridge-driven turn in flight. This is not an
+empty-store fallback: it runs on every idle read so completed turns written from
+another client attached to the same native session converge into Uxnan.
 
-```javascript
-// src/session-jsonl-history.js
-// Parsea los archivos de sesion en disco por agente (cada CLI usa su propio formato):
-// - Codex:        ~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl
-//                 (JSONL, payloads {type:'message', role, content:[{type:'input_text'|'output_text',text}]})
-// - Claude Code:  ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
-//                 (JSONL, lineas {type:'user'|'assistant', message:{role, content:[{type:'text'|'thinking'|...}]}})
-// - pi-agent:     ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
-//                 (JSONL, lineas {type:'message', message:{role, content:[{type:'text',text}]}})
-// - OpenCode:     JSON store (no SQLite) bajo
-//                 ~/.local/share/opencode/storage/{message,part}/<sessionId>/<msgId>.json
-// - Gemini CLI:   ~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json
-//                 (un JSON por snapshot: { sessionId, projectHash, startTime,
-//                   lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
-//                   'info'|'error', content (string | [{text}]), thoughts?}] });
-//                 <shortId> = primeros 8 chars hex del UUID (sin guiones);
-//                 multiples snapshots por session id se mergean deduplicados
-//                 por message id y ordenados por timestamp.
-//
-// El agente expone nativeSessionId(threadId) en IAgentAdapter y
-// AgentManager lo persiste via ThreadStore.setAgentSession al cierre de cada
-// turn, para que el bridge pueda localizar el archivo tras un restart.
+| Agent | Authoritative readable source | Support |
+|---|---|---|
+| Codex | `~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl` | Codex Desktop/CLI completed turns |
+| Claude Code | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | completed CLI turns |
+| pi | `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl` | completed CLI turns |
+| OpenCode | local `opencode serve` `GET /session/:id/message`; legacy JSON-store fallback | OpenCode Desktop/CLI completed turns across current SQLite and older installs |
+| Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP session turns |
+| Grok | `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl` | ACP turns closed by `turn_completed` only |
+| Antigravity | none | unsupported: `agy` has no history/export API and its SQLite step payloads are opaque |
+| Gemini CLI | legacy JSON snapshots only | deprecated compatibility reader; never a new mobile surface |
 
-async function readHistoryFromDisk(threadId, { cursor, limit }) {
-  // Soporta paginacion por cursor y limit
-  // Mantiene cache de paths de rollout por thread con TTL 60s
-}
-```
+`IAgentAdapter.nativeSessionId(threadId)` supplies the native identity and
+`AgentManager` persists it through `ThreadStore.setAgentSession`. Reconciliation
+then follows these rules:
+
+- bridge-owned turns keep their UUID and remain authoritative for ordered
+  segments, queue state, usage and delivery status;
+- a matching native turn is linked by a private deterministic history id rather
+  than inserted twice;
+- completed native-only user/assistant pairs are imported and can be refreshed
+  on a later read;
+- user-only/in-progress native turns are ignored until an assistant result is
+  durable;
+- missing or temporarily unreadable native rows never delete bridge history;
+- native history is not read while the bridge itself is streaming that thread,
+  preventing a half-flushed record from being frozen as an external turn.
+
+The wire shape and offset pagination of `turn/list` do not change. This provides
+near-real-time **completed-turn convergence**, not token streaming from the
+external client. The active Mobile conversation polls the newest page every
+three seconds while connected and idle; navigation, reconnect and lifecycle
+resume also trigger immediate reads.
 
 #### 5.8.9 Account status sanitizado
 
@@ -1889,7 +1941,8 @@ ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
 cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
 **Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
 → `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-**Gemini** (`~/.gemini/oauth_creds.json` → cloudcode-pa) y **Grok**
+**Gemini legacy** (`~/.gemini/oauth_creds.json` → cloudcode-pa; contrato
+deprecated, nunca solicitado por mobile) y **Grok**
 (`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
 `status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
 los demas.
@@ -1994,7 +2047,7 @@ Reglas (no negociables, verificadas contra los CLIs reales):
 #### 5.8.13 Cola de mensajes por thread (`AgentManager`)
 
 El bridge conduce **un turno por thread**. No es una simplificacion: la mitad
-de los agentes corre one-shot por turno (`claude -p --resume`, gemini, pi,
+de los agentes corre one-shot por turno (`claude -p --resume`, pi,
 antigravity), asi que dos turnos concurrentes serian dos procesos CLI sobre la
 misma sesion nativa. Un `turn/send` que llega con un turno en vuelo se
 **encola** — el mismo comportamiento que las CLI cuando escribes mientras
@@ -2608,6 +2661,17 @@ class MermaidContent extends MessageContent {
 class SystemContent extends MessageContent {
   final String text;
   final SystemContentKind kind; // info | warning | error | debug
+}
+
+class CompactionContent extends MessageContent {
+  final CompactionReason reason; // manual | threshold | overflow | automatic | unknown
+  final int? tokensBefore;
+  final int? tokensAfter;
+}
+
+class AssistantResponseBoundaryContent extends MessageContent {
+  final AssistantResponsePhase phase; // commentary | finalAnswer | unknown
+  final String? itemId;                // native item/message id when available
 }
 
 class CommandExecutionContent extends MessageContent {

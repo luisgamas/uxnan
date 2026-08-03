@@ -6,6 +6,90 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — agent file links open in the workspace viewer
+
+- Assistant Markdown links, bare local paths and inline-code file references
+  are tappable in settled and streaming responses. They open the existing file
+  viewer rather than leaving the conversation for another app.
+- Link resolution happens on the paired PC. Relative paths start at the
+  conversation cwd, while absolute paths and `..` references can resolve into
+  a sibling worktree; the viewer receives that target's Git root and relative
+  path, so a conversation rooted in X can open a file produced in Y.
+- Remote links keep the existing safe copy behavior. Missing, non-file,
+  `.git`, and sensitive targets produce a recoverable message instead of
+  navigating.
+- Path detection leaves the rest of a response alone: a bare hostname
+  (`www.example.com/docs/x.md`) stays a web link, a fenced code block keeps its
+  code-block styling, and inline code that isn't a path (`npm run build`) is
+  not tappable.
+
+### Fixed — streamed responses render Markdown immediately
+
+- Assistant prose now uses the shared `MarkdownBody` renderer while tokens are
+  still arriving, so completed emphasis, headings, lists, links and other
+  Markdown no longer flash as source syntax and then restyle when the turn
+  settles.
+- The live activity loader remains beside the rendered block without becoming
+  part of the selectable response. Settled and streaming prose now share the
+  same Markdown style sheet and visual path.
+
+### Changed — expanded turn controls use the full phone-width ribbon
+
+- The conversation ribbon keeps its existing default: the effort/permission
+  controls stay folded on the left while edit, token and context indicators
+  remain visible on the right.
+- Expanding the left controls now slides, fades and collapses the read-only
+  indicators out of the row, preventing compact-phone crowding; folding the
+  controls restores them with the inverse M3E transition. Reduced-motion users
+  get the same state change without animation.
+
+### Added — conversations follow turns written in native agent clients
+
+- While a connected conversation is open and idle, Mobile re-syncs its newest
+  page every three seconds. Completed turns written in Codex Desktop/CLI,
+  OpenCode Desktop, Claude Code, pi, Zero or Grok appear without reopening the
+  screen; opening, reconnecting and app resume keep their existing immediate
+  re-sync paths.
+- Re-sync now persists native-only user prompts as well as assistant replies.
+  It matches a Mobile-authored prompt by turn id, preserving its local UUID,
+  attachments and delivery state instead of creating a duplicate.
+- Polls are deduplicated across navigation/reconnect/resume, pause while a
+  bridge turn is live, stop when disconnected, and settle before the manager
+  closes its streams.
+- This is completed-turn convergence, not token streaming from another client.
+  Antigravity has no reliable readable native transcript and is intentionally
+  unchanged.
+
+### Fixed — preserve every response produced during a turn
+
+- Assistant progress/commentary no longer disappears when a terminal event
+  carries only the agent's final native message. Live finalization and bridge
+  re-sync now reconcile additively, retaining ordered prose and work blocks.
+- Settled turns with multiple native assistant messages show a localized
+  **N previous messages** divider. Earlier messages are collapsed by default
+  and expand in place; while the agent is streaming they remain fully visible.
+- Added durable response-boundary decoding so the disclosure survives app and
+  bridge restarts. Codex supplies exact commentary/final phases; Claude Code and
+  Pi supply their native message boundaries.
+
+### Added — context-compaction milestones in conversations
+
+- The conversation timeline now renders a quiet, localized **Context compacted**
+  milestone exactly where the bridge persisted the event. It explains the
+  reported cause and, when available, the approximate before/after token count.
+- `CompactionContent` round-trips through the existing polymorphic content codec
+  and stays out of response copy, previews and fingerprints because it is
+  timeline metadata rather than assistant prose.
+
+### Changed — Gemini has no mobile product surface
+
+- Removed the Gemini agent enum branch, visual metadata, color, logo asset and
+  usage-provider card. The application boundary filters both new
+  `deprecated:true` descriptors and the legacy `gemini-cli` wire id, including
+  cached threads and profile activity, so older bridges cannot make Gemini
+  reappear.
+- Antigravity remains the supported Google agent.
+
 ## [0.0.15-alpha.20260729+20260729] - 2026-07-29
 
 ### Added — send follow-up messages while the agent is working

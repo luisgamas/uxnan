@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-ESM-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-68_methods-000000?style=for-the-badge&logo=json&logoColor=white)
+![JSON RPC](https://img.shields.io/badge/JSON--RPC_2.0-69_methods-000000?style=for-the-badge&logo=json&logoColor=white)
 ![E2EE](https://img.shields.io/badge/E2EE-AES--256--GCM-0a0a0a?style=for-the-badge&logo=letsencrypt&logoColor=white)
 ![Platforms](https://img.shields.io/badge/Windows_%7C_macOS_%7C_Linux-lightgrey?style=for-the-badge)
 
@@ -19,7 +19,8 @@ optional, self-hosted off-LAN fallback. Background push notifications are sent
 receiving them whether it reached the bridge directly or through a relay.
 
 > **Status:** alpha-functional on the primary path (LAN/Tailscale-direct,
-> bridge-direct push), with **eight real agents wired**. The detailed breakdown of
+> bridge-direct push), with **seven active real agents wired** plus one
+> unavailable legacy Gemini descriptor. The detailed breakdown of
 > what is built and what remains lives in [`FOR-DEV.md`](FOR-DEV.md); the release
 > history is in [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -34,6 +35,11 @@ Uxnan distinct actually live:
   launch a separate process per project: the phone browses the configured roots
   (`workspace/browseDirs`, constrained by the `browseRoots` setting) and roots a
   new conversation anywhere it is allowed to look.
+- **Conversation links follow the agent across worktrees.**
+  `workspace/resolveFileLink` canonicalizes a local path cited in a response.
+  Relative paths start at the conversation cwd; an absolute or `..` path can
+  select a sibling Git worktree as the viewer root. Only an existing regular
+  file is returned, and `.git` plus sensitive path segments remain denied.
 - **Provider-agnostic, with no keys to hand over.** For each agent the bridge
   spawns that agent's **official local CLI** and talks to it over stdio. It never
   uses a provider HTTP API, API key, or language SDK. Each CLI runs under the
@@ -76,7 +82,7 @@ flowchart LR
       p2["project-b (git)"]
       p3["scripts/ (plain folder)"]
     end
-    clis["Official local CLIs<br/>opencode · claude · codex · pi · gemini · agy · zero · grok"]
+    clis["Supported local CLIs<br/>opencode · claude · codex · pi · agy · zero · grok"]
   end
 
   phone -- "E2EE" --> disc
@@ -93,8 +99,8 @@ flowchart LR
 
 ## How the bridge drives agents
 
-This is the mechanism behind "provider-agnostic": the bridge spawns each agent's
-official local CLI — `opencode`, `claude`, `codex`, `pi`, `gemini`, `agy`, `zero`, `grok` — as a
+This is the mechanism behind "provider-agnostic": the bridge spawns each supported
+agent's official local CLI — `opencode`, `claude`, `codex`, `pi`, `agy`, `zero`, `grok` — as a
 child process and drives it over stdio, exactly as you would in a terminal (Zero is
 driven over the Agent Client Protocol, `zero acp`). Prompts are
 passed as `argv` elements with `shell:false` (no shell injection), in the thread's
@@ -102,6 +108,23 @@ working directory. The bridge parses each CLI's native stream and re-emits it as
 structured events — `stream/content/block` (command / diff / tool) plus
 `stream/thinking/delta` (reasoning) — so the phone renders the same shape no
 matter which agent is running.
+
+Codex, Claude and pi also emit durable assistant-response boundaries. The
+bridge reconciles terminal payloads additively, preserving every progress and
+final message in native order instead of replacing the turn with its last item.
+
+The conversation is also shared with the agent's own clients. On every idle
+`turn/list`, the bridge merges completed native-session turns that were written
+outside Uxnan: Codex Desktop/CLI, OpenCode Desktop, Claude Code, pi, Zero and
+Grok are supported. Existing bridge turns remain authoritative and are linked
+rather than duplicated. OpenCode is read through its official local server API;
+the others use their persisted session logs. Antigravity is the explicit gap:
+`agy` exposes neither a readable transcript nor a history export, so no history
+is inferred from its opaque database.
+
+`gemini-cli` remains a deprecated, unavailable descriptor only for legacy
+configuration and history compatibility. The bridge does not resolve or spawn
+it, install its hook, advertise models/commands, or accept new threads/turns.
 
 See [`FOR-HUMAN.md`](FOR-HUMAN.md) for the per-agent install / login
 prerequisites, and [`docs/agents.md`](docs/agents.md) for the details.
@@ -165,7 +188,7 @@ Task-focused guides live in [`docs/`](docs/):
 ## Architecture
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
-  E2EE types and runtime validators. The bridge exposes **68 JSON-RPC methods +
+  E2EE types and runtime validators. The bridge exposes **69 JSON-RPC methods +
   10 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
@@ -179,7 +202,8 @@ Task-focused guides live in [`docs/`](docs/):
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32009` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
-  Gemini CLI / Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
+  Antigravity / Zero / Grok, plus a non-runnable deprecated Gemini legacy
+  adapter); `AgentManager` orchestrates streaming and broadcasts `stream/*`
   notifications to connected phones.
 - **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
   directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay

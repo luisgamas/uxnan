@@ -10,6 +10,7 @@ class AgentCapabilities extends Equatable {
     this.forking = false,
     this.images = false,
     this.reportsContextUsage = false,
+    this.reportsCompaction = false,
     this.autonomous = false,
     this.commands = false,
   });
@@ -24,6 +25,7 @@ class AgentCapabilities extends Equatable {
         forking = true,
         images = true,
         reportsContextUsage = true,
+        reportsCompaction = true,
         autonomous = true,
         commands = true;
 
@@ -36,6 +38,7 @@ class AgentCapabilities extends Equatable {
         forking: json['forking'] == true,
         images: json['images'] == true,
         reportsContextUsage: json['reportsContextUsage'] == true,
+        reportsCompaction: json['reportsCompaction'] == true,
         autonomous: json['autonomous'] == true,
         commands: json['commands'] == true,
       );
@@ -59,6 +62,9 @@ class AgentCapabilities extends Equatable {
   /// meter, shown at 0 until the first turn).
   final bool reportsContextUsage;
 
+  /// Whether the adapter emits real context-compaction timeline markers.
+  final bool reportsCompaction;
+
   /// Whether the agent runs in autonomous ("YOLO") mode by default — it acts
   /// and edits without per-action approval prompts (its headless CLI exposes
   /// no pre-tool approval channel). Surfaces in the UI so the user knows the
@@ -77,6 +83,7 @@ class AgentCapabilities extends Equatable {
         forking,
         images,
         reportsContextUsage,
+        reportsCompaction,
         autonomous,
         commands,
       ];
@@ -95,6 +102,7 @@ class AgentDescriptor extends Equatable {
     required this.available,
     this.capabilities = const AgentCapabilities(),
     this.defaultModel,
+    this.deprecated = false,
   });
 
   /// Reconstructs an [AgentDescriptor] from an `agent/list` entry.
@@ -109,6 +117,7 @@ class AgentDescriptor extends Equatable {
           ? AgentCapabilities.fromJson(caps.cast<String, dynamic>())
           : const AgentCapabilities(),
       defaultModel: json['defaultModel'] as String?,
+      deprecated: json['deprecated'] == true,
     );
   }
 
@@ -127,7 +136,16 @@ class AgentDescriptor extends Equatable {
   /// The agent's default model, if any.
   final String? defaultModel;
 
+  /// Whether the bridge retained this adapter only for legacy installations.
+  final bool deprecated;
+
   @override
-  List<Object?> get props =>
-      [agentId, displayName, available, capabilities, defaultModel];
+  List<Object?> get props => [
+        agentId,
+        displayName,
+        available,
+        capabilities,
+        defaultModel,
+        deprecated,
+      ];
 }

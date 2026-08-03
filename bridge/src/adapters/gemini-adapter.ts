@@ -1,5 +1,10 @@
 /**
- * Google Gemini CLI adapter (`@google/gemini-cli`, the `gemini` command — real agent).
+ * @deprecated Compatibility-only implementation for legacy stored Gemini CLI
+ * sessions. The bridge registers this adapter as deprecated and unavailable,
+ * never resolves its binary, and rejects new threads/turns before dispatch.
+ * Antigravity (`antigravity-cli`) is the supported Google agent.
+ *
+ * Historical Google Gemini CLI adapter (`@google/gemini-cli`, `gemini`).
  *
  * Gemini does NOT speak the generic bridge agent IPC. Each turn spawns
  * `gemini -p <prompt> --output-format stream-json …` as a one-shot process and maps
@@ -319,6 +324,7 @@ export function parseGeminiLine(line: string): GeminiEvent | null {
   }
 }
 
+/** @deprecated Compatibility-only; new work is rejected by AgentManager. */
 export class GeminiAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'gemini-cli';
   readonly capabilities = GEMINI_CAPABILITIES;

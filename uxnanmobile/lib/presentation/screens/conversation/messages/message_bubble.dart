@@ -33,16 +33,22 @@ const double _sentThumbSize = 72;
 /// the whole answer one clean selectable surface instead of many fragments.
 class MessageBubble extends StatelessWidget {
   /// Creates a [MessageBubble].
-  const MessageBubble({required this.message, super.key});
+  const MessageBubble({required this.message, this.onTapLink, super.key});
 
   /// The message to render.
   final Message message;
+
+  /// Handles links rendered in assistant prose.
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
     return switch (message.role) {
       MessageRole.user => _UserBubble(message: message),
-      MessageRole.assistant => AssistantTurnView(message: message),
+      MessageRole.assistant => AssistantTurnView(
+          message: message,
+          onTapLink: onTapLink,
+        ),
       MessageRole.system ||
       MessageRole.tool =>
         _FullWidthBlocks(message: message),

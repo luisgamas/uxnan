@@ -76,6 +76,11 @@ not a stream of text**. This implies:
 3. The interface *communicates state*: when the model processes, the UI moves in a way
    that reflects that cognitive activity (Gemini's pulsing "glowbar" is an example).
 
+The editorial object must remain visually continuous while it is being written:
+partial assistant prose uses the same Markdown renderer and typography as its
+settled state. A live activity cue may accompany it, but completion must not
+replace visible source markers with a newly formatted layout.
+
 ### 1.3 Your Usage Context (Without the Glass Effect)
 
 This guide assumes you implement **the structural and compositional principles** of
@@ -428,9 +433,15 @@ group in a compact horizontal shelf above the pill. Each keeps a 48 dp touch
 target around a 38 dp neutral circular surface with a 24 dp glyph, matching the
 38 dp visual height and `surfaceContainerHigh` tone of the context, token, and
 edit pills on the right. The shelf starts folded to one chevron by default and
-expands on tap, for a quiet conversation surface. Tooltips carry the
-option/value labels. Approval uses semantic status colors: success for Approve
-for me, warning for Request approval, and error for Full access.
+expands on tap, for a quiet conversation surface. In that default state the
+right-side edit, token, and context indicators remain fully visible. Expanding
+the left controls makes those read-only indicators slide and fade out while
+their width collapses, giving the controls the full compact-screen row without
+overflow; folding the controls restores them with the inverse transition. Both
+directions use the shared small-element M3E spring and become immediate under
+reduced motion. Tooltips carry the option/value labels. Approval uses semantic
+status colors: success for Approve for me, warning for Request approval, and
+error for Full access.
 When the reader scrolls away from the latest message far enough to reveal the
 scroll shortcut, this auxiliary shelf and any autonomous-agent notice slide
 toward the composer, fade, and collapse. The transition must be clipped to its

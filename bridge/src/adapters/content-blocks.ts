@@ -9,11 +9,40 @@
  * `MessageContent` types.
  */
 import type {
+  AssistantResponseBoundaryBlock,
+  AssistantResponsePhase,
   ApprovalRequestBlock,
   ApprovalRisk,
+  CompactionContentBlock,
+  CompactionReason,
   QuestionItem,
   QuestionRequestBlock,
 } from '@uxnan/shared';
+
+/** Marks the end of one native assistant response item within a turn. */
+export function assistantResponseBoundaryBlock(
+  phase: AssistantResponsePhase = 'unknown',
+  itemId?: string,
+): AssistantResponseBoundaryBlock {
+  return {
+    type: 'assistant_response_boundary',
+    phase,
+    ...(itemId !== undefined && itemId.length > 0 ? { itemId } : {}),
+  };
+}
+
+/** A durable marker for a context compaction the agent explicitly reported. */
+export function compactionBlock(
+  reason: CompactionReason = 'unknown',
+  opts: { tokensBefore?: number; tokensAfter?: number } = {},
+): CompactionContentBlock {
+  return {
+    type: 'compaction',
+    reason,
+    ...(opts.tokensBefore !== undefined ? { tokensBefore: opts.tokensBefore } : {}),
+    ...(opts.tokensAfter !== undefined ? { tokensAfter: opts.tokensAfter } : {}),
+  };
+}
 
 /** Cap tool/command output carried on the wire so a big read doesn't bloat it. */
 const MAX_OUTPUT = 4000;

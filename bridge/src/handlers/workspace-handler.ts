@@ -53,6 +53,9 @@ export function registerWorkspaceHandlers(router: HandlerRouter): void {
   router.register('workspace/searchFiles', (p) =>
     ws.searchFiles(requireString(p, 'cwd'), requireString(p, 'query'), optionalNumber(p, 'limit')),
   );
+  router.register('workspace/resolveFileLink', (p) =>
+    ws.resolveFileLink(requireString(p, 'cwd'), requireString(p, 'href')),
+  );
   router.register('workspace/browseDirs', (p, ctx: BridgeContext) =>
     ctx.browse.browse(optionalString(p, 'rootId'), optionalString(p, 'path')),
   );
