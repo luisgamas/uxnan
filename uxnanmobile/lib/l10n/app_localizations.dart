@@ -4400,13 +4400,13 @@ abstract class AppLocalizations {
   /// **'Browse files'**
   String get fileBrowserOpenTooltip;
 
-  /// Tooltip on the action that switches the file viewer from the markdown preview to the raw source.
+  /// Tooltip on the action that switches a preview-capable file to its raw source.
   ///
   /// In en, this message translates to:
   /// **'View source'**
   String get fileViewerViewSource;
 
-  /// Tooltip on the action that switches the file viewer from the raw source to the markdown preview.
+  /// Tooltip on the action that switches a preview-capable file from source to its visual preview.
   ///
   /// In en, this message translates to:
   /// **'View preview'**
@@ -4424,7 +4424,7 @@ abstract class AppLocalizations {
   /// **'Hide diff'**
   String get fileViewerHideDiff;
 
-  /// Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).
+  /// Snackbar shown when a link tapped in the Markdown preview could not be handed to the OS (an in-page anchor, an unusual scheme, or no handler installed) and was copied to the clipboard instead.
   ///
   /// In en, this message translates to:
   /// **'Link copied: {href}'**
@@ -4447,6 +4447,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t open this file'**
   String get fileViewerLoadFailed;
+
+  /// Body of the error shown when a supported media file has no preview payload.
+  ///
+  /// In en, this message translates to:
+  /// **'The preview data isn\'t available. Pull down to try loading it again.'**
+  String get fileViewerMediaUnavailable;
+
+  /// Body of the error shown when a PDF was not delivered as base64 bytes.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge didn\'t return the original PDF bytes. Update or restart the bridge, then try again.'**
+  String get fileViewerPdfInvalid;
+
+  /// Title of a GitHub `> [!NOTE]` callout rendered in a Markdown preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Note'**
+  String get markdownAlertNote;
+
+  /// Title of a GitHub `> [!TIP]` callout rendered in a Markdown preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Tip'**
+  String get markdownAlertTip;
+
+  /// Title of a GitHub `> [!IMPORTANT]` callout rendered in a Markdown preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Important'**
+  String get markdownAlertImportant;
+
+  /// Title of a GitHub `> [!WARNING]` callout rendered in a Markdown preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning'**
+  String get markdownAlertWarning;
+
+  /// Title of a GitHub `> [!CAUTION]` callout rendered in a Markdown preview.
+  ///
+  /// In en, this message translates to:
+  /// **'Caution'**
+  String get markdownAlertCaution;
+
+  /// Fallback label for a Markdown <details> disclosure whose <summary> is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get markdownDetails;
 
   /// Mode pill label shown in the file viewer's footer when a markdown file is rendered as a styled preview.
   ///

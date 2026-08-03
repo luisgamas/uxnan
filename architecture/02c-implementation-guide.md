@@ -1,12 +1,14 @@
 # Uxnan — Guia de Implementacion
 
-> **Version:** 1.0.1
-> **Fecha:** 2026-07-21
+> **Version:** 1.0.2
+> **Fecha:** 2026-08-02
 > **Estado:** En desarrollo
-> **Executive summary (1.0.1):** the platform setup now matches the implemented
+> **Executive summary (1.0.2):** the platform setup now matches the implemented
 > `_uxnan._tcp` DNS-SD discovery path, including Android's multicast permission
 > and iOS Bonjour declaration. Discovery only fills a host and never authorizes
-> or trusts a device.
+> or trusts a device. The Flutter dependency recipe now matches the implemented
+> workspace viewer stack: maintained Markdown rendering, reusable SVG support,
+> and native Android/iOS PDF preview through PDFium, without a mobile WebView.
 > Este documento forma parte de la documentacion tecnica de Uxnan. Ver tambien: [01-product-vision.md](01-product-vision.md) | [02a-system-architecture.md](02a-system-architecture.md) | [02b-contracts-and-requirements.md](02b-contracts-and-requirements.md) | [03-technical-reference.md](03-technical-reference.md)
 
 ---
@@ -1687,13 +1689,13 @@ dependencies:
   pointycastle: ^3.9.1
 
   # UI
-  flutter_markdown: ^0.7.3
+  flutter_markdown_plus: ^1.0.0
+  markdown: ^7.3.1              # AST: GitHub extension set + code-block builder
   flutter_highlight: ^0.7.0
   material_loading_indicator: ^1.0.0
-  flutter_inappwebview: ^6.0.0
-  cached_network_image: ^3.3.1
-  shimmer: ^3.0.0
-  lottie: ^3.1.0
+  flutter_svg: ^2.0.10          # app-owned assets (agent logos)
+  jovial_svg: ^1.1.30           # user documents: honours <text> transforms
+  pdfrx: ^2.4.7
 
   # Camara y QR
   mobile_scanner: ^5.1.1

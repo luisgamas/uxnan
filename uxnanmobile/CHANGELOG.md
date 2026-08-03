@@ -90,6 +90,91 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   reappear.
 - Antigravity remains the supported Google agent.
 
+### Added — a workspace viewer that understands project documentation
+
+- Expanded the file viewer from text, basic Markdown, and raster images to a
+  capability-based preview surface for Markdown, animated GIF, SVG, and PDF on
+  both Android and iOS. SVG keeps Preview / Source / Changes parity, so it can
+  be inspected visually without giving up editing or git review.
+- Markdown now resolves workspace-relative images and file links against the
+  open document, including `../` paths and GitHub-style `?raw=true` suffixes.
+  Local resources still travel through the bridge's guarded workspace RPCs;
+  paths that would escape the workspace are rejected.
+- Added a constrained README HTML compatibility pass for common centered
+  headings, links, badges, images, line breaks, and presentational containers.
+  Image width/height hints survive conversion, shields remain compact, fenced
+  code stays untouched, and executable or embedded HTML is removed.
+- Markdown images now use one reusable renderer for local and HTTPS raster,
+  animated GIF, and SVG resources, with bounded layout and compact failure
+  states instead of allowing a malformed asset to break the document.
+- Added focused unit and widget regressions for format classification, safe
+  path resolution, HTML normalization, fenced-code preservation, relative SVG
+  badges, animated GIF delivery, and SVG Preview / Source switching.
+
+### Changed — PDF bytes are delivered without lossy text decoding
+
+- Added `pdfrx` for an in-app, pinch-zoomable PDF surface backed by PDFium on
+  Android and iOS. The bridge now deterministically returns `.pdf` files as
+  base64, even when their initial bytes happen to look like UTF-8, with a
+  bounded 20 MiB PDF read limit.
+
+### Added — the Markdown preview now follows GitHub's own rendering
+
+- **GitHub alerts.** `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`
+  and `> [!CAUTION]` render as titled, colour-coded callouts with their own
+  icon (title localized EN/ES) instead of a blockquote that printed the
+  `[!NOTE]` keyword as body text. A quote that is not an alert is untouched.
+- **`<details>` disclosures fold again.** The summary is a tappable row and the
+  body stays collapsed until opened, honouring `<details open>`. Previously both
+  were flattened, so "hidden" content was always visible under a stray line.
+- **HTML tables become real tables.** Rectangular, span-free `<table>` markup is
+  rewritten as a pipe table rather than flattened into one line per cell.
+- **Fenced code is syntax-highlighted and scrolls horizontally**, sharing the
+  highlighter with the full-file source view; a long line is reachable instead
+  of clipped at the content width.
+- **Task lists show their state** (`- [x]` is a checked box, `- [ ]` an empty
+  one), and `:emoji:` shortcodes, autolinks and heading anchors are enabled via
+  the `gitHubWeb` extension set.
+- **`<kbd>`, `<sub>` and `<sup>`** map onto inline code and Unicode
+  subscripts/superscripts, so `H<sub>2</sub>O` reads as H₂O. A `<kbd>` wrapping
+  content (an agent logo and its name, as READMEs use it) keeps that content
+  rather than printing its Markdown.
+- **A web link opens the browser.** Tapping an `http`/`https`/`mailto`
+  destination hands it to the OS like any reader would, instead of only copying
+  it. Workspace-relative links still open in the viewer, and anything that
+  cannot be launched — an in-page anchor, an unusual scheme, a device with no
+  handler — still lands on the clipboard, so a document can never make the
+  phone open an arbitrary scheme.
+
+### Fixed — README shields render instead of breaking the document
+
+- **Remote Markdown resources are now typed by their response, not their URL.**
+  Badge services answer extensionless endpoints
+  (`img.shields.io/github/stars/…`) with `image/svg+xml`, so picking a decoder
+  from the path sent SVG markup to the platform raster decoder: every shield in
+  a README failed to decode and collapsed into a broken-image placeholder. They
+  are fetched once through a shared loader (`RemoteResourceService`) that
+  resolves the media type from `content-type` plus the payload's own signature,
+  keeps `https`-only and a 5 MiB ceiling, and caches by URL so repainting a
+  document never refetches a badge.
+- **Shields are legible.** Every badge service emits its label as SVG text at
+  ten times the size, scaled back down by a `transform` — and the SVG engine the
+  app used for its own logos silently ignores transforms on `<text>`, so the
+  label was painted ten times too large and buried the badge it belonged to.
+  Workspace and Markdown SVG now render through `jovial_svg`, which honours it;
+  the app's bundled logos keep their existing renderer.
+- **A bolded sentence broken by `<br>` renders bold.** A `<br>` at the end of a
+  source line emitted its own newline on top of the line's, leaving a blank line
+  that ended the paragraph — so emphasis opened before the break never closed
+  and the text showed its literal `**`. It now maps to Markdown's hard break and
+  absorbs the following newline; a `<br>` before a genuinely blank line still
+  starts a new paragraph.
+- **A failed or loading badge no longer overflows its line.** Inline media is
+  constrained to a shield's height, which is shorter than the padded icon +
+  caption placeholder; that column overflowed by 20 px and painted the striped
+  layout banner over the document. Both placeholders now measure their slot and
+  degrade to a single glyph when the padded box does not fit.
+
 ## [0.0.15-alpha.20260729+20260729] - 2026-07-29
 
 ### Added — send follow-up messages while the agent is working

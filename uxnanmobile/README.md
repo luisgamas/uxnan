@@ -68,8 +68,11 @@ this app:
   compacted earlier context, a message scroll rail to jump
   through your prompts, automatic first-prompt conversation titles that remain
   manually renameable, per-agent sign-in status, voice and image input, a full
-  Git screen, and a searchable workspace file browser and viewer are all
-  available from the phone. While a reply is pending, its waiting label has a
+  Git screen, and a searchable workspace file browser are all available from
+  the phone. Its viewer covers editable highlighted text, selectable diffs,
+  GitHub-style Markdown with relative badges/images/links, animated GIF, SVG
+  (Preview / Source / Changes), raster images, and native PDF preview on both
+  Android and iOS. While a reply is pending, its waiting label has a
   subtle skeleton sweep; after the first token only the live loader remains,
   moving after the latest streamed token like a writing cursor.
 - **One native session, whichever client you use.** Keep a conversation open in

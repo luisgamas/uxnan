@@ -16,7 +16,12 @@
 > and is not used as an activity-profile identity. LAN discovery is an
 > unauthenticated host hint, emitted explicitly on every eligible IPv4 interface;
 > it never carries the pairing code and never bypasses the operator-gated E2EE
-> enrollment.
+> enrollment. The mobile workspace browser now selects viewers by file
+> capability: it preserves editable source and Git changes while adding guarded
+> GitHub-style Markdown resources, animated raster and SVG rendering, and native
+> Android/iOS PDF preview. Local resource paths remain workspace-confined, and
+> the bridge preserves bounded PDF bytes as base64 without changing the RPC
+> response shape.
 
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de la arquitectura del sistema.
@@ -1116,14 +1121,9 @@ class TurnTimelineSnapshot {
 
 #### 5.4.7 Markdown y contenido enriquecido
 
-- **Markdown:** `flutter_markdown_plus` — supported on Android + iOS. Partial
-  streaming prose and settled prose use the same `MarkdownBody` renderer and
-  shared style sheet, preventing a source-text-to-formatted-layout swap when a
-  turn completes. Explicit Markdown links, bare local paths and inline-code
-  paths share one tap callback. Local paths open the workspace file viewer;
-  remote links are copied rather than launched. Syntax highlighting and code
-  blocks remain supported.
-- **Mermaid:** renderizado via `flutter_inappwebview` con un HTML embebido que carga mermaid.js localmente. Ambas plataformas.
+- **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Partial streaming prose and settled prose use the same `MarkdownBody` renderer and shared style sheet, preventing a source-text-to-formatted-layout swap when a turn completes. Explicit Markdown links, bare local paths and inline-code paths share one tap callback: local paths open the workspace file viewer, remote links are copied rather than launched. Workspace previews target GitHub-flavored Markdown as GitHub renders it, without embedding a WebView: GitHub **alerts** (`> [!NOTE]` …) and **`<details>` disclosures** are extracted as blocks and given their own chrome, common README HTML (including rectangular tables, `<kbd>`, `<sub>`/`<sup>`) is normalized, and the renderer runs the `gitHubWeb` extension set with a checkbox builder and a syntax-highlighted, horizontally scrollable code-block builder. An HTTPS resource is decoded by the media type its **response** declares (`content-type` + payload signature), never by its URL, because README shields are served from extensionless endpoints as `image/svg+xml`.
+- **SVG:** two renderers by design. `flutter_svg` draws the app's own bundled assets; **`jovial_svg`** draws documents the user did not author (workspace previews, README shields), because `vector_graphics` does not apply transforms to `<text>` and every badge service scales its label down with one.
+- **Mermaid:** represented as structured message content and rendered as an explicit diagram placeholder; no WebView dependency is part of the current mobile UI stack.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
 
@@ -1844,17 +1844,31 @@ consumidas hoy por:
   de root + breadcrumb dentro del diálogo full-screen Neural Expressive. La
   selección de agente se compara directamente en un grupo de tarjetas de
   esquinas dinámicas; sólo la tarjeta seleccionada revela sus capability chips.
-- **Visor de archivos del workspace** (`FileBrowserScreen` +
-  `FileViewerScreen` en `presentation/screens/conversation/files/`,
-  manageado por `FileBrowserManager`) — el árbol perezoso, la búsqueda fuzzy
-  repo-wide con revelado de ancestros y el
-  viewer por extensión (imagen inicialmente completa con `BoxFit.contain` y
-  zoom/pan en toda la superficie / Markdown preview vs source seleccionable /
-  código resaltado y seleccionable + diff overlay seleccionable / binary
-  placeholder), accesado
-  desde un `IconSurface` `folder_open_rounded` en la app-bar de
-  `ConversationScreen` al lado del botón de `GitScreen`. Las
-  rutas se validan en el bridge por `path-guard` (§5.8.9/infra).
+- **Workspace file viewer** (`FileBrowserScreen` + `FileViewerScreen` under
+  `presentation/screens/conversation/files/`, managed by
+  `FileBrowserManager`) — the lazy tree and repo-wide fuzzy search feed a
+  capability-based viewer: editable and selectable highlighted UTF-8 source;
+  selectable git diffs; GitHub-style Markdown preview/source with common README
+  HTML normalization, alert callouts, `<details>` disclosures, HTML tables, task
+  lists and highlighted scrollable fences; local and HTTPS raster, animated GIF,
+  and SVG resources;
+  full-surface raster/SVG zoom; SVG Preview / Source / Changes parity; native
+  Android/iOS PDF preview; and an honest fallback for unsupported binary files.
+  Relative Markdown resources and file links resolve against the open document,
+  discard query/fragment suffixes before local reads, and are rejected if
+  normalization would leave the workspace. A tapped link opens another document
+  in the viewer (workspace-relative), is handed to the OS (`http`/`https`/
+  `mailto` only), or is copied — never launched under any other scheme. HTTPS resources go through a shared
+  `RemoteResourceService` (`infrastructure/media/`): `https`-only, bounded at
+  5 MiB, cached by URL, and typed from the response (`content-type` + payload
+  signature) rather than from the URL, since shields answer extensionless
+  endpoints with `image/svg+xml`. Inline placeholders measure their slot so a
+  badge-height row degrades to a single glyph instead of overflowing the line. `workspace/readFile` preserves PDF
+  bytes as base64 (bounded at 20 MiB); `workspace/readImage` carries supported
+  images (bounded at 10 MiB). Both pass through `path-guard` (§5.8.9/infra),
+  which confines reads to the workspace root and excludes sensitive files. The
+  viewer opens from the `folder_open_rounded` `IconSurface` beside `GitScreen`
+  in `ConversationScreen`.
   Conversation links first resolve to a canonical viewer root; every
   subsequent read remains confined to that root and excludes `.git` and
   sensitive files.

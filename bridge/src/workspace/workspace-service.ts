@@ -31,6 +31,7 @@ import { runGit } from '../git/git-runner.js';
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
 const IMAGE_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -80,10 +81,14 @@ export class WorkspaceService {
 
   async readFile(root: string, relPath: string): Promise<FileContent> {
     const abs = resolveWithinRoot(root, relPath);
-    await this.#assertReadableFile(abs, MAX_FILE_BYTES);
+    const isPdf = extname(abs).toLowerCase() === '.pdf';
+    await this.#assertReadableFile(abs, isPdf ? MAX_PDF_BYTES : MAX_FILE_BYTES);
     const buffer = await readFile(abs);
     const path = toRelative(root, abs);
-    if (isBinary(buffer)) {
+    // A PDF header does not have to contain a NUL byte in the sampled range,
+    // so content sniffing alone can misclassify it as UTF-8. The mobile viewer
+    // needs the original bytes for PDFium; preserve them deterministically.
+    if (isPdf || isBinary(buffer)) {
       return { path, content: buffer.toString('base64'), encoding: 'base64' };
     }
     return { path, content: buffer.toString('utf-8'), encoding: 'utf-8' };

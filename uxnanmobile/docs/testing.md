@@ -61,6 +61,26 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
   `AppLocalizations` delegates; stream providers are overridden with
   `Stream.value(...)`. The default test window is **800×600** — keep modal
   sheets scrollable so they don't overflow there.
+- **Workspace viewer regression layers.** Pure presentation tests cover file
+  classification, README HTML normalization (tables, `<kbd>`/`<sub>`/`<sup>`),
+  GitHub block splitting (alerts, `<details>`, fenced-code immunity), safe
+  relative-resource resolution and GIF/SVG detection; unit tests cover remote
+  media-type resolution (payload signature over header), caching, and the
+  https/size guards through a stubbed Dio adapter. Widget tests drive the real
+  viewer through mocked workspace RPC responses and a stubbed remote loader —
+  an extensionless shield, a badge-sized slot whose fetch fails, alert
+  callouts, a disclosure that only reveals its body on tap, task
+  lists/tables/highlighted fences, and a **real-world README shape** (layout
+  table with a demo image, `<picture>`, `<kbd>` chips, alerts, disclosures, odd
+  fence languages) asserted to render with nothing dropped — while the bridge
+  suite asserts exact PDF base64 and size-limit behavior. That last fixture is
+  the standing guard for the regression where "more GitHub support" cost the
+  document its own content: the Markdown work was validated by diffing
+  normalization against the previous implementation over 29 widely-used
+  external READMEs (React, VS Code, Deno, Kubernetes, Storybook, Windows
+  Terminal, appwrite, n8n, …) and rendering each one — the diff must stay empty
+  except for deliberate improvements, and no document may raise a layout error. `flutter build apk --debug` additionally compiles the
+  native PDFium integration; see [`file-viewer.md`](file-viewer.md).
 - **Simulated bridge.** Transport/coordinator tests run a persistent in-memory
   "bridge" peer to exercise the handshake, RPC round-trips, notifications and
   reconnect without a network.
