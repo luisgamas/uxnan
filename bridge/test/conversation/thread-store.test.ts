@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
-import { RpcError } from '@uxnan/shared';
+import { RpcError, type Turn } from '@uxnan/shared';
 import { DaemonState, ThreadStore } from '../../src/index.js';
 
 function newStore(): { store: ThreadStore; baseDir: string } {
@@ -42,6 +42,97 @@ test('turn lifecycle: start, delta, complete', async () => {
   assert.equal(assistant?.content, 'answer');
   const user = turn.messages.find((m) => m.role === 'user');
   assert.equal(user?.content, 'ask');
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('reconcileNativeHistory links bridge turns and imports only native-only completed turns', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'codex' }, 1);
+  const local = await store.startTurn(thread.id, 'from mobile', 10);
+  await store.appendDelta(thread.id, local.turnId, 'mobile answer', 11);
+  await store.completeTurn(thread.id, local.turnId, undefined, 12);
+
+  const native = (id: string, user: string, assistant: string, at: number): Turn => ({
+    id,
+    threadId: thread.id,
+    status: 'completed',
+    createdAt: at,
+    completedAt: at + 1,
+    messages: [
+      { id: `${id}-u`, turnId: id, role: 'user', content: user, createdAt: at },
+      {
+        id: `${id}-a`,
+        turnId: id,
+        role: 'assistant',
+        content: assistant,
+        createdAt: at + 1,
+      },
+    ],
+  });
+
+  const first = await store.reconcileNativeHistory(
+    thread.id,
+    [
+      native('native#t0', 'from mobile', 'mobile answer', 10),
+      native('native#t1', 'from desktop', 'desktop answer', 20),
+    ],
+    30,
+  );
+  assert.deepEqual(first, { changed: true, importedTurnIds: ['native#t1'] });
+  const turns = await store.listTurns(thread.id);
+  assert.equal(turns.total, 2);
+  assert.equal(turns.turns[0]?.id, local.turnId, 'the bridge UUID remains authoritative');
+  assert.equal(turns.turns[1]?.id, 'native#t1');
+
+  const again = await store.reconcileNativeHistory(
+    thread.id,
+    [
+      native('native#t0', 'from mobile', 'mobile answer', 10),
+      native('native#t1', 'from desktop', 'desktop answer', 20),
+    ],
+    31,
+  );
+  assert.deepEqual(again, { changed: false, importedTurnIds: [] });
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('reconcileNativeHistory ignores an in-progress native user-only turn and refreshes an import', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'grok' }, 1);
+  const incomplete: Turn = {
+    id: 'grok#t0',
+    threadId: thread.id,
+    status: 'completed',
+    createdAt: 10,
+    messages: [
+      { id: 'grok#m0', turnId: 'grok#t0', role: 'user', content: 'still running', createdAt: 10 },
+    ],
+  };
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [incomplete], 11), {
+    changed: false,
+    importedTurnIds: [],
+  });
+
+  const complete: Turn = {
+    ...incomplete,
+    completedAt: 12,
+    messages: [
+      ...incomplete.messages,
+      {
+        id: 'grok#m1',
+        turnId: 'grok#t0',
+        role: 'assistant',
+        content: 'first answer',
+        createdAt: 12,
+      },
+    ],
+  };
+  assert.equal((await store.reconcileNativeHistory(thread.id, [complete], 13)).changed, true);
+  complete.messages[1] = { ...complete.messages[1]!, content: 'final answer' };
+  assert.equal((await store.reconcileNativeHistory(thread.id, [complete], 14)).changed, true);
+  const assistant = (await store.listTurns(thread.id)).turns[0]?.messages[1];
+  assert.equal(assistant?.content, 'final answer');
   await rm(baseDir, { recursive: true, force: true });
 });
 
@@ -379,6 +470,32 @@ test('completeTurn extends the trailing run when the final text has an unstreame
     { type: 'text', text: 'second and tail' },
   ]);
   assert.equal(assistant?.content, 'first second and tail');
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('completeTurn never erases streamed responses when terminal text diverges', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+
+  await store.appendDelta(thread.id, turnId, 'Progress update.', 3);
+  await store.appendBlock(
+    thread.id,
+    turnId,
+    { type: 'assistant_response_boundary', phase: 'commentary' },
+    4,
+  );
+  // A misbehaving adapter supplies only its last response at completion.
+  await store.completeTurn(thread.id, turnId, 'Final answer.', 5);
+
+  const assistant = (await store.getTurn(turnId)).messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'Progress update.Final answer.');
+  assert.deepEqual(assistant?.segments, [
+    { type: 'text', text: 'Progress update.' },
+    { type: 'assistant_response_boundary', phase: 'commentary' },
+    { type: 'assistant_response_boundary', phase: 'final_answer' },
+    { type: 'text', text: 'Final answer.' },
+  ]);
   await rm(baseDir, { recursive: true, force: true });
 });
 

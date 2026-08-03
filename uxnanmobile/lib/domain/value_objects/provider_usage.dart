@@ -2,13 +2,16 @@ import 'package:equatable/equatable.dart';
 
 /// A coding CLI whose usage the bridge reads from its own stored token.
 /// Mirrors `shared` `UsageProvider`.
-enum UsageProvider { codex, claude, copilot, gemini, grok }
+enum UsageProvider { codex, claude, copilot, grok }
 
 /// Outcome of reading one provider's usage. Mirrors `shared` `UsageStatus`.
 enum UsageStatus { ok, authRequired, notInstalled, error }
 
 /// Parses a wire provider id, or null when unknown.
 UsageProvider? usageProviderFromWire(String id) {
+  // The bridge may retain the legacy Gemini reader for desktop clients;
+  // mobile deliberately treats it as unsupported and renders no provider card.
+  if (id == 'gemini') return null;
   for (final value in UsageProvider.values) {
     if (value.name == id) return value;
   }

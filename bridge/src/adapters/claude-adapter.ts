@@ -30,6 +30,7 @@ import type {
   AgentId,
   AgentModel,
   AgentModelOption,
+  CompactionReason,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { scanCustomCommands } from './command-scan.js';
@@ -43,6 +44,7 @@ import {
 } from './claude-tools.js';
 import { warningBlock } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -63,6 +65,7 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  reportsCompaction: true,
   commands: true,
 };
 
@@ -178,6 +181,7 @@ interface ActiveRun {
 export interface ClaudeEvent {
   kind:
     | 'init'
+    | 'compaction'
     | 'delta'
     | 'thinking'
     | 'assistant_text'
@@ -230,6 +234,10 @@ export interface ClaudeEvent {
   isError?: boolean;
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
+  /** Only set for `system/compact_boundary`. */
+  compactionReason?: CompactionReason;
+  /** Context tokens immediately before a compact boundary, when reported. */
+  tokensBefore?: number;
   /** Only set for `assistant_text`: any tool invocations in the message. */
   toolUses?: ClaudeToolUse[];
   /** Only set for `tool_result`: results the agent fed back from its tools. */
@@ -284,9 +292,10 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
   switch (parsed['type']) {
     case 'system': {
       // `system` is a family, not one event: alongside `init` the CLI reports
-      // **background tasks** (`Bash` with `run_in_background`) — and those decide
-      // whether a `result` is really the end of the turn. Treating every system
-      // line as an init, as this used to, threw that signal away.
+      // **context compaction** and **background tasks** (`Bash` with
+      // `run_in_background`) — and those decide whether a `result` is really the
+      // end of the turn. Treating every system line as an init, as this used to,
+      // threw those signals away.
       const subtype = typeof parsed['subtype'] === 'string' ? parsed['subtype'] : undefined;
       const taskId = typeof parsed['task_id'] === 'string' ? parsed['task_id'] : undefined;
       if (subtype === 'task_started' && taskId) {
@@ -297,6 +306,27 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
       if (subtype === 'task_notification' && taskId) {
         const status = parsed['status'] === 'completed' ? 'completed' : 'stopped';
         return { kind: 'task_ended', ...base, taskId, taskStatus: status };
+      }
+      if (subtype === 'compact_boundary') {
+        const metadata = isRecord(parsed['compact_metadata'])
+          ? parsed['compact_metadata']
+          : undefined;
+        const trigger = metadata?.['trigger'];
+        const compactionReason: CompactionReason =
+          trigger === 'manual'
+            ? 'manual'
+            : trigger === 'auto' || trigger === 'automatic'
+              ? 'automatic'
+              : 'unknown';
+        const preTokens = metadata?.['pre_tokens'];
+        return {
+          kind: 'compaction',
+          ...base,
+          compactionReason,
+          ...(typeof preTokens === 'number' && preTokens >= 0
+            ? { tokensBefore: Math.round(preTokens) }
+            : {}),
+        };
       }
       if (subtype !== undefined && subtype !== 'init') {
         // `background_tasks_changed`, `task_updated`, `thinking_tokens`, `status`:
@@ -554,7 +584,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     let full = '';
-    let sawPartial = false;
+    // Deltas belonging to the current native assistant-message envelope. Claude
+    // may emit several envelopes in one turn around tool use; reconciling each
+    // envelope independently prevents a later non-streamed message from being
+    // skipped merely because an earlier one streamed.
+    let currentAssistantText = '';
     let sawModel = false;
     let resolvedModel: string | undefined;
     let errored = false;
@@ -677,26 +711,51 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
       }
       if (subagent) return; // everything below folds into the MAIN message only
-      if (event.kind === 'init' && event.model && !sawModel) {
+      if (event.kind === 'compaction') {
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: {
+            content: compactionBlock(event.compactionReason, {
+              ...(event.tokensBefore !== undefined ? { tokensBefore: event.tokensBefore } : {}),
+            }),
+          },
+        });
+      } else if (event.kind === 'init' && event.model && !sawModel) {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.
         sawModel = true;
         resolvedModel = event.model;
         this.emit({ type: 'model_resolved', threadId, turnId, data: { text: event.model } });
       } else if (event.kind === 'delta' && event.text) {
-        sawPartial = true;
         full += event.text;
+        currentAssistantText += event.text;
         openTextIndex = event.blockIndex ?? -1;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
         // Reasoning chunk — streamed to the phone (and persisted) separately from
         // the answer so it can be shown in a collapsible "thinking" section.
         this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'assistant_text' && event.text && !sawPartial) {
-        // Fallback when token streaming produced no deltas: emit the complete
-        // assistant message text as one chunk.
-        full += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'assistant_text') {
+        // The complete native message follows its partial stream. Emit only an
+        // unseen suffix (or the whole message when this envelope had no
+        // deltas), then preserve its boundary for the mobile disclosure UI.
+        const complete = event.text ?? '';
+        const unseen = unseenAssistantText(currentAssistantText, complete);
+        if (unseen) {
+          full += unseen;
+          this.emit({ type: 'delta', threadId, turnId, data: { text: unseen } });
+        }
+        if (currentAssistantText.length > 0 || complete.length > 0) {
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: assistantResponseBoundaryBlock() },
+          });
+        }
+        currentAssistantText = '';
       } else if (event.kind === 'result') {
         if (event.isError) {
           errored = true;
@@ -707,28 +766,21 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             data: { text: event.text && event.text.length > 0 ? event.text : 'claude error' },
           });
         } else {
-          // Prefer the streamed text (`full`) — it's the complete narration the
-          // user saw. `result.result` is often only the final segment of a
-          // tool-using turn, so using it would shrink the message on re-sync and
-          // drop earlier paragraphs. Fall back to `result.result` only when no
-          // partials streamed.
-          const finalText =
-            sawPartial && full.length > 0
-              ? full
-              : event.text && event.text.length > 0
-                ? event.text
-                : full;
+          // Prefer the accumulated assistant envelopes (`full`) — they are the
+          // complete narration the user saw. `result.result` is often only the
+          // final segment of a tool-using turn, so using it would shrink the
+          // message on re-sync and drop earlier paragraphs — and after a
+          // deferred completion the run spans TWO model turns, of which
+          // `result.result` only ever carries the latest, so the accumulated
+          // narration is also the only text that still holds the first reply.
+          const finalText = full.length > 0 ? full : (event.text ?? '');
           const tokens = claudeUsageTokens(event.usage ?? lastUsage);
           const window = claudeContextWindow(resolvedModel ?? model);
           const usage =
             tokens !== undefined
               ? { tokens, ...(window !== undefined ? { contextWindow: window } : {}) }
               : undefined;
-          // After a deferred completion the run spans TWO model turns, and
-          // `result.result` only ever carries the latest one — so the accumulated
-          // narration is the only text that still holds the first reply.
-          const spanningText = deferredCompletion && full.length > 0 ? full : finalText;
-          pendingCompletion = { text: spanningText, ...(usage !== undefined ? { usage } : {}) };
+          pendingCompletion = { text: finalText, ...(usage !== undefined ? { usage } : {}) };
           if (liveBackgroundTasks.size > 0) {
             // The model ended its turn but left work running, and the CLI keeps
             // running to wait for it — when that work finishes in time the CLI
@@ -904,4 +956,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function unseenAssistantText(streamed: string, complete: string): string {
+  if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
+  return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
 }

@@ -65,6 +65,8 @@ export interface IOpenCodeServer {
   createSession(opts: { title?: string; permission?: OpenCodePermissionRule[] }): Promise<string>;
   /** Fire a turn (returns once accepted; results arrive via `onEvent`). */
   promptAsync(sessionId: string, body: OpenCodePromptBody): Promise<void>;
+  /** Read the session's persisted messages and their ordered parts. */
+  getMessages(sessionId: string): Promise<unknown[]>;
   /** Abort the in-flight turn of a session. */
   abort(sessionId: string): Promise<void>;
   /** Reply to a pending `permission.asked` by its `per_…` id. */
@@ -282,6 +284,11 @@ export class OpenCodeServer implements IOpenCodeServer {
     });
   }
 
+  async getMessages(sessionId: string): Promise<unknown[]> {
+    const value = await this.#get<unknown>(`/session/${encodeURIComponent(sessionId)}/message`);
+    return Array.isArray(value) ? value : [];
+  }
+
   async abort(sessionId: string): Promise<void> {
     await this.#post(`/session/${encodeURIComponent(sessionId)}/abort`, undefined);
   }
@@ -342,5 +349,15 @@ export class OpenCodeServer implements IOpenCodeServer {
     } catch {
       return {} as T;
     }
+  }
+
+  /** GET JSON from a server path. */
+  async #get<T = unknown>(path: string): Promise<T> {
+    if (!this.#baseUrl) throw new Error('opencode server not started');
+    const res = await fetch(`${this.#baseUrl}${path}`, {
+      headers: { accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`opencode ${path} -> ${res.status}`);
+    return (await res.json()) as T;
   }
 }

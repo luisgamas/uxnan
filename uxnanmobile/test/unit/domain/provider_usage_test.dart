@@ -43,6 +43,17 @@ void main() {
     expect(u, isNull);
   });
 
+  test('the retired Gemini provider is intentionally unsupported on mobile',
+      () {
+    final usage = ProviderUsage.fromJson({
+      'provider': 'gemini',
+      'status': 'ok',
+      'windows': <dynamic>[],
+      'updatedAt': 1,
+    });
+    expect(usage, isNull);
+  });
+
   test('authRequired keeps its message and has no windows', () {
     final u = ProviderUsage.fromJson({
       'provider': 'grok',

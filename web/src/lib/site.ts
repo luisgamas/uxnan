@@ -119,7 +119,7 @@ export const TERMINAL_ONLY_AGENTS = [
 ] as const;
 
 /** JSON-RPC surface the bridge exposes (see `shared/src/jsonrpc/`). */
-export const BRIDGE_METHOD_COUNT = 68;
+export const BRIDGE_METHOD_COUNT = 69;
 export const BRIDGE_NOTIFICATION_COUNT = 10;
 
 /**

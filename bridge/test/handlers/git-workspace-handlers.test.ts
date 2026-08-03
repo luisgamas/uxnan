@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { JsonRpcErrorCode, makeRequest } from '@uxnan/shared';
 import { InMemorySecretStore, runGit, startBridge, type Bridge } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
@@ -114,4 +114,32 @@ test('workspace/exists reports a present repo and a vanished dir', async () => {
   await bridge.stop();
   await rmrf(baseDir);
   await rmrf(repo);
+});
+
+test('workspace/resolveFileLink routes to a cross-worktree-safe viewer target', async () => {
+  const { bridge, baseDir } = await boot();
+  const parentDir = join(tmpdir(), `uxnan-links-${randomUUID()}`);
+  await mkdir(parentDir, { recursive: true });
+  // Canonicalized: the handler returns a `realpath`, and a temp dir is a
+  // symlink on macOS and an 8.3 short path on Windows CI.
+  const parent = await realpath(parentDir);
+  const conversation = join(parent, 'x');
+  const worktree = join(parent, 'y');
+  await mkdir(conversation, { recursive: true });
+  await mkdir(join(worktree, 'docs'), { recursive: true });
+  await runGit(worktree, ['init', '-b', 'main']);
+  await writeFile(join(worktree, 'docs', 'summary.md'), '# Summary');
+
+  const res = await bridge.router.dispatch(
+    makeRequest('8', 'workspace/resolveFileLink', {
+      cwd: conversation,
+      href: '../y/docs/summary.md',
+    }),
+  );
+  assert.ok('result' in res);
+  assert.deepEqual(res.result, { cwd: worktree, path: 'docs/summary.md' });
+
+  await bridge.stop();
+  await rmrf(baseDir);
+  await rmrf(parent);
 });

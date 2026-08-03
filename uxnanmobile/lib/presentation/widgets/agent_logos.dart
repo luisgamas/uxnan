@@ -7,9 +7,6 @@ class AgentLogos {
   /// Claude Code logo (orange).
   static const String claude = '$_base/claudecode.svg';
 
-  /// Gemini logo (blue).
-  static const String gemini = '$_base/gemini.svg';
-
   /// Codex logo (white).
   static const String codex = '$_base/codex.svg';
 

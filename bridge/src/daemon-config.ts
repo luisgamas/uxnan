@@ -45,21 +45,22 @@ export interface AgentSettings {
    * only the moving `fable`/`opus`/`sonnet`/`haiku` aliases) this is how you pin
    * an extra concrete version; a same-id entry overrides the seed's `displayName`.
    * Entries may be a bare id string or an {@link AgentModelSpec}. Currently
-   * consumed by the Claude Code adapter; ignored by agents that enumerate their
-   * own models (OpenCode, Codex).
+   * consumed by the Claude Code adapter; ignored by active agents that enumerate
+   * their own models (OpenCode, Codex, pi, Antigravity, Zero and Grok).
    */
   models?: (string | AgentModelSpec)[];
   /**
-   * Headless permission posture for agents that support it (Claude Code).
-   * Defaults to `acceptEdits` when omitted. Ignored by agents that don't gate tools.
+   * Headless fallback posture for Claude Code, Codex, pi and Antigravity.
+   * Per-thread `accessMode` wins where the adapter supports it. Ignored by
+   * OpenCode/Zero/Grok and by the unavailable legacy Gemini adapter.
    */
   permissionMode?: AgentPermissionMode;
   /**
-   * Opt-in interactive tool approvals (Claude Code and Gemini CLI): inject a
-   * pre-tool hook (Claude's `PreToolUse`, Gemini's `BeforeTool`) so every tool
-   * round-trips to the bridge and the user approves/rejects it on the phone
-   * (`turn/send { approvalResponse }`). Requires `lanEnabled` (the hook calls the
-   * bridge's local HTTP endpoint). Default false.
+   * Opt-in interactive tool approvals for Claude Code: inject a `PreToolUse`
+   * hook so every tool round-trips to the bridge and the user approves/rejects
+   * it on the phone (`turn/send { approvalResponse }`). Requires `lanEnabled`
+   * (the hook calls the bridge's local HTTP endpoint). Legacy Gemini values are
+   * accepted when reading old config but ignored; its hook is never installed.
    */
   interactiveApprovals?: boolean;
 }

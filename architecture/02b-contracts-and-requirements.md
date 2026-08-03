@@ -96,7 +96,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 68 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 69 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
@@ -117,11 +117,11 @@ thread/resume           -> reanudar thread existente (best-effort)
 thread/fork             -> fork de un thread en uno nuevo
 thread/setModel         -> cambiar el modelo de un thread mid-conversacion
 thread/rename           -> renombrar thread (devuelve el Thread actualizado). El móvil también lo usa una sola vez para convertir el primer prompt en título cuando el bridge aún devuelve un placeholder; un título explícito/manual no se reemplaza.
-thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Gemini CLI:** requestApproval=`--approval-mode default` + hook `BeforeTool` (cuando el endpoint del bridge es resoluble; si no, cae a la postura configurada), approveForMe=`auto_edit`, fullAccess=`yolo` (one-shot por turno → aplica siempre per-turn). **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio).
+thread/setAccessMode    -> persistir el modo de acceso/aprobacion por hilo. Params: { threadId, mode: AccessMode } (requestApproval | approveForMe | fullAccess). Devuelve el Thread actualizado; idempotente. El Thread expone `accessMode?` (fuente de verdad) y `agentSessionId?` (id de sesion nativo del agente, para "reanudar desde la CLI"). **Enforcement:** en cada `turn/send` el bridge lee `accessMode` del hilo y lo pasa al adapter (`SendTurnOptions.accessMode`); cada adapter que gatea herramientas lo mapea a su postura per-turn. **Claude:** requestApproval=hook `PreToolUse` interactivo, approveForMe=`--permission-mode acceptEdits`, fullAccess=`--dangerously-skip-permissions`. **Codex:** requestApproval=`(on-request, workspace-write)`, approveForMe=`(never, workspace-write)`, fullAccess=`(never, danger-full-access)`, aplicado en `thread/start` — gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta hilos nuevos (no re-emite `thread/start`). **OpenCode:** vía `opencode serve` — requestApproval (y sin modo) = ruleset de permisos con `action:ask` en las herramientas con efecto lateral (`edit`/`bash`/`webfetch`/`external_directory`) → cada `permission.asked` se enruta a la approval card; approveForMe/fullAccess = `action:allow` (sin prompts). El ruleset se fija al crear la sesión (`POST /session`), así que gobierna el hilo desde su primer turno; un cambio de modo a mitad de hilo solo afecta sesiones nuevas (mismo caveat que Codex). **pi:** sin canal de aprobación interactivo (modo headless YOLO ejecuta tools autónomamente), no mapea `accessMode`. **Antigravity:** sin canal de aprobación interactivo (headless `agy -p` auto-deniega cualquier tool que requiera prompt); approveForMe/fullAccess=`--dangerously-skip-permissions` (autónomo — la única postura con la que `agy` puede editar en headless), requestApproval=`--mode plan` (solo lectura: "pregúntame primero" degrada de forma segura a solo-plan). Sin modo → postura configurada (sin cambio). **Gemini CLI:** retirado; no se crean hilos ni turnos y su postura histórica ya no se aplica.
 thread/archive          -> archivar thread (status -> archived, reversible)
 thread/unarchive        -> restaurar thread archivado (status -> active)
 thread/delete           -> eliminar thread y sus turns
-turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07):** al re-attachear, el telefono **re-siembra SIEMPRE** su buffer en vivo desde los `segments`/`content` acumulados que este `turn/list` reporta para el turno en vuelo — incluso si ya rastreaba ese `turnId` (los primeros deltas post-reconexion recrean el buffer solo con la cola nueva; el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el telefono ademas **reconcilia** el mensaje persistido contra el registro autoritativo del bridge con un `turn/read` (best-effort), de modo que la conversacion guardada converge siempre al intercalado exacto del bridge aunque la vista en vivo haya sido imperfecta.
+turn/list               -> turnos de un thread; paginacion por cursor offset (oldest->newest). Params: { threadId, cursor?, limit?, fromEnd? }. Result: { turns, nextCursor?, total?, activeTurnId? }. `fromEnd:true` devuelve la pagina mas reciente (ultimos `limit` turnos); `total` permite paginar hacia atras (newest-first) calculando offsets sin traer todo el thread. **`activeTurnId?`**: el turno EN VUELO ahora mismo para el thread (estado vivo de `AgentManager.#activeTurnByThread`), presente solo si hay uno. Es la fuente autoritativa de "¿hay turno corriendo AHORA?" — a diferencia del `status:'streaming'` de un turno guardado, queda ausente tras un restart del bridge (el proceso del agente CLI murio). El telefono lo usa al reconectar/resync para **re-attachear** su vista de streaming (indicador "respondiendo…" + boton Stop) a un turno que dejo de rastrear estando en background, en vez de darlo por terminado. **Semantica de recuperacion (2026-07):** al re-attachear, el telefono **re-siembra SIEMPRE** su buffer en vivo desde los `segments`/`content` acumulados que este `turn/list` reporta para el turno en vuelo — incluso si ya rastreaba ese `turnId` (los primeros deltas post-reconexion recrean el buffer solo con la cola nueva; el snapshot del bridge es superconjunto de todo lo ya notificado porque el bridge persiste cada delta/bloque ANTES de notificarlo, asi que reemplazar nunca pierde datos). El replay de catch-up del transporte es una ventana acotada en memoria (500 frames / 10 MiB) y NO alcanza para una ausencia larga: la re-siembra via `turn/list` es el unico camino que recupera lo producido con la app cerrada. Al completarse el turno, el telefono ademas **reconcilia** el mensaje persistido contra el registro autoritativo del bridge con un `turn/read` (best-effort), de modo que la conversacion guardada converge siempre al intercalado exacto del bridge aunque la vista en vivo haya sido imperfecta. **Native-session convergence:** on every idle read, the bridge merges durable completed turns written by another client into its stored history before applying this pagination. Bridge-owned rows keep their ids and richer metadata; external user/assistant pairs receive deterministic ids and are never inferred from a partial native turn. The wire result is unchanged.
 turn/read               -> datos de un turno especifico
 turn/send               -> enviar contenido a un turno activo (texto opcional, attachments, options, approvalResponse, questionResponse, command). `command` ({ name, args? }) invoca un comando anunciado por `agent/commands` en vez de texto libre: el bridge lo resuelve al prompt que corre el agente (plantilla custom expandida, o la forma nativa `/name args`). Cuando hay `command`, `text` es opcional.
 turn/cancel             -> cancelar un turno: si esta EN CURSO lo aborta (status `aborted`); si esta ENCOLADO lo saca de la cola sin haber llegado nunca al adapter (status `cancelled`). El turno se conserva en el thread en ambos casos.
@@ -131,7 +131,7 @@ queue/clear             -> descartar todos los turnos encolados del thread (cada
 
 **Cola de mensajes (follow-ups enviados con un turno en vuelo).** El bridge
 solo puede conducir **un turno por thread** — la mitad de los agentes corre
-one-shot por turno (`claude -p --resume`, gemini, pi, antigravity), asi que un
+one-shot por turno (`claude -p --resume`, pi, antigravity), asi que un
 segundo turno concurrente pondria dos procesos CLI sobre la misma sesion. Por
 eso un `turn/send` que llega con un turno en vuelo (o con la cola no vacia, aun
 pausada: saltarse los mensajes anteriores romperia su orden) **se encola** en
@@ -193,12 +193,13 @@ git/log                -> historial de commits (paginado por cursor; parents[] p
 git/commitShow         -> detalle completo de un commit { sha }: metadata (incl. refs[]), files[] (status + oldPath en renames + additions/deletions por archivo) y diff unificado completo (capado ~400 KB → diffTruncated)
 ```
 
-**Workspace (9):**
+**Workspace (11):**
 ```
 workspace/readFile              -> leer archivo del workspace (utf-8 o base64)
 workspace/readImage             -> leer imagen del workspace (base64)
 workspace/list                  -> listar archivos del cwd
 workspace/searchFiles           -> busqueda fuzzy de archivos en todo el repo (respeta .gitignore; para el "@" del composer)
+workspace/resolveFileLink       -> resolve an agent-cited local path into viewer { cwd, path }, including sibling worktrees
 workspace/browseDirs            -> navegar sub-carpetas bajo un root configurado (confinado; git-repo aware)
 workspace/checkpoint            -> capturar checkpoint del estado actual
 workspace/diffCheckpoint        -> diff de un checkpoint (unified)
@@ -217,7 +218,7 @@ project/resolve         -> resolver proyecto por cwd (sintetiza uno si el cwd no
 ```
 agent/list              -> agentes registrados (IAgentAdapter.agentId, displayName, capabilities, available)
 agent/models            -> modelos disponibles del agente activo (AgentModel[] estructurado: id, displayName, description?, version?, isDefault?, options?, contextWindow?, isLatestAlias?)
-agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/Gemini/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`.
+agent/commands          -> comandos especiales ("slash") del agente (AgentCommand[]: name, description?, argumentHint?, source: 'acp'|'builtin'|'custom', headlessSupported?). Params { agentId, cwd? } (cwd descubre comandos custom scoped al proyecto). Descubrimiento por adapter: Claude (slash_commands del system/init cacheado ∪ builtins curados ∪ .claude/commands), ACP Zero/Grok (available_commands_update capturado), Codex/OpenCode (escaneo de sus dirs de prompts/commands). Invocacion via `turn/send` `command`. Para cualquier agente `deprecated`, incluidos los bridges nuevos que conservan `gemini-cli`, devuelve `[]`.
 agent/usageStats        -> estadisticas de uso por proveedor (ProviderUsage[]: ventanas de cuota %, plan/cuenta, saldo). Lectura per-runtime: el desktop la lee nativa en Rust; el bridge la leera en TS para el movil (Fase 6). Solo se leen los proveedores solicitados (los que el usuario activo).
 ```
 
@@ -364,7 +365,8 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
   default off).
 - `stream/content/block`: el `content` es un `MessageContent` polimorfico
   serializado (`command_execution` para Bash, `diff` para Edit/Write, un
-  bloque `tool` generico para el resto). El telefono lo decodifica con
+  bloque `tool` generico para el resto y `compaction` para un límite de
+  contexto realmente reportado por el agente). El telefono lo decodifica con
   el mismo codec que `Message.blocks` y lo proyecta en el **Work log** /
   **Changed files** de la respuesta. Asi los comandos/herramientas/diffs
   del agente se renderizan en vivo y sobreviven a un `turn/list` re-sync.
@@ -378,6 +380,11 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
     (`thread-store.appendBlock`), de modo que la vista en vivo y el re-sync
     rinden el intercalado identico. Ausente/false = caso secuencial (el
     bloque cae en una frontera real de texto y se anexa en orden de llegada).
+  - `assistant_response_boundary` (2026-08, additive): zero-text metadata marking
+    the end of one native assistant message inside a turn. Codex supplies
+    `commentary` / `final_answer`; Claude and pi supply `unknown` boundaries.
+    Clients preserve it in ordered segments, exclude it from copy/previews, and
+    may collapse earlier completed responses without discarding their content.
 - `Message.segments?`: en el re-sync (`turn/list`) el bridge ya no entrega el
   texto (`content`) y los bloques (`blocks`) por separado — eso perdia el
   ORDEN en que se intercalaron y hacia que un turno recuperado mostrara todo
@@ -389,7 +396,7 @@ stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }  
   re-sync (las corridas de texto de `segments` concatenan a `content`; sus
   entradas no-texto son exactamente `blocks`). Wire-aditivo, emitido solo cuando
   el turno trae algun bloque estructurado; ausente para turnos recuperados sin
-  orden (bridge viejo, o el fallback de historial en disco `session-history.ts`,
+  orden (bridge viejo, o un turno importado por `session-history.ts`,
   que aun entrega blocks-first). Producido por `thread-store.ts`, consumido por
   el `thread_manager` movil (`_persistTurns` + `_seedLiveTurn`).
 - `stream/model/resolved`: el bridge informa la version concreta a la que
@@ -498,9 +505,6 @@ concreto depende del adaptador:
   requestApproval`, `mcpServer/elicitation/request`,
   `item/tool/requestUserInput` (+ legacy `applyPatchApproval`,
   `execCommandApproval`).
-- **Gemini CLI** — el bridge escribe
-  `<cwd>/.gemini/settings.json` con un hook `BeforeTool` que
-  `POST /agent-hook/approval` con el mismo shape que Claude.
 - **Echo (dev)** — el adaptador directamente llama a
   `requestApproval` cuando el texto es `approval-demo` y pausa el
   turno hasta que el usuario responde.
@@ -512,9 +516,9 @@ vivo**. Si el teléfono está en background/desconectado, la aprobación **esper
 modo que un turno que pide aprobación con la app cerrada nunca cae al `reject`
 por una tarjeta que el usuario no vio. Una reconexión otorga una ventana nueva;
 la última desconexión pausa la cuenta atrás. Para que el propio CLI no aborte el
-hook antes de que el usuario regrese, los hooks `PreToolUse` (Claude) y
-`BeforeTool` (Gemini) fijan un `timeout` amplio (1800 s), por encima del default
-~60 s del CLI.
+hook antes de que el usuario regrese, el hook `PreToolUse` (Claude) fija un
+`timeout` amplio (1800 s), por encima del default ~60 s del CLI. El hook legacy
+de Gemini no se instala.
 
 
 **`AgentModel`** (item de `agent/models`):
@@ -544,6 +548,7 @@ interface AgentCapabilities {
   forking: boolean;
   images: boolean;               // acepta TurnAttachment[] en sendTurn
   reportsContextUsage: boolean;  // emite `usage` en turn/completed
+  reportsCompaction?: boolean;   // emite `compaction` solo con señal nativa fiable
 }
 ```
 
@@ -558,10 +563,8 @@ interface TurnUsage {
 
 **`ProviderUsage`** (item de `agent/usageStats`, `shared/src/models/usage.ts`):
 ```typescript
-// `gemini` permanece en la union a proposito: la Gemini CLI esta descontinuada
-// aguas arriba y el escritorio ya no la ofrece al agregar un proveedor, pero
-// sigue leyendose para quien ya la tenia activada. Retirarla de verdad seria un
-// cambio de contrato (shared + bridge + movil), no una edicion de catalogo.
+// `gemini` permanece como valor de contrato deprecated para el lector legacy
+// del bridge/escritorio; uxnanmobile lo descarta y no crea una provider card.
 type UsageProvider = 'codex' | 'claude' | 'copilot' | 'gemini' | 'grok';
 type UsageStatus = 'ok' | 'authRequired' | 'notInstalled' | 'error';
 
@@ -619,6 +622,8 @@ interface ApprovalRequestBlock {
 - `diff` (Edit/Write/MultiEdit/NotebookEdit; +/- counts; unified hunks)
 - `tool` (cualquier otra herramienta; output truncado)
 - `thinking` (razonamiento del agente; colapsable, default off)
+- `assistant_response_boundary` (metadata separating native assistant messages;
+  zero text, durable, excluded from copy/previews)
 - `image` (inline, base64)
 - `approval` (bloque interactivo: Approve / Reject / "always allow this session")
 - `plan` (checklist; solo informacional, no bloquea)
@@ -866,6 +871,9 @@ cambia, por lo que interopera byte a byte con el bridge.
 | RF-THREAD-09 | Los mensajes duplicados (replay del bridge) deben ser deduplicados silenciosamente |
 | RF-THREAD-10 | El estado de la conversacion persiste localmente para acceso offline |
 | RF-THREAD-11 | Un thread nuevo conserva el título del bridge; si sigue siendo placeholder al primer prompt, el móvil deriva y sincroniza un título breve sin sobrescribir títulos manuales ni renombrarlo en prompts posteriores |
+| RF-THREAD-12 | Una compactación de contexto confirmada por el protocolo del agente se persiste como bloque estructurado y se marca en la timeline; el sistema no infiere compactaciones desde texto, errores o variaciones de tokens |
+| RF-THREAD-13 | Multiple native assistant messages inside one turn are preserved in order; terminal reconciliation is additive, and completed earlier responses may collapse without deleting or rewriting them |
+| RF-THREAD-14 | While the active conversation is connected and idle, Mobile must discover completed turns written by another supported client within one polling interval, persist both user and assistant messages, and deduplicate Mobile-authored turns by turn id. External token streaming is not required. |
 
 ### 4.4 RF-COMP: Composer
 
@@ -906,6 +914,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | RF-WORK-03 | El usuario puede capturar checkpoints del estado del workspace |
 | RF-WORK-04 | El usuario puede ver el diff de un checkpoint |
 | RF-WORK-05 | El usuario puede aplicar un checkpoint (restore) |
+| RF-WORK-06 | An agent-cited local file path must be tappable in the conversation and open in the existing viewer; relative paths resolve from the conversation cwd, while absolute or parent-relative paths may select another worktree after bridge-side canonicalization and sensitive-path validation |
 
 ### 4.7 RF-NOTIF: Notificaciones
 

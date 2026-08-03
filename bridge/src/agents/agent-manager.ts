@@ -68,6 +68,7 @@ function approvalDetail(input: Record<string, unknown>): string {
 export interface AgentMeta {
   displayName: string;
   available: boolean;
+  deprecated?: boolean;
   defaultModel?: string;
 }
 
@@ -231,7 +232,8 @@ export class AgentManager {
     this.#adapters.set(adapter.agentId, adapter);
     this.#meta.set(adapter.agentId, {
       displayName: meta?.displayName ?? adapter.agentId,
-      available: meta?.available ?? true,
+      available: meta?.deprecated === true ? false : (meta?.available ?? true),
+      ...(meta?.deprecated === true ? { deprecated: true } : {}),
       ...(meta?.defaultModel !== undefined ? { defaultModel: meta.defaultModel } : {}),
     });
     adapter.onEvent((event) => {
@@ -248,6 +250,11 @@ export class AgentManager {
     return this.#meta.get(agentId)?.available ?? false;
   }
 
+  /** Whether this adapter is retained only for legacy inspection. */
+  isDeprecated(agentId: AgentId): boolean {
+    return this.#meta.get(agentId)?.deprecated === true;
+  }
+
   /** Registered agents the phone can pick, with capabilities + availability. */
   listAgents(): AgentDescriptor[] {
     return [...this.#adapters.values()].map((adapter) => {
@@ -255,8 +262,9 @@ export class AgentManager {
       return {
         agentId: adapter.agentId,
         displayName: meta?.displayName ?? adapter.agentId,
-        available: meta?.available ?? true,
+        available: meta?.deprecated === true ? false : (meta?.available ?? true),
         capabilities: adapter.capabilities,
+        ...(meta?.deprecated === true ? { deprecated: true } : {}),
         ...(meta?.defaultModel !== undefined ? { defaultModel: meta.defaultModel } : {}),
       };
     });
@@ -269,6 +277,7 @@ export class AgentManager {
 
   /** Models the given agent's CLI reports (empty if it can't enumerate them). */
   async getModels(agentId: AgentId): Promise<AgentModel[]> {
+    if (this.#meta.get(agentId)?.deprecated === true) return [];
     const adapter = this.#adapters.get(agentId);
     if (!adapter?.listModels) return [];
     try {
@@ -285,6 +294,7 @@ export class AgentManager {
    * best-effort so a failing scan degrades to no commands, not a broken palette.
    */
   async getCommands(agentId: AgentId, cwd?: string): Promise<AgentCommand[]> {
+    if (this.#meta.get(agentId)?.deprecated === true) return [];
     const adapter = this.#adapters.get(agentId);
     if (!adapter?.listCommands) return [];
     try {
@@ -331,7 +341,7 @@ export class AgentManager {
    * non-empty queue). Queueing is what the agent CLIs do when you type a
    * follow-up while they work, and here it is also the only safe answer: the
    * bridge drives one turn per thread, and half the agents run one-shot per turn
-   * (`claude -p --resume`, gemini, pi, antigravity), so starting a second turn
+   * (`claude -p --resume`, pi, antigravity), so starting a second turn
    * concurrently would put two CLI processes on the same session.
    */
   async sendTurn(
@@ -340,6 +350,12 @@ export class AgentManager {
     options: SendTurnOptions = {},
   ): Promise<SendTurnResult> {
     const agentId = options.agentId ?? this.#options.defaultAgent;
+    if (this.#meta.get(agentId)?.deprecated === true) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentNotRunning,
+        `agent '${agentId}' is deprecated and cannot run new turns`,
+      );
+    }
     const adapter = this.#adapters.get(agentId);
     if (!adapter) {
       throw new RpcError(

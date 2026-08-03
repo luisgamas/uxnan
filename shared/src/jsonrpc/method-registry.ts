@@ -50,6 +50,7 @@ export const METHOD_NAMES = [
   'workspace/readImage',
   'workspace/list',
   'workspace/searchFiles',
+  'workspace/resolveFileLink',
   'workspace/browseDirs',
   'workspace/checkpoint',
   'workspace/diffCheckpoint',

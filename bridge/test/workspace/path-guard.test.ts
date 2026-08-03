@@ -1,6 +1,7 @@
 /**
  * Direct unit tests for the workspace path-traversal guard
- * (`resolveWithinRoot` / `isSensitiveName`, `src/workspace/path-guard.ts`).
+ * (`resolveWithinRoot` / `isWithinRoot` / `assertSafeWorkspacePath` /
+ * `isSensitiveName`, `src/workspace/path-guard.ts`).
  *
  * Previously only one traversal case (`../../etc/hosts`) was exercised, and
  * only indirectly through a handler test. These tests lock in every escape
@@ -17,7 +18,12 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
-import { isSensitiveName, resolveWithinRoot } from '../../src/workspace/path-guard.js';
+import {
+  assertSafeWorkspacePath,
+  isSensitiveName,
+  isWithinRoot,
+  resolveWithinRoot,
+} from '../../src/workspace/path-guard.js';
 
 const root = resolve(tmpdir(), 'uxnan-path-guard-fixture');
 
@@ -75,6 +81,37 @@ test('resolveWithinRoot allows a name that merely contains a sensitive token', (
   // because the token is not the file's actual extension.
   const relPath = 'my.key.notes.md';
   assert.equal(resolveWithinRoot(root, relPath), resolve(root, relPath));
+});
+
+test('isWithinRoot accepts the root itself and descendants, rejects siblings', () => {
+  assert.equal(isWithinRoot(root, root), true);
+  assert.equal(isWithinRoot(root, resolve(root, 'src/index.ts')), true);
+  assert.equal(isWithinRoot(root, resolve(root, '..')), false);
+  assert.equal(isWithinRoot(root, resolve(root, '../sibling/file.txt')), false);
+  // A sibling whose name merely starts with the root's name is still outside.
+  assert.equal(isWithinRoot(root, `${root}-other`), false);
+});
+
+test('assertSafeWorkspacePath scans the whole canonical path when unscoped', () => {
+  // Link resolution has no project root, so every segment is judged.
+  assertDenied(() => assertSafeWorkspacePath(resolve(root, '.git/config')));
+  assertDenied(() => assertSafeWorkspacePath(resolve(root, 'a/.git/objects/ab/cd')));
+  assertDenied(() => assertSafeWorkspacePath(resolve(root, 'deploy/id_rsa')));
+  assertDenied(() => assertSafeWorkspacePath(resolve(root, 'secrets/.env/notes.md')));
+  assert.doesNotThrow(() => assertSafeWorkspacePath(resolve(root, 'docs/summary.md')));
+});
+
+test('assertSafeWorkspacePath ignores the ancestors of a scoped root', () => {
+  // The user chose the root; denying a project because an ancestor directory
+  // happens to match a pattern would break every read of that workspace.
+  const awkwardRoot = resolve(root, 'deploy.key', 'repo');
+  assert.doesNotThrow(() =>
+    assertSafeWorkspacePath(resolve(awkwardRoot, 'docs/summary.md'), awkwardRoot),
+  );
+  assertDenied(() => assertSafeWorkspacePath(resolve(awkwardRoot, 'docs/summary.md')));
+  // Scoping narrows where it looks, never what it rejects below the root.
+  assertDenied(() => assertSafeWorkspacePath(resolve(awkwardRoot, '.git/config'), awkwardRoot));
+  assertDenied(() => assertSafeWorkspacePath(resolve(awkwardRoot, 'sub/.env'), awkwardRoot));
 });
 
 test('isSensitiveName matches every SENSITIVE_PATTERNS entry', () => {

@@ -8,6 +8,7 @@ export type AgentId =
   | 'codex'
   | 'opencode'
   | 'claude-code'
+  /** @deprecated The standalone Gemini CLI is retired; use `antigravity-cli`. */
   | 'gemini-cli'
   /** Antigravity — Google's `agy` CLI, the successor to the deprecated Gemini CLI. */
   | 'antigravity-cli'
@@ -38,6 +39,12 @@ export interface AgentCapabilities {
    */
   reportsContextUsage?: boolean;
   /**
+   * Agent emits a structured `compaction` content block when it actually
+   * compacts the conversation context. Optional for backwards compatibility;
+   * absent/false means the integration exposes no reliable compaction signal.
+   */
+  reportsCompaction?: boolean;
+  /**
    * Agent runs in autonomous ("YOLO") mode by default — it acts and edits
    * without per-action approval prompts because its headless CLI exposes no
    * pre-tool approval channel. The phone surfaces this so the user knows Pi
@@ -63,6 +70,11 @@ export interface AgentDescriptor {
   displayName: string;
   /** Whether the agent's CLI/runtime is resolvable on this PC right now. */
   available: boolean;
+  /**
+   * The adapter is retained only for legacy installations and MUST NOT be
+   * offered for new work. Deprecated agents are also reported unavailable.
+   */
+  deprecated?: boolean;
   capabilities: AgentCapabilities;
   /** Default model the bridge will use when the phone does not pick one. */
   defaultModel?: string;

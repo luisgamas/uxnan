@@ -7,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
+import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
@@ -19,6 +21,7 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 
 Widget _wrap(Widget child) => ProviderScope(
@@ -80,6 +83,30 @@ void main() {
     expect(find.byType(HighlightView), findsOneWidget);
   });
 
+  testWidgets('context compaction renders as a localized timeline marker',
+      (tester) async {
+    const content = CompactionContent(
+      reason: ContextCompactionReason.threshold,
+      tokensBefore: 120000,
+      tokensAfter: 42000,
+    );
+
+    await tester.pumpWidget(_wrap(const MessageContentView(content: content)));
+
+    expect(find.text('Context compacted'), findsOneWidget);
+    expect(
+      find.text(
+        "Earlier context was summarized after reaching the agent's limit.",
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Context reduced from 120K to about 42K tokens.'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.compress_rounded), findsOneWidget);
+  });
+
   testWidgets('waiting assistant turn shows the responding label and loader',
       (tester) async {
     final message = Message(
@@ -100,14 +127,18 @@ void main() {
     expect(find.text('Agent responding…'), findsOneWidget);
   });
 
-  testWidgets('streaming text keeps the loader after the latest token',
+  testWidgets('streaming text renders markdown while keeping the loader',
       (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+
     final message = Message(
       id: 'streaming',
       threadId: 'th1',
       turnId: 't1',
       role: MessageRole.assistant,
-      contents: const [TextContent('Working', isStreaming: true)],
+      contents: const [TextContent('**Working**', isStreaming: true)],
       deliveryState: MessageDeliveryState.delivered,
       orderIndex: 0,
       createdAt: DateTime(2026),
@@ -118,12 +149,186 @@ void main() {
 
     expect(find.byType(PolygonLoader), findsOneWidget);
     expect(find.text('Agent responding…'), findsNothing);
-    final streamingText = tester.widget<SelectableText>(
-      find.byType(SelectableText),
+    final markdown = tester.widget<MarkdownBody>(
+      find.byType(MarkdownBody),
     );
-    final children = streamingText.textSpan!.children!;
-    expect((children.first as TextSpan).text, 'Working');
-    expect(children.last, isA<WidgetSpan>());
+    expect(markdown.data, '**Working**');
+    expect(markdown.selectable, isTrue);
+    expect(find.text('Working'), findsOneWidget);
+    expect(find.text('**Working**'), findsNothing);
+  });
+
+  testWidgets('assistant Markdown links report their local file href',
+      (tester) async {
+    String? tapped;
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent(
+            '[Open summary](../worktree-y/docs/resume.md)',
+          ),
+          onTapLink: (href) => tapped = href,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open summary'));
+    await tester.pump();
+    expect(tapped, '../worktree-y/docs/resume.md');
+  });
+
+  testWidgets('bare and inline-code file paths become tappable links',
+      (tester) async {
+    final tapped = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('/tmp/worktree-y/resume.md'),
+          onTapLink: tapped.add,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(MarkdownBody));
+    await tester.pump();
+    expect(tapped, ['/tmp/worktree-y/resume.md']);
+
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('`docs/handoff.md`'),
+          onTapLink: tapped.add,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('docs/handoff.md'));
+    await tester.pump();
+    expect(tapped, ['/tmp/worktree-y/resume.md', 'docs/handoff.md']);
+  });
+
+  testWidgets('streaming file links use the same tap path as settled prose',
+      (tester) async {
+    String? tapped;
+    final message = Message(
+      id: 'streaming-link',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('[Summary](docs/summary.md)', isStreaming: true),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(
+      _wrap(
+        MessageBubble(
+          message: message,
+          onTapLink: (href) => tapped = href,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Summary'));
+    expect(tapped, 'docs/summary.md');
+  });
+
+  testWidgets('a trailing sentence period stays out of the linked path',
+      (tester) async {
+    String? tapped;
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('/tmp/worktree-y/resume.md.'),
+          onTapLink: (href) => tapped = href,
+        ),
+      ),
+    );
+
+    // The block shrink-wraps its text, so its center lands inside the path
+    // rather than on the sentence period that follows it.
+    await tester.tap(find.byType(MarkdownBody));
+    await tester.pump();
+    expect(tapped, '/tmp/worktree-y/resume.md');
+  });
+
+  testWidgets('bare hostnames stay web links instead of local paths',
+      (tester) async {
+    String? tapped;
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('www.example.com/docs/resume.md'),
+          onTapLink: (href) => tapped = href,
+        ),
+      ),
+    );
+
+    // GitHub-flavored auto-linking owns this text; the path syntax must not
+    // steal it and send the phone looking for a local file.
+    await tester.tap(find.byType(MarkdownBody));
+    await tester.pump();
+    expect(tapped, isNotNull);
+    expect(isLocalWorkspaceHref(tapped!), isFalse);
+  });
+
+  testWidgets('code blocks and non-path inline code are not links',
+      (tester) async {
+    final tapped = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('```\ndocs/handoff.md\n```'),
+          onTapLink: tapped.add,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('docs/handoff.md'));
+    await tester.pump();
+    expect(tapped, isEmpty);
+
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('`npm run build`'),
+          onTapLink: tapped.add,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('npm run build'));
+    await tester.pump();
+    expect(tapped, isEmpty);
+  });
+
+  testWidgets('a path used as its own link label reports one href',
+      (tester) async {
+    final tapped = <String>[];
+    await tester.pumpWidget(
+      _wrap(
+        MessageContentView(
+          content: const TextContent('[docs/agents.md](docs/agents.md)'),
+          onTapLink: tapped.add,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('docs/agents.md'));
+    await tester.pump();
+    expect(tapped, ['docs/agents.md']);
+  });
+
+  test('workspace href classification excludes remote and in-page links', () {
+    expect(isLocalWorkspaceHref('/tmp/report.md'), isTrue);
+    expect(isLocalWorkspaceHref(r'C:\work\report.md'), isTrue);
+    expect(isLocalWorkspaceHref('../worktree/report.md'), isTrue);
+    expect(isLocalWorkspaceHref('https://example.com/report.md'), isFalse);
+    expect(isLocalWorkspaceHref('mailto:user@example.com'), isFalse);
+    expect(isLocalWorkspaceHref('#section'), isFalse);
   });
 
   testWidgets('renders approval, plan and subagent cards', (tester) async {
@@ -485,6 +690,50 @@ void main() {
     expect(find.text('Work log'), findsNWidgets(2));
     expect(find.textContaining('First part.'), findsOneWidget);
     expect(find.textContaining('Second part.'), findsOneWidget);
+  });
+
+  testWidgets('settled assistant turn collapses earlier native responses',
+      (tester) async {
+    final message = Message(
+      id: 'm-responses',
+      threadId: 'th1',
+      turnId: 't1',
+      role: MessageRole.assistant,
+      contents: const [
+        TextContent('First progress update.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'one',
+        ),
+        TextContent('Second progress update.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.commentary,
+          itemId: 'two',
+        ),
+        TextContent('Final answer.'),
+        AssistantResponseBoundaryContent(
+          phase: AssistantResponsePhase.finalAnswer,
+          itemId: 'three',
+        ),
+      ],
+      deliveryState: MessageDeliveryState.delivered,
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+    );
+
+    await tester.pumpWidget(_wrap(MessageBubble(message: message)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 previous messages'), findsOneWidget);
+    expect(find.textContaining('First progress update.'), findsNothing);
+    expect(find.textContaining('Second progress update.'), findsNothing);
+    expect(find.textContaining('Final answer.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('previous-responses-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('First progress update.'), findsOneWidget);
+    expect(find.textContaining('Second progress update.'), findsOneWidget);
+    expect(find.textContaining('Final answer.'), findsOneWidget);
   });
 
   testWidgets('assistant turn shows a collapsible thinking section',

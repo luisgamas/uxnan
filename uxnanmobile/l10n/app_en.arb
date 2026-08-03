@@ -1636,6 +1636,45 @@
   "@settingsUpdatesVersionGroup": {
     "description": "Updates section sub-group header for the current version + update state."
   },
+  "conversationCompactionTitle": "Context compacted",
+  "@conversationCompactionTitle": {
+    "description": "Title of the durable marker shown where an agent compacted conversation context."
+  },
+  "conversationCompactionManual": "You asked the agent to summarize earlier context.",
+  "@conversationCompactionManual": {
+    "description": "Detail for a manually requested context compaction."
+  },
+  "conversationCompactionThreshold": "Earlier context was summarized after reaching the agent's limit.",
+  "@conversationCompactionThreshold": {
+    "description": "Detail for a threshold-triggered context compaction."
+  },
+  "conversationCompactionOverflow": "Earlier context was summarized after exceeding the available window.",
+  "@conversationCompactionOverflow": {
+    "description": "Detail for an overflow-triggered context compaction."
+  },
+  "conversationCompactionAutomatic": "Earlier context was summarized automatically.",
+  "@conversationCompactionAutomatic": {
+    "description": "Detail for an automatic context compaction."
+  },
+  "conversationCompactionUnknown": "Earlier messages were summarized to free context.",
+  "@conversationCompactionUnknown": {
+    "description": "Generic detail when the agent did not report why it compacted context."
+  },
+  "conversationCompactionTokens": "Context reduced from {before} to about {after} tokens.",
+  "@conversationCompactionTokens": {
+    "description": "Optional token counts shown under a context compaction marker.",
+    "placeholders": {
+      "before": { "type": "String" },
+      "after": { "type": "String" }
+    }
+  },
+  "conversationPreviousMessages": "{count, plural, =1{1 previous message} other{{count} previous messages}}",
+  "@conversationPreviousMessages": {
+    "description": "Disclosure label for earlier assistant responses produced within the same turn.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
   "licensesError": "Couldn't load the licenses.",
   "@licensesError": {
     "description": "Shown when the license registry failed to load."

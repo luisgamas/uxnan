@@ -1,6 +1,6 @@
 /// The decision the user sends back for a pending approval request
 /// (spec 02a §6.2). Returned to the bridge via `turn/send { approvalResponse }`,
-/// which the bridge routes to the agent (Claude/Codex/Gemini/OpenCode).
+/// which the bridge routes to the approval-capable agent.
 enum ApprovalDecision {
   /// Allow this single action.
   approve,

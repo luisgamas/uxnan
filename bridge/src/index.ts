@@ -198,6 +198,7 @@ export {
   type StartTurnResult,
   type StartThreadInput,
   type ThreadRuntime,
+  type NativeHistoryReconcileResult,
 } from './conversation/thread-store.js';
 export {
   AgentManager,

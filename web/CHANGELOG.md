@@ -9,6 +9,11 @@ grouped by the date they landed rather than by a version number.
 
 ## [Unreleased]
 
+### Changed — contract count refreshed to 69 methods
+
+- `BRIDGE_METHOD_COUNT` follows `shared/`'s new `workspace/resolveFileLink`, so
+  the JSON-RPC figure the page quotes stays the real one.
+
 ### Changed — visual review pass (header dedup, full-screen mobile menu, framed clips)
 
 Four fixes from a visual pass over the previous two rounds of changes below.

@@ -351,7 +351,7 @@ async function githubLogin(token: string, deps: ResolvedDeps): Promise<string | 
   return res.ok ? str(asObj(res.body)?.login) : undefined;
 }
 
-// ── Gemini ───────────────────────────────────────────────────────────────────
+// ── Gemini (deprecated; legacy read-only usage compatibility) ────────────────
 
 async function readGemini(deps: ResolvedDeps): Promise<ProviderUsage> {
   const now = deps.now();

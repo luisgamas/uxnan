@@ -556,6 +556,36 @@ test('sendTurn for an unregistered agent rejects with AgentNotRunning', async ()
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('deprecated agents are unavailable, undiscoverable for models, and cannot run turns', async () => {
+  const baseDir = join(tmpdir(), `uxnan-am-deprecated-${randomUUID()}`);
+  const store = new ThreadStore(new DaemonState(baseDir));
+  const manager = new AgentManager({
+    store,
+    notify: () => {},
+    now: () => 1,
+    logger: createLogger('test', 'error'),
+    defaultAgent: 'echo',
+  });
+  manager.register(new EchoAgentAdapter(), {
+    displayName: 'Legacy agent',
+    available: true,
+    deprecated: true,
+  });
+
+  assert.deepEqual(manager.listAgents()[0], {
+    agentId: 'echo',
+    displayName: 'Legacy agent',
+    available: false,
+    capabilities: manager.listAgents()[0]?.capabilities,
+    deprecated: true,
+  });
+  assert.deepEqual(await manager.getModels('echo'), []);
+  assert.deepEqual(await manager.getCommands('echo', baseDir), []);
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  await assert.rejects(manager.sendTurn(thread.id, 'hi'), /deprecated and cannot run new turns/);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 /**
  * Records every cancelTurn it receives, so a test can assert the manager routed
  * a cancel to the RIGHT adapter. `agentId` is a constructor param so one class

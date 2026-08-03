@@ -487,6 +487,74 @@ void main() {
     await manager.dispose();
   });
 
+  test('resolveFileLink returns the bridge-selected cross-worktree target',
+      () async {
+    final calls = <Map<String, dynamic>>[];
+    final manager = _buildManager(
+      onCall: (method, params) {
+        if (method == 'workspace/resolveFileLink') calls.add(params);
+      },
+      responder: (method, _) => RpcMessage.response(
+        id: '1',
+        result: method == 'workspace/resolveFileLink'
+            ? const <String, dynamic>{
+                'cwd': '/home/user/worktree-y',
+                'path': 'docs/resume.md',
+              }
+            : const <String, dynamic>{},
+      ),
+    );
+
+    final target = await manager.resolveFileLink(
+      _workspaceRoot,
+      '../worktree-y/docs/resume.md',
+    );
+
+    expect(calls, hasLength(1));
+    expect(calls.single['cwd'], _workspaceRoot);
+    expect(calls.single['href'], '../worktree-y/docs/resume.md');
+    expect(target.cwd, '/home/user/worktree-y');
+    expect(target.path, 'docs/resume.md');
+    await manager.dispose();
+  });
+
+  test('resolveFileLink surfaces bridge errors and malformed targets',
+      () async {
+    var returnsError = true;
+    final manager = _buildManager(
+      onCall: (_, __) {},
+      responder: (_, __) => returnsError
+          ? RpcMessage.response(
+              id: '1',
+              error: const RpcError(
+                code: -32008,
+                message: 'linked file not found',
+              ),
+            )
+          : RpcMessage.response(
+              id: '1',
+              result: const <String, dynamic>{'cwd': '', 'path': ''},
+            ),
+    );
+
+    expect(
+      () => manager.resolveFileLink(_workspaceRoot, 'missing.md'),
+      throwsA(
+        isA<FileReadException>().having(
+          (error) => error.message,
+          'message',
+          'linked file not found',
+        ),
+      ),
+    );
+    returnsError = false;
+    expect(
+      () => manager.resolveFileLink(_workspaceRoot, 'missing.md'),
+      throwsA(isA<FileReadException>()),
+    );
+    await manager.dispose();
+  });
+
   test('readFile throws FileReadException on a malformed payload', () async {
     final manager = _buildManager(
       onCall: (_, __) {},

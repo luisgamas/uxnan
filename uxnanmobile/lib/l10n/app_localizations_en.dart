@@ -2665,5 +2665,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsUpdatesVersionGroup => 'Version';
 
   @override
+  String get conversationCompactionTitle => 'Context compacted';
+
+  @override
+  String get conversationCompactionManual =>
+      'You asked the agent to summarize earlier context.';
+
+  @override
+  String get conversationCompactionThreshold =>
+      'Earlier context was summarized after reaching the agent\'s limit.';
+
+  @override
+  String get conversationCompactionOverflow =>
+      'Earlier context was summarized after exceeding the available window.';
+
+  @override
+  String get conversationCompactionAutomatic =>
+      'Earlier context was summarized automatically.';
+
+  @override
+  String get conversationCompactionUnknown =>
+      'Earlier messages were summarized to free context.';
+
+  @override
+  String conversationCompactionTokens(String before, String after) {
+    return 'Context reduced from $before to about $after tokens.';
+  }
+
+  @override
+  String conversationPreviousMessages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count previous messages',
+      one: '1 previous message',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get licensesError => 'Couldn\'t load the licenses.';
 }
