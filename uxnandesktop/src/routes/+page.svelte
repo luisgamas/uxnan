@@ -44,6 +44,7 @@
   import UsageStatusButton from "$lib/components/UsageStatusButton.svelte";
   import { Toaster } from "$lib/components/ui/sonner";
   import { initUpdateToast } from "$lib/updateToast.svelte";
+  import { initSessionRecoveryToast } from "$lib/sessionRecoveryToast.svelte";
   import type { RepoData } from "$lib/types";
 
   // Resize bounds for each sidebar (px).
@@ -222,6 +223,10 @@
   // staged download is restored, dismissed via the store. Native OS
   // notifications are untouched (see notify.ts).
   initUpdateToast();
+
+  // Tell the user, once, when the previous session ended without a clean exit —
+  // the same event that explains why its terminal scrollback is missing.
+  initSessionRecoveryToast();
 
   // Suppress the webview's built-in context menu (it's most visible in debug
   // builds and exposes dev/inspect entries). Native menus stay on text fields so

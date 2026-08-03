@@ -380,3 +380,40 @@ test('queued turns left by a previous run are cancelled at startup', async () =>
 
   await h.cleanup();
 });
+
+test('a duplicate completion for the same turn does not drain the queue twice', async () => {
+  // An adapter whose CLI outlives its own end-of-turn event can emit a second
+  // `turn_completed` for the same turn — Claude Code does, when the model leaves
+  // background work running and the CLI later wakes it. Acting on it twice would
+  // start the NEXT queued turn against a CLI that is still running, which is the
+  // one thing the queue exists to prevent.
+  const h = await harness();
+  const first = await h.manager.sendTurn(h.threadId, 'first');
+  const second = await h.manager.sendTurn(h.threadId, 'second');
+  const third = await h.manager.sendTurn(h.threadId, 'third');
+
+  h.adapter.complete(h.threadId, first.turnId);
+  await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'streaming');
+  assert.deepEqual(
+    h.adapter.delivered.map((d) => d.text),
+    ['first', 'second'],
+  );
+
+  // The same turn reports completion again.
+  h.adapter.complete(h.threadId, first.turnId, 'late text');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.deepEqual(
+    h.adapter.delivered.map((d) => d.text),
+    ['first', 'second'],
+    'the third turn must not be started while the second is still running',
+  );
+  assert.equal((await h.store.getTurn(third.turnId)).status, 'queued');
+  assert.equal(
+    h.methods().filter((m) => m === StreamNotification.TurnCompleted).length,
+    1,
+    'the phone is told once',
+  );
+
+  await h.cleanup();
+});

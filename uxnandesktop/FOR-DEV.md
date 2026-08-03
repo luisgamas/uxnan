@@ -21,9 +21,10 @@ side validated against captured real GitHub data — `docs/github-validation.md`
 **"Open with" external editors/IDEs**, **automations**, **pets**, **a reproducible
 resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
-background consumers**, `docs/resource-mode.md`). 477 Rust tests (449 unit + 28
+background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
+(`docs/diagnostics.md`). 488 Rust tests (460 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 726 frontend Vitest tests (719 passing + 7 platform-skipped) across two
+probe) + 744 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -255,6 +256,20 @@ started.**
   See [`docs/resource-benchmarks.md`](docs/resource-benchmarks.md).
   **Caveats: only Windows has been run on real hardware; R07/R08 still need an
   operator; the gate is warn-only.** See "Resource benchmarks — follow-ups".
+
+## Diagnostics — follow-ups ☐
+
+**Recording and surfacing are both complete** (rolling log, panic hook,
+uncaught-frontend-error capture, unclean-shutdown marker, the startup notice and
+Settings → App → Diagnostics; `docs/diagnostics.md`).
+
+- [ ] **Decide whether an agent's terminal death deserves its own log line.**
+      An agent CLI running inside a uxnan terminal cannot tell an app crash from
+      a force-close from a dead PTY host, which is exactly what made the
+      2026-08-02 cut sessions unfalsifiable. Recording PTY child exits (pid,
+      exit status, whether uxnan asked for it) would separate those three, but
+      it needs a rate limit — a busy session spawns and reaps constantly — so it
+      is deliberately not part of the first pass.
 
 ## Resource benchmarks — follow-ups ☐
 

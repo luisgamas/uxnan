@@ -78,6 +78,7 @@ export type SettingsSection =
   | "openWith"
   | "github"
   | "resources"
+  | "diagnostics"
   | "updates";
 
 /** A pane in the inline GitHub view (opened per-project from a project card).

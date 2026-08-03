@@ -13,8 +13,10 @@
   import { autoSleep } from "$lib/state/autoSleep.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { usage } from "$lib/state/usage.svelte";
+  import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
+  import { installErrorReporter } from "$lib/utils/errorReporter";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
   import PetWindow from "$lib/components/PetWindow.svelte";
 
@@ -44,6 +46,12 @@
       document.body.style.background = "transparent";
       return;
     }
+    // First thing in the main window: capture uncaught frontend failures into
+    // the app's log. A render error that blanks the window leaves no OS crash
+    // report and no minidump — the evidence exists only here, and only until
+    // the window goes away. Installed before `app.init()` so a failure during
+    // hydration is recorded too.
+    const uninstallErrorReporter = installErrorReporter();
     void (async () => {
       await app.init();
       if (app.backend === "ready") {
@@ -57,6 +65,9 @@
     void agentStatus.start();
     // Auto-updater: restore any staged download, then check on the chosen channel.
     void updater.start();
+    // One read of the app's own diagnostics: where the log is, and whether the
+    // previous session ended without a clean exit.
+    void diagnostics.start();
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);
@@ -75,6 +86,7 @@
     return () => {
       window.removeEventListener("focus", onFocus);
       uninstallPointerLockGuard();
+      uninstallErrorReporter();
     };
   });
 

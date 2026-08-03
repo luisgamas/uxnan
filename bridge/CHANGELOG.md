@@ -5,6 +5,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a turn no longer ends while the agent is still working
+
+An agent that says *"I left that running, I'll report back"* was being reported
+to the phone as finished. Verified against the real `claude` CLI, timed: it
+emits its end-of-turn `result` and **keeps running**, and when the background
+work finishes in time it **wakes the model** and produces a second, complete
+turn on the same process. The bridge was ending the turn at the first `result`.
+
+- **Background tasks are now tracked, so a `result` with live work does not end
+  the turn.** `system` stream lines are no longer all parsed as `init`: a
+  `task_started` / `task_notification` pair is recognized, and while a task is
+  live the completion is held until the CLI produces its follow-up turn or
+  exits. One `turn_completed` per turn, carrying **both** replies — the CLI's
+  `result` only ever holds the latest turn's text, so the first reply survived
+  only in the accumulated narration.
+- **Work the CLI killed is reported instead of passing as a clean success.**
+  The CLI gives background work only a few seconds' grace after the turn ends
+  and then kills it (`status:"stopped"`) — measured at ~4–6 s, with the work
+  genuinely lost. The turn now carries a warning block saying the agent left
+  work running and it was interrupted, rather than the phone showing a clean
+  finish over lost work. A task still open when the process exits counts the
+  same way.
+- **A turn that has ended stays ended** (`ThreadStore`). `appendDelta`,
+  `appendThinking`, `appendBlock` and `completeTurn` now ignore a turn in a
+  terminal status instead of mutating it: a second completion could previously
+  **overwrite the reply the user had already read**, and late output landed on a
+  closed turn. This guard is adapter-agnostic on purpose — every adapter except
+  Antigravity ends its turn on a protocol event while its CLI keeps running, so
+  late output is reachable for all of them.
+- **The message queue is not drained twice** (`AgentManager`). A duplicate
+  terminal event would have started the next queued turn against a CLI that was
+  still running — the exact serialization the queue exists to enforce.
+
+New `warningBlock` content block (`kind:'warning'`, the `SystemContent` shape the
+phone already renders); no wire contract changed, so no client update is needed.
+
 ### Added — safe cross-worktree file-link resolution
 
 - Added `workspace/resolveFileLink { cwd, href }`, which canonicalizes a local

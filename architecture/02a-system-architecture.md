@@ -2077,6 +2077,59 @@ un reinicio. Por eso el arranque llama a
 que quedo `queued` en disco — el usuario ve exactamente que mensajes no
 salieron, en vez de quedar esperando una cola que ya no existe.
 
+#### 5.8.14 Fin de turno: trabajo diferido y llegadas tardias
+
+Un adaptador decide cuando el agente termino, y hay dos formas:
+
+| Termina por | Adaptadores | ¿La CLI puede emitir despues? |
+|---|---|---|
+| **Evento de protocolo** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`stopReason`), Grok / Zero (respuesta ACP a `session/prompt`) | **Si** — el proceso sigue vivo cuando llega el evento |
+| **Cierre del proceso** | Antigravity | No — el turno no puede terminar antes que el proceso |
+
+La primera fila es la peligrosa, y **Claude Code lo demuestra**: cuando el modelo
+lanza una tarea en segundo plano (`Bash` con `run_in_background`) y termina su
+turno, la CLI emite su `result` y **sigue corriendo**; si ese trabajo acaba
+dentro de su margen, la CLI **despierta al modelo** y produce un segundo turno
+completo sobre el mismo proceso. Medido contra la CLI real, ese margen es de
+**~4–6 s**, tras los cuales la CLI **mata** la tarea (`status:"stopped"`) y sale
+con ese trabajo sin terminar.
+
+**Una espera larga NO es este caso.** El margen anterior aplica solo a trabajo
+que queda corriendo *despues* de que el modelo termina su turno. El caso comun —
+"abre el PR y espera el CI", una compilacion, una bateria de tests — es una
+llamada de herramienta que **bloquea dentro del turno**: no se ha emitido ningun
+`result`, asi que no hay nada que expire ni que matar. Medido sobre la CLI real:
+una espera de 75 s en primer plano corrio como **un solo turno de 100 s**, con
+eventos `tool_progress` a +35 s y +65 s y el trabajo completandose con
+normalidad. Ademas **el bridge no tiene ningun timeout de turno**: los unicos
+temporizadores de `AgentManager` acotan cuanto se espera *al usuario* (una
+aprobacion o una pregunta), no cuanto puede durar un turno. Un turno puede durar
+minutos u horas.
+
+Reglas derivadas (comportamiento, no contrato — ningun metodo ni notificacion
+cambia):
+
+1. **Un `result` con trabajo vivo no cierra el turno.** `claude-adapter.ts`
+   sigue las tareas vivas (lineas `system` con `subtype:"task_started"` /
+   `"task_notification"`; por eso `system` dejo de mapearse a un solo tipo) y
+   retiene la finalizacion hasta que la CLI produzca su turno de seguimiento o
+   salga. Se emite **un solo** `turn_completed`, con **ambas** respuestas: el
+   `result` de la CLI solo lleva el texto del ultimo turno.
+2. **El trabajo que la CLI mata se informa**, con un bloque `warning`
+   (`SystemContent kind:'warning'`, forma que el telefono ya renderiza), en vez
+   de presentar un turno limpio sobre trabajo perdido.
+3. **Un turno terminado permanece terminado** (`ThreadStore`): `appendDelta`,
+   `appendThinking`, `appendBlock` y `completeTurn` ignoran un turno en estado
+   terminal. Una segunda finalizacion llegaba a **sobrescribir la respuesta que
+   el usuario ya habia leido**.
+4. **La cola no se drena dos veces** (`AgentManager` ignora un evento terminal
+   duplicado): hacerlo arrancaria el siguiente turno encolado contra una CLI que
+   sigue corriendo — justo la serializacion que §5.8.13 existe para garantizar.
+
+Las reglas 3 y 4 son deliberadamente **agnosticas del adaptador**: viven en el
+store y en el manager porque la exposicion la comparte toda la primera fila de la
+tabla, hoy o tras cualquier cambio upstream.
+
 ### 5.9 Transporte seguro y mensajeria E2EE
 
 El transporte seguro es la capa mas critica del sistema. Garantiza que el relay nunca vea el contenido de los mensajes en texto claro.

@@ -140,6 +140,88 @@ the long-lived `codex app-server` (`thread/start` / `turn/start` and
 (`resolve-*.ts`) prefers a directly-spawnable executable (native binary or
 `node <cli.js>`) so `shell:false` always holds.
 
+### When a turn ends (and when it only looks like it has)
+
+An adapter must decide when the agent is done. There are two kinds:
+
+| Ends on | Adapters | Can the CLI emit after that? |
+|---|---|---|
+| A **protocol event** | Claude (`result`), Codex (`turn/completed`), OpenCode (`session.idle`), Pi (`stopReason`), Grok / Zero (the ACP `session/prompt` reply) | **Yes** — the process is still alive when the event arrives |
+| **Process exit** | Antigravity | No — the turn cannot end before the process does |
+
+That distinction matters because **Claude Code really does come back**. When the
+model starts a background task (`Bash` with `run_in_background`) and ends its
+turn, the CLI emits its `result` and keeps running; if the work finishes within
+its grace period the CLI **wakes the model** and a second, complete turn follows
+on the same process. Timed against the real CLI, the grace period is about
+**4–6 seconds**, after which the CLI **kills** the task (`status:"stopped"`) and
+exits with that work unfinished.
+
+#### A long wait is not the same thing (and is not limited)
+
+The grace period applies to exactly one shape: work left running **after** the
+model ends its turn. It says nothing about **long work the agent waits for**,
+which is the common case — "open the PR and wait for CI", a build, a test suite.
+There the tool call blocks *inside* the turn: no `result` has been emitted, so
+there is nothing to expire and nothing to kill.
+
+Measured on the real CLI: a 75-second foreground wait ran as **one turn lasting
+100 seconds**, with `tool_progress` events at +35 s and +65 s, the work
+completing normally, and `result` arriving only afterwards. There is also **no
+turn-level timeout anywhere in the bridge** — the only timers in `AgentManager`
+bound how long it waits for *the user* to answer an approval or a question, not
+how long a turn may run. A turn can take minutes or hours.
+
+So the two cases split cleanly:
+
+| The agent… | Turn state | Bounded? |
+|---|---|---|
+| **waits** for long work (CI, build, tests) | still running; deltas and tool progress keep flowing | **No limit** |
+| **leaves** work running and ends its turn | held open by the adapter until the CLI's follow-up turn or its exit | ~4–6 s, then the CLI kills the work and the turn reports it |
+
+So `claude-adapter.ts` tracks live background tasks (`system` lines with
+`subtype:"task_started"` / `"task_notification"` — the reason `system` is no
+longer parsed as one event kind) and **holds the completion** while any is live,
+emitting exactly one `turn_completed` carrying both replies. Work the CLI killed
+is reported to the user as a warning block rather than passing as a clean turn.
+
+Two guards make this safe for **every** adapter, present and future, since the
+first table row is where the hazard lives:
+
+- `ThreadStore` ignores appends and a second `completeTurn` once a turn is in a
+  terminal status — a late completion used to overwrite the reply the user had
+  already read.
+- `AgentManager` ignores a duplicate terminal event, so the message queue is
+  never drained twice (which would start a queued follow-up against a CLI that
+  is still running).
+
+Claude Code is the only one that comes back. Every agent was probed the same
+way — asked to leave a shell command running and end its turn — and timed:
+
+| Agent | Wakes the model after its turn? | What happens to the deferred work |
+|---|---|---|
+| **Claude Code** | **Yes** | ~4–6 s of grace. Finishes in time → the CLI wakes the model and a second turn reports it. Otherwise **killed** (`status:"stopped"`), work lost |
+| **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
+| Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
+| Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
+| Pi | No — no background tool, no wake-up path | Killed on shutdown (tracked pids exist for exactly that) |
+| Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
+| Antigravity | No — the turn ends on process exit | n/a |
+
+Two consequences worth keeping straight, because they need different answers:
+
+- **Claude Code** genuinely defers and returns, so its turn must stay open —
+  that is what the adapter now does.
+- **Everyone else** ends for real. An agent there can still *say* it will report
+  back, and nobody ever will: with Codex, Grok, Pi and Zero the work is already
+  dead, and with **OpenCode it is worse** — the work really does keep running
+  (the CLI waits for it), so it completes and is never reported. There is no
+  deferred state to model in those cases, only a promise not to take at face
+  value.
+
+None of this makes the guards Claude-specific: the hazard is structural for
+every adapter in the first table above, today or after any upstream change.
+
 Per-thread selection: `thread/start { agentId, model, cwd }`; `agent/list` reports
 availability/capabilities; `agent/models` lists models (`AgentModel[]` with
 `id`/`displayName`/`description?`/`version?`/`isDefault?`/`options?`/`contextWindow?`);
