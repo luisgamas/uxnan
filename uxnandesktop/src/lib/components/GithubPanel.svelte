@@ -44,7 +44,6 @@
   let runsLoading = $state(false);
   let prsLoading = $state(false);
   let issuesLoading = $state(false);
-  let showCreate = $state(false);
   let listsPath = $state<string | null>(null);
   let listSeq = 0;
 
@@ -64,6 +63,12 @@
   const repoPath = $derived(projects.activeRepo?.path ?? null);
   const repoId = $derived(projects.activeRepo?.id ?? null);
 
+  /** The create-PR form's identity. Its contents live in the store under this
+   *  key, which is also what keeps the form *open*: a local flag would be reset
+   *  by the very remount we're protecting the typing from. */
+  const draftKey = $derived(activePath ? `worktree:${activePath}` : null);
+  const prDraft = $derived(github.prDraft(draftKey));
+
   /** The three lists are repo-wide (not branch-scoped): this panel answers "what
    *  is happening in this repo", and a branch filter is what made the CI list
    *  show the same handful of runs forever. */
@@ -75,7 +80,6 @@
       runs = [];
       prs = [];
       issues = [];
-      showCreate = false;
     }
     if (!p || !github.available || !ctx) {
       runs = [];
@@ -172,13 +176,19 @@
       <GitPullRequestIcon class="size-6 text-muted-foreground/50" />
       <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.panel.noWorktree")}</p>
     </div>
-  {:else if github.contextLoading || github.contextPath !== activePath}
-    <div class="px-3 py-8 text-center">
-      <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.loading")}</p>
-    </div>
   {:else if !ctx}
+    <!-- Nothing to show yet for THIS worktree: either the first read is still in
+         flight or it answered "not a GitHub repo". Note what this branch is NOT:
+         it is not entered because a *background* refresh is running. Gating the
+         whole panel on `contextLoading` swapped it for this placeholder on every
+         poll tick, which tore down an open create-PR form along with it — a
+         refresh may add information, never destroy what the user is looking at. -->
     <div class="px-3 py-8 text-center">
-      <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.notARepo")}</p>
+      <p class={cn("text-muted-foreground", text.meta)}>
+        {github.contextLoading || github.contextPath !== activePath
+          ? i18n.t("github.loading")
+          : i18n.t("github.notARepo")}
+      </p>
     </div>
   {:else}
     <!-- Repo + branch header -->
@@ -269,24 +279,25 @@
           </TooltipSimple>
         </div>
       </div>
-    {:else if showCreate}
+    {:else if prDraft}
       <div class="mb-3">
         <CreatePrForm
           worktreePath={projects.activeWorktreePath}
           defaultTitle={ctx.branch ?? ""}
           compact
           lockHead
-          onCreated={() => {
-            showCreate = false;
-            refreshAll();
-          }}
-          onCancel={() => (showCreate = false)}
+          {draftKey}
+          onCreated={refreshAll}
         />
       </div>
     {:else}
       <div class={cn("mb-3 rounded-lg p-2.5 text-center", surface.panel)}>
         <p class={cn("mb-2 text-muted-foreground", text.meta)}>{i18n.t("github.panel.noPr")}</p>
-        <Button size="sm" class="w-full" onclick={() => (showCreate = true)}>
+        <Button
+          size="sm"
+          class="w-full"
+          onclick={() => draftKey && github.startPrDraft(draftKey, { title: ctx.branch ?? "" })}
+        >
           {i18n.t("github.panel.createPr")}
         </Button>
       </div>

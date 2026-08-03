@@ -192,6 +192,25 @@ en rotación. Cada contexto es una llamada a `gh` contra el rate limit, de ahí 
 tope por ciclo; `loadContextFor` escribe únicamente en la caché por ruta que
 alimenta las insignias, sin tocar el `context` que lee el panel derecho.
 
+**Un refresco de fondo no puede quitar nada.** Es la regla que gobierna al panel
+derecho de GitHub y se aplica en tres sitios:
+
+1. El panel **no se desmonta mientras relee**. El marcador *Loading…* solo aparece
+   cuando de verdad no hay nada que mostrar para el worktree activo (primera
+   lectura, o «no es un repositorio de GitHub»). Condicionar el cuerpo entero a
+   «hay una lectura en vuelo» era lo que lo sustituía cada 45 s y se llevaba por
+   delante un formulario **Crear PR** abierto.
+2. Un `null` aislado es un **fallo de lectura, no una respuesta**.
+   `github_repo_context` devuelve `Option<RepoContext>`, así que un lock de git,
+   un `gh` lento o una red caída son indistinguibles de «esto ya no es un repo de
+   GitHub»; `resolveContext` exige que el `null` se repita antes de creerlo. Un
+   worktree que nunca tuvo contexto sigue respondiendo al instante.
+3. Un formulario **Crear PR** sin enviar se aparca en `github.prDrafts`, indexado
+   por el dueño del formulario (`worktree:<ruta>` para la pestaña del panel
+   derecho, `section:<ruta>` para el de la sección — ambos pueden estar abiertos
+   sobre el mismo repo y no significan lo mismo). Cualquier remontaje lo
+   restaura; solo lo descartan crear el PR o pulsar **Cancelar**.
+
 ### 3.4 Gestión de Ramas
 
 - **Nomenclatura**: Las ramas se crean con un prefijo configurable (ej: `usuario/feature-name`, `custom/feature-name`, o sin prefijo). Los nombres se sanitizan para eliminar caracteres no válidos.
@@ -375,7 +394,11 @@ con `shadcn-svelte` Tabs). De izquierda a derecha:
    (PR, ejecuciones de CI e issues), incluso si no cambiaron el nombre de la rama
    ni el JSON del contexto. Las respuestas async llevan guardas de secuencia y se
    limpian al cambiar de worktree, por lo que una petición lenta del repositorio
-   anterior no puede repintar el panel activo. Las vistas grandes (review/diff/logs) se
+   anterior no puede repintar el panel activo. Ese refresco **actualiza en sitio**:
+   no sustituye el panel por un marcador de carga ni desmonta lo que hay en
+   pantalla, y un formulario **Crear PR** a medio escribir sobrevive tanto al poll
+   como a un remontaje (§3.3, «Un refresco de fondo no puede quitar nada»). Las
+   vistas grandes (review/diff/logs) se
    abren en la **vista GitHub inline por-proyecto** (`GitHub.svelte`), que ocupa el
    centro + panel derecho dejando visibles el sidebar izquierdo y el navegador. Se
    abre desde el menú **⋯** de cada tarjeta de proyecto y desde el menú contextual
