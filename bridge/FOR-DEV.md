@@ -7,7 +7,9 @@ only a human can provide.)
 > **How to run/validate everything** (automated tests, real-mobile E2EE interop,
 > adapter wiring, contract re-checks) is in [`docs/testing.md`](docs/testing.md).
 > The implemented surface is documented in [`README.md`](README.md) +
-> [`docs/`](docs/); this file tracks only what's left to build.
+> [`docs/`](docs/). **`## Status` below is this component's canonical
+> implementation status** (the root `AGENTS.md` points here instead of keeping
+> its own inventory); everything after it tracks what's left to build.
 
 ## Status
 

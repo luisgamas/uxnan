@@ -2,6 +2,9 @@
 
 Deferred developer work for the relay. (Human-only assets are in `relay/FOR-HUMAN.md`.)
 
+> **`## Status` below is this component's canonical implementation status** — the
+> root `AGENTS.md` points here instead of keeping its own inventory.
+
 ## Status
 
 The relay is **optional and self-hosted**. The product's primary paths are

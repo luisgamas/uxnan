@@ -5,8 +5,9 @@ Deferred implementation work (code the team/agent will do later). Distinct from
 `FOR-DEV:` to jump to the exact deferral sites.
 
 > Convention defined in the root `AGENTS.md` → "Pending developer work".
-> [`README.md`](README.md) carries the user-facing snapshot; the detailed status
-> below is the developer record of what's working, and the rest of this file
+> [`README.md`](README.md) carries the user-facing snapshot; **`## Status` below
+> is this component's canonical implementation status** (the root `AGENTS.md`
+> points here instead of keeping its own inventory), and the rest of this file
 > tracks what's left.
 
 ## Status
