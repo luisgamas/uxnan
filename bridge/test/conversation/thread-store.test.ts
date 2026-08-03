@@ -381,3 +381,63 @@ test('completeTurn extends the trailing run when the final text has an unstreame
   assert.equal(assistant?.content, 'first second and tail');
   await rm(baseDir, { recursive: true, force: true });
 });
+
+// --- a turn that has ended stays ended ---
+//
+// Every adapter except Antigravity ends a turn on a protocol event while its CLI
+// keeps running, so late output is reachable for all of them (Claude Code
+// demonstrably produces it, when the model leaves background work running and
+// the CLI later wakes it). Without these guards that output silently rewrote a
+// reply the user had already read.
+
+test('output arriving after a turn ended is ignored, not appended', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  await store.appendDelta(thread.id, turnId, 'the answer', 3);
+  await store.completeTurn(thread.id, turnId, undefined, 4);
+
+  await store.appendDelta(thread.id, turnId, ' AND MORE', 5);
+  await store.appendThinking(thread.id, turnId, 'late thought', 6);
+  await store.appendBlock(thread.id, turnId, { type: 'tool', toolName: 'Bash' }, 7);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'the answer');
+  assert.equal(assistant?.thinking ?? '', '');
+  assert.equal((assistant?.blocks ?? []).length, 0);
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('a second completion cannot overwrite the reply the user already read', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  await store.completeTurn(thread.id, turnId, 'the real answer', 3);
+
+  await store.completeTurn(thread.id, turnId, 'a later, different answer', 9);
+
+  const turn = await store.getTurn(turnId);
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'the real answer');
+  assert.equal(turn.completedAt, 3, 'the original end time stands');
+  await rm(baseDir, { recursive: true, force: true });
+});
+
+test('an aborted turn does not accept late output either', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const { turnId } = await store.startTurn(thread.id, 'ask', 2);
+  await store.appendDelta(thread.id, turnId, 'partial', 3);
+  await store.abortTurn(thread.id, turnId, 4);
+
+  // The user stopped this turn; a CLI that keeps writing must not undo that.
+  await store.appendDelta(thread.id, turnId, ' more', 5);
+  await store.completeTurn(thread.id, turnId, 'finished anyway', 6);
+
+  const turn = await store.getTurn(turnId);
+  assert.equal(turn.status, 'aborted');
+  const assistant = turn.messages.find((m) => m.role === 'assistant');
+  assert.equal(assistant?.content, 'partial');
+  await rm(baseDir, { recursive: true, force: true });
+});

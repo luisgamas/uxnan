@@ -433,6 +433,7 @@ export class ThreadStore {
 
   appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
     return this.#mutate(async (threads) => {
+      if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.text += delta;
       appendTextSegment(assistant, delta);
@@ -443,6 +444,7 @@ export class ThreadStore {
   /** Appends a reasoning ("thinking") chunk to the turn's assistant message. */
   appendThinking(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
     return this.#mutate(async (threads) => {
+      if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.thinking = (assistant.thinking ?? '') + delta;
       this.#touch(threads, threadId, now);
@@ -468,6 +470,7 @@ export class ThreadStore {
     beforeText = false,
   ): Promise<void> {
     return this.#mutate(async (threads) => {
+      if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.blocks = [...(assistant.blocks ?? []), content];
       const segments = (assistant.segments ??= []);
@@ -505,6 +508,11 @@ export class ThreadStore {
   ): Promise<void> {
     return this.#mutate(async (threads) => {
       const turn = this.#turn(threads, threadId, turnId);
+      // A turn only ends once. An adapter whose CLI keeps running past its own
+      // end-of-turn event can emit a second completion for the same turn; taking
+      // it would overwrite the reply the user already read with whatever the
+      // later one carried, and (in the manager) drain the message queue twice.
+      if (TERMINAL_TURN_STATUSES.has(turn.status)) return;
       if (finalText !== undefined) {
         const assistant = turn.messages.find((m) => m.role === 'assistant');
         if (assistant) {
@@ -524,6 +532,25 @@ export class ThreadStore {
 
   abortTurn(threadId: string, turnId: string, now: number): Promise<void> {
     return this.#setTurnStatus(threadId, turnId, 'aborted', now);
+  }
+
+  /**
+   * Whether a turn has already ended, so late output must not be appended to it.
+   *
+   * Every adapter that ends a turn on a **protocol event** (all of them except
+   * Antigravity, which ends on process exit) leaves its CLI alive afterwards and
+   * can therefore emit after the end — Claude Code demonstrably does, when the
+   * model leaves background work running and the CLI later wakes it for another
+   * turn. Appending that output to a closed turn silently rewrote a reply the
+   * user had already read, so the store refuses it instead. Callers get a no-op
+   * rather than a throw: late output is a normal race, not a programming error.
+   *
+   * A missing thread/turn is left to the caller's own lookup to report.
+   */
+  #isTerminal(threads: StoredThread[], threadId: string, turnId: string): boolean {
+    const thread = threads.find((t) => t.id === threadId);
+    const turn = thread?.turns.find((t) => t.id === turnId);
+    return turn !== undefined && TERMINAL_TURN_STATUSES.has(turn.status);
   }
 
   #setTurnStatus(threadId: string, turnId: string, status: TurnStatus, now: number): Promise<void> {

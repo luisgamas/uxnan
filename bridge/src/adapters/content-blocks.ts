@@ -266,6 +266,20 @@ export function errorBlock(text: string): Record<string, unknown> {
   return { type: 'system', text: truncateOutput(text), kind: 'error' };
 }
 
+/**
+ * A system **warning** block: something the user needs to know about the turn
+ * that is not a failure of the turn itself.
+ *
+ * Used for background work an agent left running that its CLI then killed —
+ * the turn did produce its reply, so `errorBlock` would overstate it, but the
+ * work the agent promised silently did not happen. Same `SystemContent` wire
+ * shape as `errorBlock` with `kind:'warning'`, which the phone already renders
+ * with its own icon and colour.
+ */
+export function warningBlock(text: string): Record<string, unknown> {
+  return { type: 'system', text: truncateOutput(text), kind: 'warning' };
+}
+
 /** A generic `tool` block (a non-shell, non-edit tool call and its output). */
 export function toolBlock(
   toolName: string,

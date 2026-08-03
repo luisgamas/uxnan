@@ -926,6 +926,14 @@ export class AgentManager {
         }
         case 'turn_completed': {
           const provided = readOptionalText(event.data);
+          // A turn ends once. An adapter whose CLI outlives its own end-of-turn
+          // event can emit a second completion for the same turn (Claude Code
+          // does, when the model leaves background work running and the CLI
+          // wakes it again later); acting on it would notify the phone twice and
+          // — worse — drain the message queue a second time, starting a queued
+          // follow-up against a CLI that is still running.
+          const alreadyEnded = await this.#hasEnded(threadId, turnId);
+          if (alreadyEnded) break;
           // Clear the in-flight marker BEFORE persisting the terminal status.
           // `store.completeTurn` flips the turn's status to `completed` INSIDE
           // its mutation — observable via `getTurn` before the promise even
@@ -1081,6 +1089,32 @@ export class AgentManager {
       this.#options.logger.warn(
         `persist agent session failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  }
+
+  /**
+   * Whether the store already considers this turn ended, used to ignore a
+   * duplicate terminal event from an adapter whose CLI outlived its own
+   * end-of-turn signal.
+   *
+   * Reads the store rather than the in-flight map: the map is also cleared by a
+   * cancel and by a restart sweep, and "did this turn already end" is a question
+   * only the persisted status can answer. A turn the store cannot find is
+   * treated as not ended, so an unknown id still follows the normal path and
+   * fails there with its own error.
+   */
+  async #hasEnded(threadId: string, turnId: string): Promise<boolean> {
+    try {
+      const turn = await this.#options.store.getTurn(turnId);
+      return (
+        turn.threadId === threadId &&
+        (turn.status === 'completed' ||
+          turn.status === 'error' ||
+          turn.status === 'aborted' ||
+          turn.status === 'cancelled')
+      );
+    } catch {
+      return false;
     }
   }
 
