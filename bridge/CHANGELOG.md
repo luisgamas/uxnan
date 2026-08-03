@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — native-session turns converge back into Uxnan
+
+- `turn/list` now reconciles the agent-owned transcript on every idle read,
+  even when the bridge already has stored turns. Completed prompts and answers
+  written from Codex Desktop/CLI, OpenCode Desktop, Claude Code, pi, Zero or
+  Grok therefore join the same Uxnan thread without duplicating bridge-owned
+  turns or replacing their richer segments, queue state or usage.
+- Codex, Claude and pi use their persisted JSONL transcripts. OpenCode reads
+  the official `opencode serve` session-message endpoint (with its legacy JSON
+  store as a compatibility fallback). Zero reads `events.jsonl`; Grok rebuilds
+  only ACP turns closed by `turn_completed` from `updates.jsonl`.
+- Native-only turns receive deterministic ids and are refreshed additively on
+  later reads. Missing native history never deletes bridge history, and a
+  native transcript is not consulted while that bridge thread has a live turn.
+- Antigravity remains explicitly unsupported for cross-client history: its
+  conversation database stores opaque payloads and `agy` exposes no reliable
+  history/export command, so the bridge does not guess.
+
 ### Fixed — terminal events can no longer erase earlier agent responses
 
 - Codex now accumulates every `agentMessage` item instead of replacing the turn

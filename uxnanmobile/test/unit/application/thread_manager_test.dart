@@ -11,6 +11,7 @@ import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/connection_phase.dart';
 import 'package:uxnan/domain/enums/message_delivery_state.dart';
 import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -29,11 +30,12 @@ Message _msg(
   required MessageRole role,
   String text = '',
   String threadId = 'th1',
+  String turnId = '',
 }) =>
     Message(
       id: id,
       threadId: threadId,
-      turnId: '',
+      turnId: turnId,
       role: role,
       contents: [TextContent(text)],
       deliveryState: MessageDeliveryState.delivered,
@@ -149,6 +151,160 @@ void main() {
 
     expect(manager.timeline.messages.map((m) => m.id).toList(), ['m1', 'm2']);
   });
+
+  test(
+    'resync persists native-only user and assistant messages '
+    'without duplicates',
+    () async {
+      turnListResult = {
+        'turns': [
+          {
+            'id': 'native-session#t1',
+            'status': 'completed',
+            'messages': [
+              {
+                'role': 'user',
+                'content': 'written from Codex Desktop',
+                'createdAt': 1000,
+              },
+              {
+                'role': 'assistant',
+                'content': 'external answer',
+                'createdAt': 1001,
+              },
+            ],
+          },
+        ],
+        'total': 1,
+      };
+
+      await manager.selectThread('th1');
+      await _settle();
+      await manager.resyncActive();
+      await _settle();
+
+      final persisted = await messageRepo.getMessages('th1');
+      expect(persisted.map((message) => message.role), [
+        MessageRole.user,
+        MessageRole.assistant,
+      ]);
+      expect(persisted.map(_text), [
+        'written from Codex Desktop',
+        'external answer',
+      ]);
+      expect(persisted.map((message) => message.turnId).toSet(), {
+        'native-session#t1',
+      });
+    },
+  );
+
+  test(
+    'resync preserves a Mobile-authored user message matched by turn id',
+    () async {
+      await messageRepo.saveMessage(
+        _msg(
+          'local-user-id',
+          order: 0,
+          role: MessageRole.user,
+          text: 'written from Mobile',
+          turnId: 'bridge-turn',
+        ),
+      );
+      turnListResult = {
+        'turns': [
+          {
+            'id': 'bridge-turn',
+            'status': 'completed',
+            'messages': [
+              {
+                'role': 'user',
+                'content': 'written from Mobile',
+                'createdAt': 1000,
+              },
+              {
+                'role': 'assistant',
+                'content': 'bridge answer',
+                'createdAt': 1001,
+              },
+            ],
+          },
+        ],
+        'total': 1,
+      };
+
+      await manager.selectThread('th1');
+      await _settle();
+
+      final persisted = await messageRepo.getMessages('th1');
+      final users = persisted
+          .where((message) => message.role == MessageRole.user)
+          .toList();
+      expect(users, hasLength(1));
+      expect(users.single.id, 'local-user-id');
+      expect(persisted.map(_text), contains('bridge answer'));
+    },
+  );
+
+  test(
+    'connected active conversation polls for external native-session turns',
+    () async {
+      final phases = StreamController<ConnectionPhase>.broadcast();
+      Object result = <String, dynamic>{
+        'turns': const <Object?>[],
+        'total': 0,
+      };
+      final pollingManager = ThreadManager(
+        threadRepository: threadRepo,
+        messageRepository: messageRepo,
+        domainEvents: events.stream,
+        connectionPhases: phases.stream,
+        externalSyncInterval: const Duration(milliseconds: 10),
+        sendRequest: (method, [params]) async => RpcMessage.response(
+          id: 'poll',
+          result: method == 'turn/list' ? result : const <String, dynamic>{},
+        ),
+      );
+      try {
+        await pollingManager.selectThread('th1');
+        await _settle();
+        result = {
+          'turns': [
+            {
+              'id': 'native-session#t2',
+              'status': 'completed',
+              'messages': [
+                {
+                  'role': 'user',
+                  'content': 'later external prompt',
+                  'createdAt': 2000,
+                },
+                {
+                  'role': 'assistant',
+                  'content': 'later external answer',
+                  'createdAt': 2001,
+                },
+              ],
+            },
+          ],
+          'total': 1,
+        };
+        phases.add(ConnectionPhase.connected);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        final messages = await messageRepo.getMessages('th1');
+        expect(
+          messages.map(_text),
+          containsAll([
+            'later external prompt',
+            'later external answer',
+          ]),
+        );
+      } finally {
+        await pollingManager.dispose();
+        await phases.close();
+      }
+    },
+  );
 
   test('applies a streaming turn: started, deltas, completed', () async {
     await manager.selectThread('th1');

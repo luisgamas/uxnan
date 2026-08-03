@@ -6,6 +6,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — conversations follow turns written in native agent clients
+
+- While a connected conversation is open and idle, Mobile re-syncs its newest
+  page every three seconds. Completed turns written in Codex Desktop/CLI,
+  OpenCode Desktop, Claude Code, pi, Zero or Grok appear without reopening the
+  screen; opening, reconnecting and app resume keep their existing immediate
+  re-sync paths.
+- Re-sync now persists native-only user prompts as well as assistant replies.
+  It matches a Mobile-authored prompt by turn id, preserving its local UUID,
+  attachments and delivery state instead of creating a duplicate.
+- Polls are deduplicated across navigation/reconnect/resume, pause while a
+  bridge turn is live, stop when disconnected, and settle before the manager
+  closes its streams.
+- This is completed-turn convergence, not token streaming from another client.
+  Antigravity has no reliable readable native transcript and is intentionally
+  unchanged.
+
 ### Fixed — preserve every response produced during a turn
 
 - Assistant progress/commentary no longer disappears when a terminal event

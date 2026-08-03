@@ -54,12 +54,14 @@ class ThreadManager {
     String? Function()? foregroundThreadId,
     Uuid? uuid,
     Duration resyncTimeout = const Duration(seconds: 8),
+    Duration externalSyncInterval = const Duration(seconds: 3),
   })  : _threadRepository = threadRepository,
         _messageRepository = messageRepository,
         _sendRequest = sendRequest,
         _foregroundThreadId = foregroundThreadId,
         _uuid = uuid ?? const Uuid(),
-        _resyncTimeout = resyncTimeout {
+        _resyncTimeout = resyncTimeout,
+        _externalSyncInterval = externalSyncInterval {
     _eventsSub = domainEvents.listen(_applyEvent);
     _phaseSub = connectionPhases?.listen(_onConnectionPhase);
   }
@@ -78,6 +80,11 @@ class ThreadManager {
   /// stream — instead of hanging the thread view for 30 s (Bug A). Injectable
   /// so tests don't wait it out; older-page paging keeps the default timeout.
   final Duration _resyncTimeout;
+
+  /// Cadence for checking the active native agent session for turns written by
+  /// another client (Codex Desktop/CLI, OpenCode Desktop, and supported CLIs).
+  /// [Duration.zero] disables the timer in deterministic unit tests.
+  final Duration _externalSyncInterval;
 
   /// Returns the threadId of the conversation the user is currently viewing in
   /// the foreground (null when none). A reply that lands in a thread the user
@@ -168,6 +175,16 @@ class ThreadManager {
   StreamSubscription<List<Message>>? _messagesSub;
   late final StreamSubscription<DomainEvent> _eventsSub;
   StreamSubscription<ConnectionPhase>? _phaseSub;
+  Timer? _externalSyncTimer;
+  bool _disposed = false;
+
+  /// Newest-page reads already in flight, keyed by thread.
+  final Map<String, Future<void>> _resyncOperations = {};
+
+  /// At most one coalesced follow-up read per thread. An explicit refresh that
+  /// arrives during the navigation read must observe state newer than that
+  /// first snapshot; repeated reconnect/resume requests share this Future.
+  final Map<String, Future<void>> _queuedResyncOperations = {};
 
   /// Last observed connection phase, to detect transitions INTO connected.
   ConnectionPhase? _lastPhase;
@@ -181,8 +198,15 @@ class ThreadManager {
   /// and retries a cold-start resync that timed out while the channel was
   /// still coming up.
   void _onConnectionPhase(ConnectionPhase phase) {
+    if (_disposed) return;
     final was = _lastPhase;
     _lastPhase = phase;
+    if (phase == ConnectionPhase.connected) {
+      _ensureExternalSyncTimer();
+    } else {
+      _externalSyncTimer?.cancel();
+      _externalSyncTimer = null;
+    }
     if (phase == ConnectionPhase.connected &&
         was != ConnectionPhase.connected) {
       // A new connection can be a different bridge process, or the same one
@@ -191,6 +215,31 @@ class ThreadManager {
       if (_turnStateKnown.value.isNotEmpty) _turnStateKnown.add(const {});
       unawaited(resyncActive());
     }
+  }
+
+  void _ensureExternalSyncTimer() {
+    if (_disposed ||
+        _externalSyncTimer != null ||
+        _externalSyncInterval.inMilliseconds <= 0) {
+      return;
+    }
+    _externalSyncTimer = Timer.periodic(
+      _externalSyncInterval,
+      (_) => _pollExternalHistory(),
+    );
+  }
+
+  void _pollExternalHistory() {
+    final threadId = _activeThreadId;
+    if (_disposed ||
+        _lastPhase != ConnectionPhase.connected ||
+        threadId == null ||
+        _live.containsKey(threadId) ||
+        _resyncOperations.containsKey(threadId) ||
+        _queuedResyncOperations.containsKey(threadId)) {
+      return;
+    }
+    unawaited(_resyncThread(threadId));
   }
 
   /// Reactive list of threads.
@@ -716,12 +765,46 @@ class ThreadManager {
   }
 
   /// Pulls the bridge's **newest** page of turns for [threadId] (`turn/list`
-  /// with `fromEnd`) and persists any assistant answer not already stored,
-  /// keyed by the deterministic `stream-<turnId>` id. Opening a long thread no
+  /// with `fromEnd`) and persists user + assistant messages not already stored,
+  /// keyed by deterministic turn-derived ids. Opening a long thread no
   /// longer re-pulls the whole history — older pages load on demand via
-  /// [loadMoreHistory]. User messages are authored locally and persisted on
-  /// send, so they are never re-synced (which would duplicate them).
-  Future<void> _resyncThread(String threadId) async {
+  /// [loadMoreHistory]. A locally-authored user message is matched by turn id;
+  /// a native-only user message (written from another app) is inserted beside
+  /// its answer.
+  Future<void> _resyncThread(String threadId) {
+    if (_disposed) return Future<void>.value();
+    final queued = _queuedResyncOperations[threadId];
+    if (queued != null) return queued;
+    final existing = _resyncOperations[threadId];
+    if (existing != null) {
+      late final Future<void> followUp;
+      followUp =
+          existing.then((_) => _startResyncThread(threadId)).whenComplete(
+        () {
+          if (identical(_queuedResyncOperations[threadId], followUp)) {
+            _queuedResyncOperations.remove(threadId);
+          }
+        },
+      );
+      _queuedResyncOperations[threadId] = followUp;
+      return followUp;
+    }
+    return _startResyncThread(threadId);
+  }
+
+  Future<void> _startResyncThread(String threadId) {
+    if (_disposed) return Future<void>.value();
+    late final Future<void> operation;
+    operation = _performResyncThread(threadId).whenComplete(() {
+      if (identical(_resyncOperations[threadId], operation)) {
+        _resyncOperations.remove(threadId);
+      }
+    });
+    _resyncOperations[threadId] = operation;
+    return operation;
+  }
+
+  Future<void> _performResyncThread(String threadId) async {
     final page = await _fetchTurns(
       threadId,
       limit: _turnPageSize,
@@ -916,11 +999,11 @@ class ThreadManager {
     }
   }
 
-  /// Persists the assistant answers from a fetched page of [turns] into the
-  /// local store (reconciling against any already-stored copy by the
-  /// deterministic `stream-<turnId>` id). When [trackLatestUsage] is true the
-  /// last turn's token usage restores the context meter (only meaningful for
-  /// the newest page).
+  /// Persists the user prompts and assistant answers from a fetched page of
+  /// [turns]. Mobile-authored users reconcile by turn id; native-only users and
+  /// assistant answers use deterministic ids. When [trackLatestUsage] is true,
+  /// the last turn's token usage restores the context meter (only meaningful
+  /// for the newest page).
   Future<void> _persistTurns(
     String threadId,
     List<Object?> turns, {
@@ -929,6 +1012,11 @@ class ThreadManager {
   }) async {
     final existing = await _messageRepository.getMessages(threadId);
     final byId = {for (final m in existing) m.id: m};
+    final userByTurn = <String, Message>{
+      for (final message in existing)
+        if (message.role == MessageRole.user && message.turnId.isNotEmpty)
+          message.turnId: message,
+    };
     final toSave = <Message>[];
     // New (not-yet-stored) messages collected in document order
     // (oldest→newest);
@@ -945,17 +1033,42 @@ class ThreadManager {
       final messages = rawTurn['messages'];
       if (turnId == null || messages is! List) continue;
       for (final rawMsg in messages) {
-        if (rawMsg is! Map || rawMsg['role'] != 'assistant') continue;
+        if (rawMsg is! Map) continue;
+        final role = rawMsg['role'];
         final content = rawMsg['content'];
         if (content is! String || content.isEmpty) continue;
+        if (role == 'user') {
+          // Mobile-authored messages already carry the bridge turn id after
+          // `turn/send`, so matching by (turn, role) preserves their UUID,
+          // attachments, and delivery state. A missing user is genuinely from
+          // another client and gets a deterministic local id.
+          if (userByTurn.containsKey(turnId)) continue;
+          final message = Message(
+            id: _streamUserId(turnId),
+            threadId: threadId,
+            turnId: turnId,
+            role: MessageRole.user,
+            contents: [TextContent(content)],
+            deliveryState: rawTurn['status'] == 'cancelled'
+                ? MessageDeliveryState.cancelled
+                : MessageDeliveryState.sent,
+            orderIndex: 0,
+            createdAt: _millisToDate(rawMsg['createdAt']),
+          );
+          pending.add(message);
+          userByTurn[turnId] = message;
+          continue;
+        }
+        if (role != 'assistant') continue;
         final thinking =
             rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
         final blocks = _decodeBlocks(rawMsg['blocks']);
         // `segments` carries the assistant's text runs and blocks already
         // interleaved in production order (bridge thread-store). When present
         // we render from it so the work log sits inline with the response;
-        // absent (older bridge / on-disk history fallback) we fall back to the
-        // blocks-first layout. Its text runs concatenate to `content` and its
+        // absent (older bridge / native-history record without order) we fall
+        // back to the blocks-first layout. Its text runs concatenate to
+        // `content` and its
         // non-text entries are exactly `blocks` — see the reconciliation below.
         final segments = _decodeBlocks(rawMsg['segments']);
         final usage = _parseUsage(rawMsg['usage']);
@@ -1080,17 +1193,13 @@ class ThreadManager {
       createdAt: DateTime.now(),
     );
     await _messageRepository.saveMessage(message);
-    // Bridge contract (TurnSendParams): { threadId, text, service?, effort?,
-    // options? }. `text` is required at the top level; nesting it under
-    // `content` made the bridge reject the turn with invalid params, so no turn
-    // was created. `options` carries the chosen per-model run-option knobs.
+    // Bridge contract (TurnSendParams): { threadId, text?, attachments?,
+    // options?, command? }. Text lives at the top level; nesting it under
+    // `content` makes the bridge reject the turn. `options` carries the chosen
+    // per-model run-option knobs.
     // Surface failures: if the bridge rejects the turn (e.g. `thread not
     // found`), mark the user's message FAILED instead of swallowing it.
     //
-    // FOR-DEV: `attachments` is sent ahead of the bridge — `TurnSendParams` has
-    // no attachments field yet and `AgentManager.sendTurn` doesn't forward
-    // images, so the agent does not receive them until the bridge wires it (the
-    // local echo already shows the image). See `FOR-DEV.md` for the contract.
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
@@ -1434,9 +1543,17 @@ class ThreadManager {
 
   /// Releases resources.
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    _externalSyncTimer?.cancel();
+    _externalSyncTimer = null;
     await _eventsSub.cancel();
     await _messagesSub?.cancel();
     await _phaseSub?.cancel();
+    await Future.wait([
+      ..._resyncOperations.values,
+      ..._queuedResyncOperations.values,
+    ]);
     await _timeline.close();
     await _resolvedModels.close();
     await _activity.close();
@@ -1826,6 +1943,8 @@ class ThreadManager {
       raw is int ? DateTime.fromMillisecondsSinceEpoch(raw) : DateTime.now();
 
   String _streamId(String turnId) => 'stream-$turnId';
+
+  String _streamUserId(String turnId) => 'stream-user-$turnId';
 
   /// Decodes a wire array of structured MessageContent JSON (the `blocks` array
   /// or the ordered `segments` array, where text runs decode to [TextContent])

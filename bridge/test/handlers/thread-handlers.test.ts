@@ -206,6 +206,82 @@ test('turn/list reports the in-flight turn as activeTurnId and clears it on comp
   await rm(baseDir, { recursive: true, force: true });
 });
 
+test('turn/list reconciles native-only turns even when the bridge store is non-empty', async () => {
+  const { bridge, baseDir } = await boot();
+  const projectId = ((await bridge.context.projects.list())[0] as Project | undefined)?.id;
+  assert.ok(projectId);
+  const thread = await bridge.context.threadStore.startThread({ projectId, agentId: 'codex' }, 100);
+  const local = await bridge.context.threadStore.startTurn(thread.id, 'mobile prompt', 110);
+  await bridge.context.threadStore.appendDelta(thread.id, local.turnId, 'mobile answer', 111);
+  await bridge.context.threadStore.completeTurn(thread.id, local.turnId, undefined, 112);
+  await bridge.context.threadStore.setAgentSession(thread.id, 'native-session', 113);
+
+  const reader = bridge.context.sessionHistory as unknown as {
+    readTurns: typeof bridge.context.sessionHistory.readTurns;
+  };
+  reader.readTurns = async (_source, threadId) => [
+    {
+      id: 'native-session#t0',
+      threadId,
+      status: 'completed',
+      createdAt: 110,
+      completedAt: 112,
+      messages: [
+        {
+          id: 'native-session#m0',
+          turnId: 'native-session#t0',
+          role: 'user',
+          content: 'mobile prompt',
+          createdAt: 110,
+        },
+        {
+          id: 'native-session#m1',
+          turnId: 'native-session#t0',
+          role: 'assistant',
+          content: 'mobile answer',
+          createdAt: 112,
+        },
+      ],
+    },
+    {
+      id: 'native-session#t1',
+      threadId,
+      status: 'completed',
+      createdAt: 120,
+      completedAt: 122,
+      messages: [
+        {
+          id: 'native-session#m2',
+          turnId: 'native-session#t1',
+          role: 'user',
+          content: 'desktop prompt',
+          createdAt: 120,
+        },
+        {
+          id: 'native-session#m3',
+          turnId: 'native-session#t1',
+          role: 'assistant',
+          content: 'desktop answer',
+          createdAt: 122,
+        },
+      ],
+    },
+  ];
+
+  const response = await bridge.router.dispatch(
+    makeRequest('sync', 'turn/list', { threadId: thread.id, fromEnd: true }),
+  );
+  assert.ok('result' in response);
+  const result = response.result as TurnList;
+  assert.equal(result.total, 2);
+  assert.equal(result.turns[0]?.id, local.turnId);
+  assert.equal(result.turns[1]?.messages[0]?.content, 'desktop prompt');
+  assert.equal(result.turns[1]?.messages[1]?.content, 'desktop answer');
+
+  await bridge.stop();
+  await rm(baseDir, { recursive: true, force: true });
+});
+
 test('turn/send rejects a message with neither text nor attachments', async () => {
   const { bridge, baseDir } = await boot();
 

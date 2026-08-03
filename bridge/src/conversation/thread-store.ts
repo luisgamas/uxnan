@@ -58,6 +58,13 @@ interface StoredTurn {
   messages: StoredMessage[];
   createdAt: number;
   completedAt?: number;
+  /**
+   * Deterministic id assigned by {@link SessionHistoryReader} to the matching
+   * turn in the agent's native transcript. Bridge-created turns retain their
+   * public UUID; this private link prevents a later native-history refresh from
+   * importing the same turn a second time.
+   */
+  nativeHistoryTurnId?: string;
 }
 
 interface StoredThread {
@@ -112,6 +119,14 @@ export interface ThreadRuntime {
   cwd?: string;
   /** Persisted per-thread access (approval) mode, applied per turn. */
   accessMode?: AccessMode;
+}
+
+/** Result of merging an agent-owned transcript into one bridge thread. */
+export interface NativeHistoryReconcileResult {
+  /** Whether one or more genuinely external turns were imported or refreshed. */
+  changed: boolean;
+  /** Newly imported turn ids, in native transcript order. */
+  importedTurnIds: string[];
 }
 
 /** Narrow persistence boundary used to project mutable thread history into the
@@ -175,6 +190,108 @@ export class ThreadStore {
       if (turn) return toTurn(turn);
     }
     throw notFound(`turn not found: ${turnId}`);
+  }
+
+  /**
+   * Add completed turns that appeared in the agent's own session outside
+   * Uxnan (for example in Codex Desktop or a CLI attached to the same native
+   * session).
+   *
+   * Existing bridge turns remain authoritative: matching native turns are
+   * linked to their bridge UUID and never replace queue state, usage, ordered
+   * segments, or delivery status. A native-only turn keeps the reader's stable
+   * id and may be refreshed on a later read. Missing native turns are never
+   * deleted because compaction and temporary read failures can shorten a
+   * provider transcript without meaning that the user deleted history.
+   */
+  async reconcileNativeHistory(
+    threadId: string,
+    nativeTurns: Turn[],
+    now: number,
+  ): Promise<NativeHistoryReconcileResult> {
+    const captured = await this.#mutateMaybe(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      const candidates = nativeTurns.filter(
+        (turn) => turn.threadId === threadId && importableNativeTurn(turn),
+      );
+      if (candidates.length === 0) {
+        return {
+          result: {
+            reconcile: { changed: false, importedTurnIds: [] },
+            thread: undefined,
+          },
+          persist: false,
+        };
+      }
+
+      const claimed = new Set<StoredTurn>();
+      const importedTurnIds: string[] = [];
+      let refreshed = false;
+      let linked = false;
+
+      for (const native of candidates) {
+        let stored = thread.turns.find(
+          (turn) =>
+            !claimed.has(turn) && (turn.nativeHistoryTurnId === native.id || turn.id === native.id),
+        );
+        if (!stored) {
+          const fingerprint = nativeTurnFingerprint(native);
+          stored = thread.turns.find(
+            (turn) =>
+              !claimed.has(turn) &&
+              turn.status !== 'queued' &&
+              turn.status !== 'cancelled' &&
+              storedTurnFingerprint(turn) === fingerprint,
+          );
+        }
+
+        if (stored) {
+          claimed.add(stored);
+          if (stored.nativeHistoryTurnId === undefined) {
+            stored.nativeHistoryTurnId = native.id;
+            linked = true;
+          }
+          // Only native-imported rows are refreshed from native history. A
+          // bridge-created row may contain richer ordered segments and usage.
+          if (stored.id === native.id) {
+            const replacement = storedTurnFromNative(native);
+            replacement.nativeHistoryTurnId = native.id;
+            if (JSON.stringify(toTurn(stored)) !== JSON.stringify(toTurn(replacement))) {
+              const index = thread.turns.indexOf(stored);
+              thread.turns[index] = replacement;
+              claimed.delete(stored);
+              claimed.add(replacement);
+              refreshed = true;
+            }
+          }
+          continue;
+        }
+
+        const imported = storedTurnFromNative(native);
+        imported.nativeHistoryTurnId = native.id;
+        thread.turns.push(imported);
+        claimed.add(imported);
+        importedTurnIds.push(imported.id);
+      }
+
+      const changed = importedTurnIds.length > 0 || refreshed;
+      if (changed) {
+        // Native timestamps let an external turn land between two bridge turns
+        // if both clients wrote before the next refresh. V8's stable sort keeps
+        // equal/unknown timestamps in their prior order.
+        thread.turns.sort((a, b) => a.createdAt - b.createdAt);
+        thread.updatedAt = now;
+      }
+      return {
+        result: {
+          reconcile: { changed, importedTurnIds },
+          thread: changed ? structuredCloneThread(thread) : undefined,
+        },
+        persist: changed || linked,
+      };
+    });
+    if (captured.thread) await this.#captureMetrics(captured.thread);
+    return captured.reconcile;
   }
 
   async startThread(input: StartThreadInput, now: number): Promise<Thread> {
@@ -605,6 +722,23 @@ export class ThreadStore {
     );
     return run;
   }
+
+  /** Serialized mutation that may prove to be a no-op and skip the disk write. */
+  #mutateMaybe<T>(
+    fn: (threads: StoredThread[]) => Promise<{ result: T; persist: boolean }>,
+  ): Promise<T> {
+    const run = this.#lock.then(async () => {
+      const threads = await this.#read();
+      const outcome = await fn(threads);
+      if (outcome.persist) await this.#state.writeJson(DAEMON_FILES.threads, threads);
+      return outcome.result;
+    });
+    this.#lock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
 }
 
 /** Project one mutable stored thread into stable ledger rows. */
@@ -699,6 +833,65 @@ function toMessage(message: StoredMessage): Message {
 
 function structuredCloneThread(thread: StoredThread): StoredThread {
   return JSON.parse(JSON.stringify(thread)) as StoredThread;
+}
+
+/** Convert a reader-owned wire turn into the private persisted shape. */
+function storedTurnFromNative(turn: Turn): StoredTurn {
+  const stored: StoredTurn = {
+    id: turn.id,
+    threadId: turn.threadId,
+    status: turn.status,
+    messages: turn.messages.map((message) => ({
+      id: message.id,
+      turnId: turn.id,
+      role: message.role,
+      text: typeof message.content === 'string' ? message.content : '',
+      ...(message.thinking !== undefined ? { thinking: message.thinking } : {}),
+      ...(message.blocks !== undefined ? { blocks: structuredCloneValue(message.blocks) } : {}),
+      ...(message.segments !== undefined
+        ? { segments: structuredCloneValue(message.segments) }
+        : {}),
+      ...(message.usage !== undefined ? { usage: { ...message.usage } } : {}),
+      createdAt: message.createdAt,
+    })),
+    createdAt: turn.createdAt,
+    ...(turn.completedAt !== undefined ? { completedAt: turn.completedAt } : {}),
+  };
+  return stored;
+}
+
+/** Native history is imported only once a meaningful assistant result exists. */
+function importableNativeTurn(turn: Turn): boolean {
+  return turn.messages.some(
+    (message) =>
+      message.role === 'assistant' &&
+      ((typeof message.content === 'string' && message.content.trim().length > 0) ||
+        (message.thinking?.trim().length ?? 0) > 0 ||
+        (message.blocks?.length ?? 0) > 0),
+  );
+}
+
+/** Content identity used to link a bridge UUID to the same native-log turn. */
+function nativeTurnFingerprint(turn: Turn): string {
+  return turn.messages
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => `${message.role}\u0000${normalizeHistoryText(message.content)}`)
+    .join('\u0001');
+}
+
+function storedTurnFingerprint(turn: StoredTurn): string {
+  return turn.messages
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => `${message.role}\u0000${normalizeHistoryText(message.text)}`)
+    .join('\u0001');
+}
+
+function normalizeHistoryText(value: unknown): string {
+  return typeof value === 'string' ? value.trim().replace(/\r\n/g, '\n') : '';
+}
+
+function structuredCloneValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function notFound(message: string): RpcError {

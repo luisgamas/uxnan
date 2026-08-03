@@ -173,7 +173,7 @@ interface IAgentAdapter {
   listCommands?(cwd?: string): Promise<AgentCommand[]>;         // name, description?, argumentHint?, source, headlessSupported?
   expandCommand?(name: string, args?: string, cwd?: string): Promise<string>;  // solo custom prompt-template agents; nativos (Claude/ACP) no lo implementan
 
-  // Identidad de la sesion nativa del agente (para fallback on-disk en turn/list)
+  // Native session identity used for completed-turn convergence in turn/list.
   nativeSessionId?(threadId: string): string | null;
 
   // Git
@@ -1631,7 +1631,7 @@ bridge/
 │   │                               #   resolve-<agente>, spawn
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
 │   ├── agents/attachments.ts       # imagenes inline → archivos en el cwd
-│   ├── conversation/               # thread-store, session-history (fallback JSONL)
+│   ├── conversation/               # thread-store, native-session history convergence
 │   ├── git/                        # git-runner, git-service
 │   ├── workspace/                  # workspace-service, browse-service, checkpoint-service, path-guard
 │   ├── push/                       # push-service, push-sender (FCM directo)
@@ -1845,38 +1845,45 @@ los estados git (added/modified/deleted/untracked) conservan su color
 convencional. El ADE de escritorio replica el atenuado con su propio
 `FsEntry.ignored` (tipo local, vía git2 `is_path_ignored`).
 
-#### 5.8.8 Fallback JSONL (session-jsonl-history)
+#### 5.8.8 Native-session history convergence
 
-Cuando el runtime del agente no tiene datos frescos de `thread/turns/list`, el bridge lee directamente de los archivos de sesion en disco de cada agente:
+`turn/list` reconciles the agent-owned transcript before reading the bridge
+store whenever that thread has no bridge-driven turn in flight. This is not an
+empty-store fallback: it runs on every idle read so completed turns written from
+another client attached to the same native session converge into Uxnan.
 
-```javascript
-// src/session-jsonl-history.js
-// Parsea los archivos de sesion en disco por agente (cada CLI usa su propio formato):
-// - Codex:        ~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl
-//                 (JSONL, payloads {type:'message', role, content:[{type:'input_text'|'output_text',text}]})
-// - Claude Code:  ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
-//                 (JSONL, lineas {type:'user'|'assistant', message:{role, content:[{type:'text'|'thinking'|...}]}})
-// - pi-agent:     ~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl
-//                 (JSONL, lineas {type:'message', message:{role, content:[{type:'text',text}]}})
-// - OpenCode:     JSON store (no SQLite) bajo
-//                 ~/.local/share/opencode/storage/{message,part}/<sessionId>/<msgId>.json
-// - Gemini CLI:   ~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json
-//                 (un JSON por snapshot: { sessionId, projectHash, startTime,
-//                   lastUpdated, messages:[{id, timestamp, type:'user'|'gemini'|
-//                   'info'|'error', content (string | [{text}]), thoughts?}] });
-//                 <shortId> = primeros 8 chars hex del UUID (sin guiones);
-//                 multiples snapshots por session id se mergean deduplicados
-//                 por message id y ordenados por timestamp.
-//
-// El agente expone nativeSessionId(threadId) en IAgentAdapter y
-// AgentManager lo persiste via ThreadStore.setAgentSession al cierre de cada
-// turn, para que el bridge pueda localizar el archivo tras un restart.
+| Agent | Authoritative readable source | Support |
+|---|---|---|
+| Codex | `~/.codex/sessions/<Y>/<M>/<D>/rollout-<ts>-<sessionId>.jsonl` | Codex Desktop/CLI completed turns |
+| Claude Code | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | completed CLI turns |
+| pi | `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<sessionId>.jsonl` | completed CLI turns |
+| OpenCode | local `opencode serve` `GET /session/:id/message`; legacy JSON-store fallback | OpenCode Desktop/CLI completed turns across current SQLite and older installs |
+| Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP session turns |
+| Grok | `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl` | ACP turns closed by `turn_completed` only |
+| Antigravity | none | unsupported: `agy` has no history/export API and its SQLite step payloads are opaque |
+| Gemini CLI | legacy JSON snapshots only | deprecated compatibility reader; never a new mobile surface |
 
-async function readHistoryFromDisk(threadId, { cursor, limit }) {
-  // Soporta paginacion por cursor y limit
-  // Mantiene cache de paths de rollout por thread con TTL 60s
-}
-```
+`IAgentAdapter.nativeSessionId(threadId)` supplies the native identity and
+`AgentManager` persists it through `ThreadStore.setAgentSession`. Reconciliation
+then follows these rules:
+
+- bridge-owned turns keep their UUID and remain authoritative for ordered
+  segments, queue state, usage and delivery status;
+- a matching native turn is linked by a private deterministic history id rather
+  than inserted twice;
+- completed native-only user/assistant pairs are imported and can be refreshed
+  on a later read;
+- user-only/in-progress native turns are ignored until an assistant result is
+  durable;
+- missing or temporarily unreadable native rows never delete bridge history;
+- native history is not read while the bridge itself is streaming that thread,
+  preventing a half-flushed record from being frozen as an external turn.
+
+The wire shape and offset pagination of `turn/list` do not change. This provides
+near-real-time **completed-turn convergence**, not token streaming from the
+external client. The active Mobile conversation polls the newest page every
+three seconds while connected and idle; navigation, reconnect and lifecycle
+resume also trigger immediate reads.
 
 #### 5.8.9 Account status sanitizado
 

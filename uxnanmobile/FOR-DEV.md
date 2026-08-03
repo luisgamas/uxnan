@@ -72,7 +72,12 @@ connected to live bridge data, validated on-device against a real bridge.
   completed turn **reconciles via `turn/read`** so the stored message converges
   to the bridge's exact text↔work-log interleave. `beforeText`-flagged blocks
   (parallel/subagent activity) slot before the open text run, never splitting a
-  sentence mid-word.
+  sentence mid-word. The connected active idle conversation also polls its
+  newest `turn/list` page every three seconds, so completed turns written from a
+  supported native agent client appear without reopening the screen. Both the
+  external user prompt and assistant reply persist; Mobile-authored prompts are
+  matched by turn id instead of duplicated. This is completed-turn convergence,
+  not cross-client token streaming; Antigravity has no readable history source.
 - **Message queue** — a follow-up sent while the agent is working joins the
   thread's queue (owned by the bridge, so it drains with the app closed) instead
   of being blocked. A floating **"Queue message"** action appears above the

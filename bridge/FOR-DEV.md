@@ -101,8 +101,10 @@ push validation (FOR-HUMAN).
   and referenced relatively, since every agent refuses a path outside its
   workspace). Accepted by every wired agent (`capabilities.images`) except the
   echo demo; see `docs/agents.md` → *Image attachments*.
-- **On-disk `turn/list` history fallback** for Claude / Codex / OpenCode / pi /
-  Gemini JSONL/JSON stores.
+- **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
+  Zero and Grok. Every idle read merges completed native-only turns into the
+  bridge store; OpenCode uses its official local server endpoint and the other
+  agents use their persisted transcripts. Gemini remains legacy-read-only.
 - **Bridge control** — `bridge/status` (real `relayConnected`),
   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
   registration), `bridge/trustedDevices`, `bridge/connectedPhones`,
@@ -256,12 +258,11 @@ push validation (FOR-HUMAN).
 
 ## Conversation history
 
-- [ ] **On-disk history fallback — ordered `segments`.** The live/stored path
+- [ ] **Native-session history — ordered `segments`.** The live/stored path
       (`thread-store.ts`) emits `Message.segments` (interleaved text↔work-log
       order), so a phone reconnecting to a still-running bridge recovers the real
-      order. The **on-disk `turn/list` fallback** (`session-history.ts`, used only
-      after a bridge restart with an empty `threads.json`) still emits
-      `content` + `blocks` separately, so a recovered turn renders blocks-first
+      order. The native-history readers in `session-history.ts` still emit
+      `content` + `blocks` separately, so an imported external turn renders blocks-first
       (the phone falls back to `_assistantContents`). Reconstruct `segments` from
       each CLI log's real text↔tool order (Claude `tool_use` is interleaved in the
       assistant `content`; Codex/pi attach tool blocks after the text; OpenCode
@@ -300,11 +301,6 @@ push validation (FOR-HUMAN).
       phone shows no context meter for Zero. Read usage from `zero usage` (or Zero's
       on-disk session store) and emit `usage` on `stream/turn/completed` so the meter
       lights up. See the `FOR-DEV:` marker in `zero-adapter.ts`.
-- [ ] **Zero on-disk history fallback** — there is no `SessionHistoryReader` for
-      Zero's ACP sessions yet, so a `turn/list` after a bridge restart returns nothing
-      for a Zero thread (live/in-memory history still works). Parse Zero's on-disk ACP
-      session store (via `session/load`) and wire it into `session-history.ts` like the
-      Claude/Codex/OpenCode/pi readers.
 - [ ] **Interactive `ask_user` for Zero** — Zero's `ask_user` tool is **non-interactive
       over ACP**: Zero's ACP agent (`internal/acp/agent.go`) wires no `OnAskUser` handler,
       so the loop auto-completes the call with "proceed with your best assumption" and
@@ -328,12 +324,6 @@ push validation (FOR-HUMAN).
       `reportsContextUsage:false` (no per-turn usage was observed over ACP). If Grok
       exposes usage (its `/context` command implies it tracks it), emit `usage` on
       `stream/turn/completed` so the phone's context meter lights up.
-- [ ] **Grok on-disk history fallback** — there is no `SessionHistoryReader` for
-      Grok's ACP sessions yet, so a `turn/list` after a bridge restart returns nothing
-      for a Grok thread (live/in-memory history still works). Parse Grok's on-disk
-      session store (`~/.grok/…`, via `session/load`) and wire it into
-      `session-history.ts` like the Claude/Codex/OpenCode/pi readers (the Gemini
-      reader is legacy-only and not a template for new work).
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot
@@ -352,15 +342,15 @@ or `zero-adapter.ts` (JSON-RPC over stdio) or `opencode-adapter.ts` (HTTP/SSE ov
    injection).
 3. Register it in `startBridge` with display metadata + availability. Then wire it
    into `agent/models` (discovery), the `*-tools.ts` block mapper (structured
-   content), `SessionHistoryReader` (on-disk `turn/list` fallback), and approvals if
+   content), `SessionHistoryReader` (native-session `turn/list` convergence), and approvals if
    the CLI exposes a pre-tool channel.
 
-- [ ] **Antigravity on-disk history fallback** — like Grok, `AntigravityAdapter`
-      has no `SessionHistoryReader`, so a `turn/list` after a bridge restart falls
-      back to the bridge's own thread store (live/in-memory history still works). If
-      an on-disk reader is wanted, parse `agy`'s conversation store
-      (`~/.gemini/antigravity-cli/…`) and wire it into `session-history.ts` like the
-      Claude/Codex/OpenCode/pi readers.
+- [ ] **Antigravity native-session history** — `agy` exposes no history/export
+      command and its `~/.gemini/antigravity-cli/conversations/<uuid>.db` stores
+      opaque step payloads, so `SessionHistoryReader` deliberately does not infer
+      messages from it. Revisit only if Antigravity exposes a stable supported
+      transcript API or documented payload schema; do not reverse-engineer
+      brittle blobs into user-visible history.
 
 ## Daemon lifecycle & ops
 

@@ -399,6 +399,7 @@ El MVP debe cumplir los siguientes módulos completos:
 |---|---|
 | Soporte Claude Code | Alta |
 | Context-compaction milestones from native agent signals | Done |
+| Completed-turn convergence from native agent clients | Done |
 | Soporte pi-agent | Media |
 | SSH Terminal | Media |
 | Workspace checkpoints | Media |

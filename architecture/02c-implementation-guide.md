@@ -380,19 +380,23 @@ function watchSession(sessionId, onEvent) {
 }
 ```
 
-**Almacenamiento SQLite de OpenCode:**
-OpenCode guarda sesiones en `~/.opencode/sessions.db`. Como fallback, el adaptador puede leer directamente:
+**OpenCode persisted-session history:**
+Current OpenCode releases use a shared SQLite store, but the bridge never binds
+to its private database schema. The same per-workspace `opencode serve` process
+used for turns exposes the supported message boundary:
 ```javascript
-const OPENCODE_DB_PATH = path.join(process.env.HOME, '.opencode', 'sessions.db');
-
-async function readSessionsFromSQLite(options) {
-  // Usa better-sqlite3 en modo read-only
-  const db = new Database(OPENCODE_DB_PATH, { readonly: true });
-  const rows = db.prepare('SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?')
-    .all(options.limit || 50);
-  return rows.map(mapRowToThread);
+async function readOpenCodeMessages(baseUrl, sessionId) {
+  const response = await fetch(
+    `${baseUrl}/session/${encodeURIComponent(sessionId)}/message`,
+  );
+  if (!response.ok) throw new Error(`OpenCode history: ${response.status}`);
+  return response.json(); // [{ info, parts }]
 }
 ```
+
+`SessionHistoryReader` maps only completed assistant records and merges them on
+every idle `turn/list`. The older JSON message/part store remains a compatibility
+fallback; direct SQLite reads are deliberately avoided.
 
 **Capacidades declaradas:**
 ```javascript

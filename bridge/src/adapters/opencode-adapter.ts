@@ -242,6 +242,16 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return this.#sessionByThread.get(threadId);
   }
 
+  /**
+   * Read a persisted OpenCode session through the official serve API. This is
+   * also able to see turns written by OpenCode Desktop/another CLI because all
+   * clients share OpenCode's session database.
+   */
+  async readSessionMessages(sessionId: string, cwd?: string): Promise<unknown[]> {
+    const server = await this.#ensureServer(cwd ?? this.#defaultCwd);
+    return server.getMessages(sessionId);
+  }
+
   constructor(options: OpenCodeAdapterOptions = {}) {
     super();
     this.#binaryPath = options.binaryPath ?? 'opencode';

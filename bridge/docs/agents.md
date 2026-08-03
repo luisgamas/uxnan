@@ -111,10 +111,32 @@ deduplicated, while divergent final text becomes another response instead of
 replacing content already streamed. Mobile excludes boundary metadata from
 copy/previews and uses it only to collapse earlier responses after completion.
 
-Each runs in the thread's `cwd`. Codex's `exec-server`/`mcp-server` modes are
-**not** used for turns — the one-shot `codex exec` entry point drives them — but
-the bridge does spawn `codex app-server` once to enumerate models (`initialize`
-→ `model/list`, the same source the desktop app uses). Binary resolution
+### Native-session history convergence
+
+`turn/list` is more than a bridge-store read. When the bridge is not currently
+driving a turn for that thread, it reads the matching agent-owned transcript and
+merges completed native-only turns before paging the result. This makes a prompt
+written in an agent's desktop app or CLI appear back in Uxnan Mobile.
+
+| Agent | Native history source | Cross-client behavior |
+|---|---|---|
+| Codex | `~/.codex/sessions/.../rollout-*-<sessionId>.jsonl` | Codex Desktop/CLI completed turns converge |
+| OpenCode | `GET /session/:id/message` from the per-workspace `opencode serve` process; legacy JSON store fallback | OpenCode Desktop/CLI completed turns converge |
+| Claude Code | `~/.claude/projects/.../<sessionId>.jsonl` | completed CLI turns converge |
+| pi | `~/.pi/agent/sessions/..._<sessionId>.jsonl` | completed CLI turns converge |
+| Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP turns converge |
+| Grok | `~/.grok/sessions/.../<sessionId>/updates.jsonl` | only turns closed by ACP `turn_completed` converge |
+| Antigravity | no reliable source | unsupported: the SQLite step payloads are opaque and `agy` has no history/export command |
+
+Bridge-created turns keep their public UUID and richer ordered segments, queue
+state and usage. A deterministic native-history id is stored only as a private
+link, preventing the same turn from being imported twice. Native-only turns are
+refreshed on later reads, but absent native rows never delete bridge history.
+This is completed-turn convergence: external token deltas are not streamed.
+
+Each agent runs in the thread's `cwd`. Codex turns and model discovery both use
+the long-lived `codex app-server` (`thread/start` / `turn/start` and
+`initialize` → `model/list`). Binary resolution
 (`resolve-*.ts`) prefers a directly-spawnable executable (native binary or
 `node <cli.js>`) so `shell:false` always holds.
 
@@ -289,6 +311,7 @@ once per turn) or a **long-lived server** (`codex-adapter.ts`/`zero-adapter.ts`/
 `grok-adapter.ts` over stdio JSON-RPC, `opencode-adapter.ts` over `opencode serve`
 HTTP/SSE, when the CLI exposes a pre-tool approval channel). Adjust the args/request builder + event parser, register it in
 `startBridge`, then wire it into `agent/models` (discovery), the `*-tools.ts` block
-mapper (structured content), `SessionHistoryReader` (on-disk `turn/list` fallback),
+mapper (structured content), `SessionHistoryReader` (native-session `turn/list`
+convergence),
 and approvals if the CLI exposes a pre-tool channel. Test it like the existing
 adapters and validate per [`testing.md`](./testing.md).

@@ -113,7 +113,13 @@ and composed in `application_providers.dart`. The important ones:
 4. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.
-5. The UI watches the derived stream providers and rebuilds reactively. During
+5. While the channel is connected, `ThreadManager` polls `turn/list` for the
+   active idle conversation every three seconds. The bridge reconciles the
+   agent-owned native transcript first, so completed turns written from another
+   supported client arrive as ordinary user + assistant messages. Concurrent
+   reconnect/navigation/resume reads are deduplicated, local user messages are
+   matched by turn id, and no polling occurs while the bridge owns a live turn.
+6. The UI watches the derived stream providers and rebuilds reactively. During
    streaming every assistant response stays visible; after completion, earlier
    progress responses fold under the localized **N previous messages** disclosure.
 

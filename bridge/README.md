@@ -108,6 +108,15 @@ Codex, Claude and pi also emit durable assistant-response boundaries. The
 bridge reconciles terminal payloads additively, preserving every progress and
 final message in native order instead of replacing the turn with its last item.
 
+The conversation is also shared with the agent's own clients. On every idle
+`turn/list`, the bridge merges completed native-session turns that were written
+outside Uxnan: Codex Desktop/CLI, OpenCode Desktop, Claude Code, pi, Zero and
+Grok are supported. Existing bridge turns remain authoritative and are linked
+rather than duplicated. OpenCode is read through its official local server API;
+the others use their persisted session logs. Antigravity is the explicit gap:
+`agy` exposes neither a readable transcript nor a history export, so no history
+is inferred from its opaque database.
+
 `gemini-cli` remains a deprecated, unavailable descriptor only for legacy
 configuration and history compatibility. The bridge does not resolve or spawn
 it, install its hook, advertise models/commands, or accept new threads/turns.

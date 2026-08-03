@@ -169,8 +169,6 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       if (count > 0) logger.info(`cancelled ${count} queued turn(s) left by a previous run`);
     })
     .catch((err: unknown) => logger.warn(`failed to close orphaned queued turns: ${String(err)}`));
-  // Reads agent on-disk session logs when the store has no turns (§5.8.8).
-  const sessionHistory = new SessionHistoryReader();
   // Single source of the pairing payload — shared by the QR and the manual-code
   // resolve endpoint, so both hand out identical pairing data.
   const buildPairingPayload = (): PairingPayload =>
@@ -229,24 +227,22 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
   // the bridge's `requestApproval` flow — see `opencode-server.ts`).
   const openCodeSettings = config.agents.opencode ?? {};
   const openCode = resolveOpenCodeBinary(openCodeSettings.binaryPath);
-  agentManager.register(
-    new OpenCodeAdapter({
-      binaryPath: openCode.binaryPath,
-      // Route OpenCode's `permission.asked` elicitations to the bridge's shared
-      // approval round-trip (the same one the Claude PreToolUse hook, Codex
-      // app-server, and Echo demo use).
-      onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
-      // Route OpenCode's `question.asked` (the agent's multiple-choice tool) to
-      // the phone's question card and back.
-      onQuestionRequest: (threadId, questions) => agentManager.requestQuestion(threadId, questions),
-      ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
-    }),
-    {
-      displayName: 'OpenCode',
-      available: openCode.available,
-      ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
-    },
-  );
+  const openCodeAdapter = new OpenCodeAdapter({
+    binaryPath: openCode.binaryPath,
+    // Route OpenCode's `permission.asked` elicitations to the bridge's shared
+    // approval round-trip (the same one the Claude PreToolUse hook, Codex
+    // app-server, and Echo demo use).
+    onApprovalRequest: (threadId, info) => agentManager.requestApproval(threadId, info),
+    // Route OpenCode's `question.asked` (the agent's multiple-choice tool) to
+    // the phone's question card and back.
+    onQuestionRequest: (threadId, questions) => agentManager.requestQuestion(threadId, questions),
+    ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+  });
+  agentManager.register(openCodeAdapter, {
+    displayName: 'OpenCode',
+    available: openCode.available,
+    ...(openCodeSettings.model !== undefined ? { defaultModel: openCodeSettings.model } : {}),
+  });
   // Claude Code: real agent driven via `claude -p --output-format stream-json` (see FOR-DEV.md).
   const claudeSettings = config.agents['claude-code'] ?? {};
   const claude = resolveClaudeBinary(claudeSettings.binaryPath);
@@ -411,6 +407,13 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(grokSettings.model !== undefined ? { defaultModel: grokSettings.model } : {}),
     },
   );
+  // Agent-owned history is consulted on every idle `turn/list` so work written
+  // from another client attached to the same native session converges back into
+  // Uxnan. OpenCode is read through its official serve API (current releases
+  // use SQLite); the other supported agents use their documented local logs.
+  const sessionHistory = new SessionHistoryReader({
+    openCodeMessages: (sessionId, cwd) => openCodeAdapter.readSessionMessages(sessionId, cwd),
+  });
   const startedAt = now();
 
   // Live relay-connection state, mutated by the relay serve loop below and read

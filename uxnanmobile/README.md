@@ -72,6 +72,12 @@ this app:
   available from the phone. While a reply is pending, its waiting label has a
   subtle skeleton sweep; after the first token only the live loader remains,
   moving after the latest streamed token like a writing cursor.
+- **One native session, whichever client you use.** Keep a conversation open in
+  Mobile and completed turns written from Codex Desktop/CLI, OpenCode Desktop,
+  Claude Code, pi, Zero or Grok join the same timeline within a few seconds.
+  Mobile stores both the external prompt and its answer without duplicating its
+  own messages. Antigravity is excluded because `agy` has no reliable readable
+  transcript; cross-client token streaming is not claimed.
 - **Your activity, at a glance.** A profile with a GitHub-style contribution
   heatmap and stat tiles — conversations, agents used, time connected, longest
   session and more — aggregated **locally** across every paired PC, plus a

@@ -29,6 +29,7 @@ class FakeServer implements IOpenCodeServer {
   readonly replies: { id: string; reply: PermissionReply }[] = [];
   readonly rejectedQuestions: string[] = [];
   readonly questionReplies: { id: string; answers: string[][] }[] = [];
+  messages: unknown[] = [];
   lastPermission: OpenCodePermissionRule[] | undefined;
   nextSessionId = 'ses_1';
 
@@ -44,6 +45,9 @@ class FakeServer implements IOpenCodeServer {
   promptAsync(sessionId: string, body: OpenCodePromptBody): Promise<void> {
     this.prompts.push({ sessionId, body });
     return Promise.resolve();
+  }
+  getMessages(): Promise<unknown[]> {
+    return Promise.resolve(this.messages);
   }
   abort(sessionId: string): Promise<void> {
     this.aborted.push(sessionId);
@@ -76,6 +80,13 @@ class FakeServer implements IOpenCodeServer {
     for (const l of this.#listeners) l({ type, properties });
   }
 }
+
+test('readSessionMessages uses the official serve history endpoint', async () => {
+  const server = new FakeServer();
+  server.messages = [{ info: { id: 'm1', role: 'user' }, parts: [] }];
+  const adapter = makeAdapter(server);
+  assert.deepEqual(await adapter.readSessionMessages('ses_external', '/repo'), server.messages);
+});
 
 /** A spawnFn whose child closes immediately with empty output (for `opencode models --verbose`). */
 function immediateSpawn(feed?: string[]): (command: string, args: string[]) => SpawnedProcess {
