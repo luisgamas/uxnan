@@ -2549,6 +2549,51 @@ pub async fn github_ai_draft_pr(
         .map_err(CommandError::from)
 }
 
+/// What the app knows about its own diagnostics (see `diagnostics.rs`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsReport {
+    /// Absolute path of the live log file, so a bug report can point at it.
+    /// `None` when the sink failed to initialize.
+    pub log_path: Option<String>,
+    /// Whether the previous session ended without reaching its clean exit path.
+    pub previous_session_unclean: bool,
+}
+
+/// Record one line from the webview into the app's log.
+///
+/// This is how a frontend exception — the failure mode that leaves the window
+/// blank while the process stays perfectly healthy, and which no OS crash
+/// report ever captures — reaches the same timeline as the backend's own
+/// events. Input is untrusted and sanitized by `diagnostics`; an unknown level
+/// is recorded as an error rather than dropped.
+#[tauri::command]
+pub fn diagnostics_log(level: String, source: String, message: String) {
+    crate::diagnostics::log(crate::diagnostics::Level::parse(&level), &source, &message);
+}
+
+/// Where the log lives, and whether the last session died without saying so.
+///
+// FOR-DEV: nothing in the UI consumes this yet. Surfacing "the previous session
+// ended unexpectedly — open the log / your scrollback was not saved" belongs in
+// the shell (a dismissible notice) and in Settings (a "reveal log" action), but
+// that is user-facing UI and this change set is deliberately instrumentation
+// only, so the recording lands first and the presentation is reviewed on its
+// own. See `uxnandesktop/FOR-DEV.md`.
+#[tauri::command]
+pub fn diagnostics_report() -> DiagnosticsReport {
+    match crate::diagnostics::sink() {
+        Some(sink) => DiagnosticsReport {
+            log_path: Some(sink.log_path().to_string_lossy().into_owned()),
+            previous_session_unclean: sink.previous_session_unclean(),
+        },
+        None => DiagnosticsReport {
+            log_path: None,
+            previous_session_unclean: false,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

@@ -21,9 +21,10 @@ side validated against captured real GitHub data — `docs/github-validation.md`
 **"Open with" external editors/IDEs**, **automations**, **pets**, **a reproducible
 resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
-background consumers**, `docs/resource-mode.md`). 477 Rust tests (449 unit + 28
+background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
+(`docs/diagnostics.md`). 488 Rust tests (460 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 726 frontend Vitest tests (719 passing + 7 platform-skipped) across two
+probe) + 739 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -255,6 +256,27 @@ started.**
   See [`docs/resource-benchmarks.md`](docs/resource-benchmarks.md).
   **Caveats: only Windows has been run on real hardware; R07/R08 still need an
   operator; the gate is warn-only.** See "Resource benchmarks — follow-ups".
+
+## Diagnostics — follow-ups ☐
+
+**The recording is complete** (rolling log, panic hook, uncaught-frontend-error
+capture, unclean-shutdown marker; `docs/diagnostics.md`). What is left is
+surfacing it, which is UI and is therefore reviewed on its own rather than
+smuggled into an instrumentation change.
+
+- [ ] **Tell the user when the previous session ended unexpectedly.**
+      `diagnostics_report()` already answers it and nothing consumes the answer.
+      Wanted: a dismissible notice in the shell ("the previous session ended
+      unexpectedly — terminal scrollback from it was not saved") and a Settings
+      action to reveal the log in the file manager. Marker at the command in
+      `src-tauri/src/commands.rs` (`diagnostics_report`).
+- [ ] **Decide whether an agent's terminal death deserves its own log line.**
+      An agent CLI running inside a uxnan terminal cannot tell an app crash from
+      a force-close from a dead PTY host, which is exactly what made the
+      2026-08-02 cut sessions unfalsifiable. Recording PTY child exits (pid,
+      exit status, whether uxnan asked for it) would separate those three, but
+      it needs a rate limit — a busy session spawns and reaps constantly — so it
+      is deliberately not part of the first pass.
 
 ## Resource benchmarks — follow-ups ☐
 

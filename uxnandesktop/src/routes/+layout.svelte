@@ -15,6 +15,7 @@
   import { usage } from "$lib/state/usage.svelte";
   import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
+  import { installErrorReporter } from "$lib/utils/errorReporter";
   import { TooltipProvider } from "$lib/components/ui/tooltip";
   import PetWindow from "$lib/components/PetWindow.svelte";
 
@@ -44,6 +45,12 @@
       document.body.style.background = "transparent";
       return;
     }
+    // First thing in the main window: capture uncaught frontend failures into
+    // the app's log. A render error that blanks the window leaves no OS crash
+    // report and no minidump — the evidence exists only here, and only until
+    // the window goes away. Installed before `app.init()` so a failure during
+    // hydration is recorded too.
+    const uninstallErrorReporter = installErrorReporter();
     void (async () => {
       await app.init();
       if (app.backend === "ready") {
@@ -75,6 +82,7 @@
     return () => {
       window.removeEventListener("focus", onFocus);
       uninstallPointerLockGuard();
+      uninstallErrorReporter();
     };
   });
 

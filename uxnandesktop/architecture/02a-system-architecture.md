@@ -1,7 +1,7 @@
 # 02a — Arquitectura del Sistema
 
 > Documento de arquitectura del sistema para el Uxnan Desktop ADE.
-> Cubre el modelo de tres actores, modelo de datos, navegacion, layout, review, conexiones y persistencia.
+> Cubre el modelo de tres actores, modelo de datos, navegacion, layout, review, conexiones, persistencia y diagnostico post-mortem (§7.3.1).
 > Derivado de las secciones 2, 3, 4, 6.3 y 7 del documento de arquitectura original.
 
 ---
@@ -742,6 +742,35 @@ Los cambios de layout (mover splits, redimensionar panes, crear/cerrar tabs) son
 | Scrollback de terminal | Si | Por pane, hasta 50MB por worktree |
 | Configuracion y preferencias | Si | En el store principal, escritura atomica |
 | Credenciales y secretos | Si | **Encriptados** via `tauri-plugin-stronghold` o keyring del OS |
+| Registro de diagnostico | Si | `logs/uxnan-desktop.log` en el directorio de datos: rotacion a 2 MiB, 3 rotaciones (~8 MiB acotado) |
+
+### 7.3.1 Diagnostico post-mortem
+
+El ADE hospeda terminales de agentes en vivo, asi que un fallo puede costar
+trabajo real — y un fallo que no deja rastro no se puede corregir. Por eso el
+backend escribe su **propio registro** en `<datos>/logs/`, con una sola linea de
+tiempo compartida entre los dos actores que pueden fallar:
+
+- **Rust**: arranque (version, SO, arquitectura), cierre limpio, errores de
+  persistencia y del servidor de hooks, y un **hook de panic** que escribe el
+  panic antes de que el proceso muera (encadena al hook previo, no lo sustituye).
+- **Webview**: excepciones no capturadas y promesas rechazadas, reenviadas por el
+  comando `diagnostics_log`. Es el unico modo de fallo que antes no dejaba
+  evidencia alguna: un error de render deja la ventana en blanco mientras el
+  proceso sigue sano, de modo que el SO no registra ningun crash y WebView2 no
+  escribe minidump.
+
+Un **marcador de sesion** (`logs/session.active`) existe mientras la sesion corre
+y se borra en la ruta de cierre limpio, de modo que el siguiente arranque sabe si
+la sesion anterior murio sin avisar — el mismo hecho que explica un scrollback de
+terminal ausente, ya que este solo se persiste en la ruta limpia.
+
+No es telemetria: nada sale de la maquina. Nunca se registran tokens, prompts,
+salida de terminal ni contenido de archivos, y todo mensaje que llega desde el
+webview se trata como entrada no confiable (acotado, sin caracteres de control y
+sin saltos de linea, para que un valor lanzado no pueda falsificar lineas del
+registro). Implementacion en `src-tauri/src/diagnostics.rs` y
+`src/lib/utils/errorReporter.ts`; guia en `docs/diagnostics.md`.
 
 ### 7.4 Migraciones de Esquema
 
