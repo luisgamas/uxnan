@@ -6,8 +6,10 @@ which tracks assets only a human can provide.)
 
 > The implemented surface is documented in [`README.md`](README.md) +
 > [`docs/`](docs/) and the phase plan in
-> [`architecture/04-technical-reference.md`](architecture/04-technical-reference.md);
-> this file tracks only what's left.
+> [`architecture/04-technical-reference.md`](architecture/04-technical-reference.md).
+> **`## Status` below is this component's canonical implementation status** (the
+> root `AGENTS.md` points here instead of keeping its own inventory); everything
+> after it tracks what's left.
 
 ## Status
 

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/luisgamas/uxnan/stargazers"><img src="https://img.shields.io/github/stars/luisgamas/uxnan?style=flat-square&color=f5c518&label=stars" alt="GitHub stars" /></a>
+  <a href="https://github.com/luisgamas/uxnan/releases"><img src="https://img.shields.io/github/downloads/luisgamas/uxnan/total?style=flat-square&color=f5c518&label=downloads" alt="Total downloads" /></a>
   <a href="https://github.com/luisgamas/uxnan/releases/latest"><img src="https://img.shields.io/github/v/release/luisgamas/uxnan?style=flat-square&label=desktop%20release&color=2ea44f" alt="Latest desktop release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MPL--2.0-2ea44f?style=flat-square" alt="License MPL-2.0" /></a>
   <img src="https://img.shields.io/badge/platforms-Windows_%C2%B7_macOS_%C2%B7_Linux_%C2%B7_Android-6e7681?style=flat-square" alt="Platforms" />

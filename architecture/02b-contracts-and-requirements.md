@@ -107,7 +107,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 68 metodos request/response** + 10 notificaciones de streaming
+> **Total: 69 metodos request/response** + 10 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -173,7 +173,7 @@ mientras trabajan.
   Ausente = asumir que no. Verificado en vivo contra un bridge previo a esta
   funcionalidad.
 
-**Git (18):**
+**Git (20):**
 ```
 git/status              -> estado del repo (files, ahead/behind, diffTotals)
 git/diff                -> diff de un path o del workspace completo
@@ -251,7 +251,7 @@ notifications/update            -> actualizar preferencias de notificacion (Repl
 notifications/unregister        -> desregistrar el telefono
 ```
 
-**Control del bridge (7):**
+**Control del bridge (6):**
 ```
 bridge/status                    -> snapshot de estado del bridge (incluye relayConnected,
                                     version y, del chequeo npm de fondo, latestVersion/updateAvailable)
