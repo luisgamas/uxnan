@@ -17,6 +17,19 @@ export interface ImageContent {
 }
 
 /**
+ * A local file reference resolved by the bridge for the Mobile file viewer.
+ * `cwd + path` is directly consumable by the existing workspace read/image and
+ * git/diff methods, even when the file lives in a different worktree from the
+ * conversation that mentioned it.
+ */
+export interface WorkspaceFileTarget {
+  /** Absolute viewer root: the conversation cwd, containing git root, or file directory. */
+  cwd: string;
+  /** File path relative to {@link cwd}, always with POSIX separators. */
+  path: string;
+}
+
+/**
  * An image (or other media) attached to a user turn (`turn/send { attachments }`).
  * Tolerant by design — the phone sends inline base64 with the original
  * `mimeType`; `path`/`width`/`height` are best-effort metadata. At least one of

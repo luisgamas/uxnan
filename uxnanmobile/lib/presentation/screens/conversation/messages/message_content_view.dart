@@ -22,6 +22,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -36,6 +37,7 @@ class MessageContentView extends StatelessWidget {
     required this.content,
     this.selectableText = true,
     this.threadId,
+    this.onTapLink,
     super.key,
   });
 
@@ -50,10 +52,17 @@ class MessageContentView extends StatelessWidget {
   /// null elsewhere (e.g. the user's own bubble) leaves those cards read-only.
   final String? threadId;
 
+  /// Handles Markdown and detected local-path links in assistant prose.
+  final ValueChanged<String>? onTapLink;
+
   @override
   Widget build(BuildContext context) {
     return switch (content) {
-      final TextContent c => _TextBlock(content: c, selectable: selectableText),
+      final TextContent c => _TextBlock(
+          content: c,
+          selectable: selectableText,
+          onTapLink: onTapLink,
+        ),
       // Thinking is normally lifted into the turn's dedicated section by
       // AssistantTurnView; rendered here too for completeness.
       final ThinkingContent c => _StandaloneThinkingSection(text: c.text),
@@ -1455,9 +1464,14 @@ IconData _subagentActionIcon(SubagentActionKind kind) => switch (kind) {
     };
 
 class _TextBlock extends StatelessWidget {
-  const _TextBlock({required this.content, this.selectable = true});
+  const _TextBlock({
+    required this.content,
+    this.selectable = true,
+    this.onTapLink,
+  });
   final TextContent content;
   final bool selectable;
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
@@ -1465,6 +1479,13 @@ class _TextBlock extends StatelessWidget {
       data: content.text.isEmpty ? '…' : content.text,
       selectable: selectable,
       styleSheet: uxnanMarkdownStyleSheet(context),
+      inlineSyntaxes: onTapLink == null ? null : [WorkspacePathSyntax()],
+      builders: onTapLink == null
+          ? const {}
+          : {'code': WorkspaceCodeLinkBuilder(onTap: onTapLink!)},
+      onTapLink: (_, href, __) {
+        if (href != null && href.isNotEmpty) onTapLink?.call(href);
+      },
     );
   }
 }
@@ -1776,10 +1797,17 @@ class _Placeholder extends StatelessWidget {
 /// user messages get a bubble.
 class AssistantTurnView extends ConsumerStatefulWidget {
   /// Creates an [AssistantTurnView] for an assistant [message].
-  const AssistantTurnView({required this.message, super.key});
+  const AssistantTurnView({
+    required this.message,
+    this.onTapLink,
+    super.key,
+  });
 
   /// The assistant message to render.
   final Message message;
+
+  /// Handles links in every visible response group, including streaming text.
+  final ValueChanged<String>? onTapLink;
 
   @override
   ConsumerState<AssistantTurnView> createState() => _AssistantTurnViewState();
@@ -1848,6 +1876,7 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
         _PreviousResponsesSection(
           responses: responseGroups.sublist(0, responseGroups.length - 1),
           threadId: message.threadId,
+          onTapLink: widget.onTapLink,
           expanded: _previousResponsesExpanded,
           onToggle: () => setState(
             () => _previousResponsesExpanded = !_previousResponsesExpanded,
@@ -1869,8 +1898,11 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       gap();
       segments.add(
         pendingTextIsStreaming
-            ? _StreamingProse(text: text)
-            : MessageContentView(content: TextContent(text)),
+            ? _StreamingProse(text: text, onTapLink: widget.onTapLink)
+            : MessageContentView(
+                content: TextContent(text),
+                onTapLink: widget.onTapLink,
+              ),
       );
       pendingTextIsStreaming = false;
     }
@@ -1907,7 +1939,11 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           flushText();
           gap();
           segments.add(
-            MessageContentView(content: content, threadId: message.threadId),
+            MessageContentView(
+              content: content,
+              threadId: message.threadId,
+              onTapLink: widget.onTapLink,
+            ),
           );
       }
     }
@@ -1955,12 +1991,14 @@ class _PreviousResponsesSection extends StatelessWidget {
   const _PreviousResponsesSection({
     required this.responses,
     required this.threadId,
+    required this.onTapLink,
     required this.expanded,
     required this.onToggle,
   });
 
   final List<List<MessageContent>> responses;
   final String threadId;
+  final ValueChanged<String>? onTapLink;
   final bool expanded;
   final VoidCallback onToggle;
 
@@ -2031,6 +2069,7 @@ class _PreviousResponsesSection extends StatelessWidget {
                         child: _PreviousResponsesBody(
                           responses: responses,
                           threadId: threadId,
+                          onTapLink: onTapLink,
                         ),
                       ),
                     ),
@@ -2047,10 +2086,12 @@ class _PreviousResponsesBody extends StatelessWidget {
   const _PreviousResponsesBody({
     required this.responses,
     required this.threadId,
+    required this.onTapLink,
   });
 
   final List<List<MessageContent>> responses;
   final String threadId;
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
@@ -2072,6 +2113,7 @@ class _PreviousResponsesBody extends StatelessWidget {
             MessageContentView(
               content: responses[responseIndex][contentIndex],
               threadId: threadId,
+              onTapLink: onTapLink,
             ),
           ],
         ],
@@ -2117,9 +2159,10 @@ class _AgentRespondingStatus extends StatelessWidget {
 /// flashing as source text until the turn finishes. The loader remains beside
 /// the live block without becoming part of the selectable response.
 class _StreamingProse extends StatelessWidget {
-  const _StreamingProse({required this.text});
+  const _StreamingProse({required this.text, required this.onTapLink});
 
   final String text;
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
@@ -2127,7 +2170,12 @@ class _StreamingProse extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Flexible(child: _TextBlock(content: TextContent(text))),
+        Flexible(
+          child: _TextBlock(
+            content: TextContent(text),
+            onTapLink: onTapLink,
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.only(
             left: UxnanSpacing.xs,

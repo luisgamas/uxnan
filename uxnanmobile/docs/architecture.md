@@ -125,6 +125,12 @@ and composed in `application_providers.dart`. The important ones:
    from visible source syntax when a turn completes. During streaming every
    assistant response stays visible; after completion, earlier progress
    responses fold under the localized **N previous messages** disclosure.
+7. Assistant prose sends explicit Markdown links, detected bare local paths and
+   inline-code paths through one callback. `FileBrowserManager` asks the bridge
+   to resolve the citation on the PC, then opens `FileViewerScreen` with the
+   returned `cwd + path`. A relative citation stays rooted at the conversation;
+   an absolute or parent-relative citation may switch the viewer to a sibling
+   worktree's Git root. Mobile never tries to reinterpret PC paths locally.
 
 For a new thread, `ThreadManager` preserves the bridge-provided title. When the
 first textual user message is sent and that title is still empty, the thread id,

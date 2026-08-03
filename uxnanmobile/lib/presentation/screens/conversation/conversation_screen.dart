@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
@@ -21,6 +22,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/providers/conversation_auto_follow_policy.dart';
 import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
+import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
@@ -31,8 +33,10 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_submit
 import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_browser_screen.dart';
+import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/screens/conversation/session_environment.dart';
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
@@ -94,6 +98,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   // disables the composer (sending into a dead cwd errors on every action).
   String? _checkedCwd;
   bool _cwdMissing = false;
+  bool _openingFileLink = false;
   // Whether the user closed the autonomous-mode banner on THIS visit. Local to
   // the State, so it resets every time the conversation is (re)opened — the
   // banner reappears on re-entry unless hidden permanently in settings.
@@ -564,6 +569,50 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     );
   }
 
+  /// Opens a local agent citation in the existing file viewer.
+  ///
+  /// The bridge resolves the href because it belongs to the paired PC and can
+  /// legitimately point outside the conversation cwd (for example, to a
+  /// sibling worktree). Remote URLs keep the file viewer's safe copy behavior.
+  Future<void> _openMessageLink(String href, String? cwd) async {
+    final l10n = AppLocalizations.of(context);
+    if (!isLocalWorkspaceHref(href)) {
+      await Clipboard.setData(ClipboardData(text: href));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(l10n.fileViewerLinkCopied(href))),
+        );
+      return;
+    }
+    if (cwd == null || cwd.isEmpty || _openingFileLink) return;
+
+    _openingFileLink = true;
+    try {
+      final target =
+          await ref.read(fileBrowserManagerProvider).resolveFileLink(cwd, href);
+      if (!mounted) return;
+      await FileViewerScreen.push(
+        context,
+        cwd: target.cwd,
+        path: target.path,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      // The bridge's own wording ("linked file not found") is the useful part;
+      // the exception's type name is not.
+      final detail = error is FileReadException ? error.message : '$error';
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('${l10n.fileViewerLoadFailed}: $detail')),
+        );
+    } finally {
+      _openingFileLink = false;
+    }
+  }
+
   Future<void> _pickApprovalMode() async {
     final mode = await ApprovalModeSheet.show(context, _approvalMode);
     if (mode == null || !mounted || mode == _approvalMode) return;
@@ -973,7 +1022,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                           // then becomes a pass-through, so scrolling a long
                           // thread is unaffected.
                           return NeEnterTransition(
-                            child: MessageBubble(key: key, message: message),
+                            child: MessageBubble(
+                              key: key,
+                              message: message,
+                              onTapLink: (href) =>
+                                  unawaited(_openMessageLink(href, cwd)),
+                            ),
                           );
                         },
                       ),

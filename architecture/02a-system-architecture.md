@@ -1119,7 +1119,10 @@ class TurnTimelineSnapshot {
 - **Markdown:** `flutter_markdown_plus` — supported on Android + iOS. Partial
   streaming prose and settled prose use the same `MarkdownBody` renderer and
   shared style sheet, preventing a source-text-to-formatted-layout swap when a
-  turn completes. Syntax highlighting and code blocks remain supported.
+  turn completes. Explicit Markdown links, bare local paths and inline-code
+  paths share one tap callback. Local paths open the workspace file viewer;
+  remote links are copied rather than launched. Syntax highlighting and code
+  blocks remain supported.
 - **Mermaid:** renderizado via `flutter_inappwebview` con un HTML embebido que carga mermaid.js localmente. Ambas plataformas.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
@@ -1799,6 +1802,7 @@ La implementación sigue el sistema Neural Expressive
 async function handleReadFile({ path }) { ... }          // lee archivo del disco
 async function handleReadImage({ path }) { ... }         // lee imagen, codifica base64
 async function handleListWorkspace({ cwd }) { ... }      // lista archivos del proyecto
+async function handleResolveFileLink({ cwd, href }) { ... } // resolve agent citation for viewer
 async function handleCaptureCheckpoint({ threadId }) { ... }
 async function handleDiffCheckpoint({ checkpointId }) { ... }
 async function handleApplyCheckpoint({ checkpointId }) { ... }
@@ -1821,8 +1825,19 @@ cerca del centro del viewport (limitada por los extremos normales del scroll),
 de modo que el usuario no ve una animación de desplazamiento y al volver del
 visor encuentra el archivo inmediatamente.
 
-Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
-`workspace/readImage` son consumidas hoy por:
+`workspace/resolveFileLink { cwd, href }` resolves a file citation on the PC,
+where the filesystem and platform-specific path rules are authoritative.
+Relative paths start at the conversation cwd. Absolute paths, `file:` URLs and
+`..` references may land in a sibling worktree: when the target is outside the
+conversation root, the bridge returns the target's Git top-level as the new
+viewer `cwd` (or the containing directory for a non-Git file) plus a relative
+`path`. The canonical target must exist and be a regular file; fragments,
+percent encoding and common `:line[:column]` suffixes are normalized. `.git`
+internals and sensitive path segments remain denied.
+
+Las RPCs `workspace/list`, `workspace/searchFiles`,
+`workspace/resolveFileLink`, `workspace/readFile` y `workspace/readImage` son
+consumidas hoy por:
 
 - **Folder browser en la app** (`NewConversationScreen` /
   `WorkspaceBrowserSheet`, en `presentation/screens/threads/`) — el selector
@@ -1839,9 +1854,10 @@ Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
   placeholder), accesado
   desde un `IconSurface` `folder_open_rounded` en la app-bar de
   `ConversationScreen` al lado del botón de `GitScreen`. Las
-  rutas se validan en el bridge por `path-guard`
-  (§5.8.9/infra) que confina los reads al root del workspace y
-  excluye archivos sensibles.
+  rutas se validan en el bridge por `path-guard` (§5.8.9/infra).
+  Conversation links first resolve to a canonical viewer root; every
+  subsequent read remains confined to that root and excludes `.git` and
+  sensitive files.
 
 Cada entrada de `workspace/list` (`WorkspaceEntry` en `shared/`) lleva
 `name` + `type` (`file`/`dir`) y, en archivos, `size` y `mtime` (epoch ms,

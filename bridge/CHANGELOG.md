@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — safe cross-worktree file-link resolution
+
+- Added `workspace/resolveFileLink { cwd, href }`, which canonicalizes a local
+  path cited by an agent and returns the `cwd + relative path` pair consumed by
+  Mobile's existing file viewer.
+- Relative links resolve from the conversation cwd. Absolute paths, `file:`
+  URLs and `..` references may target another worktree; the target's Git root
+  becomes the viewer root, with a narrow containing-directory fallback for
+  non-Git files.
+- The resolver requires an existing regular file and rejects remote schemes,
+  `.git` internals and sensitive path segments. Percent-encoded paths,
+  fragments and common `:line[:column]` citations are normalized.
+- `path-guard` now rejects a sensitive name in **any** segment below a
+  workspace root, not just the file's own name, so a read can no longer reach
+  into a `.env/` directory. Segments above the root are left alone: the user
+  chose that root, and judging its ancestors would deny every read of a project
+  that merely lives under a matching folder name.
+
 ### Added — native-session turns converge back into Uxnan
 
 - `turn/list` now reconciles the agent-owned transcript on every idle read,

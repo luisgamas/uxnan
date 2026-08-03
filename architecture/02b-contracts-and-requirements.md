@@ -96,7 +96,7 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 68 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 69 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
@@ -193,12 +193,13 @@ git/log                -> historial de commits (paginado por cursor; parents[] p
 git/commitShow         -> detalle completo de un commit { sha }: metadata (incl. refs[]), files[] (status + oldPath en renames + additions/deletions por archivo) y diff unificado completo (capado ~400 KB → diffTruncated)
 ```
 
-**Workspace (9):**
+**Workspace (11):**
 ```
 workspace/readFile              -> leer archivo del workspace (utf-8 o base64)
 workspace/readImage             -> leer imagen del workspace (base64)
 workspace/list                  -> listar archivos del cwd
 workspace/searchFiles           -> busqueda fuzzy de archivos en todo el repo (respeta .gitignore; para el "@" del composer)
+workspace/resolveFileLink       -> resolve an agent-cited local path into viewer { cwd, path }, including sibling worktrees
 workspace/browseDirs            -> navegar sub-carpetas bajo un root configurado (confinado; git-repo aware)
 workspace/checkpoint            -> capturar checkpoint del estado actual
 workspace/diffCheckpoint        -> diff de un checkpoint (unified)
@@ -913,6 +914,7 @@ cambia, por lo que interopera byte a byte con el bridge.
 | RF-WORK-03 | El usuario puede capturar checkpoints del estado del workspace |
 | RF-WORK-04 | El usuario puede ver el diff de un checkpoint |
 | RF-WORK-05 | El usuario puede aplicar un checkpoint (restore) |
+| RF-WORK-06 | An agent-cited local file path must be tappable in the conversation and open in the existing viewer; relative paths resolve from the conversation cwd, while absolute or parent-relative paths may select another worktree after bridge-side canonicalization and sensitive-path validation |
 
 ### 4.7 RF-NOTIF: Notificaciones
 

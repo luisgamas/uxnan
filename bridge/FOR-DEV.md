@@ -86,6 +86,9 @@ push validation (FOR-HUMAN).
 - **Full thread lifecycle** — `thread/rename|archive|unarchive|delete`.
 - **Plug-and-play folder browsing** — `workspace/browseDirs` with a
   `browseRoots` config.
+- **Cross-worktree file-link resolution** — `workspace/resolveFileLink` turns a
+  path an agent cited into the viewer's `cwd + path`, picking the target's own
+  Git root when the file lives outside the conversation's worktree.
 - **Direct FCM push from the bridge** — primary path, persisted across restarts,
   per-phone target, prune-on-untrust. `firebase-admin` is an `optionalDependency`
   (no creds = silent no-op; foreground local notifications still work).

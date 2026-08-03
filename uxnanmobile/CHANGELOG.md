@@ -6,6 +6,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — agent file links open in the workspace viewer
+
+- Assistant Markdown links, bare local paths and inline-code file references
+  are tappable in settled and streaming responses. They open the existing file
+  viewer rather than leaving the conversation for another app.
+- Link resolution happens on the paired PC. Relative paths start at the
+  conversation cwd, while absolute paths and `..` references can resolve into
+  a sibling worktree; the viewer receives that target's Git root and relative
+  path, so a conversation rooted in X can open a file produced in Y.
+- Remote links keep the existing safe copy behavior. Missing, non-file,
+  `.git`, and sensitive targets produce a recoverable message instead of
+  navigating.
+- Path detection leaves the rest of a response alone: a bare hostname
+  (`www.example.com/docs/x.md`) stays a web link, a fenced code block keeps its
+  code-block styling, and inline code that isn't a path (`npm run build`) is
+  not tappable.
+
 ### Fixed — streamed responses render Markdown immediately
 
 - Assistant prose now uses the shared `MarkdownBody` renderer while tokens are

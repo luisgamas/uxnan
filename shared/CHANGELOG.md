@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — workspace file-link target contract
+
+- Added `workspace/resolveFileLink { cwd, href }` and
+  `WorkspaceFileTarget { cwd, path }`, allowing a client to open an agent-cited
+  file through the existing workspace viewer even when the resolved file lives
+  in a different worktree from the conversation.
+
 ### Added — assistant response boundaries
 
 - Added the durable `AssistantResponseBoundaryBlock` metadata contract. It

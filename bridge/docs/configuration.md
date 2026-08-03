@@ -28,6 +28,16 @@ file is optional; create it to override. Defaults live in
 | `projectAgents` | `[]` | Per-project agent/model pins (see below). |
 | `pushEnabled` / `pushOnAgentDone` / `pushOnAgentError` | `true` | Push-notification toggles (delivery is gated on relay Firebase/APNs creds). |
 
+> **`browseRoots` bounds browsing, not reading.** A paired phone already reads
+> any `cwd` it names (`workspace/readFile` confines the read to that `cwd`, not
+> to a global allowlist), so `workspace/resolveFileLink` follows the same
+> posture: it resolves a file the agent cited wherever it actually is — which is
+> the point, since an agent working in one worktree routinely writes into
+> another. What it never does is serve `.git` internals or a sensitive name
+> (`.env*`, `*.pem`/`*.key`, `id_rsa*`, `credentials.json`, `.npmrc`) in any
+> segment of the path, and it refuses anything that is not an existing regular
+> file. The trust boundary is the pairing itself.
+
 ### Per-agent overrides (`agents.<id>`)
 
 `<id>` is one of the active agent ids: `opencode`, `claude-code`, `codex`,

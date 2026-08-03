@@ -124,7 +124,10 @@ connected to live bridge data, validated on-device against a real bridge.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
   of the selected row, selectable text/Markdown/diff viewing, inline editing,
-  diff overlays and full-surface fit-to-screen image zoom.
+  diff overlays and full-surface fit-to-screen image zoom. A file an agent
+  cites in a response is tappable (Markdown link, bare path or inline code) and
+  opens in that same viewer — resolved on the PC via
+  `workspace/resolveFileLink`, so a citation into another worktree works.
 - **Structured model picker** (readable names, default badge, Claude alias
   "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
   a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"

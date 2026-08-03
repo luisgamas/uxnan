@@ -1,20 +1,132 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { WorkspaceService } from '../../src/index.js';
 import { runGit } from '../../src/git/git-runner.js';
 
 const ws = new WorkspaceService();
 
+// Canonicalized on purpose: link resolution returns a `realpath`, and a temp
+// dir is a symlink on macOS and an 8.3 short path on Windows CI, so an
+// un-canonicalized fixture root would not equal what the service returns.
 async function newRoot(): Promise<string> {
   const dir = join(tmpdir(), `uxnan-ws-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
-  return dir;
+  return realpath(dir);
 }
+
+test('resolveFileLink keeps files inside the conversation workspace', async () => {
+  const root = await newRoot();
+  await mkdir(join(root, 'docs'));
+  await writeFile(join(root, 'docs', 'summary.md'), '# Summary');
+
+  const target = await ws.resolveFileLink(root, 'docs/summary.md#L1');
+  assert.deepEqual(target, { cwd: root, path: 'docs/summary.md' });
+  await rm(root, { recursive: true, force: true });
+});
+
+test('resolveFileLink selects a sibling git worktree as the viewer root', async () => {
+  const parent = await newRoot();
+  const conversation = join(parent, 'worktree-x');
+  const linkedWorktree = join(parent, 'worktree-y');
+  await mkdir(conversation);
+  await mkdir(join(linkedWorktree, 'notes'), { recursive: true });
+  await runGit(linkedWorktree, ['init', '-b', 'main']);
+  const linkedFile = join(linkedWorktree, 'notes', 'resume file.md');
+  await writeFile(linkedFile, '# Handoff');
+
+  const relativeTarget = await ws.resolveFileLink(
+    conversation,
+    '../worktree-y/notes/resume%20file.md:42#L42',
+  );
+  assert.deepEqual(relativeTarget, {
+    cwd: linkedWorktree,
+    path: 'notes/resume file.md',
+  });
+
+  const fileUrlTarget = await ws.resolveFileLink(conversation, pathToFileURL(linkedFile).href);
+  assert.equal(fileUrlTarget.cwd, linkedWorktree);
+  assert.equal(fileUrlTarget.path, relative(linkedWorktree, linkedFile).replaceAll('\\', '/'));
+  await rm(parent, { recursive: true, force: true });
+});
+
+test('resolveFileLink falls back to the containing directory outside a repo', async () => {
+  const parent = await newRoot();
+  const conversation = join(parent, 'repo-x');
+  const loose = join(parent, 'scratch');
+  await mkdir(conversation);
+  await mkdir(loose);
+  await writeFile(join(loose, 'notes.md'), '# Notes');
+
+  // No git root to anchor to, so the viewer root stays as narrow as possible.
+  const target = await ws.resolveFileLink(conversation, join(loose, 'notes.md'));
+  assert.deepEqual(target, { cwd: loose, path: 'notes.md' });
+  await rm(parent, { recursive: true, force: true });
+});
+
+test('resolveFileLink resolves an absolute link after the conversation cwd is gone', async () => {
+  const parent = await newRoot();
+  const conversation = join(parent, 'removed-x');
+  const worktree = join(parent, 'kept-y');
+  await mkdir(worktree, { recursive: true });
+  await runGit(worktree, ['init', '-b', 'main']);
+  await writeFile(join(worktree, 'resume.md'), '# Resume');
+
+  // The thread's folder can be deleted (a worktree is removed, a branch is
+  // pruned) while its transcript still cites a file that outlived it.
+  const target = await ws.resolveFileLink(conversation, join(worktree, 'resume.md'));
+  assert.deepEqual(target, { cwd: worktree, path: 'resume.md' });
+  await rm(parent, { recursive: true, force: true });
+});
+
+test('resolveFileLink denies .git internals in another worktree', async () => {
+  const parent = await newRoot();
+  const conversation = join(parent, 'x');
+  const worktree = join(parent, 'y');
+  await mkdir(conversation);
+  await mkdir(worktree);
+  await runGit(worktree, ['init', '-b', 'main']);
+
+  for (const href of ['../y/.git/config', join(worktree, '.git', 'HEAD')]) {
+    await assert.rejects(
+      ws.resolveFileLink(conversation, href),
+      (error: unknown) =>
+        error instanceof RpcError && error.code === JsonRpcErrorCode.WorkspaceAccessDenied,
+    );
+  }
+  await rm(parent, { recursive: true, force: true });
+});
+
+test('resolveFileLink rejects remote, missing, directory, and sensitive targets', async () => {
+  const root = await newRoot();
+  await mkdir(join(root, 'folder'));
+  await writeFile(join(root, '.env'), 'SECRET=1');
+
+  await assert.rejects(
+    ws.resolveFileLink(root, 'https://example.com/file.md'),
+    (error: unknown) => error instanceof RpcError && error.code === JsonRpcErrorCode.InvalidParams,
+  );
+  await assert.rejects(
+    ws.resolveFileLink(root, 'missing.md'),
+    (error: unknown) =>
+      error instanceof RpcError && error.code === JsonRpcErrorCode.ResourceNotFound,
+  );
+  await assert.rejects(
+    ws.resolveFileLink(root, 'folder'),
+    (error: unknown) => error instanceof RpcError && error.code === JsonRpcErrorCode.InvalidParams,
+  );
+  await assert.rejects(
+    ws.resolveFileLink(root, '.env'),
+    (error: unknown) =>
+      error instanceof RpcError && error.code === JsonRpcErrorCode.WorkspaceAccessDenied,
+  );
+  await rm(root, { recursive: true, force: true });
+});
 
 test('readFile returns utf-8 text and binary as base64', async () => {
   const root = await newRoot();
