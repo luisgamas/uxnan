@@ -2574,12 +2574,9 @@ pub fn diagnostics_log(level: String, source: String, message: String) {
 
 /// Where the log lives, and whether the last session died without saying so.
 ///
-// FOR-DEV: nothing in the UI consumes this yet. Surfacing "the previous session
-// ended unexpectedly — open the log / your scrollback was not saved" belongs in
-// the shell (a dismissible notice) and in Settings (a "reveal log" action), but
-// that is user-facing UI and this change set is deliberately instrumentation
-// only, so the recording lands first and the presentation is reviewed on its
-// own. See `uxnandesktop/FOR-DEV.md`.
+/// Read once at boot by the frontend (`state/diagnostics.svelte.ts`), which
+/// turns an unclean previous session into the startup notice and the
+/// Settings → App → Diagnostics readout.
 #[tauri::command]
 pub fn diagnostics_report() -> DiagnosticsReport {
     match crate::diagnostics::sink() {

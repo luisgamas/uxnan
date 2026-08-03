@@ -471,6 +471,24 @@ export const es: Record<MessageKey, string> = {
   "settings.resources": "Recursos",
   "settings.resourcesDesc":
     "Una lectura local y explicable de lo que cuestan Uxnan, sus terminales y sus agentes en CPU y memoria. No se mide nada salvo que haya una superficie abierta, y nada sale de esta máquina.",
+  "settings.diagnostics": "Diagnóstico",
+  "settings.diagnosticsDesc":
+    "El registro que Uxnan guarda de sus propios fallos, para que un cierre inesperado o una ventana en blanco se puedan investigar de verdad. Se queda en esta máquina: sin telemetría, y nunca se escriben tokens, prompts ni la salida de las terminales.",
+
+  // Diagnóstico (aviso de sesión anterior + Ajustes → Diagnóstico)
+  "diagnostics.uncleanTitle": "La sesión anterior terminó de forma inesperada",
+  "diagnostics.uncleanBody":
+    "Uxnan se cerró sin completar su apagado, así que no se guardó el historial de las terminales de esa sesión. El registro recoge lo que pasó.",
+  "diagnostics.revealLog": "Ver el registro",
+  "diagnostics.dismiss": "Descartar",
+  "diagnostics.lastSession": "Última sesión",
+  "diagnostics.lastSessionClean": "La sesión anterior se cerró con normalidad.",
+  "diagnostics.lastSessionUnclean":
+    "La sesión anterior terminó sin un cierre limpio, así que no se guardó el historial de sus terminales.",
+  "diagnostics.statusClean": "Cerró con normalidad",
+  "diagnostics.statusUnclean": "Terminó inesperadamente",
+  "diagnostics.logFile": "Archivo de registro",
+  "diagnostics.logUnavailable": "El registro no pudo iniciarse en este arranque.",
 
   // Observabilidad de recursos (popover del backend + Ajustes → Recursos)
   "resources.title": "Recursos",

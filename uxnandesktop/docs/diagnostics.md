@@ -76,6 +76,23 @@ This matters beyond diagnostics: terminal scrollback is persisted on the clean
 exit path (`terminal-buffers.json`), so an unclean exit is also the reason
 scrollback from that session is missing.
 
+## What you see in the app
+
+Two surfaces, and nothing else — this is a safety net, not a feature that asks
+for attention:
+
+- **A notice at startup, only after an unclean shutdown.** A card in the
+  bottom-right toast area (the same elevated-card treatment the update notice
+  uses) saying the previous session ended unexpectedly and that terminal
+  scrollback from it was not saved, with a **Show log file** button that reveals
+  the log in the file manager. It appears at most once per launch, never
+  auto-dismisses (a notice you did not happen to look at is a notice that did
+  not happen) and is dismissed with its own ✕. After a normal shutdown nothing
+  appears at all.
+- **Settings → App → Diagnostics**, always available: whether the last session
+  ended normally or unexpectedly, the log's full path, and the same **Show log
+  file** action.
+
 ## Using it
 
 **When something goes wrong,** open the live log and look at the last lines
@@ -110,6 +127,14 @@ const { logPath, previousSessionUnclean } = await diagnosticsReport();
   the `diagnostics_log` command. Passive: it never prevents, defaults, or
   swallows anything the page does, and a failure to report is swallowed rather
   than becoming a second failure.
+- **`src/lib/state/diagnostics.svelte.ts`** — one read of `diagnostics_report()`
+  at boot (nothing to poll: the backend computed it at startup), plus the
+  dismissed flag. A failed read stays silent, so an older backend simply shows
+  nothing.
+- **`src/lib/components/SessionRecoveryToast.svelte`** +
+  `src/lib/sessionRecoveryToast.svelte.ts` — the startup notice and the driver
+  that decides whether it is on screen, mirroring the updater's pinned-toast
+  pattern.
 - Commands: `diagnostics_log(level, source, message)` and
   `diagnostics_report()`.
 
@@ -120,4 +145,6 @@ message bounds, rotation (including that the number of files stays bounded), and
 the marker's three states — first run, missing shutdown, clean shutdown.
 `npm run test:node -- errorReporter` covers describing arbitrary thrown values
 (including non-`Error`s and unserializable ones) and that a failing report never
-raises.
+raises. `npm run test:dom -- diagnostics` covers when the notice is shown: not
+before the backend has answered, not after a clean shutdown, not once dismissed,
+and not at all when the command is unavailable.

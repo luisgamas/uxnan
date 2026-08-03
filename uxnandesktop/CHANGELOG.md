@@ -28,6 +28,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   persisted on the clean path.
 - New commands `diagnostics_log` and `diagnostics_report` (the latter returns
   the log path and whether the previous session ended uncleanly).
+- **The user is told when the previous session ended unexpectedly**, once per
+  launch, as a dismissible card in the toast area with a **Show log file**
+  action — and the same information lives permanently in **Settings → App →
+  Diagnostics** (last-session state, the log's path, reveal action). Nothing
+  appears after a normal shutdown. The notice explains the consequence the user
+  is about to notice anyway: terminal scrollback is only persisted on the clean
+  exit path, so those terminals come back empty.
 
 No telemetry: nothing leaves the machine, and no token, prompt, terminal output
 or file content is written. Messages arriving from the webview are treated as

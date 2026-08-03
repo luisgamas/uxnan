@@ -13,6 +13,7 @@
   import { autoSleep } from "$lib/state/autoSleep.svelte";
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { usage } from "$lib/state/usage.svelte";
+  import { diagnostics } from "$lib/state/diagnostics.svelte";
   import { setPreventSleep, resourcesSetPolicy } from "$lib/api";
   import { installPointerLockGuard } from "$lib/utils/pointerLock";
   import { installErrorReporter } from "$lib/utils/errorReporter";
@@ -64,6 +65,9 @@
     void agentStatus.start();
     // Auto-updater: restore any staged download, then check on the chosen channel.
     void updater.start();
+    // One read of the app's own diagnostics: where the log is, and whether the
+    // previous session ended without a clean exit.
+    void diagnostics.start();
     // Coming back to the window clears the "unread agent result" badges.
     const onFocus = () => unread.clearAll();
     window.addEventListener("focus", onFocus);

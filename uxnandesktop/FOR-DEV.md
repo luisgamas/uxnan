@@ -24,7 +24,7 @@ explicit efficiency presets — Efficient / Balanced / Performance — governing
 background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 (`docs/diagnostics.md`). 488 Rust tests (460 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 739 frontend Vitest tests across two
+probe) + 744 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -259,17 +259,10 @@ started.**
 
 ## Diagnostics — follow-ups ☐
 
-**The recording is complete** (rolling log, panic hook, uncaught-frontend-error
-capture, unclean-shutdown marker; `docs/diagnostics.md`). What is left is
-surfacing it, which is UI and is therefore reviewed on its own rather than
-smuggled into an instrumentation change.
+**Recording and surfacing are both complete** (rolling log, panic hook,
+uncaught-frontend-error capture, unclean-shutdown marker, the startup notice and
+Settings → App → Diagnostics; `docs/diagnostics.md`).
 
-- [ ] **Tell the user when the previous session ended unexpectedly.**
-      `diagnostics_report()` already answers it and nothing consumes the answer.
-      Wanted: a dismissible notice in the shell ("the previous session ended
-      unexpectedly — terminal scrollback from it was not saved") and a Settings
-      action to reveal the log in the file manager. Marker at the command in
-      `src-tauri/src/commands.rs` (`diagnostics_report`).
 - [ ] **Decide whether an agent's terminal death deserves its own log line.**
       An agent CLI running inside a uxnan terminal cannot tell an app crash from
       a force-close from a dead PTY host, which is exactly what made the
