@@ -1283,11 +1283,11 @@
 
   "fileViewerViewSource": "View source",
   "@fileViewerViewSource": {
-    "description": "Tooltip on the action that switches the file viewer from the markdown preview to the raw source."
+    "description": "Tooltip on the action that switches a preview-capable file to its raw source."
   },
   "fileViewerViewPreview": "View preview",
   "@fileViewerViewPreview": {
-    "description": "Tooltip on the action that switches the file viewer from the raw source to the markdown preview."
+    "description": "Tooltip on the action that switches a preview-capable file from source to its visual preview."
   },
   "fileViewerShowDiff": "Show diff",
   "@fileViewerShowDiff": {
@@ -1318,6 +1318,14 @@
   "fileViewerLoadFailed": "Couldn't open this file",
   "@fileViewerLoadFailed": {
     "description": "Title of the error state shown when the file viewer fails to load a file."
+  },
+  "fileViewerMediaUnavailable": "The preview data isn't available. Pull down to try loading it again.",
+  "@fileViewerMediaUnavailable": {
+    "description": "Body of the error shown when a supported media file has no preview payload."
+  },
+  "fileViewerPdfInvalid": "The bridge didn't return the original PDF bytes. Update or restart the bridge, then try again.",
+  "@fileViewerPdfInvalid": {
+    "description": "Body of the error shown when a PDF was not delivered as base64 bytes."
   },
   "fileViewerModePreview": "Preview",
   "@fileViewerModePreview": {

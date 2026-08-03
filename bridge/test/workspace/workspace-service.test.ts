@@ -29,6 +29,18 @@ test('readFile returns utf-8 text and binary as base64', async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+test('readFile preserves PDF bytes even when its prefix contains no NUL', async () => {
+  const root = await newRoot();
+  const pdf = Buffer.from('%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF', 'ascii');
+  await writeFile(join(root, 'guide.pdf'), pdf);
+
+  const result = await ws.readFile(root, 'guide.pdf');
+
+  assert.equal(result.encoding, 'base64');
+  assert.deepEqual(Buffer.from(result.content, 'base64'), pdf);
+  await rm(root, { recursive: true, force: true });
+});
+
 test('readImage infers the mime type', async () => {
   const root = await newRoot();
   await writeFile(join(root, 'pic.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));

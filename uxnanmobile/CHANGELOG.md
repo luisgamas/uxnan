@@ -6,6 +6,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — a workspace viewer that understands project documentation
+
+- Expanded the file viewer from text, basic Markdown, and raster images to a
+  capability-based preview surface for Markdown, animated GIF, SVG, and PDF on
+  both Android and iOS. SVG keeps Preview / Source / Changes parity, so it can
+  be inspected visually without giving up editing or git review.
+- Markdown now resolves workspace-relative images and file links against the
+  open document, including `../` paths and GitHub-style `?raw=true` suffixes.
+  Local resources still travel through the bridge's guarded workspace RPCs;
+  paths that would escape the workspace are rejected.
+- Added a constrained README HTML compatibility pass for common centered
+  headings, links, badges, images, line breaks, and presentational containers.
+  Image width/height hints survive conversion, shields remain compact, fenced
+  code stays untouched, and executable or embedded HTML is removed.
+- Markdown images now use one reusable renderer for local and HTTPS raster,
+  animated GIF, and SVG resources, with bounded layout and compact failure
+  states instead of allowing a malformed asset to break the document.
+- Added focused unit and widget regressions for format classification, safe
+  path resolution, HTML normalization, fenced-code preservation, relative SVG
+  badges, animated GIF delivery, and SVG Preview / Source switching.
+
+### Changed — PDF bytes are delivered without lossy text decoding
+
+- Added `pdfrx` for an in-app, pinch-zoomable PDF surface backed by PDFium on
+  Android and iOS. The bridge now deterministically returns `.pdf` files as
+  base64, even when their initial bytes happen to look like UTF-8, with a
+  bounded 20 MiB PDF read limit.
+
 ## [0.0.15-alpha.20260729+20260729] - 2026-07-29
 
 ### Added — send follow-up messages while the agent is working

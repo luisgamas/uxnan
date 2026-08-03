@@ -46,9 +46,11 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   transport selection, E2EE handshake, secure channel, request/response
   correlation, auto-reconnect with backoff. Exposes streams.
 - `application/managers/` — `ThreadManager` (threads + active timeline),
-  `GitActionManager` (status/commit/push), `PushRegistrar` (FCM token +
-  notification taps). `application/processors/incoming_message_processor.dart`
-  turns bridge notifications into `DomainEvent`s.
+  `GitActionManager` (status/commit/push), `FileBrowserManager` (lazy workspace
+  tree, search, guarded file/image reads, writes and Git diffs), and
+  `PushRegistrar` (FCM token + notification taps).
+  `application/processors/incoming_message_processor.dart` turns bridge
+  notifications into `DomainEvent`s.
 - `infrastructure/transport/` — `WebSocketTransport`, `SecureTransportLayer`
   (handshake), `SecureChannel` (AES-256-GCM + seq/replay), `RequestCorrelator`,
   `BackoffCalculator`, `OutboundMessageBuffer`.
@@ -63,8 +65,10 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `application_providers.dart` (coordinators/managers + derived stream/family
   providers the UI watches).
 - `presentation/screens/` — `devices/`, `threads/`, `conversation/`,
-  `onboarding/`, `pairing/`. `presentation/router/app_router.dart` is the flat
-  GoRouter table. `presentation/theme/` holds the design tokens.
+  `onboarding/`, `pairing/`; `conversation/files/` owns the capability-based
+  source, Markdown, image, SVG, PDF and Git-diff viewer described in
+  [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
+  the flat GoRouter table. `presentation/theme/` holds the design tokens.
 
 The Devices screen keeps connection feedback scoped to the actual PC card:
 

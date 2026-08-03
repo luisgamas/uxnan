@@ -2434,6 +2434,14 @@ class AppLocalizationsEs extends AppLocalizations {
   String get fileViewerLoadFailed => 'No se pudo abrir este archivo';
 
   @override
+  String get fileViewerMediaUnavailable =>
+      'Los datos de la vista previa no están disponibles. Desliza hacia abajo para intentar cargarlos de nuevo.';
+
+  @override
+  String get fileViewerPdfInvalid =>
+      'El bridge no devolvió los bytes originales del PDF. Actualiza o reinicia el bridge y vuelve a intentarlo.';
+
+  @override
   String get fileViewerModePreview => 'Vista previa';
 
   @override

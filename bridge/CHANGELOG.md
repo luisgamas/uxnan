@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — reliable PDF delivery for the mobile workspace viewer
+
+- `workspace/readFile` now identifies `.pdf` files by extension and returns
+  their original bytes as base64. Previously, a PDF whose first 8,000 bytes had
+  no NUL could be decoded as UTF-8 and corrupted before it reached the phone.
+- PDF reads have a separate, bounded 20 MiB ceiling; the existing 5 MiB text
+  and 10 MiB image limits are unchanged. The workspace path guard and
+  sensitive-file exclusions still run before every read.
+- Added a bridge regression proving that a text-looking PDF prefix round-trips
+  byte-for-byte.
+
 ## [0.0.13-alpha.20260729] - 2026-07-29
 
 ### Added — a per-thread message queue (and the serialization hole it closes)

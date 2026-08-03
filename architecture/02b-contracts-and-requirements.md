@@ -1,12 +1,16 @@
 # Uxnan — Contratos, Requisitos y Paquetes
 
-> **Version:** 1.1.2 | **Fecha:** 2026-07-21 | **Estado:** Sincronizado con codigo ALPHA
+> **Version:** 1.1.3 | **Fecha:** 2026-08-02 | **Estado:** Sincronizado con codigo ALPHA
 >
-> **Executive summary (1.1.2):** the unchanged `metrics/*` wire shapes now
+> **Executive summary (1.1.3):** the unchanged `metrics/*` wire shapes now
 > explicitly represent a complete bridge-retained ledger. Export/import includes
 > conversation/message/token history as well as connection and Git rows. The LAN
 > discovery boundary is explicit: mDNS is an untrusted host hint, not a shared
-> contract, secret-delivery path or trust decision.
+> contract, secret-delivery path or trust decision. Workspace file reads retain
+> their existing response contract while PDF payloads are deterministically
+> base64 and independently bounded at 20 MiB; the mobile UI dependency table now
+> matches the maintained Markdown, SVG, loading-indicator and PDFium packages in
+> the implemented `pubspec.yaml`.
 >
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de los contratos JSON-RPC,
@@ -195,8 +199,8 @@ git/commitShow         -> detalle completo de un commit { sha }: metadata (incl.
 
 **Workspace (9):**
 ```
-workspace/readFile              -> leer archivo del workspace (utf-8 o base64)
-workspace/readImage             -> leer imagen del workspace (base64)
+workspace/readFile              -> read workspace text as UTF-8/base64; .pdf is always exact base64, bounded at 20 MiB
+workspace/readImage             -> read supported workspace images as base64, bounded at 10 MiB
 workspace/list                  -> listar archivos del cwd
 workspace/searchFiles           -> busqueda fuzzy de archivos en todo el repo (respeta .gitignore; para el "@" del composer)
 workspace/browseDirs            -> navegar sub-carpetas bajo un root configurado (confinado; git-repo aware)
@@ -687,12 +691,11 @@ cambia, por lo que interopera byte a byte con el bridge.
 
 | Paquete | Version min. | Rol |
 |---|---|---|
-| `flutter_markdown` | ^0.7.3 | Rendering de Markdown con syntax highlighting |
-| `flutter_highlight` | ^0.7.0 | Syntax highlighting para bloques de codigo |
-| `flutter_inappwebview` | ^6.0.0 | WebView para Mermaid diagrams |
-| `cached_network_image` | ^3.3.0 | Cache de imagenes |
-| `shimmer` | ^3.0.0 | Esqueletos de carga |
-| `lottie` | ^3.1.0 | Animaciones Lottie (onboarding, estados) |
+| `flutter_markdown_plus` | ^1.0.0 | Maintained Markdown renderer for messages and workspace documents |
+| `flutter_highlight` | ^0.7.0 | Syntax highlighting for source and fenced code blocks |
+| `flutter_svg` | ^2.0.10 | SVG logos and full workspace SVG previews |
+| `pdfrx` | ^2.4.7 | Native Android/iOS PDF preview backed by PDFium |
+| `material_loading_indicator` | ^1.0.0 | Material 3 loading indicators |
 
 ### 2.7 Camara y QR
 

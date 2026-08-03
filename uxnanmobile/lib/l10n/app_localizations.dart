@@ -4400,13 +4400,13 @@ abstract class AppLocalizations {
   /// **'Browse files'**
   String get fileBrowserOpenTooltip;
 
-  /// Tooltip on the action that switches the file viewer from the markdown preview to the raw source.
+  /// Tooltip on the action that switches a preview-capable file to its raw source.
   ///
   /// In en, this message translates to:
   /// **'View source'**
   String get fileViewerViewSource;
 
-  /// Tooltip on the action that switches the file viewer from the raw source to the markdown preview.
+  /// Tooltip on the action that switches a preview-capable file from source to its visual preview.
   ///
   /// In en, this message translates to:
   /// **'View preview'**
@@ -4447,6 +4447,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t open this file'**
   String get fileViewerLoadFailed;
+
+  /// Body of the error shown when a supported media file has no preview payload.
+  ///
+  /// In en, this message translates to:
+  /// **'The preview data isn\'t available. Pull down to try loading it again.'**
+  String get fileViewerMediaUnavailable;
+
+  /// Body of the error shown when a PDF was not delivered as base64 bytes.
+  ///
+  /// In en, this message translates to:
+  /// **'The bridge didn\'t return the original PDF bytes. Update or restart the bridge, then try again.'**
+  String get fileViewerPdfInvalid;
 
   /// Mode pill label shown in the file viewer's footer when a markdown file is rendered as a styled preview.
   ///

@@ -116,8 +116,11 @@ connected to live bridge data, validated on-device against a real bridge.
   collapses the previous selection.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
-  of the selected row, selectable text/Markdown/diff viewing, inline editing,
-  diff overlays and full-surface fit-to-screen image zoom.
+  of the selected row; editable highlighted text, selectable diffs,
+  GitHub-style Markdown with guarded relative resources and common README HTML,
+  animated GIF, raster/SVG zoom, SVG Preview / Source / Changes parity, and
+  native Android/iOS PDF preview. See `docs/file-viewer.md` for the exact matrix
+  and boundaries.
 - **Structured model picker** (readable names, default badge, Claude alias
   "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
   a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"

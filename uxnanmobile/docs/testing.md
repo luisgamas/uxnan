@@ -61,6 +61,12 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
   `AppLocalizations` delegates; stream providers are overridden with
   `Stream.value(...)`. The default test window is **800×600** — keep modal
   sheets scrollable so they don't overflow there.
+- **Workspace viewer regression layers.** Pure presentation tests cover file
+  classification, README HTML normalization, safe relative-resource resolution
+  and GIF/SVG detection. Widget tests drive the real viewer through mocked
+  workspace RPC responses, while the bridge suite asserts exact PDF base64 and
+  size-limit behavior. `flutter build apk --debug` additionally compiles the
+  native PDFium integration; see [`file-viewer.md`](file-viewer.md).
 - **Simulated bridge.** Transport/coordinator tests run a persistent in-memory
   "bridge" peer to exercise the handshake, RPC round-trips, notifications and
   reconnect without a network.

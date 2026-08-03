@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
@@ -99,6 +100,88 @@ FileBrowserManager _imageManager() => FileBrowserManager(
           'mimeType': 'image/png',
         },
       ),
+    );
+
+FileBrowserManager _richMarkdownManager(List<String> imageRequests) =>
+    FileBrowserManager(
+      sendRequest: (method, [params]) async {
+        if (method == 'workspace/readFile') {
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{
+              'path': 'docs/README.md',
+              'content': '''
+<p align="center">
+  <img src="../assets/badge.svg" alt="Build" width="88" />
+</p>
+
+![Demo](../assets/demo.gif?raw=true)
+''',
+              'encoding': 'utf-8',
+            },
+          );
+        }
+        if (method == 'workspace/readImage') {
+          final path = params?['path']! as String;
+          imageRequests.add(path);
+          if (path.endsWith('.svg')) {
+            return RpcMessage.response(
+              id: '1',
+              result: <String, dynamic>{
+                'path': path,
+                'base64Data':
+                    'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmci'
+                        'IHdpZHRoPSI4OCIgaGVpZ2h0PSIyMCI+PHJlY3Qgd2lkdGg9Ijg4'
+                        'IiBoZWlnaHQ9IjIwIiBmaWxsPSJncmVlbiIvPjwvc3ZnPg==',
+                'mimeType': 'image/svg+xml',
+              },
+            );
+          }
+          return RpcMessage.response(
+            id: '1',
+            result: <String, dynamic>{
+              'path': path,
+              'base64Data': 'R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+              'mimeType': 'image/gif',
+            },
+          );
+        }
+        return RpcMessage.response(
+          id: '1',
+          result: const <String, dynamic>{},
+        );
+      },
+    );
+
+FileBrowserManager _svgManager() => FileBrowserManager(
+      sendRequest: (method, [params]) async {
+        if (method == 'workspace/readImage') {
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{
+              'path': 'assets/logo.svg',
+              'base64Data':
+                  'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdp'
+                      'ZHRoPSIxNiIgaGVpZ2h0PSIxNiIvPg==',
+              'mimeType': 'image/svg+xml',
+            },
+          );
+        }
+        if (method == 'workspace/readFile') {
+          return RpcMessage.response(
+            id: '1',
+            result: const <String, dynamic>{
+              'path': 'assets/logo.svg',
+              'content': '<svg width="16" height="16" />',
+              'encoding': 'utf-8',
+            },
+          );
+        }
+        return RpcMessage.response(
+          id: '1',
+          result: const <String, dynamic>{},
+        );
+      },
     );
 
 void main() {
@@ -221,6 +304,62 @@ void main() {
     final markdown = find.byType(MarkdownBody);
     expect(markdown, findsOneWidget);
     expect(tester.getSize(markdown).width, lessThanOrEqualTo(760));
+    await manager.dispose();
+  });
+
+  testWidgets('markdown loads relative SVG badges and animated GIF resources',
+      (tester) async {
+    final requests = <String>[];
+    final manager = _richMarkdownManager(requests);
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(
+          cwd: '/tmp',
+          path: 'docs/README.md',
+        ),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      requests,
+      containsAll(<String>['assets/badge.svg', 'assets/demo.gif']),
+    );
+    expect(find.byType(SvgPicture), findsOneWidget);
+    final badge = tester.widget<SvgPicture>(find.byType(SvgPicture));
+    expect(badge.width, 88);
+    expect(badge.height, 20);
+    final gif = tester.widget<Image>(find.byType(Image));
+    expect(gif.gaplessPlayback, isTrue);
+    await manager.dispose();
+  });
+
+  testWidgets('SVG files can switch between preview and editable source',
+      (tester) async {
+    final manager = _svgManager();
+    await tester.pumpWidget(
+      _wrap(
+        child: const FileViewerScreen(
+          cwd: '/tmp',
+          path: 'assets/logo.svg',
+        ),
+        manager: manager,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(SvgPicture), findsOneWidget);
+    expect(find.byIcon(Icons.code_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.code_rounded));
+    await tester.pump();
+
+    expect(find.byType(SelectableText), findsOneWidget);
+    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
     await manager.dispose();
   });
 }

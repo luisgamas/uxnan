@@ -1,19 +1,24 @@
 # Uxnan — Arquitectura del Sistema y Modulos
 
-> **Version:** 1.2.2
-> **Fecha:** 2026-07-21
+> **Version:** 1.2.3
+> **Fecha:** 2026-08-02
 > **Estado:** Definicion inicial — documento de arquitectura tecnica, sincronizado con codigo ALPHA
 > **Plataformas objetivo:** Android (principal), iOS (principal)
 > **Stack:** Flutter / Dart, Clean Architecture, Riverpod
 
-> **Executive summary (1.2.2):** profile activity is owned by a complete,
+> **Executive summary (1.2.3):** profile activity is owned by a complete,
 > global-per-PC bridge ledger. Conversation deletion never subtracts historical
 > metrics; export/import includes conversations, messages, reported tokens,
 > sessions and Git actions. Phone transport identity remains installation-local
 > and is not used as an activity-profile identity. LAN discovery is an
 > unauthenticated host hint, emitted explicitly on every eligible IPv4 interface;
 > it never carries the pairing code and never bypasses the operator-gated E2EE
-> enrollment.
+> enrollment. The mobile workspace browser now selects viewers by file
+> capability: it preserves editable source and Git changes while adding guarded
+> GitHub-style Markdown resources, animated raster and SVG rendering, and native
+> Android/iOS PDF preview. Local resource paths remain workspace-confined, and
+> the bridge preserves bounded PDF bytes as base64 without changing the RPC
+> response shape.
 
 > **Regla de mantenimiento (ver `AGENTS.md` → *Spec drift control (non-negotiable)*):**
 > este documento es la **fuente de verdad** de la arquitectura del sistema.
@@ -1110,8 +1115,8 @@ class TurnTimelineSnapshot {
 
 #### 5.4.7 Markdown y contenido enriquecido
 
-- **Markdown:** `flutter_markdown` — soportado Android + iOS. Renderer completo con soporte de syntax highlighting y bloques de codigo.
-- **Mermaid:** renderizado via `flutter_inappwebview` con un HTML embebido que carga mermaid.js localmente. Ambas plataformas.
+- **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Workspace previews normalize common README HTML and resolve guarded local/HTTPS resources without embedding a WebView.
+- **Mermaid:** represented as structured message content and rendered as an explicit diagram placeholder; no WebView dependency is part of the current mobile UI stack.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
 
@@ -1800,19 +1805,22 @@ Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
   de root + breadcrumb dentro del diálogo full-screen Neural Expressive. La
   selección de agente se compara directamente en un grupo de tarjetas de
   esquinas dinámicas; sólo la tarjeta seleccionada revela sus capability chips.
-- **Visor de archivos del workspace** (`FileBrowserScreen` +
-  `FileViewerScreen` en `presentation/screens/conversation/files/`,
-  manageado por `FileBrowserManager`) — el árbol perezoso, la búsqueda fuzzy
-  repo-wide con revelado de ancestros y el
-  viewer por extensión (imagen inicialmente completa con `BoxFit.contain` y
-  zoom/pan en toda la superficie / Markdown preview vs source seleccionable /
-  código resaltado y seleccionable + diff overlay seleccionable / binary
-  placeholder), accesado
-  desde un `IconSurface` `folder_open_rounded` en la app-bar de
-  `ConversationScreen` al lado del botón de `GitScreen`. Las
-  rutas se validan en el bridge por `path-guard`
-  (§5.8.9/infra) que confina los reads al root del workspace y
-  excluye archivos sensibles.
+- **Workspace file viewer** (`FileBrowserScreen` + `FileViewerScreen` under
+  `presentation/screens/conversation/files/`, managed by
+  `FileBrowserManager`) — the lazy tree and repo-wide fuzzy search feed a
+  capability-based viewer: editable and selectable highlighted UTF-8 source;
+  selectable git diffs; GitHub-style Markdown preview/source with common README
+  HTML normalization; local and HTTPS raster, animated GIF, and SVG resources;
+  full-surface raster/SVG zoom; SVG Preview / Source / Changes parity; native
+  Android/iOS PDF preview; and an honest fallback for unsupported binary files.
+  Relative Markdown resources and file links resolve against the open document,
+  discard query/fragment suffixes before local reads, and are rejected if
+  normalization would leave the workspace. `workspace/readFile` preserves PDF
+  bytes as base64 (bounded at 20 MiB); `workspace/readImage` carries supported
+  images (bounded at 10 MiB). Both pass through `path-guard` (§5.8.9/infra),
+  which confines reads to the workspace root and excludes sensitive files. The
+  viewer opens from the `folder_open_rounded` `IconSurface` beside `GitScreen`
+  in `ConversationScreen`.
 
 Cada entrada de `workspace/list` (`WorkspaceEntry` en `shared/`) lleva
 `name` + `type` (`file`/`dir`) y, en archivos, `size` y `mtime` (epoch ms,

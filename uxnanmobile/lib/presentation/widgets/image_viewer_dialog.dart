@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/zoomable_media.dart';
 
 /// Opens the sent [images] full size, starting at [initialIndex].
 ///
@@ -74,8 +75,7 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
             onPageChanged: (value) => setState(() => _index = value),
             itemBuilder: (context, index) {
               final bytes = _bytesOf(widget.images[index]);
-              return InteractiveViewer(
-                maxScale: 6,
+              return ZoomableMedia(
                 child: Center(
                   child: bytes == null
                       ? Icon(

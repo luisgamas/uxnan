@@ -50,6 +50,12 @@ class UxnanSize {
 
   /// Diameter of the shared floating conversation/history scroll shortcut.
   static const double floatingScrollShortcut = 52;
+
+  /// Default height of compact status badges embedded in Markdown.
+  static const double inlineBadgeHeight = 20;
+
+  /// Maximum height of an unconstrained image embedded in Markdown.
+  static const double maxInlineMediaHeight = 420;
 }
 
 /// Corner-radius scale for the Uxnan design system.

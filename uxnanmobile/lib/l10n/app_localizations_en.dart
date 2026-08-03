@@ -2422,6 +2422,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileViewerLoadFailed => 'Couldn\'t open this file';
 
   @override
+  String get fileViewerMediaUnavailable =>
+      'The preview data isn\'t available. Pull down to try loading it again.';
+
+  @override
+  String get fileViewerPdfInvalid =>
+      'The bridge didn\'t return the original PDF bytes. Update or restart the bridge, then try again.';
+
+  @override
   String get fileViewerModePreview => 'Preview';
 
   @override
