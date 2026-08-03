@@ -119,18 +119,32 @@ first table row is where the hazard lives:
   never drained twice (which would start a queued follow-up against a CLI that
   is still running).
 
-Claude Code is the only one that does this today. **Codex**, driven the same way
-and timed, emits nothing after `turn.completed` and exits ~0.7 s later, and work
-it was asked to leave running did not survive that exit. **Pi** and **Zero**
-cannot either: neither exposes a background-task tool or any wake-up path, and
-both deliberately kill a backgrounded child rather than let it outlive the
-command. (OpenCode and Grok have not been probed this way yet.)
+Claude Code is the only one that comes back. Every agent was probed the same
+way — asked to leave a shell command running and end its turn — and timed:
 
-That does not make the guards Claude-specific, for two reasons: the hazard is
-structural for every adapter in the first table row, and an agent on *any* of
-them can still **say** it will report back — a promise that, without a wake-up
-path, is false from the first second. Reporting honestly is the fix there;
-there is no deferred state to model.
+| Agent | Wakes the model after its turn? | What happens to the deferred work |
+|---|---|---|
+| **Claude Code** | **Yes** | ~4–6 s of grace. Finishes in time → the CLI wakes the model and a second turn reports it. Otherwise **killed** (`status:"stopped"`), work lost |
+| **OpenCode** | No | **Survives — the CLI waits for it.** A `sleep 100` kept the process alive 108 s |
+| Codex | No (nothing after `turn.completed`; exits ~0.7 s later) | Dies with the CLI |
+| Grok | No (exited in 17 s with a 40 s job pending) | Dies with the CLI |
+| Pi | No — no background tool, no wake-up path | Killed on shutdown (tracked pids exist for exactly that) |
+| Zero | No — same | Killed: *"a backgrounded child cannot outlive the command"* |
+| Antigravity | No — the turn ends on process exit | n/a |
+
+Two consequences worth keeping straight, because they need different answers:
+
+- **Claude Code** genuinely defers and returns, so its turn must stay open —
+  that is what the adapter now does.
+- **Everyone else** ends for real. An agent there can still *say* it will report
+  back, and nobody ever will: with Codex, Grok, Pi and Zero the work is already
+  dead, and with **OpenCode it is worse** — the work really does keep running
+  (the CLI waits for it), so it completes and is never reported. There is no
+  deferred state to model in those cases, only a promise not to take at face
+  value.
+
+None of this makes the guards Claude-specific: the hazard is structural for
+every adapter in the first table above, today or after any upstream change.
 
 Per-thread selection: `thread/start { agentId, model, cwd }`; `agent/list` reports
 availability/capabilities; `agent/models` lists models (`AgentModel[]` with
