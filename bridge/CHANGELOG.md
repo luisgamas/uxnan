@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.15-alpha.20260803] - 2026-08-03
+
+### Fixed — the published package pins the matching `@uxnan/shared`
+
+`0.0.14-alpha.20260803` was published pinning `@uxnan/shared@0.0.11-alpha.20260729`:
+its release workflow reads the `latest` dist-tag at build time, and both tags were
+pushed together, so it resolved shared **before** `0.0.12-alpha.20260803` was on npm.
+That shared build knows 68 methods, so an install of `0.0.14` would have answered
+`workspace/resolveFileLink` — the file-link resolution this cycle adds — with
+"method not found", since `HandlerRouter` validates every request against
+`isKnownMethod` from the shared registry.
+
+No bridge source changed between `0.0.14` and `0.0.15`; this release only carries
+the correct `@uxnan/shared@0.0.12-alpha.20260803` pin. Push a `shared-v*` tag and
+let it publish **before** pushing `bridge-v*`.
+
 ## [0.0.14-alpha.20260803] - 2026-08-03
 
 ### Fixed — a turn no longer ends while the agent is still working

@@ -55,6 +55,16 @@ which versions "go together".
   - **Verify before tagging:** each manifest version **equals** its lockfile
     counterpart (`node -p "require('./uxnandesktop/package-lock.json').version"`
     etc.). Never commit a manifest/lock version mismatch.
+- **Push `shared-v*` FIRST and let it finish before `bridge-v*`/`relay-v*`.**
+  `release-npm.yml` pins the dependency by reading `npm view @uxnan/shared
+  dist-tags.latest` **at build time**, so two tags pushed together race: the
+  bridge job resolves the *previous* shared and publishes against it. That is a
+  real break, not cosmetic — `HandlerRouter` validates every request against
+  `isKnownMethod` from the shared registry, so a bridge pinned to an older
+  shared answers this cycle's new methods with "method not found". It happened
+  on 2026-08-03 (`bridge-v0.0.14-alpha.20260803`, superseded by `0.0.15`).
+  Wait for the shared run to go green and for `npm view @uxnan/shared version`
+  to report the new version before tagging the bridge.
 - npm packages publish to the **`latest`** dist-tag, so `npm install`
   (`npm install -g uxnan-bridge`) and the bridge's self-update check always
   resolve the **newest** release. Pre-release channels (`alpha`/`beta`) are
