@@ -2041,6 +2041,18 @@ completo sobre el mismo proceso. Medido contra la CLI real, ese margen es de
 **~4–6 s**, tras los cuales la CLI **mata** la tarea (`status:"stopped"`) y sale
 con ese trabajo sin terminar.
 
+**Una espera larga NO es este caso.** El margen anterior aplica solo a trabajo
+que queda corriendo *despues* de que el modelo termina su turno. El caso comun —
+"abre el PR y espera el CI", una compilacion, una bateria de tests — es una
+llamada de herramienta que **bloquea dentro del turno**: no se ha emitido ningun
+`result`, asi que no hay nada que expire ni que matar. Medido sobre la CLI real:
+una espera de 75 s en primer plano corrio como **un solo turno de 100 s**, con
+eventos `tool_progress` a +35 s y +65 s y el trabajo completandose con
+normalidad. Ademas **el bridge no tiene ningun timeout de turno**: los unicos
+temporizadores de `AgentManager` acotan cuanto se espera *al usuario* (una
+aprobacion o una pregunta), no cuanto puede durar un turno. Un turno puede durar
+minutos u horas.
+
 Reglas derivadas (comportamiento, no contrato — ningun metodo ni notificacion
 cambia):
 

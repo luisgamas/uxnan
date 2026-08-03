@@ -103,6 +103,28 @@ on the same process. Timed against the real CLI, the grace period is about
 **4–6 seconds**, after which the CLI **kills** the task (`status:"stopped"`) and
 exits with that work unfinished.
 
+#### A long wait is not the same thing (and is not limited)
+
+The grace period applies to exactly one shape: work left running **after** the
+model ends its turn. It says nothing about **long work the agent waits for**,
+which is the common case — "open the PR and wait for CI", a build, a test suite.
+There the tool call blocks *inside* the turn: no `result` has been emitted, so
+there is nothing to expire and nothing to kill.
+
+Measured on the real CLI: a 75-second foreground wait ran as **one turn lasting
+100 seconds**, with `tool_progress` events at +35 s and +65 s, the work
+completing normally, and `result` arriving only afterwards. There is also **no
+turn-level timeout anywhere in the bridge** — the only timers in `AgentManager`
+bound how long it waits for *the user* to answer an approval or a question, not
+how long a turn may run. A turn can take minutes or hours.
+
+So the two cases split cleanly:
+
+| The agent… | Turn state | Bounded? |
+|---|---|---|
+| **waits** for long work (CI, build, tests) | still running; deltas and tool progress keep flowing | **No limit** |
+| **leaves** work running and ends its turn | held open by the adapter until the CLI's follow-up turn or its exit | ~4–6 s, then the CLI kills the work and the turn reports it |
+
 So `claude-adapter.ts` tracks live background tasks (`system` lines with
 `subtype:"task_started"` / `"task_notification"` — the reason `system` is no
 longer parsed as one event kind) and **holds the completion** while any is live,
