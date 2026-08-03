@@ -1384,8 +1384,13 @@ Reglas de streaming:
 > "jump to latest" aparece, la franja de contexto del turno y el aviso de modo
 > autónomo (si existe) se deslizan hacia el composer, se desvanecen y colapsan
 > dentro de un clip; así despejan el área de lectura sin quedar visibles bajo el
-> velo translúcido. Los menús de opciones del turno no roban el foco del
-> composer y recalculan su anclaje si cambia la geometría del teclado.
+> velo translúcido. En la franja visible al fondo, los controles del turno
+> permanecen plegados a la izquierda y los indicadores de edits/contexto a la
+> derecha; al desplegar los primeros, los indicadores informativos salen con
+> fade + desplazamiento y ceden progresivamente todo el ancho compacto, y
+> reaparecen al plegar. La transición usa motion M3E compartido y se vuelve
+> inmediata con reduced motion. Los menús de opciones del turno no roban el
+> foco del composer y recalculan su anclaje si cambia la geometría del teclado.
 > Las compactaciones confirmadas por el agente se insertan como hitos tonales
 > `CompactionContent` dentro del orden real de `Message.segments`; no forman
 > parte del texto copiable ni de previews. Codex (`contextCompaction`), Claude

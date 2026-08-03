@@ -5,6 +5,7 @@ import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_context_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
@@ -108,6 +109,125 @@ void main() {
     expect(find.byIcon(Icons.psychology_alt_outlined), findsNothing);
     expect(find.byIcon(Icons.lock_open_rounded), findsNothing);
     expect(find.byKey(const ValueKey('turn-controls-toggle')), findsOneWidget);
+  });
+
+  testWidgets(
+    'expanded turn controls smoothly replace trailing info on a compact phone',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      var expanded = false;
+      const options = [
+        AgentModelOption(
+          key: 'reasoning',
+          kind: 'enum',
+          label: 'Reasoning effort',
+          values: [
+            AgentModelOptionValue(value: 'high', label: 'High'),
+          ],
+        ),
+        AgentModelOption(
+          key: 'fast',
+          kind: 'toggle',
+          label: 'Fast mode',
+        ),
+      ];
+
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        _wrap(
+          StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return Align(
+                alignment: Alignment.bottomCenter,
+                child: ComposerContextBar(
+                  controlsExpanded: expanded,
+                  controls: TurnControlShelf(
+                    threadId: 'thread-1',
+                    options: options,
+                    showApproval: true,
+                    approvalMode: ApprovalMode.requestApproval,
+                    expanded: expanded,
+                    onExpandedChanged: (value) {
+                      expanded = value;
+                      rebuild(() {});
+                    },
+                    onApprovalTap: () {},
+                  ),
+                  info: const SizedBox(
+                    key: ValueKey('trailing-context-info'),
+                    width: 132,
+                    height: 38,
+                    child: Text('+12 −3 · 42%'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      final transition =
+          find.byKey(const ValueKey('composer-context-info-transition'));
+      expect(tester.getSize(transition).width, 140);
+      expect(find.text('+12 −3 · 42%'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('turn-controls-toggle')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      final midWidth = tester.getSize(transition).width;
+      expect(midWidth, greaterThan(0));
+      expect(midWidth, lessThan(140));
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpAndSettle();
+      expect(tester.getSize(transition).width, 0);
+      expect(find.byIcon(Icons.psychology_alt_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.pan_tool_outlined), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('turn-controls-toggle')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(transition).width, closeTo(140, 0.01));
+      expect(find.text('+12 −3 · 42%'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('reduced motion swaps composer context info immediately',
+      (tester) async {
+    var expanded = false;
+    late VoidCallback expand;
+
+    await tester.pumpWidget(
+      _wrap(
+        MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              expand = () => setState(() => expanded = true);
+              return ComposerContextBar(
+                controlsExpanded: expanded,
+                controls: const SizedBox(width: 48, height: 48),
+                info: const SizedBox(width: 80, height: 38),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    final transition =
+        find.byKey(const ValueKey('composer-context-info-transition'));
+    expect(tester.getSize(transition).width, 88);
+
+    expand();
+    await tester.pump();
+    expect(tester.getSize(transition).width, 0);
   });
 
   testWidgets('approval icon color communicates the selected safety mode',

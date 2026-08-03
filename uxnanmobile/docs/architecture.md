@@ -142,7 +142,10 @@ prompts cannot overwrite either the automatic title or a manual rename.
   so the app stays usable before the bridge implements a handler.
 - **Capability-aware UI.** The compact turn-context shelf (approval and model
   run options) and the "+" media menu are gated by the active agent's
-  capabilities; unknown capabilities remain permissive. The deprecated
+  capabilities; unknown capabilities remain permissive. The shelf starts
+  folded beside the visible edit/context indicators; expanding it animates
+  those read-only indicators out so the controls can use the full phone-width
+  row, and folding restores them. The deprecated
   `gemini-cli` is an explicit exception: descriptors, cached threads, metrics and
   provider usage are filtered before they reach any mobile product surface.
 - **drift migrations** are additive with explicit version bumps; see

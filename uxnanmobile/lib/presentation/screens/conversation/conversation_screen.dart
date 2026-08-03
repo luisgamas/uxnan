@@ -26,6 +26,7 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
+import 'package:uxnan/presentation/screens/conversation/composer/composer_context_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_submit_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/rescued_drafts_card.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
@@ -1109,7 +1110,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                         // Yields the slot to whichever shortcut is showing.
                         visible: shortcutSlot == _ComposerShortcut.none,
                         child: _Centered(
-                          child: _ComposerContextBar(
+                          child: ComposerContextBar(
+                            controlsExpanded:
+                                showTurnControls && _turnControlsExpanded,
                             controls: showTurnControls
                                 ? TurnControlShelf(
                                     threadId: widget.threadId,
@@ -1470,36 +1473,6 @@ _TurnEdits? _lastTurnEdits(TurnTimelineSnapshot? snapshot) {
     return (additions: additions, deletions: deletions, files: diffs.length);
   }
   return null;
-}
-
-/// Shared line above the composer: persistent turn controls stay left while
-/// diff/context indicators remain anchored right. The controls can scroll
-/// horizontally without displacing the token indicator on compact screens.
-class _ComposerContextBar extends StatelessWidget {
-  const _ComposerContextBar({this.controls, this.info});
-
-  final Widget? controls;
-  final Widget? info;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UxnanSpacing.lg,
-        UxnanSpacing.xs,
-        UxnanSpacing.lg,
-        0,
-      ),
-      child: Row(
-        children: [
-          if (controls != null) Expanded(child: controls!),
-          if (controls != null && info != null)
-            const SizedBox(width: UxnanSpacing.sm),
-          if (info != null) info!,
-        ],
-      ),
-    );
-  }
 }
 
 /// A compact, right-aligned info row just above the composer: the latest turn's

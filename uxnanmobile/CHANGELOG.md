@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — expanded turn controls use the full phone-width ribbon
+
+- The conversation ribbon keeps its existing default: the effort/permission
+  controls stay folded on the left while edit, token and context indicators
+  remain visible on the right.
+- Expanding the left controls now slides, fades and collapses the read-only
+  indicators out of the row, preventing compact-phone crowding; folding the
+  controls restores them with the inverse M3E transition. Reduced-motion users
+  get the same state change without animation.
+
 ### Added — conversations follow turns written in native agent clients
 
 - While a connected conversation is open and idle, Mobile re-syncs its newest
