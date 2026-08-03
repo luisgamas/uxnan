@@ -2,24 +2,28 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_highlight/themes/atom-one-dark.dart';
-import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:highlight/highlight.dart' as syntax;
+import 'package:markdown/markdown.dart' as md;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
+import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
+import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
+import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_diff_viewer.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_preview_media.dart';
+import 'package:uxnan/presentation/screens/conversation/files/widgets/markdown_blocks.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/highlighted_source.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -257,6 +261,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
               editing: _editing,
               editController: _editController,
               manager: ref.read(fileBrowserManagerProvider),
+              remoteResources: ref.read(remoteResourceServiceProvider),
               cwd: widget.cwd,
               path: widget.path,
               kind: kind,
@@ -365,6 +370,7 @@ class _FileViewerBody extends StatelessWidget {
     required this.editing,
     required this.editController,
     required this.manager,
+    required this.remoteResources,
     required this.cwd,
     required this.path,
     required this.kind,
@@ -379,6 +385,7 @@ class _FileViewerBody extends StatelessWidget {
   final bool editing;
   final TextEditingController editController;
   final FileBrowserManager manager;
+  final RemoteResourceService remoteResources;
   final String cwd;
   final String path;
   final FilePreviewKind kind;
@@ -456,9 +463,10 @@ class _FileViewerBody extends StatelessWidget {
         topInset: topInset,
         onRefresh: onRefresh,
         child: _MarkdownBody(
-          text: normalizeReadmeHtml(text),
+          text: text,
           topInset: topInset,
           manager: manager,
+          remoteResources: remoteResources,
           cwd: cwd,
           path: path,
         ),
@@ -592,17 +600,35 @@ class _ViewerPayload {
 ///
 /// The horizontal padding (`UxnanSpacing.lg`) matches the rest of the app's
 /// content surfaces so the rendered text doesn't kiss the screen edges.
+/// The renderer's syntax set: exactly the GitHub-flavored one the viewer has
+/// always used (tables, strikethrough, autolinks, task lists) plus `:emoji:`
+/// shortcodes.
+///
+/// Deliberately **not** `gitHubWeb`: that set also turns on inline-HTML
+/// parsing, which silently swallows any residual `<tag>`-looking text instead
+/// of showing it — a change in how every existing document parses, in exchange
+/// for heading anchors this viewer does not navigate.
+final _markdownExtensions = md.ExtensionSet(
+  md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+  <md.InlineSyntax>[
+    md.EmojiSyntax(),
+    ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
+  ],
+);
+
 class _MarkdownBody extends StatelessWidget {
   const _MarkdownBody({
     required this.text,
     required this.topInset,
     required this.manager,
+    required this.remoteResources,
     required this.cwd,
     required this.path,
   });
 
   final String text;
   final FileBrowserManager manager;
+  final RemoteResourceService remoteResources;
   final String cwd;
   final String path;
 
@@ -626,39 +652,93 @@ class _MarkdownBody extends StatelessWidget {
           constraints: const BoxConstraints(
             maxWidth: UxnanSpacing.maxContentWidth,
           ),
-          child: MarkdownBody(
-            data: text,
-            selectable: true,
-            styleSheet: uxnanMarkdownStyleSheet(context),
-            imageBuilder: (uri, title, alt) => MarkdownResourceImage(
-              key: ValueKey('$path::$uri'),
-              manager: manager,
-              cwd: cwd,
-              documentPath: path,
-              uri: uri,
-              title: title,
-            ),
-            onTapLink: (linkText, href, title) => _onTapLink(context, href),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final block in splitMarkdownBlocks(text))
+                _blockWidget(context, block),
+            ],
           ),
         ),
       ),
     );
   }
 
-  void _onTapLink(BuildContext context, String? href) {
+  /// Renders one document block: GitHub's two container constructs get their
+  /// own chrome, everything else is Markdown rendered as before.
+  Widget _blockWidget(BuildContext context, MarkdownBlock block) {
+    return switch (block) {
+      MarkdownTextBlock(:final text) => _markdown(context, text),
+      MarkdownAlertBlock(:final kind, :final body) => MarkdownAlertCard(
+          kind: kind,
+          child: _markdown(context, body),
+        ),
+      MarkdownDetailsBlock(:final summary, :final body, :final expanded) =>
+        MarkdownDetailsTile(
+          summary: summary,
+          initiallyExpanded: expanded,
+          child: _markdown(context, body),
+        ),
+    };
+  }
+
+  Widget _markdown(BuildContext context, String source) {
+    final colors = Theme.of(context).colorScheme;
+    return MarkdownBody(
+      data: normalizeReadmeHtml(source),
+      selectable: true,
+      styleSheet: uxnanMarkdownStyleSheet(context),
+      extensionSet: _markdownExtensions,
+      builders: {'pre': MarkdownCodeBlockBuilder()},
+      checkboxBuilder: (checked) => Padding(
+        padding: const EdgeInsets.only(right: UxnanSpacing.xs),
+        child: Icon(
+          checked
+              ? Icons.check_box_rounded
+              : Icons.check_box_outline_blank_rounded,
+          size: UxnanSpacing.lg,
+          color: checked ? colors.primary : colors.onSurfaceVariant,
+        ),
+      ),
+      imageBuilder: (uri, title, alt) => MarkdownResourceImage(
+        key: ValueKey('$path::$uri'),
+        manager: manager,
+        remoteResources: remoteResources,
+        cwd: cwd,
+        documentPath: path,
+        uri: uri,
+        title: title,
+      ),
+      onTapLink: (linkText, href, title) =>
+          unawaited(_onTapLink(context, href)),
+    );
+  }
+
+  Future<void> _onTapLink(BuildContext context, String? href) async {
     if (href == null || href.isEmpty) return;
-    final workspacePath = resolveWorkspaceResourcePath(path, href);
-    if (workspacePath != null) {
-      unawaited(
-        FileViewerScreen.push(context, cwd: cwd, path: workspacePath),
-      );
-      return;
-    }
-    // External destinations remain an explicit copy action; opening a README
-    // never launches another app or browser without a separate user decision.
     final l10n = AppLocalizations.of(context);
-    unawaited(Clipboard.setData(ClipboardData(text: href)));
-    ScaffoldMessenger.of(context)
+    final messenger = ScaffoldMessenger.of(context);
+
+    switch (resolveMarkdownLinkAction(path, href)) {
+      case OpenWorkspaceFile(:final path):
+        await FileViewerScreen.push(context, cwd: cwd, path: path);
+        return;
+      case OpenExternalLink(:final uri):
+        try {
+          if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+            return;
+          }
+        } on Object catch (error, stackTrace) {
+          AppLogger.warn('Failed to open a Markdown link', error, stackTrace);
+        }
+      case CopyLinkTarget():
+        break;
+    }
+    // Anything the OS would not take — an in-page anchor, an unusual scheme, a
+    // device with no handler — still lands on the clipboard rather than
+    // silently doing nothing.
+    await Clipboard.setData(ClipboardData(text: href));
+    messenger
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(l10n.fileViewerLinkCopied(href))));
   }
@@ -681,8 +761,6 @@ class _CodeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
       // AlwaysScrollable so the parent RefreshIndicator can be pulled even
       // when the source fits the viewport (matches the markdown body).
@@ -704,74 +782,13 @@ class _CodeBody extends StatelessWidget {
             alignment: Alignment.topLeft,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: _SelectableHighlightView(
-                text,
-                language: language,
-                theme: theme,
-                textStyle: UxnanTypography.codeBody,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UxnanSpacing.sm,
-                  vertical: UxnanSpacing.xs,
-                ),
-              ),
+              child: HighlightedSource(source: text, language: language),
             ),
           ),
         ),
       ),
     );
   }
-}
-
-/// Syntax-highlighted source rendered through [SelectableText.rich]. The
-/// `flutter_highlight` widget uses a plain `RichText`, which cannot expose the
-/// platform selection/copy menu; this keeps the same parser and themes while
-/// making every source range genuinely selectable.
-class _SelectableHighlightView extends StatelessWidget {
-  const _SelectableHighlightView(
-    this.source, {
-    required this.language,
-    required this.theme,
-    required this.textStyle,
-    required this.padding,
-  });
-
-  final String source;
-  final String language;
-  final Map<String, TextStyle> theme;
-  final TextStyle textStyle;
-  final EdgeInsetsGeometry padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final rootStyle = TextStyle(color: theme['root']?.color).merge(textStyle);
-    final nodes = syntax.highlight
-        .parse(source.replaceAll('\t', '        '), language: language)
-        .nodes;
-    return Container(
-      color: theme['root']?.backgroundColor,
-      padding: padding,
-      child: SelectableText.rich(
-        TextSpan(
-          style: rootStyle,
-          children: _highlightSpans(nodes ?? const <syntax.Node>[]),
-        ),
-      ),
-    );
-  }
-
-  List<TextSpan> _highlightSpans(List<syntax.Node> nodes) => [
-        for (final node in nodes)
-          if (node.value != null)
-            TextSpan(
-              text: node.value,
-              style: node.className == null ? null : theme[node.className],
-            )
-          else
-            TextSpan(
-              style: node.className == null ? null : theme[node.className],
-              children: _highlightSpans(node.children ?? const <syntax.Node>[]),
-            ),
-      ];
 }
 
 /// Inline editor: a full-height monospace [TextField] over the raw file

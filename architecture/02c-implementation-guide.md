@@ -1681,9 +1681,11 @@ dependencies:
 
   # UI
   flutter_markdown_plus: ^1.0.0
+  markdown: ^7.3.1              # AST: GitHub extension set + code-block builder
   flutter_highlight: ^0.7.0
   material_loading_indicator: ^1.0.0
-  flutter_svg: ^2.0.10
+  flutter_svg: ^2.0.10          # app-owned assets (agent logos)
+  jovial_svg: ^1.1.30           # user documents: honours <text> transforms
   pdfrx: ^2.4.7
 
   # Camara y QR

@@ -1299,7 +1299,7 @@
   },
   "fileViewerLinkCopied": "Link copied: {href}",
   "@fileViewerLinkCopied": {
-    "description": "Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).",
+    "description": "Snackbar shown when a link tapped in the Markdown preview could not be handed to the OS (an in-page anchor, an unusual scheme, or no handler installed) and was copied to the clipboard instead.",
     "placeholders": {
       "href": {
         "type": "String",
@@ -1326,6 +1326,30 @@
   "fileViewerPdfInvalid": "The bridge didn't return the original PDF bytes. Update or restart the bridge, then try again.",
   "@fileViewerPdfInvalid": {
     "description": "Body of the error shown when a PDF was not delivered as base64 bytes."
+  },
+  "markdownAlertNote": "Note",
+  "@markdownAlertNote": {
+    "description": "Title of a GitHub `> [!NOTE]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertTip": "Tip",
+  "@markdownAlertTip": {
+    "description": "Title of a GitHub `> [!TIP]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertImportant": "Important",
+  "@markdownAlertImportant": {
+    "description": "Title of a GitHub `> [!IMPORTANT]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertWarning": "Warning",
+  "@markdownAlertWarning": {
+    "description": "Title of a GitHub `> [!WARNING]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertCaution": "Caution",
+  "@markdownAlertCaution": {
+    "description": "Title of a GitHub `> [!CAUTION]` callout rendered in a Markdown preview."
+  },
+  "markdownDetails": "Details",
+  "@markdownDetails": {
+    "description": "Fallback label for a Markdown <details> disclosure whose <summary> is empty."
   },
   "fileViewerModePreview": "Preview",
   "@fileViewerModePreview": {

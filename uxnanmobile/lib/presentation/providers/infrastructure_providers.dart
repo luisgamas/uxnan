@@ -12,6 +12,7 @@ import 'package:uxnan/domain/repositories/i_thread_repository.dart';
 import 'package:uxnan/domain/repositories/i_trusted_device_repository.dart';
 import 'package:uxnan/infrastructure/discovery/bridge_discovery_service.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
+import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/infrastructure/notifications/push_notification_service.dart';
 import 'package:uxnan/infrastructure/pairing/manual_pairing_service.dart';
 import 'package:uxnan/infrastructure/repositories/drift_composer_draft_repository.dart';
@@ -224,6 +225,17 @@ final manualPairingServiceProvider = Provider<ManualPairingService>(
     ),
   ),
 );
+
+/// Loader for the HTTPS resources a Markdown preview embeds (README shields,
+/// hosted screenshots).
+///
+/// Shared and long-lived so a document that repaints — or is reopened — reuses
+/// the bytes it already fetched instead of downloading every badge again.
+final remoteResourceServiceProvider = Provider<RemoteResourceService>((ref) {
+  final service = RemoteResourceService();
+  ref.onDispose(service.dispose);
+  return service;
+});
 
 /// Trusted-device repository (drift for metadata + secure storage for the
 /// bridge identity key).

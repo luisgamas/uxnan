@@ -1115,7 +1115,8 @@ class TurnTimelineSnapshot {
 
 #### 5.4.7 Markdown y contenido enriquecido
 
-- **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Workspace previews normalize common README HTML and resolve guarded local/HTTPS resources without embedding a WebView.
+- **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Workspace previews target GitHub-flavored Markdown as GitHub renders it, without embedding a WebView: GitHub **alerts** (`> [!NOTE]` …) and **`<details>` disclosures** are extracted as blocks and given their own chrome, common README HTML (including rectangular tables, `<kbd>`, `<sub>`/`<sup>`) is normalized, and the renderer runs the `gitHubWeb` extension set with a checkbox builder and a syntax-highlighted, horizontally scrollable code-block builder. An HTTPS resource is decoded by the media type its **response** declares (`content-type` + payload signature), never by its URL, because README shields are served from extensionless endpoints as `image/svg+xml`.
+- **SVG:** two renderers by design. `flutter_svg` draws the app's own bundled assets; **`jovial_svg`** draws documents the user did not author (workspace previews, README shields), because `vector_graphics` does not apply transforms to `<text>` and every badge service scales its label down with one.
 - **Mermaid:** represented as structured message content and rendered as an explicit diagram placeholder; no WebView dependency is part of the current mobile UI stack.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
 - **Diff viewer:** widget nativo custom con renderizado de lineas anadidas/eliminadas.
@@ -1810,12 +1811,21 @@ Las RPCs `workspace/list`, `workspace/searchFiles`, `workspace/readFile` y
   `FileBrowserManager`) — the lazy tree and repo-wide fuzzy search feed a
   capability-based viewer: editable and selectable highlighted UTF-8 source;
   selectable git diffs; GitHub-style Markdown preview/source with common README
-  HTML normalization; local and HTTPS raster, animated GIF, and SVG resources;
+  HTML normalization, alert callouts, `<details>` disclosures, HTML tables, task
+  lists and highlighted scrollable fences; local and HTTPS raster, animated GIF,
+  and SVG resources;
   full-surface raster/SVG zoom; SVG Preview / Source / Changes parity; native
   Android/iOS PDF preview; and an honest fallback for unsupported binary files.
   Relative Markdown resources and file links resolve against the open document,
   discard query/fragment suffixes before local reads, and are rejected if
-  normalization would leave the workspace. `workspace/readFile` preserves PDF
+  normalization would leave the workspace. A tapped link opens another document
+  in the viewer (workspace-relative), is handed to the OS (`http`/`https`/
+  `mailto` only), or is copied — never launched under any other scheme. HTTPS resources go through a shared
+  `RemoteResourceService` (`infrastructure/media/`): `https`-only, bounded at
+  5 MiB, cached by URL, and typed from the response (`content-type` + payload
+  signature) rather than from the URL, since shields answer extensionless
+  endpoints with `image/svg+xml`. Inline placeholders measure their slot so a
+  badge-height row degrades to a single glyph instead of overflowing the line. `workspace/readFile` preserves PDF
   bytes as base64 (bounded at 20 MiB); `workspace/readImage` carries supported
   images (bounded at 10 MiB). Both pass through `path-guard` (§5.8.9/infra),
   which confines reads to the workspace root and excludes sensitive files. The

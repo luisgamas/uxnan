@@ -2430,6 +2430,24 @@ class AppLocalizationsEn extends AppLocalizations {
       'The bridge didn\'t return the original PDF bytes. Update or restart the bridge, then try again.';
 
   @override
+  String get markdownAlertNote => 'Note';
+
+  @override
+  String get markdownAlertTip => 'Tip';
+
+  @override
+  String get markdownAlertImportant => 'Important';
+
+  @override
+  String get markdownAlertWarning => 'Warning';
+
+  @override
+  String get markdownAlertCaution => 'Caution';
+
+  @override
+  String get markdownDetails => 'Details';
+
+  @override
   String get fileViewerModePreview => 'Preview';
 
   @override

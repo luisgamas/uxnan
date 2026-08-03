@@ -117,10 +117,13 @@ connected to live bridge data, validated on-device against a real bridge.
 - **Workspace file browser + viewer** — lazy git-aware tree, repo-wide fuzzy
   search with relative-path results, ancestor reveal and hidden pre-positioning
   of the selected row; editable highlighted text, selectable diffs,
-  GitHub-style Markdown with guarded relative resources and common README HTML,
-  animated GIF, raster/SVG zoom, SVG Preview / Source / Changes parity, and
-  native Android/iOS PDF preview. See `docs/file-viewer.md` for the exact matrix
-  and boundaries.
+  GitHub-flavored Markdown with guarded relative resources, README HTML
+  (including tables, `<kbd>`, `<sub>`/`<sup>`), **alert callouts**, **`<details>`
+  disclosures**, task lists, `:emoji:`, and syntax-highlighted, horizontally
+  scrollable fences; remote README shields typed by their response rather than
+  their URL and drawn by `jovial_svg` so their labels are legible; animated GIF,
+  raster/SVG zoom, SVG Preview / Source / Changes parity, and native Android/iOS
+  PDF preview. See `docs/file-viewer.md` for the exact matrix and boundaries.
 - **Structured model picker** (readable names, default badge, Claude alias
   "(latest)" + pinned versions + resolved-version row, `thread/setModel`), with
   a **Settings ▸ Models** switch to hide Claude Code's `isLatestAlias` "(latest)"
@@ -224,6 +227,13 @@ shipping.
       rebuilds the settings landing + adds About/Licenses screens). **Unblocks
       when that overhaul merges:** add the row to the new About section, reading
       `bridgeUpdateProvider` (no new data/contract work needed).
+- [ ] **Mermaid diagrams in the Markdown preview.** A ```` ```mermaid ```` fence
+      renders as highlighted source (the honest fallback); GitHub draws the
+      diagram. Needs a pure-Dart renderer or an explicit diagram placeholder in
+      `MarkdownCodeBlockBuilder`
+      (`presentation/screens/conversation/files/widgets/markdown_blocks.dart`);
+      deferred because the mobile stack deliberately carries no WebView
+      (`architecture/02a` §5.4.7).
 - [ ] **Project drift repository** — the `projects` table exists; the repository +
       `AgentConfig` wiring lands with the projects module.
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.

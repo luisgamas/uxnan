@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Visual representation available for a workspace file.
 enum FilePreviewKind { text, markdown, rasterImage, svg, pdf }
 
@@ -101,6 +103,269 @@ class MarkdownImageMetadata {
   final String? title;
 }
 
+/// What tapping a link in a Markdown preview should do.
+sealed class MarkdownLinkAction {
+  const MarkdownLinkAction();
+}
+
+/// Open another workspace file in a new viewer.
+class OpenWorkspaceFile extends MarkdownLinkAction {
+  /// Creates an action opening [path] (workspace-relative).
+  const OpenWorkspaceFile(this.path);
+
+  /// Workspace-relative path of the target document.
+  final String path;
+}
+
+/// Hand the destination to the OS (browser, mail client).
+class OpenExternalLink extends MarkdownLinkAction {
+  /// Creates an action launching [uri].
+  const OpenExternalLink(this.uri);
+
+  /// Destination to launch.
+  final Uri uri;
+}
+
+/// Copy the destination — the honest fallback for anything not launchable.
+class CopyLinkTarget extends MarkdownLinkAction {
+  /// Creates an action copying [href].
+  const CopyLinkTarget(this.href);
+
+  /// Raw destination as written in the document.
+  final String href;
+}
+
+/// Schemes handed to the OS. Everything else (an in-page `#anchor`, a `file:`
+/// or app-specific scheme) is copied instead of launched, so a document can
+/// never make the phone open something arbitrary.
+const _launchableSchemes = {'http', 'https', 'mailto'};
+
+/// Decides what a tapped Markdown link does, from the document it lives in.
+///
+/// A workspace-relative destination opens in the viewer; a web or mail address
+/// goes to the OS the way a link in any reader does; anything else is copied.
+MarkdownLinkAction resolveMarkdownLinkAction(String documentPath, String href) {
+  final workspacePath = resolveWorkspaceResourcePath(documentPath, href);
+  if (workspacePath != null) return OpenWorkspaceFile(workspacePath);
+
+  final uri = Uri.tryParse(href.trim());
+  if (uri != null && _launchableSchemes.contains(uri.scheme.toLowerCase())) {
+    return OpenExternalLink(uri);
+  }
+  return CopyLinkTarget(href);
+}
+
+/// A GitHub-flavored alert (`> [!NOTE]` and friends).
+enum MarkdownAlertKind {
+  /// Useful information the reader should notice.
+  note,
+
+  /// Optional advice for doing something better.
+  tip,
+
+  /// Information essential to the reader's success.
+  important,
+
+  /// Something that needs immediate attention.
+  warning,
+
+  /// A risk with negative consequences.
+  caution;
+
+  /// Resolves the GitHub keyword (`NOTE`, `TIP`, …) to its kind, or `null`.
+  static MarkdownAlertKind? parse(String keyword) {
+    final normalized = keyword.trim().toLowerCase();
+    for (final kind in MarkdownAlertKind.values) {
+      if (kind.name == normalized) return kind;
+    }
+    return null;
+  }
+}
+
+/// A run of a Markdown document that the viewer renders as one unit.
+///
+/// GitHub renders two constructs that Markdown itself has no notion of: the
+/// `> [!NOTE]` alert and the `<details>` disclosure. Both are containers whose
+/// *body* is ordinary Markdown, so the document is split into blocks and each
+/// body is rendered by the same Markdown pipeline inside a widget that supplies
+/// the missing chrome.
+sealed class MarkdownBlock {
+  const MarkdownBlock();
+}
+
+/// Ordinary Markdown handed straight to the renderer.
+class MarkdownTextBlock extends MarkdownBlock {
+  /// Creates a plain Markdown block.
+  const MarkdownTextBlock(this.text);
+
+  /// Raw Markdown source.
+  final String text;
+}
+
+/// A GitHub alert callout.
+class MarkdownAlertBlock extends MarkdownBlock {
+  /// Creates an alert of [kind] carrying [body].
+  const MarkdownAlertBlock({required this.kind, required this.body});
+
+  /// Which alert this is.
+  final MarkdownAlertKind kind;
+
+  /// Markdown inside the callout.
+  final String body;
+}
+
+/// A `<details>` disclosure.
+class MarkdownDetailsBlock extends MarkdownBlock {
+  /// Creates a disclosure with a [summary] label over [body].
+  const MarkdownDetailsBlock({
+    required this.summary,
+    required this.body,
+    required this.expanded,
+  });
+
+  /// Text shown on the always-visible row (already HTML-normalized).
+  final String summary;
+
+  /// Markdown revealed when the disclosure opens.
+  final String body;
+
+  /// Whether the document asked for it to start open (`<details open>`).
+  final bool expanded;
+}
+
+/// Splits [source] into renderable blocks, leaving fenced code untouched.
+///
+/// Only the two container constructs are extracted; everything else stays in
+/// [MarkdownTextBlock]s in document order, so a document with neither returns a
+/// single block and renders exactly as before.
+List<MarkdownBlock> splitMarkdownBlocks(String source) {
+  final blocks = <MarkdownBlock>[];
+  final buffer = <String>[];
+  final lines = source.split('\n');
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    final text = buffer.join('\n');
+    buffer.clear();
+    if (text.trim().isEmpty) return;
+    blocks.add(MarkdownTextBlock(text));
+  }
+
+  var index = 0;
+  while (index < lines.length) {
+    final line = lines[index];
+
+    final fence = RegExp(r'^\s{0,3}(`{3,}|~{3,})').firstMatch(line);
+    if (fence != null) {
+      final marker = fence.group(1)!;
+      final closing = RegExp('^\\s{0,3}${RegExp.escape(marker)}\\s*\$');
+      buffer.add(lines[index++]);
+      while (index < lines.length) {
+        final fenced = lines[index++];
+        buffer.add(fenced);
+        if (closing.hasMatch(fenced)) break;
+      }
+      continue;
+    }
+
+    final alert = _alertOpening(line);
+    if (alert != null) {
+      flush();
+      index++;
+      final body = <String>[];
+      while (index < lines.length && _isQuote(lines[index])) {
+        body.add(_stripQuote(lines[index++]));
+      }
+      blocks.add(
+        MarkdownAlertBlock(kind: alert, body: body.join('\n').trim()),
+      );
+      continue;
+    }
+
+    if (RegExp('<details[^>]*>', caseSensitive: false).hasMatch(line)) {
+      final details = _readDetails(lines, index);
+      if (details != null) {
+        flush();
+        blocks.add(details.block);
+        index = details.next;
+        continue;
+      }
+    }
+
+    buffer.add(line);
+    index++;
+  }
+  flush();
+  return blocks.isEmpty ? const [MarkdownTextBlock('')] : blocks;
+}
+
+MarkdownAlertKind? _alertOpening(String line) {
+  final match = RegExp(r'^\s{0,3}>\s*\[!([A-Za-z]+)\]\s*$').firstMatch(line);
+  return match == null ? null : MarkdownAlertKind.parse(match.group(1)!);
+}
+
+bool _isQuote(String line) => RegExp(r'^\s{0,3}>').hasMatch(line);
+
+String _stripQuote(String line) =>
+    line.replaceFirst(RegExp(r'^\s{0,3}>\s?'), '');
+
+class _DetailsScan {
+  const _DetailsScan(this.block, this.next);
+  final MarkdownDetailsBlock block;
+  final int next;
+}
+
+/// Reads a `<details>` container starting at [start], balancing nested ones.
+///
+/// Returns `null` when the document never closes it, so an unbalanced tag falls
+/// back to the plain-HTML path instead of swallowing the rest of the file.
+_DetailsScan? _readDetails(List<String> lines, int start) {
+  final open =
+      RegExp('<details([^>]*)>', caseSensitive: false).firstMatch(lines[start]);
+  if (open == null) return null;
+  final expanded =
+      RegExp(r'\bopen\b', caseSensitive: false).hasMatch(open.group(1) ?? '');
+
+  final collected = <String>[lines[start].substring(open.end)];
+  var depth = 1;
+  var index = start + 1;
+  while (index < lines.length && depth > 0) {
+    final line = lines[index];
+    depth += RegExp('<details', caseSensitive: false).allMatches(line).length;
+    final closing =
+        RegExp(r'</details\s*>', caseSensitive: false).firstMatch(line);
+    if (closing != null && depth == 1) {
+      collected.add(line.substring(0, closing.start));
+      index++;
+      depth = 0;
+      break;
+    }
+    depth -= RegExp('</details', caseSensitive: false).allMatches(line).length;
+    collected.add(line);
+    index++;
+  }
+  if (depth > 0) return null;
+
+  var body = collected.join('\n');
+  var summary = '';
+  final summaryMatch = RegExp(
+    r'<summary[^>]*>([\s\S]*?)</summary\s*>',
+    caseSensitive: false,
+  ).firstMatch(body);
+  if (summaryMatch != null) {
+    summary = normalizeReadmeHtml(summaryMatch.group(1)!).trim();
+    body = body.replaceRange(summaryMatch.start, summaryMatch.end, '');
+  }
+  return _DetailsScan(
+    MarkdownDetailsBlock(
+      summary: summary,
+      body: body.trim(),
+      expanded: expanded,
+    ),
+    index,
+  );
+}
+
 /// Converts the small, presentational HTML subset common in GitHub READMEs to
 /// Markdown that `flutter_markdown_plus` can render. Fenced code is preserved
 /// byte-for-byte, and executable/embedded HTML is removed with its contents.
@@ -115,6 +380,8 @@ String normalizeReadmeHtml(String source) {
             ),
             '',
           );
+
+  output = _convertHtmlTables(output);
 
   output = output.replaceAllMapped(
     RegExp(r'<img\b[^>]*>', caseSensitive: false),
@@ -149,8 +416,14 @@ String normalizeReadmeHtml(String source) {
     (match) =>
         '\n${'#' * int.parse(match.group(1)!)} ${match.group(2)!.trim()}\n',
   );
+  output = _convertInlineTags(output);
   output = output
-      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+      // A <br> becomes Markdown's hard break (two spaces + newline) and eats
+      // the source newline that usually follows it. Emitting a bare "\n"
+      // instead left a blank line — which ends the paragraph, so emphasis
+      // opened before the <br> never found its closing delimiter and a bolded
+      // sentence rendered with its literal asterisks.
+      .replaceAll(RegExp(r'<br\s*/?>[ \t]*\n?', caseSensitive: false), '  \n')
       .replaceAll(RegExp(r'<hr\s*/?>', caseSensitive: false), '\n\n---\n\n')
       .replaceAll(RegExp(r'<(strong|b)\b[^>]*>', caseSensitive: false), '**')
       .replaceAll(RegExp(r'</(strong|b)\s*>', caseSensitive: false), '**')
@@ -173,6 +446,203 @@ String normalizeReadmeHtml(String source) {
   }
   return output;
 }
+
+/// Rewrites a *data* `<table>` as a GFM pipe table — and only a data table.
+///
+/// READMEs use `<table>` for two unrelated jobs. A **data** table (a matrix of
+/// short values under `<th>` headers) is exactly what a pipe table expresses,
+/// and flattening it put every cell on its own line — a list of fragments. A
+/// **layout** table is scaffolding for something Markdown cannot say ("prose in
+/// the left column, a screenshot in the right"), and its cells hold headings,
+/// paragraphs, lists and images. Squeezing one of those into a pipe row
+/// destroys the very content it was arranged to show, so a layout table is left
+/// to the tag stripper, which flattens it into readable vertical flow.
+///
+/// The conversion therefore requires a `<th>` header row and rejects any cell
+/// carrying block content or a sizing attribute. When in doubt it does not
+/// convert: an unconverted table still reads, a mangled one does not.
+String _convertHtmlTables(String source) {
+  return source.replaceAllMapped(
+    RegExp(r'<table\b[^>]*>([\s\S]*?)</table\s*>', caseSensitive: false),
+    (match) {
+      final body = match.group(1)!;
+      if (RegExp('<table', caseSensitive: false).hasMatch(body)) {
+        return match.group(0)!;
+      }
+      if (RegExp(r'\b(rowspan|colspan)\s*=', caseSensitive: false)
+          .hasMatch(body)) {
+        return match.group(0)!;
+      }
+      // A header row is what tells a table of data from a layout grid.
+      if (!RegExp(r'<th\b', caseSensitive: false).hasMatch(body)) {
+        return match.group(0)!;
+      }
+
+      final rows = <List<String>>[];
+      var headerRow = -1;
+      for (final row in RegExp(
+        r'<tr\b[^>]*>([\s\S]*?)</tr\s*>',
+        caseSensitive: false,
+      ).allMatches(body)) {
+        final cells = <String>[];
+        var isHeader = false;
+        for (final cell in RegExp(
+          r'<(th|td)\b[^>]*>([\s\S]*?)</\1\s*>',
+          caseSensitive: false,
+        ).allMatches(row.group(1)!)) {
+          if (_isLayoutCell(cell.group(0)!, cell.group(2)!)) {
+            return match.group(0)!;
+          }
+          if (cell.group(1)!.toLowerCase() == 'th') isHeader = true;
+          cells.add(_tableCell(cell.group(2)!));
+        }
+        if (cells.isEmpty) continue;
+        if (isHeader && headerRow == -1) headerRow = rows.length;
+        rows.add(cells);
+      }
+      if (rows.isEmpty || headerRow == -1) return match.group(0)!;
+
+      final columns = rows.map((row) => row.length).reduce(math.max);
+      if (rows.any((row) => row.length != columns)) return match.group(0)!;
+
+      final header = rows.removeAt(headerRow);
+      final buffer = StringBuffer('\n\n')
+        ..writeln('| ${header.join(' | ')} |')
+        ..writeln('| ${List.filled(columns, '---').join(' | ')} |');
+      for (final row in rows) {
+        buffer.writeln('| ${row.join(' | ')} |');
+      }
+      buffer.write('\n');
+      return buffer.toString();
+    },
+  );
+}
+
+/// Whether a cell is scaffolding rather than a value: it is sized/aligned, or
+/// it holds block content a single pipe cell cannot carry (an image, heading,
+/// list, fenced code, nested block container, or more than one paragraph).
+bool _isLayoutCell(String tag, String content) {
+  final attributes = tag.split('>').first;
+  if (RegExp(r'\b(width|height|align|valign)\s*=', caseSensitive: false)
+      .hasMatch(attributes)) {
+    return true;
+  }
+  if (RegExp(
+    r'<(img|h[1-6]|p|div|ul|ol|li|pre|table|details|blockquote)\b',
+    caseSensitive: false,
+  ).hasMatch(content)) {
+    return true;
+  }
+  final trimmed = content.trim();
+  if (RegExp(r'^\s{0,3}(#{1,6}\s|[-*+]\s|\d+\.\s|```|~~~)', multiLine: true)
+      .hasMatch(trimmed)) {
+    return true;
+  }
+  return trimmed.contains(RegExp(r'\n\s*\n'));
+}
+
+/// Flattens one table cell to a single line of inline Markdown.
+String _tableCell(String value) {
+  final inline = _convertInlineTags(value)
+      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'<(strong|b)\b[^>]*>', caseSensitive: false), '**')
+      .replaceAll(RegExp(r'</(strong|b)\s*>', caseSensitive: false), '**')
+      .replaceAll(RegExp(r'<(em|i)\b[^>]*>', caseSensitive: false), '_')
+      .replaceAll(RegExp(r'</(em|i)\s*>', caseSensitive: false), '_')
+      .replaceAll('|', r'\|')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return inline.isEmpty ? ' ' : inline;
+}
+
+/// Maps the inline HTML GitHub renders specially onto Markdown equivalents.
+///
+/// `<kbd>` becomes inline code (the nearest boxed-glyph affordance available),
+/// and `<sub>`/`<sup>` become Unicode subscripts/superscripts when every
+/// character has one — `H<sub>2</sub>O` reads as `H₂O` rather than `H2O`.
+/// `<mark>` keeps its text; there is no Markdown highlight.
+String _convertInlineTags(String source) {
+  var output = source.replaceAllMapped(
+    RegExp(r'<kbd\b[^>]*>([\s\S]*?)</kbd\s*>', caseSensitive: false),
+    (match) {
+      final inner = match.group(1)!;
+      // Only a plain-text key label becomes inline code. READMEs also use
+      // <kbd> as a chip around content — an agent logo plus its name — and by
+      // this point an inner <img> is already Markdown, so backticks would print
+      // `![](…)` instead of drawing the image. Anything that is not a short,
+      // literal key label is handed back untouched for the later passes.
+      final label = inner.trim();
+      final isKeyLabel = label.isNotEmpty &&
+          label.length <= 32 &&
+          !label.contains(RegExp(r'[<>`\n]')) &&
+          !label.contains('![') &&
+          !label.contains('](');
+      return isKeyLabel ? '`$label`' : inner;
+    },
+  );
+  output = output.replaceAllMapped(
+    RegExp(r'<(sub|sup)\b[^>]*>([\s\S]*?)</\1\s*>', caseSensitive: false),
+    (match) {
+      final inner = match.group(2)!;
+      // Same rule: only a bare run of characters that all have a Unicode
+      // sub/superscript is rewritten. Anything else keeps its original content
+      // — including nested emphasis, which stripping tags would have lost.
+      if (inner.contains('<')) return inner;
+      final map = match.group(1)!.toLowerCase() == 'sub'
+          ? _subscriptGlyphs
+          : _superscriptGlyphs;
+      final mapped = StringBuffer();
+      for (final rune in inner.trim().runes) {
+        final glyph = map[String.fromCharCode(rune)];
+        if (glyph == null) return inner;
+        mapped.write(glyph);
+      }
+      return mapped.toString();
+    },
+  );
+  return output.replaceAllMapped(
+    RegExp(r'<mark\b[^>]*>([\s\S]*?)</mark\s*>', caseSensitive: false),
+    (match) => match.group(1)!,
+  );
+}
+
+const Map<String, String> _subscriptGlyphs = {
+  '0': '₀',
+  '1': '₁',
+  '2': '₂',
+  '3': '₃',
+  '4': '₄',
+  '5': '₅',
+  '6': '₆',
+  '7': '₇',
+  '8': '₈',
+  '9': '₉',
+  '+': '₊',
+  '-': '₋',
+  '=': '₌',
+  '(': '₍',
+  ')': '₎',
+};
+
+const Map<String, String> _superscriptGlyphs = {
+  '0': '⁰',
+  '1': '¹',
+  '2': '²',
+  '3': '³',
+  '4': '⁴',
+  '5': '⁵',
+  '6': '⁶',
+  '7': '⁷',
+  '8': '⁸',
+  '9': '⁹',
+  '+': '⁺',
+  '-': '⁻',
+  '=': '⁼',
+  '(': '⁽',
+  ')': '⁾',
+  'n': 'ⁿ',
+  'i': 'ⁱ',
+};
 
 String _protectFencedCode(String source, List<String> protected) {
   final lines = source.split('\n');
