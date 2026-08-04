@@ -54,6 +54,128 @@ the user's own language, in ~5-7s.
 
 Tests: 7 new (`test/agents/thread-title.test.ts`) covering the provisional
 title, the prompt, and reducing a CLI's decorated output to a bare title.
+### Added — a queued follow-up can reach the agent without waiting for the turn
+
+A message sent while an agent worked has always waited for the whole turn to
+end. The CLIs do not work that way: they take what you type at the next tool
+boundary, inside the running turn, which is what makes it possible to correct
+an agent's course without stopping it. The bridge now does the same wherever
+the agent's CLI actually allows it.
+
+- `AgentManager` hands a just-queued turn to the running one through the new
+  optional `IAgentAdapter.steerTurn`, then marks it `delivered` (linked to the
+  turn it joined) and emits `stream/turn/delivered`. `turn/send` answers
+  `{ delivered: true }` instead of `{ queued: true }`.
+- The hand-off is deliberately narrow, so a thread's order can never be
+  rearranged: only when the adapter advertises `steering`, a turn is really in
+  flight, the queue is **empty** (anything already waiting was sent first) and
+  **not paused** (the queue pauses precisely because the user stopped the agent
+  or it broke — pushing more at it then is the one outcome nobody wants).
+- Every refusal falls back to the queue that shipped before: a `false` return, a
+  thrown transport error, or a turn that ended mid-hand-off all leave the
+  message `queued`, so it costs a wait and nothing else.
+- `ThreadStore.deliverQueuedTurn` persists the new terminal status. A delivered
+  turn is not `cancelled` — the message *did* reach the agent — so `queue/clear`
+  leaves it alone and the drain path never replays it as a turn of its own.
+- Turn text resolution (a `/command` expansion, an image attachment
+  materialized into the workspace) is now shared by both paths, so a steered
+  message behaves identically to one that waited. The attachment temp dir is
+  keyed to the **running** turn, which is the one whose completion sweeps it.
+- `bridge/status` advertises `features.midTurnDelivery`, so a client asks rather
+  than inferring it from a version.
+
+Tests: 9 new (`test/agents/agent-midturn-delivery.test.ts`) covering the
+hand-off, the no-replay guarantee, a non-steering agent's unchanged behaviour,
+a decline, a throw, queue ordering, a paused queue, an idle thread and
+`queue/clear`.
+
+### Changed — Claude Code takes its prompt on stdin, and follow-ups mid-turn
+
+- The Claude adapter now runs `claude -p --input-format stream-json …` and
+  writes the prompt as a stream-json user message instead of passing it as an
+  argv element. That open pipe is the input channel `steerTurn` writes into, so
+  a follow-up reaches the agent at its next tool boundary rather than waiting
+  for the whole turn. The spawn is still `shell:false`, so the prompt is no
+  closer to a shell than before, and `--resume` continuity is unchanged
+  (verified: turn 2 of a probe recalled a number given in turn 1, same session
+  id, deltas still streaming).
+- **The pipe must be closed for the turn to end.** In this mode the CLI waits
+  for another message after emitting `result` instead of exiting, so the
+  adapter closes stdin at every terminal path — completion, error, and the
+  background-task case, where the turn is held open for work the model left
+  running and the pipe now closes once the last task resolves.
+- A follow-up is refused (not written) once the turn has produced its result:
+  the CLI would read a late write as a NEW turn and stream a second reply into
+  a turn the bridge already closed.
+- `SpawnedProcess` gained an optional `stdin` and `SpawnExtra` a `stdin:'pipe'`
+  opt-in. The default stays `'ignore'` — the one-shot CLIs hang on an open pipe.
+
+Verified end-to-end against the real `claude` 2.1.220 driving the built
+adapter: a message steered 7s into a five-`sleep` turn was taken after the
+first tool returned, the remaining sleeps were abandoned, and the run produced
+one `turn_started` and one `turn_completed`, every event on the original turn.
+Tests: 5 new in `test/adapters/claude-adapter.test.ts`.
+
+### Added — OpenCode takes a follow-up into the turn it is already running
+
+- `OpenCodeAdapter.steerTurn` sends another `prompt_async` on the SAME session
+  while the server is busy. No second `ActiveRun` is created on purpose: events
+  route by session, so the extra assistant message the server opens for the
+  answer already folds into the running turn — registering a second run would
+  instead retire the first as stale and split the reply in two.
+- The running turn's model and variant stay in force; a message *inside* a turn
+  must not switch models mid-answer.
+- If the turn goes idle while the prompt round-trip is in flight, it still
+  counts as **delivered**: the server accepted the message, so it is at the
+  agent. Answering "not taken" would make the bridge queue it and send the same
+  text a second time, and an instruction acted on twice is worse than a reply
+  the bridge could not attribute.
+
+Verified end-to-end against the real `opencode` 1.18.11 driving the built
+adapter: a message steered 6s into a five-`sleep` turn was taken after the
+first tool returned, the remaining sleeps were abandoned, and the run produced
+one `turn_started` and one `turn_completed`, every event on the original turn.
+Tests: 5 new in `test/adapters/opencode-adapter.test.ts`.
+
+### Added — Codex steers a running turn through the app-server's `turn/steer`
+
+- `CodexAdapter.steerTurn` calls `turn/steer { threadId, expectedTurnId, input }`
+  — the app-server's own mid-turn follow-up, the protocol equivalent of
+  pressing Enter (rather than Tab) on a message in the Codex TUI.
+- `expectedTurnId` is a precondition the app-server enforces: it rejects the
+  request when that turn is no longer active, so the race we would otherwise
+  have to guess at is decided by the server. A rejection is reported as "not
+  taken", never as an error, and the message stays queued.
+
+**Not yet verified against a live Codex turn.** Implemented and unit-tested
+against the published protocol schema (`codex app-server generate-json-schema`,
+codex-cli 0.146.0), but the account's weekly limit was exhausted (0 credits)
+when this landed, so no real turn could be steered. Tracked in
+`bridge/FOR-DEV.md`; run the probe once credits return.
+Tests: 4 new in `test/adapters/codex-adapter.test.ts`.
+
+### Changed — pi runs in `--mode rpc`, and takes follow-ups mid-turn
+
+- The pi adapter now spawns `pi --mode rpc` instead of `pi -p --mode json`, and
+  sends the prompt as an RPC command on stdin rather than as an argv element.
+  Print mode reads **all** of stdin as the initial prompt, so it has no input
+  channel while it works; RPC mode has a first-class `steer` command, drained by
+  pi's agent loop at its next boundary. Both modes emit the identical
+  `AgentSessionEvent` JSON lines, so the whole event-parsing path is unchanged.
+- As with Claude, **the pipe must be closed for the turn to end**: in RPC mode pi
+  waits for the next command and only exits when stdin ends.
+- `parsePiLine` now understands RPC command acknowledgements. A *failed*
+  `prompt` response ends the turn with its error (the agent never started, so
+  nothing else is coming); a failed `steer` deliberately does **not** — the
+  follow-up did not land, but the turn is fine, and the manager already treats
+  a refusal as "leave it queued".
+
+Verified end-to-end against the real `pi` 0.81.1 driving the built adapter: a
+message steered 7s into a five-`sleep` turn was taken after the first tool
+returned, the remaining sleeps were abandoned, and the run produced one
+`turn_started` and one `turn_completed`, every event on the original turn.
+Tests: 5 new in `test/adapters/pi-adapter.test.ts`. Bridge suite
+**625 passing**.
 
 ## [0.0.15-alpha.20260803] - 2026-08-03
 

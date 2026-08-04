@@ -59,6 +59,19 @@ export interface AgentCapabilities {
    * only its client-side `/` palette). See {@link AgentCommand}.
    */
   commands?: boolean;
+  /**
+   * Agent can take a follow-up **into the turn already running** instead of
+   * making it wait for the next one — what a CLI does when you type while it
+   * works and it picks the message up at the next tool boundary. The bridge
+   * hands such a turn straight to the adapter (`IAgentAdapter.steerTurn`)
+   * rather than holding it, and marks it `delivered` (see `TurnStatus`).
+   *
+   * Optional; absent/false means the agent has no input channel mid-turn (a
+   * one-shot CLI, or a protocol that serializes prompts per session), and its
+   * follow-ups keep waiting for the current turn to end. The phone reads this
+   * to tell the user which of the two is about to happen.
+   */
+  steering?: boolean;
 }
 
 /**

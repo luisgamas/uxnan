@@ -195,9 +195,10 @@ class PushRegistrar {
             payload: event.threadId,
           ),
         );
-      // A queued message being accepted, cancelled or drained is not worth a
-      // notification: the user is the one who queued it, and the turn it
-      // becomes will announce itself on completion like any other.
+      // A queued message being accepted, cancelled, drained or handed straight
+      // to the running turn is not worth a notification: the user is the one
+      // who queued it, and the turn it joins (or becomes) will announce itself
+      // on completion like any other.
       case TurnStartedEvent() ||
             MessageDeltaEvent() ||
             ThinkingDeltaEvent() ||
@@ -205,6 +206,7 @@ class PushRegistrar {
             TurnAbortedEvent() ||
             TurnCancelledEvent() ||
             ThreadRenamedEvent() ||
+            TurnDeliveredEvent() ||
             QueueUpdatedEvent() ||
             ModelResolvedEvent() ||
             GitProgressEvent() ||

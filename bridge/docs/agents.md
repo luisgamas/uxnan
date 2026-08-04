@@ -23,8 +23,13 @@ separate paid account beyond what that CLI already has, and it is not an unoffic
 API wrapper. Rate limits are whatever your plan allows.
 
 Prompts are passed as argv elements with `shell:false` (no shell injection); stdin
-is closed (the one-shot CLIs hang on an open stdin pipe). The server-based
-adapters are the exception: **Codex** speaks JSON-RPC over a long-lived
+is closed (a one-shot CLI hangs on an open stdin pipe). **Claude Code and pi are
+the exceptions among the one-shot agents**: both are run in a mode that reads a
+real message stream (`claude --input-format stream-json`, `pi --mode rpc`), so
+their prompt is written to a stdin pipe that stays open for the length of the
+turn — which is what lets a follow-up reach them mid-run (see below). The
+server-based adapters are the other exception: **Codex** speaks
+JSON-RPC over a long-lived
 `codex app-server` stdio, **Zero** and **Grok** speak JSON-RPC (the Agent Client
 Protocol, NDJSON) over a long-lived `zero acp` / `grok agent stdio` process, and
 **OpenCode** speaks HTTP + SSE to a long-lived `opencode serve` process (their
@@ -43,12 +48,41 @@ they work. It runs on its own once the current turn completes, through the
 identical code path a normal turn takes, which means **queueing behaves the same
 for all seven active agents** regardless of how their CLI is driven.
 
-What the queue deliberately does *not* do is **steer** — inject a message into
-the turn already running, the way Claude Code's TUI does between tool calls. The
-one-shot agents have no input channel at all while they run (stdin is closed), so
-steering could only ever work for the server-backed ones (Codex, OpenCode, Zero,
-Grok). Making it a per-agent capability is a follow-up, tracked in
-[`../FOR-DEV.md`](../FOR-DEV.md).
+### …and when it doesn't wait at all
+
+Waiting for the whole turn is not what the CLIs do. They take what you type at
+the next tool boundary, *inside* the running turn — which is what lets you
+correct an agent's course without stopping it. The bridge does the same
+wherever the agent's CLI actually allows it: the follow-up is handed straight
+over, its turn is marked `delivered` (terminal and successful — the message was
+received; the reply belongs to the turn it joined) and `turn/send` answers
+`{ delivered: true }`.
+
+It is deliberately narrow, so a thread's order can never be rearranged. The
+hand-off is only attempted when the adapter advertises `steering`, a turn is
+really in flight, and the queue is **empty** (anything already waiting was sent
+first) and **not paused** (the queue pauses precisely because the user stopped
+the agent or it broke). **Every refusal falls back to the queue**, so a message
+is never lost — at worst it waits, exactly as before.
+
+Which agents can, and why — verified against the real CLIs:
+
+| Agent | Mid-turn? | Mechanism |
+|---|---|---|
+| **Claude Code** | yes | `-p --input-format stream-json`; the message is written to the open stdin |
+| **OpenCode** | yes | another `prompt_async` on the session that is already busy |
+| **Codex** | yes | app-server `turn/steer { threadId, expectedTurnId, input }` |
+| **pi** | yes | RPC `steer` command, drained by its agent loop at the next boundary |
+| **Antigravity** | no | `agy -p` is one-shot with no input channel at all |
+| **Zero** | no | its ACP serializes prompts per session (`turnMu`) — and its own TUI does not inject either: it launches a queued message only once the turn ended |
+| **Grok** | no | ACP defines no steer method and advertises none on `initialize` |
+
+Zero is the instructive case: it **already behaves like the bridge's queue**, so
+there is no native behaviour to match there.
+
+The phone must read *both* signals before promising anything: `bridge/status`
+→ `features.midTurnDelivery` (this bridge can) and `agent/list` →
+`capabilities.steering` (this agent allows it).
 
 Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
 [`../../architecture/02b-contracts-and-requirements.md`](../../architecture/02b-contracts-and-requirements.md)
@@ -103,9 +137,9 @@ timeout leaves the provisional title in place and never disturbs the thread.
 | Agent | CLI invocation | Continuity | Permission posture | Models |
 |---|---|---|---|---|
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
-| **Claude Code** | `claude -p --output-format stream-json --verbose --include-partial-messages` | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
+| **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | long-lived `codex app-server` (JSON-RPC over stdio) | persisted app-server thread id via `thread/start` | `accessMode` → app-server `approvalPolicy` + `sandbox` on `thread/start`; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
-| **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
+| **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | ~~Gemini CLI~~ (deprecated legacy) | retained adapter only; new turns rejected | legacy history only | unavailable (`deprecated:true`) | none exposed |
 | **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |

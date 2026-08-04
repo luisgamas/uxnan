@@ -17,6 +17,11 @@ export const StreamNotification = {
   TurnAborted: 'stream/turn/aborted',
   /** A queued turn was removed before it ever ran (status → `cancelled`). */
   TurnCancelled: 'stream/turn/cancelled',
+  /**
+   * A queued turn was handed to the agent **inside the turn already running**
+   * instead of waiting for it (status → `delivered`).
+   */
+  TurnDelivered: 'stream/turn/delivered',
   /** The thread's message queue changed (queued, drained, cancelled, paused). */
   QueueUpdated: 'stream/queue/updated',
   /** The agent resolved an alias (e.g. `opus`) to a concrete model id for this turn. */
@@ -112,6 +117,23 @@ export interface TurnAbortedParams {
 export interface TurnCancelledParams {
   threadId: string;
   turnId: string;
+}
+
+/**
+ * A queued turn reached the agent **without waiting**: it was folded into the
+ * turn that was already running (its status is now `delivered`), the way a CLI
+ * picks up what you typed while it worked. It will never run as a turn of its
+ * own — the answer is part of `intoTurnId`.
+ *
+ * The client keeps the user's message where it is and stops offering to edit or
+ * cancel it: the agent already has it.
+ */
+export interface TurnDeliveredParams {
+  threadId: string;
+  /** The queued turn that was handed over. */
+  turnId: string;
+  /** The running turn it was folded into; its reply covers both messages. */
+  intoTurnId: string;
 }
 
 /**

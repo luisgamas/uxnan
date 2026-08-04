@@ -65,4 +65,16 @@ export interface BridgeFeatures {
    * that bridge.
    */
   messageQueue?: boolean;
+  /**
+   * The bridge can hand a queued turn to the agent **inside the turn already
+   * running**, for agents whose CLI has an input channel mid-turn — it marks
+   * that turn `delivered` and emits `stream/turn/delivered`. Absent/false → the
+   * client must expect every follow-up to wait for the current turn to end, and
+   * must not promise otherwise in its UI.
+   *
+   * Distinct from {@link messageQueue}, which this builds on: the queue is where
+   * a follow-up lands, and per-agent `AgentCapabilities.steering` decides
+   * whether it waits there or goes straight through.
+   */
+  midTurnDelivery?: boolean;
 }

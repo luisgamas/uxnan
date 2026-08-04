@@ -191,6 +191,35 @@ class TurnCancelledEvent extends DomainEvent {
   List<Object?> get props => [turnId, threadId];
 }
 
+/// A queued turn reached the agent **without waiting** — it was folded into the
+/// turn already running (`stream/turn/delivered`), the way a CLI picks up what
+/// you type while it works.
+///
+/// Distinct from [TurnCancelledEvent] in the outcome that matters: this message
+/// DID reach the agent. It will never run as a turn of its own, because the
+/// answer belongs to [intoTurnId], so the bubble settles into an ordinary sent
+/// message and stops offering to edit or cancel.
+class TurnDeliveredEvent extends DomainEvent {
+  /// Creates a [TurnDeliveredEvent].
+  const TurnDeliveredEvent({
+    required this.turnId,
+    required this.intoTurnId,
+    this.threadId,
+  });
+
+  /// The queued turn that was handed over.
+  final String turnId;
+
+  /// The running turn it joined; its reply covers both messages.
+  final String intoTurnId;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [turnId, intoTurnId, threadId];
+}
+
 /// The thread's message queue changed (`stream/queue/updated`).
 ///
 /// Carries the WHOLE queue state rather than a delta, so a client that missed

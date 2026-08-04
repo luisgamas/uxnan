@@ -190,6 +190,17 @@ export interface TurnSendResult {
   queued?: boolean;
   /** 1-based place in the queue when `queued` is true (1 = runs next). */
   queuePosition?: number;
+  /**
+   * True when the agent took the message **into the turn already running**
+   * rather than making it wait (status `delivered`, see `TurnStatus`). It will
+   * never run as a turn of its own — the reply belongs to the turn it joined —
+   * so the client renders the user's message in place and stops offering to
+   * edit or cancel it. Mutually exclusive with {@link queued}.
+   *
+   * Only ever true when the agent advertises `AgentCapabilities.steering`; on
+   * every other agent a follow-up still comes back `queued`.
+   */
+  delivered?: boolean;
 }
 
 export interface QueueStateResult {

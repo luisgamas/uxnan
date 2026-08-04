@@ -183,6 +183,99 @@ async function waitForTurnStarted(
  *  keeps the event loop alive). The PassThrough streams + readline
  *  interfaces on the rpc clients don't always release their listeners
  *  cleanly, so we force-exit the process after the cleanup completes. */
+
+// ============================================================================
+// Mid-turn delivery (steering) — the app-server's own `turn/steer`.
+// Implemented against the published protocol schema (codex-cli 0.146.0):
+// `turn/steer { threadId, expectedTurnId, input }`. NOT yet exercised against a
+// live Codex turn — the account had 0 credits when this landed.
+// ============================================================================
+
+test('steerTurn sends turn/steer with the running turn as the precondition', async () => {
+  const { adapter, server } = setup();
+  const { until } = collect(adapter);
+  let steered: any;
+  server.handle((msg: any) => {
+    if (msg.method === 'turn/steer') {
+      steered = msg;
+      server.feed([
+        JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { turnId: 'codex-turn-1' } }),
+      ]);
+    }
+  });
+
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  await waitForTurnStarted(until);
+  // `turn/start` must have come back before a steer can name its turn.
+  await new Promise((r) => setTimeout(r, 20));
+
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'actually, do this instead',
+  });
+
+  assert.equal(taken, true);
+  assert.equal(steered?.params.expectedTurnId, 'codex-turn-1');
+  assert.deepEqual(steered?.params.input, [{ type: 'text', text: 'actually, do this instead' }]);
+  // No second turn was opened — this is a message inside the running one.
+  const starts = server.sent.filter((m: any) => m.method === 'turn/start');
+  assert.equal(starts.length, 1);
+});
+
+test('a rejected precondition is reported as not taken, never as an error', async () => {
+  const { adapter, server } = setup();
+  const { until } = collect(adapter);
+  server.handle((msg: any) => {
+    if (msg.method === 'turn/steer') {
+      // What the app-server answers when `expectedTurnId` is no longer active.
+      server.feed([
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: msg.id,
+          error: { code: -32602, message: 'turn is not active' },
+        }),
+      ]);
+    }
+  });
+
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  await waitForTurnStarted(until);
+  await new Promise((r) => setTimeout(r, 20));
+
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'too late',
+  });
+  // The bridge leaves it queued and runs it next; nothing is lost.
+  assert.equal(taken, false);
+});
+
+test('steerTurn declines for an unknown turn or a mismatched thread', async () => {
+  const { adapter } = setup();
+  const { until } = collect(adapter);
+  void adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  await waitForTurnStarted(until);
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'nope', text: 'x' }),
+    false,
+  );
+  assert.equal(
+    await adapter.steerTurn({ threadId: 'other', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
+    false,
+  );
+});
+
+test('CodexAdapter advertises steering', () => {
+  const { adapter } = setup();
+  assert.equal(adapter.capabilities.steering, true);
+});
+
 test.after(async () => {
   for (const a of allAdapters) await a.stop();
   for (const s of allServers) s.close(0);

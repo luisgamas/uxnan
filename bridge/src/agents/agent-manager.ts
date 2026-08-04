@@ -28,6 +28,7 @@ import {
   type QueueStateResult,
   type TurnAttachment,
   type ThreadRenamedParams,
+  type TurnDeliveredParams,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
@@ -142,6 +143,12 @@ export interface SendTurnResult {
   queued?: boolean;
   /** 1-based place in the queue when `queued` (1 = runs next). */
   queuePosition?: number;
+  /**
+   * True when the agent took the message **into the turn already running** and
+   * it will never run as a turn of its own (status `delivered`). Mutually
+   * exclusive with {@link queued}.
+   */
+  delivered?: boolean;
 }
 
 /**
@@ -384,7 +391,7 @@ export class AgentManager {
     // this turn now would run it ahead of messages the user sent earlier.
     const queue = this.#queue(threadId);
     if (this.#activeTurnByThread.has(threadId) || queue.length > 0) {
-      return this.#enqueueTurn(threadId, agentId, persistText, userText, options);
+      return this.#enqueueTurn(threadId, agentId, adapter, persistText, userText, options);
     }
 
     const started = await this.#options.store.startTurn(threadId, persistText, this.#options.now());
@@ -401,6 +408,7 @@ export class AgentManager {
   async #enqueueTurn(
     threadId: string,
     agentId: AgentId,
+    adapter: IAgentAdapter,
     persistText: string,
     userText: string,
     options: SendTurnOptions,
@@ -423,14 +431,94 @@ export class AgentManager {
     // later cancel on the thread — reaches the right adapter even if it is the
     // first thing this thread ever ran.
     this.#agentByThread.set(threadId, agentId);
-    queue.push({
+    const entry: QueuedTurn = {
       turnId: queued.turnId,
       assistantMessageId: queued.assistantMessageId,
       userText,
       options: { ...options, agentId },
-    });
+    };
+
+    // Agents whose CLI has an input channel mid-turn take the message NOW,
+    // inside the running turn, instead of parking it here.
+    if (await this.#tryDeliverMidTurn(threadId, adapter, entry)) {
+      return { turnId: queued.turnId, delivered: true };
+    }
+
+    queue.push(entry);
     this.#notifyQueue(threadId);
     return { turnId: queued.turnId, queued: true, queuePosition: queue.length };
+  }
+
+  /**
+   * Hand a just-queued turn straight to the running one, the way a CLI picks up
+   * what you type while it works. Returns whether the agent took it.
+   *
+   * Deliberately conservative — it only tries when the message would otherwise
+   * be *next*, so the thread's order is never rearranged:
+   *  - the adapter must advertise `steering` and implement `steerTurn`;
+   *  - a turn must actually be in flight;
+   *  - the queue must be EMPTY (something already waiting means an earlier
+   *    message goes first) and NOT paused (the user stopped the agent, or it
+   *    broke — pushing more at it is exactly what pausing exists to prevent).
+   *
+   * Any refusal or failure leaves the turn queued, which is the behaviour that
+   * shipped before this path existed: the message is never lost, it just waits.
+   */
+  async #tryDeliverMidTurn(
+    threadId: string,
+    adapter: IAgentAdapter,
+    entry: QueuedTurn,
+  ): Promise<boolean> {
+    if (adapter.capabilities.steering !== true || !adapter.steerTurn) return false;
+    if (this.#queuePausedByThread.has(threadId)) return false;
+    if ((this.#queueByThread.get(threadId)?.length ?? 0) > 0) return false;
+    const activeTurnId = this.#activeTurnByThread.get(threadId);
+    if (!activeTurnId) return false;
+
+    // The turn's own text still needs the command/attachment resolution a
+    // normal turn gets, so a steered `/command` or image behaves identically.
+    let text: string;
+    try {
+      text = await this.#resolveTurnText(adapter, entry, activeTurnId);
+    } catch (err) {
+      this.#options.logger.warn(`could not prepare a mid-turn message: ${String(err)}`);
+      return false;
+    }
+
+    let taken = false;
+    try {
+      taken = await adapter.steerTurn({
+        ...entry.options,
+        threadId,
+        turnId: entry.turnId,
+        activeTurnId,
+        text,
+      });
+    } catch (err) {
+      // A broken transport is not the user's problem: fall back to queueing.
+      this.#options.logger.warn(`mid-turn delivery failed, queueing instead: ${String(err)}`);
+      return false;
+    }
+    if (!taken) return false;
+
+    // Re-check: `steerTurn` is async, so the turn may have ended while it ran.
+    // The agent still received the text — a CLI that took the message and then
+    // finished has already answered it — so the turn is `delivered` either way;
+    // what we must not do is claim it joined a turn that is no longer current.
+    await this.#options.store.deliverQueuedTurn(
+      threadId,
+      entry.turnId,
+      activeTurnId,
+      this.#options.now(),
+    );
+    this.#options.notify(
+      makeNotification(StreamNotification.TurnDelivered, {
+        threadId,
+        turnId: entry.turnId,
+        intoTurnId: activeTurnId,
+      } satisfies TurnDeliveredParams),
+    );
+    return true;
   }
 
   /**
@@ -444,7 +532,7 @@ export class AgentManager {
     adapter: IAgentAdapter,
     turn: QueuedTurn,
   ): Promise<void> {
-    const { turnId, assistantMessageId, userText, options } = turn;
+    const { turnId, assistantMessageId, options } = turn;
     const attachments = options.attachments ?? [];
     this.#assistantByTurn.set(turnId, assistantMessageId);
     this.#agentByThread.set(threadId, agentId);
@@ -454,6 +542,43 @@ export class AgentManager {
       await adapter.start({ agentId, ...(options.cwd !== undefined ? { cwd: options.cwd } : {}) });
       this.#started.add(agentId);
     }
+
+    const agentText = await this.#resolveTurnText(adapter, turn, turnId);
+
+    await adapter.sendTurn({
+      threadId,
+      turnId,
+      text: agentText,
+      ...(options.service !== undefined ? { service: options.service } : {}),
+      ...(options.effort !== undefined ? { effort: options.effort } : {}),
+      ...(options.options !== undefined ? { options: options.options } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+      ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
+      ...(options.command !== undefined ? { command: options.command } : {}),
+    });
+  }
+
+  /**
+   * The text the agent actually receives for a turn: a command invocation
+   * resolved to its real prompt, plus a reference to any image attachment
+   * materialized into the CLI's workspace.
+   *
+   * Shared by a turn that runs on its own and one steered into a running turn,
+   * so a `/command` or an image behaves identically either way.
+   *
+   * `attachmentOwnerTurnId` is the turn whose completion cleans the temp dir
+   * up. For a steered message that is the RUNNING turn, not the delivered one:
+   * a delivered turn never reaches the completion path that sweeps the dir, so
+   * keying it there would leak the files.
+   */
+  async #resolveTurnText(
+    adapter: IAgentAdapter,
+    turn: QueuedTurn,
+    attachmentOwnerTurnId: string,
+  ): Promise<string> {
+    const { turnId, userText, options } = turn;
+    const attachments = options.attachments ?? [];
 
     // Resolve a command invocation to the prompt the agent actually runs (an
     // expanded custom template, or the CLI's native `/name args` form). A plain
@@ -483,24 +608,13 @@ export class AgentManager {
           agentText =
             agentText.length > 0 ? `${agentText}\n\n${materialized.note}` : materialized.note;
         }
-        if (materialized.dir) this.#attachmentDirByTurn.set(turnId, materialized.dir);
+        if (materialized.dir)
+          this.#attachmentDirByTurn.set(attachmentOwnerTurnId, materialized.dir);
       } catch (err) {
         this.#options.logger.warn(`attachment materialization failed: ${String(err)}`);
       }
     }
-
-    await adapter.sendTurn({
-      threadId,
-      turnId,
-      text: agentText,
-      ...(options.service !== undefined ? { service: options.service } : {}),
-      ...(options.effort !== undefined ? { effort: options.effort } : {}),
-      ...(options.options !== undefined ? { options: options.options } : {}),
-      ...(attachments.length > 0 ? { attachments } : {}),
-      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
-      ...(options.accessMode !== undefined ? { accessMode: options.accessMode } : {}),
-      ...(options.command !== undefined ? { command: options.command } : {}),
-    });
+    return agentText;
   }
 
   /**

@@ -86,9 +86,16 @@ connected to live bridge data, validated on-device against a real bridge.
   jump-to-latest and the turn-context shelf, so exactly one of the three shows at
   a time, and the composer's own Send/Stop button and Enter-inserts-a-newline
   behaviour are unchanged. A waiting message is **pinned to the bottom** of the
-  timeline (below the streaming reply) as a soft elevated bubble showing one
-  truncated line with **edit + cancel** in its corner; it settles into its full
-  normal bubble at the point it was *delivered* once the queue reaches it.
+  timeline (below the streaming reply) as an ordinary user bubble wearing a
+  **dashed outline** (`NeDashedOutline`), with **edit + cancel** in its corner:
+  it keeps the user's own tone and its whole message, and only that edge says
+  "not sent yet". On delivery the dashes dissolve in place, so the bubble never
+  moves or changes colour — it just stops being provisional. On agents whose CLI
+  has an input channel mid-turn (Claude Code, OpenCode, Codex, pi) that moment comes
+  **without waiting for the turn to end**: the bridge hands the message to the
+  running turn and reports `delivered` (`stream/turn/delivered`), which also
+  retires edit/cancel since the agent already has it. On every other agent it
+  settles when the queue drains, exactly as before.
   **Edit** withdraws it to the composer leaving no trace; **cancel** leaves the
   bubble marked. Editing over a busy composer saves that text as a draft, behind
   a **Drafts** pill beside the queue button that opens the shared

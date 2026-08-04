@@ -123,6 +123,26 @@ export interface IAgentAdapter {
   generateTitle?(options: GenerateTitleOptions): Promise<string | undefined>;
 
   /**
+   * Hand a follow-up to the agent **inside the turn already running** — what a
+   * CLI does when you type while it works and it picks the message up at the
+   * next tool boundary. Implemented only by adapters whose CLI has an input
+   * channel mid-turn; those advertise `AgentCapabilities.steering`.
+   *
+   * `activeTurnId` is the bridge turn currently in flight on the thread, so the
+   * adapter can address the right run (and refuse if it has already moved on).
+   * `turnId` is the queued turn the text came from — it does NOT start a run of
+   * its own; it exists so the bridge can mark it `delivered`.
+   *
+   * Returns **true only when the agent actually took the message**. Return
+   * `false` (don't throw) for an ordinary "too late / not applicable" — the
+   * turn ended between the check and the call, the protocol rejected the
+   * hand-off. The bridge then leaves the turn queued and it runs normally next,
+   * so a refusal costs the user nothing but a wait. Throwing is for a broken
+   * transport, and is handled the same way.
+   */
+  steerTurn?(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean>;
+
+  /**
    * Reply to a pending approval the agent emitted (as an `approval` content
    * block) for {@link threadId}. Optional: adapters that never request approval
    * (or that run non-interactively) don't implement it. Implementations should

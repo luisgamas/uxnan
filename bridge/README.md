@@ -104,7 +104,9 @@ agent's official local CLI — `opencode`, `claude`, `codex`, `pi`, `agy`, `zero
 child process and drives it over stdio, exactly as you would in a terminal (Zero is
 driven over the Agent Client Protocol, `zero acp`). Prompts are
 passed as `argv` elements with `shell:false` (no shell injection), in the thread's
-working directory. The bridge parses each CLI's native stream and re-emits it as
+working directory — except Claude Code, whose prompt travels on an open stdin
+pipe (`--input-format stream-json`) so a follow-up can reach it mid-turn.
+The bridge parses each CLI's native stream and re-emits it as
 structured events — `stream/content/block` (command / diff / tool) plus
 `stream/thinking/delta` (reasoning) — so the phone renders the same shape no
 matter which agent is running.
@@ -189,7 +191,7 @@ Task-focused guides live in [`docs/`](docs/):
 
 - **Contracts.** Consumes [`@uxnan/shared`](../shared/README.md) for JSON-RPC and
   E2EE types and runtime validators. The bridge exposes **69 JSON-RPC methods +
-  11 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
+  12 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
   `daemon-config.json`, `pairing-session.json`, `threads.json`, `metrics.json`,
