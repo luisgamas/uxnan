@@ -230,7 +230,19 @@ cleanup rules are in [`../tests/e2e/README.md`](../tests/e2e/README.md).
 npm run bench:build      # a release binary with the frontend embedded
 npm run test:e2e:setup   # fetch the WebDriver matching this machine's WebView2
 npm run test:e2e         # close every other uxnan window first
+npm run test:e2e:diagnose  # only when no session starts at all (see below)
 ```
+
+> **This layer is green locally and has never been green on CI.** Every
+> scheduled `e2e-desktop.yml` run so far fails the same way — all 9 specs die in
+> `session not created: DevToolsActivePort file doesn't exist`, before any
+> assertion. It is the WebDriver attach, not the app: the resource benchmarks
+> launch the same release binary on the same runner image and record a full
+> WebView2 process tree. `npm run test:e2e:diagnose` is the instrument for it
+> (what it measures: [`../tests/e2e/README.md`](../tests/e2e/README.md) → *When
+> no session starts at all*); the workflow runs it after the suite and uploads
+> its report. Until that comes back green, E2E stays outside the required gate —
+> tracked in [`../FOR-DEV.md`](../FOR-DEV.md).
 
 **Eight journeys, 24 tests, ~39 s for the suite**, verified green on consecutive
 runs with zero leftover processes: launch, session restore, terminals in a split,

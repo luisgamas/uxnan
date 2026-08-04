@@ -1005,15 +1005,36 @@ go stale; these are the ones worth calling out.
       path is covered in Rust but never end to end.
 - [ ] **Make E2E a required gate** once `e2e-desktop.yml` has run green for a
       fortnight. Blocking before it has a track record on that runner is how a
-      gate earns a reputation for false failures. **Its first scheduled run
-      (2026-08-01) failed as pure infrastructure**: all 9 specs died identically
-      in `Failed to create a session` (timeout POSTing `127.0.0.1:4444/session`)
-      — tauri-driver never accepted a session on `windows-latest`, so no spec
-      even started; the same 9-spec suite ran green locally the same night. The
-      runner needs provisioning work (msedgedriver ↔ installed-WebView2 version
-      matching is the first suspect — locally `test:e2e:setup` resolves the
-      driver against the machine's WebView2; the runner's Edge/WebView2 pairing
-      is unverified), and iterating on it needs push-per-attempt CI cycles.
+      gate earns a reputation for false failures. **It has never been green on
+      CI**: the four scheduled runs so far (2026-08-01 … 2026-08-04) failed
+      identically — all 9 specs dying in `Failed to create a session` before a
+      single assertion — while the same suite runs green locally.
+
+      What the logs have since settled, so nobody re-investigates it:
+
+      - **Not the driver pairing**, the standing first suspect, now ruled out.
+        `test:e2e:setup` resolves and fetches the matching driver on the runner
+        too (`fetching WebDriver 150.0.4078.105… ready`), and a mismatch fails
+        with an explicit "only supports version" message. The real error is
+        `session not created: DevToolsActivePort file doesn't exist`, which is
+        about the **attach**, not the versions.
+      - **Not the app.** `resource-benchmarks.yml` is green on the same runner
+        image on the same nights, launching the same release binary and
+        recording a full WebView2 process tree (R01: ~425 MB own RSS, ~513 MB
+        managed). The app runs there; only the automation attach fails.
+      - **The failures left no evidence**, which is part of why this stalled:
+        the upload step pointed at `.artifacts/`, and upload-artifact skips
+        dot-paths unless `include-hidden-files` is set — so every run logged
+        "No files were found" and discarded the driver log. Fixed, together with
+        `npm run test:e2e:diagnose` (`tests/e2e/diagnose-session.mjs`), which now
+        runs after the suite on CI and answers the two questions the failure
+        leaves open, with data: does the app expose a remote-debugging endpoint
+        on that machine, and does a session succeed when the capabilities carry
+        the webview's real `userDataFolder`.
+
+      Next: read the first diagnosis artifact and act on its verdict. Iterating
+      still costs a push-per-attempt CI cycle (~35 min, dominated by the release
+      build).
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
       coverage for either.

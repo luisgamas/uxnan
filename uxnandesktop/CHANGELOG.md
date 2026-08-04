@@ -49,6 +49,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   budget is carried to the next tick instead of being dropped (the projects store
   hands each change over exactly once, so nothing re-announced it).
 
+### Fixed — the nightly E2E failure can finally be read
+
+- **The E2E workflow uploaded no evidence at all.** Its artifact step pointed at
+  `tests/e2e/.artifacts/`, and `upload-artifact` skips dot-paths unless
+  `include-hidden-files` is set — so all four failed nightlies logged "No files
+  were found" and threw away the driver log they existed to preserve. The
+  screenshots, page sources, driver logs and the report below now leave the
+  runner.
+- **`npm run test:e2e:diagnose` explains a session that never starts.** Every
+  scheduled run so far died in `session not created: DevToolsActivePort file
+  doesn't exist` — the WebDriver attach, not the app, which the resource
+  benchmarks prove launches on that same runner with a full WebView2 process
+  tree. The new `tests/e2e/diagnose-session.mjs` measures the two things that
+  failure leaves open: whether the app exposes a remote-debugging endpoint at
+  all, and whether `msedgedriver` accepts a session when the capabilities carry
+  the webview's real `userDataFolder` (verbose driver logs included). It runs
+  after the suite on CI, cannot fail the job, and refuses to run beside another
+  uxnan — arming its name-based reaper only once that guard has passed, so it
+  can never take down an app you had open.
+
 ## [0.0.26] - 2026-08-03
 
 ### Added — the app now records its own failures

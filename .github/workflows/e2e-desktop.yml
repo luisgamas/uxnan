@@ -88,14 +88,30 @@ jobs:
             npm run test:e2e
           fi
 
+      # After the suite, never before it: the diagnosis launches the app, which
+      # creates the webview's user-data folder — and "a runner that has never
+      # launched this app" is one of the differences it exists to measure. It
+      # cannot fail the job; it explains one.
+      - name: Diagnose the WebDriver attach
+        if: always()
+        continue-on-error: true
+        run: npm run test:e2e:diagnose
+
       # Evidence, not noise: a screenshot and the page source per failed test,
-      # plus the driver log. The suite writes nothing else, and the profile it
-      # used is a temp directory that never leaves the runner.
+      # plus the driver logs and the diagnosis report. The suite writes nothing
+      # else, and the profile it used is a temp directory that never leaves the
+      # runner.
+      #
+      # `include-hidden-files` is not optional here: the directory is
+      # `.artifacts`, and upload-artifact skips dot-paths by default — every run
+      # so far uploaded nothing and logged "No files were found", which is why
+      # four failed nightlies left no evidence to read.
       - name: Upload failure artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-artifacts-windows
           path: uxnandesktop/tests/e2e/.artifacts/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
