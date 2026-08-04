@@ -19,6 +19,12 @@ export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
  *   thread (never deleted) so the user's message stays visible with a "cancelled"
  *   mark instead of silently vanishing; distinct from `aborted` precisely so a
  *   client can tell "never ran" from "interrupted".
+ * - `delivered` — it was QUEUED and the agent took it **into the turn already
+ *   running** (see `AgentCapabilities.steering`), so it will never run as a turn
+ *   of its own: the answer is part of the turn it was folded into
+ *   (`deliveredIntoTurnId`). Terminal and successful — distinct from `cancelled`
+ *   precisely because the message DID reach the agent; the user's bubble stays,
+ *   with no assistant reply hanging off it.
  */
 export type TurnStatus =
   | 'queued'
@@ -27,7 +33,8 @@ export type TurnStatus =
   | 'completed'
   | 'error'
   | 'aborted'
-  | 'cancelled';
+  | 'cancelled'
+  | 'delivered';
 
 export type ThreadStatus = 'active' | 'idle' | 'archived';
 
@@ -78,6 +85,12 @@ export interface Turn {
   messages: Message[];
   createdAt: number;
   completedAt?: number;
+  /**
+   * For a `delivered` turn: the id of the turn its message was folded into.
+   * The reply lives there, so a client renders this turn's user message in
+   * place and expects no assistant message of its own. Absent otherwise.
+   */
+  deliveredIntoTurnId?: string;
 }
 
 /**

@@ -58,6 +58,12 @@ const PI_CAPABILITIES: AgentCapabilities = {
   images: true,
   reportsContextUsage: true,
   reportsCompaction: true,
+  // pi's RPC protocol has a first-class `steer` command, drained by the agent
+  // loop at its next boundary — so a follow-up joins the running turn instead
+  // of waiting for it. This is why the adapter runs `--mode rpc` rather than
+  // `-p --mode json`: print mode reads ALL of stdin as the initial prompt, so
+  // it has no input channel while it works.
+  steering: true,
 };
 
 /** Reasoning-effort levels pi's `--thinking` flag accepts (verified via `pi --help`). */
@@ -90,9 +96,17 @@ export interface PiAdapterOptions {
 interface ActiveRun {
   child: SpawnedProcess;
   threadId: string;
+  /**
+   * True once the turn emitted its terminal event. A follow-up must not be sent
+   * after that: pi would run it as a NEW turn on the same process, streaming a
+   * second reply into a turn the bridge already closed.
+   */
+  finished: boolean;
+  /** Write one RPC command into the running turn (see {@link PiAdapter.steerTurn}). */
+  send: (command: Record<string, unknown>) => boolean;
 }
 
-/** A normalized pi event extracted from one `--mode json` line. */
+/** A normalized pi event extracted from one RPC/`--mode json` line. */
 export interface PiEvent {
   kind:
     | 'session'
@@ -103,9 +117,13 @@ export interface PiEvent {
     | 'tool_end'
     | 'final'
     | 'end'
+    /** An RPC command pi rejected (`{ type:'response', success:false }`). */
+    | 'command_failed'
     | 'other';
   /** Only set for `session`: the session id (for `--session-id` continuity). */
   sessionId?: string;
+  /** Only set for `command_failed`: which RPC command was rejected. */
+  commandName?: string;
   /**
    * `delta`: the streamed text chunk. `thinking`: a reasoning chunk. `final`:
    * the assistant message's full text.
@@ -242,6 +260,19 @@ export function parsePiLine(line: string): PiEvent | null {
     }
     case 'agent_end':
       return { kind: 'end' };
+    // RPC-mode command acknowledgements. A success is noise, but a FAILED one
+    // is the only signal that a command never took effect — a rejected `prompt`
+    // would otherwise leave the turn waiting for events that never come.
+    case 'response': {
+      if (parsed['success'] !== false) return { kind: 'other' };
+      const message = typeof parsed['error'] === 'string' ? parsed['error'] : undefined;
+      const command = typeof parsed['command'] === 'string' ? parsed['command'] : 'command';
+      return {
+        kind: 'command_failed',
+        commandName: command,
+        ...(message !== undefined ? { errorText: message } : {}),
+      };
+    }
     default:
       return { kind: 'other' };
   }
@@ -346,20 +377,24 @@ export class PiAdapter extends BaseAgentAdapter {
     const effort = reasoningValue(options);
     const sessionId = this.#sessionByThread.get(threadId);
 
-    const args = ['-p', '--mode', 'json'];
+    // `--mode rpc` instead of `-p --mode json`: same event stream (both modes
+    // are one `session.subscribe(...)` writing JSON lines), but the prompt
+    // travels on stdin as a command, which leaves an input channel open for the
+    // length of the turn — that is what `steerTurn` writes into.
+    const args = ['--mode', 'rpc'];
     if (this.#permissionMode === 'default') args.push('--tools', 'read,grep,find,ls');
     else if (this.#permissionMode === 'bypassPermissions') args.push('--approve');
     if (model) args.push('--model', model);
     // Reasoning effort → pi's `--thinking <off|minimal|low|medium|high|xhigh>`.
     if (effort) args.push('--thinking', effort);
-    // Resume the thread's session (created on the first turn); the prompt is the
-    // final positional, never shell-interpolated.
+    // Resume the thread's session (created on the first turn).
     if (sessionId) args.push('--session-id', sessionId);
-    args.push(text);
 
     let child: SpawnedProcess;
     try {
-      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
+      child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd, {
+        stdin: 'pipe',
+      });
     } catch (err) {
       this.emit({
         type: 'turn_error',
@@ -370,8 +405,46 @@ export class PiAdapter extends BaseAgentAdapter {
       return Promise.resolve();
     }
 
-    this.#active.set(turnId, { child, threadId });
+    /** Write one RPC command as a JSON line. False when the pipe is gone. */
+    const send = (command: Record<string, unknown>): boolean => {
+      const stdin = child.stdin;
+      if (!stdin || !stdin.writable) return false;
+      try {
+        stdin.write(`${JSON.stringify(command)}\n`);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    /**
+     * Tell pi no more commands are coming. REQUIRED to end the run: in RPC mode
+     * the process stays alive waiting for the next command, and only exits when
+     * stdin ends (`process.stdin.on('end')` → `shutdown()` in pi's rpc-mode).
+     */
+    const endInput = (): void => {
+      try {
+        child.stdin?.end();
+      } catch {
+        /* already gone */
+      }
+    };
+
+    const run: ActiveRun = { child, threadId, finished: false, send };
+    this.#active.set(turnId, run);
     this.emit({ type: 'turn_started', threadId, turnId });
+
+    if (!send({ type: 'prompt', message: text })) {
+      this.#active.delete(turnId);
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: { text: 'failed to send the prompt to pi (stdin unavailable)' },
+      });
+      child.kill();
+      return Promise.resolve();
+    }
 
     let full = '';
     let currentAssistantText = '';
@@ -389,6 +462,10 @@ export class PiAdapter extends BaseAgentAdapter {
     const finish = (): void => {
       if (completed) return;
       completed = true;
+      run.finished = true;
+      // No more follow-ups can join this turn, and pi is still waiting on the
+      // pipe for another command — close it so the process can exit.
+      endInput();
       const body = full.length > 0 ? full : finalText;
       if (errored && body.length === 0) {
         this.emit({
@@ -488,6 +565,17 @@ export class PiAdapter extends BaseAgentAdapter {
           errored = true;
           if (event.errorText) errorMsg = event.errorText;
         }
+      } else if (event.kind === 'command_failed') {
+        // Only a rejected `prompt` ends the turn: it means the agent never
+        // started, so nothing else will arrive. A rejected `steer` is a
+        // follow-up that did not land — the turn itself is fine, and the
+        // manager already treats a `false` from `steerTurn` as "leave it
+        // queued", so it must not take the turn down with it.
+        if (event.commandName === 'prompt') {
+          errored = true;
+          errorMsg = event.errorText ?? 'pi rejected the prompt';
+          finish();
+        }
       } else if (event.kind === 'end') {
         finish();
       }
@@ -495,6 +583,7 @@ export class PiAdapter extends BaseAgentAdapter {
 
     child.on('error', (err) => {
       reader.close();
+      run.finished = true;
       this.#active.delete(turnId);
       if (!completed) {
         completed = true;
@@ -509,6 +598,7 @@ export class PiAdapter extends BaseAgentAdapter {
 
     child.on('close', () => {
       reader.close();
+      run.finished = true;
       this.#active.delete(turnId);
       finish();
     });
@@ -516,9 +606,27 @@ export class PiAdapter extends BaseAgentAdapter {
     return Promise.resolve();
   }
 
+  /**
+   * Hand a follow-up to the turn `activeTurnId` is already running, as pi's own
+   * RPC `steer` command. pi drains its steering queue at the agent loop's next
+   * boundary, so the message lands inside the same turn — no second process and
+   * no second `--session-id`.
+   *
+   * Returns false rather than throwing for every ordinary "too late": the turn
+   * is unknown to this adapter, it already emitted its terminal event, or the
+   * pipe closed underneath us.
+   */
+  steerTurn(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean> {
+    const run = this.#active.get(options.activeTurnId);
+    if (!run || run.finished) return Promise.resolve(false);
+    if (run.threadId !== options.threadId) return Promise.resolve(false);
+    return Promise.resolve(run.send({ type: 'steer', message: options.text }));
+  }
+
   cancelTurn(threadId: string, turnId: string): Promise<void> {
     const run = this.#active.get(turnId);
     if (run) {
+      run.finished = true;
       run.child.kill();
       this.#active.delete(turnId);
       this.emit({ type: 'turn_aborted', threadId, turnId });

@@ -12,46 +12,87 @@ import {
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
 
-// --- a fake `pi` process whose stdout we feed with `--mode json` lines ---
+// --- a fake `pi` process whose stdout we feed with agent-session JSON lines ---
 interface FakeSpawn {
   args: string[];
+  /** Whether the spawn asked for a writable stdin (`--mode rpc`). */
+  pipedStdin: boolean;
+  /** RPC commands written to stdin, in order — the prompt, then any steer. */
+  sent: { type: string; message?: string }[];
+  /** True once the adapter closed the pipe; pi only exits after this. */
+  stdinEnded: boolean;
   feed(lines: string[]): void;
+  /** Feed lines WITHOUT closing stdout, so the turn stays open. */
+  feedOpen(lines: string[]): void;
   /** Write lines to STDERR (where `pi --list-models` prints its table), then close. */
   feedStderr(lines: string[]): void;
 }
 
 function fakeSpawner(): {
-  spawnFn: (command: string, args: string[], cwd: string) => SpawnedProcess;
+  spawnFn: (
+    command: string,
+    args: string[],
+    cwd: string,
+    extra?: { stdin?: 'pipe' | 'ignore' },
+  ) => SpawnedProcess;
   last(): FakeSpawn;
 } {
   const spawns: FakeSpawn[] = [];
-  const spawnFn = (_command: string, args: string[]): SpawnedProcess => {
+  const spawnFn = (
+    _command: string,
+    args: string[],
+    _cwd?: string,
+    extra?: { stdin?: 'pipe' | 'ignore' },
+  ): SpawnedProcess => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const emitter = new EventEmitter();
     stdout.on('end', () => emitter.emit('close', 0));
-    const proc: SpawnedProcess = {
-      stdout,
-      stderr,
-      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
-      kill: () => emitter.emit('close', 0),
-    } as SpawnedProcess;
-    spawns.push({
+    const record: FakeSpawn = {
       args,
+      pipedStdin: extra?.stdin === 'pipe',
+      sent: [],
+      stdinEnded: false,
       feed: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
         stdout.end();
+      },
+      feedOpen: (lines) => {
+        for (const line of lines) stdout.write(`${line}\n`);
       },
       feedStderr: (lines) => {
         for (const line of lines) stderr.write(`${line}\n`);
         stderr.end();
         stdout.end();
       },
+    };
+    // Mirrors the real pipe: one RPC command per line, and `end()` is what lets
+    // pi shut down (it waits for the next command otherwise).
+    const stdin = new PassThrough();
+    stdin.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString('utf8').split('\n')) {
+        if (!line.trim()) continue;
+        record.sent.push(JSON.parse(line) as { type: string; message?: string });
+      }
     });
+    stdin.on('finish', () => {
+      record.stdinEnded = true;
+    });
+    const proc: SpawnedProcess = {
+      stdout,
+      stderr,
+      ...(extra?.stdin === 'pipe' ? { stdin } : {}),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
+    spawns.push(record);
     return proc;
   };
   return { spawnFn, last: () => spawns[spawns.length - 1]! };
 }
+
+/** Let the fake stdin's 'data' listeners run before asserting on `sent`. */
+const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 function collect(adapter: PiAdapter): {
   events: AgentStreamEvent[];
@@ -253,11 +294,18 @@ test('PiAdapter streams text_delta as deltas and completes with the text + usage
   assert.equal((completed?.data as { text: string }).text, 'Hello world');
   const usage = (completed?.data as { usage?: { tokens: number } }).usage;
   assert.equal(usage?.tokens, 99);
-  // first turn has no --session-id yet; -p --mode json lead the args
+  // first turn has no --session-id yet; `--mode rpc` leads the args
   const args = last().args;
-  assert.deepEqual(args.slice(0, 3), ['-p', '--mode', 'json']);
+  assert.deepEqual(args.slice(0, 2), ['--mode', 'rpc']);
   assert.equal(args.includes('--session-id'), false);
-  assert.equal(args[args.length - 1], 'hi');
+  // The prompt travels on stdin as an RPC command, never as argv — that open
+  // pipe is what `steerTurn` writes into.
+  assert.equal(args.includes('hi'), false);
+  assert.equal(last().pipedStdin, true);
+  await flush();
+  assert.deepEqual(last().sent, [{ type: 'prompt', message: 'hi' }]);
+  // …and the pipe is closed when the turn ends, or pi would never exit.
+  assert.equal(last().stdinEnded, true);
 });
 
 test('PiAdapter preserves multiple assistant messages including non-streamed text', async () => {
@@ -429,4 +477,111 @@ test('PiAdapter.listModels parses the table pi prints to stderr', async () => {
   );
   assert.equal(last().args.includes('--list-models'), true);
   assert.equal(models[0]?.isDefault, true);
+});
+
+// --- mid-turn delivery (steering) -----------------------------------------
+// pi's RPC protocol has a first-class `steer` command, drained by the agent
+// loop at its next boundary — which is why the adapter runs `--mode rpc`
+// instead of `-p --mode json` (print mode reads ALL of stdin as the prompt).
+
+test('steerTurn sends a steer command into the running turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feedOpen(['{"type":"response","command":"prompt","success":true}']);
+
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'actually, do this instead',
+  });
+  await flush();
+
+  assert.equal(taken, true);
+  assert.deepEqual(proc.sent, [
+    { type: 'prompt', message: 'first' },
+    { type: 'steer', message: 'actually, do this instead' },
+  ]);
+  // Same process, same turn: no second spawn, no second --session-id.
+  assert.equal(last(), proc);
+  assert.equal(proc.stdinEnded, false, 'the pipe stays open while the turn runs');
+
+  proc.feed(['{"type":"agent_end","messages":[],"willRetry":false}']);
+  const events = await done;
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  await flush();
+  assert.equal(proc.stdinEnded, true);
+});
+
+test('steerTurn declines once the turn ended, or for an unknown turn', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'nope', text: 'x' }),
+    false,
+  );
+  assert.equal(
+    await adapter.steerTurn({ threadId: 'other', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
+    false,
+  );
+
+  proc.feed(['{"type":"agent_end","messages":[],"willRetry":false}']);
+  await done;
+  // Writing now would be read as a NEW turn on the same process.
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'late' }),
+    false,
+  );
+  await flush();
+  assert.deepEqual(proc.sent, [{ type: 'prompt', message: 'first' }]);
+});
+
+test('a rejected prompt fails the turn, but a rejected steer does not', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new PiAdapter({ binaryPath: 'pi', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  // A refused follow-up is not the turn's problem: the manager already treats
+  // it as "leave it queued", so the running turn must survive it.
+  last().feedOpen([
+    '{"type":"response","command":"steer","success":false,"error":"nothing to steer"}',
+  ]);
+  await flush();
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
+    true,
+    'the turn is still live, so the write itself succeeds',
+  );
+
+  // A refused PROMPT means the agent never started — nothing else will arrive.
+  last().feedOpen([
+    '{"type":"response","command":"prompt","success":false,"error":"no API key found"}',
+  ]);
+  const events = await done;
+  const err = events.find((e) => e.type === 'turn_error');
+  assert.match(String((err?.data as { text: string }).text), /no API key found/);
+});
+
+test('parsePiLine maps a failed RPC response, and ignores a successful one', () => {
+  assert.deepEqual(parsePiLine('{"type":"response","command":"prompt","success":true}'), {
+    kind: 'other',
+  });
+  assert.deepEqual(
+    parsePiLine('{"type":"response","command":"prompt","success":false,"error":"boom"}'),
+    { kind: 'command_failed', commandName: 'prompt', errorText: 'boom' },
+  );
+});
+
+test('PiAdapter advertises steering', () => {
+  const adapter = new PiAdapter({ binaryPath: 'pi' });
+  assert.equal(adapter.capabilities.steering, true);
 });

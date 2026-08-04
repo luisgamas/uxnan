@@ -105,6 +105,16 @@ const CODEX_CAPABILITIES: AgentCapabilities = {
   reportsContextUsage: true,
   reportsCompaction: true,
   commands: true,
+  // The app-server exposes `turn/steer` (see `ClientRequest` in
+  // `codex app-server generate-json-schema`, codex-cli 0.146.0): a follow-up
+  // with an `expectedTurnId` precondition, folded into the running turn. This
+  // is the protocol's own version of the Codex TUI's Enter-to-steer.
+  //
+  // FOR-DEV: implemented and unit-tested against the published protocol schema,
+  // but NOT yet exercised against a live Codex turn — the account's weekly
+  // limit was exhausted (0 credits) when this landed. Run the steer probe once
+  // credits return and record the result in bridge/docs/testing.md.
+  steering: true,
 };
 
 /**
@@ -479,6 +489,40 @@ export class CodexAdapter extends BaseAgentAdapter {
     const run = this.#active.get(turnId);
     if (!run) return;
     await this.#interruptTurn(run);
+  }
+
+  /**
+   * Hand a follow-up to the turn `activeTurnId` is already running, via the
+   * app-server's own `turn/steer`. Codex takes it at the next boundary and
+   * answers inside the same turn — this is the protocol's native equivalent of
+   * pressing Enter (rather than Tab) on a follow-up in the Codex TUI.
+   *
+   * `expectedTurnId` is a precondition the app-server enforces: it rejects the
+   * request when that turn is no longer the active one, which is exactly the
+   * race we would otherwise have to guess at. A rejection is reported as "not
+   * taken" so the bridge simply leaves the message queued.
+   */
+  async steerTurn(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean> {
+    const run = this.#active.get(options.activeTurnId);
+    if (!run || run.threadId !== options.threadId) return false;
+    // No app-server turn id yet means `turn/start` has not come back: there is
+    // no turn to steer, and `expectedTurnId` would have nothing to match.
+    if (!run.codexTurnId || !this.#rpc) return false;
+    const codexThreadId = this.#threadByBridgeThread.get(run.threadId);
+    if (!codexThreadId) return false;
+
+    try {
+      await this.#rpc.request('turn/steer', {
+        threadId: codexThreadId,
+        expectedTurnId: run.codexTurnId,
+        input: [{ type: 'text', text: options.text }],
+      });
+      return true;
+    } catch {
+      // Includes the ordinary "that turn is no longer active" precondition
+      // failure. Nothing is lost: the message stays queued and runs next.
+      return false;
+    }
   }
 
   async #interruptTurn(run: ActiveRun): Promise<void> {

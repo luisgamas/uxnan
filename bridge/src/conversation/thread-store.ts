@@ -65,6 +65,11 @@ interface StoredTurn {
    * importing the same turn a second time.
    */
   nativeHistoryTurnId?: string;
+  /**
+   * For a `delivered` turn: the turn its message was folded into (see
+   * {@link ThreadStore.deliverQueuedTurn}). Absent for every other status.
+   */
+  deliveredIntoTurnId?: string;
 }
 
 interface StoredThread {
@@ -478,6 +483,33 @@ export class ThreadStore {
     return this.#setTurnStatus(threadId, turnId, 'cancelled', now);
   }
 
+  /**
+   * Marks a queued turn as `delivered` — the agent took its message **into the
+   * turn already running** ({@link intoTurnId}) instead of making it wait, so
+   * it will never run on its own. Terminal and successful: unlike `cancelled`,
+   * the message did reach the agent, and the reply is part of `intoTurnId`.
+   *
+   * The turn keeps its own (empty) assistant message rather than dropping it,
+   * so every turn in the store has the same shape and a client that renders
+   * turns generically needs no special case.
+   */
+  deliverQueuedTurn(
+    threadId: string,
+    turnId: string,
+    intoTurnId: string,
+    now: number,
+  ): Promise<void> {
+    return this.#mutate(async (threads) => {
+      const thread = await this.#requireThread(threads, threadId);
+      const turn = thread.turns.find((t) => t.id === turnId);
+      if (!turn) return;
+      turn.status = 'delivered';
+      turn.completedAt = now;
+      turn.deliveredIntoTurnId = intoTurnId;
+      thread.updatedAt = now;
+    });
+  }
+
   /** The ids of a thread's `queued` turns, oldest first (their run order). */
   async queuedTurnIds(threadId: string): Promise<string[]> {
     const threads = await this.#read();
@@ -835,6 +867,9 @@ function toTurn(turn: StoredTurn): Turn {
     createdAt: turn.createdAt,
   };
   if (turn.completedAt !== undefined) result.completedAt = turn.completedAt;
+  if (turn.deliveredIntoTurnId !== undefined) {
+    result.deliveredIntoTurnId = turn.deliveredIntoTurnId;
+  }
   return result;
 }
 

@@ -628,3 +628,123 @@ test('OpenCodeAdapter cancelTurn aborts the session and emits turn_aborted', asy
   assert.deepEqual(server.aborted, ['ses_1']);
   assert.ok(events.some((e) => e.type === 'turn_aborted'));
 });
+
+// --- mid-turn delivery (steering) -----------------------------------------
+// `opencode serve` accepts another prompt on a session that is already busy and
+// folds it into the running work. Verified live against opencode 1.18.11: a
+// message sent 6s into a five-`sleep` turn ended the assistant's first message
+// after the first tool returned, answered the new instruction, and the whole
+// thing closed with a single `session.idle`.
+
+test('steerTurn prompts the same session without opening a second run', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  const { events, done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'actually, do this instead',
+  });
+
+  assert.equal(taken, true);
+  assert.deepEqual(
+    server.prompts.map((p) => p.body.text),
+    ['first', 'actually, do this instead'],
+  );
+  assert.equal(server.prompts[1]?.sessionId, server.prompts[0]?.sessionId, 'same session');
+  // Only the original turn was announced — a second turn_started would tell the
+  // phone a new turn began when the agent is still inside the first.
+  assert.equal(events.filter((e) => e.type === 'turn_started').length, 1);
+
+  // The answer the server produces for it belongs to the SAME bridge turn.
+  server.emit('message.updated', {
+    info: { id: 'm2', sessionID: 'ses_1', role: 'assistant' },
+  });
+  server.emit('message.part.updated', {
+    part: { id: 'p2', sessionID: 'ses_1', messageID: 'm2', type: 'text', text: 'BANANA' },
+  });
+  server.emit('session.idle', { sessionID: 'ses_1' });
+
+  const all = await done;
+  const completions = all.filter((e) => e.type === 'turn_completed');
+  assert.equal(completions.length, 1);
+  assert.equal(completions[0]?.turnId, 'u1');
+  assert.match(String((completions[0]?.data as { text: string }).text), /BANANA/);
+});
+
+test('steerTurn keeps the running turn model, not a new one', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server, { defaultModel: 'opencode/m' });
+  collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'more',
+    service: 'opencode/some-other-model',
+  });
+  // A message inside a turn must not switch the model mid-answer.
+  assert.equal(server.prompts[1]?.body.model, undefined);
+});
+
+test('steerTurn declines for a finished, unknown or mismatched turn', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'nope', text: 'x' }),
+    false,
+  );
+  assert.equal(
+    await adapter.steerTurn({ threadId: 'other', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
+    false,
+  );
+
+  server.emit('session.idle', { sessionID: 'ses_1' });
+  await done;
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
+    false,
+  );
+  assert.deepEqual(
+    server.prompts.map((p) => p.body.text),
+    ['first'],
+  );
+});
+
+test('a message the server accepted counts as delivered even if the turn just ended', async () => {
+  const server = new FakeServer();
+  const adapter = makeAdapter(server);
+  collect(adapter);
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+
+  // The turn goes idle while the prompt round-trip is in flight. Reporting "not
+  // taken" would make the bridge queue it and send the SAME text again — an
+  // instruction acted on twice is worse than a reply we cannot attribute.
+  server.promptAsync = (sessionId, body) => {
+    server.prompts.push({ sessionId, body });
+    server.emit('session.idle', { sessionID: 'ses_1' });
+    return Promise.resolve();
+  };
+
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'racy',
+  });
+  assert.equal(taken, true);
+  assert.equal(server.prompts.length, 2, 'sent exactly once');
+});
+
+test('the adapter advertises steering', () => {
+  const adapter = makeAdapter(new FakeServer());
+  assert.equal(adapter.capabilities.steering, true);
+});

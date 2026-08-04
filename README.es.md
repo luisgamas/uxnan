@@ -224,7 +224,8 @@ modelos en vivo, y knobs de ejecución por agente.
 
 Es un cliente real, no una página de estado: las conversaciones **llegan en vivo**
 y sobreviven a navegar fuera y volver, una **cola de mensajes** te deja enviar
-seguimientos mientras un agente sigue trabajando, puedes adjuntar **imágenes**,
+seguimientos mientras un agente sigue trabajando — y le llegan *en pleno turno*,
+sin detenerlo, en los agentes cuya CLI lo permite —, puedes adjuntar **imágenes**,
 elegir el **agente y el modelo** por conversación, revisar y hacer stage de un
 **diff de Git**, y recibir una **notificación push** en cuanto un agente termina,
 todo sobre el mismo canal cifrado de extremo a extremo que habla el bridge.

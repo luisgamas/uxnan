@@ -16,6 +16,7 @@ import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
 import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
+import 'package:uxnan/presentation/widgets/ne_dashed_outline.dart';
 
 /// Side of a sent-attachment thumbnail above the user bubble — the size the
 /// composer strip used to have, so a sent image stays a compact reference the
@@ -209,74 +210,45 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                   queued ? null : () => setState(() => _showCopy = !_showCopy),
               child: Stack(
                 children: [
-                  // A queued bubble settles into its normal tone the instant
-                  // the queue drains to it — the animation IS the feedback
-                  // that the message finally went out.
-                  AnimatedContainer(
-                    duration: motion,
-                    curve: Curves.easeOutCubic,
-                    margin:
-                        const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-                    padding: EdgeInsets.fromLTRB(
-                      UxnanSpacing.md,
-                      UxnanSpacing.sm,
-                      // Room for the edit + cancel pair so neither ever sits on
-                      // the text (2 × 28 dp + the gap between and after them).
-                      queued ? _queuedActionsWidth : UxnanSpacing.md,
-                      UxnanSpacing.sm,
-                    ),
-                    decoration: BoxDecoration(
-                      // The soft "elevated" surface rather than the user's own
-                      // primary tone: a waiting message should read as pending,
-                      // not as something already said.
-                      color: queued
-                          ? colors.surfaceContainerHighest
-                          : colors.primaryContainer,
-                      border: queued
-                          ? Border.all(color: colors.outlineVariant)
-                          : null,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(14),
-                        topRight: Radius.circular(14),
-                        bottomLeft: Radius.circular(14),
-                        bottomRight: Radius.circular(4),
-                      ),
-                    ),
-                    child: AnimatedSize(
+                  // The dashes ARE the queued state: the bubble keeps the
+                  // user's own tone and its whole message, and only its edge
+                  // says "not handed over yet". The outline goes transparent
+                  // on delivery, dissolving in place — the message never
+                  // changes colour or moves, it just stops being provisional.
+                  NeDashedOutline(
+                    color: queued ? colors.primary : Colors.transparent,
+                    borderRadius: _bubbleRadius,
+                    child: AnimatedContainer(
                       duration: motion,
                       curve: Curves.easeOutCubic,
-                      alignment: Alignment.topRight,
-                      child: AnimatedSwitcher(
+                      margin:
+                          const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+                      padding: EdgeInsets.fromLTRB(
+                        UxnanSpacing.md,
+                        UxnanSpacing.sm,
+                        // Room for the edit + cancel pair so neither ever sits
+                        // on the text (2 × 28 dp + the gap between and after).
+                        queued ? _queuedActionsWidth : UxnanSpacing.md,
+                        UxnanSpacing.sm,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.primaryContainer,
+                        borderRadius: _bubbleRadius,
+                      ),
+                      child: AnimatedSize(
                         duration: motion,
-                        // Cross-fade the one-line preview into the full message
-                        // rather than swapping them, so delivery reads as the
-                        // bubble opening up instead of a different bubble.
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeOutCubic,
-                        child: queued
-                            // One line, ellipsized: a waiting message is a
-                            // reminder of what is coming, not something
-                            // to read.
-                            ? Text(
-                                _text,
-                                key: const ValueKey('queued-preview'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: colors.onSurfaceVariant),
-                              )
-                            : _UserMessageBody(
-                                key: const ValueKey('delivered-body'),
-                                message: message,
-                                text: _text,
-                                surface: colors.primaryContainer,
-                                onSurface: colors.onPrimaryContainer,
-                                expanded: _expanded,
-                                onExpandedChanged: (value) =>
-                                    setState(() => _expanded = value),
-                              ),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topRight,
+                        child: _UserMessageBody(
+                          key: const ValueKey('user-body'),
+                          message: message,
+                          text: _text,
+                          surface: colors.primaryContainer,
+                          onSurface: colors.onPrimaryContainer,
+                          expanded: _expanded,
+                          onExpandedChanged: (value) =>
+                              setState(() => _expanded = value),
+                        ),
                       ),
                     ),
                   ),
@@ -339,6 +311,15 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
 }
 
 /// Diameter of a queued bubble's corner action.
+/// The user bubble's shape, shared by its fill and its queued dashed outline so
+/// the dashes trace the bubble exactly.
+const BorderRadius _bubbleRadius = BorderRadius.only(
+  topLeft: Radius.circular(14),
+  topRight: Radius.circular(14),
+  bottomLeft: Radius.circular(14),
+  bottomRight: Radius.circular(4),
+);
+
 const double _queuedActionSize = 28;
 
 /// Horizontal room the pair of corner actions needs inside the bubble, so the

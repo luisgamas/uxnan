@@ -162,6 +162,22 @@ void main() {
       expect((event as TurnCancelledEvent).turnId, 't1');
     });
 
+    test('stream/turn/delivered names the turn the message was folded into',
+        () {
+      final event = processor.classify(
+        note('stream/turn/delivered', {
+          'turnId': 't2',
+          'threadId': 'th1',
+          'intoTurnId': 't1',
+        }),
+      );
+      // The agent took this one INTO the turn it was already running: unlike a
+      // cancellation the message WAS received, and the reply lives on t1.
+      expect(event, isA<TurnDeliveredEvent>());
+      expect((event as TurnDeliveredEvent).turnId, 't2');
+      expect(event.intoTurnId, 't1');
+    });
+
     test('stream/queue/updated carries the whole queue state', () {
       final event = processor.classify(
         note('stream/queue/updated', {

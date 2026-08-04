@@ -30,6 +30,9 @@ export interface BridgeStatusInput {
 const BRIDGE_FEATURES = {
   // The per-thread message queue (architecture/02a §5.8.13).
   messageQueue: true,
+  // Handing a queued follow-up to the turn already running, on agents whose CLI
+  // has an input channel mid-turn (architecture/02a §5.8.13).
+  midTurnDelivery: true,
 } as const;
 
 export function buildBridgeStatus(input: BridgeStatusInput): BridgeStatus {

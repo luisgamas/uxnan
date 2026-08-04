@@ -80,6 +80,12 @@ const OPENCODE_CAPABILITIES: AgentCapabilities = {
   reportsContextUsage: true,
   reportsCompaction: true,
   commands: true,
+  // The server accepts another `prompt_async` on a session that is already busy
+  // and folds it into the running work. Verified against opencode 1.18.11: a
+  // message sent 6s into a five-`sleep` turn ended the assistant's first message
+  // right after the first tool returned, answered the new instruction instead,
+  // and the whole thing closed with a SINGLE `session.idle` — one bridge turn.
+  steering: true,
 };
 
 /**
@@ -390,6 +396,47 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         data: { text: `opencode prompt failed: ${errorMessage(err)}` },
       });
     }
+  }
+
+  /**
+   * Hand a follow-up to the turn `activeTurnId` is already running: another
+   * `prompt_async` on the SAME session while the server is still busy. OpenCode
+   * takes it at the next tool boundary and answers inside the same run — one
+   * `session.idle`, so one bridge turn.
+   *
+   * No new {@link ActiveRun} is created on purpose. Events route by session, so
+   * the extra assistant message the server opens for the answer already folds
+   * into the running turn's text; registering a second run would instead retire
+   * the first one as stale (see `sendTurn`) and split the reply in two.
+   *
+   * Returns false rather than throwing for every ordinary "too late": the turn
+   * is unknown, already finished, or its server is gone.
+   */
+  async steerTurn(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean> {
+    const run = this.#active.get(options.activeTurnId);
+    if (!run || run.finished) return false;
+    if (run.threadId !== options.threadId) return false;
+    const server = this.#serverByCwd.get(run.cwd);
+    if (!server) return false;
+
+    // The running turn's model/variant stay in force — this is a message inside
+    // it, not a new turn, and switching models mid-answer is not something the
+    // user asked for.
+    try {
+      await server.promptAsync(run.sessionId, { text: options.text });
+    } catch (err) {
+      this.#log(`turn ${run.turnId} mid-turn message refused: ${errorMessage(err)}`);
+      return false;
+    }
+    // `promptAsync` is a round-trip, so the turn may have gone idle while it was
+    // in flight. Report it delivered anyway: the server ACCEPTED the message, so
+    // it is at the agent. Answering "not taken" would make the bridge queue it
+    // and send the very same text a second time — an instruction acted on twice
+    // is a worse outcome than a reply the bridge could not attribute.
+    if (run.finished) {
+      this.#log(`turn ${run.turnId} went idle as a mid-turn message was accepted`);
+    }
+    return true;
   }
 
   async cancelTurn(threadId: string, turnId: string): Promise<void> {

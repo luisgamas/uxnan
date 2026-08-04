@@ -60,6 +60,13 @@ class IncomingMessageProcessor {
         TurnAbortedEvent(turnId: turnId, threadId: threadId),
       'stream/turn/cancelled' =>
         TurnCancelledEvent(turnId: turnId, threadId: threadId),
+      'stream/turn/delivered' => TurnDeliveredEvent(
+          turnId: turnId,
+          intoTurnId: params['intoTurnId'] is String
+              ? params['intoTurnId'] as String
+              : '',
+          threadId: threadId,
+        ),
       'stream/queue/updated' => QueueUpdatedEvent(
           threadId: threadId,
           queuedTurnIds: _stringList(params['queuedTurnIds']),
