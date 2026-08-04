@@ -76,6 +76,16 @@ export interface SendTurnOptions {
   command?: AgentCommandInvocation;
 }
 
+/** Input for {@link IAgentAdapter.generateTitle}. */
+export interface GenerateTitleOptions {
+  /** The user's opening message. */
+  userText: string;
+  /** The agent's reply to it, when there is one (trimmed by the caller). */
+  assistantText?: string;
+  /** Working directory to run the one-shot in (the thread's own). */
+  cwd?: string;
+}
+
 export interface IAgentAdapter {
   readonly agentId: AgentId;
   readonly capabilities: AgentCapabilities;
@@ -91,6 +101,26 @@ export interface IAgentAdapter {
 
   /** Cancel an in-flight turn. */
   cancelTurn(threadId: string, turnId: string): Promise<void>;
+
+  /**
+   * Name a conversation from its opening exchange — a handful of words, no
+   * punctuation, in the language the user wrote in.
+   *
+   * **This is a side errand, not a turn.** Implementations run a fresh one-shot
+   * with **no session id**, so nothing lands in the thread's history, no
+   * streaming event is emitted, and the agent's own context is untouched. It is
+   * also expected to use the agent's *cheapest* model rather than the one the
+   * conversation runs on: naming is a trivial task and should never spend the
+   * expensive model's quota.
+   *
+   * Optional — an adapter that cannot do it cheaply simply omits it, and the
+   * thread keeps the provisional title derived from the opening message.
+   *
+   * Returns the bare title, or `undefined` when the agent produced nothing
+   * usable. **Never throws for an ordinary failure** (no credit, CLI missing,
+   * a timeout): titling is cosmetic and must not disturb a working thread.
+   */
+  generateTitle?(options: GenerateTitleOptions): Promise<string | undefined>;
 
   /**
    * Reply to a pending approval the agent emitted (as an `approval` content

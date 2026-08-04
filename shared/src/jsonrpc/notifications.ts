@@ -3,7 +3,7 @@
  *
  * Source: architecture/02b-contracts-and-requirements.md (streaming events).
  */
-import type { QueuePausedReason } from '../models/thread.js';
+import type { QueuePausedReason, ThreadTitleSource } from '../models/thread.js';
 
 export const StreamNotification = {
   TurnStarted: 'stream/turn/started',
@@ -21,6 +21,8 @@ export const StreamNotification = {
   QueueUpdated: 'stream/queue/updated',
   /** The agent resolved an alias (e.g. `opus`) to a concrete model id for this turn. */
   ModelResolved: 'stream/model/resolved',
+  /** A thread's title changed on the bridge (a generated title, or another device's rename). */
+  ThreadRenamed: 'stream/thread/renamed',
 } as const;
 
 export type StreamNotification = (typeof StreamNotification)[keyof typeof StreamNotification];
@@ -135,4 +137,20 @@ export interface ModelResolvedParams {
   turnId: string;
   /** Concrete model id the agent resolved for this turn (e.g. `claude-opus-4-8`). */
   model: string;
+}
+
+/**
+ * A thread's title changed **on the bridge**, so every client converges without
+ * refetching the list. Emitted when a generated title replaces the provisional
+ * one taken from the opening message, and when another device renames a thread.
+ *
+ * `titleSource` says how much to trust it: `user` is final, `agent` is the
+ * generated name, `prompt` the weak fallback. A client MUST NOT let an `agent`
+ * title overwrite a `user` one — the bridge already enforces that, and this
+ * field is what lets a client reason about it too.
+ */
+export interface ThreadRenamedParams {
+  threadId: string;
+  title: string;
+  titleSource: ThreadTitleSource;
 }

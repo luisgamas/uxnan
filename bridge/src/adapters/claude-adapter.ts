@@ -31,8 +31,10 @@ import type {
   AgentModel,
   AgentModelOption,
   CompactionReason,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { buildTitlePrompt, sanitizeTitle } from '../agents/thread-title.js';
 import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
@@ -99,6 +101,16 @@ const CLAUDE_EXCLUDED_COMMANDS = new Set(['config', 'login', 'logout', 'doctor']
  * the phone renders this order verbatim.
  */
 const CLAUDE_MODEL_ALIASES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
+
+/**
+ * Model used to name a conversation — the cheapest tier, never the one the
+ * thread runs on. Writing a six-word title is not work for an expensive model,
+ * and it must not eat that model's quota.
+ */
+const TITLE_MODEL = 'haiku';
+
+/** A title is worth a couple of seconds, never a stall. */
+const TITLE_TIMEOUT_MS = 30_000;
 
 /** Human-facing labels for the stable aliases. */
 const CLAUDE_ALIAS_LABELS: Record<string, string> = {
@@ -853,6 +865,57 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emit({ type: 'turn_aborted', threadId, turnId });
     }
     return Promise.resolve();
+  }
+
+  /**
+   * Name a conversation with `haiku`, the cheapest tier — a side errand, not a
+   * turn: a fresh one-shot with **no `--resume`**, so it neither joins the
+   * thread's session nor shows up in its history.
+   *
+   * Text in, text out (`--output-format text`): there is nothing to stream, and
+   * parsing one line beats decoding a JSON event stream for it.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const args = ['-p', '--output-format', 'text', '--model', TITLE_MODEL, prompt];
+    try {
+      const raw = await this.#runOneShot(args, options.cwd ?? this.#defaultCwd);
+      return raw === undefined ? undefined : sanitizeTitle(raw);
+    } catch {
+      // Naming is cosmetic — no credit, a missing CLI or a timeout must never
+      // disturb a thread that is otherwise working.
+      return undefined;
+    }
+  }
+
+  /** Run a short one-shot and collect stdout, or `undefined` on failure/timeout. */
+  #runOneShot(args: string[], cwd: string): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      let child: SpawnedProcess;
+      try {
+        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
+      } catch {
+        resolve(undefined);
+        return;
+      }
+      let out = '';
+      let settled = false;
+      const finish = (value: string | undefined): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(undefined);
+      }, TITLE_TIMEOUT_MS);
+      child.stdout.on('data', (chunk: Buffer | string) => {
+        out += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      });
+      child.on('error', () => finish(undefined));
+      child.on('close', (code) => finish(code === 0 ? out : undefined));
+    });
   }
 
   /**

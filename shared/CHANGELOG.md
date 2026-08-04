@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a conversation gets a real name, not its opening words
+
+- Added `Thread.titleSource` (`prompt` | `agent` | `user`) and the
+  `stream/thread/renamed` notification, bringing the streaming set to **11**.
+  A generated title may replace a provisional one; **nothing** replaces a name
+  the user chose.
+- Added `ThreadRenameParams.source`. Absent means the user renamed it — the safe
+  default, since `thread/rename` is the hand-rename call. A client that
+  auto-names a new thread from its opening message must send `'prompt'`, or its
+  throwaway title is recorded as the user's choice.
+- Added the optional `IAgentAdapter.generateTitle`. It is a **side errand, not a
+  turn**: implementations run a one-shot with no session id, so nothing lands in
+  the thread's history, and they use the agent's *cheapest* model — naming is
+  not work for the model the conversation runs on.
+
 ## [0.0.12-alpha.20260803] - 2026-08-03
 
 ### Added — workspace file-link target contract

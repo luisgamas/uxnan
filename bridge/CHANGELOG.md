@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — the bridge names a conversation instead of reusing its first words
+
+A thread was named after the first ~72 characters of its opening message, so
+two conversations that start with the same phrase are indistinguishable in the
+list. **No agent CLI can help here**: every one of them leaves titling to its
+own client, and the headless protocols uxnan drives expose no title — a thread
+uxnan creates comes back from `codex thread/list` with `name: null`, a fresh
+OpenCode session stays `"New session - <timestamp>"`, and Claude's session name
+is derived from the folder, not the content. uxnan is the client, so it names
+its own conversations, exactly as their desktop clients do.
+
+- Two stages, so a thread is never nameless and never stuck with a weak name:
+  the opening message still titles it instantly (`provisionalTitle`), and once
+  the first turn has an answer to summarize the agent writes a real one.
+- `IAgentAdapter.generateTitle` is a **side errand, not a turn** — a fresh
+  one-shot with **no session id**, so nothing enters the thread's history, no
+  streaming event fires and the agent's context is untouched. It runs on the
+  agent's *cheapest* model (Claude: `haiku`), never the conversation's own.
+- Entirely best-effort and bounded (30s): no credit, a missing CLI or a timeout
+  leaves the provisional title in place and never disturbs the thread.
+- `ThreadStore.applyGeneratedTitle` refuses to overwrite a `user` title, so a
+  rename made while the turn was running always wins over the generated name.
+  `stream/thread/renamed` then converges every connected client.
+- `thread/rename` gained `source`; absent still means the user renamed it.
+
+Verified against the real cheap model through the adapter: two conversations
+opening with the **identical** phrase ("Hola, quiero que me ayudes con una cosa
+del proyecto") were named *"Corregir expiración JWT en login"* and *"Despliegue
+automático a Cloudflare Pages"* — the exact collision this replaces — each in
+the user's own language, in ~5-7s.
+Tests: 7 new (`test/agents/thread-title.test.ts`) covering the provisional
+title, the prompt, and reducing a CLI's decorated output to a bare title.
+
 ## [0.0.15-alpha.20260803] - 2026-08-03
 
 ### Fixed — the published package pins the matching `@uxnan/shared`

@@ -27,6 +27,7 @@ import {
   type QueuePausedReason,
   type QueueStateResult,
   type TurnAttachment,
+  type ThreadRenamedParams,
 } from '@uxnan/shared';
 import { rm } from 'node:fs/promises';
 import type { ThreadStore } from '../conversation/thread-store.js';
@@ -503,6 +504,74 @@ export class AgentManager {
   }
 
   /**
+   * Give the thread a real name once its first turn has an answer.
+   *
+   * No agent CLI does this for us — every one of them leaves titling to its
+   * client (a thread uxnan creates comes back from Codex with `name: null`), so
+   * uxnan names its own conversations, exactly as their desktop clients do.
+   *
+   * Only ever runs **once per thread**, and only while the title is still the
+   * provisional one taken from the opening message: `applyGeneratedTitle`
+   * refuses to overwrite a name the user chose, so a rename made while the turn
+   * was running always wins.
+   *
+   * Entirely best-effort. A failure here must never touch the conversation, so
+   * everything is swallowed and the thread simply keeps its provisional name.
+   */
+  async #nameThread(threadId: string, turnId: string, assistantText: string): Promise<void> {
+    try {
+      const thread = await this.#options.store.getThread(threadId);
+      if (thread.titleSource !== undefined && thread.titleSource !== 'prompt') return;
+      // Second and later turns: the name was already decided (or declined).
+      if (thread.turnCount > 1) return;
+
+      const agentId = this.#agentByThread.get(threadId) ?? this.#options.defaultAgent;
+      const adapter = this.#adapters.get(agentId);
+      if (!adapter?.generateTitle) return;
+
+      const userText = await this.#userText(turnId);
+      if (!userText) return;
+
+      const title = await adapter.generateTitle({
+        userText,
+        ...(assistantText ? { assistantText } : {}),
+        ...(thread.cwd !== undefined ? { cwd: thread.cwd } : {}),
+      });
+      if (!title) return;
+
+      const updated = await this.#options.store.applyGeneratedTitle(
+        threadId,
+        title,
+        this.#options.now(),
+      );
+      // `undefined` means the store declined — the user renamed it meanwhile,
+      // or the name was already this. Either way there is nothing to announce.
+      if (!updated) return;
+      this.#options.notify(
+        makeNotification(StreamNotification.ThreadRenamed, {
+          threadId,
+          title: updated.title,
+          titleSource: 'agent',
+        } satisfies ThreadRenamedParams),
+      );
+    } catch (err) {
+      this.#options.logger.warn(`could not name thread ${threadId}: ${String(err)}`);
+    }
+  }
+
+  /** The user's message on [turnId], for summarizing. */
+  async #userText(turnId: string): Promise<string | undefined> {
+    try {
+      const turn = await this.#options.store.getTurn(turnId);
+      const message = turn.messages.find((m) => m.role === 'user');
+      const content = message?.content;
+      return typeof content === 'string' && content.trim().length > 0 ? content : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Ask the user (via the phone) whether an agent tool may run. Emits an
    * `approval` content block on the thread's in-flight turn and resolves once
    * {@link respondApproval} arrives (or after {@link APPROVAL_TIMEOUT_MS} →
@@ -975,6 +1044,10 @@ export class AgentManager {
           void this.#cleanupAttachments(turnId);
           await this.#persistAgentSession(threadId, now);
           this.#options.onTurnEnd?.({ threadId, turnId, status: 'completed', text });
+          // Now there is an answer to summarize, so the thread can stop living
+          // with the opening message as its name. Deliberately NOT awaited: it
+          // spawns a CLI, and the queue must drain the instant the turn ends.
+          void this.#nameThread(threadId, turnId, text);
           // The turn ended cleanly — this is the moment a queued follow-up runs.
           await this.#drainQueue(threadId);
           break;

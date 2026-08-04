@@ -112,7 +112,24 @@ export interface Thread {
   agentSessionId?: string;
   /** Per-thread access (approval) mode; see {@link AccessMode}. */
   accessMode?: AccessMode;
+  /**
+   * Where {@link title} came from, so a better title can replace a weaker one
+   * without ever overwriting a name the **user** chose.
+   *
+   * - `prompt` — provisional, derived from the opening message. Instant, and
+   *   the weakest: two conversations that start with the same phrase collide.
+   * - `agent` — written by a model that read the first exchange. Replaces
+   *   `prompt`, never `user`.
+   * - `user` — renamed by hand (`thread/rename`). Final; nothing overwrites it.
+   *
+   * Absent on threads stored before this existed; treat that as `prompt`, which
+   * is what they are.
+   */
+  titleSource?: ThreadTitleSource;
 }
+
+/** Where a thread's title came from. See {@link Thread.titleSource}. */
+export type ThreadTitleSource = 'prompt' | 'agent' | 'user';
 
 export interface ThreadList {
   threads: Thread[];
