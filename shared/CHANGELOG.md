@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.13-alpha.20260804] - 2026-08-04
+
 ### Added — a conversation gets a real name, not its opening words
 
 - Added `Thread.titleSource` (`prompt` | `agent` | `user`) and the

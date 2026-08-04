@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.27] - 2026-08-04
+
 ### Added — agent sessions get a real name, on the card and on the tab
 
 The left-panel card and the tab strip labelled a session with the user's

@@ -6,7 +6,7 @@ publish_to: 'none'
 # version: <build-name>+<build-number>
 # The build-number is Play's versionCode and must strictly increase. The previous
 # release used 20260724, so today's calendar date is already greater.
-version: 0.0.16-alpha.20260803+20260803
+version: 0.0.17-alpha.20260804+20260804
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

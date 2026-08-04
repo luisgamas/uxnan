@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.17-alpha.20260804+20260804] - 2026-08-04
+
 ### Changed — a queued message can now reach the agent without waiting
 
 On agents whose CLI has an input channel mid-turn (Claude Code, OpenCode,

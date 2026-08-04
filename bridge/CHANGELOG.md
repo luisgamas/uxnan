@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.16-alpha.20260804] - 2026-08-04
+
 ### Added — the bridge names a conversation instead of reusing its first words
 
 A thread was named after the first ~72 characters of its opening message, so
