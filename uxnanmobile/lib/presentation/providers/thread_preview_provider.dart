@@ -20,22 +20,22 @@ const int _previewLookback = 8;
 /// the desktop's agent card shows on its second line once a turn ends, so the
 /// two apps read alike. `null` while there is nothing to show (a brand-new
 /// thread, or a reply with no text), and the row falls back to the agent.
-final threadPreviewProvider = FutureProvider.autoDispose
-    .family<String?, String>((ref, threadId) async {
-      final repository = ref.watch(messageRepositoryProvider);
-      final messages = await repository.getMessages(
-        threadId,
-        limit: _previewLookback,
-      );
-      // `getMessages` returns most-recent-first, so the first assistant message
-      // with text IS the latest reply.
-      for (final message in messages) {
-        if (message.role != MessageRole.assistant) continue;
-        final preview = _previewOf(message);
-        if (preview.isNotEmpty) return preview;
-      }
-      return null;
-    });
+final threadPreviewProvider =
+    FutureProvider.autoDispose.family<String?, String>((ref, threadId) async {
+  final repository = ref.watch(messageRepositoryProvider);
+  final messages = await repository.getMessages(
+    threadId,
+    limit: _previewLookback,
+  );
+  // `getMessages` returns most-recent-first, so the first assistant message
+  // with text IS the latest reply.
+  for (final message in messages) {
+    if (message.role != MessageRole.assistant) continue;
+    final preview = _previewOf(message);
+    if (preview.isNotEmpty) return preview;
+  }
+  return null;
+});
 
 String _previewOf(Message message) =>
     railPreviewText(message, maxLength: _previewMaxLength);

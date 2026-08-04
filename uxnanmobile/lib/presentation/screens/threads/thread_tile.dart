@@ -213,9 +213,8 @@ class _FullContent extends ConsumerWidget {
     final responding = activity == ThreadActivity.running;
     // The agent's own words take the line the moment it stops talking; while it
     // works, what it is doing matters more than what it last said.
-    final preview = responding
-        ? null
-        : ref.watch(threadPreviewProvider(thread.id)).value;
+    final preview =
+        responding ? null : ref.watch(threadPreviewProvider(thread.id)).value;
     final secondary = responding
         ? l10n.threadResponding
         : (preview != null && preview.isNotEmpty)
