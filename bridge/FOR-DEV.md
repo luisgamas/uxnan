@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 596, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 620, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -58,6 +58,17 @@ push validation (FOR-HUMAN).
   surfaced on `turn/list` + `stream/queue/updated`, and turns left `queued` by a
   previous run are cancelled at startup. This is also what enforces one turn per
   thread — the bridge previously started a second turn on top of the first.
+- **Mid-turn delivery** — where the agent's CLI has an input channel while it
+  works, a follow-up does not wait for the turn: it is handed straight to the
+  running one (`IAgentAdapter.steerTurn`), the turn goes `delivered` (terminal
+  and *successful*, distinct from `cancelled`) and `stream/turn/delivered`
+  fires. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
+  and follow-ups on an open stdin) and **OpenCode** (`prompt_async` on the busy
+  session); implemented for **Codex** (`turn/steer`) but not yet run against a
+  real turn (see below). Antigravity, Zero and Grok have no such channel and
+  keep waiting — Zero's own TUI behaves that way too. Advertised as
+  `features.midTurnDelivery` + per-agent `AgentCapabilities.steering`, and every
+  refusal falls back to the queue, so a message is never lost.
 - **7 active real agents wired** — OpenCode (default), Claude Code, Codex, pi,
   Antigravity (Google's `agy`), Zero, and Grok. The Gemini CLI adapter remains
   registered only as unavailable/deprecated legacy and rejects new turns. Each
@@ -277,19 +288,32 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
-- [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
-      delivers a follow-up as its own turn once the current one ends — uniform
-      across all seven active agents. What the CLIs additionally do is *steer*: inject the
-      message into the running turn at the next tool-call boundary (Claude Code's
-      TUI does this by default; Codex splits it as `Tab` = queue vs `Enter` =
-      steer). The bridge cannot: the one-shot agents (`claude -p --resume`, pi,
-      antigravity) have no input channel while they run — `spawn.ts` closes
-      stdin because those CLIs hang on an open pipe. It IS reachable for the
-      server-backed ones (Codex `app-server`, OpenCode `serve`, Zero/Grok ACP), so
-      it belongs behind a new `AgentCapabilities.steering` flag the phone can read,
-      alongside a `turn/steer` (or a `turn/send` mode) that the adapter maps to its
-      protocol. Needs: the capability in `shared/`, per-adapter support, and a
-      mobile affordance distinct from "queue". Unblocked — just not started.
+- [ ] **Mid-turn delivery for pi.** Steering shipped for Claude Code, OpenCode and
+      Codex (`AgentCapabilities.steering` + `IAgentAdapter.steerTurn`; see
+      `docs/agents.md`). **pi can do it too, but not the way we drive it today.**
+      Its `--mode rpc` protocol has first-class `steer` and `follow_up` commands
+      (and `prompt` takes `streamingBehavior: 'steer' | 'followUp'`), while the
+      adapter runs `pi -p --mode json`, whose print mode reads *all* of stdin as
+      the initial prompt rather than as a message stream — so there is no cheap
+      path. What makes it tractable: **both modes emit the identical
+      `AgentSessionEvent` JSON lines** (`session.subscribe(...)` in both
+      `print-mode.ts` and `rpc-mode.ts`), so the existing parsing carries over
+      almost unchanged. The work is the process model: one long-lived
+      `pi --mode rpc` per thread instead of one spawn per turn, plus moving
+      model/thinking selection from argv to the `set_model` /
+      `set_thinking_level` commands, mapping `abort`, and distinguishing RPC
+      `response` objects from events. Unblocked — deferred as its own change
+      because it is effectively a new adapter.
+      See the `FOR-DEV:` marker in `pi-adapter.ts`.
+- [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
+      mid-turn delivery is implemented and unit-tested against the published
+      protocol schema (`codex app-server generate-json-schema`, codex-cli
+      0.146.0), but has never run against a real turn: the account was at 100%
+      of its weekly limit with `credits.balance: "0"` when it landed (resets
+      2026-08-07). Steer a real Codex turn, confirm the follow-up lands inside
+      it (one `turn/completed`), and record it in `docs/testing.md`. Claude Code
+      and OpenCode were both verified live this way and are done.
+      See the `FOR-DEV:` marker in `codex-adapter.ts`.
 - [ ] **Per-model run options — phase 4 (fast-mode / context variants).** Phases 1–3
       are DONE (reasoning effort wired per agent + the per-model option schema in
       `shared/` `agent/models` + the mobile data-driven renderer). Phase 4 is fast-

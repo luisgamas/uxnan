@@ -58,6 +58,15 @@ const PI_CAPABILITIES: AgentCapabilities = {
   images: true,
   reportsContextUsage: true,
   reportsCompaction: true,
+  // FOR-DEV: pi CAN take a follow-up mid-turn — its `--mode rpc` protocol has
+  // first-class `steer` / `follow_up` commands — but not the way this adapter
+  // drives it: `pi -p --mode json` reads ALL of stdin as the initial prompt,
+  // not as a message stream, so there is no input channel while it runs. What
+  // makes the move tractable is that BOTH modes emit the identical
+  // `AgentSessionEvent` JSON lines, so the parsing below carries over; the work
+  // is the process model (one long-lived `pi --mode rpc` per thread instead of
+  // one spawn per turn). Until then `steering` stays unset and a pi follow-up
+  // waits for the current turn, exactly as before. See bridge/FOR-DEV.md.
 };
 
 /** Reasoning-effort levels pi's `--thinking` flag accepts (verified via `pi --help`). */

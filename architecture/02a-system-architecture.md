@@ -2091,6 +2091,45 @@ un reinicio. Por eso el arranque llama a
 que quedo `queued` en disco — el usuario ve exactamente que mensajes no
 salieron, en vez de quedar esperando una cola que ya no existe.
 
+##### Entrega en pleno turno (steering)
+
+Encolar hasta el final del turno **no es lo que hacen las CLI**: ellas recogen
+lo que escribes en el siguiente limite de herramienta, *dentro* del turno en
+curso — que es lo que permite corregir el rumbo de un agente sin detenerlo. El
+bridge hace lo mismo donde la CLI del agente realmente lo permite.
+
+```javascript
+// #enqueueTurn -> #tryDeliverMidTurn(threadId, adapter, entry)
+//   requiere: adapter.capabilities.steering && adapter.steerTurn
+//             + turno en vuelo
+//             + cola VACIA        (algo esperando ya se envio antes -> FIFO)
+//             + cola NO pausada   (el usuario paro al agente, o se rompio)
+//   exito -> ThreadStore.deliverQueuedTurn(threadId, turnId, intoTurnId)
+//            + stream/turn/delivered ; turn/send responde { delivered: true }
+//   fallo  -> el turno se queda `queued` y corre normal despues
+```
+
+El estado `delivered` es **terminal y exitoso**, deliberadamente distinto de
+`cancelled`: el mensaje SI llego al agente, la respuesta pertenece al turno al
+que se unio (`Turn.deliveredIntoTurnId`), y por eso `queue/clear` no lo toca ni
+`#drainQueue` lo reproduce. Cualquier negativa del adaptador cae a la cola de
+siempre, asi que un mensaje nunca se pierde: como mucho espera.
+
+Que agentes pueden, y por que (verificado contra las CLI reales):
+
+| Agente | ¿Steering? | Mecanismo |
+|---|---|---|
+| **Claude Code** | Si | `-p --input-format stream-json`, mensaje por stdin abierto |
+| **OpenCode** | Si | otro `prompt_async` sobre la sesion ya ocupada |
+| **Codex** | Si | app-server `turn/steer { threadId, expectedTurnId, input }` |
+| **Antigravity** | No | `agy -p` es de un disparo; no hay canal de entrada |
+| **Zero** | No | su ACP serializa con `turnMu`, y su propio TUI tampoco inyecta |
+| **Grok** | No | ACP no define un metodo de steer ni lo anuncia en `initialize` |
+
+Zero es el caso instructivo: **ya se comporta como la cola del bridge**. Su TUI
+solo lanza el mensaje encolado cuando el turno termino, asi que aqui no hay
+comportamiento nativo que igualar.
+
 #### 5.8.14 Fin de turno: trabajo diferido y llegadas tardias
 
 Un adaptador decide cuando el agente termino, y hay dos formas:

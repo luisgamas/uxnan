@@ -222,7 +222,8 @@ auto-resume, live model discovery, and per-agent run options.
 
 It's a real client, not a status page: conversations **stream in live** and survive
 navigating away and back, a **message queue** lets you send follow-ups while an
-agent is still working, you can attach **images**, pick the **agent and model**
+agent is still working — reaching it *mid-turn*, without stopping it, on the
+agents whose CLI allows that — you can attach **images**, pick the **agent and model**
 per conversation, see protocol-confirmed **context compactions**, and keep every
 native progress/final response without losing earlier text (settled progress folds
 under **N previous messages**). You can also review and stage a **Git diff** and
