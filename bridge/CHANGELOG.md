@@ -86,8 +86,25 @@ Verified end-to-end against the real `opencode` 1.18.11 driving the built
 adapter: a message steered 6s into a five-`sleep` turn was taken after the
 first tool returned, the remaining sleeps were abandoned, and the run produced
 one `turn_started` and one `turn_completed`, every event on the original turn.
-Tests: 5 new in `test/adapters/opencode-adapter.test.ts`. Bridge suite
-**616 passing**.
+Tests: 5 new in `test/adapters/opencode-adapter.test.ts`.
+
+### Added — Codex steers a running turn through the app-server's `turn/steer`
+
+- `CodexAdapter.steerTurn` calls `turn/steer { threadId, expectedTurnId, input }`
+  — the app-server's own mid-turn follow-up, the protocol equivalent of
+  pressing Enter (rather than Tab) on a message in the Codex TUI.
+- `expectedTurnId` is a precondition the app-server enforces: it rejects the
+  request when that turn is no longer active, so the race we would otherwise
+  have to guess at is decided by the server. A rejection is reported as "not
+  taken", never as an error, and the message stays queued.
+
+**Not yet verified against a live Codex turn.** Implemented and unit-tested
+against the published protocol schema (`codex app-server generate-json-schema`,
+codex-cli 0.146.0), but the account's weekly limit was exhausted (0 credits)
+when this landed, so no real turn could be steered. Tracked in
+`bridge/FOR-DEV.md`; run the probe once credits return.
+Tests: 4 new in `test/adapters/codex-adapter.test.ts`. Bridge suite
+**620 passing**.
 
 ## [0.0.15-alpha.20260803] - 2026-08-03
 
