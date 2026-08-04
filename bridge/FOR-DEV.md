@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 597, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 604, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -50,6 +50,16 @@ push validation (FOR-HUMAN).
   Native assistant envelopes from Codex, Claude and pi are separated by durable
   `assistant_response_boundary` blocks; terminal text is reconciled additively,
   so an agent's final item cannot erase progress/commentary already shown.
+- **Conversation naming** — a thread is no longer labelled with the first ~72
+  characters of its opening message (two conversations that start with the same
+  phrase were indistinguishable). No agent CLI exposes a title — every one of
+  them leaves that to its own client — so the bridge names its own: provisional
+  from the opening message, then the agent writes a real one once the first turn
+  has an answer, as a **one-shot with no session id** (nothing enters the
+  thread's history) on the agent's **cheapest** model. Wired for all seven
+  agents, **six verified live**; a generated title never overwrites one the user
+  chose (`Thread.titleSource`), and `stream/thread/renamed` converges every
+  client. Best-effort throughout: a failure keeps the provisional name.
 - **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
   queued (status `queued`) instead of clobbering it, and drains automatically on
   completion; run options are frozen at queue time; the queue holds after a stop

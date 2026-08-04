@@ -222,7 +222,9 @@ modelos en vivo, y knobs de ejecución por agente.
   <img src="assets/uxnan-mobile.png" alt="Uxnan Mobile mostrando una conversación en streaming, el selector de agente y modelo, y un diff de Git" width="960" />
 </p>
 
-Es un cliente real, no una página de estado: las conversaciones **llegan en vivo**
+Es un cliente real, no una página de estado: las conversaciones llevan un
+**nombre que escribió el agente** en vez de las primeras palabras que tecleaste,
+**llegan en vivo**
 y sobreviven a navegar fuera y volver, una **cola de mensajes** te deja enviar
 seguimientos mientras un agente sigue trabajando, puedes adjuntar **imágenes**,
 elegir el **agente y el modelo** por conversación, revisar y hacer stage de un

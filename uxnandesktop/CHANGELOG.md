@@ -28,9 +28,16 @@ Desktop, the OpenCode TUI, Claude's picker), so uxnan names its own.
 - `tabDisplayTitle` puts the same name on the tab, **below** `customTitle`:
   renaming a tab by hand is a decision, and nothing generated overrules it.
 
-Tests: 7 Rust (prompt shape, and reducing a CLI's decorated output to a bare
-title) + 6 frontend (named once, failure keeps the old label, nothing without
-the pieces it needs). Desktop suites **770 frontend / 467 Rust**.
+- The per-agent title model is checked against each CLI's **real** model list,
+  not assumed. That caught a live bug before it shipped: `agy` was mapped to
+  `gemini-2.0-flash`, which Antigravity does not offer (`agy models` lists
+  `gemini-3.6-flash-*`), so every Antigravity title would have failed silently.
+  It is now `gemini-3.6-flash-low`; Codex uses `gpt-5.4-mini`, confirmed against
+  the account's own `model/list`.
+
+Tests: 7 Rust (prompt shape, the model table, and reducing a CLI's decorated
+output to a bare title) + 6 frontend (named once, failure keeps the old label,
+nothing without the pieces it needs). Desktop suites **770 frontend / 495 Rust**.
 
 
 ### Fixed — a background refresh no longer takes anything away
