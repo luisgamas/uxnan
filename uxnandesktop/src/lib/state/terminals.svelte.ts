@@ -11,27 +11,28 @@
 // `AreaSplit` divides a region into two with an adjustable ratio. Restructuring
 // the tree never remounts xterm or restarts a PTY.
 
-import { tick } from "svelte";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { fsRename, termBuffersSet } from "$lib/api";
-import { registerFlush } from "$lib/state/flushRegistry";
-import { disposeInstance, serializeInstance } from "$lib/terminal/instances";
-import { repairedSession, resumeCommand, type CapturedAgentSession } from "$lib/agentResume";
-import { renewPendingSession } from "$lib/agentSessionId";
-import type { ProviderSession } from "$lib/types";
-import { isImagePath } from "$lib/diff";
-import { opensInPreview } from "$lib/filePreview";
-import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from "$lib/types";
-import { i18n } from "$lib/i18n";
-import { saveDiscard } from "$lib/state/confirm.svelte";
-import { FileEditorState } from "$lib/state/files.svelte";
-import { CommitViewerState, DiffViewerState } from "$lib/state/git.svelte";
+import { tick } from 'svelte';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { fsRename, termBuffersSet } from '$lib/api';
+import { registerFlush } from '$lib/state/flushRegistry';
+import { disposeInstance, serializeInstance } from '$lib/terminal/instances';
+import { repairedSession, resumeCommand, type CapturedAgentSession } from '$lib/agentResume';
+import { renewPendingSession } from '$lib/agentSessionId';
+import { conversationTitles } from '$lib/state/conversationTitles.svelte';
+import type { ProviderSession } from '$lib/types';
+import { isImagePath } from '$lib/diff';
+import { opensInPreview } from '$lib/filePreview';
+import type { FsChangedEvent, SavedTab, SavedTermNode, SavedTerminalLayout } from '$lib/types';
+import { i18n } from '$lib/i18n';
+import { saveDiscard } from '$lib/state/confirm.svelte';
+import { FileEditorState } from '$lib/state/files.svelte';
+import { CommitViewerState, DiffViewerState } from '$lib/state/git.svelte';
 
-export type SplitDir = "row" | "col";
+export type SplitDir = 'row' | 'col';
 
 /** The unassigned "Global" workspace key. */
-export const GLOBAL_WORKSPACE = "";
+export const GLOBAL_WORKSPACE = '';
 
 /** Fields shared by every kind of tab in a region. */
 interface BaseTab {
@@ -47,7 +48,7 @@ interface BaseTab {
 
 /** A terminal tab, backed by a single PTY. */
 export interface TerminalTab extends BaseTab {
-  kind: "terminal";
+  kind: 'terminal';
   /** Stable id that survives serialize/restore (tab ids are re-minted each
    *  boot). Keys this tab's scrollback snapshot in the terminal-buffers
    *  sidecar. Persisted. */
@@ -93,13 +94,13 @@ export interface TerminalTab extends BaseTab {
  *  staged/unstaged toggle + hunk staging). The diff that used to be a *separate*
  *  tab is now this `changes` mode of the one file tab — so a file never occupies
  *  more than one tab. */
-export type FileView = "edit" | "preview" | "changes";
+export type FileView = 'edit' | 'preview' | 'changes';
 
 /** A file tab. Its live state — the editor (`fileState`) and, lazily, the working
  *  diff (`fileDiffState`) — lives in the store's per-tab registries, both keyed by
  *  this tab's `id`, so closing the tab frees both. */
 export interface FileTab extends BaseTab {
-  kind: "file";
+  kind: 'file';
   /** Absolute, forward-slash path of the open file. */
   path: string;
   /** Worktree root for git-relative ops + the change gutter (null = none). */
@@ -114,7 +115,7 @@ export interface FileTab extends BaseTab {
  *  state lives in the per-tab registry (`commitState`). Self-contained: carries
  *  its own `worktree`, independent of the right panel's active worktree. */
 export interface CommitTab extends BaseTab {
-  kind: "commit";
+  kind: 'commit';
   worktree: string;
   /** Full commit hash. */
   hash: string;
@@ -126,35 +127,41 @@ export interface CommitTab extends BaseTab {
 
 export type GroupTab = TerminalTab | FileTab | CommitTab;
 
-/** The label shown on a tab (strip + drag ghost): a user-set `customTitle` wins;
- *  otherwise a terminal shows its running agent's name (else its own title), and
- *  every other kind shows its derived title. */
+/** The label shown on a tab (strip + drag ghost).
+ *
+ *  A user-set `customTitle` always wins — renaming a tab by hand is a decision,
+ *  and nothing generated may overrule it. Otherwise a terminal shows the
+ *  conversation's generated name when it has one (so the tab says what the
+ *  session is about, not just which agent runs it), then the agent's name, then
+ *  its own title. Every other kind shows its derived title. */
 export function tabDisplayTitle(t: GroupTab): string {
   if (t.customTitle) return t.customTitle;
-  if (t.kind === "terminal") return t.agentName ?? t.title;
+  if (t.kind === 'terminal') {
+    return conversationTitles.get(t.id) ?? t.agentName ?? t.title;
+  }
   return t.title;
 }
 
 /** The view a freshly-opened file lands on: visual binaries (images/PDF) open in
  *  Preview, everything else in the editor (Markdown stays source-first). */
 function defaultFileView(path: string): FileView {
-  return opensInPreview(path) ? "preview" : "edit";
+  return opensInPreview(path) ? 'preview' : 'edit';
 }
 
 /** Worktree-relative, forward-slash path of `absPath` under `worktree` (falls back
  *  to the file name when it isn't under the root). Mirrors the editor's own
  *  relativization so the diff view's keys line up with git status. */
 function relOf(absPath: string, worktree: string): string {
-  const base = worktree.replace(/\\/g, "/").replace(/\/+$/, "");
-  const abs = absPath.replace(/\\/g, "/");
-  if (abs === base) return abs.split("/").pop() ?? abs;
-  if (abs.startsWith(base + "/")) return abs.slice(base.length + 1);
-  return abs.split("/").pop() ?? abs;
+  const base = worktree.replace(/\\/g, '/').replace(/\/+$/, '');
+  const abs = absPath.replace(/\\/g, '/');
+  if (abs === base) return abs.split('/').pop() ?? abs;
+  if (abs.startsWith(base + '/')) return abs.slice(base.length + 1);
+  return abs.split('/').pop() ?? abs;
 }
 
 /** A region: a tab strip over one-or-more terminals. */
 export interface TabGroup {
-  kind: "group";
+  kind: 'group';
   id: string;
   tabs: GroupTab[];
   activeTabId: string;
@@ -162,7 +169,7 @@ export interface TabGroup {
 
 /** A split of two regions/sub-splits with an adjustable ratio for child `a`. */
 export interface AreaSplit {
-  kind: "split";
+  kind: 'split';
   dir: SplitDir;
   ratio: number;
   a: AreaNode;
@@ -204,10 +211,10 @@ export interface NewTabOptions {
   workspace?: string;
 }
 
-function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTab {
+function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TerminalTab {
   termCount += 1;
   return {
-    kind: "terminal",
+    kind: 'terminal',
     id: crypto.randomUUID(),
     sid: crypto.randomUUID(),
     title: opts?.title ?? `Terminal ${termCount}`,
@@ -225,13 +232,13 @@ function newTab(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TerminalTa
   };
 }
 
-function newGroup(opts?: Omit<NewTabOptions, "groupId" | "workspace">): TabGroup {
+function newGroup(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TabGroup {
   const tab = newTab(opts);
-  return { kind: "group", id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
+  return { kind: 'group', id: crypto.randomUUID(), tabs: [tab], activeTabId: tab.id };
 }
 
 function* groups(node: AreaNode): Generator<TabGroup> {
-  if (node.kind === "group") {
+  if (node.kind === 'group') {
     yield node;
   } else {
     yield* groups(node.a);
@@ -262,12 +269,8 @@ function groupOfTab(node: AreaNode, tabId: string): TabGroup | null {
 }
 
 /** Replace the group `groupId` with `replacement`, returning a new tree. */
-function replaceGroup(
-  node: AreaNode,
-  groupId: string,
-  replacement: AreaNode,
-): AreaNode {
-  if (node.kind === "group") {
+function replaceGroup(node: AreaNode, groupId: string, replacement: AreaNode): AreaNode {
+  if (node.kind === 'group') {
     return node.id === groupId ? replacement : node;
   }
   return {
@@ -280,7 +283,7 @@ function replaceGroup(
 /** Remove the group `groupId`; returns the new tree, or null if it was the only
  *  region. A split collapses to its surviving sibling. */
 function removeGroup(node: AreaNode, groupId: string): AreaNode | null {
-  if (node.kind === "group") {
+  if (node.kind === 'group') {
     return node.id === groupId ? null : node;
   }
   const a = removeGroup(node.a, groupId);
@@ -320,11 +323,11 @@ export function computeAreaLayout(root: AreaNode): {
   const dividers: AreaDivider[] = [];
 
   const walk = (node: AreaNode, rect: Rect) => {
-    if (node.kind === "group") {
+    if (node.kind === 'group') {
       groupRects.push({ group: node, rect });
       return;
     }
-    if (node.dir === "row") {
+    if (node.dir === 'row') {
       const aw = rect.w * node.ratio;
       walk(node.a, { x: rect.x, y: rect.y, w: aw, h: rect.h });
       walk(node.b, { x: rect.x + aw, y: rect.y, w: rect.w - aw, h: rect.h });
@@ -347,13 +350,13 @@ export function computeAreaLayout(root: AreaNode): {
  *  + file tabs in non-empty groups. (A file tab persists in whatever view it was
  *  in, its diff being just one of its views.) Returns null when nothing remains. */
 function pruneTransient(node: AreaNode): AreaNode | null {
-  if (node.kind === "group") {
-    const tabs = node.tabs.filter((t) => t.kind !== "commit");
+  if (node.kind === 'group') {
+    const tabs = node.tabs.filter((t) => t.kind !== 'commit');
     if (tabs.length === 0) return null;
     const activeTabId = tabs.some((t) => t.id === node.activeTabId)
       ? node.activeTabId
       : tabs[tabs.length - 1].id;
-    return { kind: "group", id: node.id, tabs, activeTabId };
+    return { kind: 'group', id: node.id, tabs, activeTabId };
   }
   const a = pruneTransient(node.a);
   const b = pruneTransient(node.b);
@@ -365,9 +368,9 @@ function pruneTransient(node: AreaNode): AreaNode | null {
 /** Serialize one tab to its persisted descriptor. Commit tabs are pruned before
  *  this runs (the terminal fallback arm is then an unreachable safety net). */
 function serializeTab(t: GroupTab): SavedTab {
-  if (t.kind === "file") {
+  if (t.kind === 'file') {
     return {
-      kind: "file",
+      kind: 'file',
       title: t.title,
       path: t.path,
       worktree: t.worktree ?? undefined,
@@ -375,9 +378,9 @@ function serializeTab(t: GroupTab): SavedTab {
       staged: t.staged,
     };
   }
-  if (t.kind === "terminal") {
+  if (t.kind === 'terminal') {
     return {
-      kind: "terminal",
+      kind: 'terminal',
       title: t.title,
       customTitle: t.customTitle,
       cwd: t.cwd,
@@ -388,26 +391,26 @@ function serializeTab(t: GroupTab): SavedTab {
       agentSession: t.agentSession,
     };
   }
-  return { kind: "terminal", title: t.title };
+  return { kind: 'terminal', title: t.title };
 }
 
 /** Serialize one area tree to a structure-only snapshot (no PTY ids / live
  *  state). Run on a `pruneTransient`'d tree so no commit tabs or empty groups
  *  appear. */
 export function serializeArea(node: AreaNode): SavedTermNode {
-  if (node.kind === "group") {
+  if (node.kind === 'group') {
     const activeTab = Math.max(
       0,
       node.tabs.findIndex((t) => t.id === node.activeTabId),
     );
     return {
-      type: "group",
+      type: 'group',
       tabs: node.tabs.map(serializeTab),
       activeTab,
     };
   }
   return {
-    type: "split",
+    type: 'split',
     dir: node.dir,
     ratio: node.ratio,
     a: serializeArea(node.a),
@@ -419,14 +422,14 @@ export function serializeArea(node: AreaNode): SavedTermNode {
  *  spawn a new PTY; file tabs reopen by path (a missing file surfaces an error
  *  in its editor pane). A descriptor with no `kind` is a legacy terminal. */
 function buildTab(t: SavedTab): GroupTab {
-  if (t.kind === "file") {
+  if (t.kind === 'file') {
     return {
-      kind: "file",
+      kind: 'file',
       id: crypto.randomUUID(),
       title: t.title,
       path: t.path,
       worktree: t.worktree ?? null,
-      view: t.view ?? "edit",
+      view: t.view ?? 'edit',
       staged: t.staged ?? false,
     };
   }
@@ -446,7 +449,7 @@ function buildTab(t: SavedTab): GroupTab {
   const session = repaired?.pending ? renewPendingSession(repaired) : repaired;
   const resume = session ? resumeCommand(session) : null;
   return {
-    kind: "terminal",
+    kind: 'terminal',
     id: crypto.randomUUID(),
     // The stable id survives restarts (tab ids don't) — it keys this tab's
     // scrollback snapshot in the terminal-buffers sidecar.
@@ -465,18 +468,18 @@ function buildTab(t: SavedTab): GroupTab {
 
 /** Rebuild an area tree from a saved snapshot, assigning fresh ids. */
 function buildFromSaved(saved: SavedTermNode): AreaNode {
-  if (saved.type === "group") {
+  if (saved.type === 'group') {
     const tabs: GroupTab[] = saved.tabs.length > 0 ? saved.tabs.map(buildTab) : [newTab()];
     const activeIdx = Math.min(Math.max(0, saved.activeTab), tabs.length - 1);
     return {
-      kind: "group",
+      kind: 'group',
       id: crypto.randomUUID(),
       tabs,
       activeTabId: tabs[activeIdx].id,
     };
   }
   return {
-    kind: "split",
+    kind: 'split',
     dir: saved.dir,
     ratio: saved.ratio,
     a: buildFromSaved(saved.a),
@@ -537,7 +540,7 @@ class TerminalStore {
     this.workspaces = { ...this.workspaces, [this.activeWorkspace]: value };
   }
   get activeGroupId(): string {
-    return this.activeGroups[this.activeWorkspace] ?? "";
+    return this.activeGroups[this.activeWorkspace] ?? '';
   }
   set activeGroupId(value: string) {
     this.activeGroups = { ...this.activeGroups, [this.activeWorkspace]: value };
@@ -566,7 +569,7 @@ class TerminalStore {
   }
   /** A specific workspace's active region id. */
   workspaceActiveGroupId(key: string): string {
-    return this.activeGroups[key] ?? "";
+    return this.activeGroups[key] ?? '';
   }
   /** Number of terminals open in a workspace (for the "running" indicator). */
   terminalCount(key: string): number {
@@ -584,7 +587,7 @@ class TerminalStore {
     if (!tree) return 0;
     let count = 0;
     for (const tab of allTabs(tree)) {
-      if (tab.kind === "terminal" && !tab.asleep) count += 1;
+      if (tab.kind === 'terminal' && !tab.asleep) count += 1;
     }
     return count;
   }
@@ -631,7 +634,7 @@ class TerminalStore {
     if (!tree) return false;
     let terminalTabs = 0;
     for (const tab of allTabs(tree)) {
-      if (tab.kind !== "terminal") continue;
+      if (tab.kind !== 'terminal') continue;
       terminalTabs += 1;
       if (!tab.asleep) return false;
     }
@@ -645,7 +648,7 @@ class TerminalStore {
     if (!tree) return [];
     const out: string[] = [];
     for (const tab of allTabs(tree)) {
-      if (tab.kind === "terminal" && tab.agentName && tab.working && !tab.asleep) {
+      if (tab.kind === 'terminal' && tab.agentName && tab.working && !tab.asleep) {
         out.push(tab.customTitle ?? tab.title);
       }
     }
@@ -659,13 +662,13 @@ class TerminalStore {
     if (!tree) return;
     const slept: TerminalTab[] = [];
     for (const tab of allTabs(tree)) {
-      if (tab.kind !== "terminal" || tab.asleep) continue;
+      if (tab.kind !== 'terminal' || tab.asleep) continue;
       tab.sid ??= crypto.randomUUID();
       const snap = serializeInstance(tab.id);
       if (snap != null && snap.length <= TerminalStore.SNAPSHOT_MAX) {
         this.snapshots[tab.sid] = snap;
       }
-      invoke("pty_close", { id: tab.id }).catch(() => {});
+      invoke('pty_close', { id: tab.id }).catch(() => {});
       tab.asleep = true;
       tab.working = false;
       slept.push(tab);
@@ -687,7 +690,7 @@ class TerminalStore {
     if (!tree) return;
     let woke = false;
     for (const tab of allTabs(tree)) {
-      if (tab.kind === "terminal" && tab.asleep) {
+      if (tab.kind === 'terminal' && tab.asleep) {
         tab.asleep = false;
         // As on restore: repair an unusable agent type, and a session we named
         // that was never written comes back under a fresh id (it is reopened by
@@ -725,7 +728,7 @@ class TerminalStore {
   ): void {
     if (!agentType) return;
     const tab = this.findTab(tabId);
-    if (!tab || tab.kind !== "terminal") return;
+    if (!tab || tab.kind !== 'terminal') return;
     tab.agentSession = {
       agent: agentType,
       id: session.id,
@@ -749,7 +752,7 @@ class TerminalStore {
    *  Callers must only report `false` for an OBSERVED exit; see `agentMonitor`. */
   noteAgentLiveness(tabId: string, live: boolean): void {
     const tab = this.findTab(tabId);
-    if (!tab || tab.kind !== "terminal" || !tab.agentSession) return;
+    if (!tab || tab.kind !== 'terminal' || !tab.agentSession) return;
     if (tab.agentSession.live === live) return;
     tab.agentSession = { ...tab.agentSession, live };
     this.workspaces = { ...this.workspaces };
@@ -759,7 +762,7 @@ class TerminalStore {
    *  mount writes it into the fresh xterm before spawning the shell. */
   consumeSnapshot(tabId: string): string | null {
     const tab = this.findTab(tabId);
-    if (!tab || tab.kind !== "terminal" || !tab.sid) return null;
+    if (!tab || tab.kind !== 'terminal' || !tab.sid) return null;
     return this.snapshots[tab.sid] ?? null;
   }
 
@@ -768,7 +771,7 @@ class TerminalStore {
   async flushSnapshots(): Promise<void> {
     const live = new Set<string>();
     for (const { tab } of this.tabsWithWorkspace()) {
-      if (tab.kind !== "terminal") continue;
+      if (tab.kind !== 'terminal') continue;
       tab.sid ??= crypto.randomUUID();
       live.add(tab.sid);
       if (tab.asleep) continue; // keep the snapshot taken at sleep time
@@ -811,7 +814,7 @@ class TerminalStore {
     this.snapshots = snapshots ?? {};
     // Capture every live terminal's scrollback when the window closes, so the
     // next boot can replay it under the restored layout.
-    registerFlush("terminal-buffers", () => this.flushSnapshots());
+    registerFlush('terminal-buffers', () => this.flushSnapshots());
     const ws: Record<string, AreaNode | null> = {};
     const ag: Record<string, string> = {};
     if (saved?.workspaces) {
@@ -846,11 +849,11 @@ class TerminalStore {
       const tree = this.workspaces[key];
       if (!tree) continue;
       for (const tab of allTabs(tree)) {
-        if (tab.kind !== "file") continue;
+        if (tab.kind !== 'file') continue;
         if (!this.fileStates.has(tab.id)) {
           this.fileStates.set(tab.id, new FileEditorState(tab.path, tab.worktree));
         }
-        if (tab.view === "changes") this.ensureDiff(tab);
+        if (tab.view === 'changes') this.ensureDiff(tab);
       }
     }
   }
@@ -877,9 +880,7 @@ class TerminalStore {
     if (this.fsListening) return;
     this.fsListening = true;
     try {
-      await listen<FsChangedEvent>("fs:changed", (e) =>
-        this.applyExternalChange(e.payload.paths),
-      );
+      await listen<FsChangedEvent>('fs:changed', (e) => this.applyExternalChange(e.payload.paths));
     } catch {
       this.fsListening = false; // no Tauri event bus (web preview)
     }
@@ -891,7 +892,7 @@ class TerminalStore {
       if (set.has(st.path)) st.noteExternalChange();
     }
     for (const st of this.diffStates.values()) {
-      const root = st.worktree.replace(/\\/g, "/").replace(/\/+$/, "");
+      const root = st.worktree.replace(/\\/g, '/').replace(/\/+$/, '');
       if (set.has(`${root}/${st.file}`)) st.noteExternalChange();
     }
   }
@@ -916,7 +917,7 @@ class TerminalStore {
     const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
     if (!group) return null;
     const tab = group.tabs.find((t) => t.id === group.activeTabId);
-    return tab?.kind === "terminal" ? tab.id : null;
+    return tab?.kind === 'terminal' ? tab.id : null;
   }
 
   // --- Tabs ----------------------------------------------------------------
@@ -947,7 +948,7 @@ class TerminalStore {
   private insertTab(tab: GroupTab, groupId?: string): void {
     if (!this.root) {
       const group: TabGroup = {
-        kind: "group",
+        kind: 'group',
         id: crypto.randomUUID(),
         tabs: [tab],
         activeTabId: tab.id,
@@ -979,9 +980,9 @@ class TerminalStore {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
     const id = crypto.randomUUID();
     const tab: FileTab = {
-      kind: "file",
+      kind: 'file',
       id,
-      title: absPath.split("/").pop() ?? absPath,
+      title: absPath.split('/').pop() ?? absPath,
       path: absPath,
       worktree,
       view: defaultFileView(absPath),
@@ -1003,11 +1004,11 @@ class TerminalStore {
     staged: boolean,
     opts?: { workspace?: string; groupId?: string },
   ): string {
-    const abs = `${worktree.replace(/\\/g, "/").replace(/\/+$/, "")}/${file}`;
+    const abs = `${worktree.replace(/\\/g, '/').replace(/\/+$/, '')}/${file}`;
     const id = this.openFile(abs, worktree, opts);
     const tab = this.findFileTabById(id);
     if (tab) tab.staged = staged;
-    this.setFileView(id, "changes");
+    this.setFileView(id, 'changes');
     return id;
   }
 
@@ -1016,7 +1017,7 @@ class TerminalStore {
     const tab = this.findFileTabById(id);
     if (!tab) return;
     tab.view = view;
-    if (view === "changes") this.ensureDiff(tab);
+    if (view === 'changes') this.ensureDiff(tab);
   }
 
   /** Toggle a file tab's Changes view between staged and unstaged, reloading the
@@ -1048,7 +1049,7 @@ class TerminalStore {
    *  image tab just keeps its (now empty) Changes view. */
   private onDiffEmpty(id: string): void {
     const tab = this.findFileTabById(id);
-    if (tab && !isImagePath(tab.path)) tab.view = "edit";
+    if (tab && !isImagePath(tab.path)) tab.view = 'edit';
   }
 
   /** Open a read-only commit-viewer tab for `hash` in `worktree` (or focus it if
@@ -1068,9 +1069,9 @@ class TerminalStore {
     if (opts?.workspace !== undefined) this.setWorkspace(opts.workspace);
     const id = crypto.randomUUID();
     const tab: CommitTab = {
-      kind: "commit",
+      kind: 'commit',
       id,
-      title: file ? (file.split("/").pop() ?? file) : hash.slice(0, 7),
+      title: file ? (file.split('/').pop() ?? file) : hash.slice(0, 7),
       worktree,
       hash,
       subject,
@@ -1106,7 +1107,7 @@ class TerminalStore {
 
   private findFileTab(path: string): { tab: FileTab; workspace: string } | undefined {
     for (const { tab, workspace } of this.tabsWithWorkspace()) {
-      if (tab.kind === "file" && tab.path === path) return { tab, workspace };
+      if (tab.kind === 'file' && tab.path === path) return { tab, workspace };
     }
     return undefined;
   }
@@ -1114,7 +1115,7 @@ class TerminalStore {
    *  mutators). */
   private findFileTabById(id: string): FileTab | undefined {
     for (const { tab } of this.tabsWithWorkspace()) {
-      if (tab.kind === "file" && tab.id === id) return tab;
+      if (tab.kind === 'file' && tab.id === id) return tab;
     }
     return undefined;
   }
@@ -1125,7 +1126,7 @@ class TerminalStore {
   ): { tab: CommitTab; workspace: string } | undefined {
     for (const { tab, workspace } of this.tabsWithWorkspace()) {
       if (
-        tab.kind === "commit" &&
+        tab.kind === 'commit' &&
         tab.worktree === worktree &&
         tab.hash === hash &&
         tab.file === file
@@ -1141,9 +1142,9 @@ class TerminalStore {
   /** Whether a file's Changes view is the one currently showing this `staged` side
    *  (for the right-panel changed-file "open" mark). */
   isFileChangesOpen(worktree: string, file: string, staged: boolean): boolean {
-    const abs = `${worktree.replace(/\\/g, "/").replace(/\/+$/, "")}/${file}`;
+    const abs = `${worktree.replace(/\\/g, '/').replace(/\/+$/, '')}/${file}`;
     const found = this.findFileTab(abs);
-    return found?.tab.view === "changes" && found.tab.staged === staged;
+    return found?.tab.view === 'changes' && found.tab.staged === staged;
   }
   /** Whether a commit (optionally a specific file's slice) is already open in some
    *  tab (for the history-list open mark). */
@@ -1187,7 +1188,7 @@ class TerminalStore {
   workspaceWorking(key: string): boolean {
     const tree = this.workspaces[key];
     if (!tree) return false;
-    for (const tab of allTabs(tree)) if (tab.kind === "terminal" && tab.working) return true;
+    for (const tab of allTabs(tree)) if (tab.kind === 'terminal' && tab.working) return true;
     return false;
   }
 
@@ -1198,7 +1199,7 @@ class TerminalStore {
     if (!tree) return [];
     const out: TerminalTab[] = [];
     for (const tab of allTabs(tree)) {
-      if (tab.kind === "terminal" && tab.agentName) out.push(tab);
+      if (tab.kind === 'terminal' && tab.agentName) out.push(tab);
     }
     return out;
   }
@@ -1218,17 +1219,17 @@ class TerminalStore {
    *  persists the live document first; a failed save also aborts so edits aren't
    *  lost. Non-file (and clean file) tabs proceed without a prompt. */
   private async confirmDirty(tab: GroupTab): Promise<boolean> {
-    if (tab.kind !== "file") return true;
+    if (tab.kind !== 'file') return true;
     const st = this.fileStates.get(tab.id);
     if (!st || !st.dirty) return true;
     const choice = await saveDiscard.request({
-      title: i18n.t("editor.unsavedTitle"),
-      description: i18n.t("editor.unsavedDesc", { file: st.rel || st.name }),
-      saveLabel: i18n.t("editor.saveAndClose"),
-      discardLabel: i18n.t("editor.discardClose"),
+      title: i18n.t('editor.unsavedTitle'),
+      description: i18n.t('editor.unsavedDesc', { file: st.rel || st.name }),
+      saveLabel: i18n.t('editor.saveAndClose'),
+      discardLabel: i18n.t('editor.discardClose'),
     });
-    if (choice === "cancel") return false;
-    if (choice === "save") {
+    if (choice === 'cancel') return false;
+    if (choice === 'save') {
       try {
         await st.save(st.content);
       } catch {
@@ -1248,9 +1249,9 @@ class TerminalStore {
     const tab = group.tabs.find((t) => t.id === tabId);
     if (!tab) return;
     if (!(await this.confirmDirty(tab))) return;
-    if (tab.kind === "terminal") {
+    if (tab.kind === 'terminal') {
       try {
-        await invoke("pty_close", { id: tabId });
+        await invoke('pty_close', { id: tabId });
       } catch {
         // Already gone — idempotent.
       }
@@ -1283,9 +1284,9 @@ class TerminalStore {
       if (!group) continue;
       const tab = group.tabs.find((t) => t.id === tabId);
       if (tab && !(await this.confirmDirty(tab))) return;
-      if (tab?.kind === "terminal") {
+      if (tab?.kind === 'terminal') {
         try {
-          await invoke("pty_close", { id: tabId });
+          await invoke('pty_close', { id: tabId });
         } catch {
           // Already gone — idempotent.
         }
@@ -1387,7 +1388,7 @@ class TerminalStore {
     const tab = group?.tabs.find((t) => t.id === group.activeTabId);
     if (tab) {
       this.noteActivation(tab.id);
-      if (tab.kind === "terminal") this.controller(tab.id)?.focus();
+      if (tab.kind === 'terminal') this.controller(tab.id)?.focus();
     }
   }
 
@@ -1437,7 +1438,7 @@ class TerminalStore {
     const cwd = this.cwdFor(opts?.cwd, this.activeWorkspace);
     const fresh = newGroup({ ...opts, cwd });
     this.root = replaceGroup(this.root, groupId, {
-      kind: "split",
+      kind: 'split',
       dir,
       ratio: 0.5,
       a: group,
@@ -1453,18 +1454,16 @@ class TerminalStore {
     if (!this.root) return;
     const group = findGroup(this.root, groupId);
     if (!group) return;
-    const dirty = group.tabs.filter(
-      (t) => t.kind === "file" && this.fileStates.get(t.id)?.dirty,
-    );
+    const dirty = group.tabs.filter((t) => t.kind === 'file' && this.fileStates.get(t.id)?.dirty);
     if (dirty.length > 0) {
       const choice = await saveDiscard.request({
-        title: i18n.t("editor.unsavedTitle"),
-        description: i18n.t("editor.unsavedManyDesc", { n: dirty.length }),
-        saveLabel: i18n.t("editor.saveAllClose"),
-        discardLabel: i18n.t("editor.discardAllClose"),
+        title: i18n.t('editor.unsavedTitle'),
+        description: i18n.t('editor.unsavedManyDesc', { n: dirty.length }),
+        saveLabel: i18n.t('editor.saveAllClose'),
+        discardLabel: i18n.t('editor.discardAllClose'),
       });
-      if (choice === "cancel") return;
-      if (choice === "save") {
+      if (choice === 'cancel') return;
+      if (choice === 'save') {
         for (const t of dirty) {
           const st = this.fileStates.get(t.id);
           if (!st) continue;
@@ -1477,7 +1476,7 @@ class TerminalStore {
       }
     }
     for (const tab of group.tabs) {
-      if (tab.kind === "terminal") invoke("pty_close", { id: tab.id }).catch(() => {});
+      if (tab.kind === 'terminal') invoke('pty_close', { id: tab.id }).catch(() => {});
       this.disposeTab(tab.id);
     }
     this.collapseGroup(groupId);
@@ -1509,17 +1508,17 @@ class TerminalStore {
       const tree = this.workspaces[key];
       if (!tree) continue;
       const tab = groupOfTab(tree, tabId)?.tabs.find((x) => x.id === tabId);
-      if (tab?.kind === "file") {
+      if (tab?.kind === 'file') {
         target = tab;
         break;
       }
     }
-    if (!target) throw new Error("file tab not found");
+    if (!target) throw new Error('file tab not found');
     const newPath = await fsRename(target.path, newName);
     await this.fileStates.get(tabId)?.repoint(newPath);
     if (target.worktree) this.diffStates.get(tabId)?.repoint(relOf(newPath, target.worktree));
     target.path = newPath;
-    target.title = newPath.split("/").pop() ?? newPath;
+    target.title = newPath.split('/').pop() ?? newPath;
     return newPath;
   }
 
@@ -1529,15 +1528,15 @@ class TerminalStore {
    *  is rewritten and the editor repointed, so unsaved edits and the change gutter
    *  follow the file to its new location. */
   async repathTabs(oldPath: string, newPath: string): Promise<void> {
-    const prefix = oldPath + "/";
+    const prefix = oldPath + '/';
     for (const { tab } of this.tabsWithWorkspace()) {
-      if (tab.kind !== "file") continue;
+      if (tab.kind !== 'file') continue;
       let next: string | null = null;
       if (tab.path === oldPath) next = newPath;
       else if (tab.path.startsWith(prefix)) next = newPath + tab.path.slice(oldPath.length);
       if (next === null) continue;
       tab.path = next;
-      tab.title = next.split("/").pop() ?? next;
+      tab.title = next.split('/').pop() ?? next;
       await this.fileStates.get(tab.id)?.repoint(next);
       if (tab.worktree) this.diffStates.get(tab.id)?.repoint(relOf(next, tab.worktree));
     }
@@ -1548,10 +1547,10 @@ class TerminalStore {
    *  changes prompt; each tab's state is disposed and an emptied region/workspace
    *  is collapsed. */
   closeTabsUnder(path: string): void {
-    const prefix = path + "/";
+    const prefix = path + '/';
     const ids: string[] = [];
     for (const { tab } of this.tabsWithWorkspace()) {
-      if (tab.kind === "file" && (tab.path === path || tab.path.startsWith(prefix))) {
+      if (tab.kind === 'file' && (tab.path === path || tab.path.startsWith(prefix))) {
         ids.push(tab.id);
       }
     }
@@ -1598,18 +1597,16 @@ class TerminalStore {
     const tree = this.root;
     if (!tree) return;
     const tabs = [...allTabs(tree)];
-    const dirty = tabs.filter(
-      (t) => t.kind === "file" && this.fileStates.get(t.id)?.dirty,
-    );
+    const dirty = tabs.filter((t) => t.kind === 'file' && this.fileStates.get(t.id)?.dirty);
     if (dirty.length > 0) {
       const choice = await saveDiscard.request({
-        title: i18n.t("editor.unsavedTitle"),
-        description: i18n.t("editor.unsavedManyDesc", { n: dirty.length }),
-        saveLabel: i18n.t("editor.saveAllClose"),
-        discardLabel: i18n.t("editor.discardAllClose"),
+        title: i18n.t('editor.unsavedTitle'),
+        description: i18n.t('editor.unsavedManyDesc', { n: dirty.length }),
+        saveLabel: i18n.t('editor.saveAllClose'),
+        discardLabel: i18n.t('editor.discardAllClose'),
       });
-      if (choice === "cancel") return;
-      if (choice === "save") {
+      if (choice === 'cancel') return;
+      if (choice === 'save') {
         for (const t of dirty) {
           const st = this.fileStates.get(t.id);
           if (!st) continue;
@@ -1622,12 +1619,12 @@ class TerminalStore {
       }
     }
     for (const tab of tabs) {
-      if (tab.kind === "terminal") invoke("pty_close", { id: tab.id }).catch(() => {});
+      if (tab.kind === 'terminal') invoke('pty_close', { id: tab.id }).catch(() => {});
       this.disposeTab(tab.id);
     }
     // Empty the active workspace's region tree (shows the empty-state canvas).
     this.root = null;
-    this.activeGroupId = "";
+    this.activeGroupId = '';
   }
 
   private collapseGroup(groupId: string): void {
@@ -1636,7 +1633,7 @@ class TerminalStore {
     // `null` means the last region closed → the workspace becomes empty.
     this.root = newRoot;
     if (newRoot === null) {
-      this.activeGroupId = "";
+      this.activeGroupId = '';
     } else if (!findGroup(newRoot, this.activeGroupId)) {
       this.activeGroupId = firstGroup(newRoot).id;
     }
@@ -1648,8 +1645,8 @@ class TerminalStore {
     const tree = this.workspaces[key];
     if (tree) {
       for (const tab of allTabs(tree)) {
-        if (tab.kind === "terminal") {
-          invoke("pty_close", { id: tab.id }).catch(() => {});
+        if (tab.kind === 'terminal') {
+          invoke('pty_close', { id: tab.id }).catch(() => {});
           if (tab.sid) delete this.snapshots[tab.sid];
         }
         this.disposeTab(tab.id);

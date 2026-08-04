@@ -1691,6 +1691,25 @@ pub async fn git_generate_commit_message(
         .map_err(CommandError::from)
 }
 
+/// Name a conversation from its opening exchange, using the session's own agent
+/// CLI on that agent's cheapest model.
+///
+/// **Best-effort by design.** The caller shows the generated name only if one
+/// comes back; on any failure (no credit, the CLI missing, a timeout) the
+/// session simply keeps the label it already had. Naming must never disturb a
+/// session that is otherwise working.
+#[tauri::command]
+pub async fn generate_conversation_title(
+    agent_id: String,
+    user_text: String,
+    assistant_text: String,
+    cwd: String,
+) -> Result<String, CommandError> {
+    crate::convtitle::generate(&agent_id, &user_text, &assistant_text, &cwd)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// Which headlessly-drivable agents ([`crate::agentcli::SUPPORTED`]) are
 /// installed in a runnable shape.
 ///

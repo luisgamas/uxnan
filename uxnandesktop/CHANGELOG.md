@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — agent sessions get a real name, on the card and on the tab
+
+The left-panel card and the tab strip labelled a session with the user's
+**latest prompt**, so two sessions opened with the same phrase were
+indistinguishable — and the label moved every time the user said something new.
+No agent CLI helps here: they all leave titling to their own client (Codex
+Desktop, the OpenCode TUI, Claude's picker), so uxnan names its own.
+
+- New `convtitle` module + `generate_conversation_title` command. It reuses the
+  AI-commit one-shot runner (`agentrun::run_headless`) — no provider API, no
+  keys — on the agent's **cheapest** model (Claude → `haiku`), because naming is
+  not work for the model the user is actually paying attention to. Read-only:
+  the run is never given autonomy over the workspace.
+- Generated once per session, when its first turn reports `done` and there is
+  finally an answer to summarize. **Never retried**: a failure (no credit, CLI
+  missing, timeout) leaves the session with the label it had rather than
+  spending real quota in a loop.
+- The card's two lines and the status dots are untouched — only what feeds the
+  first line changed. `AgentView.title` now prefers the generated name and keeps
+  its existing prompt → session-title → agent-name fallback chain.
+- `tabDisplayTitle` puts the same name on the tab, **below** `customTitle`:
+  renaming a tab by hand is a decision, and nothing generated overrules it.
+
+Tests: 7 Rust (prompt shape, and reducing a CLI's decorated output to a bare
+title) + 6 frontend (named once, failure keeps the old label, nothing without
+the pieces it needs). Desktop suites **770 frontend / 467 Rust**.
+
+
 ### Fixed — a background refresh no longer takes anything away
 
 - **The right-panel GitHub tab no longer discards a half-written pull request.**
