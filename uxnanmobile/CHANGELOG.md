@@ -6,6 +6,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — a queued message can now reach the agent without waiting
+
+On agents whose CLI has an input channel mid-turn (Claude Code, OpenCode,
+Codex), a message sent while the agent works is handed to it **inside the
+running turn** instead of waiting for the turn to end — the way those CLIs
+behave when you type at them mid-task. Everything the queue already did is
+unchanged; the message simply stops waiting when it doesn't have to.
+
+- The queued bubble stays where it was: pinned below the timeline, with its
+  edit and cancel actions in reach, until it is actually handed over. Nothing
+  about that placement changed.
+- **The queued bubble is now an ordinary bubble with a dashed outline** rather
+  than a muted "ghost" showing one ellipsized line. It keeps the user's own
+  tone and its whole message, and only its edge says "not sent yet"; on
+  delivery the dashes dissolve in place. New `NeDashedOutline` widget
+  (`presentation/widgets/ne_dashed_outline.dart`).
+- Handles the new `stream/turn/delivered`: the bubble settles into a sent
+  message and stops offering edit/cancel, because the agent already has it.
+  Mostly a no-op on the device that sent it (`turn/send` already answers
+  `delivered: true`); it matters for a second phone on the same thread and for
+  a reconnect that restored the message from a pre-hand-off queue snapshot.
+- Agents without that channel (Antigravity, Zero, Grok) are untouched: their
+  follow-ups keep waiting for the current turn, exactly as before.
+
+Tests: 3 new pixel-level tests for the dashed outline (it rasterizes the
+widget and reads the image back — a test that only pumped would pass on an
+outline that paints nothing, or on a solid border) plus one for the new
+notification. Mobile suite **831 passing**.
+
 ## [0.0.16-alpha.20260803+20260803] - 2026-08-03
 
 ### Added — agent file links open in the workspace viewer
