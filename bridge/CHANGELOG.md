@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — a queued follow-up can reach the agent without waiting for the turn
+
+A message sent while an agent worked has always waited for the whole turn to
+end. The CLIs do not work that way: they take what you type at the next tool
+boundary, inside the running turn, which is what makes it possible to correct
+an agent's course without stopping it. The bridge now does the same wherever
+the agent's CLI actually allows it.
+
+- `AgentManager` hands a just-queued turn to the running one through the new
+  optional `IAgentAdapter.steerTurn`, then marks it `delivered` (linked to the
+  turn it joined) and emits `stream/turn/delivered`. `turn/send` answers
+  `{ delivered: true }` instead of `{ queued: true }`.
+- The hand-off is deliberately narrow, so a thread's order can never be
+  rearranged: only when the adapter advertises `steering`, a turn is really in
+  flight, the queue is **empty** (anything already waiting was sent first) and
+  **not paused** (the queue pauses precisely because the user stopped the agent
+  or it broke — pushing more at it then is the one outcome nobody wants).
+- Every refusal falls back to the queue that shipped before: a `false` return, a
+  thrown transport error, or a turn that ended mid-hand-off all leave the
+  message `queued`, so it costs a wait and nothing else.
+- `ThreadStore.deliverQueuedTurn` persists the new terminal status. A delivered
+  turn is not `cancelled` — the message *did* reach the agent — so `queue/clear`
+  leaves it alone and the drain path never replays it as a turn of its own.
+- Turn text resolution (a `/command` expansion, an image attachment
+  materialized into the workspace) is now shared by both paths, so a steered
+  message behaves identically to one that waited. The attachment temp dir is
+  keyed to the **running** turn, which is the one whose completion sweeps it.
+- `bridge/status` advertises `features.midTurnDelivery`, so a client asks rather
+  than inferring it from a version.
+
+Tests: 9 new (`test/agents/agent-midturn-delivery.test.ts`) covering the
+hand-off, the no-replay guarantee, a non-steering agent's unchanged behaviour,
+a decline, a throw, queue ordering, a paused queue, an idle thread and
+`queue/clear`. Bridge suite **606 passing**.
+
 ## [0.0.15-alpha.20260803] - 2026-08-03
 
 ### Fixed — the published package pins the matching `@uxnan/shared`
