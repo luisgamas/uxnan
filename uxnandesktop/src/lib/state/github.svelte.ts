@@ -25,11 +25,32 @@ import { projects } from "./projects.svelte";
 import { resourceMode } from "./resourceMode.svelte";
 import { effectiveGithubPollSeconds } from "$lib/resources/policy";
 import { samePath, canonicalFor } from "$lib/pathid";
+import { BADGE_TICK_CAP, pickBadgeTargets, resolveContext } from "$lib/githubRefresh";
 
-/** How many non-active worktrees may have their PR badge re-read per poll tick.
- *  Each one is a `gh` call against the account's API rate limit, so the badges
- *  catch up over a few ticks instead of all at once. */
-const BADGE_TICK_CAP = 2;
+/** Ceiling on the one-shot cold-start badge fill, so a user with dozens of
+ *  worktrees doesn't meet a wall of `gh` spawns at launch. Scaled by the resource
+ *  profile's GitHub factor (Efficient trades badge freshness for quiet); whatever
+ *  the fill doesn't reach is picked up by the ordinary poll. */
+const PRIME_MAX_PATHS = 24;
+
+/** A "create pull request" form the user has open but not submitted.
+ *
+ *  It lives here rather than inside the form component so that nothing which
+ *  remounts the panel — a background poll, a right-panel tab switch, closing the
+ *  panel, stepping to another worktree and back — can throw away what they typed.
+ *  A background refresh may add information; it may never destroy the user's. */
+export interface PrDraft {
+  title: string;
+  body: string;
+  base: string;
+  head: string;
+  draft: boolean;
+}
+
+/** A freshly-opened form: open, but nothing filled in yet. */
+export function emptyPrDraft(): PrDraft {
+  return { title: "", body: "", base: "", head: "", draft: false };
+}
 
 /** An item the inline section should open on arrival, requested from outside it. */
 export type PendingDetail =
@@ -85,6 +106,10 @@ class GithubStore {
   runsLoading = $state(false);
   runsError = $state<string | null>(null);
 
+  /** Unsubmitted create-PR forms, keyed by the form's owner. Presence is also
+   *  what keeps a form *open* across a remount — see `prDraft`. */
+  prDrafts = $state<Record<string, PrDraft>>({});
+
   /** Monotonic token so a slow response for an old worktree can't clobber a newer
    *  one (worktree switches are frequent). */
   #ctxSeq = 0;
@@ -92,6 +117,13 @@ class GithubStore {
   #sectionSeq = 0;
   /** Round-robin cursor over the non-active worktrees whose badges we refresh. */
   #badgeCursor = 0;
+  /** Signalled paths a capped tick couldn't read yet (carried, not dropped). */
+  #badgeBacklog: string[] = [];
+  /** Consecutive `null` context reads per path — a transient miss must not blank
+   *  a panel the user is looking at (see `resolveContext`). */
+  #ctxMisses: Record<string, number> = {};
+  /** Single-flight guard for the cold-start badge fill. */
+  #priming = false;
   #timer: ReturnType<typeof setInterval> | null = null;
 
   /** Whether GitHub features are usable (gh present + signed in). A `$derived`, so
@@ -188,9 +220,51 @@ class GithubStore {
     }
   }
 
+  // --- Create-PR drafts ------------------------------------------------------
+  // Keyed by the form's owner, not by path alone (`worktree:<path>` for the
+  // right-panel tab, `section:<path>` for the section's own form): the two forms
+  // can be open on the same repo at once and mean different things — the panel's
+  // head is pinned to the worktree's branch, the section's is a choice.
+
+  /** The open create-PR form for a key, or `null` when none is open. The views
+   *  derive "is the form showing?" from this, so the form survives every remount
+   *  instead of being reset by one. */
+  prDraft(key: string | null | undefined): PrDraft | null {
+    if (!key) return null;
+    return this.prDrafts[key] ?? null;
+  }
+
+  /** Open a create-PR form (idempotent: re-opening keeps a draft that is already
+   *  there instead of wiping it). `seed` fills a *new* draft only. */
+  startPrDraft(key: string, seed: Partial<PrDraft> = {}): void {
+    if (this.prDrafts[key]) return;
+    this.prDrafts = { ...this.prDrafts, [key]: { ...emptyPrDraft(), ...seed } };
+  }
+
+  /** Merge a field change from the open form. */
+  updatePrDraft(key: string, patch: Partial<PrDraft>): void {
+    const current = this.prDrafts[key] ?? emptyPrDraft();
+    const next = { ...current, ...patch };
+    if (this.prDrafts[key] && sameJson(next, current)) return;
+    this.prDrafts = { ...this.prDrafts, [key]: next };
+  }
+
+  /** Drop the draft — the user cancelled, or the PR was created. Those are the
+   *  ONLY two ways a draft disappears; no refresh path may call this. */
+  discardPrDraft(key: string): void {
+    if (!(key in this.prDrafts)) return;
+    const { [key]: _dropped, ...rest } = this.prDrafts;
+    this.prDrafts = rest;
+  }
+
   /** Refresh sign-in status. Best-effort; leaves the last value on failure. Only
-   *  reassigns when the value actually changed, to avoid needless re-renders. */
+   *  reassigns when the value actually changed, to avoid needless re-renders.
+   *
+   *  Signing in is also when the badges become readable for the first time, so a
+   *  false → true flip primes them instead of waiting out a whole poll interval
+   *  (at launch this read is what resolves *after* polling arms). */
   async refreshStatus(): Promise<void> {
+    const wasAvailable = this.available;
     let next: GithubStatus;
     try {
       next = await githubStatus();
@@ -206,10 +280,19 @@ class GithubStore {
     }
     if (!sameJson(next, this.status)) this.status = next;
     this.statusChecked = true;
+    if (!wasAvailable && this.available) void this.prime();
   }
 
   /** Load the GitHub context for a worktree path. Clears when it isn't a GitHub
-   *  repo, when no path is active, or when not signed in. */
+   *  repo, when no path is active, or when not signed in.
+   *
+   *  A `null` answer over a context we already hold is treated as a **miss**, not
+   *  as "this stopped being a GitHub repo": `github_repo_context` answers
+   *  `Option<RepoContext>`, so a git lock, a slow `gh` spawn or a dropped network
+   *  is indistinguishable from the real thing — and taking a single one at face
+   *  value tore the whole panel down mid-poll (an open create-PR form with it).
+   *  A path that never had a context still answers immediately, so a genuinely
+   *  non-GitHub worktree says so on arrival. See `resolveContext`. */
   async loadContext(path: string | null): Promise<void> {
     const seq = ++this.#ctxSeq;
     const pathChanged = this.contextPath !== path;
@@ -222,8 +305,14 @@ class GithubStore {
     }
     this.contextLoading = true;
     try {
-      const ctx = await githubRepoContext(path);
+      const read = await githubRepoContext(path);
       if (seq !== this.#ctxSeq) return; // a newer request superseded us
+      const { context: ctx, misses } = resolveContext({
+        next: read,
+        previous: this.context,
+        misses: this.#ctxMisses[path] ?? 0,
+      });
+      this.#ctxMisses[path] = misses;
       // Only reassign when the value changed, so a steady poll doesn't churn the
       // sidebar badges / the panel (which read these).
       if (!sameJson(ctx, this.context)) this.context = ctx;
@@ -272,8 +361,48 @@ class GithubStore {
       resourceMode.policy,
       Math.max(0, app.settings.github?.pollSeconds ?? 45),
     );
-    if (seconds > 0) this.#timer = setInterval(tick, seconds * 1000);
+    if (seconds > 0) {
+      this.#timer = setInterval(tick, seconds * 1000);
+      // `setInterval` fires *after* the interval, so everything the tick owns —
+      // the rate-limit gauge, the unread count, every non-active worktree's PR
+      // badge — used to stay blank for a full poll interval after launch, and
+      // then trickle in two badges at a time. Fill what is empty now instead.
+      void this.prime();
+    }
     return () => this.stopPolling();
+  }
+
+  /** One-shot cold-start fill: read everything the poll would otherwise leave
+   *  empty until its first tick, prioritising worktrees that show no badge at all.
+   *
+   *  Bounded on purpose — batches of `BADGE_TICK_CAP`, awaited one after another,
+   *  so this is never more concurrent `gh` processes than a normal tick, and
+   *  capped in total by `PRIME_MAX_PATHS` scaled by the resource profile. It is
+   *  single-flight and stops the moment polling stops or sign-in goes away.
+   *  Manual-only polling (interval `0`) opts out of this too: it is the same
+   *  automatic reading the user switched off. */
+  async prime(): Promise<void> {
+    if (this.#priming || !this.available || !this.#timer) return;
+    this.#priming = true;
+    try {
+      void this.refreshRateLimit();
+      if (app.settings.github?.notificationsEnabled) void this.refreshNotifications();
+      const factor = Math.max(0.1, resourceMode.policy.capabilities.githubPollFactor);
+      const budget = Math.max(BADGE_TICK_CAP, Math.round(PRIME_MAX_PATHS / factor));
+      const active = app_activePath();
+      const missing = projects
+        .allWorktreePaths()
+        .filter((p) => p !== active && !(p in this.contextByPath))
+        .slice(0, budget);
+      for (let i = 0; i < missing.length; i += BADGE_TICK_CAP) {
+        if (!this.#timer || !this.available) return;
+        await Promise.all(
+          missing.slice(i, i + BADGE_TICK_CAP).map((p) => this.loadContextFor(p)),
+        );
+      }
+    } finally {
+      this.#priming = false;
+    }
   }
 
   stopPolling(): void {
@@ -283,33 +412,28 @@ class GithubStore {
     }
   }
 
-  /** Keep the *other* worktrees' PR badges from going stale, without turning one
-   *  poll into N network calls.
-   *
-   *  Two sources, both deliberately cheap:
-   *  - **worktrees whose git status just changed** (drained from the projects
-   *    store's sweep). New commits or a push is precisely when a branch gains or
-   *    updates a PR, so this is the signal worth spending a `gh` call on.
-   *  - **one rotating worktree per tick**, so a repo nobody touched still gets
-   *    re-read eventually rather than never.
+  /** Keep the *other* worktrees' PR badges honest, without turning one poll into
+   *  N network calls. The priority order lives in `pickBadgeTargets`: worktrees
+   *  showing no badge at all first, then the ones whose git status just changed
+   *  (new commits or a push is exactly when a branch gains or updates a PR), then
+   *  a rotation so a repo nobody touched is still re-read eventually.
    *
    *  Capped per tick, because every context is a `gh` invocation against the API
-   *  rate limit the status bar reports. */
+   *  rate limit the status bar reports — and a signalled path that doesn't fit is
+   *  carried to the next tick rather than dropped (the projects store hands each
+   *  one over exactly once). */
   refreshOtherWorktreeBadges(): void {
-    const active = app_activePath();
-    const known = projects.allWorktreePaths().filter((p) => p !== active);
-    if (known.length === 0) return;
-
-    const changed = projects.takeChangedPaths().filter((p) => known.includes(p));
-    const picks = changed.slice(0, BADGE_TICK_CAP);
-    if (picks.length < BADGE_TICK_CAP) {
-      // Round-robin over the rest, one per tick, skipping what we just picked.
-      for (let i = 0; i < known.length && picks.length < BADGE_TICK_CAP; i++) {
-        const candidate = known[this.#badgeCursor++ % known.length];
-        if (!picks.includes(candidate)) picks.push(candidate);
-      }
-    }
-    for (const path of picks) void this.loadContextFor(path);
+    const tick = pickBadgeTargets({
+      known: projects.allWorktreePaths(),
+      active: app_activePath(),
+      changed: [...this.#badgeBacklog, ...projects.takeChangedPaths()],
+      primed: Object.keys(this.contextByPath),
+      cursor: this.#badgeCursor,
+      cap: BADGE_TICK_CAP,
+    });
+    this.#badgeCursor = tick.cursor;
+    this.#badgeBacklog = tick.pending;
+    for (const path of tick.picks) void this.loadContextFor(path);
   }
 
   /** Load one worktree's context into the per-path cache only — used for the

@@ -158,7 +158,7 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **744 tests** across both projects,
+[`platform-support.md`](platform-support.md)). **764 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -191,6 +191,14 @@ instead of quietly agreeing with a mock nobody updated.
 - `FilePreview.svelte.test.ts` — loose-table README GIFs resolve from Windows,
   macOS, Linux, and UNC document paths and render the returned animated image
   unchanged; `markdown.test.ts` covers multiple inline-HTML images in one table.
+- `GithubPanel.svelte.test.ts` — the right-panel GitHub tab keeps its content
+  mounted while a poll re-reads the context, an unsubmitted **Create PR** form
+  survives both a poll tick and an outright remount (each worktree keeping its
+  own), **Cancel** is what discards it, and a worktree that really has no context
+  still says so. The bug it locks down came from real use: the panel was gated on
+  "a read is in flight", so every tick unmounted it and took a half-written pull
+  request with it — which is why the first assertion is that the digest is *still
+  there*, not that it loaded.
 
 House style: query the way a user finds things — role, label, text. Reach for
 `data-testid` only where there is genuinely no accessible handle. A test that

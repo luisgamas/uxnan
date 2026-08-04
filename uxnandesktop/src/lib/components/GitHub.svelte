@@ -581,8 +581,14 @@
   }
 
   // Create PR — the form itself lives in the reusable CreatePrForm component
-  // (title + body, manual or AI-drafted, confirm-gated). This just toggles it.
-  let showCreatePr = $state(false);
+  // (title + body, manual or AI-drafted, confirm-gated). Whether it is open, and
+  // everything typed into it, lives in the store under this key: switching pane,
+  // opening a PR's detail or stepping to another repo and back must not cost the
+  // user a half-written description. The key is namespaced against the
+  // right-panel tab's own form, which can be open on the same repo and means a
+  // different thing (its head is pinned to the worktree's branch).
+  const createPrKey = $derived(github.sectionRepoPath ? `section:${github.sectionRepoPath}` : null);
+  const createPrDraft = $derived(github.prDraft(createPrKey));
 
   // --- Issues ---------------------------------------------------------------
   let issueDetail = $state<IssueDetail | null>(null);
@@ -1443,19 +1449,26 @@
             triggerClass="w-36"
             onChange={(v) => { prState = v; void github.loadPrs(v); }}
           />
-          <Button size="sm" onclick={() => (showCreatePr = !showCreatePr)}>
+          <Button
+            size="sm"
+            onclick={() => {
+              if (!createPrKey) return;
+              if (createPrDraft) github.discardPrDraft(createPrKey);
+              else github.startPrDraft(createPrKey, { title: github.sectionContext?.branch ?? "" });
+            }}
+          >
             <PlusIcon class={icon.button} />
             {i18n.t("github.pr.create")}
           </Button>
         </div>
       {/snippet}
       <div class="space-y-4">
-        {#if showCreatePr}
+        {#if createPrDraft}
           <CreatePrForm
             worktreePath={path()}
             defaultTitle={github.sectionContext?.branch ?? ""}
-            onCreated={() => { showCreatePr = false; void github.loadPrs(prState); }}
-            onCancel={() => (showCreatePr = false)}
+            draftKey={createPrKey}
+            onCreated={() => void github.loadPrs(prState)}
           />
         {/if}
         {@render searchField(prSearch, (v) => { prSearch = v; debouncedLoadPrs(); }, i18n.t("github.pr.searchPlaceholder"))}
