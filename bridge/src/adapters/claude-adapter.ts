@@ -34,7 +34,7 @@ import type {
   GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
-import { buildTitlePrompt, sanitizeTitle } from '../agents/thread-title.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
@@ -108,9 +108,6 @@ const CLAUDE_MODEL_ALIASES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
  * and it must not eat that model's quota.
  */
 const TITLE_MODEL = 'haiku';
-
-/** A title is worth a couple of seconds, never a stall. */
-const TITLE_TIMEOUT_MS = 30_000;
 
 /** Human-facing labels for the stable aliases. */
 const CLAUDE_ALIAS_LABELS: Record<string, string> = {
@@ -879,43 +876,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const prompt = buildTitlePrompt(options.userText, options.assistantText);
     const args = ['-p', '--output-format', 'text', '--model', TITLE_MODEL, prompt];
     try {
-      const raw = await this.#runOneShot(args, options.cwd ?? this.#defaultCwd);
+      const cwd = options.cwd ?? this.#defaultCwd;
+      const raw = await runTitleOneShot(() =>
+        this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
+      );
       return raw === undefined ? undefined : sanitizeTitle(raw);
     } catch {
       // Naming is cosmetic — no credit, a missing CLI or a timeout must never
       // disturb a thread that is otherwise working.
       return undefined;
     }
-  }
-
-  /** Run a short one-shot and collect stdout, or `undefined` on failure/timeout. */
-  #runOneShot(args: string[], cwd: string): Promise<string | undefined> {
-    return new Promise((resolve) => {
-      let child: SpawnedProcess;
-      try {
-        child = this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd);
-      } catch {
-        resolve(undefined);
-        return;
-      }
-      let out = '';
-      let settled = false;
-      const finish = (value: string | undefined): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(value);
-      };
-      const timer = setTimeout(() => {
-        child.kill();
-        finish(undefined);
-      }, TITLE_TIMEOUT_MS);
-      child.stdout.on('data', (chunk: Buffer | string) => {
-        out += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      });
-      child.on('error', () => finish(undefined));
-      child.on('close', (code) => finish(code === 0 ? out : undefined));
-    });
   }
 
   /**

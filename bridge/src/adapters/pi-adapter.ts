@@ -32,9 +32,11 @@ import type {
   AgentModel,
   AgentModelOption,
   CompactionReason,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
 import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
@@ -514,6 +516,37 @@ export class PiAdapter extends BaseAgentAdapter {
     });
 
     return Promise.resolve();
+  }
+
+  /**
+   * Name a conversation with a one-shot `pi -p`, deliberately **not** the RPC
+   * session a turn uses: `--no-session` keeps it out of session storage, so the
+   * errand leaves no trace in the thread's history.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const model = this.#titleModel();
+    const args = ['-p', '--no-session'];
+    if (model) args.push('--model', model);
+    args.push(prompt);
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const raw = await runTitleOneShot(() =>
+      this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
+    );
+    return raw === undefined ? undefined : sanitizeTitle(raw);
+  }
+
+  /**
+   * The model to name with.
+   *
+   * pi routes through many providers, so unlike the single-vendor CLIs there is
+   * no fixed "cheap tier" id to hard-code — pinning one here would break the
+   * moment a user's provider set differs. Passing nothing lets pi use its own
+   * configured default, which is the honest answer until a per-provider cheap
+   * model is configurable (see bridge/FOR-DEV.md).
+   */
+  #titleModel(): string | undefined {
+    return undefined;
   }
 
   cancelTurn(threadId: string, turnId: string): Promise<void> {

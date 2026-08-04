@@ -101,3 +101,51 @@ function clip(text: string, max: number): string {
   const normalized = text.trim().replace(/\s+/g, ' ');
   return normalized.length <= max ? normalized : `${normalized.slice(0, max)}…`;
 }
+
+/** A title is worth a few seconds, never a stall. */
+export const TITLE_TIMEOUT_MS = 30_000;
+
+/** The minimum a spawned process must expose for {@link runTitleOneShot}. */
+interface TitleProcess {
+  stdout: NodeJS.ReadableStream;
+  on(event: 'close', listener: (code: number | null) => void): unknown;
+  on(event: 'error', listener: (err: Error) => void): unknown;
+  kill(signal?: NodeJS.Signals): unknown;
+}
+
+/**
+ * Run a short one-shot and collect its stdout, or `undefined` when it fails,
+ * exits non-zero or outruns {@link TITLE_TIMEOUT_MS}.
+ *
+ * Shared by every adapter's `generateTitle` so they all fail the same way:
+ * quietly. Naming is cosmetic — a missing CLI or an exhausted account must
+ * leave the thread exactly as it was, never surface an error.
+ */
+export function runTitleOneShot(spawn: () => TitleProcess): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let child: TitleProcess;
+    try {
+      child = spawn();
+    } catch {
+      resolve(undefined);
+      return;
+    }
+    let out = '';
+    let settled = false;
+    const finish = (value: string | undefined): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(undefined);
+    }, TITLE_TIMEOUT_MS);
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      out += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    });
+    child.on('error', () => finish(undefined));
+    child.on('close', (code) => finish(code === 0 ? out : undefined));
+  });
+}

@@ -277,6 +277,25 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
+- [ ] **Name conversations on the remaining agents.** `IAgentAdapter.generateTitle`
+      is implemented for **Claude Code** (`haiku`) and **pi**, both verified live:
+      two conversations opened with the identical phrase came back as
+      "Corregir expiración JWT en login" / "Despliegue automático a Cloudflare
+      Pages". The others fall back to the provisional title taken from the
+      opening message — correct, just weaker. What each still needs:
+      **Codex** — the adapter drives a long-lived `app-server` and has no
+      one-shot spawner; a title wants `codex exec` on a cheap model, in a
+      process that never touches the conversation's thread. Not attempted
+      because it could not be verified (the account was at 100% of its weekly
+      limit, 0 credits, resets 2026-08-07) and guessing `exec` flags without a
+      live run is how broken adapters ship.
+      **OpenCode / Grok / Zero / Antigravity** — same shape, each needing its
+      CLI's one-shot form and a cheap model id.
+      **pi's cheap model** is also unresolved: pi routes through many providers,
+      so there is no fixed cheap-tier id to hard-code and it currently runs on
+      pi's own configured default. A per-provider titling model belongs in
+      daemon config. See the `#titleModel` marker in `pi-adapter.ts`.
+
 - [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
       delivers a follow-up as its own turn once the current one ends — uniform
       across all seven active agents. What the CLIs additionally do is *steer*: inject the

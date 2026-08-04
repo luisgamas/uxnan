@@ -35,6 +35,16 @@ opening with the **identical** phrase ("Hola, quiero que me ayudes con una cosa
 del proyecto") were named *"Corregir expiración JWT en login"* and *"Despliegue
 automático a Cloudflare Pages"* — the exact collision this replaces — each in
 the user's own language, in ~5-7s.
+- **pi** names conversations too, with a one-shot `pi -p --no-session` so the
+  errand leaves no trace in session storage. Verified live on the same
+  collision case. It runs on pi's own configured default model: pi routes
+  through many providers, so there is no fixed cheap-tier id to hard-code
+  (tracked in `FOR-DEV.md`).
+- Every other agent falls back to the provisional title — correct, just weaker.
+  Codex was deliberately **not** attempted: its adapter has no one-shot spawner
+  and the account had 0 credits, and guessing `codex exec` flags without a live
+  run is how broken adapters ship.
+
 Tests: 7 new (`test/agents/thread-title.test.ts`) covering the provisional
 title, the prompt, and reducing a CLI's decorated output to a bare title.
 
