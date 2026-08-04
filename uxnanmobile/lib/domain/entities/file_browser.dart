@@ -284,6 +284,32 @@ class FileTreeNode extends Equatable {
 /// caller; this singleton keeps `copyWith(error: null)` legal.
 const Object _sentinel = Object();
 
+/// A bridge-resolved local file target ready for the existing file viewer.
+///
+/// The root can differ from the conversation's workspace when an agent links
+/// to a file in another worktree. Keeping the pair together prevents Mobile
+/// from trying to interpret paths that belong to the remote PC.
+class WorkspaceFileTarget extends Equatable {
+  /// Creates a [WorkspaceFileTarget].
+  const WorkspaceFileTarget({required this.cwd, required this.path});
+
+  /// Reconstructs a [WorkspaceFileTarget] from its JSON-RPC result.
+  factory WorkspaceFileTarget.fromJson(Map<String, dynamic> json) =>
+      WorkspaceFileTarget(
+        cwd: json['cwd'] as String? ?? '',
+        path: json['path'] as String? ?? '',
+      );
+
+  /// Absolute root on the paired PC that scopes subsequent viewer reads.
+  final String cwd;
+
+  /// File path relative to [cwd].
+  final String path;
+
+  @override
+  List<Object?> get props => [cwd, path];
+}
+
 /// Result of a `workspace/readFile` request.
 ///
 /// The bridge returns the file content either as UTF-8 text or as base64

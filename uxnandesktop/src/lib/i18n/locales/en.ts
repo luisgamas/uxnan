@@ -470,6 +470,24 @@ export const en = {
   "settings.resources": "Resources",
   "settings.resourcesDesc":
     "A local, explainable readout of what Uxnan, its terminals and its agents cost in CPU and memory. Nothing is measured unless a surface is open, and nothing ever leaves this machine.",
+  "settings.diagnostics": "Diagnostics",
+  "settings.diagnosticsDesc":
+    "The record Uxnan keeps of its own failures, so a crash or a blank window can actually be investigated. It stays on this machine — no telemetry, and no token, prompt or terminal output is ever written.",
+
+  // Diagnostics (session-recovery notice + Settings → Diagnostics)
+  "diagnostics.uncleanTitle": "The previous session ended unexpectedly",
+  "diagnostics.uncleanBody":
+    "Uxnan closed without finishing its shutdown, so terminal scrollback from that session was not saved. The log records what happened.",
+  "diagnostics.revealLog": "Show log file",
+  "diagnostics.dismiss": "Dismiss",
+  "diagnostics.lastSession": "Last session",
+  "diagnostics.lastSessionClean": "The previous session shut down normally.",
+  "diagnostics.lastSessionUnclean":
+    "The previous session ended without a clean shutdown, so its terminal scrollback was not saved.",
+  "diagnostics.statusClean": "Ended normally",
+  "diagnostics.statusUnclean": "Ended unexpectedly",
+  "diagnostics.logFile": "Log file",
+  "diagnostics.logUnavailable": "The log could not be started on this launch.",
 
   // Resource observability (backend popover + Settings → Resources)
   "resources.title": "Resources",

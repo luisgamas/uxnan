@@ -4,6 +4,9 @@ Open engineering work for the marketing site. Items are removed the moment they
 are implemented **and** verified; the commit history is the record that they
 happened.
 
+> **`## Status` below is this component's canonical implementation status** — the
+> root `AGENTS.md` points here instead of keeping its own inventory.
+
 ## Status
 
 **Built and verified locally; deploy pipeline wired, awaiting its first run.**

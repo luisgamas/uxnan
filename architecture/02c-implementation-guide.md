@@ -1,12 +1,14 @@
 # Uxnan — Guia de Implementacion
 
-> **Version:** 1.0.1
-> **Fecha:** 2026-07-21
+> **Version:** 1.0.2
+> **Fecha:** 2026-08-02
 > **Estado:** En desarrollo
-> **Executive summary (1.0.1):** the platform setup now matches the implemented
+> **Executive summary (1.0.2):** the platform setup now matches the implemented
 > `_uxnan._tcp` DNS-SD discovery path, including Android's multicast permission
 > and iOS Bonjour declaration. Discovery only fills a host and never authorizes
-> or trusts a device.
+> or trusts a device. The Flutter dependency recipe now matches the implemented
+> workspace viewer stack: maintained Markdown rendering, reusable SVG support,
+> and native Android/iOS PDF preview through PDFium, without a mobile WebView.
 > Este documento forma parte de la documentacion tecnica de Uxnan. Ver tambien: [01-product-vision.md](01-product-vision.md) | [02a-system-architecture.md](02a-system-architecture.md) | [02b-contracts-and-requirements.md](02b-contracts-and-requirements.md) | [03-technical-reference.md](03-technical-reference.md)
 
 ---
@@ -380,19 +382,23 @@ function watchSession(sessionId, onEvent) {
 }
 ```
 
-**Almacenamiento SQLite de OpenCode:**
-OpenCode guarda sesiones en `~/.opencode/sessions.db`. Como fallback, el adaptador puede leer directamente:
+**OpenCode persisted-session history:**
+Current OpenCode releases use a shared SQLite store, but the bridge never binds
+to its private database schema. The same per-workspace `opencode serve` process
+used for turns exposes the supported message boundary:
 ```javascript
-const OPENCODE_DB_PATH = path.join(process.env.HOME, '.opencode', 'sessions.db');
-
-async function readSessionsFromSQLite(options) {
-  // Usa better-sqlite3 en modo read-only
-  const db = new Database(OPENCODE_DB_PATH, { readonly: true });
-  const rows = db.prepare('SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?')
-    .all(options.limit || 50);
-  return rows.map(mapRowToThread);
+async function readOpenCodeMessages(baseUrl, sessionId) {
+  const response = await fetch(
+    `${baseUrl}/session/${encodeURIComponent(sessionId)}/message`,
+  );
+  if (!response.ok) throw new Error(`OpenCode history: ${response.status}`);
+  return response.json(); // [{ info, parts }]
 }
 ```
+
+`SessionHistoryReader` maps only completed assistant records and merges them on
+every idle `turn/list`. The older JSON message/part store remains a compatibility
+fallback; direct SQLite reads are deliberately avoided.
 
 **Capacidades declaradas:**
 ```javascript
@@ -464,6 +470,12 @@ capabilities: {
 ---
 
 ### 2.4 Adaptador Gemini CLI (`gemini-cli-adapter.js`)
+
+> **LEGACY / DEPRECATED (2026-08):** esta sección queda como referencia
+> histórica del adapter. El bridge publica Gemini con
+> `deprecated:true, available:false`, rechaza turnos nuevos y no ofrece sus
+> modelos/comandos; uxnanmobile no contiene ni renderiza una superficie Gemini.
+> Antigravity (`agy`) es la integración vigente de Google.
 
 **Arquitectura del agente:** Gemini CLI es un agente open-source que usa un bucle ReAct (Reason and Act) con herramientas built-in y servidores MCP locales o remotos para completar tareas complejas. Soporta output en formato JSON estructurado y stream-JSON para integracion programatica.
 
@@ -699,7 +711,6 @@ class UxnanColors {
   static const codexAgent = Color(0xFF00A67E);        // verde OpenAI
   static const openCodeAgent = Color(0xFF7C3AED);     // violeta
   static const claudeCodeAgent = Color(0xFFD97706);   // naranja Anthropic
-  static const geminiCliAgent = Color(0xFF4285F4);    // azul Google
   static const piAgentColor = Color(0xFF2563EB);      // azul pi
 }
 ```
@@ -1678,13 +1689,13 @@ dependencies:
   pointycastle: ^3.9.1
 
   # UI
-  flutter_markdown: ^0.7.3
+  flutter_markdown_plus: ^1.0.0
+  markdown: ^7.3.1              # AST: GitHub extension set + code-block builder
   flutter_highlight: ^0.7.0
   material_loading_indicator: ^1.0.0
-  flutter_inappwebview: ^6.0.0
-  cached_network_image: ^3.3.1
-  shimmer: ^3.0.0
-  lottie: ^3.1.0
+  flutter_svg: ^2.0.10          # app-owned assets (agent logos)
+  jovial_svg: ^1.1.30           # user documents: honours <text> transforms
+  pdfrx: ^2.4.7
 
   # Camara y QR
   mobile_scanner: ^5.1.1

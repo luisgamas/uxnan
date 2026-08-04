@@ -58,10 +58,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **477 backend tests**
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **488 backend tests**
 in total (plus the 7 ignored live tests and the ignored real-scheduler probe).
 
-The 449 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 460 unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -158,9 +158,8 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **746 tests** across both projects
-(739 passing, 7 skipped), config in `vitest.config.ts` /
-`vitest.dom.config.ts`.
+[`platform-support.md`](platform-support.md)). **764 tests** across both projects,
+config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
 

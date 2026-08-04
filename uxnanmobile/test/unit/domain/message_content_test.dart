@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -14,6 +15,16 @@ void main() {
     test('text', () {
       const c = TextContent('hola', isStreaming: true);
       expect(roundTrip(c), c);
+    });
+
+    test('context compaction metadata stays out of plain text', () {
+      const c = CompactionContent(
+        reason: ContextCompactionReason.threshold,
+        tokensBefore: 120000,
+        tokensAfter: 42000,
+      );
+      expect(roundTrip(c), c);
+      expect(c.asPlainText, isEmpty);
     });
 
     test('code', () {

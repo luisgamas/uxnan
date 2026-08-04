@@ -11,7 +11,6 @@ void main() {
 
     test('hyphenated wire ids decode correctly', () {
       expect(AgentIdParsing.fromWireId('claude-code'), AgentId.claudeCode);
-      expect(AgentIdParsing.fromWireId('gemini-cli'), AgentId.geminiCli);
       expect(AgentIdParsing.fromWireId('antigravity-cli'), AgentId.antigravity);
       expect(AgentIdParsing.fromWireId('pi-agent'), AgentId.piAgent);
     });
@@ -23,6 +22,11 @@ void main() {
 
     test('unknown wire ids degrade to custom', () {
       expect(AgentIdParsing.fromWireId('some-future-agent'), AgentId.custom);
+    });
+
+    test('retired Gemini is unsupported and degrades to custom', () {
+      expect(AgentIdParsing.fromWireId('gemini-cli'), AgentId.custom);
+      expect(isMobileAgentSupported('gemini-cli'), isFalse);
     });
   });
 }

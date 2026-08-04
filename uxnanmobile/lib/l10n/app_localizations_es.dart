@@ -2434,6 +2434,32 @@ class AppLocalizationsEs extends AppLocalizations {
   String get fileViewerLoadFailed => 'No se pudo abrir este archivo';
 
   @override
+  String get fileViewerMediaUnavailable =>
+      'Los datos de la vista previa no están disponibles. Desliza hacia abajo para intentar cargarlos de nuevo.';
+
+  @override
+  String get fileViewerPdfInvalid =>
+      'El bridge no devolvió los bytes originales del PDF. Actualiza o reinicia el bridge y vuelve a intentarlo.';
+
+  @override
+  String get markdownAlertNote => 'Nota';
+
+  @override
+  String get markdownAlertTip => 'Consejo';
+
+  @override
+  String get markdownAlertImportant => 'Importante';
+
+  @override
+  String get markdownAlertWarning => 'Advertencia';
+
+  @override
+  String get markdownAlertCaution => 'Precaución';
+
+  @override
+  String get markdownDetails => 'Detalles';
+
+  @override
   String get fileViewerModePreview => 'Vista previa';
 
   @override
@@ -2678,6 +2704,45 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get settingsUpdatesVersionGroup => 'Versión';
+
+  @override
+  String get conversationCompactionTitle => 'Contexto compactado';
+
+  @override
+  String get conversationCompactionManual =>
+      'Pediste al agente que resumiera el contexto anterior.';
+
+  @override
+  String get conversationCompactionThreshold =>
+      'El contexto anterior se resumió al alcanzar el límite del agente.';
+
+  @override
+  String get conversationCompactionOverflow =>
+      'El contexto anterior se resumió al superar la ventana disponible.';
+
+  @override
+  String get conversationCompactionAutomatic =>
+      'El contexto anterior se resumió automáticamente.';
+
+  @override
+  String get conversationCompactionUnknown =>
+      'Los mensajes anteriores se resumieron para liberar contexto.';
+
+  @override
+  String conversationCompactionTokens(String before, String after) {
+    return 'El contexto se redujo de $before a cerca de $after tokens.';
+  }
+
+  @override
+  String conversationPreviousMessages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count mensajes anteriores',
+      one: '1 mensaje anterior',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get licensesError => 'No se pudieron cargar las licencias.';

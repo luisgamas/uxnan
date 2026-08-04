@@ -61,6 +61,26 @@ Convention: every public function gets a test (AGENTS.md, ALPHA rule). Mirror th
   `AppLocalizations` delegates; stream providers are overridden with
   `Stream.value(...)`. The default test window is **800×600** — keep modal
   sheets scrollable so they don't overflow there.
+- **Workspace viewer regression layers.** Pure presentation tests cover file
+  classification, README HTML normalization (tables, `<kbd>`/`<sub>`/`<sup>`),
+  GitHub block splitting (alerts, `<details>`, fenced-code immunity), safe
+  relative-resource resolution and GIF/SVG detection; unit tests cover remote
+  media-type resolution (payload signature over header), caching, and the
+  https/size guards through a stubbed Dio adapter. Widget tests drive the real
+  viewer through mocked workspace RPC responses and a stubbed remote loader —
+  an extensionless shield, a badge-sized slot whose fetch fails, alert
+  callouts, a disclosure that only reveals its body on tap, task
+  lists/tables/highlighted fences, and a **real-world README shape** (layout
+  table with a demo image, `<picture>`, `<kbd>` chips, alerts, disclosures, odd
+  fence languages) asserted to render with nothing dropped — while the bridge
+  suite asserts exact PDF base64 and size-limit behavior. That last fixture is
+  the standing guard for the regression where "more GitHub support" cost the
+  document its own content: the Markdown work was validated by diffing
+  normalization against the previous implementation over 29 widely-used
+  external READMEs (React, VS Code, Deno, Kubernetes, Storybook, Windows
+  Terminal, appwrite, n8n, …) and rendering each one — the diff must stay empty
+  except for deliberate improvements, and no document may raise a layout error. `flutter build apk --debug` additionally compiles the
+  native PDFium integration; see [`file-viewer.md`](file-viewer.md).
 - **Simulated bridge.** Transport/coordinator tests run a persistent in-memory
   "bridge" peer to exercise the handshake, RPC round-trips, notifications and
   reconnect without a network.
@@ -83,9 +103,11 @@ These need a real device and/or a live bridge+relay; defer until reachable:
   restore and an iOS device restore require re-pairing (the secure phone identity
   must not migrate), then confirm profile activity rehydrates from the bridge.
 - **Live bridge contracts:** the exact JSON shapes of `thread/list`,
-  `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent` payloads
-  are decoded with **tolerant** parsers; confirm field names against a real
-  bridge / a real Codex/Claude turn.
+  `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent`/
+  `compaction`/`assistant_response_boundary` payloads are decoded with
+  **tolerant** parsers; confirm field names against a real bridge / a real
+  Codex/Claude turn. Regression tests must also prove legacy Gemini descriptors,
+  threads, metrics and provider usage never regain a mobile surface.
 - **Native build correctness** beyond compilation (run the APK on a device).
 
 When you add a feature that can only be fully verified this way, leave a

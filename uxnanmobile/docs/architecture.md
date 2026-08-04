@@ -39,16 +39,20 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   (+ `AgentCapabilities`), `SecureSession`, git entities, …
 - `domain/value_objects/message_content.dart` — the sealed `MessageContent`
   hierarchy + its tolerant JSON codec (text/code/image/tool/diff/mermaid/system/
-  command + `approval`/`plan`/`subagent` + `UnknownContent` fallback).
+  command + `approval`/`plan`/`subagent`/`compaction`/
+  `assistant_response_boundary` + `UnknownContent` fallback). Compaction and
+  response-boundary variants are zero-text timeline metadata.
 - `domain/repositories/` — `IThreadRepository`, `IMessageRepository`,
   `ITrustedDeviceRepository`, git log repo (interfaces only).
 - `application/coordinators/session_coordinator.dart` — connection lifecycle:
   transport selection, E2EE handshake, secure channel, request/response
   correlation, auto-reconnect with backoff. Exposes streams.
 - `application/managers/` — `ThreadManager` (threads + active timeline),
-  `GitActionManager` (status/commit/push), `PushRegistrar` (FCM token +
-  notification taps). `application/processors/incoming_message_processor.dart`
-  turns bridge notifications into `DomainEvent`s.
+  `GitActionManager` (status/commit/push), `FileBrowserManager` (lazy workspace
+  tree, search, guarded file/image reads, writes and Git diffs), and
+  `PushRegistrar` (FCM token + notification taps).
+  `application/processors/incoming_message_processor.dart` turns bridge
+  notifications into `DomainEvent`s.
 - `infrastructure/transport/` — `WebSocketTransport`, `SecureTransportLayer`
   (handshake), `SecureChannel` (AES-256-GCM + seq/replay), `RequestCorrelator`,
   `BackoffCalculator`, `OutboundMessageBuffer`.
@@ -63,8 +67,10 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `application_providers.dart` (coordinators/managers + derived stream/family
   providers the UI watches).
 - `presentation/screens/` — `devices/`, `threads/`, `conversation/`,
-  `onboarding/`, `pairing/`. `presentation/router/app_router.dart` is the flat
-  GoRouter table. `presentation/theme/` holds the design tokens.
+  `onboarding/`, `pairing/`; `conversation/files/` owns the capability-based
+  source, Markdown, image, SVG, PDF and Git-diff viewer described in
+  [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
+  the flat GoRouter table. `presentation/theme/` holds the design tokens.
 
 The Devices screen keeps connection feedback scoped to the actual PC card:
 
@@ -105,8 +111,30 @@ and composed in `application_providers.dart`. The important ones:
    `DomainEvent`s (turn started/delta/completed/error/aborted, git progress).
 3. `ThreadManager` applies streaming events to a `TurnTimelineSnapshot` (via a
    reducer), persists finalized messages to drift, and exposes the timeline as a
-   `BehaviorSubject` stream.
-4. The UI watches the derived stream providers and rebuilds reactively.
+   `BehaviorSubject` stream. A completion re-reads the authoritative turn and
+   reconciles terminal text additively, so a final payload cannot overwrite
+   earlier native assistant messages.
+4. `assistant_response_boundary` metadata keeps those native messages ordered;
+   `compaction` metadata marks only protocol-confirmed context compactions. Both
+   survive `turn/list` re-sync and are excluded from copy text and previews.
+5. While the channel is connected, `ThreadManager` polls `turn/list` for the
+   active idle conversation every three seconds. The bridge reconciles the
+   agent-owned native transcript first, so completed turns written from another
+   supported client arrive as ordinary user + assistant messages. Concurrent
+   reconnect/navigation/resume reads are deduplicated, local user messages are
+   matched by turn id, and no polling occurs while the bridge owns a live turn.
+6. The UI watches the derived stream providers and rebuilds reactively. Partial
+   assistant prose and settled prose both pass through the shared
+   `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch
+   from visible source syntax when a turn completes. During streaming every
+   assistant response stays visible; after completion, earlier progress
+   responses fold under the localized **N previous messages** disclosure.
+7. Assistant prose sends explicit Markdown links, detected bare local paths and
+   inline-code paths through one callback. `FileBrowserManager` asks the bridge
+   to resolve the citation on the PC, then opens `FileViewerScreen` with the
+   returned `cwd + path`. A relative citation stays rooted at the conversation;
+   an absolute or parent-relative citation may switch the viewer to a sibling
+   worktree's Git root. Mobile never tries to reinterpret PC paths locally.
 
 For a new thread, `ThreadManager` preserves the bridge-provided title. When the
 first textual user message is sent and that title is still empty, the thread id,
@@ -127,7 +155,12 @@ prompts cannot overwrite either the automatic title or a manual rename.
   so the app stays usable before the bridge implements a handler.
 - **Capability-aware UI.** The compact turn-context shelf (approval and model
   run options) and the "+" media menu are gated by the active agent's
-  capabilities; unknown capabilities remain permissive.
+  capabilities; unknown capabilities remain permissive. The shelf starts
+  folded beside the visible edit/context indicators; expanding it animates
+  those read-only indicators out so the controls can use the full phone-width
+  row, and folding restores them. The deprecated
+  `gemini-cli` is an explicit exception: descriptors, cached threads, metrics and
+  provider usage are filtered before they reach any mobile product surface.
 - **drift migrations** are additive with explicit version bumps; see
   `local_database.dart`.
 

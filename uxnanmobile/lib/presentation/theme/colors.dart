@@ -146,9 +146,6 @@ class UxnanColors {
   /// Brand color for the Claude Code agent.
   static const Color claudeCodeAgent = Color(0xFFD97706);
 
-  /// Brand color for the Gemini CLI agent.
-  static const Color geminiCliAgent = Color(0xFF4285F4);
-
   /// Brand color for the Antigravity agent (azure from its multicolor mark).
   static const Color antigravityAgent = Color(0xFF3186FF);
 

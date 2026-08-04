@@ -2422,6 +2422,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fileViewerLoadFailed => 'Couldn\'t open this file';
 
   @override
+  String get fileViewerMediaUnavailable =>
+      'The preview data isn\'t available. Pull down to try loading it again.';
+
+  @override
+  String get fileViewerPdfInvalid =>
+      'The bridge didn\'t return the original PDF bytes. Update or restart the bridge, then try again.';
+
+  @override
+  String get markdownAlertNote => 'Note';
+
+  @override
+  String get markdownAlertTip => 'Tip';
+
+  @override
+  String get markdownAlertImportant => 'Important';
+
+  @override
+  String get markdownAlertWarning => 'Warning';
+
+  @override
+  String get markdownAlertCaution => 'Caution';
+
+  @override
+  String get markdownDetails => 'Details';
+
+  @override
   String get fileViewerModePreview => 'Preview';
 
   @override
@@ -2663,6 +2689,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsUpdatesVersionGroup => 'Version';
+
+  @override
+  String get conversationCompactionTitle => 'Context compacted';
+
+  @override
+  String get conversationCompactionManual =>
+      'You asked the agent to summarize earlier context.';
+
+  @override
+  String get conversationCompactionThreshold =>
+      'Earlier context was summarized after reaching the agent\'s limit.';
+
+  @override
+  String get conversationCompactionOverflow =>
+      'Earlier context was summarized after exceeding the available window.';
+
+  @override
+  String get conversationCompactionAutomatic =>
+      'Earlier context was summarized automatically.';
+
+  @override
+  String get conversationCompactionUnknown =>
+      'Earlier messages were summarized to free context.';
+
+  @override
+  String conversationCompactionTokens(String before, String after) {
+    return 'Context reduced from $before to about $after tokens.';
+  }
+
+  @override
+  String conversationPreviousMessages(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count previous messages',
+      one: '1 previous message',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get licensesError => 'Couldn\'t load the licenses.';

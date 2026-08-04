@@ -1,11 +1,11 @@
 /**
- * On-disk session history fallback for `turn/list` (architecture/02a §5.8.8,
- * `session-jsonl-history`).
+ * Agent-owned session history reader for `turn/list` (architecture/02a §5.8.8,
+ * `native-session-history`).
  *
- * When the {@link ThreadStore} has no turns for a thread — e.g. the bridge was
- * offline while the agent ran, `threads.json` was lost, or the session was driven
- * from a terminal — the agent's own CLI still wrote an authoritative log to disk.
- * This reader locates and parses that log so the phone can still show history.
+ * The agent's own persisted transcript remains authoritative for work performed
+ * by another client attached to the same native session (Codex Desktop/CLI,
+ * OpenCode Desktop, a terminal, and so on). `turn/list` reads this source and
+ * merges completed native-only turns into the bridge store.
  *
  * Each agent CLI persists sessions in its own real on-disk format (verified live
  * on this machine, June 2026):
@@ -29,7 +29,12 @@
  *     `{ type:'message', message:{ role:'user'|'assistant'|'toolResult', content:
  *     [{type:'text'|'toolCall', ...}], toolCallId?, toolName?, ... } }`. Reasoning
  *     is stored inline as `think...think` inside the assistant text blocks.
- *   - **Gemini CLI** — `~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json`;
+ *   - **Zero** — `~/.local/share/zero/sessions/<sessionId>/events.jsonl`; ordered
+ *     `message` events with `{ role, content }` payloads.
+ *   - **Grok** — `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl`; the
+ *     persisted ACP `session/update` stream, closed by `turn_completed`.
+ *   - **Gemini CLI (deprecated, legacy history reads only)** —
+ *     `~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json`;
  *     one JSON object per file with `{ sessionId, projectHash, startTime, lastUpdated,
  *     messages:[{id, timestamp, type:'user'|'gemini'|'info'|'error', content, thoughts?,
  *     toolCalls?}] }`. The filename's `<shortId>` is the FIRST 8 CHARS of the full
@@ -66,8 +71,9 @@
  *     with the subsequent `role:'toolResult'` message (by `toolCallId`).
  *     `think` tags embedded in the assistant text are extracted into
  *     `thinking`.
- *   - **Gemini CLI** — the `gemini` messages already include `toolCalls` with
- *     both args and result inline; each one maps to a structured block.
+ *   - **Gemini CLI (deprecated legacy reads only)** — the `gemini` messages
+ *     already include `toolCalls` with both args and result inline; each one
+ *     maps to a structured block.
  *
  * This is a best-effort, READ-ONLY fallback: it never writes, tolerates malformed
  * lines/files, and returns `null` when it cannot produce anything (the caller then
@@ -106,6 +112,12 @@ export interface SessionHistoryOptions {
   now?: () => number;
   /** Path-cache TTL in ms (default 60s, per §5.8.8). */
   cacheTtlMs?: number;
+  /**
+   * Official OpenCode `GET /session/:id/message` reader. New OpenCode releases
+   * use SQLite rather than the legacy JSON store, so the running serve process
+   * is the stable cross-version boundary.
+   */
+  openCodeMessages?: (sessionId: string, cwd?: string) => Promise<unknown[]>;
 }
 
 interface CacheEntry {
@@ -149,11 +161,13 @@ export class SessionHistoryReader {
   readonly #cache = new Map<string, CacheEntry>();
   /** Multi-file cache for agents that may have several snapshot files per session. */
   readonly #cacheList = new Map<string, CacheListEntry>();
+  readonly #openCodeMessages: ((sessionId: string, cwd?: string) => Promise<unknown[]>) | undefined;
 
   constructor(options: SessionHistoryOptions = {}) {
     this.#home = options.homeDir ?? homedir();
     this.#now = options.now ?? (() => Date.now());
     this.#ttl = options.cacheTtlMs ?? 60_000;
+    this.#openCodeMessages = options.openCodeMessages;
   }
 
   /**
@@ -174,10 +188,16 @@ export class SessionHistoryReader {
           messages = await this.#readCodex(agentSessionId);
           break;
         case 'opencode':
-          messages = await this.#readOpenCode(agentSessionId);
+          messages = await this.#readOpenCode(agentSessionId, source.cwd);
           break;
         case 'pi-agent':
           messages = await this.#readPi(agentSessionId);
+          break;
+        case 'zero':
+          messages = await this.#readZero(agentSessionId);
+          break;
+        case 'grok':
+          messages = await this.#readGrok(agentSessionId);
           break;
         case 'gemini-cli':
           messages = await this.#readGemini(agentSessionId);
@@ -371,7 +391,17 @@ export class SessionHistoryReader {
     return out;
   }
 
-  async #readOpenCode(sessionId: string): Promise<RawMessage[] | null> {
+  async #readOpenCode(sessionId: string, cwd?: string): Promise<RawMessage[] | null> {
+    if (this.#openCodeMessages) {
+      try {
+        const messages = await this.#openCodeMessages(sessionId, cwd);
+        const parsed = openCodeApiMessages(messages);
+        if (parsed.length > 0) return parsed;
+      } catch {
+        // Fall through to the legacy JSON store. This keeps history readable
+        // when the local serve process is unavailable or on older installs.
+      }
+    }
     const storage = join(this.#home, '.local', 'share', 'opencode', 'storage');
     const messageDir = join(storage, 'message', sessionId);
     const partRoot = join(storage, 'part');
@@ -519,6 +549,70 @@ export class SessionHistoryReader {
       }
       // Unknown role — skip.
     }
+    return out;
+  }
+
+  async #readZero(sessionId: string): Promise<RawMessage[] | null> {
+    const file = join(this.#home, '.local', 'share', 'zero', 'sessions', sessionId, 'events.jsonl');
+    if (!(await isFile(file))) return null;
+    const out: RawMessage[] = [];
+    for (const event of await readJsonl(file)) {
+      if (event['type'] !== 'message') continue;
+      const payload = asRecord(event['payload']);
+      const role = payload?.['role'];
+      const text = typeof payload?.['content'] === 'string' ? payload['content'].trim() : '';
+      if ((role !== 'user' && role !== 'assistant') || !text) continue;
+      out.push({ role, text, createdAt: parseTime(event['createdAt']) });
+    }
+    return out;
+  }
+
+  async #readGrok(sessionId: string): Promise<RawMessage[] | null> {
+    const sessionsRoot = join(this.#home, '.grok', 'sessions');
+    const sessionDir = await this.#cached(`grok:${sessionId}`, () =>
+      findDirByName(sessionsRoot, sessionId, 2),
+    );
+    if (!sessionDir) return null;
+    const out: RawMessage[] = [];
+    let user = '';
+    let assistant = '';
+    let thinking = '';
+    let userAt = 0;
+    let completedAt = 0;
+    for (const event of await readJsonl(join(sessionDir, 'updates.jsonl'))) {
+      const params = asRecord(event['params']);
+      if (params?.['sessionId'] !== sessionId) continue;
+      const update = asRecord(params['update']);
+      const kind = update?.['sessionUpdate'];
+      const text = acpContentText(update?.['content']);
+      const at = parseTime(event['timestamp']);
+      if (kind === 'user_message_chunk') {
+        if (!user) userAt = at;
+        user += text;
+      } else if (kind === 'agent_message_chunk') {
+        assistant += text;
+      } else if (kind === 'agent_thought_chunk') {
+        thinking += text;
+      } else if (kind === 'turn_completed') {
+        completedAt = at;
+        if (user.trim()) out.push({ role: 'user', text: user.trim(), createdAt: userAt });
+        if (assistant.trim() || thinking.trim()) {
+          const raw: RawMessage = {
+            role: 'assistant',
+            text: assistant.trim(),
+            createdAt: completedAt,
+          };
+          if (thinking.trim()) raw.thinking = thinking.trim();
+          out.push(raw);
+        }
+        user = '';
+        assistant = '';
+        thinking = '';
+        userAt = 0;
+      }
+    }
+    // Deliberately ignore a trailing uncompleted turn. Polling `turn/list`
+    // will pick it up after Grok persists `turn_completed`.
     return out;
   }
 
@@ -699,6 +793,70 @@ function extractPiContent(content: unknown): string {
     if (rec && rec['type'] === 'text' && typeof rec['text'] === 'string') texts.push(rec['text']);
   }
   return texts.join('').trim();
+}
+
+/** Parse `GET /session/:id/message` (`{ info, parts }[]`) from OpenCode serve. */
+function openCodeApiMessages(messages: unknown[]): RawMessage[] {
+  const out: RawMessage[] = [];
+  for (const value of messages) {
+    const entry = asRecord(value);
+    const info = asRecord(entry?.['info']);
+    const role = info?.['role'];
+    if (!info || (role !== 'user' && role !== 'assistant')) continue;
+    // A live assistant record is visible through the API before it finishes.
+    // Import it only after OpenCode stamps `finish` (current) or a completion
+    // time (older 1.x), otherwise a polling phone would freeze partial prose as
+    // a completed external turn.
+    if (role === 'assistant') {
+      const time = asRecord(info['time']);
+      if (!info['finish'] && time?.['completed'] === undefined) continue;
+    }
+    const parts = Array.isArray(entry?.['parts']) ? (entry['parts'] as unknown[]) : [];
+    const texts: string[] = [];
+    const thoughts: string[] = [];
+    const blocks: unknown[] = [];
+    for (const rawPart of parts) {
+      const part = asRecord(rawPart);
+      if (!part) continue;
+      if (part['type'] === 'text' && typeof part['text'] === 'string') {
+        texts.push(part['text']);
+      } else if (part['type'] === 'reasoning' && typeof part['text'] === 'string') {
+        thoughts.push(part['text']);
+      } else if (part['type'] === 'tool') {
+        const state = asRecord(part['state']) ?? {};
+        const status = typeof state['status'] === 'string' ? state['status'] : '';
+        if (status !== 'completed' && status !== 'error') continue;
+        const tool = typeof part['tool'] === 'string' ? part['tool'] : '';
+        const id = typeof part['id'] === 'string' ? part['id'] : '';
+        const input = asRecord(state['input']) ?? {};
+        const output =
+          typeof state['output'] === 'string'
+            ? state['output']
+            : typeof state['error'] === 'string'
+              ? state['error']
+              : '';
+        blocks.push(opencodeToolBlock(tool, id, input, output, status === 'error'));
+      }
+    }
+    const time = asRecord(info?.['time']);
+    const raw: RawMessage = {
+      role,
+      text: texts.join('').trim(),
+      createdAt: parseTime(time?.['created']),
+    };
+    const thinking = thoughts.join('').trim();
+    if (thinking) raw.thinking = thinking;
+    if (blocks.length > 0) raw.blocks = blocks;
+    if (raw.text || raw.thinking || raw.blocks?.length) out.push(raw);
+  }
+  return out;
+}
+
+/** Text projection of an ACP content block (`{ type:'text', text }`). */
+function acpContentText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  const content = asRecord(value);
+  return content?.['type'] === 'text' && typeof content['text'] === 'string' ? content['text'] : '';
 }
 
 // --- Gemini content extraction ----------------------------------------------
@@ -1046,6 +1204,21 @@ async function findFileBySuffix(
     if (entry.isFile() && entry.name.endsWith(suffix)) return full;
     if (entry.isDirectory() && depth > 0) {
       const found = await findFileBySuffix(full, suffix, depth - 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** Recursively find a directory with an exact name, up to `depth`. */
+async function findDirByName(root: string, name: string, depth: number): Promise<string | null> {
+  const entries = await safeReaddirTyped(root);
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const full = join(root, entry.name);
+    if (entry.name === name) return full;
+    if (depth > 0) {
+      const found = await findDirByName(full, name, depth - 1);
       if (found) return found;
     }
   }

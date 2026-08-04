@@ -1,4 +1,6 @@
 What's new in this update:
 
-• Send follow-up messages while the agent is still working. Each one waits its turn, shows its place in line, and can be edited or cancelled before the agent ever sees it.
-• Attach images to a message: pick several from your gallery or take a photo, review them inside the composer, and tap a sent image to open it full size.
+• Open a file straight from the chat: tap a file an agent mentions and it opens on your phone, even if it lives in another folder on your PC.
+• A much better file viewer: Markdown that looks like it does on GitHub, PDFs, animated GIFs, SVGs and pinch-to-zoom images.
+• Conversations now pick up work you did in the agent's own app on your PC.
+• Replies format themselves as they arrive, and nothing an agent said gets replaced anymore.

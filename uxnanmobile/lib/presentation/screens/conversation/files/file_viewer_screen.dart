@@ -1,31 +1,35 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_highlight/themes/atom-one-dark.dart';
-import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:highlight/highlight.dart' as syntax;
+import 'package:markdown/markdown.dart' as md;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
+import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
+import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
+import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_diff_viewer.dart';
+import 'package:uxnan/presentation/screens/conversation/files/widgets/file_preview_media.dart';
+import 'package:uxnan/presentation/screens/conversation/files/widgets/markdown_blocks.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/highlighted_source.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
-/// Full-screen file viewer. Renders one of: an inline image, a markdown file
-/// (preview or raw), a syntax-highlighted code/text file (with the git diff
-/// overlay when the file has changes), or a binary placeholder.
+/// Full-screen file viewer for images (including animated GIF and SVG), PDF,
+/// Markdown, syntax-highlighted code/text, git diffs, and binary placeholders.
 ///
 /// Driven by the [FileBrowserManager] for content reads and diff fetches; the
 /// chrome mirrors the [FileBrowserScreen] so navigating list → file → back
@@ -123,11 +127,11 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     }
   }
 
-  /// Whether the current payload is an editable text file (UTF-8, not an
-  /// image, not binary). Drives the visibility of the edit action.
-  bool _isEditable(bool isImage) {
+  /// Whether the current payload is editable source rather than binary media.
+  bool _isEditable(FilePreviewKind kind) {
     final content = _payload?.content;
-    return !isImage &&
+    return kind != FilePreviewKind.rasterImage &&
+        kind != FilePreviewKind.pdf &&
         _payload?.error == null &&
         content != null &&
         content.encoding == FileEncoding.utf8;
@@ -206,18 +210,25 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
     final l10n = AppLocalizations.of(context);
     final node = widget.node;
     final showExt = ref.watch(showFileExtensionsProvider);
-    final showMdPreview = ref.watch(showMarkdownPreviewProvider);
+    final showPreview = ref.watch(showFilePreviewProvider);
     final showDiff = ref.watch(showFileDiffProvider);
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final textStyles = theme.textTheme;
     final name = node?.displayName(showExtension: showExt) ??
         widget.path.split('/').last;
     final status = node?.gitStatus;
-    final isImage = _isImagePath(widget.path);
-    final isMarkdown = _isMarkdownPath(widget.path);
+    final kind = previewKindForPath(widget.path);
+    final supportsPreview =
+        kind == FilePreviewKind.markdown || kind == FilePreviewKind.svg;
     // While editing the raw buffer is the only surface — the markdown preview
     // and the diff overlay both step aside so the user edits plain source.
-    final showDiffOverlay = showDiff && status != null && !isImage && !_editing;
-    final editable = _isEditable(isImage);
+    final showDiffOverlay = showDiff &&
+        status != null &&
+        kind != FilePreviewKind.rasterImage &&
+        kind != FilePreviewKind.pdf &&
+        !_editing;
+    final editable = _isEditable(kind);
     final topInset = NeTopBar.preferredHeight(context);
     // Block an accidental system-back while editing with unsaved changes; the
     // pop is routed through the same discard confirmation as the close button.
@@ -244,13 +255,20 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
             // NeTopBar (matching `ConversationScreen`, `FileBrowserScreen`,
             // `GitScreen`) — the gradient dissolves into the live content
             // instead of sitting over a blank band.
-            _buildBody(
-              context,
+            _FileViewerBody(
+              payload: _payload,
+              loading: _loading,
+              editing: _editing,
+              editController: _editController,
+              manager: ref.read(fileBrowserManagerProvider),
+              remoteResources: ref.read(remoteResourceServiceProvider),
+              cwd: widget.cwd,
+              path: widget.path,
+              kind: kind,
               topInset: topInset,
-              showMdPreview: showMdPreview,
+              showPreview: showPreview,
               showDiffOverlay: showDiffOverlay,
-              isImage: isImage,
-              isMarkdown: isMarkdown,
+              onRefresh: _load,
             ),
             Positioned(
               top: 0,
@@ -278,10 +296,10 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontSize: 20,
-                        color: _statusColor(status, colors),
-                      ),
+                  style: textStyles.titleLarge?.copyWith(
+                    fontSize: 20,
+                    color: _statusColor(status, colors),
+                  ),
                 ),
                 actions: _editing
                     ? [
@@ -302,18 +320,18 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                           ),
                       ]
                     : [
-                        if (isMarkdown)
+                        if (supportsPreview)
                           IconSurface(
-                            icon: showMdPreview
+                            icon: showPreview
                                 ? Icons.code_rounded
                                 : Icons.visibility_outlined,
-                            tooltip: showMdPreview
+                            tooltip: showPreview
                                 ? l10n.fileViewerViewSource
                                 : l10n.fileViewerViewPreview,
-                            selected: showMdPreview,
+                            selected: showPreview,
                             onPressed: () => ref
-                                .read(showMarkdownPreviewProvider.notifier)
-                                .set(value: !showMdPreview),
+                                .read(showFilePreviewProvider.notifier)
+                                .set(value: !showPreview),
                           ),
                         if (status != null)
                           IconSurface(
@@ -333,7 +351,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                             onPressed: _startEditing,
                           ),
                         // Refreshing moved to pull-to-refresh on the content
-                        // body (see [_buildBody]) — matching FileBrowserScreen
+                        // body — matching FileBrowserScreen
                         // and GitScreen — so the appbar stays lean.
                       ],
               ),
@@ -343,104 +361,169 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
       ),
     );
   }
+}
 
-  Widget _buildBody(
-    BuildContext context, {
-    required double topInset,
-    required bool showMdPreview,
-    required bool showDiffOverlay,
-    required bool isImage,
-    required bool isMarkdown,
-  }) {
-    final payload = _payload;
+class _FileViewerBody extends StatelessWidget {
+  const _FileViewerBody({
+    required this.payload,
+    required this.loading,
+    required this.editing,
+    required this.editController,
+    required this.manager,
+    required this.remoteResources,
+    required this.cwd,
+    required this.path,
+    required this.kind,
+    required this.topInset,
+    required this.showPreview,
+    required this.showDiffOverlay,
+    required this.onRefresh,
+  });
 
-    // The inline editor wins over every read-only view while active.
-    if (_editing) {
-      return _EditorBody(controller: _editController, topInset: topInset);
+  final _ViewerPayload? payload;
+  final bool loading;
+  final bool editing;
+  final TextEditingController editController;
+  final FileBrowserManager manager;
+  final RemoteResourceService remoteResources;
+  final String cwd;
+  final String path;
+  final FilePreviewKind kind;
+  final double topInset;
+  final bool showPreview;
+  final bool showDiffOverlay;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    if (editing) {
+      return _EditorBody(controller: editController, topInset: topInset);
     }
-
-    // Scrollable bodies pad their own top by [topInset] so they scroll under
-    // the bar. Binary/error placeholders are nudged below it with [_belowBar],
-    // while an image intentionally owns the full surface behind the top bar.
-    if (_loading && payload == null) {
-      return const Center(
-        child: PolygonLoader(size: UxnanSpacing.xxl),
+    if (loading && payload == null) {
+      return const Center(child: PolygonLoader(size: UxnanSpacing.xxl));
+    }
+    final current = payload;
+    if (current == null) return const SizedBox.shrink();
+    if (current.error case final error?) {
+      return _BelowTopBar(
+        topInset: topInset,
+        child: _ErrorState(message: error, onRetry: onRefresh),
       );
     }
-    if (payload == null) {
-      return const SizedBox.shrink();
-    }
-    if (payload.error != null) {
-      return _belowBar(
-        topInset,
-        _ErrorState(message: payload.error!, onRetry: _load),
-      );
-    }
-    if (isImage && payload.image != null) {
-      return _ImageBody(
-        base64: payload.image!.base64Data,
-        mimeType: payload.image!.mimeType,
-      );
-    }
-    if (isImage) {
-      return _belowBar(
-        topInset,
-        _ErrorState(
-          message: payload.error ?? 'Image not available',
-          onRetry: _load,
+
+    if (kind == FilePreviewKind.rasterImage ||
+        (kind == FilePreviewKind.svg && showPreview)) {
+      final image = current.image;
+      if (image != null) return WorkspaceImagePreview(image: image);
+      return _BelowTopBar(
+        topInset: topInset,
+        child: _ErrorState(
+          message: AppLocalizations.of(context).fileViewerMediaUnavailable,
+          onRetry: onRefresh,
         ),
       );
     }
-    final textContent = payload.content;
-    if (textContent == null) {
-      return _belowBar(
-        topInset,
-        _ErrorState(message: 'File not readable', onRetry: _load),
+
+    final content = current.content;
+    if (content == null) {
+      return _BelowTopBar(
+        topInset: topInset,
+        child: _ErrorState(
+          message: AppLocalizations.of(context).fileViewerMediaUnavailable,
+          onRetry: onRefresh,
+        ),
       );
     }
-    if (textContent.encoding == FileEncoding.base64) {
-      return _belowBar(
-        topInset,
-        _BinaryState(sizeBytes: textContent.content.length),
+    if (kind == FilePreviewKind.pdf) {
+      if (content.encoding != FileEncoding.base64) {
+        return _BelowTopBar(
+          topInset: topInset,
+          child: _ErrorState(
+            message: AppLocalizations.of(context).fileViewerPdfInvalid,
+            onRetry: onRefresh,
+          ),
+        );
+      }
+      return WorkspacePdfPreview(
+        base64Data: content.content,
+        path: path,
+        topInset: topInset,
       );
     }
-    final text = textContent.content;
-    if (isMarkdown && showMdPreview) {
-      return _refreshable(_MarkdownBody(text: text, topInset: topInset));
+    if (content.encoding == FileEncoding.base64) {
+      return _BelowTopBar(
+        topInset: topInset,
+        child: _BinaryState(sizeBytes: content.content.length),
+      );
     }
-    if (showDiffOverlay && payload.diff != null && payload.diff!.isNotEmpty) {
-      return _refreshable(
-        SelectionArea(
+
+    final text = content.content;
+    if (kind == FilePreviewKind.markdown && showPreview) {
+      return _RefreshableBody(
+        topInset: topInset,
+        onRefresh: onRefresh,
+        child: _MarkdownBody(
+          text: text,
+          topInset: topInset,
+          manager: manager,
+          remoteResources: remoteResources,
+          cwd: cwd,
+          path: path,
+        ),
+      );
+    }
+    if (showDiffOverlay && (current.diff?.isNotEmpty ?? false)) {
+      return _RefreshableBody(
+        topInset: topInset,
+        onRefresh: onRefresh,
+        child: SelectionArea(
           child: FileDiffViewer(
-            diff: payload.diff!,
-            path: widget.path,
+            diff: current.diff!,
+            path: path,
             topInset: topInset,
           ),
         ),
       );
     }
-    return _refreshable(
-      _CodeBody(
+    return _RefreshableBody(
+      topInset: topInset,
+      onRefresh: onRefresh,
+      child: _CodeBody(
         text: text,
-        language: _languageForPath(widget.path),
+        language: _languageForPath(path),
         topInset: topInset,
       ),
     );
   }
+}
 
-  /// Wraps a scrollable content body in a pull-to-refresh that re-fetches the
-  /// file (the same `_load` the old appbar refresh button called). The bodies
-  /// scroll under the transparent [NeTopBar], so `edgeOffset` pushes the
-  /// spinner below the bar instead of behind it.
-  Widget _refreshable(Widget child) => RefreshIndicator(
-        onRefresh: _load,
-        edgeOffset: NeTopBar.preferredHeight(context),
+class _RefreshableBody extends StatelessWidget {
+  const _RefreshableBody({
+    required this.topInset,
+    required this.onRefresh,
+    required this.child,
+  });
+
+  final double topInset;
+  final Future<void> Function() onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => RefreshIndicator(
+        onRefresh: onRefresh,
+        edgeOffset: topInset,
         child: child,
       );
+}
 
-  /// Wraps a non-scrolling placeholder so it sits below the transparent bar
-  /// rather than under it.
-  static Widget _belowBar(double topInset, Widget child) => Padding(
+class _BelowTopBar extends StatelessWidget {
+  const _BelowTopBar({required this.topInset, required this.child});
+
+  final double topInset;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Padding(
         padding: EdgeInsets.only(top: topInset),
         child: child,
       );
@@ -451,7 +534,8 @@ Future<_ViewerPayload> _loadViewer(
   String cwd,
   String path,
 ) async {
-  if (_isImagePath(path)) {
+  final kind = previewKindForPath(path);
+  if (kind == FilePreviewKind.rasterImage) {
     try {
       final image = await manager.readImage(cwd, path);
       return _ViewerPayload.image(image);
@@ -464,6 +548,13 @@ Future<_ViewerPayload> _loadViewer(
   }
   try {
     final content = await manager.readFile(cwd, path);
+    if (kind == FilePreviewKind.pdf) {
+      return _ViewerPayload.media(content: content);
+    }
+    ImageFile? image;
+    if (kind == FilePreviewKind.svg) {
+      image = await manager.readImage(cwd, path);
+    }
     String? diff;
     try {
       diff = await manager.fileDiff(cwd, path);
@@ -472,18 +563,16 @@ Future<_ViewerPayload> _loadViewer(
       // falls back to the raw file content.
       diff = null;
     }
-    return _ViewerPayload.text(content, diff);
+    return _ViewerPayload.media(content: content, image: image, diff: diff);
   } on Object catch (error) {
     return _ViewerPayload.error('$error');
   }
 }
 
-/// Discriminated result for [_loadViewer]: exactly one of [content]/[image]
-/// is set on success, or [error] is set on failure.
+/// Result for [_loadViewer]. SVG deliberately carries both source and image.
 class _ViewerPayload {
-  const _ViewerPayload.text(this.content, this.diff)
-      : image = null,
-        error = null;
+  const _ViewerPayload.media({this.content, this.image, this.diff})
+      : error = null;
   const _ViewerPayload.image(this.image)
       : content = null,
         diff = null,
@@ -499,52 +588,6 @@ class _ViewerPayload {
   final String? error;
 }
 
-/// Full-surface image preview. The image starts fully visible with
-/// [BoxFit.contain]; pinch zoom and pan then use the complete screen viewport
-/// instead of a smaller padded rectangle.
-class _ImageBody extends StatelessWidget {
-  const _ImageBody({required this.base64, required this.mimeType});
-  final String base64;
-  final String mimeType;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return ColoredBox(
-      color: colors.surfaceContainerLowest,
-      child: SizedBox.expand(
-        child: InteractiveViewer(
-          maxScale: 6,
-          minScale: 1,
-          clipBehavior: Clip.none,
-          child: Image.memory(
-            base64Decode(base64),
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stack) => Padding(
-              padding: const EdgeInsets.all(UxnanSpacing.xl),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.broken_image_outlined,
-                    size: 40,
-                    color: colors.error,
-                  ),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  Text(mimeType, style: UxnanTypography.codeSmall),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Markdown body — `MarkdownBody` (from `flutter_markdown_plus`) wrapped in a
 /// `SingleChildScrollView` with `BouncingScrollPhysics`. Using `MarkdownBody`
 /// instead of `Markdown` is deliberate: `Markdown` carries its own scroll
@@ -557,9 +600,37 @@ class _ImageBody extends StatelessWidget {
 ///
 /// The horizontal padding (`UxnanSpacing.lg`) matches the rest of the app's
 /// content surfaces so the rendered text doesn't kiss the screen edges.
+/// The renderer's syntax set: exactly the GitHub-flavored one the viewer has
+/// always used (tables, strikethrough, autolinks, task lists) plus `:emoji:`
+/// shortcodes.
+///
+/// Deliberately **not** `gitHubWeb`: that set also turns on inline-HTML
+/// parsing, which silently swallows any residual `<tag>`-looking text instead
+/// of showing it — a change in how every existing document parses, in exchange
+/// for heading anchors this viewer does not navigate.
+final _markdownExtensions = md.ExtensionSet(
+  md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+  <md.InlineSyntax>[
+    md.EmojiSyntax(),
+    ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
+  ],
+);
+
 class _MarkdownBody extends StatelessWidget {
-  const _MarkdownBody({required this.text, required this.topInset});
+  const _MarkdownBody({
+    required this.text,
+    required this.topInset,
+    required this.manager,
+    required this.remoteResources,
+    required this.cwd,
+    required this.path,
+  });
+
   final String text;
+  final FileBrowserManager manager;
+  final RemoteResourceService remoteResources;
+  final String cwd;
+  final String path;
 
   /// Top padding so the rendered markdown scrolls under the transparent bar.
   final double topInset;
@@ -581,24 +652,93 @@ class _MarkdownBody extends StatelessWidget {
           constraints: const BoxConstraints(
             maxWidth: UxnanSpacing.maxContentWidth,
           ),
-          child: MarkdownBody(
-            data: text,
-            selectable: true,
-            styleSheet: uxnanMarkdownStyleSheet(context),
-            onTapLink: (linkText, href, title) => _onTapLink(context, href),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final block in splitMarkdownBlocks(text))
+                _blockWidget(context, block),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// Copies a tapped link's target to the clipboard (no `url_launcher`
-  /// dependency — the viewer never opens an external browser on its own).
-  void _onTapLink(BuildContext context, String? href) {
+  /// Renders one document block: GitHub's two container constructs get their
+  /// own chrome, everything else is Markdown rendered as before.
+  Widget _blockWidget(BuildContext context, MarkdownBlock block) {
+    return switch (block) {
+      MarkdownTextBlock(:final text) => _markdown(context, text),
+      MarkdownAlertBlock(:final kind, :final body) => MarkdownAlertCard(
+          kind: kind,
+          child: _markdown(context, body),
+        ),
+      MarkdownDetailsBlock(:final summary, :final body, :final expanded) =>
+        MarkdownDetailsTile(
+          summary: summary,
+          initiallyExpanded: expanded,
+          child: _markdown(context, body),
+        ),
+    };
+  }
+
+  Widget _markdown(BuildContext context, String source) {
+    final colors = Theme.of(context).colorScheme;
+    return MarkdownBody(
+      data: normalizeReadmeHtml(source),
+      selectable: true,
+      styleSheet: uxnanMarkdownStyleSheet(context),
+      extensionSet: _markdownExtensions,
+      builders: {'pre': MarkdownCodeBlockBuilder()},
+      checkboxBuilder: (checked) => Padding(
+        padding: const EdgeInsets.only(right: UxnanSpacing.xs),
+        child: Icon(
+          checked
+              ? Icons.check_box_rounded
+              : Icons.check_box_outline_blank_rounded,
+          size: UxnanSpacing.lg,
+          color: checked ? colors.primary : colors.onSurfaceVariant,
+        ),
+      ),
+      imageBuilder: (uri, title, alt) => MarkdownResourceImage(
+        key: ValueKey('$path::$uri'),
+        manager: manager,
+        remoteResources: remoteResources,
+        cwd: cwd,
+        documentPath: path,
+        uri: uri,
+        title: title,
+      ),
+      onTapLink: (linkText, href, title) =>
+          unawaited(_onTapLink(context, href)),
+    );
+  }
+
+  Future<void> _onTapLink(BuildContext context, String? href) async {
     if (href == null || href.isEmpty) return;
     final l10n = AppLocalizations.of(context);
-    Clipboard.setData(ClipboardData(text: href));
-    ScaffoldMessenger.of(context)
+    final messenger = ScaffoldMessenger.of(context);
+
+    switch (resolveMarkdownLinkAction(path, href)) {
+      case OpenWorkspaceFile(:final path):
+        await FileViewerScreen.push(context, cwd: cwd, path: path);
+        return;
+      case OpenExternalLink(:final uri):
+        try {
+          if (await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+            return;
+          }
+        } on Object catch (error, stackTrace) {
+          AppLogger.warn('Failed to open a Markdown link', error, stackTrace);
+        }
+      case CopyLinkTarget():
+        break;
+    }
+    // Anything the OS would not take — an in-page anchor, an unusual scheme, a
+    // device with no handler — still lands on the clipboard rather than
+    // silently doing nothing.
+    await Clipboard.setData(ClipboardData(text: href));
+    messenger
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(l10n.fileViewerLinkCopied(href))));
   }
@@ -621,8 +761,6 @@ class _CodeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final theme = isDark ? atomOneDarkTheme : atomOneLightTheme;
     return SingleChildScrollView(
       // AlwaysScrollable so the parent RefreshIndicator can be pulled even
       // when the source fits the viewport (matches the markdown body).
@@ -644,74 +782,13 @@ class _CodeBody extends StatelessWidget {
             alignment: Alignment.topLeft,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: _SelectableHighlightView(
-                text,
-                language: language,
-                theme: theme,
-                textStyle: UxnanTypography.codeBody,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UxnanSpacing.sm,
-                  vertical: UxnanSpacing.xs,
-                ),
-              ),
+              child: HighlightedSource(source: text, language: language),
             ),
           ),
         ),
       ),
     );
   }
-}
-
-/// Syntax-highlighted source rendered through [SelectableText.rich]. The
-/// `flutter_highlight` widget uses a plain `RichText`, which cannot expose the
-/// platform selection/copy menu; this keeps the same parser and themes while
-/// making every source range genuinely selectable.
-class _SelectableHighlightView extends StatelessWidget {
-  const _SelectableHighlightView(
-    this.source, {
-    required this.language,
-    required this.theme,
-    required this.textStyle,
-    required this.padding,
-  });
-
-  final String source;
-  final String language;
-  final Map<String, TextStyle> theme;
-  final TextStyle textStyle;
-  final EdgeInsetsGeometry padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final rootStyle = TextStyle(color: theme['root']?.color).merge(textStyle);
-    final nodes = syntax.highlight
-        .parse(source.replaceAll('\t', '        '), language: language)
-        .nodes;
-    return Container(
-      color: theme['root']?.backgroundColor,
-      padding: padding,
-      child: SelectableText.rich(
-        TextSpan(
-          style: rootStyle,
-          children: _highlightSpans(nodes ?? const <syntax.Node>[]),
-        ),
-      ),
-    );
-  }
-
-  List<TextSpan> _highlightSpans(List<syntax.Node> nodes) => [
-        for (final node in nodes)
-          if (node.value != null)
-            TextSpan(
-              text: node.value,
-              style: node.className == null ? null : theme[node.className],
-            )
-          else
-            TextSpan(
-              style: node.className == null ? null : theme[node.className],
-              children: _highlightSpans(node.children ?? const <syntax.Node>[]),
-            ),
-      ];
 }
 
 /// Inline editor: a full-height monospace [TextField] over the raw file
@@ -868,21 +945,6 @@ Color _statusColor(GitFileStatus? status, ColorScheme colors) {
     GitFileStatus.untracked => UxnanColors.gitUntracked,
     null => colors.onSurface,
   };
-}
-
-bool _isImagePath(String path) {
-  final lower = path.toLowerCase();
-  return lower.endsWith('.png') ||
-      lower.endsWith('.jpg') ||
-      lower.endsWith('.jpeg') ||
-      lower.endsWith('.gif') ||
-      lower.endsWith('.webp') ||
-      lower.endsWith('.bmp');
-}
-
-bool _isMarkdownPath(String path) {
-  final lower = path.toLowerCase();
-  return lower.endsWith('.md') || lower.endsWith('.markdown');
 }
 
 /// Maps a file path to a `highlight`-package language id for syntax

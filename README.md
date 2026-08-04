@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/luisgamas/uxnan/stargazers"><img src="https://img.shields.io/github/stars/luisgamas/uxnan?style=flat-square&color=f5c518&label=stars" alt="GitHub stars" /></a>
+  <a href="https://github.com/luisgamas/uxnan/releases"><img src="https://img.shields.io/github/downloads/luisgamas/uxnan/total?style=flat-square&color=f5c518&label=downloads" alt="Total downloads" /></a>
   <a href="https://github.com/luisgamas/uxnan/releases/latest"><img src="https://img.shields.io/github/v/release/luisgamas/uxnan?style=flat-square&label=desktop%20release&color=2ea44f" alt="Latest desktop release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MPL--2.0-2ea44f?style=flat-square" alt="License MPL-2.0" /></a>
   <img src="https://img.shields.io/badge/platforms-Windows_%C2%B7_macOS_%C2%B7_Linux_%C2%B7_Android-6e7681?style=flat-square" alt="Platforms" />
@@ -223,9 +223,12 @@ auto-resume, live model discovery, and per-agent run options.
 It's a real client, not a status page: conversations **stream in live** and survive
 navigating away and back, a **message queue** lets you send follow-ups while an
 agent is still working, you can attach **images**, pick the **agent and model**
-per conversation, review and stage a **Git diff**, and get a **push notification**
-the moment an agent finishes — all over the same end-to-end encrypted channel the
-bridge speaks.
+per conversation, see protocol-confirmed **context compactions**, and keep every
+native progress/final response without losing earlier text (settled progress folds
+under **N previous messages**). You can also review and stage a **Git diff** and
+get a **push notification** the moment an agent finishes — all over the same
+end-to-end encrypted channel the bridge speaks. Mobile offers the seven active
+agents shown above; the retired Gemini CLI has no mobile product surface.
 
 **Status: Android is alpha-ready.** iOS is written but not yet shipped — it's
 waiting on Apple developer assets the project doesn't have yet.

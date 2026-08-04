@@ -92,23 +92,22 @@ class CompactFileRows extends Notifier<bool> {
 final compactFileRowsProvider =
     NotifierProvider<CompactFileRows, bool>(CompactFileRows.new);
 
-/// Whether the file viewer should render markdown as a styled preview. When
-/// `false`, the raw markdown source is shown (preserving indent / escape
-/// sequences) — useful for verifying what the agent actually wrote.
-class ShowMarkdownPreview extends Notifier<bool> {
+/// Whether preview-capable text files render visually. When `false`, Markdown
+/// and SVG files show their raw source so the user can inspect or edit it.
+class ShowFilePreview extends Notifier<bool> {
   @override
   bool build() => true;
 
-  /// Toggles the markdown preview vs raw view.
+  /// Toggles the visual preview vs raw source view.
   void set({required bool value}) {
     if (state == value) return;
     state = value;
   }
 }
 
-/// Whether markdown files render as a styled preview in the file viewer.
-final showMarkdownPreviewProvider =
-    NotifierProvider<ShowMarkdownPreview, bool>(ShowMarkdownPreview.new);
+/// Whether preview-capable files render their visual representation.
+final showFilePreviewProvider =
+    NotifierProvider<ShowFilePreview, bool>(ShowFilePreview.new);
 
 /// Whether the file viewer should show the git diff for files with changes.
 /// When `true`, files with a non-null git status render their `git/diff`

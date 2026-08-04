@@ -1,4 +1,7 @@
 /**
+ * @deprecated Retained for compatibility with external bridge imports. Runtime
+ * bridge startup no longer calls this resolver because Gemini CLI is retired.
+ *
  * Resolves the Gemini CLI (`@google/gemini-cli`) to something
  * `child_process.spawn` can run directly with `shell:false` (so the user prompt
  * is never interpolated into a shell — no command injection).
@@ -39,6 +42,7 @@ function npmEntryCandidates(): string[] {
  * Resolve the Gemini binary. An explicit `configured` path always wins; we only
  * report availability for it. Otherwise we auto-detect a runnable target.
  */
+/** @deprecated Gemini CLI is retired; use resolveAntigravityBinary instead. */
 export function resolveGeminiBinary(configured?: string): ResolvedGemini {
   if (configured && configured.length > 0) {
     return { binaryPath: configured, prependArgs: [], available: existsSync(configured) };

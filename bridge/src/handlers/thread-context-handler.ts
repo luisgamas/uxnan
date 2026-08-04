@@ -5,7 +5,7 @@
  *
  * Source: architecture/02a-system-architecture.md §5.8.8.
  */
-import { RpcError } from '@uxnan/shared';
+import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import type {
   AccessMode,
   AgentCommandInvocation,
@@ -13,7 +13,6 @@ import type {
   ApprovalDecision,
   ApprovalResponse,
   QuestionResponse,
-  Turn,
   TurnAttachment,
   TurnList,
 } from '@uxnan/shared';
@@ -44,6 +43,12 @@ export function registerThreadHandlers(router: HandlerRouter): void {
     const pin = ctx.projects.agentConfigFor(cwd);
     const explicitAgent = optionalString(p, 'agentId') as AgentId | undefined;
     const agentId = explicitAgent ?? pin?.agentId ?? ctx.agentManager.defaultAgent;
+    if (ctx.agentManager.isDeprecated(agentId)) {
+      throw new RpcError(
+        JsonRpcErrorCode.AgentNotRunning,
+        `agent '${agentId}' is deprecated and cannot start new threads`,
+      );
+    }
     const explicitModel = optionalString(p, 'model');
     const model = explicitModel ?? (pin && agentId === pin.agentId ? pin.model : undefined);
     return ctx.threadStore.startThread(
@@ -117,15 +122,21 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       ...(queue.paused ? { queuePaused: true } : {}),
       ...(queue.pausedReason !== undefined ? { queuePausedReason: queue.pausedReason } : {}),
     });
+    // Reconcile the agent-owned transcript on EVERY idle read, not just when
+    // Uxnan's store is empty. This is what makes a turn written from Codex
+    // Desktop/CLI (or another supported client attached to the same native
+    // session) appear back on the phone. Never read while the bridge itself is
+    // driving a turn: its streaming store is already authoritative and a
+    // half-flushed native record must not be mistaken for an external turn.
+    if (activeTurnId === undefined) {
+      const source = await ctx.threadStore.getHistorySource(threadId);
+      const nativeTurns = await ctx.sessionHistory.readTurns(source, threadId);
+      if (nativeTurns && nativeTurns.length > 0) {
+        await ctx.threadStore.reconcileNativeHistory(threadId, nativeTurns, ctx.now());
+      }
+    }
     const stored = await ctx.threadStore.listTurns(threadId, cursor, limit, fromEnd);
-    // Fallback (§5.8.8): when the store has nothing for this thread, read the
-    // agent's own on-disk session log so the phone can still show history (e.g.
-    // after the bridge missed the turns, or threads.json was lost).
-    if (stored.turns.length > 0 || stored.nextCursor) return withActive(stored);
-    const source = await ctx.threadStore.getHistorySource(threadId);
-    const turns = await ctx.sessionHistory.readTurns(source, threadId);
-    if (!turns || turns.length === 0) return withActive(stored);
-    return withActive(paginateTurns(turns, cursor, limit, fromEnd));
+    return withActive(stored);
   });
   router.register('turn/read', (p, ctx: BridgeContext) =>
     ctx.threadStore.getTurn(requireString(p, 'turnId')),
@@ -185,30 +196,12 @@ export function registerThreadHandlers(router: HandlerRouter): void {
   );
 }
 
-/**
- * Page a full turn list (from the on-disk history fallback) the same way the
- * store does: numeric cursor offset + limit, with a `nextCursor` when more remain.
- */
 const ACCESS_MODES: readonly AccessMode[] = ['requestApproval', 'approveForMe', 'fullAccess'];
 
 /** Validates a wire `mode` string against the {@link AccessMode} union. */
 function parseAccessMode(mode: string): AccessMode {
   if ((ACCESS_MODES as readonly string[]).includes(mode)) return mode as AccessMode;
   throw RpcError.invalidParams(`mode must be one of ${ACCESS_MODES.join(' | ')}`);
-}
-
-function paginateTurns(
-  turns: Turn[],
-  cursor: string | undefined,
-  limit: number | undefined,
-  fromEnd = false,
-): TurnList {
-  const total = turns.length;
-  const size = limit && limit > 0 ? limit : 20;
-  const start = fromEnd ? Math.max(0, total - size) : cursor ? Number.parseInt(cursor, 10) || 0 : 0;
-  const result: TurnList = { turns: turns.slice(start, start + size), total };
-  if (start + size < total) result.nextCursor = String(start + size);
-  return result;
 }
 
 function optionalEffort(params: unknown): { effort?: string } {

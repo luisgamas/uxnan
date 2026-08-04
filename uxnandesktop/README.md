@@ -98,6 +98,13 @@ available today are:
   relative links and images, anchors, highlighted code), raster and SVG previews,
   native PDF preview, and the file's working diff. See
   [the file viewer](./docs/file-viewer.md).
+- **It keeps a record of its own failures.** A rolling log under
+  `<app data>/logs/` captures startup/shutdown, Rust panics and uncaught frontend
+  errors on one timeline, and the app knows on the next launch whether the
+  previous session ended cleanly — so a black screen or a force-close leaves
+  evidence instead of nothing. No telemetry: nothing leaves your machine, and no
+  token, prompt or terminal output is ever written. See
+  [diagnostics](./docs/diagnostics.md).
 - **Open with your editor.** An **"Open with →"** entry on the project, worktree and
   file-tree menus launches the folder or file in an external editor or IDE — VS Code,
   Cursor, Windsurf, Zed, Sublime Text, the JetBrains IDEs and more are detected
@@ -254,6 +261,7 @@ Detailed docs live in [`docs/`](./docs/):
 [GitHub sandbox runbook](./docs/github-sandbox-runbook.md) ·
 [pets (animated companions)](./docs/pets.md) ·
 [updates & release channels](./docs/updates.md) ·
+[diagnostics & the app log](./docs/diagnostics.md) ·
 [Windows junctions & Redirection Guard](./docs/windows-junctions.md).
 
 The full product/engineering specification is in

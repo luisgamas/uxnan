@@ -329,6 +329,39 @@ class FileBrowserManager {
     return _parseContent(response, 'workspace/readFile');
   }
 
+  /// Resolves an assistant-provided local file link on the paired PC.
+  ///
+  /// Resolution belongs to the bridge because the phone cannot interpret the
+  /// PC's path syntax or discover a sibling worktree. The returned pair can be
+  /// passed directly to the existing file viewer.
+  Future<WorkspaceFileTarget> resolveFileLink(String cwd, String href) async {
+    final response =
+        await _sendRequest('workspace/resolveFileLink', <String, dynamic>{
+      'cwd': cwd,
+      'href': href,
+    });
+    final error = response.error;
+    if (error != null) {
+      throw FileReadException(error.message);
+    }
+    final result = response.result;
+    if (result is! Map) {
+      throw FileReadException(
+        'Invalid workspace/resolveFileLink response '
+        '(got ${result.runtimeType})',
+      );
+    }
+    final target = WorkspaceFileTarget.fromJson(
+      result.cast<String, dynamic>(),
+    );
+    if (target.cwd.isEmpty || target.path.isEmpty) {
+      throw const FileReadException(
+        'Invalid workspace/resolveFileLink target',
+      );
+    }
+    return target;
+  }
+
   /// Reads a file as an inline base64 image. The bridge rejects non-image
   /// extensions with `-32602` (invalid params) — callers should only request
   /// images for known image extensions.
@@ -672,9 +705,9 @@ class WorkspaceMethodUnsupported implements Exception {
   String toString() => 'WorkspaceMethodUnsupported: $method';
 }
 
-/// Raised by [FileBrowserManager.readFile] / [readImage] when the bridge
-/// returns an unexpected payload. The file viewer catches this and shows
-/// its own error state.
+/// Raised by file-content and file-link calls when the bridge rejects a path
+/// or returns an unexpected payload. The file surfaces catch this and show
+/// their own error states.
 class FileReadException implements Exception {
   /// Creates a [FileReadException].
   const FileReadException(this.message);

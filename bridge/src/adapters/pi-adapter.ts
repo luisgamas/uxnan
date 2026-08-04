@@ -31,11 +31,13 @@ import type {
   AgentId,
   AgentModel,
   AgentModelOption,
+  CompactionReason,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
 import { piResultText, piToolBlock, type PiToolUse } from './pi-tools.js';
 import { effortValues, reasoningOption, reasoningValue } from './run-options.js';
+import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /** Hard cap on the `--list-models` spawn before giving up. */
@@ -55,6 +57,7 @@ const PI_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  reportsCompaction: true,
 };
 
 /** Reasoning-effort levels pi's `--thinking` flag accepts (verified via `pi --help`). */
@@ -91,7 +94,16 @@ interface ActiveRun {
 
 /** A normalized pi event extracted from one `--mode json` line. */
 export interface PiEvent {
-  kind: 'session' | 'delta' | 'thinking' | 'tool_start' | 'tool_end' | 'final' | 'end' | 'other';
+  kind:
+    | 'session'
+    | 'compaction'
+    | 'delta'
+    | 'thinking'
+    | 'tool_start'
+    | 'tool_end'
+    | 'final'
+    | 'end'
+    | 'other';
   /** Only set for `session`: the session id (for `--session-id` continuity). */
   sessionId?: string;
   /**
@@ -113,6 +125,10 @@ export interface PiEvent {
   toolOutput?: string;
   /** Only set for `tool_end`: whether the tool failed. */
   toolIsError?: boolean;
+  /** Only set for a successful `compaction_end`. */
+  compactionReason?: CompactionReason;
+  tokensBefore?: number;
+  tokensAfter?: number;
 }
 
 /**
@@ -158,6 +174,25 @@ export function parsePiLine(line: string): PiEvent | null {
     case 'session': {
       const id = typeof parsed['id'] === 'string' ? parsed['id'] : undefined;
       return { kind: 'session', ...(id !== undefined ? { sessionId: id } : {}) };
+    }
+    case 'compaction_end': {
+      const result = isRecord(parsed['result']) ? parsed['result'] : undefined;
+      if (!result || parsed['aborted'] === true || parsed['errorMessage'] !== undefined) {
+        return { kind: 'other' };
+      }
+      const rawReason = parsed['reason'];
+      const compactionReason: CompactionReason =
+        rawReason === 'manual' || rawReason === 'threshold' || rawReason === 'overflow'
+          ? rawReason
+          : 'unknown';
+      const before = result['tokensBefore'];
+      const after = result['estimatedTokensAfter'];
+      return {
+        kind: 'compaction',
+        compactionReason,
+        ...(typeof before === 'number' && before >= 0 ? { tokensBefore: Math.round(before) } : {}),
+        ...(typeof after === 'number' && after >= 0 ? { tokensAfter: Math.round(after) } : {}),
+      };
     }
     case 'message_update': {
       const event = isRecord(parsed['assistantMessageEvent'])
@@ -339,6 +374,7 @@ export class PiAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     let full = '';
+    let currentAssistantText = '';
     let finalText = '';
     let tokens: number | undefined;
     let errored = false;
@@ -396,8 +432,21 @@ export class PiAdapter extends BaseAgentAdapter {
       }
       if (event.kind === 'session' && event.sessionId) {
         this.#sessionByThread.set(threadId, event.sessionId);
+      } else if (event.kind === 'compaction') {
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: {
+            content: compactionBlock(event.compactionReason, {
+              ...(event.tokensBefore !== undefined ? { tokensBefore: event.tokensBefore } : {}),
+              ...(event.tokensAfter !== undefined ? { tokensAfter: event.tokensAfter } : {}),
+            }),
+          },
+        });
       } else if (event.kind === 'delta' && event.text) {
         full += event.text;
+        currentAssistantText += event.text;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
         this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
@@ -417,7 +466,23 @@ export class PiAdapter extends BaseAgentAdapter {
           });
         }
       } else if (event.kind === 'final') {
-        if (event.text) finalText = event.text;
+        if (event.text) {
+          finalText = event.text;
+          const unseen = unseenAssistantText(currentAssistantText, event.text);
+          if (unseen) {
+            full += unseen;
+            this.emit({ type: 'delta', threadId, turnId, data: { text: unseen } });
+          }
+        }
+        if (currentAssistantText.length > 0 || (event.text?.length ?? 0) > 0) {
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: assistantResponseBoundaryBlock() },
+          });
+        }
+        currentAssistantText = '';
         if (event.tokens !== undefined) tokens = event.tokens;
         if (event.isError) {
           errored = true;
@@ -520,6 +585,11 @@ export class PiAdapter extends BaseAgentAdapter {
       });
     });
   }
+}
+
+function unseenAssistantText(streamed: string, complete: string): string {
+  if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
+  return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
 }
 
 function extractAssistantText(content: unknown): string {

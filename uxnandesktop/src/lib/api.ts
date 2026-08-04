@@ -19,6 +19,7 @@ import type {
   AgentHooksStatus,
   CommitInfo,
   DetectedEditor,
+  DiagnosticsReport,
   DirListing,
   FileChange,
   NativeEditor,
@@ -1306,4 +1307,21 @@ export function githubAiDraftPr(
   base?: string | null,
 ): Promise<string> {
   return invoke<string>("github_ai_draft_pr", { worktreePath, base: base ?? null });
+}
+
+/** Record one line into the app's own log (`<app-data>/logs/`). Used by the
+ *  uncaught-error reporter so a frontend failure — the one kind that leaves no
+ *  OS crash report — lands on the same timeline as the backend's events. */
+export function diagnosticsLog(
+  level: string,
+  source: string,
+  message: string,
+): Promise<void> {
+  return invoke<void>("diagnostics_log", { level, source, message });
+}
+
+/** Where the log lives, and whether the previous session ended without reaching
+ *  its clean exit path (a crash, a force-close, or a kill). */
+export function diagnosticsReport(): Promise<DiagnosticsReport> {
+  return invoke<DiagnosticsReport>("diagnostics_report");
 }

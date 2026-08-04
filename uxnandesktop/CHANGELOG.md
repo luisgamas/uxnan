@@ -49,6 +49,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   budget is carried to the next tick instead of being dropped (the projects store
   hands each change over exactly once, so nothing re-announced it).
 
+## [0.0.26] - 2026-08-03
+
+### Added — the app now records its own failures
+
+- **A rolling app log** under `<app data>/logs/` (2 MiB per file, 3 rotations
+  kept). Startup — with version, OS and architecture — clean shutdown, Rust
+  panics and uncaught frontend errors all land on **one timeline**, so a
+  backend fault and a webview fault are comparable side by side. See
+  [`docs/diagnostics.md`](docs/diagnostics.md).
+- **A Rust panic hook**, so a panic is written to that log before the process
+  dies. It chains to the previously installed hook rather than replacing it.
+- **Uncaught frontend errors and unhandled promise rejections are captured**
+  and forwarded to the same log. This is the failure mode that produced no
+  evidence at all before: a render error blanks the window while the process
+  stays healthy, so the OS records no crash and WebView2 writes no minidump.
+  The reporter is passive — it never prevents, defaults or swallows anything the
+  page does — and a failure to report is swallowed rather than becoming a second
+  failure.
+- **An unclean-shutdown marker.** `logs/session.active` exists while a session
+  runs and is removed on the clean exit path, so the next launch can tell that
+  the previous session was force-closed, killed or crashed — and says so in the
+  log. That same signal explains a missing terminal scrollback, which is only
+  persisted on the clean path.
+- New commands `diagnostics_log` and `diagnostics_report` (the latter returns
+  the log path and whether the previous session ended uncleanly).
+- **The user is told when the previous session ended unexpectedly**, once per
+  launch, as a dismissible card in the toast area with a **Show log file**
+  action — and the same information lives permanently in **Settings → App →
+  Diagnostics** (last-session state, the log's path, reveal action). Nothing
+  appears after a normal shutdown. The notice explains the consequence the user
+  is about to notice anyway: terminal scrollback is only persisted on the clean
+  exit path, so those terminals come back empty.
+
+No telemetry: nothing leaves the machine, and no token, prompt, terminal output
+or file content is written. Messages arriving from the webview are treated as
+untrusted input — bounded, stripped of control characters, and with newlines
+replaced so a thrown value cannot forge additional log lines.
+
 ## [0.0.25] - 2026-08-02
 
 ### Added — richer, safer file previews

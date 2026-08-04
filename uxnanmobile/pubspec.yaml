@@ -6,7 +6,7 @@ publish_to: 'none'
 # version: <build-name>+<build-number>
 # The build-number is Play's versionCode and must strictly increase. The previous
 # release used 20260724, so today's calendar date is already greater.
-version: 0.0.15-alpha.20260729+20260729
+version: 0.0.16-alpha.20260803+20260803
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -45,12 +45,24 @@ dependencies:
   image_picker: ^1.1.2 # composer attach: pick image from gallery/camera
   in_app_update_flutter: ^3.0.0 # in-app update: Play flexible (Android) + StoreKit (iOS)
   intl: any # i18n + date formatting (pinned by flutter_localizations)
+  # SVG renderer for arbitrary user documents (workspace previews, README
+  # shields). Pure Dart, BSD-3. flutter_svg stays for our own bundled logos;
+  # this one is used where fidelity to a document we did not author matters —
+  # it applies transforms to <text>, which vector_graphics does not, so a badge
+  # renders as a badge instead of a ten-times-too-large label. See
+  # docs/file-viewer.md.
+  jovial_svg: ^1.1.30
   logger: ^2.4.0 # structured logging
+  # Markdown AST, used directly for the GitHub extension set, the code-block
+  # builder and the custom inline syntax for agent-provided local file paths
+  # (already a transitive dep of flutter_markdown_plus).
+  markdown: ^7.3.1
   material_loading_indicator: ^1.0.0 # M3 Expressive rounded-shape morph loader
   mobile_scanner: ^6.0.11 # QR scanner (CameraX/MLKit, AVFoundation)
   nsd: ^5.0.1 # mDNS/Bonjour browse of _uxnan._tcp bridges (NsdManager / DNSSD)
   package_info_plus: ^9.0.1 # installed app name/version/build (About + Updates)
   path_provider: ^2.1.0 # on-disk app directories
+  pdfrx: ^2.4.7 # native PDF preview backed by PDFium on Android and iOS
   permission_handler: ^11.3.0 # camera / notification permissions
   pointycastle: ^3.9.0 # AES-256-GCM, HKDF, SHA-256
   riverpod: ^3.0.0 # core Riverpod

@@ -19,6 +19,8 @@ mod commands;
 // Public so the headless runner (`main.rs` → `automations::store`) resolves the
 // data directory through exactly the same override the app does.
 pub mod datadir;
+// Public so the headless runner can record its own lifecycle into the same log.
+pub mod diagnostics;
 mod editors;
 // Public so the GitHub integration tests (`tests/github_cli.rs`, offline, and
 // `tests/github_live.rs`, the ignored supervised sandbox suite) can match on
@@ -92,9 +94,17 @@ pub fn run() {
             // load (or default) the persisted state, then publish it as managed
             // state.
             let data_dir = crate::datadir::resolve(app.path().app_data_dir()?);
+            // Arm post-mortem diagnostics before anything else can fail: this is
+            // what turns "the app went black and I had to force-close it" from an
+            // unanswerable report into a log line. Also reports whether the
+            // previous session ever reached its clean exit path.
+            crate::diagnostics::init(&data_dir, &crate::updater::app_version());
+            crate::diagnostics::install_panic_hook();
             let persistence = PersistenceManager::new(&data_dir);
             let mut data = persistence.load().unwrap_or_else(|err| {
-                eprintln!("[uxnan-desktop] failed to load persisted state ({err}); starting fresh");
+                let message = format!("failed to load persisted state ({err}); starting fresh");
+                crate::diagnostics::log(crate::diagnostics::Level::Error, "persistence", &message);
+                eprintln!("[uxnan-desktop] {message}");
                 AppData::default()
             });
             // Seed terminal profiles when missing (state persisted before they
@@ -129,7 +139,13 @@ pub fn run() {
                 match crate::hooks::start(hook_handle, token, hooks_dir_for_server).await {
                     Ok(info) => *hook_slot.write().await = Some(info),
                     Err(err) => {
-                        eprintln!("[uxnan-desktop] agent hook server failed to start: {err}");
+                        let message = format!("agent hook server failed to start: {err}");
+                        crate::diagnostics::log(
+                            crate::diagnostics::Level::Error,
+                            "hooks",
+                            &message,
+                        );
+                        eprintln!("[uxnan-desktop] {message}");
                     }
                 }
             });
@@ -153,7 +169,9 @@ pub fn run() {
                     });
                 }
                 Err(err) => {
-                    eprintln!("[uxnan-desktop] hook scripts not installed at {hooks_dir:?}: {err}");
+                    let message = format!("hook scripts not installed at {hooks_dir:?}: {err}");
+                    crate::diagnostics::log(crate::diagnostics::Level::Warn, "hooks", &message);
+                    eprintln!("[uxnan-desktop] {message}");
                 }
             }
 
@@ -462,6 +480,8 @@ pub fn run() {
             commands::github_notifications_count,
             commands::github_clone,
             commands::github_ai_draft_pr,
+            commands::diagnostics_log,
+            commands::diagnostics_report,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -479,6 +499,12 @@ pub fn run() {
                 // config so nothing stale is left behind (best-effort; see
                 // `mcpinject.rs`).
                 crate::mcpinject::cleanup(app_handle);
+                // Last: disarm the session marker. Reaching this point is what
+                // makes the next launch report a *clean* previous session, so it
+                // runs after the other teardown rather than before it.
+                if let Some(sink) = crate::diagnostics::sink() {
+                    sink.mark_clean_shutdown();
+                }
             }
         });
 }

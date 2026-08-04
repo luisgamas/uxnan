@@ -8,10 +8,12 @@ import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_risk.dart';
 import 'package:uxnan/domain/enums/command_status.dart';
+import 'package:uxnan/domain/enums/context_compaction_reason.dart';
 import 'package:uxnan/domain/enums/plan_step_status.dart';
 import 'package:uxnan/domain/enums/subagent_action_kind.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
@@ -20,6 +22,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -34,6 +37,7 @@ class MessageContentView extends StatelessWidget {
     required this.content,
     this.selectableText = true,
     this.threadId,
+    this.onTapLink,
     super.key,
   });
 
@@ -48,13 +52,22 @@ class MessageContentView extends StatelessWidget {
   /// null elsewhere (e.g. the user's own bubble) leaves those cards read-only.
   final String? threadId;
 
+  /// Handles Markdown and detected local-path links in assistant prose.
+  final ValueChanged<String>? onTapLink;
+
   @override
   Widget build(BuildContext context) {
     return switch (content) {
-      final TextContent c => _TextBlock(content: c, selectable: selectableText),
+      final TextContent c => _TextBlock(
+          content: c,
+          selectable: selectableText,
+          onTapLink: onTapLink,
+        ),
       // Thinking is normally lifted into the turn's dedicated section by
       // AssistantTurnView; rendered here too for completeness.
       final ThinkingContent c => _StandaloneThinkingSection(text: c.text),
+      final CompactionContent c => _CompactionMarker(content: c),
+      AssistantResponseBoundaryContent() => const SizedBox.shrink(),
       final CodeContent c => _CodeBlock(content: c),
       final CommandExecutionContent c => _CommandCard(content: c),
       final SystemContent c => _SystemBanner(content: c),
@@ -74,6 +87,107 @@ class MessageContentView extends StatelessWidget {
   }
 }
 
+/// A quiet, non-interactive milestone in the conversation timeline showing
+/// where the agent summarized earlier context to make room for more work.
+class _CompactionMarker extends StatelessWidget {
+  const _CompactionMarker({required this.content});
+
+  final CompactionContent content;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final detail = switch (content.reason) {
+      ContextCompactionReason.manual => l10n.conversationCompactionManual,
+      ContextCompactionReason.threshold => l10n.conversationCompactionThreshold,
+      ContextCompactionReason.overflow => l10n.conversationCompactionOverflow,
+      ContextCompactionReason.automatic => l10n.conversationCompactionAutomatic,
+      ContextCompactionReason.unknown => l10n.conversationCompactionUnknown,
+    };
+    final tokenDetail =
+        content.tokensBefore != null && content.tokensAfter != null
+            ? l10n.conversationCompactionTokens(
+                NumberFormat.compact().format(content.tokensBefore),
+                NumberFormat.compact().format(content.tokensAfter),
+              )
+            : null;
+    final semantics = [
+      l10n.conversationCompactionTitle,
+      detail,
+      if (tokenDetail != null) tokenDetail,
+    ].join('. ');
+
+    return Semantics(
+      container: true,
+      label: semantics,
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: colors.outlineVariant)),
+          const SizedBox(width: UxnanSpacing.sm),
+          Flexible(
+            flex: 4,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLow,
+                borderRadius: const BorderRadius.all(UxnanRadius.lg),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UxnanSpacing.md,
+                  vertical: UxnanSpacing.sm,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.compress_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UxnanSpacing.sm),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            l10n.conversationCompactionTitle,
+                            style: textTheme.labelLarge?.copyWith(
+                              color: colors.onSurface,
+                            ),
+                          ),
+                          Text(
+                            detail,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          if (tokenDetail != null)
+                            Text(
+                              tokenDetail,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Expanded(child: Divider(color: colors.outlineVariant)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Renders an [ApprovalContent]: the requested action, its risk, and the
 /// interactive Approve / Reject / "always allow this session" controls. The
 /// card morphs (spring `AnimatedSize`) from the actions into a settled status
@@ -85,8 +199,8 @@ class MessageContentView extends StatelessWidget {
 /// `ApprovalResponseStore`) so the card stays in its resolved state across
 /// scrolls and app restarts — the action buttons never reappear.
 ///
-/// Live end-to-end: the bridge emits `approval` blocks (Claude/Codex/Gemini
-/// hooks, OpenCode via `opencode serve`) and accepts `turn/send { approvalResponse }`.
+/// Live end-to-end: the bridge emits `approval` blocks (Claude/Codex hooks,
+/// OpenCode via `opencode serve`) and accepts `turn/send { approvalResponse }`.
 class _ApprovalCard extends ConsumerWidget {
   const _ApprovalCard({required this.content, this.threadId});
   final ApprovalContent content;
@@ -1350,9 +1464,14 @@ IconData _subagentActionIcon(SubagentActionKind kind) => switch (kind) {
     };
 
 class _TextBlock extends StatelessWidget {
-  const _TextBlock({required this.content, this.selectable = true});
+  const _TextBlock({
+    required this.content,
+    this.selectable = true,
+    this.onTapLink,
+  });
   final TextContent content;
   final bool selectable;
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
@@ -1360,6 +1479,13 @@ class _TextBlock extends StatelessWidget {
       data: content.text.isEmpty ? '…' : content.text,
       selectable: selectable,
       styleSheet: uxnanMarkdownStyleSheet(context),
+      inlineSyntaxes: onTapLink == null ? null : [WorkspacePathSyntax()],
+      builders: onTapLink == null
+          ? const {}
+          : {'code': WorkspaceCodeLinkBuilder(onTap: onTapLink!)},
+      onTapLink: (_, href, __) {
+        if (href != null && href.isNotEmpty) onTapLink?.call(href);
+      },
     );
   }
 }
@@ -1671,10 +1797,17 @@ class _Placeholder extends StatelessWidget {
 /// user messages get a bubble.
 class AssistantTurnView extends ConsumerStatefulWidget {
   /// Creates an [AssistantTurnView] for an assistant [message].
-  const AssistantTurnView({required this.message, super.key});
+  const AssistantTurnView({
+    required this.message,
+    this.onTapLink,
+    super.key,
+  });
 
   /// The assistant message to render.
   final Message message;
+
+  /// Handles links in every visible response group, including streaming text.
+  final ValueChanged<String>? onTapLink;
 
   @override
   ConsumerState<AssistantTurnView> createState() => _AssistantTurnViewState();
@@ -1682,6 +1815,7 @@ class AssistantTurnView extends ConsumerStatefulWidget {
 
 class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
   String? _expandedProcess;
+  bool _previousResponsesExpanded = false;
 
   void _toggleProcess(String id) {
     setState(() => _expandedProcess = _expandedProcess == id ? null : id);
@@ -1694,6 +1828,39 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final thinking = StringBuffer();
     final diffs = <DiffContent>[];
     final prose = StringBuffer();
+    final responseGroups = <List<MessageContent>>[];
+    var response = <MessageContent>[];
+
+    // Native protocols may produce several assistant messages in one turn.
+    // Boundaries are zero-text metadata: during streaming every group remains
+    // visible; once settled, all but the last response move into one disclosure
+    // without changing the persisted content or the copy projection.
+    for (final content in message.contents) {
+      switch (content) {
+        case final ThinkingContent reasoning:
+          thinking.write(reasoning.text);
+        case final DiffContent diff:
+          diffs.add(diff);
+        case AssistantResponseBoundaryContent():
+          if (response.isNotEmpty) {
+            responseGroups.add(response);
+            response = <MessageContent>[];
+          }
+        case final TextContent text:
+          response.add(text);
+          if (text.text.isNotEmpty) {
+            if (prose.isNotEmpty) prose.write('\n\n');
+            prose.write(text.text);
+          }
+        default:
+          response.add(content);
+      }
+    }
+    if (response.isNotEmpty) responseGroups.add(response);
+    final collapsePrevious = !message.isStreaming && responseGroups.length > 1;
+    final visibleContents = collapsePrevious
+        ? responseGroups.last
+        : [for (final group in responseGroups) ...group];
     // Ordered segments: work-log cards and prose/other blocks IN THE ORDER the
     // agent produced them, so a work log sits just above the response it
     // precedes and interleaved responses don't collapse into one block.
@@ -1703,6 +1870,20 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
     final pendingText = StringBuffer();
     var pendingTextIsStreaming = false;
     var workLogIndex = 0;
+
+    if (collapsePrevious) {
+      segments.add(
+        _PreviousResponsesSection(
+          responses: responseGroups.sublist(0, responseGroups.length - 1),
+          threadId: message.threadId,
+          onTapLink: widget.onTapLink,
+          expanded: _previousResponsesExpanded,
+          onToggle: () => setState(
+            () => _previousResponsesExpanded = !_previousResponsesExpanded,
+          ),
+        ),
+      );
+    }
 
     void gap() {
       if (segments.isNotEmpty) {
@@ -1717,8 +1898,11 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       gap();
       segments.add(
         pendingTextIsStreaming
-            ? _StreamingProse(text: text)
-            : MessageContentView(content: TextContent(text)),
+            ? _StreamingProse(text: text, onTapLink: widget.onTapLink)
+            : MessageContentView(
+                content: TextContent(text),
+                onTapLink: widget.onTapLink,
+              ),
       );
       pendingTextIsStreaming = false;
     }
@@ -1738,12 +1922,8 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
       );
     }
 
-    for (final content in message.contents) {
+    for (final content in visibleContents) {
       switch (content) {
-        case final ThinkingContent reasoning:
-          thinking.write(reasoning.text);
-        case final DiffContent diff:
-          diffs.add(diff);
         case CommandExecutionContent() || ToolUseContent():
           flushText();
           pendingCommands.add(content);
@@ -1752,8 +1932,6 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           if (text.text.isNotEmpty) {
             if (pendingText.isNotEmpty) pendingText.write('\n\n');
             pendingText.write(text.text);
-            if (prose.isNotEmpty) prose.write('\n\n');
-            prose.write(text.text);
           }
           pendingTextIsStreaming = text.isStreaming;
         default:
@@ -1761,7 +1939,11 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
           flushText();
           gap();
           segments.add(
-            MessageContentView(content: content, threadId: message.threadId),
+            MessageContentView(
+              content: content,
+              threadId: message.threadId,
+              onTapLink: widget.onTapLink,
+            ),
           );
       }
     }
@@ -1802,6 +1984,144 @@ class _AssistantTurnViewState extends ConsumerState<AssistantTurnView> {
   }
 }
 
+/// Collapses assistant progress/commentary messages that preceded the final
+/// response in the same turn. Nothing is summarized or discarded: expansion
+/// renders the original ordered content blocks verbatim.
+class _PreviousResponsesSection extends StatelessWidget {
+  const _PreviousResponsesSection({
+    required this.responses,
+    required this.threadId,
+    required this.onTapLink,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final List<List<MessageContent>> responses;
+  final String threadId;
+  final ValueChanged<String>? onTapLink;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final duration =
+        reduceMotion ? Duration.zero : const Duration(milliseconds: 220);
+    final label = l10n.conversationPreviousMessages(responses.length);
+
+    return Semantics(
+      container: true,
+      button: true,
+      expanded: expanded,
+      label: label,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            key: const ValueKey('previous-responses-toggle'),
+            onTap: onToggle,
+            borderRadius: const BorderRadius.all(UxnanRadius.full),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+              child: Row(
+                children: [
+                  Expanded(child: Divider(color: colors.outlineVariant)),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Text(
+                    label,
+                    style: textTheme.labelMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UxnanSpacing.xs),
+                  AnimatedRotation(
+                    turns: expanded ? 0.5 : 0,
+                    duration: duration,
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UxnanSpacing.sm),
+                  Expanded(child: Divider(color: colors.outlineVariant)),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: UxnanSpacing.sm),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerLow,
+                        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(UxnanSpacing.md),
+                        child: _PreviousResponsesBody(
+                          responses: responses,
+                          threadId: threadId,
+                          onTapLink: onTapLink,
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviousResponsesBody extends StatelessWidget {
+  const _PreviousResponsesBody({
+    required this.responses,
+    required this.threadId,
+    required this.onTapLink,
+  });
+
+  final List<List<MessageContent>> responses;
+  final String threadId;
+  final ValueChanged<String>? onTapLink;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var responseIndex = 0;
+            responseIndex < responses.length;
+            responseIndex++) ...[
+          if (responseIndex > 0) ...[
+            const SizedBox(height: UxnanSpacing.md),
+            Divider(color: Theme.of(context).colorScheme.outlineVariant),
+            const SizedBox(height: UxnanSpacing.md),
+          ],
+          for (var contentIndex = 0;
+              contentIndex < responses[responseIndex].length;
+              contentIndex++) ...[
+            if (contentIndex > 0) const SizedBox(height: UxnanSpacing.sm),
+            MessageContentView(
+              content: responses[responseIndex][contentIndex],
+              threadId: threadId,
+              onTapLink: onTapLink,
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
 /// A quiet in-flow activity cue at the beginning of the live assistant turn.
 /// It stays with the response instead of competing with composer context and
 /// token meters in the fixed bottom chrome.
@@ -1833,33 +2153,39 @@ class _AgentRespondingStatus extends StatelessWidget {
   }
 }
 
-/// Keeps the active loader inline after the latest streamed character.
+/// Renders partial prose through the same Markdown path as the settled answer.
+///
+/// Keeping one renderer for both states prevents completed Markdown syntax from
+/// flashing as source text until the turn finishes. The loader remains beside
+/// the live block without becoming part of the selectable response.
 class _StreamingProse extends StatelessWidget {
-  const _StreamingProse({required this.text});
+  const _StreamingProse({required this.text, required this.onTapLink});
 
   final String text;
+  final ValueChanged<String>? onTapLink;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return SelectableText.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: text),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: const EdgeInsets.only(left: UxnanSpacing.xs),
-              child: PolygonLoader(
-                size: 14,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Flexible(
+          child: _TextBlock(
+            content: TextContent(text),
+            onTapLink: onTapLink,
           ),
-        ],
-      ),
-      style: textTheme.bodyMedium?.copyWith(color: colors.onSurface),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(
+            left: UxnanSpacing.xs,
+          ),
+          child: PolygonLoader(
+            size: 14,
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

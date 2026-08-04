@@ -2549,6 +2549,48 @@ pub async fn github_ai_draft_pr(
         .map_err(CommandError::from)
 }
 
+/// What the app knows about its own diagnostics (see `diagnostics.rs`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsReport {
+    /// Absolute path of the live log file, so a bug report can point at it.
+    /// `None` when the sink failed to initialize.
+    pub log_path: Option<String>,
+    /// Whether the previous session ended without reaching its clean exit path.
+    pub previous_session_unclean: bool,
+}
+
+/// Record one line from the webview into the app's log.
+///
+/// This is how a frontend exception — the failure mode that leaves the window
+/// blank while the process stays perfectly healthy, and which no OS crash
+/// report ever captures — reaches the same timeline as the backend's own
+/// events. Input is untrusted and sanitized by `diagnostics`; an unknown level
+/// is recorded as an error rather than dropped.
+#[tauri::command]
+pub fn diagnostics_log(level: String, source: String, message: String) {
+    crate::diagnostics::log(crate::diagnostics::Level::parse(&level), &source, &message);
+}
+
+/// Where the log lives, and whether the last session died without saying so.
+///
+/// Read once at boot by the frontend (`state/diagnostics.svelte.ts`), which
+/// turns an unclean previous session into the startup notice and the
+/// Settings → App → Diagnostics readout.
+#[tauri::command]
+pub fn diagnostics_report() -> DiagnosticsReport {
+    match crate::diagnostics::sink() {
+        Some(sink) => DiagnosticsReport {
+            log_path: Some(sink.log_path().to_string_lossy().into_owned()),
+            previous_session_unclean: sink.previous_session_unclean(),
+        },
+        None => DiagnosticsReport {
+            log_path: None,
+            previous_session_unclean: false,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

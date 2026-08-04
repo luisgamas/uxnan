@@ -30,6 +30,7 @@ import type {
   AgentId,
   AgentModel,
   AgentModelOption,
+  CompactionReason,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { scanCustomCommands } from './command-scan.js';
@@ -41,7 +42,9 @@ import {
   type ClaudeToolResult,
   type ClaudeToolUse,
 } from './claude-tools.js';
+import { warningBlock } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
+import { assistantResponseBoundaryBlock, compactionBlock } from './content-blocks.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /**
@@ -62,6 +65,7 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   forking: true,
   images: true,
   reportsContextUsage: true,
+  reportsCompaction: true,
   commands: true,
 };
 
@@ -175,9 +179,32 @@ interface ActiveRun {
 
 /** A normalized Claude Code event extracted from one stream-json line. */
 export interface ClaudeEvent {
-  kind: 'init' | 'delta' | 'thinking' | 'assistant_text' | 'tool_result' | 'result' | 'other';
+  kind:
+    | 'init'
+    | 'compaction'
+    | 'delta'
+    | 'thinking'
+    | 'assistant_text'
+    | 'tool_result'
+    | 'result'
+    | 'task_started'
+    | 'task_ended'
+    | 'other';
   sessionId?: string;
   text?: string;
+  /**
+   * Only for `task_started` / `task_ended`: the CLI's own id for a **background
+   * task** the model started (`Bash` with `run_in_background`). The turn is not
+   * over while one is live — see `sendTurn`'s deferred-completion handling.
+   */
+  taskId?: string;
+  /**
+   * Only for `task_ended`: how the background task finished. `completed` means
+   * its work is done (and the CLI then wakes the model for another turn);
+   * `stopped` means the CLI **killed** it as the process came down, so that work
+   * was lost.
+   */
+  taskStatus?: 'completed' | 'stopped';
   /**
    * The `parent_tool_use_id` of the line, set when the event belongs to a
    * SUBAGENT (Task-tool) turn running in parallel with the main loop rather
@@ -207,6 +234,10 @@ export interface ClaudeEvent {
   isError?: boolean;
   /** Only set for `result`: the raw `usage` object (token counts), if present. */
   usage?: unknown;
+  /** Only set for `system/compact_boundary`. */
+  compactionReason?: CompactionReason;
+  /** Context tokens immediately before a compact boundary, when reported. */
+  tokensBefore?: number;
   /** Only set for `assistant_text`: any tool invocations in the message. */
   toolUses?: ClaudeToolUse[];
   /** Only set for `tool_result`: results the agent fed back from its tools. */
@@ -260,6 +291,49 @@ export function parseClaudeLine(line: string): ClaudeEvent | null {
   } as const;
   switch (parsed['type']) {
     case 'system': {
+      // `system` is a family, not one event: alongside `init` the CLI reports
+      // **context compaction** and **background tasks** (`Bash` with
+      // `run_in_background`) — and those decide whether a `result` is really the
+      // end of the turn. Treating every system line as an init, as this used to,
+      // threw those signals away.
+      const subtype = typeof parsed['subtype'] === 'string' ? parsed['subtype'] : undefined;
+      const taskId = typeof parsed['task_id'] === 'string' ? parsed['task_id'] : undefined;
+      if (subtype === 'task_started' && taskId) {
+        return { kind: 'task_started', ...base, taskId };
+      }
+      // The CLI reports the outcome twice — `task_updated` then
+      // `task_notification` — and only the notification carries the status.
+      if (subtype === 'task_notification' && taskId) {
+        const status = parsed['status'] === 'completed' ? 'completed' : 'stopped';
+        return { kind: 'task_ended', ...base, taskId, taskStatus: status };
+      }
+      if (subtype === 'compact_boundary') {
+        const metadata = isRecord(parsed['compact_metadata'])
+          ? parsed['compact_metadata']
+          : undefined;
+        const trigger = metadata?.['trigger'];
+        const compactionReason: CompactionReason =
+          trigger === 'manual'
+            ? 'manual'
+            : trigger === 'auto' || trigger === 'automatic'
+              ? 'automatic'
+              : 'unknown';
+        const preTokens = metadata?.['pre_tokens'];
+        return {
+          kind: 'compaction',
+          ...base,
+          compactionReason,
+          ...(typeof preTokens === 'number' && preTokens >= 0
+            ? { tokensBefore: Math.round(preTokens) }
+            : {}),
+        };
+      }
+      if (subtype !== undefined && subtype !== 'init') {
+        // `background_tasks_changed`, `task_updated`, `thinking_tokens`, `status`:
+        // real events we deliberately do not act on. Classifying them as `init`
+        // would make each one look like a fresh session.
+        return { kind: 'other', ...base };
+      }
       const model = typeof parsed['model'] === 'string' ? parsed['model'] : undefined;
       const slashCommands = Array.isArray(parsed['slash_commands'])
         ? parsed['slash_commands'].filter((c): c is string => typeof c === 'string')
@@ -510,7 +584,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     this.emit({ type: 'turn_started', threadId, turnId });
 
     let full = '';
-    let sawPartial = false;
+    // Deltas belonging to the current native assistant-message envelope. Claude
+    // may emit several envelopes in one turn around tool use; reconciling each
+    // envelope independently prevents a later non-streamed message from being
+    // skipped merely because an earlier one streamed.
+    let currentAssistantText = '';
     let sawModel = false;
     let resolvedModel: string | undefined;
     let errored = false;
@@ -528,6 +606,59 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // instead of severing it (which rendered sentences split mid-word by an
     // activity card). `-1` stands in when the CLI omits the block index.
     let openTextIndex: number | undefined;
+    // Background tasks (`Bash` with `run_in_background`) the model started and
+    // that have not reported an outcome yet. While one is live the CLI is still
+    // running and may WAKE THE MODEL for another turn, so a `result` is NOT the
+    // end of this turn.
+    const liveBackgroundTasks = new Set<string>();
+    // Set when a `result` arrived while a background task was still live: the
+    // turn's completion is held until the tasks resolve and the CLI either
+    // produces its follow-up turn or exits.
+    let deferredCompletion = false;
+    // Background tasks the CLI killed on its way out (`stopped`). That work was
+    // started on the user's behalf and did NOT finish — staying silent about it
+    // is what let the phone report a clean success over lost work.
+    let interruptedTasks = 0;
+    // The completion payload observed at the last `result`, replayed if the run
+    // ends without another one.
+    let pendingCompletion: { text: string; usage?: { tokens: number; contextWindow?: number } } = {
+      text: '',
+    };
+
+    /** Emit the single `turn_completed` for this run, once. */
+    const completeOnce = (payload: {
+      text: string;
+      usage?: { tokens: number; contextWindow?: number };
+    }): void => {
+      if (completed || errored) return;
+      completed = true;
+      if (interruptedTasks > 0) {
+        // Say it in the turn itself. The CLI gives background work only a few
+        // seconds' grace after the turn ends and then kills it, so this is a
+        // real, silent loss the user would otherwise never learn about.
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: {
+            content: warningBlock(
+              interruptedTasks === 1
+                ? 'The agent left a background task running, and it was interrupted when the turn ended. Its work did not finish.'
+                : `The agent left ${interruptedTasks} background tasks running, and they were interrupted when the turn ended. Their work did not finish.`,
+            ),
+          },
+        });
+      }
+      this.emit({
+        type: 'turn_completed',
+        threadId,
+        turnId,
+        data: {
+          text: payload.text,
+          ...(payload.usage !== undefined ? { usage: payload.usage } : {}),
+        },
+      });
+    };
 
     const reader = createInterface({ input: child.stdout });
     reader.on('line', (line) => {
@@ -580,26 +711,51 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         }
       }
       if (subagent) return; // everything below folds into the MAIN message only
-      if (event.kind === 'init' && event.model && !sawModel) {
+      if (event.kind === 'compaction') {
+        this.emit({
+          type: 'block',
+          threadId,
+          turnId,
+          data: {
+            content: compactionBlock(event.compactionReason, {
+              ...(event.tokensBefore !== undefined ? { tokensBefore: event.tokensBefore } : {}),
+            }),
+          },
+        });
+      } else if (event.kind === 'init' && event.model && !sawModel) {
         // Surface the concrete model the alias resolved to (e.g. `opus` →
         // `claude-opus-4-8`) so the phone can show the exact version in use.
         sawModel = true;
         resolvedModel = event.model;
         this.emit({ type: 'model_resolved', threadId, turnId, data: { text: event.model } });
       } else if (event.kind === 'delta' && event.text) {
-        sawPartial = true;
         full += event.text;
+        currentAssistantText += event.text;
         openTextIndex = event.blockIndex ?? -1;
         this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
       } else if (event.kind === 'thinking' && event.text) {
         // Reasoning chunk — streamed to the phone (and persisted) separately from
         // the answer so it can be shown in a collapsible "thinking" section.
         this.emit({ type: 'thinking', threadId, turnId, data: { text: event.text } });
-      } else if (event.kind === 'assistant_text' && event.text && !sawPartial) {
-        // Fallback when token streaming produced no deltas: emit the complete
-        // assistant message text as one chunk.
-        full += event.text;
-        this.emit({ type: 'delta', threadId, turnId, data: { text: event.text } });
+      } else if (event.kind === 'assistant_text') {
+        // The complete native message follows its partial stream. Emit only an
+        // unseen suffix (or the whole message when this envelope had no
+        // deltas), then preserve its boundary for the mobile disclosure UI.
+        const complete = event.text ?? '';
+        const unseen = unseenAssistantText(currentAssistantText, complete);
+        if (unseen) {
+          full += unseen;
+          this.emit({ type: 'delta', threadId, turnId, data: { text: unseen } });
+        }
+        if (currentAssistantText.length > 0 || complete.length > 0) {
+          this.emit({
+            type: 'block',
+            threadId,
+            turnId,
+            data: { content: assistantResponseBoundaryBlock() },
+          });
+        }
+        currentAssistantText = '';
       } else if (event.kind === 'result') {
         if (event.isError) {
           errored = true;
@@ -610,31 +766,42 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
             data: { text: event.text && event.text.length > 0 ? event.text : 'claude error' },
           });
         } else {
-          completed = true;
-          // Prefer the streamed text (`full`) — it's the complete narration the
-          // user saw. `result.result` is often only the final segment of a
-          // tool-using turn, so using it would shrink the message on re-sync and
-          // drop earlier paragraphs. Fall back to `result.result` only when no
-          // partials streamed.
-          const finalText =
-            sawPartial && full.length > 0
-              ? full
-              : event.text && event.text.length > 0
-                ? event.text
-                : full;
+          // Prefer the accumulated assistant envelopes (`full`) — they are the
+          // complete narration the user saw. `result.result` is often only the
+          // final segment of a tool-using turn, so using it would shrink the
+          // message on re-sync and drop earlier paragraphs — and after a
+          // deferred completion the run spans TWO model turns, of which
+          // `result.result` only ever carries the latest, so the accumulated
+          // narration is also the only text that still holds the first reply.
+          const finalText = full.length > 0 ? full : (event.text ?? '');
           const tokens = claudeUsageTokens(event.usage ?? lastUsage);
           const window = claudeContextWindow(resolvedModel ?? model);
           const usage =
             tokens !== undefined
               ? { tokens, ...(window !== undefined ? { contextWindow: window } : {}) }
               : undefined;
-          this.emit({
-            type: 'turn_completed',
-            threadId,
-            turnId,
-            data: { text: finalText, ...(usage !== undefined ? { usage } : {}) },
-          });
+          pendingCompletion = { text: finalText, ...(usage !== undefined ? { usage } : {}) };
+          if (liveBackgroundTasks.size > 0) {
+            // The model ended its turn but left work running, and the CLI keeps
+            // running to wait for it — when that work finishes in time the CLI
+            // wakes the model and a SECOND turn follows on this same process.
+            // Completing here would end the turn mid-work: the phone would drop
+            // its "responding" state, the queue would drain a follow-up into a
+            // process that is still busy, and the wake-up turn would land on a
+            // turn already closed (its text overwriting the first reply).
+            deferredCompletion = true;
+          } else {
+            completeOnce(pendingCompletion);
+          }
         }
+      } else if (event.kind === 'task_started' && event.taskId) {
+        liveBackgroundTasks.add(event.taskId);
+      } else if (event.kind === 'task_ended' && event.taskId) {
+        liveBackgroundTasks.delete(event.taskId);
+        if (event.taskStatus === 'stopped') interruptedTasks += 1;
+        // Deliberately NOT completing here even when the last task resolves: a
+        // `completed` task is exactly when the CLI wakes the model, so the run
+        // is finished by its follow-up `result` or by the process exiting.
       }
     });
 
@@ -655,10 +822,24 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     child.on('close', () => {
       reader.close();
       this.#active.delete(turnId);
-      if (!completed && !errored) {
-        // No terminal `result` line arrived (e.g. killed): complete with what we have.
-        this.emit({ type: 'turn_completed', threadId, turnId, data: { text: full } });
+      if (completed || errored) return;
+      // A background task still open at exit was killed with the process, even
+      // if its `task_notification` never arrived.
+      interruptedTasks += liveBackgroundTasks.size;
+      liveBackgroundTasks.clear();
+      if (deferredCompletion) {
+        // The turn was held for background work and the CLI exited without a
+        // follow-up turn: complete it now — with the streamed text, which by
+        // then includes any wake-up turn's output — and report whatever the CLI
+        // killed on its way out.
+        completeOnce({
+          ...pendingCompletion,
+          text: full.length > 0 ? full : pendingCompletion.text,
+        });
+        return;
       }
+      // No terminal `result` line arrived (e.g. killed): complete with what we have.
+      completeOnce({ text: full });
     });
 
     return Promise.resolve();
@@ -775,4 +956,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function unseenAssistantText(streamed: string, complete: string): string {
+  if (complete.length === 0 || streamed === complete || streamed.includes(complete)) return '';
+  return complete.startsWith(streamed) ? complete.slice(streamed.length) : complete;
 }

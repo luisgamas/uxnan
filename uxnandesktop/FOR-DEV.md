@@ -6,8 +6,10 @@ which tracks assets only a human can provide.)
 
 > The implemented surface is documented in [`README.md`](README.md) +
 > [`docs/`](docs/) and the phase plan in
-> [`architecture/04-technical-reference.md`](architecture/04-technical-reference.md);
-> this file tracks only what's left.
+> [`architecture/04-technical-reference.md`](architecture/04-technical-reference.md).
+> **`## Status` below is this component's canonical implementation status** (the
+> root `AGENTS.md` points here instead of keeping its own inventory); everything
+> after it tracks what's left.
 
 ## Status
 
@@ -21,9 +23,10 @@ side validated against captured real GitHub data — `docs/github-validation.md`
 **"Open with" external editors/IDEs**, **automations**, **pets**, **a reproducible
 resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
-background consumers**, `docs/resource-mode.md`). 477 Rust tests (449 unit + 28
+background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
+(`docs/diagnostics.md`). 488 Rust tests (460 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 746 frontend Vitest tests (739 passing + 7 platform-skipped) across two
+probe) + 764 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -255,6 +258,20 @@ started.**
   See [`docs/resource-benchmarks.md`](docs/resource-benchmarks.md).
   **Caveats: only Windows has been run on real hardware; R07/R08 still need an
   operator; the gate is warn-only.** See "Resource benchmarks — follow-ups".
+
+## Diagnostics — follow-ups ☐
+
+**Recording and surfacing are both complete** (rolling log, panic hook,
+uncaught-frontend-error capture, unclean-shutdown marker, the startup notice and
+Settings → App → Diagnostics; `docs/diagnostics.md`).
+
+- [ ] **Decide whether an agent's terminal death deserves its own log line.**
+      An agent CLI running inside a uxnan terminal cannot tell an app crash from
+      a force-close from a dead PTY host, which is exactly what made the
+      2026-08-02 cut sessions unfalsifiable. Recording PTY child exits (pid,
+      exit status, whether uxnan asked for it) would separate those three, but
+      it needs a rate limit — a busy session spawns and reaps constantly — so it
+      is deliberately not part of the first pass.
 
 ## Resource benchmarks — follow-ups ☐
 
@@ -1058,7 +1075,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 443 Rust + 667 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 488 Rust + 764 Vitest tests (both
   projects: pure logic and components). E2E runs in its own on-demand/nightly
   Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →

@@ -1283,11 +1283,11 @@
 
   "fileViewerViewSource": "View source",
   "@fileViewerViewSource": {
-    "description": "Tooltip on the action that switches the file viewer from the markdown preview to the raw source."
+    "description": "Tooltip on the action that switches a preview-capable file to its raw source."
   },
   "fileViewerViewPreview": "View preview",
   "@fileViewerViewPreview": {
-    "description": "Tooltip on the action that switches the file viewer from the raw source to the markdown preview."
+    "description": "Tooltip on the action that switches a preview-capable file from source to its visual preview."
   },
   "fileViewerShowDiff": "Show diff",
   "@fileViewerShowDiff": {
@@ -1299,7 +1299,7 @@
   },
   "fileViewerLinkCopied": "Link copied: {href}",
   "@fileViewerLinkCopied": {
-    "description": "Snackbar shown when a link tapped in the Markdown preview is copied to the clipboard (the viewer never opens an external browser).",
+    "description": "Snackbar shown when a link tapped in the Markdown preview could not be handed to the OS (an in-page anchor, an unusual scheme, or no handler installed) and was copied to the clipboard instead.",
     "placeholders": {
       "href": {
         "type": "String",
@@ -1318,6 +1318,38 @@
   "fileViewerLoadFailed": "Couldn't open this file",
   "@fileViewerLoadFailed": {
     "description": "Title of the error state shown when the file viewer fails to load a file."
+  },
+  "fileViewerMediaUnavailable": "The preview data isn't available. Pull down to try loading it again.",
+  "@fileViewerMediaUnavailable": {
+    "description": "Body of the error shown when a supported media file has no preview payload."
+  },
+  "fileViewerPdfInvalid": "The bridge didn't return the original PDF bytes. Update or restart the bridge, then try again.",
+  "@fileViewerPdfInvalid": {
+    "description": "Body of the error shown when a PDF was not delivered as base64 bytes."
+  },
+  "markdownAlertNote": "Note",
+  "@markdownAlertNote": {
+    "description": "Title of a GitHub `> [!NOTE]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertTip": "Tip",
+  "@markdownAlertTip": {
+    "description": "Title of a GitHub `> [!TIP]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertImportant": "Important",
+  "@markdownAlertImportant": {
+    "description": "Title of a GitHub `> [!IMPORTANT]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertWarning": "Warning",
+  "@markdownAlertWarning": {
+    "description": "Title of a GitHub `> [!WARNING]` callout rendered in a Markdown preview."
+  },
+  "markdownAlertCaution": "Caution",
+  "@markdownAlertCaution": {
+    "description": "Title of a GitHub `> [!CAUTION]` callout rendered in a Markdown preview."
+  },
+  "markdownDetails": "Details",
+  "@markdownDetails": {
+    "description": "Fallback label for a Markdown <details> disclosure whose <summary> is empty."
   },
   "fileViewerModePreview": "Preview",
   "@fileViewerModePreview": {
@@ -1635,6 +1667,45 @@
   "settingsUpdatesVersionGroup": "Version",
   "@settingsUpdatesVersionGroup": {
     "description": "Updates section sub-group header for the current version + update state."
+  },
+  "conversationCompactionTitle": "Context compacted",
+  "@conversationCompactionTitle": {
+    "description": "Title of the durable marker shown where an agent compacted conversation context."
+  },
+  "conversationCompactionManual": "You asked the agent to summarize earlier context.",
+  "@conversationCompactionManual": {
+    "description": "Detail for a manually requested context compaction."
+  },
+  "conversationCompactionThreshold": "Earlier context was summarized after reaching the agent's limit.",
+  "@conversationCompactionThreshold": {
+    "description": "Detail for a threshold-triggered context compaction."
+  },
+  "conversationCompactionOverflow": "Earlier context was summarized after exceeding the available window.",
+  "@conversationCompactionOverflow": {
+    "description": "Detail for an overflow-triggered context compaction."
+  },
+  "conversationCompactionAutomatic": "Earlier context was summarized automatically.",
+  "@conversationCompactionAutomatic": {
+    "description": "Detail for an automatic context compaction."
+  },
+  "conversationCompactionUnknown": "Earlier messages were summarized to free context.",
+  "@conversationCompactionUnknown": {
+    "description": "Generic detail when the agent did not report why it compacted context."
+  },
+  "conversationCompactionTokens": "Context reduced from {before} to about {after} tokens.",
+  "@conversationCompactionTokens": {
+    "description": "Optional token counts shown under a context compaction marker.",
+    "placeholders": {
+      "before": { "type": "String" },
+      "after": { "type": "String" }
+    }
+  },
+  "conversationPreviousMessages": "{count, plural, =1{1 previous message} other{{count} previous messages}}",
+  "@conversationPreviousMessages": {
+    "description": "Disclosure label for earlier assistant responses produced within the same turn.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
   },
   "licensesError": "Couldn't load the licenses.",
   "@licensesError": {
