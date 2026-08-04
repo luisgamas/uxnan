@@ -84,19 +84,41 @@ jobs:
       # If a green run proves this was not the cause, this step comes out again.
       # Never fatal: provisioning that fails leaves the image's runtime in place
       # and the run still reports what it found, which is the whole point.
+      #
+      # The first attempt at this was a silent no-op — the bootstrapper returned
+      # in 0.7 s with no exit code and the version did not move — so the step now
+      # reports the state of the update path it depends on (the `edgeupdate`
+      # service and the EdgeUpdate policies, both commonly disabled on CI images)
+      # before trying. A no-op that says why is worth a cycle; one that says
+      # nothing costs one.
       - name: Update the WebView2 Runtime
         shell: pwsh
         run: |
           $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
           $version = { (Get-ItemProperty -Path $key -EA SilentlyContinue).pv }
           "before: $(& $version)"
+
+          Get-Service -Name 'edgeupdate*' -EA SilentlyContinue |
+            ForEach-Object { "service {0}: {1} ({2})" -f $_.Name, $_.Status, $_.StartType }
+          $policy = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate' -EA SilentlyContinue
+          if ($policy) {
+            $policy.PSObject.Properties |
+              Where-Object { $_.Name -notlike 'PS*' } |
+              ForEach-Object { "policy {0} = {1}" -f $_.Name, $_.Value }
+          } else { "policy: none set" }
+
           try {
+            # The updater is a service on this box; the bootstrapper cannot move
+            # anything while it is disabled, which is how the first attempt
+            # "succeeded" without changing the version.
+            Get-Service -Name 'edgeupdate' -EA SilentlyContinue |
+              Set-Service -StartupType Manual -EA SilentlyContinue
+            Start-Service -Name 'edgeupdate' -EA SilentlyContinue
+
             $exe = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
-            # The Evergreen bootstrapper is the supported way to move the runtime
-            # forward, and a no-op on a machine that is already current.
             Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $exe
-            & $exe '/silent' '/install'
-            if ($LASTEXITCODE -ne 0) { "installer exited $LASTEXITCODE — staying on the image's runtime" }
+            & $exe '/silent' '/install' | Out-Null
+            "installer exit code: '$LASTEXITCODE'"
           } catch {
             "could not update the runtime ($($_.Exception.Message)) — staying on the image's"
           }

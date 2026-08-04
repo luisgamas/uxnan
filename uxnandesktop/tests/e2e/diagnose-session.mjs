@@ -112,6 +112,109 @@ async function waitForEndpoint(url, { timeoutMs, pollMs = 250 }) {
 }
 
 /**
+ * The webview processes under an app, and what switches they were given.
+ *
+ * The single most useful reading when a debugging port never opens, because it
+ * separates three failures that look identical from outside:
+ *
+ * - **no webview process at all** — the automation switches are stopping the
+ *   webview from being created (a plain launch does create one, so that would
+ *   be the switches, not the app);
+ * - **a webview without `--remote-debugging-port`** — the runtime dropped what
+ *   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` asked for, so the port was never
+ *   requested and no driver could attach;
+ * - **a webview *with* the switch and still no port** — the runtime accepted it
+ *   and refused to listen, which points at the machine, not at the arguments.
+ */
+export function webviewProcesses(rootPid) {
+  if (process.platform !== "win32" || !rootPid) return null;
+  const script =
+    "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,CommandLine | " +
+    "Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress -Depth 2";
+  let all;
+  try {
+    const out = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
+      encoding: "utf8",
+      windowsHide: true,
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    all = JSON.parse(out.stdout);
+  } catch {
+    return null;
+  }
+
+  const children = new Map();
+  for (const p of all) {
+    const list = children.get(p.ParentProcessId) ?? [];
+    list.push(p);
+    children.set(p.ParentProcessId, list);
+  }
+  const descendants = [];
+  const walk = (pid, depth) => {
+    if (depth > 6) return;
+    for (const child of children.get(pid) ?? []) {
+      descendants.push(child);
+      walk(child.ProcessId, depth + 1);
+    }
+  };
+  walk(rootPid, 0);
+
+  const webviews = descendants.filter((p) => p.Name === "msedgewebview2.exe");
+  const withPort = webviews.filter((p) => /--remote-debugging-port=/.test(p.CommandLine ?? ""));
+  const browser = webviews.find((p) => !/--type=/.test(p.CommandLine ?? ""));
+  return {
+    descendants: descendants.length,
+    webviews: webviews.length,
+    types: webviews.map((p) => (p.CommandLine ?? "").match(/--type=([a-z-]+)/)?.[1] ?? "browser"),
+    withRemoteDebuggingPort: withPort.length,
+    // The browser process's own switches, trimmed: the answer to "did the
+    // arguments survive?" is in here, and nowhere else.
+    browserArgs: (browser?.CommandLine ?? "").slice(0, 1500) || null,
+  };
+}
+
+/**
+ * Take a reading in `ms`, unless the thing being measured finishes first.
+ *
+ * A session that succeeds does so in about a second, and waiting out a sampling
+ * timer to learn nothing would make the healthy path the slow one.
+ */
+function deferredSample(ms, take) {
+  let cancel = () => {};
+  const promise = new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(take()), ms);
+    let done = false;
+    cancel = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(null);
+    };
+    timer.unref?.();
+  });
+  return { promise, cancel };
+}
+
+/** The app under test, by name. Safe only after the guard in `main`: whatever
+ *  answers to that name is what this run started. */
+function firstAppPid() {
+  if (!mayReapByName) return null;
+  const script =
+    "Get-CimInstance Win32_Process -Property ProcessId,Name | " +
+    "Where-Object { $_.Name -eq 'uxnan-desktop.exe' } | " +
+    "Select-Object -First 1 -ExpandProperty ProcessId";
+  try {
+    const out = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return Number((out.stdout ?? "").trim()) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A. Does the app expose a remote-debugging endpoint at all?
  *
  * The environment is the one `tauri-driver` arranges: `TAURI_WEBVIEW_AUTOMATION`
@@ -134,9 +237,16 @@ async function probeAppEndpoint(binary, report) {
     },
   });
 
+  // Sampled while the app is still up, in parallel with the wait: after the
+  // timeout the processes are gone and the most useful evidence with them.
+  const treeAt20s = new Promise((resolve) =>
+    setTimeout(() => resolve(webviewProcesses(app.pid)), 20_000),
+  );
+
   const endpoint = await waitForEndpoint(`http://127.0.0.1:${port}/json/version`, {
     timeoutMs: 90_000,
   });
+  const tree = await treeAt20s;
 
   const portFile = path.join(webviewUserDataFolder(), "DevToolsActivePort");
   const portFileContents = fs.existsSync(portFile)
@@ -152,6 +262,7 @@ async function probeAppEndpoint(binary, report) {
     endpointBody: endpoint.ok ? endpoint.body : null,
     endpointError: endpoint.ok ? null : endpoint.error,
     devToolsActivePort: { path: portFile, exists: portFileContents !== null, contents: portFileContents },
+    tree,
   };
 
   await app.quit({ graceMs: 8_000 });
@@ -200,6 +311,12 @@ async function trySession(binary, variant, report) {
     const edgeOptions = { binary, args: [] };
     if (variant.webviewOptions) edgeOptions.webviewOptions = variant.webviewOptions;
 
+    // What `msedgedriver` actually launched, sampled 25 s into its own attach
+    // window — long after the app is up and well before it gives up at 60 s and
+    // kills everything. Safe to find by name: the guard in `main` established
+    // that anything running now is ours.
+    const sample = deferredSample(25_000, () => webviewProcesses(firstAppPid()));
+
     const started = Date.now();
     const res = await httpJson(`http://127.0.0.1:${port}/session`, {
       method: "POST",
@@ -215,6 +332,8 @@ async function trySession(binary, variant, report) {
       },
     });
     result.ms = Date.now() - started;
+    sample.cancel(); // a fast answer needs no post-mortem
+    result.tree = await sample.promise;
 
     const sessionId = res.json?.value?.sessionId ?? res.json?.sessionId ?? null;
     result.created = Boolean(sessionId);
@@ -307,8 +426,29 @@ function verdict(report) {
   if (report.app && !report.app.endpointAnswered) {
     lines.push(
       "The app never exposed a remote-debugging endpoint, so no WebDriver could have attached.",
-      "The problem is below WebDriver: WebView2 automation is not coming up in this environment.",
     );
+    // Which of the three failures it is, from the process tree — see
+    // `webviewProcesses`. Without this the verdict stops at "it did not work".
+    const tree = report.app.tree ?? plain?.tree;
+    if (!tree) {
+      lines.push("No process tree was sampled, so which layer dropped it is still open.");
+    } else if (tree.webviews === 0) {
+      lines.push(
+        "It created no webview process at all, though a plain launch does.",
+        "So the automation switches are stopping the webview from being created.",
+      );
+    } else if (tree.withRemoteDebuggingPort === 0) {
+      lines.push(
+        `It created ${tree.webviews} webview process(es), none carrying --remote-debugging-port.`,
+        "The runtime dropped what WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS asked for: the port was",
+        "never requested, so nothing could have answered. The fix is in how the switch is passed.",
+      );
+    } else {
+      lines.push(
+        `The webview was asked for the port (${tree.withRemoteDebuggingPort} of ${tree.webviews} process(es) carry it)`,
+        "and never listened. That points at the machine or its runtime, not at the arguments.",
+      );
+    }
   } else if (plain?.created) {
     lines.push(
       "A plain session — the exact capabilities tauri-driver sends — was created here.",
@@ -392,11 +532,16 @@ async function main() {
   return 0;
 }
 
-main().then(
-  (code) => process.exit(code),
-  (error) => {
-    process.stderr.write(`${error?.stack ?? error}\n`);
-    reapStrayApps();
-    process.exit(1);
-  },
-);
+// Only when run as a script — the same guard `setup-driver.mjs` uses. Importing
+// this file has to stay side-effect free, so its readings can be exercised
+// against any process tree without launching anything.
+if (process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]))) {
+  main().then(
+    (code) => process.exit(code),
+    (error) => {
+      process.stderr.write(`${error?.stack ?? error}\n`);
+      reapStrayApps();
+      process.exit(1);
+    },
+  );
+}

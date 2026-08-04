@@ -76,7 +76,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   installs the current runtime and `setup-driver.mjs` re-reads the registry
   afterwards, keeping the driver matched with nothing pinned. The step cannot
   fail the job: a failed update leaves the image's runtime and the run still
-  reports what it found.
+  reports what it found — as the first attempt did, returning in 0.7 s without
+  moving the version, so the step now also reports the `edgeupdate` service and
+  policy state it depends on.
+- **The diagnosis now samples the app's process tree while the attach is in
+  flight**, which is what separates three failures that look identical from
+  outside: no webview process at all (the automation switches prevent it), a
+  webview whose command line never received `--remote-debugging-port` (the
+  runtime dropped it), or one that was asked for the port and refused to listen.
+  Each points at a different fix.
 
 ## [0.0.26] - 2026-08-03
 

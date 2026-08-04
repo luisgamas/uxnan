@@ -1057,11 +1057,24 @@ go stale; these are the ones worth calling out.
         with `setup-driver.mjs` re-reading the registry afterwards, so the
         pairing stays matched and nothing is pinned.
 
-      Next: if that run is green, the provisioning step stays and this item is
-      down to the fortnight of track record. If it is still red, the open
-      question is whether `msedgewebview2.exe` spawns *at all* under the
-      automation switches (it does under a plain launch) — capture the tree from
-      inside the diagnosis. Iterating costs a push-per-attempt CI cycle (~35 min,
+      **The runtime update did not take (2026-08-04, second run).** The Evergreen
+      bootstrapper returned in 0.7 s with an empty exit code and the version did
+      not move (`before` and `after` both 150.0.4078.105), so the runtime
+      hypothesis is still **untested** — not confirmed, not ruled out. The step
+      now reports the update path it depends on (the `edgeupdate` service and the
+      EdgeUpdate policies, commonly disabled on CI images) and tries to start it
+      first; if the image will not budge, forcing a fixed-version runtime through
+      `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` is the way that does not need the
+      updater at all.
+
+      Next, and the reason the following cycle is worth spending: the diagnosis
+      now samples the app's **process tree** while the attach is in flight, which
+      separates three failures that look identical from outside — no webview
+      process at all (the switches prevent it), a webview whose command line
+      lacks `--remote-debugging-port` (the runtime dropped what
+      `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` asked for), or a webview that was
+      asked and refused to listen (the machine, not the arguments). Each points
+      at a different fix. Iterating costs a push-per-attempt CI cycle (~35 min,
       dominated by the release build).
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
