@@ -26,7 +26,7 @@ explicit efficiency presets — Efficient / Balanced / Performance — governing
 background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 (`docs/diagnostics.md`). 488 Rust tests (460 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 744 frontend Vitest tests across two
+probe) + 764 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1075,7 +1075,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 443 Rust + 667 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 488 Rust + 764 Vitest tests (both
   projects: pure logic and components). E2E runs in its own on-demand/nightly
   Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →

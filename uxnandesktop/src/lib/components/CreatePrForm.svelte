@@ -33,6 +33,7 @@
     defaultTitle = "",
     compact = false,
     lockHead = false,
+    draftKey = null,
     onCreated,
     onCancel,
   }: {
@@ -41,14 +42,24 @@
     compact?: boolean;
     /** Pin the head to the worktree's checked-out branch (right-panel tab). */
     lockHead?: boolean;
+    /** Where to park what the user typed, so a remount can't lose it. Whoever
+     *  owns this form derives "is it open?" from the same draft — see
+     *  `github.prDraft`. `null` keeps the form purely local. */
+    draftKey?: string | null;
     onCreated?: () => void;
     onCancel?: () => void;
   } = $props();
 
+  // Restore whatever the user already typed into THIS form. Nothing that
+  // remounts the panel — a background poll, a right-panel tab switch, stepping
+  // to another worktree and back — may cost them their work, so every field is
+  // seeded from the parked draft and mirrored back as they type.
+  const parked = untrack(() => github.prDraft(draftKey));
+
   // One-time seed from the branch name; the field is user-editable afterwards.
-  let title = $state(untrack(() => defaultTitle));
-  let body = $state("");
-  let draft = $state(false);
+  let title = $state(parked?.title ?? untrack(() => defaultTitle));
+  let body = $state(parked?.body ?? "");
+  let draft = $state(parked?.draft ?? false);
   let busy = $state(false);
   let aiDrafting = $state(false);
   let confirmOpen = $state(false);
@@ -59,8 +70,23 @@
   let branches = $state<PrBranches | null>(null);
   let branchesLoading = $state(false);
   let branchesError = $state<string | null>(null);
-  let base = $state("");
-  let head = $state("");
+  let base = $state(parked?.base ?? "");
+  let head = $state(parked?.head ?? "");
+
+  // Mirror every edit into the draft. `untrack` around the write keeps this a
+  // one-way street: the store read inside `updatePrDraft` must not re-trigger us.
+  $effect(() => {
+    const key = draftKey;
+    const snapshot = { title, body, base, head, draft };
+    if (!key) return;
+    untrack(() => github.updatePrDraft(key, snapshot));
+  });
+
+  /** Forget the parked draft. Called only from the two outcomes that end the
+   *  form — created, or explicitly cancelled. Never from a refresh. */
+  function clearDraft(): void {
+    if (draftKey) github.discardPrDraft(draftKey);
+  }
 
   // The AI button appears only when the feature is switched on AND an agent is
   // picked — the switch is what lets a configured agent be kept while off.
@@ -105,14 +131,18 @@
     if (!path) return;
     branchesLoading = true;
     branchesError = null;
+    // A restored draft already carries the branches the user picked, so only the
+    // sides they haven't chosen get seeded — re-reading the branch list must
+    // never silently retarget a PR they already aimed.
+    const seeding = !base;
     githubBranches(path)
       .then((info) => {
         branches = info;
-        base = info.defaultBase;
-        head = info.current ?? "";
+        if (!base) base = info.defaultBase;
+        if (!head) head = info.current ?? "";
         // Preselect a base that isn't the head, so the form doesn't open in an
         // invalid state when the worktree IS the default branch.
-        if (base === head) {
+        if (seeding && base === head) {
           base = [...info.remote, ...info.local].find((b) => b !== head) ?? base;
         }
       })
@@ -144,6 +174,7 @@
         draft,
       });
       toast.success(i18n.t("github.toast.prCreated"));
+      clearDraft();
       await github.refreshContext();
       if (url) void openExternal(url);
       onCreated?.();
@@ -245,8 +276,19 @@
     {i18n.t("github.pr.draftLabel")}
   </label>
   <div class="flex justify-end gap-2">
-    {#if onCancel}
-      <Button variant="ghost" size="sm" onclick={onCancel}>{i18n.t("common.cancel")}</Button>
+    <!-- Cancel is what *closes* a draft-backed form (dropping the draft is what
+         the owner derives "closed" from), so it shows for those too. -->
+    {#if onCancel || draftKey}
+      <Button
+        variant="ghost"
+        size="sm"
+        onclick={() => {
+          clearDraft();
+          onCancel?.();
+        }}
+      >
+        {i18n.t("common.cancel")}
+      </Button>
     {/if}
     <Button size="sm" disabled={!canSubmit} onclick={submit}>
       {#if busy}

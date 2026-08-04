@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a background refresh no longer takes anything away
+
+- **The right-panel GitHub tab no longer discards a half-written pull request.**
+  The panel gated its entire body on "a context read is in flight", a flag the
+  poll raises on every tick (45 s by default), so each tick replaced the panel
+  with a *Loading…* placeholder and rebuilt it from scratch — taking an open
+  **Create PR** form, and everything typed into it, with it. The placeholder now
+  appears only when there is genuinely nothing to show yet for the active
+  worktree (a first read, or "not a GitHub repository"); a background refresh
+  updates the content in place and never unmounts it.
+- **A transient `gh`/git failure no longer blanks the panel either.**
+  `github_repo_context` answers `Option<RepoContext>`, so a git lock, a slow
+  process spawn or a dropped network was indistinguishable from "this stopped
+  being a GitHub repo" — and a single one flipped the panel to *not a GitHub
+  repository*, tearing down whatever was on screen. A `null` over a context we
+  already hold is now treated as a miss and has to repeat before it is believed;
+  a worktree that never had a context still answers immediately, so a genuinely
+  non-GitHub folder says so on arrival.
+- **An unsubmitted "Create PR" form is now kept, in both places it exists** (the
+  right-panel tab and the GitHub section). Title, description, base, head and the
+  draft switch live in the store keyed by the form's owner, so switching
+  right-panel tabs, closing the panel, opening a PR's detail, or stepping to
+  another worktree and coming back all return the form exactly as it was — each
+  worktree keeping its own. A draft is dropped on exactly two events: the PR is
+  created, or the user presses **Cancel**. Re-reading the branch list no longer
+  overwrites a base or head the user already picked.
+
+### Fixed — sidebar indicators fill in at launch instead of trickling
+
+- **A freshly-opened app no longer shows a sidebar with missing PR badges for
+  minutes.** `setInterval` fires *after* its interval, so everything the GitHub
+  poll owns — the rate-limit gauge, the unread-notifications count, and every
+  non-active worktree's PR badge — stayed empty for a full poll interval and then
+  filled two badges at a time (with several worktrees, minutes before the last
+  one appeared). A bounded one-shot pass now fills what is empty as soon as
+  polling arms or sign-in resolves, in batches no wider than a normal tick, capped
+  by the resource profile. Manual-only polling (interval `0`) opts out of it, like
+  every other automatic read.
+- **The badge poll now prioritises missing information over stale information.**
+  A worktree showing no badge at all is read before one whose badge is merely
+  old, and a worktree whose git status just changed but didn't fit the tick's
+  budget is carried to the next tick instead of being dropped (the projects store
+  hands each change over exactly once, so nothing re-announced it).
+
 ## [0.0.26] - 2026-08-03
 
 ### Added — the app now records its own failures

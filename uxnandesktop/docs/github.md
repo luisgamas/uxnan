@@ -266,6 +266,46 @@ PR context plus the repository's five recent PRs, workflow runs and issues. Each
 list request is sequence-guarded, so switching worktrees cannot let a slower
 response from the previous repository overwrite the current panel.
 
+### What a background refresh is allowed to do
+
+One rule governs every automatic read here: **a refresh may add information; it
+may never destroy what is on screen or what the user has typed.** In practice:
+
+- **The panel is not unmounted while it re-reads.** The *Loading…* placeholder is
+  shown only when there is nothing to show yet for the active worktree — a first
+  read, or a real "not a GitHub repository". A poll updates the rendered digest in
+  place. (Gating the body on "a read is in flight" is what used to replace the
+  panel — and any open **Create PR** form — every 45 seconds.)
+- **A single `null` context is a miss, not an answer.** `github_repo_context`
+  returns `Option<RepoContext>`, so a git lock, a slow `gh` spawn or a dropped
+  network looks exactly like "not a GitHub repo". A `null` over a context already
+  on screen must repeat before it is believed (`resolveContext` in
+  `src/lib/githubRefresh.ts`); a worktree that never had one answers at once.
+- **An unsubmitted "Create PR" form is parked, not held by the component.** Title,
+  description, base, head and the draft switch live in `github.prDrafts`, keyed by
+  the form's owner (`worktree:<path>` for the right-panel tab, `section:<path>`
+  for the section's own form — both can be open on the same repo and mean
+  different things). Any remount restores it; only creating the PR or pressing
+  **Cancel** drops it.
+
+### Which worktrees get read, and when
+
+Every context is a `gh` invocation against the account's rate limit, so a tick
+reads at most `BADGE_TICK_CAP` (2) non-active worktrees. `pickBadgeTargets`
+(`src/lib/githubRefresh.ts`) orders them: worktrees showing **no badge at all**
+first (missing information beats stale information), then the ones whose **git
+status just changed** (a push or new commits is when a branch gains or updates a
+PR), then a **rotation** so an untouched repo is still re-read eventually. A
+signalled path that doesn't fit a tick is carried to the next one — the projects
+store hands each change over exactly once.
+
+`setInterval` fires *after* its interval, so at launch a bounded **one-shot fill**
+runs as soon as polling arms (or as soon as sign-in resolves, whichever is later):
+the rate-limit gauge, the notifications count, and every worktree with no badge
+yet, in batches no wider than a normal tick and capped at `PRIME_MAX_PATHS` (24)
+scaled by the resource profile's GitHub factor. Setting the interval to `0`
+(manual only) opts out of this too.
+
 ## Backend commands
 
 All 38 GitHub commands live in `src-tauri/src/github.rs` (thin wrappers in
@@ -302,5 +342,7 @@ never a token, never a body).
 - **GitLab / other hosts:** not covered (the `gh`-based approach is GitHub-only).
 - **Native (no-`gh`) sign-in:** an OAuth **device-flow** login + OS-keychain token —
   which would remove the `gh` dependency — is a planned follow-up (see `FOR-DEV.md`).
-- Sidebar-card PR badges are shown for **visited** worktrees (from the context cache),
-  not eagerly for every worktree.
+- Sidebar-card PR badges are filled by the launch pass and the poll's
+  missing-first ordering (above), both bounded — with many worktrees, or on the
+  Efficient profile, the last badges still arrive over several ticks rather than
+  all at once.
