@@ -204,6 +204,7 @@ class PushRegistrar {
             ContentBlockEvent() ||
             TurnAbortedEvent() ||
             TurnCancelledEvent() ||
+            ThreadRenamedEvent() ||
             QueueUpdatedEvent() ||
             ModelResolvedEvent() ||
             GitProgressEvent() ||

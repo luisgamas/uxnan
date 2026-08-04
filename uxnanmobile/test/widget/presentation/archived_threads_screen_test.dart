@@ -8,6 +8,7 @@ import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 
 Thread _thread(
@@ -36,6 +37,9 @@ Widget _wrap({required List<Thread> threads}) {
   );
   return ProviderScope(
     overrides: [
+      // The row's reply preview reads the message store; a list test has no
+      // database, and pulling the real one in leaves drift timers pending.
+      threadPreviewProvider.overrideWith((ref, threadId) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
       threadActivityProvider.overrideWith(
         (ref) => Stream.value(const <String, ThreadActivity>{}),

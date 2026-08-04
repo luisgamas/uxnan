@@ -223,6 +223,33 @@ class QueueUpdatedEvent extends DomainEvent {
 
 /// The agent resolved its alias to a concrete model for a turn
 /// (`stream/model/resolved`), e.g. `opus` → `claude-opus-4-8`.
+/// The bridge renamed a thread (`stream/thread/renamed`) — normally a model
+/// writing a real conversation title over the provisional one taken from the
+/// opening message.
+///
+/// [titleSource] says how much to trust it: `user` is final, `agent` is the
+/// generated name, `prompt` the weak fallback.
+class ThreadRenamedEvent extends DomainEvent {
+  /// Creates a [ThreadRenamedEvent].
+  const ThreadRenamedEvent({
+    required this.title,
+    required this.titleSource,
+    this.threadId,
+  });
+
+  /// The thread's new title.
+  final String title;
+
+  /// Who named it: `prompt`, `agent` or `user`.
+  final String titleSource;
+
+  /// The owning thread, if provided.
+  final String? threadId;
+
+  @override
+  List<Object?> get props => [title, titleSource, threadId];
+}
+
 class ModelResolvedEvent extends DomainEvent {
   /// Creates a [ModelResolvedEvent].
   const ModelResolvedEvent({

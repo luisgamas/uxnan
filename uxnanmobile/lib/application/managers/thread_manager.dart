@@ -1461,6 +1461,23 @@ class ThreadManager {
     });
   }
 
+  /// Applies a title the BRIDGE decided on.
+  ///
+  /// Skips a `prompt`-sourced one: that is the same provisional name this app
+  /// already wrote locally, so re-applying it only churns the row. A `user`
+  /// title comes from another device and is authoritative.
+  Future<void> _adoptBridgeTitle(
+    String threadId,
+    String title,
+    String titleSource,
+  ) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty || titleSource == 'prompt') return;
+    final thread = await _threadRepository.getThread(threadId);
+    if (thread == null || thread.title == trimmed) return;
+    await _threadRepository.saveThread(thread.copyWith(title: trimmed));
+  }
+
   Future<void> _titleFromFirstPrompt(String threadId, String text) async {
     final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (normalized.isEmpty) return;
@@ -1694,6 +1711,12 @@ class ThreadManager {
         // against it every time it changes.
         unawaited(_settleLocalQueueEchoes(threadId, queuedTurnIds));
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
+      case ThreadRenamedEvent(:final title, :final titleSource):
+        // The bridge named the conversation (usually a model replacing the
+        // provisional title taken from the opening message). Adopt it locally
+        // so the list converges without a refetch — never over a title the user
+        // chose here, which the bridge also refuses to overwrite.
+        unawaited(_adoptBridgeTitle(threadId, title, titleSource));
       case GitProgressEvent() || ModelResolvedEvent() || UnknownDomainEvent():
         break;
     }
@@ -2093,6 +2116,7 @@ class ThreadManager {
     QueueUpdatedEvent(:final threadId) => threadId,
     GitProgressEvent(:final threadId) => threadId,
     ModelResolvedEvent(:final threadId) => threadId,
+    ThreadRenamedEvent(:final threadId) => threadId,
     UnknownDomainEvent() => null,
   };
 
