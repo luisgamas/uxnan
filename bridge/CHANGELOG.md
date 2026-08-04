@@ -103,8 +103,30 @@ against the published protocol schema (`codex app-server generate-json-schema`,
 codex-cli 0.146.0), but the account's weekly limit was exhausted (0 credits)
 when this landed, so no real turn could be steered. Tracked in
 `bridge/FOR-DEV.md`; run the probe once credits return.
-Tests: 4 new in `test/adapters/codex-adapter.test.ts`. Bridge suite
-**620 passing**.
+Tests: 4 new in `test/adapters/codex-adapter.test.ts`.
+
+### Changed — pi runs in `--mode rpc`, and takes follow-ups mid-turn
+
+- The pi adapter now spawns `pi --mode rpc` instead of `pi -p --mode json`, and
+  sends the prompt as an RPC command on stdin rather than as an argv element.
+  Print mode reads **all** of stdin as the initial prompt, so it has no input
+  channel while it works; RPC mode has a first-class `steer` command, drained by
+  pi's agent loop at its next boundary. Both modes emit the identical
+  `AgentSessionEvent` JSON lines, so the whole event-parsing path is unchanged.
+- As with Claude, **the pipe must be closed for the turn to end**: in RPC mode pi
+  waits for the next command and only exits when stdin ends.
+- `parsePiLine` now understands RPC command acknowledgements. A *failed*
+  `prompt` response ends the turn with its error (the agent never started, so
+  nothing else is coming); a failed `steer` deliberately does **not** — the
+  follow-up did not land, but the turn is fine, and the manager already treats
+  a refusal as "leave it queued".
+
+Verified end-to-end against the real `pi` 0.81.1 driving the built adapter: a
+message steered 7s into a five-`sleep` turn was taken after the first tool
+returned, the remaining sleeps were abandoned, and the run produced one
+`turn_started` and one `turn_completed`, every event on the original turn.
+Tests: 5 new in `test/adapters/pi-adapter.test.ts`. Bridge suite
+**625 passing**.
 
 ## [0.0.15-alpha.20260803] - 2026-08-03
 

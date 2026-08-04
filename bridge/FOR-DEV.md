@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 620, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 625, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -63,8 +63,9 @@ push validation (FOR-HUMAN).
   running one (`IAgentAdapter.steerTurn`), the turn goes `delivered` (terminal
   and *successful*, distinct from `cancelled`) and `stream/turn/delivered`
   fires. Live-verified for **Claude Code** (`--input-format stream-json`, prompt
-  and follow-ups on an open stdin) and **OpenCode** (`prompt_async` on the busy
-  session); implemented for **Codex** (`turn/steer`) but not yet run against a
+  and follow-ups on an open stdin), **OpenCode** (`prompt_async` on the busy
+  session) and **pi** (`--mode rpc`, `steer` command); implemented for **Codex**
+  (`turn/steer`) but not yet run against a
   real turn (see below). Antigravity, Zero and Grok have no such channel and
   keep waiting — Zero's own TUI behaves that way too. Advertised as
   `features.midTurnDelivery` + per-agent `AgentCapabilities.steering`, and every
@@ -288,23 +289,6 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
-- [ ] **Mid-turn delivery for pi.** Steering shipped for Claude Code, OpenCode and
-      Codex (`AgentCapabilities.steering` + `IAgentAdapter.steerTurn`; see
-      `docs/agents.md`). **pi can do it too, but not the way we drive it today.**
-      Its `--mode rpc` protocol has first-class `steer` and `follow_up` commands
-      (and `prompt` takes `streamingBehavior: 'steer' | 'followUp'`), while the
-      adapter runs `pi -p --mode json`, whose print mode reads *all* of stdin as
-      the initial prompt rather than as a message stream — so there is no cheap
-      path. What makes it tractable: **both modes emit the identical
-      `AgentSessionEvent` JSON lines** (`session.subscribe(...)` in both
-      `print-mode.ts` and `rpc-mode.ts`), so the existing parsing carries over
-      almost unchanged. The work is the process model: one long-lived
-      `pi --mode rpc` per thread instead of one spawn per turn, plus moving
-      model/thinking selection from argv to the `set_model` /
-      `set_thinking_level` commands, mapping `abort`, and distinguishing RPC
-      `response` objects from events. Unblocked — deferred as its own change
-      because it is effectively a new adapter.
-      See the `FOR-DEV:` marker in `pi-adapter.ts`.
 - [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
       mid-turn delivery is implemented and unit-tested against the published
       protocol schema (`codex app-server generate-json-schema`, codex-cli

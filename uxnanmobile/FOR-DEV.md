@@ -91,7 +91,7 @@ connected to live bridge data, validated on-device against a real bridge.
   it keeps the user's own tone and its whole message, and only that edge says
   "not sent yet". On delivery the dashes dissolve in place, so the bubble never
   moves or changes colour — it just stops being provisional. On agents whose CLI
-  has an input channel mid-turn (Claude Code, OpenCode, Codex) that moment comes
+  has an input channel mid-turn (Claude Code, OpenCode, Codex, pi) that moment comes
   **without waiting for the turn to end**: the bridge hands the message to the
   running turn and reports `delivered` (`stream/turn/delivered`), which also
   retires edit/cancel since the agent already has it. On every other agent it

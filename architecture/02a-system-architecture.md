@@ -2122,6 +2122,7 @@ Que agentes pueden, y por que (verificado contra las CLI reales):
 | **Claude Code** | Si | `-p --input-format stream-json`, mensaje por stdin abierto |
 | **OpenCode** | Si | otro `prompt_async` sobre la sesion ya ocupada |
 | **Codex** | Si | app-server `turn/steer { threadId, expectedTurnId, input }` |
+| **pi** | Si | comando RPC `steer`, drenado por su bucle de agente en el siguiente limite |
 | **Antigravity** | No | `agy -p` es de un disparo; no hay canal de entrada |
 | **Zero** | No | su ACP serializa con `turnMu`, y su propio TUI tampoco inyecta |
 | **Grok** | No | ACP no define un metodo de steer ni lo anuncia en `initialize` |

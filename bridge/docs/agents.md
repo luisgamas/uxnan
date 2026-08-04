@@ -23,11 +23,12 @@ separate paid account beyond what that CLI already has, and it is not an unoffic
 API wrapper. Rate limits are whatever your plan allows.
 
 Prompts are passed as argv elements with `shell:false` (no shell injection); stdin
-is closed (the one-shot CLIs hang on an open stdin pipe). **Claude Code is the
-exception among the one-shot agents**: it is run with `--input-format
-stream-json`, so its prompt is written to a real stdin pipe that stays open for
-the length of the turn — which is what lets a follow-up reach it mid-run (see
-below). The server-based adapters are the other exception: **Codex** speaks
+is closed (a one-shot CLI hangs on an open stdin pipe). **Claude Code and pi are
+the exceptions among the one-shot agents**: both are run in a mode that reads a
+real message stream (`claude --input-format stream-json`, `pi --mode rpc`), so
+their prompt is written to a stdin pipe that stays open for the length of the
+turn — which is what lets a follow-up reach them mid-run (see below). The
+server-based adapters are the other exception: **Codex** speaks
 JSON-RPC over a long-lived
 `codex app-server` stdio, **Zero** and **Grok** speak JSON-RPC (the Agent Client
 Protocol, NDJSON) over a long-lived `zero acp` / `grok agent stdio` process, and
@@ -71,6 +72,7 @@ Which agents can, and why — verified against the real CLIs:
 | **Claude Code** | yes | `-p --input-format stream-json`; the message is written to the open stdin |
 | **OpenCode** | yes | another `prompt_async` on the session that is already busy |
 | **Codex** | yes | app-server `turn/steer { threadId, expectedTurnId, input }` |
+| **pi** | yes | RPC `steer` command, drained by its agent loop at the next boundary |
 | **Antigravity** | no | `agy -p` is one-shot with no input channel at all |
 | **Zero** | no | its ACP serializes prompts per session (`turnMu`) — and its own TUI does not inject either: it launches a queued message only once the turn ended |
 | **Grok** | no | ACP defines no steer method and advertises none on `initialize` |
@@ -93,7 +95,7 @@ Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
 | **OpenCode** (default) | `opencode serve` (local HTTP + SSE) | persisted server session id | `accessMode` → per-session permission ruleset: `ask` on `edit`/`bash`/`webfetch`/`external_directory` (real `permission.asked` approvals) / `allow` for approveForMe·fullAccess | `opencode models` (real list) |
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | long-lived `codex app-server` (JSON-RPC over stdio) | persisted app-server thread id via `thread/start` | `accessMode` → app-server `approvalPolicy` + `sandbox` on `thread/start`; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
-| **pi** | `pi -p --mode json` | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
+| **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
 | ~~Gemini CLI~~ (deprecated legacy) | retained adapter only; new turns rejected | legacy history only | unavailable (`deprecated:true`) | none exposed |
 | **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |

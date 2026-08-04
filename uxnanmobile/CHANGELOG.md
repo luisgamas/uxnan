@@ -9,7 +9,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed — a queued message can now reach the agent without waiting
 
 On agents whose CLI has an input channel mid-turn (Claude Code, OpenCode,
-Codex), a message sent while the agent works is handed to it **inside the
+Codex, pi), a message sent while the agent works is handed to it **inside the
 running turn** instead of waiting for the turn to end — the way those CLIs
 behave when you type at them mid-task. Everything the queue already did is
 unchanged; the message simply stops waiting when it doesn't have to.
