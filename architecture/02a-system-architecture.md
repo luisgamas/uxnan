@@ -2131,6 +2131,53 @@ Zero es el caso instructivo: **ya se comporta como la cola del bridge**. Su TUI
 solo lanza el mensaje encolado cuando el turno termino, asi que aqui no hay
 comportamiento nativo que igualar.
 
+
+#### 5.8.13b Nombre de la conversacion (`AgentManager` + adaptadores)
+
+Un thread se llamaba como los primeros ~72 caracteres de su mensaje inicial, asi
+que dos conversaciones que empiezan con la misma frase eran indistinguibles en la
+lista. **Ningun CLI puede ayudarnos aqui**: todos dejan el titulo a su propio
+cliente y las superficies headless no exponen ninguno (comprobado: un hilo creado
+por uxnan vuelve de `codex thread/list` con `name: null`; una sesion nueva de
+OpenCode se queda en `"New session - <fecha>"`; el `name` de Claude sale de la
+carpeta). uxnan es el cliente, asi que uxnan los nombra.
+
+```javascript
+// turn_completed -> #nameThread(threadId, turnId, text)   (NO se espera: lanza un CLI)
+//   solo si: titleSource es `prompt` (o ausente) y es el PRIMER turno
+//   adapter.generateTitle({ userText, assistantText, cwd })
+//     -> one-shot SIN session id  => no entra en el historial del hilo
+//     -> modelo MAS BARATO del agente (Claude: haiku), nunca el de la conversacion
+//   ThreadStore.applyGeneratedTitle() rechaza pisar un titulo `user`
+//     -> stream/thread/renamed { threadId, title, titleSource }
+```
+
+Todo es **best-effort y acotado** (30 s): sin credito, sin CLI o con timeout el
+thread conserva su titulo provisional y la conversacion no se entera. Y un
+renombrado a mano hecho mientras corria el turno siempre gana.
+
+Cableado en **los siete agentes activos**, cada uno con la forma de una pasada
+de su propia CLI y elegida para no dejar rastro en la conversacion que nombra:
+
+| Agente | Invocacion | Modelo |
+|---|---|---|
+| Claude Code | `-p`, sin `--resume` | `haiku` |
+| Codex | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.4-mini` |
+| OpenCode | `opencode run` (sin flags de sesion) | por defecto de la CLI |
+| pi | `pi -p --no-session` | por defecto de la CLI |
+| Antigravity | `agy -p` (sin `--conversation`) | `gemini-3.6-flash-low` |
+| Grok | `grok -p` | por defecto de la CLI |
+| Zero | `zero exec` | por defecto de la CLI |
+
+Codex necesita los tres flags: `--ephemeral` no escribe fichero de sesion,
+`read-only` le niega toda escritura al sandbox, y `-o` entrega **solo** el
+mensaje final (su stdout lleva banner, lineas de hook y un recuento de tokens).
+
+**Seis verificados en vivo**; Zero es la excepcion — no esta instalado y sin
+creditos, asi que su forma esta confirmada contra el codigo del propio Zero pero
+nunca ejecutada (`bridge/FOR-DEV.md`). Los ids de modelo se comprueban contra la
+lista real de cada cuenta: un id invalido no es cosmetico, la CLI rechaza la
+ejecucion.
 #### 5.8.14 Fin de turno: trabajo diferido y llegadas tardias
 
 Un adaptador decide cuando el agente termino, y hay dos formas:

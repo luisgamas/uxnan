@@ -75,6 +75,13 @@ class IncomingMessageProcessor {
               ? QueuePausedReason.fromWire(params['pausedReason'])
               : null,
         ),
+      'stream/thread/renamed' => ThreadRenamedEvent(
+          title: params['title'] is String ? params['title'] as String : '',
+          titleSource: params['titleSource'] is String
+              ? params['titleSource'] as String
+              : 'agent',
+          threadId: threadId,
+        ),
       'stream/model/resolved' => ModelResolvedEvent(
           model: params['model'] is String ? params['model'] as String : '',
           turnId: turnId,

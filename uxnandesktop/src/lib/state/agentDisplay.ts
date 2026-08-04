@@ -9,20 +9,21 @@
 // that don't report; activity is the universal last resort. Returns null when
 // there's nothing to show (a plain terminal with no agent and no activity).
 
-import { terminals, type GroupTab } from "./terminals.svelte";
-import { agentStatus } from "./agentStatus.svelte";
-import { agentMonitor } from "./agentMonitor.svelte";
-import { zeroSessions, isZeroAgent } from "./zeroSessions.svelte";
-import type { AgentStatus, SubagentEntry } from "$lib/types";
+import { terminals, type GroupTab } from './terminals.svelte';
+import { agentStatus } from './agentStatus.svelte';
+import { agentMonitor } from './agentMonitor.svelte';
+import { zeroSessions, isZeroAgent } from './zeroSessions.svelte';
+import { conversationTitles } from './conversationTitles.svelte';
+import type { AgentStatus, SubagentEntry } from '$lib/types';
 
 /** Display state: the four reported states plus "idle" (an agent at rest with no
  *  precise report). */
-export type DisplayStatus = AgentStatus | "idle";
+export type DisplayStatus = AgentStatus | 'idle';
 
 export interface AgentDisplay {
   status: DisplayStatus;
   /** Which layer produced it (for tooltips / debugging). */
-  source: "hook" | "title" | "activity";
+  source: 'hook' | 'title' | 'activity';
   /** The hook report is older than the staleness threshold (shown dimmed). */
   stale: boolean;
 }
@@ -32,10 +33,10 @@ export interface AgentDisplay {
  *  `$derived`/template re-run when any layer changes. */
 export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
   // Only terminal tabs carry agent activity; file/diff tabs show nothing.
-  if (tab.kind !== "terminal") return null;
+  if (tab.kind !== 'terminal') return null;
   if (tab.exited) {
     // A finished agent terminal reads as "done"; a plain one shows nothing.
-    return tab.agentName ? { status: "done", source: "activity", stale: false } : null;
+    return tab.agentName ? { status: 'done', source: 'activity', stale: false } : null;
   }
   // 1. Precise hook state.
   const hook = agentStatus.get(tab.id);
@@ -45,8 +46,8 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
     // keep it "working" so it doesn't flash a premature ✓ (a background subagent
     // can outlive the parent's own Stop).
     let status = hook.status;
-    if (status === "done" && hook.subagents.some((s) => s.status === "working")) {
-      status = "working";
+    if (status === 'done' && hook.subagents.some((s) => s.status === 'working')) {
+      status = 'working';
     }
     // Safety net: an attention state (waiting/blocked) that went quiet past the
     // staleness window and never got a terminal event shouldn't dominate the
@@ -54,17 +55,17 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
     // `done`/`working` keep their meaning. The common Claude "stuck on waiting"
     // case is fixed at the source in the backend event mapping; this backstops
     // any agent (or future one) that gets stuck without a closing event.
-    if (stale && (status === "waiting" || status === "blocked")) {
-      return { status: "idle", source: "hook", stale: true };
+    if (stale && (status === 'waiting' || status === 'blocked')) {
+      return { status: 'idle', source: 'hook', stale: true };
     }
-    return { status, source: "hook", stale };
+    return { status, source: 'hook', stale };
   }
   // 2. Terminal-title inference.
   const title = agentMonitor.titleStatus(tab.id);
-  if (title) return { status: title, source: "title", stale: false };
+  if (title) return { status: title, source: 'title', stale: false };
   // 3. Output-activity inference.
-  if (tab.working) return { status: "working", source: "activity", stale: false };
-  if (tab.agentName) return { status: "idle", source: "activity", stale: false };
+  if (tab.working) return { status: 'working', source: 'activity', stale: false };
+  if (tab.agentName) return { status: 'idle', source: 'activity', stale: false };
   return null;
 }
 
@@ -74,8 +75,10 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
 export interface AgentView {
   status: DisplayStatus;
   stale: boolean;
-  /** Conversation title — the user's latest prompt (hook) or Zero's session title;
-   *  falls back to the agent's product name when unknown. */
+  /** Conversation title — the generated name for this session when there is one,
+   *  else the user's latest prompt (hook) or Zero's session title, falling back
+   *  to the agent's product name. The generated name is stable: unlike the
+   *  prompt, it does not change every time the user says something new. */
   title: string;
   /** Raw secondary text (current tool while working, else the latest reply preview),
    *  or null when there's none — the row then shows the status label. */
@@ -93,34 +96,39 @@ export interface AgentView {
  *  store (`prompt`/`tool`/`summary`), and reads Zero's on-disk session for agents
  *  that report no hook. Reactive: reads the monitoring stores. */
 export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentView | null {
-  if (tab.kind !== "terminal") return null;
+  if (tab.kind !== 'terminal') return null;
   const base = resolveAgentDisplay(tab);
   const hook = agentStatus.get(tab.id);
   const zero = isZeroAgent(tab) ? zeroSessions.get(workspacePath) : null;
-  const name = tab.agentName ?? tab.title ?? "";
+  const name = tab.agentName ?? tab.title ?? '';
 
-  let status: DisplayStatus = base?.status ?? "idle";
-  let title = "";
+  let status: DisplayStatus = base?.status ?? 'idle';
+  let title = '';
   let preview: string | null = null;
   let interrupted = false;
   let lastUpdate: number | null = null;
 
   if (hook) {
-    // Hook agents (Claude/Codex/OpenCode/Pi): the conversation title is the user's
-    // latest prompt; the preview is the current tool while working, else the reply.
-    title = (hook.prompt ?? "").trim();
+    // Hook agents (Claude/Codex/OpenCode/Pi): the title falls back to the user's
+    // latest prompt until a real name exists; the preview is the current tool
+    // while working, else the reply.
+    title = (hook.prompt ?? '').trim();
     interrupted = hook.interrupted;
     lastUpdate = hook.lastUpdate;
     preview =
-      hook.status === "working"
-        ? (hook.tool ?? "").trim() || null
-        : (hook.summary ?? "").trim() || null;
+      hook.status === 'working'
+        ? (hook.tool ?? '').trim() || null
+        : (hook.summary ?? '').trim() || null;
   } else if (zero) {
     // Zero has no hook — its title + status come from the on-disk session.
     status = zero.status;
     title = zero.title.trim();
   }
 
+  // A generated name wins over the prompt/session fallbacks: it describes the
+  // conversation rather than its opening words, and it stays put.
+  const generated = conversationTitles.get(tab.id);
+  if (generated) title = generated;
   if (!title) title = name;
   return {
     status,
@@ -137,7 +145,7 @@ export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentVie
  *  the opt-in keep-awake. Reactive: reads the monitoring stores. */
 export function anyAgentWorking(): boolean {
   for (const { tab } of terminals.tabsWithWorkspace()) {
-    if (resolveAgentDisplay(tab)?.status === "working") return true;
+    if (resolveAgentDisplay(tab)?.status === 'working') return true;
   }
   return false;
 }

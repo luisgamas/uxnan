@@ -88,6 +88,50 @@ Behaviour details (cap, pausing after a stop, cancelling a queued turn) are in
 [`../../architecture/02b-contracts-and-requirements.md`](../../architecture/02b-contracts-and-requirements.md)
 §1.2.
 
+### Naming a conversation
+
+No agent CLI hands a client a title. Every one of them leaves it to its own
+client — Codex Desktop, the OpenCode TUI and Claude's picker all name
+conversations themselves — and the headless surfaces expose none: a thread uxnan
+creates comes back from `codex thread/list` with `name: null`, a fresh OpenCode
+session stays `"New session - <timestamp>"`, and Claude's session `name` is
+derived from the folder, not the content. uxnan is the client, so uxnan names
+them, in two stages: the opening message titles a thread instantly, and once its
+first turn has an answer the agent writes the real one.
+
+That second step is a **side errand, not a turn** — a one-shot with no session
+id, so nothing enters the conversation's history — on the agent's **cheapest**
+model, because a six-word title is not work for the model the user is paying
+attention to.
+
+| Agent | One-shot used | Title model |
+|---|---|---|
+| **Claude Code** | `-p` with no `--resume` | `haiku` |
+| **Codex** | `codex exec --ephemeral -s read-only --skip-git-repo-check -o <file>` | `gpt-5.4-mini` |
+| **OpenCode** | `opencode run` (no `--session`/`--continue`) | CLI default |
+| **pi** | `pi -p --no-session` | CLI default |
+| **Antigravity** | `agy -p` (no `--conversation`) | `gemini-3.6-flash-low` |
+| **Grok** | `grok -p` | CLI default |
+| **Zero** | `zero exec` | CLI default |
+
+Codex needs all three flags: `--ephemeral` writes no session file, `read-only`
+denies the sandbox any write, and `-o` yields the final message **alone** — its
+stdout carries a banner, hook lines and a token count, so parsing that would be
+guesswork.
+
+Six are verified live; **Zero is not** (not installed, no credits) — its form is
+confirmed against Zero's own source, which drives itself that way in its eval
+harness. OpenCode, pi and Grok route through many providers, so there is no
+fixed cheap-tier id to pin and they title on their own default.
+
+**Model ids are checked against each account's real list, never assumed.** A
+wrong id is not cosmetic: the CLI rejects the run and the thread silently keeps
+its provisional name. That is how the desktop's `agy` mapping was caught —
+`agy models` lists `gemini-3.6-flash-*`, not `gemini-2.0-flash`.
+
+The whole path is best-effort and bounded (30s): no credit, a missing CLI or a
+timeout leaves the provisional title in place and never disturbs the thread.
+
 ## Wired agents
 
 | Agent | CLI invocation | Continuity | Permission posture | Models |

@@ -36,8 +36,10 @@ import type {
   AgentModel,
   AgentModelOption,
   CompactionReason,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { scanCustomCommands } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
 import {
@@ -110,6 +112,13 @@ const CLAUDE_EXCLUDED_COMMANDS = new Set(['config', 'login', 'logout', 'doctor']
  * the phone renders this order verbatim.
  */
 const CLAUDE_MODEL_ALIASES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
+
+/**
+ * Model used to name a conversation — the cheapest tier, never the one the
+ * thread runs on. Writing a six-word title is not work for an expensive model,
+ * and it must not eat that model's quota.
+ */
+const TITLE_MODEL = 'haiku';
 
 /** Human-facing labels for the stable aliases. */
 const CLAUDE_ALIAS_LABELS: Record<string, string> = {
@@ -946,6 +955,30 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.emit({ type: 'turn_aborted', threadId, turnId });
     }
     return Promise.resolve();
+  }
+
+  /**
+   * Name a conversation with `haiku`, the cheapest tier — a side errand, not a
+   * turn: a fresh one-shot with **no `--resume`**, so it neither joins the
+   * thread's session nor shows up in its history.
+   *
+   * Text in, text out (`--output-format text`): there is nothing to stream, and
+   * parsing one line beats decoding a JSON event stream for it.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const args = ['-p', '--output-format', 'text', '--model', TITLE_MODEL, prompt];
+    try {
+      const cwd = options.cwd ?? this.#defaultCwd;
+      const raw = await runTitleOneShot(() =>
+        this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
+      );
+      return raw === undefined ? undefined : sanitizeTitle(raw);
+    } catch {
+      // Naming is cosmetic — no credit, a missing CLI or a timeout must never
+      // disturb a thread that is otherwise working.
+      return undefined;
+    }
   }
 
   /**

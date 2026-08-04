@@ -81,6 +81,10 @@ export function registerThreadHandlers(router: HandlerRouter): void {
       requireString(p, 'threadId'),
       requireString(p, 'title'),
       ctx.now(),
+      // Only a client's own auto-naming may declare itself provisional; anything
+      // else is a hand-rename, and that name is final. `'agent'` is deliberately
+      // not accepted from the wire — the bridge writes those when it generates one.
+      optionalString(p, 'source') === 'prompt' ? 'prompt' : 'user',
     ),
   );
   router.register('thread/setAccessMode', (p, ctx: BridgeContext) =>

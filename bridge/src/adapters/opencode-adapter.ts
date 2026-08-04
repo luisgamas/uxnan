@@ -39,6 +39,7 @@ import type {
   ApprovalDecision,
   QuestionItem,
   QuestionOption,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
 import {
@@ -47,6 +48,7 @@ import {
   type CustomCommandSource,
 } from './command-scan.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { mergePlanSteps, opencodeToolBlock } from './opencode-tools.js';
 import {
   compactionBlock,
@@ -396,6 +398,22 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         data: { text: `opencode prompt failed: ${errorMessage(err)}` },
       });
     }
+  }
+
+  /**
+   * Name a conversation with a one-shot `opencode run`, deliberately not the
+   * `serve` session a turn uses: no `--session`/`--continue`, so it starts a
+   * throwaway run and the conversation's own history is untouched.
+   *
+   * No `-m`: OpenCode routes through many providers, so there is no fixed
+   * cheap-tier id to hard-code — pinning one would break the moment a user's
+   * provider set differs. It runs on OpenCode's own default (see FOR-DEV.md).
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const raw = await runTitleOneShot(() => this.#spawn(this.#binaryPath, ['run', prompt], cwd));
+    return raw === undefined ? undefined : sanitizeTitle(raw);
   }
 
   /**

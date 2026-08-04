@@ -16,6 +16,7 @@ mod browse;
 mod browser;
 mod codex_trust;
 mod commands;
+mod convtitle;
 // Public so the headless runner (`main.rs` → `automations::store`) resolves the
 // data directory through exactly the same override the app does.
 pub mod datadir;
@@ -406,6 +407,7 @@ pub fn run() {
             commands::git_push,
             commands::git_pull,
             commands::git_generate_commit_message,
+            commands::generate_conversation_title,
             commands::ai_commit_agents,
             commands::ai_commit_models,
             commands::agent_run_headless,

@@ -46,9 +46,11 @@ import type {
   AgentConfig,
   AgentId,
   AgentModel,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
 import { defaultSpawn, type SpawnFn, type SpawnedProcess } from './spawn.js';
 
 /** Hard cap on the `agy models` spawn before giving up. */
@@ -313,6 +315,20 @@ export class AntigravityAdapter extends BaseAgentAdapter {
     child.on('close', () => finish());
 
     return Promise.resolve();
+  }
+
+  /**
+   * Name a conversation with a one-shot `agy -p`, without `--conversation`, so
+   * it never joins the conversation this thread resumes.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const args = ['--output-format', 'text', '--add-dir', cwd, '-p', prompt];
+    const raw = await runTitleOneShot(() =>
+      this.#spawn(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
+    );
+    return raw === undefined ? undefined : sanitizeTitle(raw);
   }
 
   cancelTurn(threadId: string, turnId: string): Promise<void> {

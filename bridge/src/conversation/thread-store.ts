@@ -16,6 +16,7 @@ import type {
   Thread,
   ThreadList,
   ThreadStatus,
+  ThreadTitleSource,
   Turn,
   TurnList,
   TurnStatus,
@@ -91,6 +92,12 @@ interface StoredThread {
   agentSessionId?: string;
   /** Per-thread access (approval) mode; persisted so the phone's choice sticks. */
   accessMode?: AccessMode;
+  /**
+   * Who named this thread (see {@link Thread.titleSource}). Absent on threads
+   * stored before titles had a source — those all came from the opening
+   * message, so absent is read as `prompt` and a generated title may replace it.
+   */
+  titleSource?: ThreadTitleSource;
 }
 
 const DEFAULT_TURN_LIMIT = 20;
@@ -374,11 +381,46 @@ export class ThreadStore {
     await this.#captureMetrics(updated);
   }
 
-  /** Renames a thread; returns the updated thread for the phone to echo. */
-  renameThread(threadId: string, title: string, now: number): Promise<Thread> {
+  /**
+   * Renames a thread; returns the updated thread for the phone to echo.
+   *
+   * `source` records who named it (see {@link Thread.titleSource}). It defaults
+   * to `user` because that is who calls `thread/rename` — a hand-picked name is
+   * final and nothing generated may replace it.
+   */
+  renameThread(
+    threadId: string,
+    title: string,
+    now: number,
+    source: ThreadTitleSource = 'user',
+  ): Promise<Thread> {
     return this.#mutate(async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.title = title;
+      thread.titleSource = source;
+      thread.updatedAt = now;
+      return toThread(thread);
+    });
+  }
+
+  /**
+   * Store a generated title, but only over a provisional one.
+   *
+   * The generated name arrives after a turn the user watched for minutes, and
+   * they may well have renamed the thread by hand while waiting — so this
+   * refuses to overwrite a `user` title (and an `agent` one, which is already
+   * as good). Returns the updated thread, or `undefined` when it declined,
+   * which is also the signal not to notify anyone.
+   */
+  applyGeneratedTitle(threadId: string, title: string, now: number): Promise<Thread | undefined> {
+    return this.#mutate(async (threads) => {
+      const thread = threads.find((t) => t.id === threadId);
+      if (!thread) return undefined;
+      // Absent means it predates `titleSource`, and those are all `prompt`.
+      if (thread.titleSource !== undefined && thread.titleSource !== 'prompt') return undefined;
+      if (thread.title === title) return undefined;
+      thread.title = title;
+      thread.titleSource = 'agent';
       thread.updatedAt = now;
       return toThread(thread);
     });
@@ -855,6 +897,7 @@ function toThread(thread: StoredThread): Thread {
     // …) so the phone can show "resume from the CLI" beyond the thread id.
     ...(thread.agentSessionId !== undefined ? { agentSessionId: thread.agentSessionId } : {}),
     ...(thread.accessMode !== undefined ? { accessMode: thread.accessMode } : {}),
+    ...(thread.titleSource !== undefined ? { titleSource: thread.titleSource } : {}),
   };
 }
 

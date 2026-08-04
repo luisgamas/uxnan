@@ -14,7 +14,7 @@ only a human can provide.)
 ## Status
 
 The bridge is **alpha-functional** on its primary path (LAN/Tailscale-direct,
-standalone). It builds clean and the suite is green (bridge 625, shared 36, relay
+standalone). It builds clean and the suite is green (bridge 632, shared 36, relay
 30). The **npm releases shipped** — `uxnan-bridge` is published to npm; releases
 publish to the **`latest`** dist-tag (`@uxnan/shared` pinned to the same version by
 the release workflow). Nothing below blocks LAN/Tailscale-direct use; the remaining
@@ -50,6 +50,16 @@ push validation (FOR-HUMAN).
   Native assistant envelopes from Codex, Claude and pi are separated by durable
   `assistant_response_boundary` blocks; terminal text is reconciled additively,
   so an agent's final item cannot erase progress/commentary already shown.
+- **Conversation naming** — a thread is no longer labelled with the first ~72
+  characters of its opening message (two conversations that start with the same
+  phrase were indistinguishable). No agent CLI exposes a title — every one of
+  them leaves that to its own client — so the bridge names its own: provisional
+  from the opening message, then the agent writes a real one once the first turn
+  has an answer, as a **one-shot with no session id** (nothing enters the
+  thread's history) on the agent's **cheapest** model. Wired for all seven
+  agents, **six verified live**; a generated title never overwrites one the user
+  chose (`Thread.titleSource`), and `stream/thread/renamed` converges every
+  client. Best-effort throughout: a failure keeps the provisional name.
 - **Per-thread message queue** — a `turn/send` arriving with a turn in flight is
   queued (status `queued`) instead of clobbering it, and drains automatically on
   completion; run options are frozen at queue time; the queue holds after a stop
@@ -289,6 +299,31 @@ push validation (FOR-HUMAN).
 
 ## Agent adapters
 
+- [ ] **Name conversations on Zero.** `IAgentAdapter.generateTitle` is wired for
+      all seven active agents and **verified live on six**: Claude Code
+      (`haiku`), Codex (`gpt-5.4-mini`, `codex exec --ephemeral -s read-only
+      -o <file>`), OpenCode, pi, Antigravity and Grok. Zero's `zero exec
+      <prompt>` form is confirmed **in Zero's own source** (its eval harness
+      drives itself that way), but has never run: Zero is not installed here and
+      the account has no credits. Run it once and drop this item.
+      Also open: **a per-provider cheap model** for the multi-provider CLIs.
+      OpenCode, pi and Grok route through many providers, so there is no fixed
+      cheap-tier id to hard-code and they title on their own default. A
+      configurable titling model belongs in daemon config. See the `#titleModel`
+      marker in `pi-adapter.ts`.
+- [ ] **Mid-turn steering as a per-agent capability.** The message queue (shipped)
+      delivers a follow-up as its own turn once the current one ends — uniform
+      across all seven active agents. What the CLIs additionally do is *steer*: inject the
+      message into the running turn at the next tool-call boundary (Claude Code's
+      TUI does this by default; Codex splits it as `Tab` = queue vs `Enter` =
+      steer). The bridge cannot: the one-shot agents (`claude -p --resume`, pi,
+      antigravity) have no input channel while they run — `spawn.ts` closes
+      stdin because those CLIs hang on an open pipe. It IS reachable for the
+      server-backed ones (Codex `app-server`, OpenCode `serve`, Zero/Grok ACP), so
+      it belongs behind a new `AgentCapabilities.steering` flag the phone can read,
+      alongside a `turn/steer` (or a `turn/send` mode) that the adapter maps to its
+      protocol. Needs: the capability in `shared/`, per-adapter support, and a
+      mobile affordance distinct from "queue". Unblocked — just not started.
 - [ ] **Verify Codex `turn/steer` against a live turn.** The Codex half of
       mid-turn delivery is implemented and unit-tested against the published
       protocol schema (`codex app-server generate-json-schema`, codex-cli

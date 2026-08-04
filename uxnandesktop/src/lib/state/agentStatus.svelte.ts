@@ -9,16 +9,17 @@
 // Hydrated once from the persisted cache, then kept live via the
 // `agent:status-changed` Tauri event. A report older than 30 min is "stale".
 
-import { listen } from "@tauri-apps/api/event";
-import { agentStates } from "$lib/api";
-import { terminals } from "./terminals.svelte";
-import { unread } from "./unread.svelte";
-import { requestSweep } from "./statusSweepRegistry";
-import { app } from "./app.svelte";
-import { toast } from "$lib/toast";
-import { notify } from "$lib/notify";
-import { i18n } from "$lib/i18n";
-import type { AgentStatus, AgentStatusEvent, SubagentEntry } from "$lib/types";
+import { listen } from '@tauri-apps/api/event';
+import { agentStates } from '$lib/api';
+import { terminals } from './terminals.svelte';
+import { conversationTitles } from './conversationTitles.svelte';
+import { unread } from './unread.svelte';
+import { requestSweep } from './statusSweepRegistry';
+import { app } from './app.svelte';
+import { toast } from '$lib/toast';
+import { notify } from '$lib/notify';
+import { i18n } from '$lib/i18n';
+import type { AgentStatus, AgentStatusEvent, SubagentEntry } from '$lib/types';
 
 /** A report grows stale (shown dimmed) after this long with no update (spec §1.5). */
 const STALE_MS = 30 * 60 * 1000;
@@ -69,7 +70,7 @@ class AgentStatusStore {
       // No backend (web preview) — leave empty.
     }
     try {
-      await listen<AgentStatusEvent>("agent:status-changed", (e) => {
+      await listen<AgentStatusEvent>('agent:status-changed', (e) => {
         const p = e.payload;
         const prevState = this.byId[p.agentId];
         this.byId = { ...this.byId, [p.agentId]: toLive(p) };
@@ -82,6 +83,11 @@ class AgentStatusStore {
         // Announce meaningful transitions (done / blocked / waiting). Pass the
         // previous state so we can recover the task prompt on `done` (the Stop
         // report's own prompt may be the freshly-read transcript task).
+        // The first time a turn finishes there is finally an answer to
+        // summarize, so the session can stop being labelled with whatever the
+        // user typed first. Fire-and-forget, once per session, and harmless if
+        // it fails (see `conversationTitles`).
+        if (p.status === 'done') this.nameConversation(p, prevState);
         if (prevState?.status !== p.status) {
           this.notifyChange(p, prevState);
           // An agent changing state is the cheapest evidence that the working
@@ -104,14 +110,35 @@ class AgentStatusStore {
    *  it's in the background, a native OS notification is sent (enriched with the
    *  task and a short response preview for `done`). A non-`working` result also
    *  flags its worktree "unread" unless you're already looking at it. */
+  /** Name this session from its opening exchange, once, using its own agent CLI. */
+  private nameConversation(p: AgentStatusEvent, prev?: LiveAgentState): void {
+    const tab = terminals.findTab(p.agentId);
+    if (!tab || tab.kind !== 'terminal') return;
+    // The Stop report's own prompt can be a freshly-read transcript task, so
+    // prefer the prompt we already had — the same recovery `notifyChange` does.
+    const userText = (prev?.prompt ?? p.prompt ?? '').trim();
+    // `agentType` is the CLI id the hook reported (`claude`, `codex`, …), which
+    // is what the title command needs; `agentCommand` is the same id sealed on
+    // the tab at launch.
+    const agentId = (p.agentType ?? tab.agentCommand ?? '').trim();
+    const cwd = tab.cwd;
+    if (!userText || !agentId || !cwd) return;
+    void conversationTitles.ensure({
+      tabId: p.agentId,
+      agentId,
+      userText,
+      assistantText: p.summary ?? '',
+      cwd,
+    });
+  }
+
   private notifyChange(p: AgentStatusEvent, prevState?: LiveAgentState): void {
     const status = p.status;
-    if (status === "working") return;
+    if (status === 'working') return;
     if (app.settings.agentNotifications === false) return;
 
     const tab = terminals.findTab(p.agentId);
-    const name =
-      (tab?.kind === "terminal" ? tab.agentName : undefined) ?? i18n.t("toast.agent");
+    const name = (tab?.kind === 'terminal' ? tab.agentName : undefined) ?? i18n.t('toast.agent');
     const ws = terminals.workspaceOfTab(p.agentId);
     const viewing = ws !== undefined && this.viewing(ws, p.agentId);
 
@@ -121,35 +148,35 @@ class AgentStatusStore {
     // Flag the worktree as having an unreviewed result (red badge).
     if (ws !== undefined) unread.mark(ws);
 
-    const focused = typeof document !== "undefined" ? document.hasFocus() : true;
+    const focused = typeof document !== 'undefined' ? document.hasFocus() : true;
     if (focused) {
       // In-app, lightweight — only useful while the window is up.
-      if (status === "done") toast.success(i18n.t("toast.agentDone", { name }));
-      else if (status === "blocked") toast.warning(i18n.t("toast.agentBlocked", { name }));
-      else if (status === "waiting") toast.info(i18n.t("toast.agentWaiting", { name }));
+      if (status === 'done') toast.success(i18n.t('toast.agentDone', { name }));
+      else if (status === 'blocked') toast.warning(i18n.t('toast.agentBlocked', { name }));
+      else if (status === 'waiting') toast.info(i18n.t('toast.agentWaiting', { name }));
       return;
     }
 
     // Background → native OS notification with enriching detail.
-    const task = (p.prompt ?? prevState?.prompt ?? "").trim();
-    if (status === "done") {
-      const preview = (p.summary ?? "").trim();
+    const task = (p.prompt ?? prevState?.prompt ?? '').trim();
+    if (status === 'done') {
+      const preview = (p.summary ?? '').trim();
       const body = preview
         ? preview
         : task
-          ? i18n.t("notify.agentTask", { task })
-          : i18n.t("notify.agentDoneBody");
-      void notify(i18n.t("notify.agentDoneTitle", { agent: name }), body);
-    } else if (status === "waiting") {
+          ? i18n.t('notify.agentTask', { task })
+          : i18n.t('notify.agentDoneBody');
+      void notify(i18n.t('notify.agentDoneTitle', { agent: name }), body);
+    } else if (status === 'waiting') {
       void notify(
-        i18n.t("notify.agentWaitingTitle", { agent: name }),
-        task ? i18n.t("notify.agentTask", { task }) : i18n.t("notify.agentWaitingBody"),
+        i18n.t('notify.agentWaitingTitle', { agent: name }),
+        task ? i18n.t('notify.agentTask', { task }) : i18n.t('notify.agentWaitingBody'),
       );
-    } else if (status === "blocked") {
-      const preview = (p.summary ?? "").trim();
+    } else if (status === 'blocked') {
+      const preview = (p.summary ?? '').trim();
       void notify(
-        i18n.t("notify.agentBlockedTitle", { agent: name }),
-        preview || i18n.t("notify.agentBlockedBody"),
+        i18n.t('notify.agentBlockedTitle', { agent: name }),
+        preview || i18n.t('notify.agentBlockedBody'),
       );
     }
   }
@@ -157,12 +184,8 @@ class AgentStatusStore {
   /** Whether the user is currently looking at a given terminal (window focused,
    *  that workspace shown, that tab active) — so a result there needs no badge. */
   private viewing(workspace: string, tabId: string): boolean {
-    const focused = typeof document !== "undefined" ? document.hasFocus() : true;
-    return (
-      focused &&
-      terminals.activeWorkspace === workspace &&
-      terminals.activePtyId() === tabId
-    );
+    const focused = typeof document !== 'undefined' ? document.hasFocus() : true;
+    return focused && terminals.activeWorkspace === workspace && terminals.activePtyId() === tabId;
   }
 
   /** Precise state for a tab id, if the hook reported one. */
@@ -182,10 +205,10 @@ class AgentStatusStore {
    *  later hook still wins. Display-only (the next real hook re-syncs it). */
   synthesizeInterruptedDone(id: string): void {
     const prev = this.byId[id];
-    if (!prev || prev.status !== "working") return;
+    if (!prev || prev.status !== 'working') return;
     this.byId = {
       ...this.byId,
-      [id]: { ...prev, status: "done", interrupted: true, lastUpdate: Date.now() },
+      [id]: { ...prev, status: 'done', interrupted: true, lastUpdate: Date.now() },
     };
   }
 
@@ -197,10 +220,10 @@ class AgentStatusStore {
    *  agent would otherwise report state but stay invisible). Only seals a tab with
    *  no identity yet — a launched or already-detected identity always wins. */
   private sealIdentity(p: AgentStatusEvent): void {
-    const type = (p.agentType ?? "").trim();
+    const type = (p.agentType ?? '').trim();
     if (!type) return;
     const tab = terminals.findTab(p.agentId);
-    if (!tab || tab.kind !== "terminal") return;
+    if (!tab || tab.kind !== 'terminal') return;
     if (tab.agentName || tab.agentCommand) return;
     const a = app.resolveAgent(type);
     tab.agentName = a.name;

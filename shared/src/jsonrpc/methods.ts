@@ -164,6 +164,16 @@ export interface ThreadRenameParams {
   threadId: string;
   /** New, non-empty title for the thread. */
   title: string;
+  /**
+   * Who is naming it. **Absent means the user did** — the safe default, since
+   * `thread/rename` is the hand-rename call and a name the user chose is final.
+   *
+   * A client that auto-names a new thread from its opening message MUST send
+   * `'prompt'`; otherwise its throwaway title is recorded as the user's choice
+   * and the real generated title is refused later. `'agent'` is not accepted
+   * here — the bridge writes those itself when it generates one.
+   */
+  source?: 'prompt' | 'user';
 }
 export interface ThreadSetAccessModeParams {
   threadId: string;

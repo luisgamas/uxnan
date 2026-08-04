@@ -9,6 +9,7 @@ import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -187,9 +188,12 @@ class _UnreadDot extends StatelessWidget {
   }
 }
 
-/// The full, two-line tile body: title + last-activity time, then the activity
-/// indicator with the agent·folder subtitle (or "Responding…" while running).
-class _FullContent extends StatelessWidget {
+/// The full, two-line tile body: the conversation title + last-activity time,
+/// then the activity indicator with what the agent is doing — "Responding…"
+/// while a turn runs, its latest reply once one ends, and the agent·folder when
+/// there is nothing to show yet. Mirrors the desktop agent card's second line,
+/// so a conversation reads the same in both apps.
+class _FullContent extends ConsumerWidget {
   const _FullContent({
     required this.thread,
     required this.activity,
@@ -202,11 +206,20 @@ class _FullContent extends StatelessWidget {
   final bool requiresLogin;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     final responding = activity == ThreadActivity.running;
+    // The agent's own words take the line the moment it stops talking; while it
+    // works, what it is doing matters more than what it last said.
+    final preview =
+        responding ? null : ref.watch(threadPreviewProvider(thread.id)).value;
+    final secondary = responding
+        ? l10n.threadResponding
+        : (preview != null && preview.isNotEmpty)
+            ? preview
+            : _subtitleFor(thread);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -247,7 +260,7 @@ class _FullContent extends StatelessWidget {
             const SizedBox(width: UxnanSpacing.xs),
             Flexible(
               child: Text(
-                responding ? l10n.threadResponding : _subtitleFor(thread),
+                secondary,
                 style: textTheme.bodySmall?.copyWith(
                   color: responding ? colors.primary : colors.onSurfaceVariant,
                 ),
