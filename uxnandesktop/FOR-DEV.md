@@ -1003,79 +1003,61 @@ go stale; these are the ones worth calling out.
       has the old shapes (missing `isGit`, no terminal profiles, tabs without a
       `kind`, a truncated file) and nothing consumes them yet — so the migration
       path is covered in Rust but never end to end.
-- [ ] **Make E2E a required gate** once `e2e-desktop.yml` has run green for a
-      fortnight. Blocking before it has a track record on that runner is how a
-      gate earns a reputation for false failures. **It has never been green on
-      CI**: the four scheduled runs so far (2026-08-01 … 2026-08-04) failed
-      identically — all 9 specs dying in `Failed to create a session` before a
-      single assertion — while the same suite runs green locally.
+- [ ] **E2E on a hosted runner: measured, unresolved, and no longer on a
+      schedule.** `e2e-desktop.yml` never passed on `windows-latest` — four
+      nightlies plus three diagnostic dispatches (2026-08-01 … 08-04), all 9
+      specs dying in `session not created: DevToolsActivePort file doesn't exist`
+      before any assertion, while the same suite is green locally. The cron is
+      **removed** (dispatch-only): a permanently red nightly teaches people to
+      ignore CI mail. **E2E is a local layer today**, and the required gate stays
+      out of reach until a runner can attach at all.
 
-      What the logs have since settled, so nobody re-investigates it:
-
-      - **Not the driver pairing**, the standing first suspect, now ruled out.
-        `test:e2e:setup` resolves and fetches the matching driver on the runner
-        too (`fetching WebDriver 150.0.4078.105… ready`), and a mismatch fails
-        with an explicit "only supports version" message. The real error is
-        `session not created: DevToolsActivePort file doesn't exist`, which is
-        about the **attach**, not the versions.
-      - **Not the app.** `resource-benchmarks.yml` is green on the same runner
-        image on the same nights, launching the same release binary and
-        recording a full WebView2 process tree (R01: ~425 MB own RSS, ~513 MB
-        managed). The app runs there; only the automation attach fails.
-      - **The failures left no evidence**, which is part of why this stalled:
-        the upload step pointed at `.artifacts/`, and upload-artifact skips
-        dot-paths unless `include-hidden-files` is set — so every run logged
-        "No files were found" and discarded the driver log. Fixed, together with
-        `npm run test:e2e:diagnose` (`tests/e2e/diagnose-session.mjs`), which now
-        runs after the suite on CI and answers the two questions the failure
-        leaves open, with data: does the app expose a remote-debugging endpoint
-        on that machine, and does a session succeed when the capabilities carry
-        the webview's real `userDataFolder`.
-
-      **What the first diagnosis (2026-08-04) measured**, runner against this
-      machine, same experiment, the release binary that ran the suite green:
+      **The cause, measured** (`npm run test:e2e:diagnose`, both sides, same
+      release binary): on the runner the browser process comes up with **no
+      `--remote-debugging-port`** and none of msedgedriver's other switches, so
+      nothing was ever listening. `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is
+      dropped there and honoured here. The env-var channel itself is fine — the
+      webview does pick up msedgedriver's `--user-data-dir`
+      (`C:\Windows\SystemTemp\scoped_dir…`) — so it is the additional
+      *arguments* specifically.
 
       | | local (green) | runner (red) |
       |---|---|---|
-      | remote-debugging endpoint | answers in **611 ms** | never, at 90 s |
-      | session, capabilities as sent today | created in **956 ms** | refused at 60 s |
-      | session + `webviewOptions.userDataFolder` | created in 748 ms | refused at 60 s |
-      | WebView2 / msedgedriver | 151.0.4129.59 | 150.0.4078.105 |
+      | remote-debugging endpoint | **611 ms** | never, at 90 s |
+      | session, capabilities as sent | **956 ms** | refused at 60 s |
+      | session + `webviewOptions.userDataFolder` | 748 ms | refused at 60 s |
+      | webview processes under automation | — | **6** (browser, gpu, renderer, …) |
+      | of those carrying `--remote-debugging-port` | — | **0** |
 
-      - **`userDataFolder` is not the fix** — it changed nothing on the runner,
-        and locally `DevToolsActivePort` is **not** in that folder either while
-        sessions still start in under a second. `msedgedriver` finds the port
-        another way; that folder was never the problem.
-      - **Not slowness.** 611 ms against silence at 90 s is a hard failure.
-      - **The app is not the problem, and neither is the graphics environment**:
-        WebView2 starts on the runner (the benchmarks see `msedgewebview2.exe`
-        in the tree with real RSS). What never comes up is the *debugging port*
-        — a selective failure of the automation layer.
-      - **Last suspect standing: the runtime version.** The image ships WebView2
-        150.0.4078.105; the machine where all of this is green runs 151. The
-        workflow now installs the current Evergreen runtime before the suite —
-        with `setup-driver.mjs` re-reading the registry afterwards, so the
-        pairing stays matched and nothing is pinned.
+      Ruled out, with the evidence, so none of it is re-investigated:
 
-      **The runtime update did not take (2026-08-04, second run).** The Evergreen
-      bootstrapper returned in 0.7 s with an empty exit code and the version did
-      not move (`before` and `after` both 150.0.4078.105), so the runtime
-      hypothesis is still **untested** — not confirmed, not ruled out. The step
-      now reports the update path it depends on (the `edgeupdate` service and the
-      EdgeUpdate policies, commonly disabled on CI images) and tries to start it
-      first; if the image will not budge, forcing a fixed-version runtime through
-      `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` is the way that does not need the
-      updater at all.
+      - **The driver pairing.** `setup-driver.mjs` fetches the matching driver on
+        the runner as it does locally, and a mismatch says so explicitly.
+      - **The app, and the graphics environment.** `resource-benchmarks.yml` is
+        green on the same image, and the diagnosis sees the webview come up
+        under automation too — 6 processes, renderer and GPU included.
+      - **The runtime version.** With the `edgeupdate` service started (it ships
+        `Stopped`, which is why the first attempt was a silent no-op) the
+        bootstrapper does work: the runner ran 151.0.4129.59, byte for byte what
+        the green machine runs, and failed identically.
+      - **`webviewOptions.userDataFolder`.** No difference — and locally
+        `DevToolsActivePort` is absent from that folder on a *passing* run, so it
+        was never the mechanism.
 
-      Next, and the reason the following cycle is worth spending: the diagnosis
-      now samples the app's **process tree** while the attach is in flight, which
-      separates three failures that look identical from outside — no webview
-      process at all (the switches prevent it), a webview whose command line
-      lacks `--remote-debugging-port` (the runtime dropped what
-      `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` asked for), or a webview that was
-      asked and refused to listen (the machine, not the arguments). Each points
-      at a different fix. Iterating costs a push-per-attempt CI cycle (~35 min,
-      dominated by the release build).
+      Two leads, if CI E2E is ever worth another attempt:
+
+      1. **A machine policy stripping the switch.** `HKLM\SOFTWARE\Policies\
+         Microsoft\{Edge,EdgeWebView,EdgeUpdate}` and `…\Windows\WebView2` are
+         **empty** on the machine where the suite passes; the workflow now dumps
+         all four, so one dispatch answers it.
+      2. **Stop routing the switch through the environment.** The app could pass
+         it itself via wry's `additional_browser_args` / Tauri's
+         `additionalBrowserArgs` when a `TAURI_WEBVIEW_AUTOMATION` build asks for
+         it. That is a change to the shipped binary for testability's sake, so it
+         needs a deliberate decision, not a drive-by patch.
+
+      Each attempt costs a push-per-dispatch CI cycle (~35 min, dominated by the
+      release build).
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
       coverage for either.
@@ -1138,8 +1120,10 @@ when an announced state exceeds the evidence. Announced today: **Windows
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
   keeps the default `{ubuntu, windows}`. 488 Rust + 764 Vitest tests (both
-  projects: pure logic and components). E2E runs in its own on-demand/nightly
-  Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
+  projects: pure logic and components). E2E has its own **dispatch-only** Windows
+  workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
+  on a hosted runner at all: E2E is a local layer, for the measured reason in the
+  open item above.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. The build now also depends on the **platform-support gate**

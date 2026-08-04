@@ -458,8 +458,14 @@ operativa en `docs/testing.md`.
   ninguna puede listar una capa como cubierta y planificada a la vez. Registra lo
   que **no** está probado con el mismo cuidado que lo que sí.
 - **CI**: los tests de componente entran en el gate obligatorio desde el primer
-  día; E2E vive en `e2e-desktop.yml` (bajo demanda y nocturno, Windows), sin
-  bloquear hasta tener historial.
+  día; E2E vive en `e2e-desktop.yml` (Windows, **solo bajo demanda**) y no
+  bloquea. El nocturno se retiró tras medir por qué nunca pasó en un runner de
+  GitHub: allí el proceso navegador arranca **sin `--remote-debugging-port`**,
+  así que nada queda escuchando y la sesión de WebDriver no llega a crearse.
+  Descartados el emparejamiento del driver, la versión del runtime (se forzó el
+  runner al mismo 151.0.4129.59 de la máquina donde sí pasa) y
+  `webviewOptions.userDataFolder`. E2E es, por tanto, una capa **local**; la
+  evidencia está en la cabecera del workflow y en `uxnandesktop/FOR-DEV.md`.
 - **Restricción conocida**: E2E no puede convivir con otra instancia de uxnan
   —misma compartición del proceso navegador de WebView2 que ya afecta al banco de
   recursos— y el teardown mata **por PID, nunca por nombre**, porque una barrida

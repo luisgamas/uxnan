@@ -233,16 +233,19 @@ npm run test:e2e         # close every other uxnan window first
 npm run test:e2e:diagnose  # only when no session starts at all (see below)
 ```
 
-> **This layer is green locally and has never been green on CI.** Every
-> scheduled `e2e-desktop.yml` run so far fails the same way — all 9 specs die in
-> `session not created: DevToolsActivePort file doesn't exist`, before any
-> assertion. It is the WebDriver attach, not the app: the resource benchmarks
-> launch the same release binary on the same runner image and record a full
-> WebView2 process tree. `npm run test:e2e:diagnose` is the instrument for it
-> (what it measures: [`../tests/e2e/README.md`](../tests/e2e/README.md) → *When
-> no session starts at all*); the workflow runs it after the suite and uploads
-> its report. Until that comes back green, E2E stays outside the required gate —
-> tracked in [`../FOR-DEV.md`](../FOR-DEV.md).
+> **This layer is green locally and does not run on a hosted runner.** Every
+> `e2e-desktop.yml` run failed the same way — all 9 specs dying in `session not
+> created: DevToolsActivePort file doesn't exist`, before any assertion — so the
+> nightly schedule was removed rather than left red, and the workflow is now
+> dispatch-only. It is the WebDriver attach, not the app: the browser process
+> comes up on the runner with **no `--remote-debugging-port`**, so nothing was
+> ever listening, while the identical binary and runtime answer in 611 ms here.
+> Ruled out along the way: the driver pairing, the runtime version (the runner
+> was forced to the same 151.0.4129.59) and `webviewOptions.userDataFolder`.
+> `npm run test:e2e:diagnose` is the instrument that measured all of it
+> ([`../tests/e2e/README.md`](../tests/e2e/README.md) → *When no session starts
+> at all*). E2E therefore stays outside the required gate, and what is still
+> owed is in [`../FOR-DEV.md`](../FOR-DEV.md).
 
 **Eight journeys, 24 tests, ~39 s for the suite**, verified green on consecutive
 runs with zero leftover processes: launch, session restore, terminals in a split,

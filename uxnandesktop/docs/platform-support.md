@@ -100,13 +100,17 @@ CI already gives every platform what a runner can give it:
   Rust + Vitest suites on `{ubuntu-latest, windows-latest, macos-14}` for every
   PR (`ci-desktop.yml`), and `release-desktop.yml` bundles installers for all
   four targets on tags.
-- **Smoke on a runner** — the E2E suite (`e2e-desktop.yml`) runs the real
-  release binary on `windows-latest`, on demand and nightly. `tauri-driver`
-  supports Linux (WebKitWebDriver) but the harness — driver fetch, preflight,
-  teardown — is Windows-specific today and has never executed on Linux; wiring
-  a Linux leg without being able to run it once would be exactly the
-  speculative platform code this matrix exists to prevent, so it stays on the
-  `linux-x64` checklist. `tauri-driver` does not support macOS at all.
+- **Smoke, but not on a runner** — the E2E suite (`e2e-desktop.yml`) drives the
+  real release binary on the **maintainer's Windows machine**, not in CI: on
+  `windows-latest` the WebDriver attach never gets a debugging port, so no
+  session is ever created (measured — the evidence is in that workflow's
+  header). It is dispatch-only there, and the Windows `smoke` claim rests on
+  local runs, which is what its evidence cites. `tauri-driver` supports Linux
+  (WebKitWebDriver) but the harness — driver fetch, preflight, teardown — is
+  Windows-specific today and has never executed on Linux; wiring a Linux leg
+  without being able to run it once would be exactly the speculative platform
+  code this matrix exists to prevent, so it stays on the `linux-x64` checklist.
+  `tauri-driver` does not support macOS at all.
 - **Everything past that needs hardware** — the maintainer has Windows
   hardware only, which is precisely why macOS and Linux sit at `builds`: their
   remaining items (Gatekeeper walkthrough, LaunchAgent/systemd registration,

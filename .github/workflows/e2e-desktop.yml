@@ -3,12 +3,36 @@ name: E2E — Desktop (uxnandesktop)
 # The end-to-end layer: a real release binary, a real WebView2, real IPC.
 # Documented in `uxnandesktop/tests/e2e/README.md`.
 #
-# On demand and nightly, never on a PR — and deliberately **not yet required**.
-# It needs a release build (minutes), a WebDriver matched to the runner's
-# WebView2, and a machine with no other uxnan running. Making it blocking before
-# it has a track record on this runner is how a gate earns a reputation for
-# false failures and gets switched off; the plan is to require it once it has run
-# green for a fortnight (tracked in `uxnandesktop/FOR-DEV.md`).
+# **On demand only — this suite does not pass on a GitHub-hosted runner, and the
+# schedule was removed rather than left failing every night.** E2E is a local
+# layer today (`npm run test:e2e`, green on Windows); this workflow stays so the
+# next attempt costs a dispatch instead of a rebuild.
+#
+# What four failed runs plus `npm run test:e2e:diagnose` established, so nobody
+# pays for it twice:
+#
+#   * every spec dies in `session not created: DevToolsActivePort file doesn't
+#     exist`, before any assertion — the WebDriver attach, not the app;
+#   * NOT the app: `resource-benchmarks.yml` is green on this same image, and the
+#     diagnosis sees the webview come up under automation too (6 processes:
+#     browser, gpu, renderer, utilities);
+#   * NOT the driver pairing: `setup-driver.mjs` fetches the matching driver here
+#     as it does locally;
+#   * NOT the runtime version: forcing the runner to 151.0.4129.59 — byte for
+#     byte what the green local machine runs — changed nothing;
+#   * NOT `webviewOptions.userDataFolder`: it made no difference, and locally
+#     `DevToolsActivePort` is absent from that folder on a *passing* run anyway.
+#
+# What it IS: the browser process comes up with **no `--remote-debugging-port`**
+# and none of msedgedriver's other switches, so nothing was ever listening —
+# `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is dropped on this runner while the
+# same variable is honoured locally. The env-var channel itself works (the
+# webview does pick up msedgedriver's `--user-data-dir`), so it is the additional
+# *arguments* specifically. A machine policy is the open lead — the steps below
+# print the Edge/WebView2 policy keys, which are empty on the machine where this
+# passes; the other path is the app passing the switch itself through wry's
+# `additional_browser_args` rather than the environment. Both in
+# `uxnandesktop/FOR-DEV.md`.
 #
 # Windows only. `tauri-driver` supports Linux and does not support macOS, and
 # neither has been exercised here — this workflow does not claim a platform
@@ -21,9 +45,6 @@ on:
         description: "Spec file filter (empty runs them all)"
         required: false
         default: ""
-  schedule:
-    # 03:40 UTC, off the hour so it does not queue behind everyone else's cron.
-    - cron: "40 3 * * *"
 
 concurrency:
   group: e2e-desktop
@@ -82,15 +103,16 @@ jobs:
       # bootstrapper installs the current version, and the driver step below
       # re-reads the registry, so the pairing stays matched with nothing pinned.
       # If a green run proves this was not the cause, this step comes out again.
-      # Never fatal: provisioning that fails leaves the image's runtime in place
-      # and the run still reports what it found, which is the whole point.
+      # This was the runtime hypothesis, and it is **disproved**: with the
+      # `edgeupdate` service started the bootstrapper does work (150.0.4078.105 →
+      # 151.0.4129.59, the exact version the suite passes on locally) and the
+      # attach failed exactly as before. The step stays anyway, for two reasons:
+      # a retry should not be confounded by a stale runtime, and its policy dump
+      # is the live evidence for the open lead — those keys are empty on the
+      # machine where this suite is green.
       #
-      # The first attempt at this was a silent no-op — the bootstrapper returned
-      # in 0.7 s with no exit code and the version did not move — so the step now
-      # reports the state of the update path it depends on (the `edgeupdate`
-      # service and the EdgeUpdate policies, both commonly disabled on CI images)
-      # before trying. A no-op that says why is worth a cycle; one that says
-      # nothing costs one.
+      # Never fatal: provisioning that fails leaves the image's runtime in place
+      # and the run still reports what it found.
       - name: Update the WebView2 Runtime
         shell: pwsh
         run: |
@@ -100,12 +122,22 @@ jobs:
 
           Get-Service -Name 'edgeupdate*' -EA SilentlyContinue |
             ForEach-Object { "service {0}: {1} ({2})" -f $_.Name, $_.Status, $_.StartType }
-          $policy = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate' -EA SilentlyContinue
-          if ($policy) {
-            $policy.PSObject.Properties |
-              Where-Object { $_.Name -notlike 'PS*' } |
-              ForEach-Object { "policy {0} = {1}" -f $_.Name, $_.Value }
-          } else { "policy: none set" }
+          # Every policy that could plausibly strip a switch from the browser
+          # command line. All three are empty on the machine where the suite
+          # passes, which is why a value here would be the answer.
+          foreach ($path in @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Edge',
+            'HKLM:\SOFTWARE\Policies\Microsoft\EdgeWebView',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WebView2'
+          )) {
+            $policy = Get-ItemProperty -Path $path -EA SilentlyContinue
+            if ($policy) {
+              $policy.PSObject.Properties |
+                Where-Object { $_.Name -notlike 'PS*' } |
+                ForEach-Object { "policy {0}\{1} = {2}" -f (Split-Path $path -Leaf), $_.Name, $_.Value }
+            } else { "policy {0}: none set" -f (Split-Path $path -Leaf) }
+          }
 
           try {
             # The updater is a service on this box; the bootstrapper cannot move

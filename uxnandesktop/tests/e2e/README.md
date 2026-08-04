@@ -104,9 +104,17 @@ from the saved HTML.
 
 A different failure, and nothing above explains it: every spec dies in
 `session not created: DevToolsActivePort file doesn't exist` before its first
-assertion. That is the **attach** failing, not the app — and it is what the
-nightly CI run has done since it was added, on a runner where the resource
-benchmarks launch the same binary and record a full WebView2 process tree.
+assertion. That is the **attach** failing, not the app.
+
+It is also what `e2e-desktop.yml` does on every GitHub-hosted runner, which is
+why **this suite is a local layer** and that workflow is dispatch-only. Measured
+there: the browser process starts with **no `--remote-debugging-port`** (the
+webview itself comes up fine — 6 processes), so nothing is listening.
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is dropped on that machine and honoured
+here. Ruled out: the driver pairing, the runtime version (the runner was forced
+to the same 151.0.4129.59) and `webviewOptions.userDataFolder`. The leads that
+remain are in [`../../FOR-DEV.md`](../../FOR-DEV.md) — don't spend a cycle
+re-deriving any of the above.
 
 ```bash
 npm run test:e2e:diagnose

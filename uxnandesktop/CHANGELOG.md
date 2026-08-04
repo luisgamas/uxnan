@@ -49,6 +49,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   budget is carried to the next tick instead of being dropped (the projects store
   hands each change over exactly once, so nothing re-announced it).
 
+### Changed — E2E is a local layer, and the nightly that never passed is retired
+
+- **`e2e-desktop.yml` no longer runs on a schedule.** It never passed on a
+  GitHub-hosted runner — every run, all 9 specs dying in `session not created:
+  DevToolsActivePort file doesn't exist` before any assertion — and a permanently
+  red nightly only teaches people to ignore CI mail. The workflow stays,
+  dispatch-only, so the next attempt costs a dispatch rather than a rebuild.
+  Measured cause: on the runner the browser process comes up with **no
+  `--remote-debugging-port`**, so nothing is ever listening;
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is dropped there and honoured locally,
+  while the env-var channel itself works (the webview does take msedgedriver's
+  `--user-data-dir`). Ruled out with evidence: the driver pairing, the app and
+  its graphics environment, the runtime version (the runner was forced to the
+  same 151.0.4129.59 the suite passes on) and `webviewOptions.userDataFolder`.
+  The docs that claimed a nightly or runner smoke — `docs/testing.md`,
+  `docs/platform-support.md`, `architecture/04-technical-reference.md`,
+  `verify-desktop.yml` — now say what actually happens; the two remaining leads
+  are in `FOR-DEV.md`.
+
 ### Fixed — the nightly E2E failure can finally be read
 
 - **The E2E workflow uploaded no evidence at all.** Its artifact step pointed at

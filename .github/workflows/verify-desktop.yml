@@ -73,8 +73,10 @@ jobs:
       # mounting and wiring failures that unit tests structurally cannot.
       #
       # End-to-end (L4) is deliberately NOT here: it needs a release binary, a
-      # version-matched WebDriver and a machine with no other uxnan running. It
-      # runs on demand and nightly in `e2e-desktop.yml`.
+      # version-matched WebDriver and a machine with no other uxnan running — and
+      # it does not pass on a hosted runner at all (the attach never gets a
+      # debugging port; the evidence is in `e2e-desktop.yml`'s header). It is a
+      # local layer, kept dispatch-only there.
       - name: Frontend unit + component tests (Vitest)
         run: npm test
 
