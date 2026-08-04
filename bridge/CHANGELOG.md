@@ -65,8 +65,29 @@ Verified end-to-end against the real `claude` 2.1.220 driving the built
 adapter: a message steered 7s into a five-`sleep` turn was taken after the
 first tool returned, the remaining sleeps were abandoned, and the run produced
 one `turn_started` and one `turn_completed`, every event on the original turn.
-Tests: 5 new in `test/adapters/claude-adapter.test.ts`. Bridge suite
-**611 passing**.
+Tests: 5 new in `test/adapters/claude-adapter.test.ts`.
+
+### Added — OpenCode takes a follow-up into the turn it is already running
+
+- `OpenCodeAdapter.steerTurn` sends another `prompt_async` on the SAME session
+  while the server is busy. No second `ActiveRun` is created on purpose: events
+  route by session, so the extra assistant message the server opens for the
+  answer already folds into the running turn — registering a second run would
+  instead retire the first as stale and split the reply in two.
+- The running turn's model and variant stay in force; a message *inside* a turn
+  must not switch models mid-answer.
+- If the turn goes idle while the prompt round-trip is in flight, it still
+  counts as **delivered**: the server accepted the message, so it is at the
+  agent. Answering "not taken" would make the bridge queue it and send the same
+  text a second time, and an instruction acted on twice is worse than a reply
+  the bridge could not attribute.
+
+Verified end-to-end against the real `opencode` 1.18.11 driving the built
+adapter: a message steered 6s into a five-`sleep` turn was taken after the
+first tool returned, the remaining sleeps were abandoned, and the run produced
+one `turn_started` and one `turn_completed`, every event on the original turn.
+Tests: 5 new in `test/adapters/opencode-adapter.test.ts`. Bridge suite
+**616 passing**.
 
 ## [0.0.15-alpha.20260803] - 2026-08-03
 
