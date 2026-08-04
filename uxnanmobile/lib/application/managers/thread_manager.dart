@@ -32,10 +32,8 @@ import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/domain/value_objects/turn_timeline_snapshot.dart';
 
 /// Sends a JSON-RPC request and resolves with the bridge response.
-typedef RpcSend = Future<RpcMessage> Function(
-  String method, [
-  Map<String, dynamic>? params,
-]);
+typedef RpcSend =
+    Future<RpcMessage> Function(String method, [Map<String, dynamic>? params]);
 
 /// Coordinates threads and the active conversation timeline (spec 02a §5.2.2).
 ///
@@ -55,13 +53,13 @@ class ThreadManager {
     Uuid? uuid,
     Duration resyncTimeout = const Duration(seconds: 8),
     Duration externalSyncInterval = const Duration(seconds: 3),
-  })  : _threadRepository = threadRepository,
-        _messageRepository = messageRepository,
-        _sendRequest = sendRequest,
-        _foregroundThreadId = foregroundThreadId,
-        _uuid = uuid ?? const Uuid(),
-        _resyncTimeout = resyncTimeout,
-        _externalSyncInterval = externalSyncInterval {
+  }) : _threadRepository = threadRepository,
+       _messageRepository = messageRepository,
+       _sendRequest = sendRequest,
+       _foregroundThreadId = foregroundThreadId,
+       _uuid = uuid ?? const Uuid(),
+       _resyncTimeout = resyncTimeout,
+       _externalSyncInterval = externalSyncInterval {
     _eventsSub = domainEvents.listen(_applyEvent);
     _phaseSub = connectionPhases?.listen(_onConnectionPhase);
   }
@@ -122,8 +120,9 @@ class ThreadManager {
   /// where the thread looks idle, and a client that trusts that window tells
   /// the user "Send" for a message the bridge is about to queue. Callers treat
   /// absence as "possibly busy" — see [isTurnStateKnown].
-  final BehaviorSubject<Set<String>> _turnStateKnown =
-      BehaviorSubject.seeded(const {});
+  final BehaviorSubject<Set<String>> _turnStateKnown = BehaviorSubject.seeded(
+    const {},
+  );
 
   /// Per-thread message queue as the BRIDGE reports it — the follow-ups sent
   /// while a turn was in flight. Mirrored, never owned: the bridge drains the
@@ -164,7 +163,7 @@ class ThreadManager {
   /// Token usage of each thread's most recent turn (context occupied, and the
   /// model's window when known), reported via `turn/completed`. In memory only.
   final BehaviorSubject<Map<String, ({int tokens, int? contextWindow})>>
-      _contextUsage = BehaviorSubject.seeded(const {});
+  _contextUsage = BehaviorSubject.seeded(const {});
 
   /// Concrete model each thread's agent resolved its alias to most recently
   /// (e.g. `opus` → `claude-opus-4-8`), reported via `stream/model/resolved`.
@@ -245,11 +244,11 @@ class ThreadManager {
   /// Reactive list of threads.
   Stream<List<Thread>> get threadsStream =>
       _threadRepository.watchThreads().map(
-            (threads) => [
-              for (final thread in threads)
-                if (isMobileAgentSupported(thread.agentId)) thread,
-            ],
-          );
+        (threads) => [
+          for (final thread in threads)
+            if (isMobileAgentSupported(thread.agentId)) thread,
+        ],
+      );
 
   /// The active thread's timeline (current value replayed on listen).
   Stream<TurnTimelineSnapshot> get timelineStream => _timeline.stream;
@@ -296,7 +295,7 @@ class ThreadManager {
   /// Map of threadId → most recent turn token usage (`tokens` occupied and the
   /// model `contextWindow` when known), for the context indicator.
   Stream<Map<String, ({int tokens, int? contextWindow})>>
-      get contextUsageStream => _contextUsage.stream;
+  get contextUsageStream => _contextUsage.stream;
 
   /// The active thread's current timeline snapshot.
   TurnTimelineSnapshot get timeline => _timeline.value;
@@ -353,9 +352,10 @@ class ThreadManager {
     final agents = result is Map ? result['agents'] : null;
     if (agents is! List) return const [];
     return [
-      for (final raw in agents)
-        if (raw is Map) AgentDescriptor.fromJson(raw.cast<String, dynamic>()),
-    ]
+          for (final raw in agents)
+            if (raw is Map)
+              AgentDescriptor.fromJson(raw.cast<String, dynamic>()),
+        ]
         .where(
           (agent) => !agent.deprecated && isMobileAgentSupported(agent.agentId),
         )
@@ -389,11 +389,23 @@ class ThreadManager {
     await _syncThreadTitle(threadId, trimmed);
   }
 
-  Future<void> _syncThreadTitle(String threadId, String title) async {
+  /// Pushes a title to the bridge.
+  ///
+  /// [automatic] marks the throwaway name derived from the opening message.
+  /// The bridge reads a plain `thread/rename` as **the user renaming by hand**
+  /// — final, never replaced — so without this flag our own placeholder would
+  /// masquerade as a deliberate choice and block the real generated title from
+  /// ever landing.
+  Future<void> _syncThreadTitle(
+    String threadId,
+    String title, {
+    bool automatic = false,
+  }) async {
     try {
       await _sendRequest('thread/rename', {
         'threadId': threadId,
         'title': title,
+        if (automatic) 'source': 'prompt',
       });
     } on Object catch (error, stackTrace) {
       AppLogger.warn(
@@ -701,8 +713,9 @@ class ThreadManager {
     _loadingOlder = false;
     _timeline.add(const TurnTimelineSnapshot());
     await _messagesSub?.cancel();
-    _messagesSub =
-        _messageRepository.watchMessages(threadId).listen((messages) {
+    _messagesSub = _messageRepository.watchMessages(threadId).listen((
+      messages,
+    ) {
       _activePersisted = messages;
       _rebuildActiveTimeline();
     });
@@ -778,14 +791,13 @@ class ThreadManager {
     final existing = _resyncOperations[threadId];
     if (existing != null) {
       late final Future<void> followUp;
-      followUp =
-          existing.then((_) => _startResyncThread(threadId)).whenComplete(
-        () {
-          if (identical(_queuedResyncOperations[threadId], followUp)) {
-            _queuedResyncOperations.remove(threadId);
-          }
-        },
-      );
+      followUp = existing
+          .then((_) => _startResyncThread(threadId))
+          .whenComplete(() {
+            if (identical(_queuedResyncOperations[threadId], followUp)) {
+              _queuedResyncOperations.remove(threadId);
+            }
+          });
       _queuedResyncOperations[threadId] = followUp;
       return followUp;
     }
@@ -914,12 +926,14 @@ class ThreadManager {
   /// (null on failure or an older bridge). [fromEnd] asks for the newest page;
   /// otherwise [cursor] is an explicit offset.
   Future<
-      ({
-        List<Object?> turns,
-        int? total,
-        String? activeTurnId,
-        ThreadQueueState queue,
-      })?> _fetchTurns(
+    ({
+      List<Object?> turns,
+      int? total,
+      String? activeTurnId,
+      ThreadQueueState queue,
+    })?
+  >
+  _fetchTurns(
     String threadId, {
     String? cursor,
     int? limit,
@@ -992,8 +1006,9 @@ class ThreadManager {
       final ran = statusByTurn[message.turnId] != 'cancelled';
       await _messageRepository.saveMessage(
         message.copyWith(
-          deliveryState:
-              ran ? MessageDeliveryState.sent : MessageDeliveryState.cancelled,
+          deliveryState: ran
+              ? MessageDeliveryState.sent
+              : MessageDeliveryState.cancelled,
         ),
       );
     }
@@ -1060,8 +1075,9 @@ class ThreadManager {
           continue;
         }
         if (role != 'assistant') continue;
-        final thinking =
-            rawMsg['thinking'] is String ? rawMsg['thinking'] as String : '';
+        final thinking = rawMsg['thinking'] is String
+            ? rawMsg['thinking'] as String
+            : '';
         final blocks = _decodeBlocks(rawMsg['blocks']);
         // `segments` carries the assistant's text runs and blocks already
         // interleaved in production order (bridge thread-store). When present
@@ -1103,7 +1119,8 @@ class ThreadManager {
             final presentBlocks = present.contents
                 .where((c) => c is! TextContent && c is! ThinkingContent)
                 .length;
-            changed = presentText != content ||
+            changed =
+                presentText != content ||
                 presentThinking != thinking ||
                 presentBlocks != blocks.length;
           }
@@ -1234,8 +1251,9 @@ class ThreadManager {
       await _messageRepository.saveMessage(
         message.copyWith(
           turnId: resultTurnId is String ? resultTurnId : null,
-          deliveryState:
-              queued ? MessageDeliveryState.queued : MessageDeliveryState.sent,
+          deliveryState: queued
+              ? MessageDeliveryState.queued
+              : MessageDeliveryState.sent,
         ),
       );
     } on Object catch (error, stackTrace) {
@@ -1429,7 +1447,8 @@ class ThreadManager {
         // not where it was typed: it was stored while the previous turn was
         // still running, so its original index would file it above that turn's
         // reply — as if the user had said it before getting an answer.
-        final movedToEnd = reorderToEnd &&
+        final movedToEnd =
+            reorderToEnd &&
             message.deliveryState == MessageDeliveryState.queued;
         await _messageRepository.saveMessage(
           message.copyWith(
@@ -1454,7 +1473,7 @@ class ThreadManager {
 
     final title = normalized.truncate(_automaticTitleMaxLength);
     await _threadRepository.saveThread(thread.copyWith(title: title));
-    unawaited(_syncThreadTitle(threadId, title));
+    unawaited(_syncThreadTitle(threadId, title, automatic: true));
   }
 
   static bool _hasPlaceholderTitle(Thread thread) {
@@ -1508,10 +1527,7 @@ class ThreadManager {
     try {
       final res = await _sendRequest('turn/send', {
         'threadId': threadId,
-        'questionResponse': {
-          'questionId': questionId,
-          'answers': answers,
-        },
+        'questionResponse': {'questionId': questionId, 'answers': answers},
       });
       if (res.error != null) {
         AppLogger.warn('question response rejected: ${res.error!.message}');
@@ -1570,8 +1586,10 @@ class ThreadManager {
   void _applyEvent(DomainEvent event) {
     // Resolved-model updates are keyed by their own thread and recorded
     // regardless of which thread is active in the UI.
-    if (event case ModelResolvedEvent(:final threadId, :final model)
-        when threadId != null && model.isNotEmpty) {
+    if (event case ModelResolvedEvent(
+      :final threadId,
+      :final model,
+    ) when threadId != null && model.isNotEmpty) {
       final next = Map<String, String>.from(_resolvedModels.value)
         ..[threadId] = model;
       _resolvedModels.add(next);
@@ -1615,11 +1633,11 @@ class ThreadManager {
         _ensureLive(threadId, turnId).addBlock(content, beforeText: beforeText);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case TurnCompletedEvent(
-          :final turnId,
-          :final text,
-          :final tokens,
-          :final contextWindow,
-        ):
+        :final turnId,
+        :final text,
+        :final tokens,
+        :final contextWindow,
+      ):
         if (tokens != null) {
           final next = Map<String, ({int tokens, int? contextWindow})>.from(
             _contextUsage.value,
@@ -1634,8 +1652,12 @@ class ThreadManager {
           // message against the bridge's authoritative ordered record — the
           // live view can be imperfect (a delta in transit during a re-sync, a
           // re-attach that missed early blocks); the bridge's is not.
-          _finishTurn(threadId, turnId, failed: false, finalText: text)
-              .then((_) => _reconcileTurn(threadId, turnId)),
+          _finishTurn(
+            threadId,
+            turnId,
+            failed: false,
+            finalText: text,
+          ).then((_) => _reconcileTurn(threadId, turnId)),
         );
       case TurnErrorEvent(:final turnId, :final message):
         unawaited(
@@ -1651,10 +1673,10 @@ class ThreadManager {
           _markUserMessage(threadId, turnId, MessageDeliveryState.cancelled),
         );
       case QueueUpdatedEvent(
-          :final queuedTurnIds,
-          :final paused,
-          :final pausedReason,
-        ):
+        :final queuedTurnIds,
+        :final paused,
+        :final pausedReason,
+      ):
         // Whole-state notification: adopt it as-is. Missing one (backgrounded,
         // mid-reconnect) is harmless — the next one converges.
         _setQueue(
@@ -1722,8 +1744,10 @@ class ThreadManager {
     //  - terminal text is already contained in the buffer → keep the buffer.
     //  - buffer empty → append the terminal text after any received blocks.
     //  - anything else → retain it as another response, never replace.
-    final liveText =
-        live.segments.whereType<TextContent>().map((t) => t.text).join();
+    final liveText = live.segments
+        .whereType<TextContent>()
+        .map((t) => t.text)
+        .join();
     final List<MessageContent> baseContents;
     if (finalText == null ||
         finalText.isEmpty ||
@@ -1793,8 +1817,9 @@ class ThreadManager {
       turnId: turnId,
       role: MessageRole.assistant,
       contents: contents,
-      deliveryState:
-          failed ? MessageDeliveryState.failed : MessageDeliveryState.delivered,
+      deliveryState: failed
+          ? MessageDeliveryState.failed
+          : MessageDeliveryState.delivered,
       orderIndex: await _orderIndexFor(threadId),
       createdAt: live.startedAt,
     );
@@ -1818,8 +1843,9 @@ class ThreadManager {
   /// thread re-sync repairs it the same way.
   Future<void> _reconcileTurn(String threadId, String turnId) async {
     try {
-      final response = await _sendRequest('turn/read', {'turnId': turnId})
-          .timeout(_resyncTimeout);
+      final response = await _sendRequest('turn/read', {
+        'turnId': turnId,
+      }).timeout(_resyncTimeout);
       final turn = response.result;
       if (turn is! Map) return;
       await _persistTurns(threadId, [turn], trackLatestUsage: false);
@@ -1844,8 +1870,9 @@ class ThreadManager {
     // More history is available when the local window hides older messages OR
     // the bridge still holds older turns we haven't paged in yet.
     final hasMore = localHasMore || _remoteOldestOffset > 0;
-    final windowed =
-        localHasMore ? all.sublist(all.length - _renderLimit) : all;
+    final windowed = localHasMore
+        ? all.sublist(all.length - _renderLimit)
+        : all;
 
     // A message still WAITING in the queue is not part of the conversation yet:
     // it is pinned below everything, including the reply being streamed right
@@ -1864,9 +1891,9 @@ class ThreadManager {
       }
     }
 
-    var snapshot = const TurnTimelineSnapshot().reconcile(settled).copyWith(
-          hasMore: hasMore,
-        );
+    var snapshot = const TurnTimelineSnapshot()
+        .reconcile(settled)
+        .copyWith(hasMore: hasMore);
     var nextOrder = _maxOrder(settled) + 1;
     final live = _live[threadId];
     if (live != null) {
@@ -1886,7 +1913,8 @@ class ThreadManager {
       );
       nextOrder += 1;
       snapshot = snapshot
-          .reconcile([streaming]).copyWith(streamingTurnId: live.turnId);
+          .reconcile([streaming])
+          .copyWith(streamingTurnId: live.turnId);
     }
     if (waiting.isNotEmpty) {
       // Keep the queue's own order (the bridge's run order), then lay them out
@@ -1894,8 +1922,7 @@ class ThreadManager {
       // `orderIndex` is untouched, so a message drops back into its
       // chronological place the moment it leaves the queue.
       waiting.sort((a, b) {
-        final byQueue = queueOf(threadId)
-            .turnIds
+        final byQueue = queueOf(threadId).turnIds
             .indexOf(a.turnId)
             .compareTo(queueOf(threadId).turnIds.indexOf(b.turnId));
         return byQueue != 0 ? byQueue : a.orderIndex.compareTo(b.orderIndex);
@@ -2005,9 +2032,7 @@ class ThreadManager {
     for (var i = 0; i < segments.length; i++) {
       final seg = segments[i];
       if (seg is TextContent) {
-        out.add(
-          TextContent(seg.text, isStreaming: streaming && i == lastText),
-        );
+        out.add(TextContent(seg.text, isStreaming: streaming && i == lastText));
       } else {
         out.add(seg);
       }
@@ -2057,19 +2082,19 @@ class ThreadManager {
   int _nextOrderIndex() => _maxOrder(_activePersisted) + 1;
 
   static String? _threadOf(DomainEvent event) => switch (event) {
-        TurnStartedEvent(:final threadId) => threadId,
-        MessageDeltaEvent(:final threadId) => threadId,
-        ThinkingDeltaEvent(:final threadId) => threadId,
-        ContentBlockEvent(:final threadId) => threadId,
-        TurnCompletedEvent(:final threadId) => threadId,
-        TurnErrorEvent(:final threadId) => threadId,
-        TurnAbortedEvent(:final threadId) => threadId,
-        TurnCancelledEvent(:final threadId) => threadId,
-        QueueUpdatedEvent(:final threadId) => threadId,
-        GitProgressEvent(:final threadId) => threadId,
-        ModelResolvedEvent(:final threadId) => threadId,
-        UnknownDomainEvent() => null,
-      };
+    TurnStartedEvent(:final threadId) => threadId,
+    MessageDeltaEvent(:final threadId) => threadId,
+    ThinkingDeltaEvent(:final threadId) => threadId,
+    ContentBlockEvent(:final threadId) => threadId,
+    TurnCompletedEvent(:final threadId) => threadId,
+    TurnErrorEvent(:final threadId) => threadId,
+    TurnAbortedEvent(:final threadId) => threadId,
+    TurnCancelledEvent(:final threadId) => threadId,
+    QueueUpdatedEvent(:final threadId) => threadId,
+    GitProgressEvent(:final threadId) => threadId,
+    ModelResolvedEvent(:final threadId) => threadId,
+    UnknownDomainEvent() => null,
+  };
 
   Thread _parseThread(Map<String, dynamic> json) {
     // The bridge sends `createdAt` and `updatedAt` (epoch ms). The old parser
@@ -2136,8 +2161,9 @@ class _LiveTurn {
   /// reconnect) while preserving every structured block's relative position.
   void expandText({required String prefix, required String suffix}) {
     final firstText = segments.indexWhere((content) => content is TextContent);
-    final lastText =
-        segments.lastIndexWhere((content) => content is TextContent);
+    final lastText = segments.lastIndexWhere(
+      (content) => content is TextContent,
+    );
     if (firstText < 0 || lastText < 0) {
       appendText(prefix + suffix);
       return;
