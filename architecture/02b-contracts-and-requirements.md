@@ -350,7 +350,27 @@ stream/turn/aborted         -> TurnAbortedParams   { threadId, turnId }
 stream/turn/cancelled       -> TurnCancelledParams { threadId, turnId }                     (NUEVO 2026-07)
 stream/queue/updated        -> QueueUpdatedParams  { threadId, queuedTurnIds, paused, pausedReason? }  (NUEVO 2026-07)
 stream/model/resolved       -> ModelResolvedParams { threadId, turnId, model }              (NUEVO 2026-06)
+stream/thread/renamed       -> ThreadRenamedParams { threadId, title, titleSource }         (NUEVO 2026-08)
 ```
+
+**Nombre de la conversacion (2026-08).** Ningun CLI de agente nos da un titulo:
+todos dejan esa tarea a su propio cliente (un hilo creado por uxnan vuelve de
+`codex thread/list` con `name: null`, una sesion nueva de OpenCode se queda en
+`"New session - <fecha>"`, y el `name` de Claude se deriva de la carpeta, no del
+contenido). uxnan es el cliente, asi que uxnan los nombra, en dos etapas:
+
+- el mensaje inicial titula al instante (provisional), y
+- al terminar el primer turno el agente escribe el bueno — en una llamada
+  **aparte, sin session id**, de modo que no entra en el historial del hilo, y
+  con el modelo **mas barato** del agente, nunca el de la conversacion.
+
+`Thread.titleSource` (`prompt` | `agent` | `user`) es lo que ordena el conflicto:
+un titulo generado sustituye a uno provisional y **nunca** a uno que eligio el
+usuario. `stream/thread/renamed` hace converger a todos los clientes sin recarga.
+`ThreadRenameParams.source` existe por el mismo motivo: ausente significa "lo
+renombro el usuario", asi que un cliente que autogenera su titulo provisional
+**debe** mandar `'prompt'` o su marcador de posicion quedaria registrado como
+decision del usuario.
 
 **Notas sobre la cola de mensajes (2026-07):**
 - `stream/turn/cancelled`: un turno **encolado** se retiro antes de correr. No

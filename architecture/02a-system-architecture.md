@@ -2091,6 +2091,33 @@ un reinicio. Por eso el arranque llama a
 que quedo `queued` en disco — el usuario ve exactamente que mensajes no
 salieron, en vez de quedar esperando una cola que ya no existe.
 
+#### 5.8.13b Nombre de la conversacion (`AgentManager` + adaptadores)
+
+Un thread se llamaba como los primeros ~72 caracteres de su mensaje inicial, asi
+que dos conversaciones que empiezan con la misma frase eran indistinguibles en la
+lista. **Ningun CLI puede ayudarnos aqui**: todos dejan el titulo a su propio
+cliente y las superficies headless no exponen ninguno (comprobado: un hilo creado
+por uxnan vuelve de `codex thread/list` con `name: null`; una sesion nueva de
+OpenCode se queda en `"New session - <fecha>"`; el `name` de Claude sale de la
+carpeta). uxnan es el cliente, asi que uxnan los nombra.
+
+```javascript
+// turn_completed -> #nameThread(threadId, turnId, text)   (NO se espera: lanza un CLI)
+//   solo si: titleSource es `prompt` (o ausente) y es el PRIMER turno
+//   adapter.generateTitle({ userText, assistantText, cwd })
+//     -> one-shot SIN session id  => no entra en el historial del hilo
+//     -> modelo MAS BARATO del agente (Claude: haiku), nunca el de la conversacion
+//   ThreadStore.applyGeneratedTitle() rechaza pisar un titulo `user`
+//     -> stream/thread/renamed { threadId, title, titleSource }
+```
+
+Todo es **best-effort y acotado** (30 s): sin credito, sin CLI o con timeout el
+thread conserva su titulo provisional y la conversacion no se entera. Y un
+renombrado a mano hecho mientras corria el turno siempre gana.
+
+Implementado hoy en **Claude Code** y **pi** (ambos verificados en vivo); el
+resto degrada al titulo provisional (`bridge/FOR-DEV.md`).
+
 #### 5.8.14 Fin de turno: trabajo diferido y llegadas tardias
 
 Un adaptador decide cuando el agente termino, y hay dos formas:
