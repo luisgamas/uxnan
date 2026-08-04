@@ -1032,9 +1032,37 @@ go stale; these are the ones worth calling out.
         on that machine, and does a session succeed when the capabilities carry
         the webview's real `userDataFolder`.
 
-      Next: read the first diagnosis artifact and act on its verdict. Iterating
-      still costs a push-per-attempt CI cycle (~35 min, dominated by the release
-      build).
+      **What the first diagnosis (2026-08-04) measured**, runner against this
+      machine, same experiment, the release binary that ran the suite green:
+
+      | | local (green) | runner (red) |
+      |---|---|---|
+      | remote-debugging endpoint | answers in **611 ms** | never, at 90 s |
+      | session, capabilities as sent today | created in **956 ms** | refused at 60 s |
+      | session + `webviewOptions.userDataFolder` | created in 748 ms | refused at 60 s |
+      | WebView2 / msedgedriver | 151.0.4129.59 | 150.0.4078.105 |
+
+      - **`userDataFolder` is not the fix** — it changed nothing on the runner,
+        and locally `DevToolsActivePort` is **not** in that folder either while
+        sessions still start in under a second. `msedgedriver` finds the port
+        another way; that folder was never the problem.
+      - **Not slowness.** 611 ms against silence at 90 s is a hard failure.
+      - **The app is not the problem, and neither is the graphics environment**:
+        WebView2 starts on the runner (the benchmarks see `msedgewebview2.exe`
+        in the tree with real RSS). What never comes up is the *debugging port*
+        — a selective failure of the automation layer.
+      - **Last suspect standing: the runtime version.** The image ships WebView2
+        150.0.4078.105; the machine where all of this is green runs 151. The
+        workflow now installs the current Evergreen runtime before the suite —
+        with `setup-driver.mjs` re-reading the registry afterwards, so the
+        pairing stays matched and nothing is pinned.
+
+      Next: if that run is green, the provisioning step stays and this item is
+      down to the fortnight of track record. If it is still red, the open
+      question is whether `msedgewebview2.exe` spawns *at all* under the
+      automation switches (it does under a plain launch) — capture the tree from
+      inside the diagnosis. Iterating costs a push-per-attempt CI cycle (~35 min,
+      dominated by the release build).
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
       coverage for either.

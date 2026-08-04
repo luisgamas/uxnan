@@ -68,6 +68,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
   after the suite on CI, cannot fail the job, and refuses to run beside another
   uxnan — arming its name-based reaper only once that guard has passed, so it
   can never take down an app you had open.
+- **The E2E workflow now updates the runner's WebView2 Runtime before testing.**
+  Run side by side, the diagnosis put the failure in one place: the app launches
+  and creates its webview on the runner, but never opens the remote-debugging
+  port — where the same binary and the same experiment answer in 611 ms on
+  WebView2 151. The image ships 150.0.4078.105, so the Evergreen bootstrapper
+  installs the current runtime and `setup-driver.mjs` re-reads the registry
+  afterwards, keeping the driver matched with nothing pinned. The step cannot
+  fail the job: a failed update leaves the image's runtime and the run still
+  reports what it found.
 
 ## [0.0.26] - 2026-08-03
 

@@ -133,6 +133,15 @@ binary, and no other uxnan running, which it refuses to start without. It reaps
 only what it started, and the name-based sweep is armed **only** after that
 guard passes, so a failure before it can never touch an app you had open.
 
+**A healthy machine, for comparison** (WebView2 151.0.4129.59, 2026-08-04):
+the endpoint answers in **611 ms** and a session is created in **956 ms**. A
+report that instead shows silence at 90 s is not a slow machine — the runner's
+numbers, and what they narrowed the cause to, are in
+[`../../FOR-DEV.md`](../../FOR-DEV.md) → *Make E2E a required gate*. Note that
+`DevToolsActivePort` is absent from the app's own user-data folder **even on a
+green run**: the driver locates the port some other way, so that file missing is
+not itself the fault.
+
 ## Platforms
 
 Windows only for now. `tauri-driver` supports Linux (WebKitWebDriver) and does

@@ -71,6 +71,38 @@ jobs:
       - name: Build a release binary with its frontend embedded
         run: npm run bench:build
 
+      # The runner image ships WebView2 150.0.4078.105, and that runtime is the
+      # last standing suspect for a failure the diagnosis narrowed to one step:
+      # the app launches and creates its webview there (the resource benchmarks
+      # see `msedgewebview2.exe` in the tree), but it never opens the
+      # remote-debugging port, so no session can be created. The same code, the
+      # same binary and the same experiment on WebView2 151 answer in 611 ms.
+      #
+      # So the runtime is updated rather than accepted: the Evergreen
+      # bootstrapper installs the current version, and the driver step below
+      # re-reads the registry, so the pairing stays matched with nothing pinned.
+      # If a green run proves this was not the cause, this step comes out again.
+      # Never fatal: provisioning that fails leaves the image's runtime in place
+      # and the run still reports what it found, which is the whole point.
+      - name: Update the WebView2 Runtime
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = { (Get-ItemProperty -Path $key -EA SilentlyContinue).pv }
+          "before: $(& $version)"
+          try {
+            $exe = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            # The Evergreen bootstrapper is the supported way to move the runtime
+            # forward, and a no-op on a machine that is already current.
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $exe
+            & $exe '/silent' '/install'
+            if ($LASTEXITCODE -ne 0) { "installer exited $LASTEXITCODE — staying on the image's runtime" }
+          } catch {
+            "could not update the runtime ($($_.Exception.Message)) — staying on the image's"
+          }
+          "after:  $(& $version)"
+          $global:LASTEXITCODE = 0
+
       # Reads the runner's installed WebView2 version and fetches the matching
       # driver. Not pinned in a file on purpose — the runner image updates its
       # runtime, and a pinned version would break on their schedule.
