@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — mid-turn delivery of a queued follow-up ("steering")
+
+- Added `AgentCapabilities.steering`: the agent can take a follow-up **into the
+  turn already running**, the way a CLI picks up what you type while it works
+  instead of making it wait for the next turn.
+- Added the `delivered` `TurnStatus` and `Turn.deliveredIntoTurnId`. A queued
+  turn handed to a running one is terminal and *successful* — deliberately not
+  `cancelled`, which means the user dropped it. The user's message stays in the
+  thread with no assistant message of its own; the reply belongs to the turn it
+  was folded into.
+- Added the `stream/turn/delivered` notification (`{ threadId, turnId,
+  intoTurnId }`), bringing the streaming set to **11**. A client flips the
+  bubble out of its queued state in place and stops offering to edit or cancel
+  it, because the agent already has it.
+- Added `BridgeFeatures.midTurnDelivery` so a client asks whether the bridge can
+  do this rather than inferring it from a version, matching how `messageQueue`
+  is already gated.
+- Added the optional `IAgentAdapter.steerTurn(options & { activeTurnId })`.
+  Returning `false` means "not taken" and is an ordinary outcome, not an error:
+  the bridge leaves the turn queued and it runs next, so a refusal costs the
+  user a wait and nothing else.
+
 ## [0.0.12-alpha.20260803] - 2026-08-03
 
 ### Added — workspace file-link target contract
