@@ -38,7 +38,35 @@ the agent's CLI actually allows it.
 Tests: 9 new (`test/agents/agent-midturn-delivery.test.ts`) covering the
 hand-off, the no-replay guarantee, a non-steering agent's unchanged behaviour,
 a decline, a throw, queue ordering, a paused queue, an idle thread and
-`queue/clear`. Bridge suite **606 passing**.
+`queue/clear`.
+
+### Changed — Claude Code takes its prompt on stdin, and follow-ups mid-turn
+
+- The Claude adapter now runs `claude -p --input-format stream-json …` and
+  writes the prompt as a stream-json user message instead of passing it as an
+  argv element. That open pipe is the input channel `steerTurn` writes into, so
+  a follow-up reaches the agent at its next tool boundary rather than waiting
+  for the whole turn. The spawn is still `shell:false`, so the prompt is no
+  closer to a shell than before, and `--resume` continuity is unchanged
+  (verified: turn 2 of a probe recalled a number given in turn 1, same session
+  id, deltas still streaming).
+- **The pipe must be closed for the turn to end.** In this mode the CLI waits
+  for another message after emitting `result` instead of exiting, so the
+  adapter closes stdin at every terminal path — completion, error, and the
+  background-task case, where the turn is held open for work the model left
+  running and the pipe now closes once the last task resolves.
+- A follow-up is refused (not written) once the turn has produced its result:
+  the CLI would read a late write as a NEW turn and stream a second reply into
+  a turn the bridge already closed.
+- `SpawnedProcess` gained an optional `stdin` and `SpawnExtra` a `stdin:'pipe'`
+  opt-in. The default stays `'ignore'` — the one-shot CLIs hang on an open pipe.
+
+Verified end-to-end against the real `claude` 2.1.220 driving the built
+adapter: a message steered 7s into a five-`sleep` turn was taken after the
+first tool returned, the remaining sleeps were abandoned, and the run produced
+one `turn_started` and one `turn_completed`, every event on the original turn.
+Tests: 5 new in `test/adapters/claude-adapter.test.ts`. Bridge suite
+**611 passing**.
 
 ## [0.0.15-alpha.20260803] - 2026-08-03
 

@@ -2,14 +2,19 @@
  * Claude Code adapter (real agent).
  *
  * Claude Code does NOT speak the generic bridge agent IPC. Each turn spawns
- * `claude -p <prompt> --output-format stream-json --verbose --include-partial-messages`
- * as a one-shot process and maps its JSONL event stream onto the bridge's agent
- * events (same one-shot pattern as the OpenCode adapter). Session continuity is
- * preserved by capturing `session_id` from the stream and passing `--resume` on
- * the next turn.
+ * `claude -p --input-format stream-json --output-format stream-json --verbose
+ * --include-partial-messages` as a one-shot process and maps its JSONL event
+ * stream onto the bridge's agent events. Session continuity is preserved by
+ * capturing `session_id` from the stream and passing `--resume` on the next turn.
  *
- * Critical detail: the prompt is passed as an argv element and spawned with
- * `shell:false` (no shell interpolation), and stdin is IGNORED.
+ * Critical detail: the prompt is NOT an argv element — it is written to stdin as
+ * a stream-json user message (`{"type":"user","message":{…}}`), which is what
+ * keeps an input channel open for the length of the turn so `steerTurn` can hand
+ * the agent a follow-up mid-run. The process is still spawned `shell:false`, so
+ * the prompt is never interpolated into a shell.
+ *
+ * The pipe MUST be closed when the turn ends: in this mode the CLI waits for
+ * another message after emitting `result` instead of exiting.
  *
  * Captured stream-json event shapes (one JSON object per line), verified against
  * `claude` 2.x:
@@ -67,6 +72,12 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   reportsContextUsage: true,
   reportsCompaction: true,
   commands: true,
+  // `--input-format stream-json` keeps stdin open for the length of the turn, so
+  // a follow-up written mid-run is picked up at the next tool boundary. Verified
+  // against claude 2.1.220: a message sent 7s into a five-`sleep` turn was taken
+  // after the first tool returned, the remaining sleeps were abandoned, and the
+  // run produced a SINGLE `result` — one turn, steered.
+  steering: true,
 };
 
 /**
@@ -175,6 +186,14 @@ export interface ClaudeCodeAdapterOptions {
 interface ActiveRun {
   child: SpawnedProcess;
   threadId: string;
+  /**
+   * True once the turn has emitted its terminal event. A follow-up must not be
+   * written after that: the CLI would read it as a NEW turn on the same process
+   * and stream a second reply into a turn the bridge already closed.
+   */
+  finished: boolean;
+  /** Write one more user message into the running turn (see {@link ClaudeAdapter.steerTurn}). */
+  send: (text: string) => boolean;
 }
 
 /** A normalized Claude Code event extracted from one stream-json line. */
@@ -516,6 +535,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '-p',
       '--output-format',
       'stream-json',
+      // The prompt travels on stdin as a stream-json user message rather than as
+      // an argv element. That is what leaves an input channel open for the
+      // length of the turn, so a follow-up can reach the agent while it works
+      // instead of waiting for the whole turn (see `steerTurn`).
+      '--input-format',
+      'stream-json',
       '--verbose',
       '--include-partial-messages',
     ];
@@ -554,18 +579,25 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // against `claude --help`). Reads the `reasoning` knob, then legacy effort.
     const effort = reasoningValue(options);
     if (effort) args.push('--effort', effort);
+    // Verified against claude 2.1.220: `--resume` carries the session exactly as
+    // before when the prompt arrives on stdin (turn 2 of a probe recalled a
+    // number given in turn 1, on the same session id, with deltas still streaming).
     if (sessionId) args.push('--resume', sessionId);
-    args.push(text);
 
-    const spawnExtra = interactive
-      ? {
-          env: {
-            UXNAN_HOOK_URL: hookUrl,
-            UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
-            UXNAN_HOOK_THREAD_ID: threadId,
-          },
-        }
-      : undefined;
+    const spawnExtra = {
+      // A real pipe, not the default closed stdin — this CLI is reading a
+      // message stream, so it does not hang on an open one.
+      stdin: 'pipe' as const,
+      ...(interactive
+        ? {
+            env: {
+              UXNAN_HOOK_URL: hookUrl,
+              UXNAN_HOOK_TOKEN: this.#approvalHook!.token,
+              UXNAN_HOOK_THREAD_ID: threadId,
+            },
+          }
+        : {}),
+    };
 
     let child: SpawnedProcess;
     try {
@@ -580,8 +612,53 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return Promise.resolve();
     }
 
-    this.#active.set(turnId, { child, threadId });
+    // One stream-json user message per line. Returns false when the pipe is
+    // already gone, so a caller can report "not taken" instead of pretending.
+    const writeUserMessage = (message: string): boolean => {
+      const stdin = child.stdin;
+      if (!stdin || !stdin.writable) return false;
+      try {
+        stdin.write(
+          `${JSON.stringify({
+            type: 'user',
+            message: { role: 'user', content: [{ type: 'text', text: message }] },
+          })}\n`,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    /**
+     * Tell the CLI no more input is coming. REQUIRED to end the run: with
+     * `--input-format stream-json` the process keeps waiting for another message
+     * after it emits `result` (verified), so leaving the pipe open would hang
+     * the turn forever.
+     */
+    const endInput = (): void => {
+      try {
+        child.stdin?.end();
+      } catch {
+        /* the pipe is already gone; nothing to close */
+      }
+    };
+
+    const run: ActiveRun = { child, threadId, finished: false, send: writeUserMessage };
+    this.#active.set(turnId, run);
     this.emit({ type: 'turn_started', threadId, turnId });
+
+    if (!writeUserMessage(text)) {
+      this.#active.delete(turnId);
+      this.emit({
+        type: 'turn_error',
+        threadId,
+        turnId,
+        data: { text: 'failed to send the prompt to claude (stdin unavailable)' },
+      });
+      child.kill();
+      return Promise.resolve();
+    }
 
     let full = '';
     // Deltas belonging to the current native assistant-message envelope. Claude
@@ -632,6 +709,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }): void => {
       if (completed || errored) return;
       completed = true;
+      run.finished = true;
+      // No more follow-ups can join this turn, and the CLI is still waiting on
+      // the pipe — close it so the process can exit.
+      endInput();
       if (interruptedTasks > 0) {
         // Say it in the turn itself. The CLI gives background work only a few
         // seconds' grace after the turn ends and then kills it, so this is a
@@ -759,6 +840,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       } else if (event.kind === 'result') {
         if (event.isError) {
           errored = true;
+          run.finished = true;
+          endInput();
           this.emit({
             type: 'turn_error',
             threadId,
@@ -802,11 +885,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         // Deliberately NOT completing here even when the last task resolves: a
         // `completed` task is exactly when the CLI wakes the model, so the run
         // is finished by its follow-up `result` or by the process exiting.
+        //
+        // "By the process exiting" now needs help. The turn was held open for
+        // background work while stdin stayed open for follow-ups, and a CLI
+        // reading a message stream never exits on its own. Closing the pipe
+        // once the last task is done lets it wrap up (emitting the wake-up
+        // turn's `result` first, if there is one) instead of hanging.
+        if (deferredCompletion && liveBackgroundTasks.size === 0) endInput();
       }
     });
 
     child.on('error', (err) => {
       reader.close();
+      run.finished = true;
       this.#active.delete(turnId);
       if (!errored && !completed) {
         errored = true;
@@ -821,6 +912,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
 
     child.on('close', () => {
       reader.close();
+      run.finished = true;
       this.#active.delete(turnId);
       if (completed || errored) return;
       // A background task still open at exit was killed with the process, even
@@ -848,11 +940,32 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   cancelTurn(threadId: string, turnId: string): Promise<void> {
     const run = this.#active.get(turnId);
     if (run) {
+      run.finished = true;
       run.child.kill();
       this.#active.delete(turnId);
       this.emit({ type: 'turn_aborted', threadId, turnId });
     }
     return Promise.resolve();
+  }
+
+  /**
+   * Write a follow-up into the turn `activeTurnId` is already running. Claude
+   * Code reads it off the open stdin stream and takes it at the next tool
+   * boundary, inside the same turn — no second process, no second `--resume`.
+   *
+   * Returns false rather than throwing for every ordinary "too late": the turn
+   * is unknown to this adapter, it has already emitted its terminal event, or
+   * the pipe closed underneath us. The manager then simply leaves the message
+   * queued.
+   */
+  steerTurn(options: SendTurnOptions & { activeTurnId: string }): Promise<boolean> {
+    const run = this.#active.get(options.activeTurnId);
+    // `finished` matters as much as the map lookup: between `result` and the
+    // process actually closing, the CLI would read a late write as a NEW turn
+    // and stream a second reply into a turn the bridge has already closed.
+    if (!run || run.finished) return Promise.resolve(false);
+    if (run.threadId !== options.threadId) return Promise.resolve(false);
+    return Promise.resolve(run.send(options.text));
   }
 
   /**

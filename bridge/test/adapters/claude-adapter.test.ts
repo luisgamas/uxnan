@@ -15,7 +15,15 @@ import type { AgentStreamEvent } from '@uxnan/shared';
 interface FakeSpawn {
   args: string[];
   env?: Record<string, string>;
+  /** Whether the spawn asked for a writable stdin (`--input-format stream-json`). */
+  pipedStdin: boolean;
+  /** User message texts written to stdin, in order — the prompt, then any follow-up. */
+  sent: string[];
+  /** True once the adapter closed the pipe; the CLI only exits after this. */
+  stdinEnded: boolean;
   feed(lines: string[]): void;
+  /** Feed lines WITHOUT ending stdout, so the turn stays open (steering tests). */
+  feedOpen(lines: string[]): void;
 }
 
 function fakeSpawner(): {
@@ -23,7 +31,7 @@ function fakeSpawner(): {
     command: string,
     args: string[],
     cwd: string,
-    extra?: { env?: Record<string, string> },
+    extra?: { env?: Record<string, string>; stdin?: 'pipe' | 'ignore' },
   ) => SpawnedProcess;
   last(): FakeSpawn;
 } {
@@ -32,28 +40,58 @@ function fakeSpawner(): {
     _command: string,
     args: string[],
     _cwd: string,
-    extra?: { env?: Record<string, string> },
+    extra?: { env?: Record<string, string>; stdin?: 'pipe' | 'ignore' },
   ): SpawnedProcess => {
     const stdout = new PassThrough();
     const emitter = new EventEmitter();
     stdout.on('end', () => emitter.emit('close', 0));
-    const proc: SpawnedProcess = {
-      stdout,
-      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
-      kill: () => emitter.emit('close', 0),
-    } as SpawnedProcess;
-    spawns.push({
+    const record: FakeSpawn = {
       args,
       ...(extra?.env ? { env: extra.env } : {}),
+      pipedStdin: extra?.stdin === 'pipe',
+      sent: [],
+      stdinEnded: false,
       feed: (lines) => {
         for (const line of lines) stdout.write(`${line}\n`);
         stdout.end();
       },
+      feedOpen: (lines) => {
+        for (const line of lines) stdout.write(`${line}\n`);
+      },
+    };
+    // Mirrors the real pipe: each line is one stream-json user message, and
+    // `end()` is what lets the CLI finish (it waits for more input otherwise).
+    const stdin = new PassThrough();
+    stdin.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString('utf8').split('\n')) {
+        if (!line.trim()) continue;
+        const parsed = JSON.parse(line) as {
+          message?: { content?: { type: string; text?: string }[] };
+        };
+        const text = (parsed.message?.content ?? [])
+          .filter((c) => c.type === 'text')
+          .map((c) => c.text ?? '')
+          .join('');
+        record.sent.push(text);
+      }
     });
+    stdin.on('finish', () => {
+      record.stdinEnded = true;
+    });
+    const proc: SpawnedProcess = {
+      stdout,
+      ...(extra?.stdin === 'pipe' ? { stdin } : {}),
+      on: (event: string, listener: (...a: unknown[]) => void) => emitter.on(event, listener),
+      kill: () => emitter.emit('close', 0),
+    } as SpawnedProcess;
+    spawns.push(record);
     return proc;
   };
   return { spawnFn, last: () => spawns[spawns.length - 1]! };
 }
+
+/** Let the fake stdin's 'data' listeners run before asserting on `sent`. */
+const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function collect(adapter: ClaudeCodeAdapter): {
   events: AgentStreamEvent[];
@@ -173,8 +211,16 @@ test('ClaudeCodeAdapter streams text_delta as deltas and completes with the resu
   assert.ok(args.includes('--model'));
   assert.equal(args[args.indexOf('--model') + 1], 'opus');
   assert.equal(args.includes('--resume'), false);
-  // prompt is the final argv element, never shell-interpolated
-  assert.equal(args[args.length - 1], 'hi');
+  // The prompt travels on stdin as a stream-json message, never as argv (and so
+  // never near a shell) — that open pipe is what `steerTurn` writes into.
+  assert.ok(args.includes('--input-format'));
+  assert.equal(args[args.indexOf('--input-format') + 1], 'stream-json');
+  assert.equal(args.includes('hi'), false);
+  assert.equal(last().pipedStdin, true);
+  await flush();
+  assert.deepEqual(last().sent, ['hi']);
+  // …and the pipe is closed once the turn ends, or the CLI would wait forever.
+  assert.equal(last().stdinEnded, true);
 });
 
 test('ClaudeCodeAdapter streams thinking_delta as thinking events, separate from text', async () => {
@@ -954,4 +1000,117 @@ test('parseClaudeLine tells background-task lines apart from an init', () => {
     kind: 'init',
     sessionId: 's',
   });
+});
+
+// --- mid-turn delivery (steering) -----------------------------------------
+// The CLI reads follow-ups off the open stdin stream and takes them at the next
+// tool boundary. Verified live against claude 2.1.220: a message sent 7s into a
+// five-`sleep` turn was picked up after the first tool returned, the remaining
+// sleeps were abandoned, and the run emitted a SINGLE `result`.
+
+test('steerTurn writes a follow-up into the running turn, without a second process', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feedOpen(['{"type":"system","subtype":"init","session_id":"sess_1"}']);
+
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'actually, do this instead',
+  });
+  await flush();
+
+  assert.equal(taken, true);
+  assert.deepEqual(proc.sent, ['first', 'actually, do this instead']);
+  // Same process, same turn: no second spawn and no second --resume.
+  assert.equal(last(), proc);
+  assert.equal(proc.stdinEnded, false, 'the pipe stays open while the turn runs');
+
+  proc.feed(['{"type":"result","subtype":"success","is_error":false,"result":"done"}']);
+  const events = await done;
+  assert.equal(events.filter((e) => e.type === 'turn_completed').length, 1);
+  await flush();
+  assert.equal(proc.stdinEnded, true);
+});
+
+test('steerTurn declines once the turn has produced its result', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  const { done } = collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feed(['{"type":"result","subtype":"success","is_error":false,"result":"done"}']);
+  await done;
+
+  // Writing now would be read as a NEW turn on the same process, streaming a
+  // second reply into a turn the bridge already closed.
+  const taken = await adapter.steerTurn({
+    threadId: 't1',
+    turnId: 'u2',
+    activeTurnId: 'u1',
+    text: 'too late',
+  });
+  await flush();
+  assert.equal(taken, false);
+  assert.deepEqual(proc.sent, ['first']);
+});
+
+test('steerTurn declines for an unknown turn or a mismatched thread', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feedOpen(['{"type":"system","subtype":"init","session_id":"sess_1"}']);
+
+  assert.equal(
+    await adapter.steerTurn({
+      threadId: 't1',
+      turnId: 'u2',
+      activeTurnId: 'nope',
+      text: 'x',
+    }),
+    false,
+  );
+  assert.equal(
+    await adapter.steerTurn({
+      threadId: 'other-thread',
+      turnId: 'u2',
+      activeTurnId: 'u1',
+      text: 'x',
+    }),
+    false,
+  );
+  await flush();
+  assert.deepEqual(proc.sent, ['first']);
+});
+
+test('a cancelled turn takes no further follow-ups', async () => {
+  const { spawnFn, last } = fakeSpawner();
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude', spawnFn });
+  collect(adapter);
+
+  await adapter.sendTurn({ threadId: 't1', turnId: 'u1', text: 'first' });
+  const proc = last();
+  proc.feedOpen(['{"type":"system","subtype":"init","session_id":"sess_1"}']);
+  await adapter.cancelTurn('t1', 'u1');
+
+  assert.equal(
+    await adapter.steerTurn({ threadId: 't1', turnId: 'u2', activeTurnId: 'u1', text: 'x' }),
+    false,
+  );
+  await flush();
+  assert.deepEqual(proc.sent, ['first']);
+});
+
+test('the adapter advertises steering', () => {
+  const adapter = new ClaudeCodeAdapter({ binaryPath: 'claude' });
+  assert.equal(adapter.capabilities.steering, true);
 });
