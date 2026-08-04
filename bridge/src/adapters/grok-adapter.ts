@@ -56,9 +56,12 @@ import type {
   AgentModel,
   AgentModelOptionValue,
   ApprovalDecision,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
+import { defaultSpawn, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
@@ -176,6 +179,8 @@ export class GrokAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: GrokAdapterOptions['onApprovalRequest'];
   readonly #spawnAcp: () => SpawnedAcp;
+  /** One-shot spawner for side errands that must not touch the ACP session. */
+  readonly #spawnOneShot: SpawnFn = defaultSpawn;
   /** threadId → ACP sessionId, for continuity + history fallback. */
   readonly #sessionByThread = new Map<string, string>();
   /** sessionId → in-flight run, to route session-scoped updates/permissions. */
@@ -309,6 +314,23 @@ export class GrokAdapter extends BaseAgentAdapter {
         // it was already finished by a cancel.
         if (!run.finished) this.#finishError(run, `grok prompt failed: ${errorMessage(err)}`);
       });
+  }
+
+  /**
+   * Name a conversation with a one-shot run. `grok -p` is its documented single-turn form: it prints the reply to stdout
+   * and exits, so nothing touches the ACP session this thread runs on.
+   *
+   * No model flag: Grok exposes its models through the ACP `initialize`
+   * handshake rather than a fixed cheap-tier id, so this runs on its own
+   * default. Verified live against grok 0.2.118.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const raw = await runTitleOneShot(() =>
+      this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...['-p', prompt]], cwd),
+    );
+    return raw === undefined ? undefined : sanitizeTitle(raw);
   }
 
   async cancelTurn(threadId: string, turnId: string): Promise<void> {

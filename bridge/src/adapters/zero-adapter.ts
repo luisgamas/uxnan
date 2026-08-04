@@ -46,10 +46,13 @@ import type {
   AgentId,
   AgentModel,
   ApprovalDecision,
+  GenerateTitleOptions,
   SendTurnOptions,
   TurnAttachment,
 } from '@uxnan/shared';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
+import { defaultSpawn, type SpawnFn } from './spawn.js';
 // The generic NDJSON JSON-RPC 2.0 transport (also used by the Codex app-server).
 import { CodexAppServerRpc as NdjsonRpc, RpcError } from './codex-app-server.js';
 import { planBlock, type PlanStepBlock } from './content-blocks.js';
@@ -148,6 +151,8 @@ export class ZeroAdapter extends BaseAgentAdapter {
   readonly #defaultModel: string | undefined;
   readonly #onApprovalRequest: ZeroAdapterOptions['onApprovalRequest'];
   readonly #spawnAcp: () => SpawnedAcp;
+  /** One-shot spawner for side errands that must not touch the ACP session. */
+  readonly #spawnOneShot: SpawnFn = defaultSpawn;
   /** threadId → ACP sessionId, for continuity + history fallback. */
   readonly #sessionByThread = new Map<string, string>();
   /** sessionId → in-flight run, to route session-scoped updates/permissions. */
@@ -366,6 +371,25 @@ export class ZeroAdapter extends BaseAgentAdapter {
         // it was already finished by a cancel.
         if (!run.finished) this.#finishError(run, `zero prompt failed: ${errorMessage(err)}`);
       });
+  }
+
+  /**
+   * Name a conversation with a one-shot run. `zero exec <prompt>` is its one-shot form — confirmed in Zero's own source,
+   * which drives itself that way in its eval harness — so nothing touches the
+   * ACP session this thread runs on.
+   *
+   * No model flag: this agent exposes no fixed cheap-tier id, so it runs on its
+   * own default. **Not run against the live CLI**: Zero is not installed
+   * here and the account has no credits (see FOR-DEV.md). It degrades safely: any failure
+   * returns undefined and the thread keeps its provisional title.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const raw = await runTitleOneShot(() =>
+      this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...['exec', prompt]], cwd),
+    );
+    return raw === undefined ? undefined : sanitizeTitle(raw);
   }
 
   async cancelTurn(threadId: string, turnId: string): Promise<void> {

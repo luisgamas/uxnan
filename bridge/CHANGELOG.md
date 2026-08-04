@@ -35,15 +35,22 @@ opening with the **identical** phrase ("Hola, quiero que me ayudes con una cosa
 del proyecto") were named *"Corregir expiración JWT en login"* and *"Despliegue
 automático a Cloudflare Pages"* — the exact collision this replaces — each in
 the user's own language, in ~5-7s.
-- **pi** names conversations too, with a one-shot `pi -p --no-session` so the
-  errand leaves no trace in session storage. Verified live on the same
-  collision case. It runs on pi's own configured default model: pi routes
-  through many providers, so there is no fixed cheap-tier id to hard-code
-  (tracked in `FOR-DEV.md`).
-- Every other agent falls back to the provisional title — correct, just weaker.
-  Codex was deliberately **not** attempted: its adapter has no one-shot spawner
-  and the account had 0 credits, and guessing `codex exec` flags without a live
-  run is how broken adapters ship.
+- **Every active agent names conversations**, each through its own CLI's
+  one-shot form, and each chosen so the errand leaves no trace in the
+  conversation it names:
+  - **Claude Code** — `-p` with no `--resume`, on `haiku`.
+  - **Codex** — `codex exec --ephemeral -s read-only --skip-git-repo-check
+    -o <file>` on `gpt-5.4-mini`. Three flags carry the guarantee: `--ephemeral`
+    persists no session, `read-only` denies the sandbox any write, and `-o`
+    yields the final message **alone** (stdout carries a banner, hook lines and
+    a token count, so parsing it would be guesswork).
+  - **pi** — `pi -p --no-session`. **OpenCode** — `opencode run` with no
+    `--session`/`--continue`. **Antigravity** — `agy -p` with no
+    `--conversation`. **Grok** — `grok -p`. **Zero** — `zero exec`.
+- Model ids were **verified against each account's real list**, not assumed: a
+  wrong id is not cosmetic, the CLI rejects the run. OpenCode, pi and Grok route
+  through many providers and so have no fixed cheap tier — they title on their
+  own default (tracked in `FOR-DEV.md`).
 
 Tests: 7 new (`test/agents/thread-title.test.ts`) covering the provisional
 title, the prompt, and reducing a CLI's decorated output to a bare title.

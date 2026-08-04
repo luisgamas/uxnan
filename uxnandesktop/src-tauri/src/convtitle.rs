@@ -31,8 +31,11 @@ const TITLE_TIMEOUT: Duration = Duration::from_secs(45);
 fn title_model(agent_id: &str) -> &'static str {
     match agent_id {
         "claude" => "haiku",
+        // Verified against the account's real `model/list` (codex) and
+        // `agy models`. A wrong id is not a cosmetic mistake here: the CLI
+        // rejects the run and the session silently keeps its old label.
         "codex" => "gpt-5.4-mini",
-        "gemini" | "agy" => "gemini-2.0-flash",
+        "agy" => "gemini-3.6-flash-low",
         _ => "",
     }
 }
@@ -247,7 +250,11 @@ mod tests {
     #[test]
     fn the_title_model_is_the_cheap_tier_where_we_know_one() {
         assert_eq!(title_model("claude"), "haiku");
-        // An unknown agent falls back to its CLI default rather than guessing.
+        assert_eq!(title_model("codex"), "gpt-5.4-mini");
+        assert_eq!(title_model("agy"), "gemini-3.6-flash-low");
+        // An agent whose cheap tier we cannot name falls back to its CLI
+        // default rather than guessing an id the CLI would reject.
         assert_eq!(title_model("opencode"), "");
+        assert_eq!(title_model("gemini"), "");
     }
 }

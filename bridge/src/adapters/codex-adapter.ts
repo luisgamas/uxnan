@@ -55,9 +55,10 @@
  */
 import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { readFile, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import type {
   AgentCapabilities,
@@ -67,6 +68,7 @@ import type {
   AgentModel,
   AgentModelOption,
   ApprovalDecision,
+  GenerateTitleOptions,
   SendTurnOptions,
 } from '@uxnan/shared';
 import {
@@ -76,6 +78,8 @@ import {
 } from './command-scan.js';
 import { runGit } from '../git/git-runner.js';
 import { BaseAgentAdapter } from './base-adapter.js';
+import { buildTitlePrompt, runTitleOneShot, sanitizeTitle } from '../agents/thread-title.js';
+import { defaultSpawn, type SpawnFn } from './spawn.js';
 import {
   buildReplyResult,
   describeServerRequest,
@@ -95,6 +99,13 @@ import {
   writeDiffBlock,
 } from './content-blocks.js';
 import { effortValues, reasoningOption, reasoningValue, withOptions } from './run-options.js';
+
+/**
+ * Model used to name a conversation: the `mini` tier, never the thread's own.
+ * Writing a six-word title is not work for the expensive model, and it must not
+ * eat that model's quota. Verified against the account's real `model/list`.
+ */
+const CODEX_TITLE_MODEL = 'gpt-5.4-mini';
 
 const CODEX_CAPABILITIES: AgentCapabilities = {
   planMode: true,
@@ -193,6 +204,8 @@ export interface CodexAdapterOptions {
    * `app-server` appended, with stdin/stdout piped.
    */
   spawnAppServer?: () => SpawnedAppServer;
+  /** Injected spawn for the one-shot side errands (tests). */
+  spawnFn?: SpawnFn;
 }
 
 /** Streams + lifecycle surface a `spawnAppServer` implementation returns. */
@@ -284,6 +297,11 @@ export class CodexAdapter extends BaseAgentAdapter {
   readonly agentId: AgentId = 'codex';
   readonly capabilities = CODEX_CAPABILITIES;
 
+  /**
+   * One-shot spawner, used only for side errands that must NOT touch the
+   * app-server thread a conversation runs on (today: naming it).
+   */
+  readonly #spawnOneShot: SpawnFn;
   readonly #binaryPath: string;
   readonly #prependArgs: string[];
   readonly #defaultModel: string | undefined;
@@ -329,6 +347,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     this.#onApprovalRequest = options.onApprovalRequest;
     this.#spawnAppServer =
       options.spawnAppServer ?? defaultSpawnAppServer(this.#binaryPath, this.#prependArgs);
+    this.#spawnOneShot = options.spawnFn ?? defaultSpawn;
   }
 
   get defaultModel(): string | undefined {
@@ -472,6 +491,48 @@ export class CodexAdapter extends BaseAgentAdapter {
         turnId,
         data: { text: `codex turn/start failed: ${errorMessage(err)}` },
       });
+    }
+  }
+
+  /**
+   * Name a conversation with a one-shot `codex exec`, deliberately NOT the
+   * app-server thread a turn runs on — this errand must leave no trace in the
+   * conversation.
+   *
+   * Three flags carry that guarantee, all verified against codex-cli 0.146.0:
+   * `--ephemeral` writes no session file, `-s read-only` denies the sandbox any
+   * write, and `-o <file>` yields the final message **alone**. That last one
+   * matters: `codex exec` prints a banner, hook lines and a token count to
+   * stdout, so parsing stdout would be guesswork — the file is exactly the
+   * title and nothing else.
+   */
+  async generateTitle(options: GenerateTitleOptions): Promise<string | undefined> {
+    const prompt = buildTitlePrompt(options.userText, options.assistantText);
+    const cwd = options.cwd ?? this.#defaultCwd;
+    const outFile = join(tmpdir(), `uxnan-title-${randomUUID()}.txt`);
+    const args = [
+      'exec',
+      '--ephemeral',
+      '-s',
+      'read-only',
+      '--skip-git-repo-check',
+      '-m',
+      CODEX_TITLE_MODEL,
+      '-o',
+      outFile,
+      prompt,
+    ];
+    try {
+      const ran = await runTitleOneShot(() =>
+        this.#spawnOneShot(this.#binaryPath, [...this.#prependArgs, ...args], cwd),
+      );
+      if (ran === undefined) return undefined;
+      const raw = await readFile(outFile, 'utf8');
+      return sanitizeTitle(raw);
+    } catch {
+      return undefined;
+    } finally {
+      await rm(outFile, { force: true }).catch(() => undefined);
     }
   }
 
