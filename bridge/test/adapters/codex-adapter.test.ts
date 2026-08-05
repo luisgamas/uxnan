@@ -366,18 +366,30 @@ test('parseCodexConfigModels reads model + availability table from config.toml',
   assert.deepEqual(parseCodexConfigModels(''), []);
 });
 
-test('codexUsageTokens sums input, output and reasoning (not cached)', () => {
+test('codexUsageTokens reads the thread total, not this turn alone', () => {
+  // Captured from a live `codex app-server` `thread/tokenUsage/updated`. The
+  // meter shows the THREAD's context, so `total` wins over `last`; totalTokens
+  // is Codex's own sum, so cachedInputTokens must not be added on top.
   assert.equal(
     codexUsageTokens({
-      input_tokens: 13334,
-      cached_input_tokens: 2432,
-      output_tokens: 15,
-      reasoning_output_tokens: 8,
+      total: {
+        totalTokens: 17770,
+        inputTokens: 17765,
+        cachedInputTokens: 9984,
+        cacheWriteInputTokens: 0,
+        outputTokens: 5,
+        reasoningOutputTokens: 0,
+      },
+      last: { totalTokens: 120 },
+      modelContextWindow: 258400,
     }),
-    13357,
+    17770,
   );
   assert.equal(codexUsageTokens({}), undefined);
   assert.equal(codexUsageTokens('nope'), undefined);
+  // The old shape was the ROLLOUT file's, never the app-server's: a turn that
+  // reports nothing usable must leave the card's context alone.
+  assert.equal(codexUsageTokens({ input_tokens: 13334, output_tokens: 15 }), undefined);
 });
 
 test('parseCodexModelWindows maps slug → context_window from models_cache.json', () => {
@@ -465,12 +477,25 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
       method: 'item/completed',
       params: { item: { type: 'agentMessage', text: 'hello world' } },
     }),
+    // Usage arrives on its OWN notification — a live app-server's
+    // `turn/completed` carries none, which is why Codex used to show no
+    // context at all.
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'thread/tokenUsage/updated',
+      params: {
+        turnId: 'codex-turn-1',
+        tokenUsage: {
+          total: { totalTokens: 12, inputTokens: 10, cachedInputTokens: 4, outputTokens: 2 },
+          last: { totalTokens: 12 },
+          modelContextWindow: 258400,
+        },
+      },
+    }),
     JSON.stringify({
       jsonrpc: '2.0',
       method: 'turn/completed',
-      params: {
-        turn: { status: 'completed', tokenUsage: { input_tokens: 10, output_tokens: 2 } },
-      },
+      params: { turn: { id: 'codex-turn-1', status: 'completed' } },
     }),
   ]);
 
@@ -482,8 +507,11 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   assert.deepEqual(deltas, ['hello ', 'world']);
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { text: string }).text, 'hello world');
-  const usage = (completed?.data as { usage?: { tokens: number } }).usage;
+  const usage = (completed?.data as { usage?: { tokens: number; contextWindow?: number } })
+    .usage;
   assert.equal(usage?.tokens, 12);
+  // The window rides on the same notification, so no model-cache lookup needed.
+  assert.equal(usage?.contextWindow, 258400);
 
   // Handshake — initialize, then thread/start (no resume), then turn/start
   const methods = server.sent.map((m: any) => m.method);

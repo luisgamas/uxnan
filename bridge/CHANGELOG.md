@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — Codex's context meter works: usage is not on `turn/completed`
+
+Codex had usage-parsing code all along, and it read a field that does not
+exist. Probed against a **live `codex app-server`** (the surface the adapter
+actually drives), a completed turn carries only
+`{ id, items, itemsView, status, error, startedAt, completedAt, durationMs }` —
+no `tokenUsage`. Usage arrives on its own notification:
+
+```
+thread/tokenUsage/updated { threadId, turnId, tokenUsage: {
+  total: { totalTokens, inputTokens, cachedInputTokens, outputTokens,
+           reasoningOutputTokens }, last: {…}, modelContextWindow } }
+```
+
+The adapter now listens for it and carries the numbers to the turn's
+completion. `total` is used, not `last`: the meter shows the **thread's**
+cumulative context, not the newest turn's slice. `modelContextWindow` rides on
+the same notification, so the window no longer depends on a `models_cache.json`
+lookup that could miss the model — that stays only as a fallback.
+
+The old parser read the **rollout file's** snake_case shape
+(`input_tokens`, …), which the app-server never sends; it now reads the real
+one, and the test that asserted the old shape is rewritten rather than deleted.
+
 ### Fixed — Zero reports its token usage, from its own session store
 
 Zero's ACP stream genuinely carries no usage — but Zero records one itself,
