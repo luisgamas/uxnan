@@ -345,7 +345,8 @@ push validation (FOR-HUMAN).
       Codex). Map the resolved model's context window (pi `--list-models` exposes it)
       so the phone can render a `%` ring instead of a count.
 - [ ] **Zero token usage** — the Agent Client Protocol carries no per-turn
-      token/context usage, so `ZeroAdapter` reports `reportsContextUsage:false` and the
+      token/context usage over ACP — but it records one per turn in its own session
+      store, which `readZeroUsage` now reads, so `reportsContextUsage:true`. The
       phone shows no context meter for Zero. Read usage from `zero usage` (or Zero's
       on-disk session store) and emit `usage` on `stream/turn/completed` so the meter
       lights up. See the `FOR-DEV:` marker in `zero-adapter.ts`.

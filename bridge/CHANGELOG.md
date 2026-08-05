@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — Zero reports its token usage, from its own session store
+
+Zero's ACP stream genuinely carries no usage — but Zero records one itself,
+appending a `provider_usage` event per turn to
+`<XDG_DATA_HOME|~/.local/share>/zero/sessions/<sessionId>/events.jsonl`.
+Captured from a real run against a live Zero: `{ promptTokens,
+completionTokens, totalTokens, cachedInputTokens, reasoningTokens }`.
+
+The adapter now reads the **last** such event when a turn completes (an earlier
+one under-reports a context that has grown) and uses `totalTokens`, falling back
+to prompt + completion. `cachedInputTokens` is a subset of `promptTokens` and is
+never added, or the meter would read high. The context window comes from Zero's
+model registry, which already carries it.
+
+Best-effort by contract: an unreadable or absent store means the turn completes
+without usage, never that it fails.
+
 ### Fixed — Grok reports its token usage, so context and stats work for it
 
 Grok was the only wired agent reporting no usage at all, which left the phone
