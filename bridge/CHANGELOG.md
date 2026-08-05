@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.18-alpha.20260805] - 2026-08-05
+
 ### Fixed — Grok's token usage actually reaches the phone this time
 
 0.0.17 claimed to fix Grok and did not: it accepted `_x.ai/session/update`,
