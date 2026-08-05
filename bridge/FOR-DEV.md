@@ -345,7 +345,8 @@ push validation (FOR-HUMAN).
       Codex). Map the resolved model's context window (pi `--list-models` exposes it)
       so the phone can render a `%` ring instead of a count.
 - [ ] **Zero token usage** — the Agent Client Protocol carries no per-turn
-      token/context usage, so `ZeroAdapter` reports `reportsContextUsage:false` and the
+      token/context usage over ACP — but it records one per turn in its own session
+      store, which `readZeroUsage` now reads, so `reportsContextUsage:true`. The
       phone shows no context meter for Zero. Read usage from `zero usage` (or Zero's
       on-disk session store) and emit `usage` on `stream/turn/completed` so the meter
       lights up. See the `FOR-DEV:` marker in `zero-adapter.ts`.
@@ -361,17 +362,26 @@ push validation (FOR-HUMAN).
 - [ ] **Grok live-turn verification (balance-blocked)** — the ACP envelope,
       handshake and model discovery were exercised against a live `grok 0.2.93`, but
       a real turn could **not** be run because the test account's Grok Build balance
-      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). Re-verify against a
-      funded account: the per-turn `session/update` `tool_call`/`plan` shapes and
+      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). A funded account has
+      since confirmed the hook vocabulary and **token usage** (both shipped); still
+      to re-verify on a real turn: the per-turn `session/update` `tool_call`/`plan` shapes and
       arg names (`grok-tools.ts` assumes ACP-standard `kind`/`rawInput`/`content`),
-      the `session/request_permission` option `kind`s, whether Grok emits token
-      usage, and whether `session/set_mode { modeId: <effort> }` actually applies the
+      the `session/request_permission` option `kind`s, and whether
+      `session/set_mode { modeId: <effort> }` actually applies the
       reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
       in `grok-adapter.ts` / `grok-tools.ts`.
-- [ ] **Grok token usage** — like Zero, `GrokAdapter` reports
-      `reportsContextUsage:false` (no per-turn usage was observed over ACP). If Grok
-      exposes usage (its `/context` command implies it tracks it), emit `usage` on
-      `stream/turn/completed` so the phone's context meter lights up.
+- [ ] **Antigravity token usage** — `AntigravityAdapter` reports
+      `reportsContextUsage:false`, so its card shows no context meter. It is not
+      that `agy` has none: captured from a real run, its `result` event carries
+      `usage:{ input_tokens, output_tokens, thinking_tokens, cache_read_tokens,
+      total_tokens }` — but **only under `--output-format stream-json`**, while
+      the turn currently runs on `text`. Surfacing it means migrating the turn's
+      stream parsing from plain text to the JSON events (`step_update` for
+      deltas, `result` for the final answer + usage), which is why it was not
+      done alongside Grok/Zero/Codex. Once migrated, emit `usage` on
+      `stream/turn/completed` and flip the capability. See the inline marker in
+      `antigravity-adapter.ts`.
+
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot

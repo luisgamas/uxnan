@@ -140,10 +140,38 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
 
 - **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`. Grok merges
   every `*.json` in that folder, so nothing of yours is ever read or rewritten,
-  and global hooks need no folder-trust grant. Its event vocabulary *is* Claude
-  Code's, so it reports the full range — including a genuine `blocked` from
+  and global hooks need no folder-trust grant. Its event *set* is Claude Code's,
+  so it reports the full range — including a genuine `blocked` from
   `StopFailure` (a turn that died on an API error), which only OpenCode could
   report before.
+
+  **Its spelling is not Claude's, though, and the two directions differ.** Grok
+  accepts the PascalCase keys uxnan writes into the config as aliases, but it
+  *dispatches* in snake_case — its `HookEventName` carries
+  `#[serde(rename_all = "snake_case")]` — so the payload that comes back says
+  `stop`, not `Stop`. A normalizer that matched only PascalCase dropped every
+  Grok report and left the card stuck on **working** forever, since nothing else
+  could move it. Both spellings are accepted; if you add an event, add it to the
+  snake_case path too.
+- **What the card's second line can say depends on the agent.** While an agent
+  works it shows the current tool; once the turn ends it shows the reply. That
+  reply has to come from somewhere, and measured across a real run of every
+  wired agent **only Claude fills the hook's `summary`** (15 of 34 reports;
+  codex, opencode, pi, grok and antigravity report none). Antigravity and Grok are covered
+  because they hand us a `transcriptPath` and the reader understands their
+  record shapes (Antigravity's flat records; Grok's ACP chunks, which are
+  reassembled per turn, excluding its `agent_thought_chunk` thinking). Everything else keeps showing its **status**, which is the honest
+  fallback — and the one that scales, since any CLI can be driven here. To add
+  an agent, give it a transcript root in `transcript_base_for` and teach the
+  reader its records; never scrape the terminal, which renders a UI, not data.
+- **Antigravity names no event in its payload.** Measured against the real CLI,
+  its bodies carry `invocationNum` / `fullyIdle` / `terminationReason` and no
+  event field, so a report had nothing to identify it and was dropped — the
+  session never reached `done`, and so never got a generated name. Its
+  registration is per event, so the event name is passed as the reporter's
+  **second argument** (`uxnan-event-hook.cmd antigravity Stop`) and forwarded as
+  `X-Uxnan-Event`, which the server prefers over anything derived from the body.
+  If you add an Antigravity event, register it with its name in the command.
 - **Antigravity** gets one named entry, `uxnan-status`, in
   `~/.gemini/config/hooks.json`; other named hooks in that file are untouched.
   It exposes only its execution loop (`PreInvocation`, `PostInvocation`,

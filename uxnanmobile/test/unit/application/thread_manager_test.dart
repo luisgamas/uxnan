@@ -306,6 +306,40 @@ void main() {
     },
   );
 
+  test('coalesces a burst of deltas without losing a character', () async {
+    await manager.selectThread('th1');
+    await _settle();
+    events.add(const TurnStartedEvent(turnId: 'turn1', threadId: 'th1'));
+    await _settle();
+
+    var rebuilds = 0;
+    final sub = manager.timelineStream.listen((_) => rebuilds++);
+    addTearDown(sub.cancel);
+
+    // A real reply arrives far faster than the screen can redraw.
+    const bursts = 40;
+    for (var i = 0; i < bursts; i++) {
+      events.add(MessageDeltaEvent(turnId: 'turn1', delta: 'chunk$i '));
+    }
+    await _settle();
+
+    // Every character is on screen...
+    final streaming = manager.timeline.messages
+        .firstWhereOrNull((m) => m.id == 'stream-turn1');
+    expect(streaming, isNotNull);
+    for (var i = 0; i < bursts; i++) {
+      expect(_text(streaming!), contains('chunk$i '));
+    }
+    // ...but the timeline was not rebuilt once per delta. A delta arriving
+    // faster than a frame cannot be seen, and rebuilding for it re-parsed the
+    // whole reply's Markdown, which is what made streaming feel slow.
+    expect(rebuilds, lessThan(bursts ~/ 2));
+
+    events.add(const TurnCompletedEvent(turnId: 'turn1', threadId: 'th1'));
+    await _settle();
+    expect(manager.timeline.isStreaming, isFalse);
+  });
+
   test('applies a streaming turn: started, deltas, completed', () async {
     await manager.selectThread('th1');
     await _settle();

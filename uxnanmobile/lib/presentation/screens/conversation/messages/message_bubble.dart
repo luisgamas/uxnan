@@ -215,40 +215,48 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                   // says "not handed over yet". The outline goes transparent
                   // on delivery, dissolving in place — the message never
                   // changes colour or moves, it just stops being provisional.
-                  NeDashedOutline(
-                    color: queued ? colors.primary : Colors.transparent,
-                    borderRadius: _bubbleRadius,
-                    child: AnimatedContainer(
+                  //
+                  // The dashes are the bubble's OWN border, not an overlay: an
+                  // overlay is drawn around the whole box, margin included, so
+                  // it sat off the bubble and read as a second rectangle on top
+                  // of it. As part of the decoration it is stroked on exactly
+                  // the shape being filled.
+                  AnimatedContainer(
+                    duration: motion,
+                    curve: Curves.easeOutCubic,
+                    margin:
+                        const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+                    padding: EdgeInsets.fromLTRB(
+                      UxnanSpacing.md,
+                      UxnanSpacing.sm,
+                      // Room for the edit + cancel pair so neither ever sits
+                      // on the text (2 × 28 dp + the gap between and after).
+                      queued ? _queuedActionsWidth : UxnanSpacing.md,
+                      UxnanSpacing.sm,
+                    ),
+                    decoration: ShapeDecoration(
+                      color: colors.primaryContainer,
+                      shape: NeDashedBorder(
+                        borderRadius: _bubbleRadius,
+                        side: BorderSide(
+                          color: queued ? colors.primary : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                    child: AnimatedSize(
                       duration: motion,
                       curve: Curves.easeOutCubic,
-                      margin:
-                          const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-                      padding: EdgeInsets.fromLTRB(
-                        UxnanSpacing.md,
-                        UxnanSpacing.sm,
-                        // Room for the edit + cancel pair so neither ever sits
-                        // on the text (2 × 28 dp + the gap between and after).
-                        queued ? _queuedActionsWidth : UxnanSpacing.md,
-                        UxnanSpacing.sm,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.primaryContainer,
-                        borderRadius: _bubbleRadius,
-                      ),
-                      child: AnimatedSize(
-                        duration: motion,
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.topRight,
-                        child: _UserMessageBody(
-                          key: const ValueKey('user-body'),
-                          message: message,
-                          text: _text,
-                          surface: colors.primaryContainer,
-                          onSurface: colors.onPrimaryContainer,
-                          expanded: _expanded,
-                          onExpandedChanged: (value) =>
-                              setState(() => _expanded = value),
-                        ),
+                      alignment: Alignment.topRight,
+                      child: _UserMessageBody(
+                        key: const ValueKey('user-body'),
+                        message: message,
+                        text: _text,
+                        surface: colors.primaryContainer,
+                        onSurface: colors.onPrimaryContainer,
+                        expanded: _expanded,
+                        onExpandedChanged: (value) =>
+                            setState(() => _expanded = value),
                       ),
                     ),
                   ),

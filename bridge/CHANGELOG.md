@@ -5,6 +5,70 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — Codex's context meter works: usage is not on `turn/completed`
+
+Codex had usage-parsing code all along, and it read a field that does not
+exist. Probed against a **live `codex app-server`** (the surface the adapter
+actually drives), a completed turn carries only
+`{ id, items, itemsView, status, error, startedAt, completedAt, durationMs }` —
+no `tokenUsage`. Usage arrives on its own notification:
+
+```
+thread/tokenUsage/updated { threadId, turnId, tokenUsage: {
+  total: { totalTokens, inputTokens, cachedInputTokens, outputTokens,
+           reasoningOutputTokens }, last: {…}, modelContextWindow } }
+```
+
+The adapter now listens for it and carries the numbers to the turn's
+completion. `total` is used, not `last`: the meter shows the **thread's**
+cumulative context, not the newest turn's slice. `modelContextWindow` rides on
+the same notification, so the window no longer depends on a `models_cache.json`
+lookup that could miss the model — that stays only as a fallback.
+
+The old parser read the **rollout file's** snake_case shape
+(`input_tokens`, …), which the app-server never sends; it now reads the real
+one, and the test that asserted the old shape is rewritten rather than deleted.
+
+### Fixed — Zero reports its token usage, from its own session store
+
+Zero's ACP stream genuinely carries no usage — but Zero records one itself,
+appending a `provider_usage` event per turn to
+`<XDG_DATA_HOME|~/.local/share>/zero/sessions/<sessionId>/events.jsonl`.
+Captured from a real run against a live Zero: `{ promptTokens,
+completionTokens, totalTokens, cachedInputTokens, reasoningTokens }`.
+
+The adapter now reads the **last** such event when a turn completes (an earlier
+one under-reports a context that has grown) and uses `totalTokens`, falling back
+to prompt + completion. `cachedInputTokens` is a subset of `promptTokens` and is
+never added, or the meter would read high. The context window comes from Zero's
+model registry, which already carries it.
+
+Best-effort by contract: an unreadable or absent store means the turn completes
+without usage, never that it fails.
+
+### Fixed — Grok reports its token usage, so context and stats work for it
+
+Grok was the only wired agent reporting no usage at all, which left the phone
+with no context indicator and no consumption stats for it. Two causes, both
+found by running the real CLI against a local sink and reading its own ACP
+transcript:
+
+- **Its stream arrives on two methods.** The adapter accepted only
+  `session/update`, but Grok emits `turn_completed` — the update that carries
+  the usage block — on **`_x.ai/session/update`**. Every usage report was
+  dropped before it was ever parsed.
+- **The capability said it had none.** `reportsContextUsage` was `false` with a
+  `FOR-DEV` noting it was unverified because the account was balance-blocked.
+  It reports a full block: `{ inputTokens, outputTokens, totalTokens,
+  cachedReadTokens, reasoningTokens }`.
+
+`totalTokens` is used as the turn's size, falling back to input + output.
+`cachedReadTokens` is a subset of `inputTokens` (as in Codex's
+`cached_input_tokens`) and is not added, or it would double-count. The context
+window comes from the model cache, which already carries Grok's own
+`totalContextTokens` from the ACP handshake.
+
+
 ## [0.0.16-alpha.20260804] - 2026-08-04
 
 ### Added — the bridge names a conversation instead of reusing its first words

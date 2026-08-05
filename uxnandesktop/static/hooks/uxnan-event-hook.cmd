@@ -17,10 +17,12 @@ REM loop, so this must also stay fast.
 
 setlocal
 set "TYPE=%~1"
+REM %2 names the event, for CLIs whose payload does not (Antigravity).
+set "EVENT=%~2"
 if "%TYPE%"=="" set "TYPE=agent"
 if defined UXNAN_ENDPOINT_FILE if exist "%UXNAN_ENDPOINT_FILE%" call "%UXNAN_ENDPOINT_FILE%" 2>nul
 if "%UXNAN_HOOK_URL%"=="" exit /b 0
 if "%UXNAN_AGENT_ID%"=="" exit /b 0
 
-"%SystemRoot%\System32\curl.exe" -sS -X POST "%UXNAN_HOOK_URL%" --connect-timeout 0.5 --max-time 1.5 -H "Content-Type: application/json" -H "X-Uxnan-Token: %UXNAN_HOOK_TOKEN%" -H "X-Uxnan-Agent-Id: %UXNAN_AGENT_ID%" -H "X-Uxnan-Agent-Type: %TYPE%" --data-binary @- >nul 2>&1
+"%SystemRoot%\System32\curl.exe" -sS -X POST "%UXNAN_HOOK_URL%" --connect-timeout 0.5 --max-time 1.5 -H "Content-Type: application/json" -H "X-Uxnan-Token: %UXNAN_HOOK_TOKEN%" -H "X-Uxnan-Agent-Id: %UXNAN_AGENT_ID%" -H "X-Uxnan-Agent-Type: %TYPE%" -H "X-Uxnan-Event: %EVENT%" --data-binary @- >nul 2>&1
 exit /b 0

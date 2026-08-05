@@ -6,6 +6,76 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the thread row shows the agent's latest reply, not its first
+
+The row's second line was pinned to whatever the agent answered on the very
+first turn and never changed again.
+
+The cause was a doc that lied: `IMessageRepository.getMessages` promised
+"most recent first", but the implementation pages the newest N and returns them
+**ascending**, so walking that list forward finds the *oldest* reply in the
+window. The traversal is fixed and the interface doc now states the real order,
+so the next reader is not misled the same way.
+
+Same symptom, second cause: a `FutureProvider` resolves once per key and caches,
+so even a correct traversal would have frozen on the first result. The key now
+carries the thread's activity timestamp, giving each turn its own.
+
+### Fixed — streaming replies feel fast again, with the formatting kept
+
+Rendering Markdown as the text arrives (instead of after the turn) made replies
+visibly slower, and the cost was real rather than imagined: **every delta
+rebuilt the whole timeline and re-parsed the entire reply**, so a turn cost time
+quadratic in its own length.
+
+Deltas are now coalesced, and the window **grows with the reply** — which is
+where the cost is. A fixed one-frame window turned out to be the wrong shape:
+agents emit a delta roughly every 20 ms, so almost nothing fell inside it.
+Measured on a realistic 6000-character reply (prose, list, inline code, fenced
+block) arriving as 1500 deltas:
+
+| rebuilds | cost |
+|---|---|
+| one per delta (1500) | 18.9 s |
+| one per frame, 16 ms (~1500) | 16.0 s |
+| 50 ms (600) | 6.7 s |
+| **100 ms (300)** | **3.4 s** |
+
+Nothing is dropped and nothing waits for the turn to end: whatever lands inside
+the window is rendered together on the next frame, still fully formatted, so the
+text still appears as it streams. A short reply keeps the shortest window and
+stays maximally responsive; only a long one throttles, and only to a rate no eye
+resolves as discrete. Deltas alone coalesce — a completed turn, a content block
+or a re-sync still renders immediately.
+
+### Fixed — the queued bubble's dashes are the bubble's own edge
+
+The outline read as a second rectangle drawn on top of the bubble, because that
+is what it was: a widget painting over whatever box it wrapped — and that box
+carried a vertical margin, so the dashes were stroked around the margin instead
+of around the bubble.
+
+It is now a `ShapeBorder` on the bubble's own decoration, so it is stroked on
+exactly the shape being filled and cannot drift from it, and it animates with
+the rest of the decoration rather than independently.
+
+### Fixed — the reasoning-effort menu is no longer trapped under the keyboard
+
+Entering a conversation focuses the composer, so the keyboard is up. The effort
+button sits directly above it and the menu is anchored to that button, which put
+the menu underneath the keyboard and out of reach. `requestFocus: false` had
+been added so the menu would not close the keyboard — but the keyboard is the
+problem, so that is what kept the bug.
+
+Tapping the button now drops focus and waits for the viewport to settle before
+anchoring, so the menu opens in the space the keyboard vacated. The anchor is
+measured after the wait (the button moves down as the keyboard collapses), the
+wait is bounded so a platform that reports no inset cannot hang the tap, and the
+composer's text is untouched — only its keyboard is dismissed.
+
+Mobile suite **839 passing**.
+
+
 ## [0.0.17-alpha.20260804+20260804] - 2026-08-04
 
 ### Changed — a queued message can now reach the agent without waiting

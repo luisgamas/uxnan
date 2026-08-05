@@ -204,6 +204,50 @@ stays reproducible. The bridge documents the same rule from its side in
 
 ---
 
+## Conversation names
+
+A session's card and tab show a generated name instead of the first words the
+user typed, so two sessions opened with a similar phrase stay distinguishable.
+It runs in `src-tauri/src/convtitle.rs` through the same one-shot headless runner
+as the AI commit message — no provider API and no keys, just the agent's own CLI
+under the account it is already authenticated with.
+
+**The input is the session's terminal transcript**, not the prompt. That is a
+deliberate correction: measured against a real run of all seven agents, only
+`claude` reports a prompt or a reply through the hook (`codex`, `opencode` and
+`pi` send empty strings), so a prompt-shaped input named two agents and silently
+skipped the rest. The transcript is the one material every agent has. It is
+clipped to its **tail**, because a terminal opens with a banner and the
+conversation is at the bottom — clipping from the front would hand the model the
+boilerplate and cut off the task.
+
+Two agents need care beyond that:
+
+- **Antigravity reports as `antigravity` but its CLI is `agy`.** The hook kind
+  and the runnable id are different vocabularies; mapping between them is what
+  makes its naming work at all.
+- **Zero emits no hook**, so it is named from its own poll instead. Its
+  `"ACP session"` label is a placeholder Zero writes itself, not a misread.
+
+Naming happens **once per session** and is best-effort: a missing CLI, no credit
+or a timeout leaves the existing label alone and is not retried, because a retry
+loop would spend real quota on a cosmetic feature. A hand-renamed tab always
+wins.
+
+Each agent names on the cheapest model we can name for it (`title_model`);
+anything else runs on its CLI default rather than guessing an id the CLI would
+reject. Verify a new id against the account's real `model/list` — a wrong one is
+not a cosmetic mistake, the run fails and the session silently keeps its label.
+
+**On the wait.** Measured on Windows: CLI startup is ~140 ms, the floor for any
+model round-trip is ~3.3 s, and a full transcript names in ~7.5–9 s. Shrinking
+the transcript does *not* speed it up (1800 / 900 / 500 chars all land in the
+same range) and makes the title worse — at 500 chars it lost the subject
+entirely. The time is the model's, so the input stays at the size that names
+best.
+
+---
+
 ## See also
 
 - [Orchestration](./orchestration.md) — drive multiple running agents at once.

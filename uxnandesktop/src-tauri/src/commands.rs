@@ -1691,8 +1691,13 @@ pub async fn git_generate_commit_message(
         .map_err(CommandError::from)
 }
 
-/// Name a conversation from its opening exchange, using the session's own agent
-/// CLI on that agent's cheapest model.
+/// Name a conversation from what its terminal shows, using the session's own
+/// agent CLI on that agent's cheapest model.
+///
+/// `transcript` is the session's visible text rather than a prompt/reply pair:
+/// the hook payload carries neither for most agents (measured — only Claude
+/// reports them), so anything shaped around it names two agents and silently
+/// skips the rest.
 ///
 /// **Best-effort by design.** The caller shows the generated name only if one
 /// comes back; on any failure (no credit, the CLI missing, a timeout) the
@@ -1701,11 +1706,10 @@ pub async fn git_generate_commit_message(
 #[tauri::command]
 pub async fn generate_conversation_title(
     agent_id: String,
-    user_text: String,
-    assistant_text: String,
+    transcript: String,
     cwd: String,
 ) -> Result<String, CommandError> {
-    crate::convtitle::generate(&agent_id, &user_text, &assistant_text, &cwd)
+    crate::convtitle::generate(&agent_id, &transcript, &cwd)
         .await
         .map_err(CommandError::from)
 }

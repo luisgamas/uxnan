@@ -5,6 +5,96 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — every agent gets a conversation name, and Grok's status unsticks
+
+Shipped in 0.0.27, naming worked on **two of seven** agents. Both causes were
+found by reading real data rather than reasoning about it.
+
+- **The trigger read the user's prompt out of the hook payload.** Checked
+  against a real run of all seven agents, only `claude` ever carries a prompt or
+  a reply there — `codex`, `opencode` and `pi` reported empty strings — so the
+  naming path returned early for everyone else. It now names from the session's
+  **terminal buffer** (`readInstanceText`), the one source every agent has, and
+  asks the CLI to title a transcript excerpt. The clip keeps the **tail**: a
+  terminal opens with a banner and the conversation is at the bottom.
+- **The hook kind and the CLI id are different vocabularies.** The hook reports
+  `antigravity` while the runnable CLI is `agy`, so `agentcli::resolve` failed
+  and every Antigravity title silently did nothing.
+- **Zero emits no hook at all**, so it never reached the trigger, and its card
+  kept snapping back to `"ACP session"` — a placeholder **Zero writes itself**
+  (`internal/acp/agent.go`), not something read wrong. It is now named from its
+  own poll.
+- **Grok's status hung on "working".** uxnan writes PascalCase keys into Grok's
+  hooks file (Grok accepts them as aliases) but Grok **dispatches in
+  snake_case** — its `HookEventName` carries
+  `#[serde(rename_all = "snake_case")]`, so the payload says `stop`, not `Stop`.
+  `normalize_event` matched only PascalCase, so every Grok report fell through
+  to `None` and was discarded, leaving nothing able to move the card. Both
+  spellings are accepted now.
+
+Verified against the real CLI on the actual delivery path (`run_headless` pipes
+the prompt to **stdin** for claude/codex/opencode/pi): a transcript full of
+banner, box-drawing and spinner frames produced *"Introducción al proyecto
+Uxnan"*.
+
+**On speed** (measured, since it looked slow): CLI startup is **143 ms** and not
+the bottleneck; the floor for any model round-trip is **~3.3 s**; a full
+transcript titles in **7.5–9.1 s**. Clipping the transcript does **not** help —
+1800 / 900 / 500 chars all landed in the same range — and a shorter clip makes
+the title *worse* (at 500 chars it lost the subject entirely). The time is the
+model's, so the input stays at the size that titles best.
+
+### Fixed — Antigravity reaches `done`, so it gets a name too
+
+Its card and tab kept the product name while every other agent got titled. The
+cause is not the title path: **Antigravity's hook payload names no event**.
+Measured against the real CLI, its bodies carry `invocationNum` / `fullyIdle` /
+`terminationReason` and no event field at all, while the reporter passed only
+the agent kind — so every report arrived unidentifiable and was discarded, the
+session never reached `done`, and naming never fired.
+
+Registration is already per event, so the event name now travels as the
+reporter's second argument and arrives as `X-Uxnan-Event`, which the server
+prefers over anything it can dig out of the body.
+
+### Added — Antigravity's card shows its reply, not just a status
+
+The second line can only show what an agent actually reports, and measured
+across a real run of every wired agent **only Claude fills the hook's
+`summary`** (claude 15 of 34 reports; codex, opencode, pi, grok, antigravity:
+zero). Antigravity, though, hands us a `transcriptPath` in its payload, so its
+reply is available as data rather than as scraped terminal text.
+
+The existing Claude transcript reader now serves both: it learned Antigravity's
+flat record shape (`{"source":"MODEL","type":"PLANNER_RESPONSE","content":…}`
+instead of Claude's `{message:{role,content}}`) and its transcript root, keeping
+the same path gate — a request-supplied path is dereferenced only inside that
+agent's own home, never anywhere else. An agent with no known transcript root
+dereferences nothing and keeps showing its status, which stays the honest
+fallback for any CLI that reports neither.
+
+### Added — Grok's card shows its reply too, and naming survives a blip
+
+Grok hands us a `transcriptPath` in its payload just like Antigravity, so its
+reply is available as data. Its transcript is **ACP-shaped and streamed in
+chunks**, so the reply is reassembled rather than read off the last line (which
+would show the tail of a sentence), a new user chunk starts a new turn, and
+`agent_thought_chunk` — the model thinking out loud — is never mistaken for the
+answer. Verified against a real `~/.grok/sessions/**/updates.jsonl`.
+
+**Naming now gets a second chance.** It used to be one attempt per session ever:
+right about quota, wrong about transient failures, since a CLI that was busy or
+cold cost that session its name *permanently*. Two attempts is the cheapest
+number that survives a blip, and a named session still never re-names.
+
+**And it says why it failed.** Naming is silent by design — the card just keeps
+its old label — so a session that never got named left no evidence at all. Every
+outcome is now logged under `[convtitle]`, with the tail of the CLI's own output
+on failure.
+
+Desktop suites **772 frontend / 501 Rust**.
+
+
 ## [0.0.27] - 2026-08-04
 
 ### Added — agent sessions get a real name, on the card and on the tab

@@ -433,6 +433,58 @@ Detalle de uso y formato: [`docs/pets.md`](../docs/pets.md).
 
 ---
 
+### 1.8 Nombres de conversacion generados
+
+La tarjeta y la pestana de una sesion muestran un **nombre generado**, no las
+primeras palabras que escribio el usuario: dos sesiones abiertas con una frase
+parecida serian indistinguibles en el panel. Lo produce `convtitle.rs` con el
+mismo runner headless de un solo disparo que el mensaje de commit — sin API de
+proveedor y sin claves, con el CLI propio del agente bajo la cuenta que el
+usuario ya autentico.
+
+**La entrada es la transcripcion del terminal de la sesion, no el prompt.** Es
+una correccion deliberada de la primera version: medido contra una corrida real
+de los siete agentes, **solo `claude` reporta prompt o respuesta por el hook**
+(`codex`, `opencode` y `pi` mandan cadenas vacias), asi que una entrada con
+forma de prompt nombraba dos agentes y se saltaba el resto en silencio. La
+transcripcion es el unico material que **todos** tienen. Se recorta por la
+**cola**: un terminal abre con un banner y la conversacion esta abajo, de modo
+que recortar por delante entregaria el boilerplate y cortaria la tarea.
+
+Dos agentes necesitan un trato aparte:
+
+- **Antigravity reporta como `antigravity` pero su CLI es `agy`.** El tipo del
+  hook y el id ejecutable son vocabularios distintos; mapear entre ambos es lo
+  que hace que su nombrado funcione. Ademas **su payload no nombra el evento**
+  —medido contra el CLI real, manda `invocationNum` / `fullyIdle` /
+  `terminationReason` y ningun campo de evento—, asi que sus reportes llegaban
+  sin identificar y se descartaban: nunca alcanzaba `done` y por eso nunca se
+  titulaba. Como el registro ya es por evento, el nombre viaja como segundo
+  argumento del reporter y llega en la cabecera `X-Uxnan-Event`.
+- **Zero no emite hook**, asi que se nombra desde su propio poll. Su etiqueta
+  `"ACP session"` es un placeholder que **Zero escribe solo**, no una mala
+  lectura de uxnan.
+
+El nombrado ocurre **una vez por sesion** y es best-effort: un CLI ausente, sin
+saldo o un timeout deja la etiqueta existente intacta y no se reintenta —un
+bucle de reintentos gastaria cuota real en algo cosmetico—. Un renombrado manual
+siempre gana.
+
+Cada agente nombra con el modelo mas barato que sepamos nombrarle
+(`title_model`); el resto corre con el default de su CLI en vez de adivinar un
+id que el CLI rechazaria. Verifica un id nuevo contra el `model/list` real de la
+cuenta: uno equivocado no es un fallo cosmetico, la corrida falla y la sesion se
+queda callada con su etiqueta vieja.
+
+**Sobre la espera.** Medido en Windows: el arranque del CLI son ~140 ms, el
+suelo de cualquier ida y vuelta al modelo son ~3.3 s, y una transcripcion
+completa nombra en ~7.5–9 s. Encoger la transcripcion **no** acelera (1800 / 900
+/ 500 caracteres caen en el mismo rango) y empeora el titulo —con 500 perdio el
+tema por completo—. El tiempo es del modelo, asi que la entrada se queda en el
+tamano que mejor nombra.
+
+---
+
 ## 2. Notificaciones
 
 El sistema de notificaciones mantiene al usuario informado del progreso de los agentes, incluso cuando no esta mirando activamente la ventana del ADE.

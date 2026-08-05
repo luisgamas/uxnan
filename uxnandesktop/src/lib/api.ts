@@ -898,14 +898,12 @@ export function generateCommitMessage(path: string): Promise<string> {
  *  whatever label the session already had. */
 export function generateConversationTitle(
   agentId: string,
-  userText: string,
-  assistantText: string,
+  transcript: string,
   cwd: string,
 ): Promise<string> {
   return invoke<string>('generate_conversation_title', {
     agentId,
-    userText,
-    assistantText,
+    transcript,
     cwd,
   });
 }

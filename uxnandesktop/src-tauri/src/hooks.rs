@@ -59,6 +59,14 @@ const TOKEN_HEADER: &str = "x-uxnan-token";
 const AGENT_ID_HEADER: &str = "x-uxnan-agent-id";
 /// Header a shell `curl` script uses to pass the agent kind out-of-band.
 const AGENT_TYPE_HEADER: &str = "x-uxnan-agent-type";
+/// Header the generic wrapper uses to name the event that fired.
+///
+/// Needed because a payload need not carry one: measured against the real CLI,
+/// Antigravity posts `invocationNum` / `fullyIdle` / `terminationReason` and no
+/// event field at all, so its reports had nothing to identify them and were
+/// discarded. Its hooks are registered per event, so the reporter is given the
+/// name as an argument and forwards it here.
+const EVENT_HEADER: &str = "x-uxnan-event";
 /// Header the generic wrapper uses to report an already-known lifecycle state.
 const STATUS_HEADER: &str = "x-uxnan-status";
 /// Header the generic wrapper uses to flag a non-zero (interrupted) exit.
@@ -133,7 +141,13 @@ pub fn normalize_event(
         // file unchanged), plus a `StopFailure` of its own for a turn that died on
         // an API error — which makes Grok the second agent, after OpenCode, that
         // reports a real `blocked` instead of it being inferred.
-        "grok" => match event {
+        // Grok registers PascalCase keys in its config (it accepts those as
+        // aliases) but **dispatches in snake_case**: its `HookEventName` carries
+        // `#[serde(rename_all = "snake_case")]`, so the payload says `stop`, not
+        // `Stop`. Matching only the PascalCase spelling made every Grok report
+        // fall through to `None` and be discarded — which is why its card sat on
+        // "working" with nothing left able to move it. Accept both spellings.
+        "grok" => match pascal_case(event).as_str() {
             "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse"
             | "PostToolUseFailure" | "PreCompact" | "PostCompact" => Some(AgentStatus::Working),
             "Notification" => Some(AgentStatus::Waiting),
@@ -180,6 +194,29 @@ fn notification_type(source: &Value) -> Option<String> {
         .get("notification_type")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
+}
+
+/// `snake_case` → `PascalCase`, leaving an already-Pascal name untouched.
+///
+/// Exists because an agent's *config* spelling and its *dispatch* spelling are
+/// not always the same — Grok accepts `Stop` in its hooks file and then reports
+/// `stop`. Normalizing at the match site keeps one vocabulary per agent instead
+/// of duplicating every arm.
+fn pascal_case(event: &str) -> String {
+    // Deliberately no "already Pascal?" shortcut: a single-word snake event has
+    // no underscore at all (`stop`), so skipping on that basis would leave the
+    // most important event of the lifecycle unmatched.
+    event
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Extract the provider event name from a raw hook payload, trying every key an
@@ -300,6 +337,15 @@ fn text_of(content: &Value) -> String {
         return s.to_string();
     }
     let Some(arr) = content.as_array() else {
+        // A single block, the shape ACP transcripts use:
+        // `"content": {"type":"text","text":"…"}`.
+        if content.get("type").and_then(|t| t.as_str()) == Some("text") {
+            return content
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string();
+        }
         return String::new();
     };
     arr.iter()
@@ -316,6 +362,27 @@ fn text_of(content: &Value) -> String {
 /// breaking.
 fn claude_transcript_base() -> Option<PathBuf> {
     crate::agent_hooks::home_dir().map(|h| h.join(".claude"))
+}
+
+/// Where Grok keeps the ACP transcript it points us at, for the same gate.
+fn grok_transcript_base() -> Option<PathBuf> {
+    crate::agent_hooks::home_dir().map(|h| h.join(".grok"))
+}
+
+/// Where Antigravity keeps the transcript it points us at, for the same gate.
+fn antigravity_transcript_base() -> Option<PathBuf> {
+    crate::agent_hooks::home_dir().map(|h| h.join(".gemini").join("antigravity-cli"))
+}
+
+/// The transcript root an agent's `transcriptPath` must live under, or `None`
+/// when we know of no transcript for that agent (and so dereference nothing).
+fn transcript_base_for(agent_type: &str) -> Option<PathBuf> {
+    match agent_type {
+        "claude" => claude_transcript_base(),
+        "antigravity" => antigravity_transcript_base(),
+        "grok" => grok_transcript_base(),
+        _ => None,
+    }
 }
 
 /// Whether a request-supplied `transcript_path` may be dereferenced: it must be a
@@ -351,6 +418,12 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
     };
     let mut prompt = None;
     let mut summary = None;
+    // ACP transcripts (Grok) stream a turn as CHUNKS, so the reply has to be
+    // reassembled: taking the last line would show the tail of a sentence. A new
+    // user chunk starts a new turn and drops what came before, leaving the last
+    // turn's reply at the end.
+    let mut acp_prompt = String::new();
+    let mut acp_reply = String::new();
     for line in raw.lines() {
         if line.trim().is_empty() {
             continue;
@@ -358,12 +431,33 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
         let Ok(entry) = serde_json::from_str::<Value>(line) else {
             continue;
         };
+        // ACP shape (Grok): the interesting part is nested under
+        // `params.update`, and `agent_thought_chunk` is the model thinking out
+        // loud — never the answer, so it must not reach the card.
+        if let Some(update) = entry.get("params").and_then(|p| p.get("update")) {
+            let text = update.get("content").map(text_of).unwrap_or_default();
+            match update.get("sessionUpdate").and_then(|u| u.as_str()) {
+                Some("user_message_chunk") => {
+                    if !acp_reply.is_empty() {
+                        acp_prompt.clear();
+                        acp_reply.clear();
+                    }
+                    acp_prompt.push_str(&text);
+                }
+                Some("agent_message_chunk") => acp_reply.push_str(&text),
+                _ => {}
+            }
+            continue;
+        }
         let msg = entry.get("message");
         let role = msg
             .and_then(|m| m.get("role"))
             .and_then(|r| r.as_str())
             .or_else(|| entry.get("type").and_then(|t| t.as_str()));
-        let content = msg.and_then(|m| m.get("content"));
+        // Claude nests the text under `message`; Antigravity's records are flat.
+        let content = msg
+            .and_then(|m| m.get("content"))
+            .or_else(|| entry.get("content"));
         let text = content.map(text_of).unwrap_or_default();
         let text = tidy(&text, PREVIEW_MAX);
         if text.is_empty() {
@@ -372,8 +466,27 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
         match role {
             Some("user") => prompt = Some(text),
             Some("assistant") => summary = Some(text),
+            // Antigravity's records are flat and speak their own vocabulary:
+            // `{"source":"MODEL","type":"PLANNER_RESPONSE","content":"…"}` for a
+            // reply, `USER_INPUT` for the turn that asked for it. Verified
+            // against real transcripts under `~/.gemini/antigravity-cli/brain/`.
+            Some("PLANNER_RESPONSE")
+                if entry.get("source").and_then(Value::as_str) == Some("MODEL") =>
+            {
+                summary = Some(text)
+            }
+            Some("USER_INPUT") => prompt = Some(text),
             _ => {}
         }
+    }
+    // Reassembled ACP chunks win: a transcript in that shape has nothing else.
+    let acp_reply = tidy(&acp_reply, PREVIEW_MAX);
+    if !acp_reply.is_empty() {
+        summary = Some(acp_reply);
+    }
+    let acp_prompt = tidy(&acp_prompt, PREVIEW_MAX);
+    if !acp_prompt.is_empty() {
+        prompt = Some(acp_prompt);
     }
     (prompt, summary)
 }
@@ -650,7 +763,12 @@ async fn handle_hook(
         }
     });
     let source = source_owned.as_ref();
-    let event = body_get("event").or_else(|| source.and_then(event_name));
+    // Header first: it is the only source for an agent whose payload names no
+    // event, and it is what the hook was registered under either way.
+    let event = header_str(&headers, EVENT_HEADER)
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| body_get("event"))
+        .or_else(|| source.and_then(event_name));
 
     // Sub-agent (child) lifecycle. A child runs inside the parent's session
     // (Claude's Task tool = same PTY; OpenCode = a child session), so its report
@@ -727,20 +845,24 @@ async fn handle_hook(
         .or_else(|| source.and_then(source_tool));
     let mut summary = body_get("summary").filter(|s| !s.trim().is_empty());
 
-    // On a Claude completion, enrich with the task + a short response preview,
-    // read from the session transcript the hook pointed us at.
-    if status == AgentStatus::Done && agent_type.as_deref() == Some("claude") {
-        if let Some(tp) = source
-            .and_then(|s| s.get("transcript_path"))
-            .and_then(|v| v.as_str())
-        {
+    // On a completion, enrich with the task + a short response preview, read
+    // from the session transcript the hook pointed us at. Only Claude fills the
+    // hook's own `summary` (measured across a real run of every wired agent), so
+    // for the others this file IS the reply — without it their card can only ever
+    // show a bare status.
+    if status == AgentStatus::Done {
+        let base = agent_type.as_deref().and_then(transcript_base_for);
+        if let (Some(base), Some(tp)) = (
+            base,
+            source
+                .and_then(|s| s.get("transcript_path").or_else(|| s.get("transcriptPath")))
+                .and_then(|v| v.as_str()),
+        ) {
             // Only dereference a request-supplied path that is a `.jsonl`
             // transcript inside the user's `~/.claude` home — never an arbitrary
             // readable file a token-holding caller named. On any failure the
             // report still succeeds, just without the preview.
-            let allowed = claude_transcript_base()
-                .map(|base| transcript_path_allowed(Path::new(tp), &base))
-                .unwrap_or(false);
+            let allowed = transcript_path_allowed(Path::new(tp), &base);
             if allowed {
                 let (t_prompt, t_summary) = transcript_preview(tp);
                 if let Some(p) = t_prompt {
@@ -1154,6 +1276,90 @@ mod tests {
     }
 
     #[test]
+    fn transcript_preview_reads_antigravitys_own_record_shape() {
+        // Captured from a real `~/.gemini/antigravity-cli/brain/**/
+        // transcript_full.jsonl`: flat records, not Claude's `{message:{role}}`,
+        // and the reply is the LAST `MODEL`/`PLANNER_RESPONSE`.
+        let dir = std::env::temp_dir().join("uxnan-agy-transcript-test");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("transcript_full.jsonl");
+        let lines = [
+            json!({"source":"USER_EXPLICIT","type":"USER_INPUT","content":"que es esta app"}),
+            json!({"source":"SYSTEM","type":"CONVERSATION_HISTORY","content":""}),
+            json!({"source":"MODEL","type":"VIEW_FILE","content":"File Path: `README.md`"}),
+            json!({"source":"MODEL","type":"PLANNER_RESPONSE","content":"Uxnan es una plataforma para controlar agentes"}),
+            json!({"source":"SYSTEM","type":"CHECKPOINT","content":"{{ CHECKPOINT 0 }}"}),
+        ]
+        .map(|v| v.to_string())
+        .join("\n");
+        std::fs::write(&path, lines).expect("write");
+
+        let (prompt, summary) = transcript_preview(path.to_str().expect("utf-8"));
+        assert_eq!(prompt.as_deref(), Some("que es esta app"));
+        assert_eq!(
+            summary.as_deref(),
+            Some("Uxnan es una plataforma para controlar agentes"),
+            "a tool record or the checkpoint must not be mistaken for the reply"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_transcript_outside_its_agents_home_is_never_dereferenced() {
+        // The path is request-supplied, so the gate is what stops a token-holding
+        // caller pointing the preview at any readable file.
+        let base = std::env::temp_dir().join("uxnan-base");
+        assert!(!transcript_path_allowed(
+            Path::new("/etc/passwd.jsonl"),
+            &base
+        ));
+        assert!(transcript_base_for("opencode").is_none());
+        assert!(transcript_base_for("claude").is_some());
+        assert!(transcript_base_for("antigravity").is_some());
+        assert!(transcript_base_for("grok").is_some());
+    }
+
+    #[test]
+    fn transcript_preview_reassembles_groks_acp_chunks() {
+        // Captured from a real `~/.grok/sessions/**/updates.jsonl`: the turn is
+        // streamed as chunks under `params.update`, so the reply has to be put
+        // back together — and the model's thinking must never reach the card.
+        let dir = std::env::temp_dir().join("uxnan-grok-transcript-test");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("updates.jsonl");
+        let chunk = |kind: &str, text: &str| {
+            json!({"method":"session/update","params":{"update":{
+                "sessionUpdate": kind, "content": {"type":"text","text": text}}}})
+            .to_string()
+        };
+        let lines = [
+            chunk("user_message_chunk", "first question"),
+            chunk("agent_message_chunk", "first answer"),
+            chunk("user_message_chunk", "que es uxnan"),
+            chunk(
+                "agent_thought_chunk",
+                "The user wants an explanation, I should",
+            ),
+            chunk("agent_message_chunk", "Uxnan es un monorepo "),
+            chunk("agent_message_chunk", "para controlar agentes"),
+        ]
+        .join(
+            "
+",
+        );
+        std::fs::write(&path, lines).expect("write");
+
+        let (prompt, summary) = transcript_preview(path.to_str().expect("utf-8"));
+        // The LAST turn, reassembled — not the first, and not a tail fragment.
+        assert_eq!(
+            summary.as_deref(),
+            Some("Uxnan es un monorepo para controlar agentes")
+        );
+        assert_eq!(prompt.as_deref(), Some("que es uxnan"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn event_name_reads_any_key() {
         assert_eq!(
             event_name(&json!({ "hook_event_name": "Stop" })).as_deref(),
@@ -1340,5 +1546,54 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_dir_all(&outside_dir);
+    }
+}
+
+#[cfg(test)]
+mod grok_snake_case_tests {
+    use super::*;
+
+    #[test]
+    fn grok_reports_snake_case_and_must_still_be_understood() {
+        // Grok's HookEventName is `#[serde(rename_all = "snake_case")]`, so this
+        // is what actually arrives — the PascalCase spelling only ever appears
+        // in the config file we write.
+        assert_eq!(
+            normalize_event("grok", "stop", None),
+            Some(AgentStatus::Done),
+            "a finished Grok turn was being discarded, leaving the card on working"
+        );
+        assert_eq!(
+            normalize_event("grok", "session_end", None),
+            Some(AgentStatus::Done)
+        );
+        assert_eq!(
+            normalize_event("grok", "pre_tool_use", None),
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            normalize_event("grok", "stop_failure", None),
+            Some(AgentStatus::Blocked)
+        );
+        // The config spelling keeps working, so nothing regresses.
+        assert_eq!(
+            normalize_event("grok", "Stop", None),
+            Some(AgentStatus::Done)
+        );
+        // An event we do not model is still ignored rather than guessed at.
+        assert_eq!(normalize_event("grok", "some_future_event", None), None);
+    }
+
+    #[test]
+    fn pascal_case_leaves_other_agents_vocabularies_alone() {
+        assert_eq!(pascal_case("Stop"), "Stop");
+        assert_eq!(pascal_case("pre_tool_use"), "PreToolUse");
+        assert_eq!(pascal_case(""), "");
+        // pi speaks snake_case by design and matches it directly, so its arm
+        // must not be routed through this.
+        assert_eq!(
+            normalize_event("pi", "agent_end", None),
+            Some(AgentStatus::Done)
+        );
     }
 }

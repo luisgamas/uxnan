@@ -39,7 +39,10 @@
  *   { "method":"item/reasoning/summaryTextDelta", "params":{ delta } }
  *   { "method":"item/commandExecution/outputDelta", "params":{ delta } }
  *   { "method":"item/completed", "params":{ item:{ type:'commandExecution'|'fileChange'|'agentMessage'|'reasoning'|... } } }
- *   { "method":"turn/completed", "params":{ turn:{ status, error?, tokenUsage? } } }
+ *   { "method":"turn/completed", "params":{ turn:{ id, items, status, error?, … } } }
+ *   { "method":"thread/tokenUsage/updated", "params":{ threadId, turnId,
+ *       tokenUsage:{ total:{ totalTokens, inputTokens, cachedInputTokens,
+ *       outputTokens, reasoningOutputTokens }, last:{…}, modelContextWindow } } }
  *
  * Server requests that need a reply (handled by the bridge):
  *   { "id":N, "method":"item/commandExecution/requestApproval", "params":{...} }
@@ -231,6 +234,10 @@ interface ActiveRun {
   bridgeTurnId: string;
   /** The Codex app-server's turn id (used by `turn/interrupt`). */
   codexTurnId: string | null;
+  /** Context tokens from `thread/tokenUsage/updated` (NOT on turn/completed). */
+  tokens?: number;
+  /** Context window the same notification reports for the running model. */
+  contextWindow?: number;
   threadId: string;
   /** Text already streamed for each native `agentMessage` item. */
   agentTextByItem: Map<string, string>;
@@ -262,16 +269,18 @@ export interface CodexEvent {
 }
 
 /**
- * Sum the context-occupying tokens from a Codex `turn.completed.usage` object
- * (`{ input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens }`
- * — `cached_input_tokens` is a subset of `input_tokens`, so it isn't added).
+ * Context-occupying tokens from a `thread/tokenUsage/updated` payload.
+ *
+ * `total` is the THREAD's cumulative context — what a context meter shows —
+ * while `last` is only the newest turn's slice. `cachedInputTokens` is a subset
+ * of `inputTokens` and is never added, so `totalTokens` (Codex's own sum) is
+ * taken as-is. Shape captured from a live `codex app-server`.
  */
 export function codexUsageTokens(usage: unknown): number | undefined {
   if (!isRecord(usage)) return undefined;
-  const count = (key: string): number =>
-    typeof usage[key] === 'number' ? (usage[key] as number) : 0;
-  const total = count('input_tokens') + count('output_tokens') + count('reasoning_output_tokens');
-  return total > 0 ? total : undefined;
+  const total = isRecord(usage['total']) ? usage['total'] : undefined;
+  const tokens = numberOr(total?.['totalTokens']);
+  return tokens > 0 ? Math.round(tokens) : undefined;
 }
 
 /**
@@ -671,6 +680,22 @@ export class CodexAdapter extends BaseAgentAdapter {
   async #onNotification(method: string, params: unknown): Promise<void> {
     const p = isRecord(params) ? params : {};
     switch (method) {
+      case 'thread/tokenUsage/updated': {
+        // Usage does NOT ride on `turn/completed` — verified against a live
+        // `codex app-server`, whose completed turn carries only
+        // `{ id, items, itemsView, status, error, startedAt, completedAt,
+        // durationMs }`. It arrives here instead, which is why Codex showed no
+        // context at all: the adapter was reading a field that never exists.
+        const usage = isRecord(p['tokenUsage']) ? p['tokenUsage'] : undefined;
+        const turnId = str(p['turnId']);
+        const run = [...this.#active.values()].find((r) => r.codexTurnId === turnId);
+        if (!usage || !run) return;
+        const tokens = codexUsageTokens(usage);
+        if (tokens !== undefined) run.tokens = tokens;
+        const window = numberOr(usage['modelContextWindow']);
+        if (window > 0) run.contextWindow = Math.round(window);
+        return;
+      }
       case 'turn/started':
         // The bridge already emits `turn_started` immediately when we
         // receive the `turn/start` response; the app-server's notification
@@ -899,10 +924,12 @@ export class CodexAdapter extends BaseAgentAdapter {
       });
       return;
     }
-    const usage = isRecord(turn['tokenUsage']) ? turn['tokenUsage'] : undefined;
-    const tokens = codexUsageTokens(usage);
+    // Populated by `thread/tokenUsage/updated` during the turn. The model-cache
+    // window stays as the fallback for a build that reports no window.
+    const tokens = run.tokens;
     const contextWindow =
-      run.model !== undefined ? this.#contextWindowByModel.get(run.model) : undefined;
+      run.contextWindow ??
+      (run.model !== undefined ? this.#contextWindowByModel.get(run.model) : undefined);
     this.emit({
       type: 'turn_completed',
       threadId: run.threadId,
@@ -1163,6 +1190,16 @@ export function parseCodexModelWindows(raw: string): Map<string, number> {
     if (slug && window !== undefined && window > 0) windows.set(slug, window);
   }
   return windows;
+}
+
+/** A positive finite number, or 0 — usage fields are optional per model. */
+function numberOr(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/** A string field, or '' — app-server params are validated at the boundary. */
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

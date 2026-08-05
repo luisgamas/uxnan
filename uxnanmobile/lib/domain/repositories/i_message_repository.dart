@@ -2,8 +2,14 @@ import 'package:uxnan/domain/entities/message.dart';
 
 /// Contract for persisting and observing [Message]s (spec 02a §5.1.4).
 abstract class IMessageRepository {
-  /// Returns messages for [threadId], most recent first, optionally [limit]ed
-  /// and paginated with [beforeId] (messages ordered before that message).
+  /// Returns messages for [threadId] in **ascending** order (oldest first),
+  /// optionally [limit]ed and paginated with [beforeId] (messages ordered
+  /// before that message).
+  ///
+  /// [limit] selects the **newest** N — the query pages from the end — but the
+  /// list it returns is still oldest-first, ready to render. So the LATEST
+  /// message is `.last`, not `.first`; reading it as most-recent-first is a
+  /// silent bug (it was, in the thread row's reply preview).
   Future<List<Message>> getMessages(
     String threadId, {
     int? limit,

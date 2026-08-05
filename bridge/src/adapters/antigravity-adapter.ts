@@ -75,7 +75,12 @@ const ANTIGRAVITY_CAPABILITIES: AgentCapabilities = {
   // family). Verified against `agy --add-dir <cwd> -p` with a four-quadrant
   // probe image, which it described correctly.
   images: true,
-  // `agy -p` reports no per-turn token usage, so the context meter stays hidden.
+  // `agy` DOES report per-turn usage — but only under `--output-format
+  // stream-json`, and the turn runs on `text`. Captured from a real run, its
+  // `result` event carries `{ input_tokens, output_tokens, thinking_tokens,
+  // cache_read_tokens, total_tokens }`. Surfacing it means migrating the turn's
+  // whole stream parsing to the JSON events, so the meter stays hidden until
+  // then (FOR-DEV: see bridge/FOR-DEV.md).
   reportsContextUsage: false,
 };
 
