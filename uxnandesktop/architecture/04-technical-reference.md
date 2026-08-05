@@ -466,6 +466,12 @@ operativa en `docs/testing.md`.
   runner al mismo 151.0.4129.59 de la máquina donde sí pasa) y
   `webviewOptions.userDataFolder`. E2E es, por tanto, una capa **local**; la
   evidencia está en la cabecera del workflow y en `uxnandesktop/FOR-DEV.md`.
+- **Decisión (2026-08-04): la app no lleva el switch de automatización.** Hacer
+  que el binario pase `--remote-debugging-port` por su cuenta
+  (`additional_browser_args` de wry) haría funcionar el runner, y se descarta:
+  no se distribuye comportamiento de testeo en el binario que instala el usuario,
+  y una app que puede abrir un puerto de depuración a petición es otro producto.
+  Perder E2E en CI es el coste aceptado.
 - **Restricción conocida**: E2E no puede convivir con otra instancia de uxnan
   —misma compartición del proceso navegador de WebView2 que ya afecta al banco de
   recursos— y el teardown mata **por PID, nunca por nombre**, porque una barrida

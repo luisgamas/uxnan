@@ -28,10 +28,11 @@ name: E2E — Desktop (uxnandesktop)
 # `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is dropped on this runner while the
 # same variable is honoured locally. The env-var channel itself works (the
 # webview does pick up msedgedriver's `--user-data-dir`), so it is the additional
-# *arguments* specifically. A machine policy is the open lead — the steps below
-# print the Edge/WebView2 policy keys, which are empty on the machine where this
-# passes; the other path is the app passing the switch itself through wry's
-# `additional_browser_args` rather than the environment. Both in
+# *arguments* specifically. A machine policy is the one open lead — the steps
+# below print the Edge/WebView2 policy keys, which are empty on the machine where
+# this passes. The other path, the app passing the switch itself through wry's
+# `additional_browser_args`, is **decided against**: no test-only behaviour in the
+# binary users install, and losing CI E2E is the accepted cost. Both in
 # `uxnandesktop/FOR-DEV.md`.
 #
 # Windows only. `tauri-driver` supports Linux and does not support macOS, and

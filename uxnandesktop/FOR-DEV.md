@@ -1046,20 +1046,20 @@ go stale; these are the ones worth calling out.
         `DevToolsActivePort` is absent from that folder on a *passing* run, so it
         was never the mechanism.
 
-      Two leads, if CI E2E is ever worth another attempt:
-
-      1. **A machine policy stripping the switch.** `HKLM\SOFTWARE\Policies\
-         Microsoft\{Edge,EdgeWebView,EdgeUpdate}` and `…\Windows\WebView2` are
-         **empty** on the machine where the suite passes; the workflow now dumps
-         all four, so one dispatch answers it.
-      2. **Stop routing the switch through the environment.** The app could pass
-         it itself via wry's `additional_browser_args` / Tauri's
-         `additionalBrowserArgs` when a `TAURI_WEBVIEW_AUTOMATION` build asks for
-         it. That is a change to the shipped binary for testability's sake, so it
-         needs a deliberate decision, not a drive-by patch.
-
-      Each attempt costs a push-per-dispatch CI cycle (~35 min, dominated by the
+      One lead left, if CI E2E is ever worth another attempt: **a machine policy
+      stripping the switch.** `HKLM\SOFTWARE\Policies\Microsoft\{Edge,EdgeWebView,
+      EdgeUpdate}` and `…\Windows\WebView2` are **empty** on the machine where the
+      suite passes; the workflow now dumps all four, so one dispatch answers it.
+      That attempt costs a push-per-dispatch CI cycle (~35 min, dominated by the
       release build).
+
+      **DECIDED, 2026-08-04 — the app will NOT carry the switch itself.** Passing
+      `--remote-debugging-port` from inside the app (wry's
+      `additional_browser_args` / Tauri's `additionalBrowserArgs`, gated on
+      `TAURI_WEBVIEW_AUTOMATION`) would make the runner work, and it is rejected:
+      it puts test-only behaviour in the binary users install, and a shipped app
+      that can be told to open a debugging port is a different product than the
+      one that cannot. Do not re-propose it — losing CI E2E is the accepted cost.
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
       coverage for either.
