@@ -182,7 +182,7 @@ Task-focused guides live in [`docs/`](docs/):
 [installation & autostart](docs/installation.md) ·
 [configuration](docs/configuration.md) ·
 [connectivity (LAN / Tailscale / relay)](docs/connectivity.md) ·
-[how agents are driven](docs/agents.md) ·
+[how agents are driven](docs/agents.md) (start at *Drive surface*) ·
 [testing](docs/testing.md) ·
 [packaging & deploy](docs/deploy.md) ·
 [push notifications](docs/push-notifications.md).

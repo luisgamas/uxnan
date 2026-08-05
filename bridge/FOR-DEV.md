@@ -384,6 +384,16 @@ push validation (FOR-HUMAN).
 
 ### Adding the next agent (recipe — do these one by one)
 
+**Step 0, before any code: pick the surface and write it down.** Every CLI has
+several headless surfaces and they do not behave alike — one may stream token
+usage while another reports none, and an on-disk store can record something the
+driven surface never emits. Choose the surface deliberately, then add its row to
+[`docs/agents.md`](docs/agents.md) → *Drive surface* (surface, transport/framing,
+whether it reports usage) **in the same change set**. Validate every claim by
+running the adapter and reading what it emits — two shipped "fixes" were
+validated against a surface the bridge does not drive, and did nothing.
+
+
 Pick the template that matches the CLI's headless surface. For a **one-shot
 per-turn CLI** (spawns once per turn) copy `pi-adapter.ts`;
 for a **long-lived server** with a pre-tool approval channel copy `codex-adapter.ts`
