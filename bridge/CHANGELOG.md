@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — Grok's token usage actually reaches the phone this time
+
+0.0.17 claimed to fix Grok and did not: it accepted `_x.ai/session/update`,
+while the update that carries the usage arrives on **`_x.ai/session_notification`**.
+Captured off the live wire *while the adapter drove a real turn*, then verified
+end to end through the adapter itself — `turn_completed` now emits
+`{tokens: 24381, contextWindow: 500000}`.
+
+### Fixed — Zero no longer claims a context meter it can never fill
+
+0.0.17 flipped `reportsContextUsage` to true after reading a `provider_usage`
+event out of Zero's session store. That event is real — and it is written only
+for a session driven by `zero exec`. Verified by running the adapter and reading
+the store it wrote: an **ACP-driven** session holds `message` events and nothing
+else, so the meter showed and stayed at zero, which is worse than hiding it.
+
+The capability is honest again and the reader is deleted rather than left
+unwired.
+
+### Added — a per-agent drive-surface table
+
+Both bugs above are the same mistake: validating against a surface the bridge
+does not drive. `docs/agents.md` now records, per agent, **which** headless
+surface is driven, its transport/framing, and whether usage is reported on it —
+with the two cases where the CLI reports usage *somewhere else* called out
+explicitly. It also states plainly that every model list is discovered live
+except **Claude Code's**, which is the one curated, hand-maintained list.
+
+
 ## [0.0.17-alpha.20260805] - 2026-08-05
 
 ### Fixed — Codex's context meter works: usage is not on `turn/completed`

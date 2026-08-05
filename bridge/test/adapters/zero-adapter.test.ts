@@ -1,15 +1,11 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   ZeroAdapter,
   parseZeroModels,
   mergeZeroProviderModels,
   zeroToolBlock,
-  readZeroUsage,
   type SpawnedAcp,
 } from '../../src/index.js';
 import type { AgentStreamEvent } from '@uxnan/shared';
@@ -422,74 +418,4 @@ test('ZeroAdapter keeps a text block for an image-only turn', async () => {
   const prompt = server.sent.find((m) => m.method === 'session/prompt');
   // The image rides alone — no empty text block padding the prompt.
   assert.deepEqual(prompt.params.prompt, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
-});
-
-// --- token usage, read from Zero's own session store -----------------------
-//
-// Zero's ACP stream carries no usage, but Zero appends a `provider_usage` event
-// per turn to `<store>/<sessionId>/events.jsonl`. These payloads are the shape
-// captured from a real run.
-
-test('zero usage takes the LAST turn, and never double-counts the cache', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'uxnan-zero-usage-'));
-  const session = 'zero_20260804224613_1785883573227519400_1';
-  await mkdir(join(dir, session), { recursive: true });
-  await writeFile(
-    join(dir, session, 'events.jsonl'),
-    [
-      JSON.stringify({ type: 'message', payload: { role: 'user', content: 'hola?' } }),
-      JSON.stringify({
-        type: 'provider_usage',
-        payload: {
-          completionTokens: 108,
-          promptTokens: 17335,
-          cachedInputTokens: 17280,
-          reasoningTokens: 46,
-          totalTokens: 17443,
-        },
-      }),
-      JSON.stringify({
-        type: 'provider_usage',
-        payload: {
-          completionTokens: 422,
-          promptTokens: 18780,
-          cachedInputTokens: 17408,
-          reasoningTokens: 14,
-          totalTokens: 19202,
-        },
-      }),
-    ].join('\n'),
-  );
-
-  // The newest turn — an earlier one would under-report a grown context.
-  // 19202, not 19202 + 17408: cachedInputTokens is a SUBSET of promptTokens.
-  assert.equal(await readZeroUsage(session, dir), 19202);
-});
-
-test('zero usage falls back to prompt + completion when there is no total', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'uxnan-zero-usage-'));
-  const session = 's1';
-  await mkdir(join(dir, session), { recursive: true });
-  await writeFile(
-    join(dir, session, 'events.jsonl'),
-    JSON.stringify({
-      type: 'provider_usage',
-      payload: { promptTokens: 15481, completionTokens: 55 },
-    }),
-  );
-  assert.equal(await readZeroUsage(session, dir), 15536);
-});
-
-test('zero usage is absent, not an error, when the store has nothing to say', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'uxnan-zero-usage-'));
-  // A session Zero never wrote: usage is decoration on a turn that succeeded.
-  assert.equal(await readZeroUsage('missing', dir), undefined);
-
-  const session = 's2';
-  await mkdir(join(dir, session), { recursive: true });
-  await writeFile(
-    join(dir, session, 'events.jsonl'),
-    ['not json at all', JSON.stringify({ type: 'message', payload: {} })].join('\n'),
-  );
-  assert.equal(await readZeroUsage(session, dir), undefined);
 });

@@ -106,6 +106,7 @@ Before writing code in any component, you MUST read the corresponding architectu
 | `uxnanmobile/` | `architecture/00-index.md` and the documents it references for the affected module |
 | `uxnandesktop/` | `uxnandesktop/architecture/00-index.md` and the relevant documents |
 | `bridge/` | `architecture/02a-system-architecture.md` (section 5.8) + `uxnandesktop/architecture/02e-bridge-integration.md` |
+| `bridge/src/adapters/` (**any** wired-agent work) | **`bridge/docs/agents.md` → _Drive surface_ first** — it records which headless surface each CLI is actually driven on, and every CLI has more than one that behave differently |
 | `relay/` | `architecture/02a-system-architecture.md` (section 5.10) |
 | `shared/` | `architecture/02b-contracts-and-requirements.md` (JSON-RPC contracts) |
 | `web/` | `web/README.md` + `web/docs/content.md` — the site has no `architecture/` page of its own; the products it describes are the source of truth, and `web/src/lib/site.ts` is where every claim it makes is centralized |
@@ -340,6 +341,19 @@ Three audiences, three homes — keep them separate so none of them rots:
 - **Never reference a git-ignored / local-only file from a tracked file.**
   Anything in `.git/info/exclude` (local `*_MVP.md` snapshots, scratch notes) is
   the maintainer's own context and won't exist on a fresh clone.
+- **NEVER validate an adapter against a surface the bridge does not drive.**
+  Every wired CLI exposes several headless surfaces — an ACP/JSON-RPC server, a
+  one-shot `-p`/`exec` run, an on-disk session store — and they **do not behave
+  alike**: the same CLI can report token usage on one and nothing at all on
+  another. This has shipped two wrong "fixes": usage read from `zero exec`'s
+  session store and from the transcript `grok -p` writes, neither of which the
+  driven surface ever produces (one of them left the phone showing a meter
+  pinned at zero, worse than hiding it). Before claiming an adapter behaves a
+  certain way, **run that adapter** and read what it emits — not what the CLI
+  writes somewhere else. The per-agent surface, transport and what each one
+  reports live in [`bridge/docs/agents.md`](bridge/docs/agents.md) →
+  *Drive surface*; keep it current in the same change set.
+
 - **Hand-kept model tables come in PAIRS — a new model goes in BOTH.** Agent CLIs
   are discovered live except **Claude Code**, whose curated table exists once per
   app:

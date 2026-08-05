@@ -32,16 +32,16 @@
  *    (matched by `kind`: allow_once/allow_always/reject_once).
  *  - `session/cancel` (notification) ← cancelTurn.
  *
- * ACP carries no token usage, but Zero's own session store does: it appends a
- * `provider_usage` event per turn, which is where the context meter's numbers
- * come from (see {@link readZeroUsage}).
+ * **No token usage on this surface.** Zero *does* record a `provider_usage`
+ * event per turn — but only for a session driven by `zero exec`. Verified by
+ * running the adapter and reading the store it wrote: a session created over
+ * ACP holds `message` events and nothing else. So `reportsContextUsage` is
+ * false and the phone hides the meter rather than showing one stuck at zero
+ * (FOR-DEV: revisit if Zero starts reporting usage over ACP).
  *
  * See bridge/FOR-DEV.md (agent adapters) and bridge/docs/testing.md.
  */
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import type {
   AgentCapabilities,
@@ -73,9 +73,9 @@ const ZERO_CAPABILITIES: AgentCapabilities = {
   // `read_file` tool is line-oriented text — so the bridge's usual file-path
   // delivery would have it read a PNG as garbage. See `handlesAttachments`.
   images: true,
-  // ACP carries no per-turn usage, but Zero records one itself: a
-  // `provider_usage` event per turn in its session store (see `readZeroUsage`).
-  reportsContextUsage: true,
+  // Verified against a real ACP-driven run: no usage on the wire and none in
+  // the session store either (that is an `exec`-only record). See the header.
+  reportsContextUsage: false,
   // ACP advertises slash commands via `available_commands_update` (captured below).
   commands: true,
 };
@@ -114,68 +114,10 @@ export interface SpawnedAcp {
   kill: () => void;
 }
 
-/**
- * Root of Zero's own session store.
- *
- * Zero is XDG-shaped even on Windows (`~/.local/share/zero/sessions`, verified
- * against a real install), and honours `XDG_DATA_HOME` when it is set.
- */
-export function zeroSessionsRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const base = env['XDG_DATA_HOME'] || join(homedir(), '.local', 'share');
-  return join(base, 'zero', 'sessions');
-}
-
-/**
- * Context-occupying tokens of `sessionId`'s most recent turn, or `undefined`.
- *
- * Zero appends one `provider_usage` event per turn to its session's
- * `events.jsonl`, carrying `{ promptTokens, completionTokens, totalTokens,
- * cachedInputTokens, reasoningTokens }` — captured from a real run. The LAST one
- * is this turn's; `totalTokens` is Zero's own sum, with prompt + completion as
- * the fallback. `cachedInputTokens` is a SUBSET of `promptTokens` and is never
- * added, or the meter would read high.
- */
-export async function readZeroUsage(
-  sessionId: string,
-  root: string = zeroSessionsRoot(),
-): Promise<number | undefined> {
-  let raw: string;
-  try {
-    raw = await readFile(join(root, sessionId, 'events.jsonl'), 'utf8');
-  } catch {
-    return undefined;
-  }
-  let tokens: number | undefined;
-  for (const line of raw.split('\n')) {
-    if (!line.includes('provider_usage')) continue;
-    let event: unknown;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!isRecord(event) || event['type'] !== 'provider_usage') continue;
-    const payload = event['payload'];
-    if (!isRecord(payload)) continue;
-    const total = numberOf(payload['totalTokens']);
-    const sum = numberOf(payload['promptTokens']) + numberOf(payload['completionTokens']);
-    const value = total > 0 ? total : sum;
-    if (value > 0) tokens = Math.round(value);
-  }
-  return tokens;
-}
-
-/** A finite non-negative number, or 0 — usage fields are optional per provider. */
-function numberOf(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
-}
-
 interface ActiveRun {
   bridgeTurnId: string;
   threadId: string;
   sessionId: string;
-  /** Model this run was launched with, for the context window. */
-  model?: string;
   /** Accumulated assistant text, for `turn_completed`. */
   full: string;
   /** Tool calls in flight, keyed by ACP `toolCallId` (emit a block at terminal). */
@@ -407,7 +349,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
       bridgeTurnId: turnId,
       threadId,
       sessionId,
-      ...(model ? { model } : {}),
       full: '',
       tools: new Map(),
       emitted: new Set(),
@@ -734,42 +675,12 @@ export class ZeroAdapter extends BaseAgentAdapter {
       this.emit({ type: 'turn_aborted', threadId: run.threadId, turnId: run.bridgeTurnId });
       return;
     }
-    void this.#completeWithUsage(run);
-  }
-
-  /**
-   * Emit `turn_completed`, enriched with the turn's token usage.
-   *
-   * Zero's ACP stream carries no usage, but Zero records one itself: a
-   * `provider_usage` event per turn in its own session store. Reading it is what
-   * lights up the phone's context meter — without it Zero was one of the agents
-   * showing no context at all. Best-effort by contract: a missing or unreadable
-   * store just means the turn completes without usage, never that it fails.
-   */
-  async #completeWithUsage(run: ActiveRun): Promise<void> {
-    let usage: { tokens: number; contextWindow?: number } | undefined;
-    try {
-      const tokens = await readZeroUsage(run.sessionId);
-      if (tokens !== undefined) {
-        const contextWindow = this.#contextWindowOf(run.model);
-        usage = { tokens, ...(contextWindow !== undefined ? { contextWindow } : {}) };
-      }
-    } catch {
-      // Usage is decoration on a turn that already succeeded.
-    }
     this.emit({
       type: 'turn_completed',
       threadId: run.threadId,
       turnId: run.bridgeTurnId,
-      data: { text: run.full, ...(usage ? { usage } : {}) },
+      data: { text: run.full },
     });
-  }
-
-  /** The context window Zero's registry gives for `model`, when known. */
-  #contextWindowOf(model: string | undefined): number | undefined {
-    const models = this.#modelsCache ?? [];
-    const match = model ? models.find((m) => m.id === model) : undefined;
-    return (match ?? models.find((m) => m.isDefault))?.contextWindow;
   }
 
   #finishError(run: ActiveRun, text: string): void {
