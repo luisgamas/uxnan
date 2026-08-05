@@ -165,8 +165,6 @@ export {
   ZeroAdapter,
   parseZeroModels,
   mergeZeroProviderModels,
-  readZeroUsage,
-  zeroSessionsRoot,
   type ZeroAdapterOptions,
   type SpawnedAcp,
   type ZeroProvider,

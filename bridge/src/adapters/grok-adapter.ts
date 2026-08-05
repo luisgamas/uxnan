@@ -467,11 +467,20 @@ export class GrokAdapter extends BaseAgentAdapter {
 
   /** Route a `session/update` notification to the run + bridge events. */
   #onNotification(method: string, params: unknown): void {
-    // Grok splits its stream across two methods: the plain ACP `session/update`
-    // and its own `_x.ai/session/update`, which is where `turn_completed` — and
-    // with it the turn's token usage — actually arrives. Accepting only the
-    // former dropped every usage report on the floor.
-    if (method !== 'session/update' && method !== '_x.ai/session/update') return;
+    // Grok splits its stream across THREE methods, and only the first is ACP's
+    // own. Captured off the live wire while the adapter drove a real turn:
+    // `session/update` carries the ACP-standard updates, while `turn_completed`
+    // — and with it the turn's token usage — arrives on
+    // `_x.ai/session_notification`. Accepting only the standard method dropped
+    // every usage report on the floor, which is why Grok's context meter and
+    // its share of the profile metrics stayed empty.
+    if (
+      method !== 'session/update' &&
+      method !== '_x.ai/session/update' &&
+      method !== '_x.ai/session_notification'
+    ) {
+      return;
+    }
     const p = isRecord(params) ? params : {};
     const update = isRecord(p['update']) ? p['update'] : {};
     // Slash-command availability is session-scoped and can arrive before any

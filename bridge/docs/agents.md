@@ -132,6 +132,50 @@ its provisional name. That is how the desktop's `agy` mapping was caught —
 The whole path is best-effort and bounded (30s): no credit, a missing CLI or a
 timeout leaves the provisional title in place and never disturbs the thread.
 
+## Drive surface (read this before touching an adapter)
+
+Every wired CLI exposes **more than one** headless surface, and they do not
+behave alike — the same CLI can report token usage on one and nothing on
+another. This table is the record of which surface the bridge actually drives,
+so a future change is validated against the right one.
+
+**This has bitten us twice.** Usage was once read from `zero exec`'s session
+store and from the transcript `grok -p` writes; both are real, and both are
+invisible to the surface the bridge uses. **Never validate an adapter against a
+surface it does not drive.**
+
+| Agent | Surface the bridge drives | Transport / framing | Reports usage |
+|---|---|---|---|
+| **OpenCode** | `opencode serve` | local HTTP + SSE | yes |
+| **Claude Code** | `claude -p` | NDJSON both ways (`--input-format`/`--output-format stream-json`), prompt + follow-ups on an open stdin | yes |
+| **Codex** | `codex app-server` | JSON-RPC 2.0 over NDJSON stdio | yes — on its **own notification**, `thread/tokenUsage/updated` (a completed turn carries none), which also brings `modelContextWindow` |
+| **pi** | `pi --mode rpc` | JSON-RPC over stdio | yes |
+| **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
+| **Zero** | `zero acp` | ACP (JSON-RPC over stdio) | **no** — see below |
+| **Antigravity** | `agy -p` | one process per turn, plain text on stdout | **not on this surface** — see below |
+| ~~Gemini CLI~~ | — | non-runnable legacy | — |
+
+Two agents report no usage, and in both cases the CLI *can* report it somewhere
+else — which is exactly the trap:
+
+- **Zero.** It appends a `provider_usage` event per turn to its session store,
+  but only for a session driven by `zero exec`. Verified by running the adapter
+  and reading the store it wrote: an **ACP-driven** session holds `message`
+  events and nothing else. `reportsContextUsage` is false so the phone hides the
+  meter rather than showing one pinned at zero.
+- **Antigravity.** `agy` reports `{input_tokens, output_tokens, thinking_tokens,
+  cache_read_tokens, total_tokens}` on its `result` event — but only under
+  `--output-format stream-json`, while the turn runs on `text`. Surfacing it
+  means migrating the turn's whole stream parse to the JSON events (tracked in
+  [`../FOR-DEV.md`](../FOR-DEV.md)).
+
+**Model lists follow the same read-the-source rule.** Every agent's list is
+**discovered live** from the CLI — `opencode models`, `model/list`,
+`pi --list-models`, `agy models`, `zero models list`, Grok's `initialize`
+handshake. **Claude Code is the only curated, hand-maintained list** (see
+*Claude Code models* below); it is the one place a new model has to be added by
+hand, and it has a matching half in the desktop app.
+
 ## Wired agents
 
 | Agent | CLI invocation | Continuity | Permission posture | Models |
