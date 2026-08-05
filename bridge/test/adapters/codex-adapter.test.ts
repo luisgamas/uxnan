@@ -507,8 +507,7 @@ test('CodexAdapter initializes the app-server and runs the thread/turn handshake
   assert.deepEqual(deltas, ['hello ', 'world']);
   const completed = events.find((e) => e.type === 'turn_completed');
   assert.equal((completed?.data as { text: string }).text, 'hello world');
-  const usage = (completed?.data as { usage?: { tokens: number; contextWindow?: number } })
-    .usage;
+  const usage = (completed?.data as { usage?: { tokens: number; contextWindow?: number } }).usage;
   assert.equal(usage?.tokens, 12);
   // The window rides on the same notification, so no model-cache lookup needed.
   assert.equal(usage?.contextWindow, 258400);

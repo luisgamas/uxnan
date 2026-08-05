@@ -38,11 +38,11 @@ class NeDashedBorder extends OutlinedBorder {
 
   @override
   ShapeBorder scale(double t) => NeDashedBorder(
-    borderRadius: borderRadius * t,
-    side: side.scale(t),
-    dash: dash * t,
-    gap: gap * t,
-  );
+        borderRadius: borderRadius * t,
+        side: side.scale(t),
+        dash: dash * t,
+        gap: gap * t,
+      );
 
   @override
   NeDashedBorder copyWith({
@@ -50,16 +50,17 @@ class NeDashedBorder extends OutlinedBorder {
     BorderRadius? borderRadius,
     double? dash,
     double? gap,
-  }) => NeDashedBorder(
-    borderRadius: borderRadius ?? this.borderRadius,
-    side: side ?? this.side,
-    dash: dash ?? this.dash,
-    gap: gap ?? this.gap,
-  );
+  }) =>
+      NeDashedBorder(
+        borderRadius: borderRadius ?? this.borderRadius,
+        side: side ?? this.side,
+        dash: dash ?? this.dash,
+        gap: gap ?? this.gap,
+      );
 
   @override
-  Path getInnerPath(Rect rect, {TextDirection? textDirection}) => Path()
-    ..addRRect(borderRadius.toRRect(rect).deflate(side.strokeInset));
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      Path()..addRRect(borderRadius.toRRect(rect).deflate(side.strokeInset));
 
   @override
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
