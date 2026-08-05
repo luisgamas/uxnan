@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.18-alpha.20260805] - 2026-08-05
+
 ### Fixed — the thread row shows the agent's latest reply, not its first
 
 The row's second line was pinned to whatever the agent answered on the very

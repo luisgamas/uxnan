@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.28] - 2026-08-05
+
 ### Fixed — every agent gets a conversation name, and Grok's status unsticks
 
 Shipped in 0.0.27, naming worked on **two of seven** agents. Both causes were

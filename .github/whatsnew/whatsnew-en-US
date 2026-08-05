@@ -1,5 +1,7 @@
-What's new in this update:
+Faster replies. Answers appear smoothly as they are written, already formatted — long ones no longer slow down as they grow.
 
-• Your conversations now get a real name, written by the agent from what you actually talked about — no more lists full of whatever you happened to type first.
-• A message you send while an agent is working can now reach it mid-task, without stopping it, so you can correct its course.
-• A queued message looks like a normal message with a dashed outline, and you can still edit or cancel it until it goes out.
+Conversation list: each row shows the start of the agent's latest reply, not always its first.
+
+Context and usage: Codex, Grok and Zero now report how much context a conversation uses, so their meters and your profile stats work like the other agents'.
+
+Fixes: the queued-message bubble is drawn properly, and the effort menu no longer opens behind the keyboard.

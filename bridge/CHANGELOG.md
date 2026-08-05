@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.17-alpha.20260805] - 2026-08-05
+
 ### Fixed — Codex's context meter works: usage is not on `turn/completed`
 
 Codex had usage-parsing code all along, and it read a field that does not
