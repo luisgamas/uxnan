@@ -21,7 +21,27 @@ Same symptom, second cause: a `FutureProvider` resolves once per key and caches,
 so even a correct traversal would have frozen on the first result. The key now
 carries the thread's activity timestamp, giving each turn its own.
 
-Mobile suite **837 passing**.
+### Fixed — streaming replies feel fast again, with the formatting kept
+
+Rendering Markdown as the text arrives (instead of after the turn) made replies
+visibly slower, and the cost was real, not imagined: **every delta rebuilt the
+whole timeline and re-parsed the entire reply**, so a turn became quadratic in
+its own length. Measured on a realistic reply — prose, a list, inline code and a
+fenced block:
+
+| reply | Markdown per delta | plain text (the old look) |
+|---|---|---|
+| 2 000 chars | 2 273 ms | 409 ms |
+| 6 000 chars | 5 799 ms | 1 207 ms |
+
+Deltas are now coalesced into **one rebuild per frame**. Nothing is dropped and
+nothing is deferred: a delta arriving faster than the screen redraws could never
+have been seen anyway, so everything that lands inside the window is rendered
+together on the very next frame. Text still appears as it streams, still fully
+formatted. Only deltas coalesce — a completed turn, a content block or a re-sync
+still renders immediately.
+
+Mobile suite **838 passing**.
 
 
 ## [0.0.17-alpha.20260804+20260804] - 2026-08-04
