@@ -6,6 +6,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the thread row shows the agent's latest reply, not its first
+
+The row's second line was pinned to whatever the agent answered on the very
+first turn and never changed again.
+
+The cause was a doc that lied: `IMessageRepository.getMessages` promised
+"most recent first", but the implementation pages the newest N and returns them
+**ascending**, so walking that list forward finds the *oldest* reply in the
+window. The traversal is fixed and the interface doc now states the real order,
+so the next reader is not misled the same way.
+
+Same symptom, second cause: a `FutureProvider` resolves once per key and caches,
+so even a correct traversal would have frozen on the first result. The key now
+carries the thread's activity timestamp, giving each turn its own.
+
+Mobile suite **837 passing**.
+
+
 ## [0.0.17-alpha.20260804+20260804] - 2026-08-04
 
 ### Changed — a queued message can now reach the agent without waiting

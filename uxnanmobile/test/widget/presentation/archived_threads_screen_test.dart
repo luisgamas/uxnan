@@ -39,7 +39,7 @@ Widget _wrap({required List<Thread> threads}) {
     overrides: [
       // The row's reply preview reads the message store; a list test has no
       // database, and pulling the real one in leaves drift timers pending.
-      threadPreviewProvider.overrideWith((ref, threadId) async => null),
+      threadPreviewProvider.overrideWith((ref, key) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
       threadActivityProvider.overrideWith(
         (ref) => Stream.value(const <String, ThreadActivity>{}),

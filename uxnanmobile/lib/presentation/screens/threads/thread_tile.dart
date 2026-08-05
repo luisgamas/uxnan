@@ -213,8 +213,16 @@ class _FullContent extends ConsumerWidget {
     final responding = activity == ThreadActivity.running;
     // The agent's own words take the line the moment it stops talking; while it
     // works, what it is doing matters more than what it last said.
+    // Each turn bumps the thread's activity, and that is what gives the preview
+    // a fresh key. Without it the row would keep showing whatever the agent
+    // said on the very first turn, forever.
+    final previewKey = (
+      threadId: thread.id,
+      revision: thread.lastActivity?.millisecondsSinceEpoch ?? 0,
+    );
     final preview =
-        responding ? null : ref.watch(threadPreviewProvider(thread.id)).value;
+        responding ? null : ref.watch(threadPreviewProvider(previewKey)).value;
+
     final secondary = responding
         ? l10n.threadResponding
         : (preview != null && preview.isNotEmpty)

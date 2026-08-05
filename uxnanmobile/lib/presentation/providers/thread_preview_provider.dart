@@ -14,22 +14,33 @@ const int _previewMaxLength = 120;
 /// messages that can sit after it.
 const int _previewLookback = 8;
 
-/// The last thing the agent actually said in [threadId], collapsed to one line.
+/// Identifies the preview to fetch: the thread, plus a revision that changes
+/// whenever it gets new activity.
 ///
-/// This is what the thread row shows when the agent is idle — the same thing
-/// the desktop's agent card shows on its second line once a turn ends, so the
-/// two apps read alike. `null` while there is nothing to show (a brand-new
-/// thread, or a reply with no text), and the row falls back to the agent.
-final threadPreviewProvider =
-    FutureProvider.autoDispose.family<String?, String>((ref, threadId) async {
+/// The revision is what makes the row keep up. A `FutureProvider` resolves once
+/// per key and caches, so keying on the thread id alone would freeze the row on
+/// whatever the agent said first — it would never see a later turn. Feeding the
+/// thread's `lastActivity` in gives each turn its own key, and `autoDispose`
+/// drops the previous one.
+typedef ThreadPreviewKey = ({String threadId, int revision});
+
+/// The last thing the agent actually said in the thread, collapsed to one line.
+///
+/// This is what the row shows when the agent is idle — the same thing the
+/// desktop's agent card shows on its second line once a turn ends, so the two
+/// apps read alike. `null` while there is nothing to show (a brand-new thread,
+/// or a reply with no text), and the row falls back to the agent.
+final threadPreviewProvider = FutureProvider.autoDispose
+    .family<String?, ThreadPreviewKey>((ref, key) async {
   final repository = ref.watch(messageRepositoryProvider);
   final messages = await repository.getMessages(
-    threadId,
+    key.threadId,
     limit: _previewLookback,
   );
-  // `getMessages` returns most-recent-first, so the first assistant message
-  // with text IS the latest reply.
-  for (final message in messages) {
+  // `getMessages` returns the newest N in ASCENDING order, so the latest reply
+  // is at the END. Walking forward would pin the row to the agent's very first
+  // answer and never update it again — which is exactly what it did.
+  for (final message in messages.reversed) {
     if (message.role != MessageRole.assistant) continue;
     final preview = _previewOf(message);
     if (preview.isNotEmpty) return preview;
