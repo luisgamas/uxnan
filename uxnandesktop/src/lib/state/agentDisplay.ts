@@ -14,8 +14,6 @@ import { agentStatus } from './agentStatus.svelte';
 import { agentMonitor } from './agentMonitor.svelte';
 import { zeroSessions, isZeroAgent } from './zeroSessions.svelte';
 import { conversationTitles } from './conversationTitles.svelte';
-import { readInstanceText } from '$lib/terminal/instances';
-import { lastReplyPreview } from '$lib/terminal/replyPreview';
 import type { AgentStatus, SubagentEntry } from '$lib/types';
 
 /** Display state: the four reported states plus "idle" (an agent at rest with no
@@ -95,9 +93,8 @@ export interface AgentView {
 
 /** Resolve the agent-view state for a terminal tab in `workspacePath` (its worktree
  *  cwd). Surfaces the conversation title/preview that already flow through the hook
- *  store (`prompt`/`tool`/`summary`), reads Zero's on-disk session for agents
- *  that report no hook, and falls back to the terminal for the reply preview.
- *  Reactive: reads the monitoring stores. */
+ *  store (`prompt`/`tool`/`summary`), and reads Zero's on-disk session for agents
+ *  that report no hook. Reactive: reads the monitoring stores. */
 export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentView | null {
   if (tab.kind !== 'terminal') return null;
   const base = resolveAgentDisplay(tab);
@@ -126,14 +123,6 @@ export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentVie
     // Zero has no hook — its title + status come from the on-disk session.
     status = zero.status;
     title = zero.title.trim();
-  }
-
-  // Once the turn is over the card should say what the agent ANSWERED. Only
-  // Claude fills `summary` — measured across a real run of all seven agents —
-  // so every other card, and Zero (which reports no hook at all), fell back to
-  // showing a bare status. The terminal is the one source they all have.
-  if (!preview && status !== 'working') {
-    preview = lastReplyPreview(readInstanceText(tab.id, 60));
   }
 
   // A generated name wins over the prompt/session fallbacks: it describes the

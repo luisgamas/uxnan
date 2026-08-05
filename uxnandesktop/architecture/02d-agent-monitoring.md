@@ -433,23 +433,7 @@ Detalle de uso y formato: [`docs/pets.md`](../docs/pets.md).
 
 ---
 
-### 1.8 Segunda linea de la tarjeta: lo que el agente respondio
-
-Mientras el agente trabaja, la segunda linea muestra la herramienta en curso.
-Al terminar el turno debe mostrar **lo que respondio**. La fuente original era
-`summary` del hook, pero —medido sobre la misma corrida real— **solo Claude lo
-reporta**, asi que el resto de tarjetas, y Zero (sin hook), caian a un estado
-pelado.
-
-El preview cae ahora al terminal de la sesion y toma la **primera linea de la
-ultima respuesta** (`lastReplyPreview`). Sube desde abajo saltandose el cromo
-—la caja de entrada, el pie de atajos, el medidor de contexto, los fotogramas
-del spinner y el turno `>` del propio usuario— y devuelve el inicio del bloque
-en el que aterriza: el fondo de un TUI es su caja de entrada, y el fondo de la
-respuesta es un fragmento a media frase. Es el mismo criterio que la fila de
-hilo en movil.
-
-### 1.9 Nombres de conversacion generados
+### 1.8 Nombres de conversacion generados
 
 La tarjeta y la pestana de una sesion muestran un **nombre generado**, no las
 primeras palabras que escribio el usuario: dos sesiones abiertas con una frase
@@ -471,7 +455,12 @@ Dos agentes necesitan un trato aparte:
 
 - **Antigravity reporta como `antigravity` pero su CLI es `agy`.** El tipo del
   hook y el id ejecutable son vocabularios distintos; mapear entre ambos es lo
-  que hace que su nombrado funcione.
+  que hace que su nombrado funcione. Ademas **su payload no nombra el evento**
+  —medido contra el CLI real, manda `invocationNum` / `fullyIdle` /
+  `terminationReason` y ningun campo de evento—, asi que sus reportes llegaban
+  sin identificar y se descartaban: nunca alcanzaba `done` y por eso nunca se
+  titulaba. Como el registro ya es por evento, el nombre viaja como segundo
+  argumento del reporter y llega en la cabecera `X-Uxnan-Event`.
 - **Zero no emite hook**, asi que se nombra desde su propio poll. Su etiqueta
   `"ACP session"` es un placeholder que **Zero escribe solo**, no una mala
   lectura de uxnan.

@@ -153,6 +153,14 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
   Grok report and left the card stuck on **working** forever, since nothing else
   could move it. Both spellings are accepted; if you add an event, add it to the
   snake_case path too.
+- **Antigravity names no event in its payload.** Measured against the real CLI,
+  its bodies carry `invocationNum` / `fullyIdle` / `terminationReason` and no
+  event field, so a report had nothing to identify it and was dropped — the
+  session never reached `done`, and so never got a generated name. Its
+  registration is per event, so the event name is passed as the reporter's
+  **second argument** (`uxnan-event-hook.cmd antigravity Stop`) and forwarded as
+  `X-Uxnan-Event`, which the server prefers over anything derived from the body.
+  If you add an Antigravity event, register it with its name in the command.
 - **Antigravity** gets one named entry, `uxnan-status`, in
   `~/.gemini/config/hooks.json`; other named hooks in that file are untouched.
   It exposes only its execution loop (`PreInvocation`, `PostInvocation`,

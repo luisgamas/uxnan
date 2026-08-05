@@ -59,6 +59,14 @@ const TOKEN_HEADER: &str = "x-uxnan-token";
 const AGENT_ID_HEADER: &str = "x-uxnan-agent-id";
 /// Header a shell `curl` script uses to pass the agent kind out-of-band.
 const AGENT_TYPE_HEADER: &str = "x-uxnan-agent-type";
+/// Header the generic wrapper uses to name the event that fired.
+///
+/// Needed because a payload need not carry one: measured against the real CLI,
+/// Antigravity posts `invocationNum` / `fullyIdle` / `terminationReason` and no
+/// event field at all, so its reports had nothing to identify them and were
+/// discarded. Its hooks are registered per event, so the reporter is given the
+/// name as an argument and forwards it here.
+const EVENT_HEADER: &str = "x-uxnan-event";
 /// Header the generic wrapper uses to report an already-known lifecycle state.
 const STATUS_HEADER: &str = "x-uxnan-status";
 /// Header the generic wrapper uses to flag a non-zero (interrupted) exit.
@@ -679,7 +687,12 @@ async fn handle_hook(
         }
     });
     let source = source_owned.as_ref();
-    let event = body_get("event").or_else(|| source.and_then(event_name));
+    // Header first: it is the only source for an agent whose payload names no
+    // event, and it is what the hook was registered under either way.
+    let event = header_str(&headers, EVENT_HEADER)
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| body_get("event"))
+        .or_else(|| source.and_then(event_name));
 
     // Sub-agent (child) lifecycle. A child runs inside the parent's session
     // (Claude's Task tool = same PTY; OpenCode = a child session), so its report

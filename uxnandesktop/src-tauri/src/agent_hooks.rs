@@ -604,11 +604,19 @@ fn grok_hook_entry(command: &str) -> Value {
 /// invoked **dot-relative**. The command string then contains no path at all,
 /// which is what makes it survive a home directory with a space in it (verified
 /// against the real CLI both ways).
-fn antigravity_hook_command() -> String {
+///
+/// The event name rides along as a **second argument** because Antigravity's
+/// payload does not carry one: measured against the real CLI, its bodies hold
+/// `invocationNum` / `fullyIdle` / `terminationReason` and no event field at
+/// all, so every report arrived with nothing to say which event fired and was
+/// dropped — which is why Antigravity never reached `done`, and therefore never
+/// got a generated name. Registration is already per event, so the name is known
+/// here and travels to the server as `X-Uxnan-Event`.
+fn antigravity_hook_command(event: &str) -> String {
     if cfg!(windows) {
-        format!(".\\{EVENT_HOOK_CMD_FILENAME} antigravity")
+        format!(".\\{EVENT_HOOK_CMD_FILENAME} antigravity {event}")
     } else {
-        format!("./{EVENT_HOOK_SH_FILENAME} antigravity")
+        format!("./{EVENT_HOOK_SH_FILENAME} antigravity {event}")
     }
 }
 
@@ -1031,19 +1039,21 @@ pub fn render_grok_hooks_json(install: &HookInstall) -> Result<String, AppError>
 /// Our named hook's value: one handler per event, in the shape each event wants
 /// (grouped with a `matcher` for the tool events, a flat list for the loop ones).
 fn antigravity_hook_value() -> Value {
-    let handler = json!({
-        "type": "command",
-        "command": antigravity_hook_command(),
-        "timeout": RELAY_TIMEOUT_SECS
-    });
+    let handler = |event: &str| {
+        json!({
+            "type": "command",
+            "command": antigravity_hook_command(event),
+            "timeout": RELAY_TIMEOUT_SECS
+        })
+    };
     let mut named = serde_json::Map::new();
     for event in ANTIGRAVITY_LOOP_EVENTS {
-        named.insert((*event).to_string(), json!([handler.clone()]));
+        named.insert((*event).to_string(), json!([handler(event)]));
     }
     for event in ANTIGRAVITY_TOOL_EVENTS {
         named.insert(
             (*event).to_string(),
-            json!([{ "matcher": "*", "hooks": [handler.clone()] }]),
+            json!([{ "matcher": "*", "hooks": [handler(event)] }]),
         );
     }
     Value::Object(named)
@@ -1444,10 +1454,30 @@ mod tests {
         // so a home directory with a space in it can't break it. Antigravity
         // parses the command itself and honours no quoting — verified against the
         // real CLI, where every quoted absolute form was skipped silently.
-        let cmd = antigravity_hook_command();
-        assert!(!cmd.contains(' ') || cmd.split(' ').count() == 2);
+        let cmd = antigravity_hook_command("Stop");
         assert!(cmd.starts_with("./") || cmd.starts_with(".\\"));
-        assert!(cmd.ends_with(" antigravity"));
+        // kind THEN event: the payload carries no event name of its own, so the
+        // command is the only thing that can say which one fired.
+        assert!(cmd.ends_with(" antigravity Stop"));
+    }
+
+    #[test]
+    fn every_antigravity_event_names_itself_in_its_command() {
+        // Antigravity's payload carries no event name (verified against the real
+        // CLI: `invocationNum` / `fullyIdle` / `terminationReason`, nothing to
+        // identify the event), so each registration must say which one it is or
+        // the report is dropped and the session never reaches `done`.
+        let v = antigravity_hook_value();
+        for event in ANTIGRAVITY_LOOP_EVENTS {
+            let cmd = v[*event][0]["command"].as_str().expect("a command");
+            assert!(cmd.ends_with(&format!(" antigravity {event}")), "{cmd}");
+        }
+        for event in ANTIGRAVITY_TOOL_EVENTS {
+            let cmd = v[*event][0]["hooks"][0]["command"]
+                .as_str()
+                .expect("a command");
+            assert!(cmd.ends_with(&format!(" antigravity {event}")), "{cmd}");
+        }
     }
 
     #[test]

@@ -19,6 +19,8 @@
 # synchronously inside the execution loop, so this must also stay fast.
 
 TYPE="${1:-agent}"
+# $2 names the event, for CLIs whose payload does not (Antigravity).
+EVENT="${2:-}"
 
 if [ -n "$UXNAN_ENDPOINT_FILE" ] && [ -r "$UXNAN_ENDPOINT_FILE" ]; then
   . "$UXNAN_ENDPOINT_FILE" 2>/dev/null || :
@@ -39,6 +41,6 @@ curl -sS -X POST "$URL" \
   -H "Content-Type: application/json" \
   -H "X-Uxnan-Token: $TOKEN" \
   -H "X-Uxnan-Agent-Id: $ID" \
-  -H "X-Uxnan-Agent-Type: $TYPE" \
+  -H "X-Uxnan-Agent-Type: $TYPE" -H "X-Uxnan-Event: $EVENT" \
   --data-binary @- >/dev/null 2>&1 || true
 exit 0
