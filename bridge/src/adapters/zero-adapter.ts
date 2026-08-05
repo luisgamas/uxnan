@@ -683,7 +683,6 @@ export class ZeroAdapter extends BaseAgentAdapter {
     });
   }
 
-
   #finishError(run: ActiveRun, text: string): void {
     run.finished = true;
     this.#active.delete(run.bridgeTurnId);
