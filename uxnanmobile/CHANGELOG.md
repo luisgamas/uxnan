@@ -24,22 +24,29 @@ carries the thread's activity timestamp, giving each turn its own.
 ### Fixed — streaming replies feel fast again, with the formatting kept
 
 Rendering Markdown as the text arrives (instead of after the turn) made replies
-visibly slower, and the cost was real, not imagined: **every delta rebuilt the
-whole timeline and re-parsed the entire reply**, so a turn became quadratic in
-its own length. Measured on a realistic reply — prose, a list, inline code and a
-fenced block:
+visibly slower, and the cost was real rather than imagined: **every delta
+rebuilt the whole timeline and re-parsed the entire reply**, so a turn cost time
+quadratic in its own length.
 
-| reply | Markdown per delta | plain text (the old look) |
-|---|---|---|
-| 2 000 chars | 2 273 ms | 409 ms |
-| 6 000 chars | 5 799 ms | 1 207 ms |
+Deltas are now coalesced, and the window **grows with the reply** — which is
+where the cost is. A fixed one-frame window turned out to be the wrong shape:
+agents emit a delta roughly every 20 ms, so almost nothing fell inside it.
+Measured on a realistic 6000-character reply (prose, list, inline code, fenced
+block) arriving as 1500 deltas:
 
-Deltas are now coalesced into **one rebuild per frame**. Nothing is dropped and
-nothing is deferred: a delta arriving faster than the screen redraws could never
-have been seen anyway, so everything that lands inside the window is rendered
-together on the very next frame. Text still appears as it streams, still fully
-formatted. Only deltas coalesce — a completed turn, a content block or a re-sync
-still renders immediately.
+| rebuilds | cost |
+|---|---|
+| one per delta (1500) | 18.9 s |
+| one per frame, 16 ms (~1500) | 16.0 s |
+| 50 ms (600) | 6.7 s |
+| **100 ms (300)** | **3.4 s** |
+
+Nothing is dropped and nothing waits for the turn to end: whatever lands inside
+the window is rendered together on the next frame, still fully formatted, so the
+text still appears as it streams. A short reply keeps the shortest window and
+stays maximally responsive; only a long one throttles, and only to a rate no eye
+resolves as discrete. Deltas alone coalesce — a completed turn, a content block
+or a re-sync still renders immediately.
 
 Mobile suite **838 passing**.
 

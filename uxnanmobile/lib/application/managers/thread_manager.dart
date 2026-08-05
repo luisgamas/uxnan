@@ -1678,11 +1678,15 @@ class ThreadManager {
         );
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case MessageDeltaEvent(:final turnId, :final delta):
-        _ensureLive(threadId, turnId).appendText(delta);
-        if (threadId == _activeThreadId) _rebuildActiveTimelineCoalesced();
+        final live = _ensureLive(threadId, turnId)..appendText(delta);
+        if (threadId == _activeThreadId) {
+          _rebuildActiveTimelineCoalesced(live.streamedLength);
+        }
       case ThinkingDeltaEvent(:final turnId, :final delta):
-        _ensureLive(threadId, turnId).thinking += delta;
-        if (threadId == _activeThreadId) _rebuildActiveTimelineCoalesced();
+        final live = _ensureLive(threadId, turnId)..thinking += delta;
+        if (threadId == _activeThreadId) {
+          _rebuildActiveTimelineCoalesced(live.streamedLength);
+        }
       case ContentBlockEvent(:final turnId, :final content, :final beforeText):
         _ensureLive(threadId, turnId).addBlock(content, beforeText: beforeText);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
@@ -1923,17 +1927,27 @@ class ThreadManager {
     }
   }
 
-  /// Longest a streamed delta may wait before it is on screen.
+  /// How long a streamed delta may wait before it is on screen, given how much
+  /// of the reply is already there.
   ///
-  /// A delta arriving faster than a frame cannot be *seen* — the screen only
-  /// redraws ~60 times a second — but it was still costing a full timeline
-  /// rebuild AND a full re-parse of the reply's Markdown, which makes a turn
-  /// quadratic in its own length. Measured on a realistic reply, streaming
-  /// 6000 characters cost 5.8 s of rebuild work against 1.2 s for the
-  /// unformatted text the app used to show. Coalescing brings that back in line
-  /// without dropping a single character: everything that arrived inside the
-  /// window is rendered together on the next frame.
-  static const _streamCoalesceWindow = Duration(milliseconds: 16);
+  /// The reply is rendered as Markdown while it streams, and every rebuild
+  /// re-parses ALL of it — so a turn costs time quadratic in its own length,
+  /// which is what made streaming feel slower than the unformatted text the app
+  /// used to show. Rebuilding less often is the whole fix, but a fixed window
+  /// is the wrong shape for it: agents emit a delta roughly every 20 ms, so a
+  /// one-frame window collapses almost nothing, while a window wide enough to
+  /// help a long reply would make a short one look chunky for no gain.
+  ///
+  /// So the window grows with the reply, exactly where the cost is. Measured on
+  /// a realistic 6000-character reply (prose, list, inline code, fenced block)
+  /// arriving as 1500 deltas: 18.9 s of rebuild work uncoalesced, 16.0 s at one
+  /// frame, 6.7 s at 50 ms, 3.4 s at 100 ms.
+  ///
+  /// Nothing is dropped and nothing waits for the turn to end: whatever lands
+  /// inside the window is rendered together on the next frame, still fully
+  /// formatted.
+  static Duration _streamCoalesceWindow(int length) =>
+      Duration(milliseconds: (length ~/ 60).clamp(16, 100));
 
   Timer? _streamRebuildTimer;
 
@@ -1942,9 +1956,9 @@ class ThreadManager {
   /// Only deltas go through here. Every other event (a turn completing, a block
   /// landing, a re-sync) still rebuilds immediately: those are one-off and the
   /// user must see them at once.
-  void _rebuildActiveTimelineCoalesced() {
+  void _rebuildActiveTimelineCoalesced(int streamedLength) {
     if (_streamRebuildTimer?.isActive ?? false) return;
-    _streamRebuildTimer = Timer(_streamCoalesceWindow, () {
+    _streamRebuildTimer = Timer(_streamCoalesceWindow(streamedLength), () {
       if (_disposed) return;
       _rebuildActiveTimeline();
     });
@@ -2252,6 +2266,16 @@ class _LiveTurn {
   /// they streamed in, so the rendered turn **interleaves** the work log with
   /// the response instead of grouping all activity above the text.
   final List<MessageContent> segments = [];
+
+  /// How much prose is on screen for this turn — what a rebuild has to
+  /// re-parse, and so what decides how often it is worth rebuilding.
+  int get streamedLength {
+    var total = thinking.length;
+    for (final segment in segments) {
+      if (segment is TextContent) total += segment.text.length;
+    }
+    return total;
+  }
 
   /// Appends a text delta, extending the current trailing text run or starting
   /// a new one (a run is broken whenever a block lands between text).

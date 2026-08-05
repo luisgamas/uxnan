@@ -113,14 +113,16 @@ and composed in `application_providers.dart`. The important ones:
    reducer), persists finalized messages to drift, and exposes the timeline as a
    `BehaviorSubject` stream. A completion re-reads the authoritative turn and
    reconciles terminal text additively, so a final payload cannot overwrite
-   earlier native assistant messages. **Deltas are coalesced into one rebuild
-   per frame**: the reply is rendered as Markdown while it streams, so
-   rebuilding per delta re-parsed the whole reply every time, making a turn
-   quadratic in its own length (measured: 5.8 s of rebuild work for a 6 000-char
-   reply, against 1.2 s unformatted). A delta arriving faster than the screen
-   redraws cannot be seen, so nothing is lost by rendering the window together
-   on the next frame. Only deltas coalesce — a completed turn, a content block
-   or a re-sync still renders immediately.
+   earlier native assistant messages. **Deltas are coalesced, in a window
+   that grows with the reply** (`_streamCoalesceWindow`, 16→100 ms): the reply
+   is rendered as Markdown while it streams, so rebuilding per delta re-parsed
+   all of it every time, making a turn quadratic in its own length. A fixed
+   one-frame window does not help — agents emit a delta about every 20 ms — so
+   the window widens as the text grows, which is where the cost is (measured on
+   a 6 000-char reply: 18.9 s of rebuild work per delta, 3.4 s at 100 ms).
+   Nothing is dropped: whatever lands inside the window renders together on the
+   next frame. Only deltas coalesce — a completed turn, a content block or a
+   re-sync still renders immediately.
 4. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.
