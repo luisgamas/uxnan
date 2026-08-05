@@ -1,36 +1,31 @@
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
-/// Strokes a dashed outline along a rounded rectangle, on top of [child].
+/// A rounded border stroked with dashes, for a bubble that is *not yet handed
+/// over*.
 ///
-/// Used to mark a bubble as *not yet handed over* without changing its fill:
-/// a queued message reads as the same message it will be, drawn with an
+/// A queued message reads as the same message it will be, drawn with an
 /// unfinished edge, rather than as a different, greyed-out kind of thing.
 ///
-/// The outline is painted as a foreground so it sits above the bubble's own
-/// background, and it is purely decorative — nothing here affects layout or
-/// hit-testing.
-class NeDashedOutline extends StatelessWidget {
-  /// Creates a dashed outline around [child].
-  const NeDashedOutline({
-    required this.color,
+/// This is a [ShapeBorder], not a widget painting over one, and that is the
+/// whole point: an overlay is drawn around whatever box it wraps — including
+/// that box's margin — so it floated a few pixels off the bubble and read as a
+/// second rectangle sitting on top. As a border it belongs to the bubble's own
+/// decoration, so it is stroked on exactly the shape being filled, and it
+/// animates with the rest of the decoration instead of independently.
+class NeDashedBorder extends OutlinedBorder {
+  /// Creates a dashed rounded border.
+  const NeDashedBorder({
     required this.borderRadius,
-    required this.child,
-    this.strokeWidth = 1.5,
+    super.side = const BorderSide(width: 1.5),
     this.dash = 5,
     this.gap = 4,
-    super.key,
   });
 
-  /// Stroke color of the dashes.
-  final Color color;
-
-  /// Corner radii, matched to the shape being outlined.
+  /// Corner radii — the same ones the bubble is filled with.
   final BorderRadius borderRadius;
-
-  /// Thickness of the dashes.
-  final double strokeWidth;
 
   /// Length of each dash.
   final double dash;
@@ -38,59 +33,75 @@ class NeDashedOutline extends StatelessWidget {
   /// Empty space between two dashes.
   final double gap;
 
-  /// The widget the outline is drawn over.
-  final Widget child;
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.strokeInset);
 
   @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      foregroundPainter: _DashedOutlinePainter(
-        color: color,
-        borderRadius: borderRadius,
-        strokeWidth: strokeWidth,
-        dash: dash,
-        gap: gap,
-      ),
-      child: child,
-    );
+  ShapeBorder scale(double t) => NeDashedBorder(
+    borderRadius: borderRadius * t,
+    side: side.scale(t),
+    dash: dash * t,
+    gap: gap * t,
+  );
+
+  @override
+  NeDashedBorder copyWith({
+    BorderSide? side,
+    BorderRadius? borderRadius,
+    double? dash,
+    double? gap,
+  }) => NeDashedBorder(
+    borderRadius: borderRadius ?? this.borderRadius,
+    side: side ?? this.side,
+    dash: dash ?? this.dash,
+    gap: gap ?? this.gap,
+  );
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) => Path()
+    ..addRRect(borderRadius.toRRect(rect).deflate(side.strokeInset));
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
+      Path()..addRRect(borderRadius.toRRect(rect));
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) {
+    if (a is NeDashedBorder) {
+      return NeDashedBorder(
+        borderRadius: BorderRadius.lerp(a.borderRadius, borderRadius, t)!,
+        side: BorderSide.lerp(a.side, side, t),
+        dash: lerpDouble(a.dash, dash, t)!,
+        gap: lerpDouble(a.gap, gap, t)!,
+      );
+    }
+    return super.lerpFrom(a, t);
   }
-}
-
-class _DashedOutlinePainter extends CustomPainter {
-  const _DashedOutlinePainter({
-    required this.color,
-    required this.borderRadius,
-    required this.strokeWidth,
-    required this.dash,
-    required this.gap,
-  });
-
-  final Color color;
-  final BorderRadius borderRadius;
-  final double strokeWidth;
-  final double dash;
-  final double gap;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    if (size.isEmpty || dash <= 0 || gap <= 0) return;
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) {
+    if (b is NeDashedBorder) return b.lerpFrom(this, t);
+    return super.lerpTo(b, t);
+  }
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.none || rect.isEmpty) return;
+    if (dash <= 0 || gap <= 0) return;
+
     // Inset by half the stroke so the dashes sit fully inside the bubble
     // instead of straddling its edge and looking a pixel too wide.
-    final inset = strokeWidth / 2;
-    final rect = Rect.fromLTWH(
-      inset,
-      inset,
-      math.max(0, size.width - strokeWidth),
-      math.max(0, size.height - strokeWidth),
+    final inset = side.width / 2;
+    final inner = Rect.fromLTWH(
+      rect.left + inset,
+      rect.top + inset,
+      math.max(0, rect.width - side.width),
+      math.max(0, rect.height - side.width),
     );
-    if (rect.isEmpty) return;
+    if (inner.isEmpty) return;
 
-    final path = Path()..addRRect(borderRadius.toRRect(rect));
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+    final path = Path()..addRRect(borderRadius.toRRect(inner));
+    final paint = side.toPaint()..strokeCap = StrokeCap.round;
 
     for (final metric in path.computeMetrics()) {
       var distance = 0.0;
@@ -103,10 +114,14 @@ class _DashedOutlinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DashedOutlinePainter old) =>
-      old.color != color ||
-      old.borderRadius != borderRadius ||
-      old.strokeWidth != strokeWidth ||
-      old.dash != dash ||
-      old.gap != gap;
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NeDashedBorder &&
+          other.borderRadius == borderRadius &&
+          other.side == side &&
+          other.dash == dash &&
+          other.gap == gap;
+
+  @override
+  int get hashCode => Object.hash(borderRadius, side, dash, gap);
 }

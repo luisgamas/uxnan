@@ -48,7 +48,18 @@ stays maximally responsive; only a long one throttles, and only to a rate no eye
 resolves as discrete. Deltas alone coalesce — a completed turn, a content block
 or a re-sync still renders immediately.
 
-Mobile suite **838 passing**.
+### Fixed — the queued bubble's dashes are the bubble's own edge
+
+The outline read as a second rectangle drawn on top of the bubble, because that
+is what it was: a widget painting over whatever box it wrapped — and that box
+carried a vertical margin, so the dashes were stroked around the margin instead
+of around the bubble.
+
+It is now a `ShapeBorder` on the bubble's own decoration, so it is stroked on
+exactly the shape being filled and cannot drift from it, and it animates with
+the rest of the decoration rather than independently.
+
+Mobile suite **839 passing**.
 
 
 ## [0.0.17-alpha.20260804+20260804] - 2026-08-04

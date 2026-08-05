@@ -5,7 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/presentation/widgets/ne_dashed_outline.dart';
 
-/// Renders [NeDashedOutline] and inspects the resulting PIXELS.
+/// Renders [NeDashedBorder] and inspects the resulting PIXELS.
 ///
 /// A test that only pumped the widget would pass on an outline that paints
 /// nothing at all, or on a solid border — the two failures that actually
@@ -27,15 +27,17 @@ void main() {
           body: Center(
             child: RepaintBoundary(
               key: key,
-              child: NeDashedOutline(
-                color: color,
-                borderRadius: radius,
-                child: Container(
-                  width: width,
-                  height: height,
-                  decoration: const BoxDecoration(
-                    color: fill,
+              // The dashes are the CONTAINER'S OWN border, drawn on exactly
+              // the shape it fills. As an overlay they were painted around the
+              // whole box — margin included — and floated off the bubble.
+              child: Container(
+                width: width,
+                height: height,
+                decoration: ShapeDecoration(
+                  color: fill,
+                  shape: NeDashedBorder(
                     borderRadius: radius,
+                    side: BorderSide(color: color, width: 1.5),
                   ),
                 ),
               ),
@@ -122,5 +124,71 @@ void main() {
     final bottom = scanRow(bytes, height.toInt() - 2);
     expect(bottom.strokePixels, greaterThan(0));
     expect(bottom.runs, greaterThan(3));
+  });
+
+  testWidgets('stays on the bubble when the bubble has a margin',
+      (tester) async {
+    // The reported bug: as an overlay the dashes were painted around the whole
+    // box, margin included, so they floated off the bubble and read as a second
+    // rectangle sitting on top of it. As the shape's own border they can only
+    // ever be stroked on the shape being filled.
+    const margin = 8.0;
+    final key = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(
+            child: RepaintBoundary(
+              key: key,
+              child: Container(
+                width: width,
+                height: height,
+                margin: const EdgeInsets.symmetric(vertical: margin),
+                decoration: const ShapeDecoration(
+                  color: fill,
+                  shape: NeDashedBorder(
+                    borderRadius: radius,
+                    side: BorderSide(color: outlineColor, width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final boundary =
+        key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    late ByteData bytes;
+    await tester.runAsync(() async {
+      final image = await boundary.toImage();
+      bytes = (await image.toByteData())!;
+      image.dispose();
+    });
+
+    bool rowHasStroke(int row) {
+      for (var x = 0; x < width.toInt(); x++) {
+        final offset = (width.toInt() * row + x) * 4;
+        final r = bytes.getUint8(offset);
+        final g = bytes.getUint8(offset + 1);
+        final b = bytes.getUint8(offset + 2);
+        if (r > 140 && g < 110 && b < 110) return true;
+      }
+      return false;
+    }
+
+    // The margin band is above the bubble: nothing may be drawn in it.
+    for (var row = 0; row < margin.toInt(); row++) {
+      expect(
+        rowHasStroke(row),
+        isFalse,
+        reason: 'the outline is drawn around the margin, not on the bubble',
+      );
+    }
+    // ...and the bubble's own top edge still carries dashes.
+    expect(rowHasStroke(margin.toInt() + 1), isTrue);
   });
 }
