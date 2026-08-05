@@ -140,10 +140,19 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
 
 - **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`. Grok merges
   every `*.json` in that folder, so nothing of yours is ever read or rewritten,
-  and global hooks need no folder-trust grant. Its event vocabulary *is* Claude
-  Code's, so it reports the full range — including a genuine `blocked` from
+  and global hooks need no folder-trust grant. Its event *set* is Claude Code's,
+  so it reports the full range — including a genuine `blocked` from
   `StopFailure` (a turn that died on an API error), which only OpenCode could
   report before.
+
+  **Its spelling is not Claude's, though, and the two directions differ.** Grok
+  accepts the PascalCase keys uxnan writes into the config as aliases, but it
+  *dispatches* in snake_case — its `HookEventName` carries
+  `#[serde(rename_all = "snake_case")]` — so the payload that comes back says
+  `stop`, not `Stop`. A normalizer that matched only PascalCase dropped every
+  Grok report and left the card stuck on **working** forever, since nothing else
+  could move it. Both spellings are accepted; if you add an event, add it to the
+  snake_case path too.
 - **Antigravity** gets one named entry, `uxnan-status`, in
   `~/.gemini/config/hooks.json`; other named hooks in that file are untouched.
   It exposes only its execution loop (`PreInvocation`, `PostInvocation`,

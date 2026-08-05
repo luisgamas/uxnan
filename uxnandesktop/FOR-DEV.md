@@ -25,8 +25,10 @@ resource benchmark**, **an in-app resource monitor**, **a resource mode with
 explicit efficiency presets — Efficient / Balanced / Performance — governing the
 background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 (`docs/diagnostics.md`), **generated conversation names on the agent card and
-the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model; a
-hand-renamed tab always wins). 495 Rust tests (467 unit + 28
+the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
+named from the session's **terminal transcript** — the only material every agent
+has, since only Claude reports a prompt through the hook; a hand-renamed tab
+always wins). 497 Rust tests (469 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
 probe) + 770 frontend Vitest tests across two
 projects — pure logic and **Svelte

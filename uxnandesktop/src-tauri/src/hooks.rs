@@ -133,7 +133,13 @@ pub fn normalize_event(
         // file unchanged), plus a `StopFailure` of its own for a turn that died on
         // an API error — which makes Grok the second agent, after OpenCode, that
         // reports a real `blocked` instead of it being inferred.
-        "grok" => match event {
+        // Grok registers PascalCase keys in its config (it accepts those as
+        // aliases) but **dispatches in snake_case**: its `HookEventName` carries
+        // `#[serde(rename_all = "snake_case")]`, so the payload says `stop`, not
+        // `Stop`. Matching only the PascalCase spelling made every Grok report
+        // fall through to `None` and be discarded — which is why its card sat on
+        // "working" with nothing left able to move it. Accept both spellings.
+        "grok" => match pascal_case(event).as_str() {
             "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse"
             | "PostToolUseFailure" | "PreCompact" | "PostCompact" => Some(AgentStatus::Working),
             "Notification" => Some(AgentStatus::Waiting),
@@ -180,6 +186,29 @@ fn notification_type(source: &Value) -> Option<String> {
         .get("notification_type")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
+}
+
+/// `snake_case` → `PascalCase`, leaving an already-Pascal name untouched.
+///
+/// Exists because an agent's *config* spelling and its *dispatch* spelling are
+/// not always the same — Grok accepts `Stop` in its hooks file and then reports
+/// `stop`. Normalizing at the match site keeps one vocabulary per agent instead
+/// of duplicating every arm.
+fn pascal_case(event: &str) -> String {
+    // Deliberately no "already Pascal?" shortcut: a single-word snake event has
+    // no underscore at all (`stop`), so skipping on that basis would leave the
+    // most important event of the lifecycle unmatched.
+    event
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Extract the provider event name from a raw hook payload, trying every key an
@@ -1340,5 +1369,54 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_dir_all(&outside_dir);
+    }
+}
+
+#[cfg(test)]
+mod grok_snake_case_tests {
+    use super::*;
+
+    #[test]
+    fn grok_reports_snake_case_and_must_still_be_understood() {
+        // Grok's HookEventName is `#[serde(rename_all = "snake_case")]`, so this
+        // is what actually arrives — the PascalCase spelling only ever appears
+        // in the config file we write.
+        assert_eq!(
+            normalize_event("grok", "stop", None),
+            Some(AgentStatus::Done),
+            "a finished Grok turn was being discarded, leaving the card on working"
+        );
+        assert_eq!(
+            normalize_event("grok", "session_end", None),
+            Some(AgentStatus::Done)
+        );
+        assert_eq!(
+            normalize_event("grok", "pre_tool_use", None),
+            Some(AgentStatus::Working)
+        );
+        assert_eq!(
+            normalize_event("grok", "stop_failure", None),
+            Some(AgentStatus::Blocked)
+        );
+        // The config spelling keeps working, so nothing regresses.
+        assert_eq!(
+            normalize_event("grok", "Stop", None),
+            Some(AgentStatus::Done)
+        );
+        // An event we do not model is still ignored rather than guessed at.
+        assert_eq!(normalize_event("grok", "some_future_event", None), None);
+    }
+
+    #[test]
+    fn pascal_case_leaves_other_agents_vocabularies_alone() {
+        assert_eq!(pascal_case("Stop"), "Stop");
+        assert_eq!(pascal_case("pre_tool_use"), "PreToolUse");
+        assert_eq!(pascal_case(""), "");
+        // pi speaks snake_case by design and matches it directly, so its arm
+        // must not be routed through this.
+        assert_eq!(
+            normalize_event("pi", "agent_end", None),
+            Some(AgentStatus::Done)
+        );
     }
 }

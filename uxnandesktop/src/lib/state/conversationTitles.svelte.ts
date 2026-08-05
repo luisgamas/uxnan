@@ -41,23 +41,18 @@ class ConversationTitles {
   async ensure(input: {
     tabId: string;
     agentId: string;
-    userText: string;
-    assistantText?: string | null;
+    /** What the session's terminal shows — the only source every agent has. */
+    transcript: string;
     cwd: string;
   }): Promise<void> {
-    const { tabId, agentId, userText, cwd } = input;
+    const { tabId, agentId, transcript, cwd } = input;
     if (!tabId || !agentId || !cwd) return;
-    if (!userText.trim()) return;
+    if (!transcript.trim()) return;
     if (this.attempts.has(tabId)) return;
 
     this.attempts.set(tabId, 'pending');
     try {
-      const title = await generateConversationTitle(
-        agentId,
-        userText,
-        input.assistantText ?? '',
-        cwd,
-      );
+      const title = await generateConversationTitle(agentId, transcript, cwd);
       if (title.trim()) this.titles[tabId] = title.trim();
     } catch {
       // No credit, CLI missing, timeout — the session keeps its old label.

@@ -40,28 +40,27 @@ fn title_model(agent_id: &str) -> &'static str {
     }
 }
 
-/// Build the instruction. Short on purpose: it runs once per conversation and
-/// the whole point is that it costs almost nothing.
+/// Build the instruction from what the session's terminal shows.
+///
+/// The transcript is the material because it is the only source EVERY agent
+/// has: measured against a real run, only Claude reports a prompt or a reply
+/// through the hook, so a prompt/reply-shaped input named two agents and
+/// silently skipped the rest.
 ///
 /// The reply language is the user's, not English — a Spanish conversation with
 /// an English title reads like somebody else's.
-pub fn build_title_prompt(user_text: &str, assistant_text: &str) -> String {
-    let exchange = if assistant_text.trim().is_empty() {
-        format!("User: {}", clip(user_text, 900))
-    } else {
-        format!(
-            "User: {}\n\nAssistant: {}",
-            clip(user_text, 600),
-            clip(assistant_text, 600)
-        )
-    };
-    format!(
-        "Name this conversation in 3 to 6 words, as a short title.\n\
-         Reply with ONLY the title: no quotes, no trailing period, no preamble, \
-         no markdown. Write it in the same language the user used. Name what the \
-         conversation is ABOUT, so it stays recognizable next to conversations \
-         that opened with a similar phrase.\n\n{exchange}"
-    )
+pub fn build_title_prompt(transcript: &str) -> String {
+    let instruction = concat!(
+        "Below is an excerpt of a terminal session with a coding agent.\n",
+        "Name that conversation in 3 to 6 words, as a short title.\n",
+        "Reply with ONLY the title: no quotes, no trailing period, no ",
+        "preamble, no markdown. Write it in the same language the user ",
+        "used. Name what the conversation is ABOUT, so it stays ",
+        "recognizable next to conversations that opened with a similar ",
+        "phrase. Ignore banners, prompts, spinners and tool output — ",
+        "describe the actual task.\n\n",
+    );
+    format!("{instruction}{}", clip_tail(transcript, 1800))
 }
 
 /// Reduce whatever the CLI printed to a bare title, or `None` when there is
@@ -112,13 +111,8 @@ pub fn sanitize_title(raw: &str) -> Option<String> {
 /// Best-effort by contract: a missing CLI, no credit or a timeout returns an
 /// error the caller is expected to ignore, leaving the session's existing label
 /// alone. Naming must never disturb a session that is otherwise working.
-pub async fn generate(
-    agent_id: &str,
-    user_text: &str,
-    assistant_text: &str,
-    cwd: &str,
-) -> Result<String, AppError> {
-    if user_text.trim().is_empty() {
+pub async fn generate(agent_id: &str, transcript: &str, cwd: &str) -> Result<String, AppError> {
+    if transcript.trim().is_empty() {
         return Err(AppError::Invalid("nothing to name yet".to_string()));
     }
     if agentcli::resolve(agent_id).is_none() {
@@ -127,7 +121,7 @@ pub async fn generate(
         )));
     }
 
-    let prompt = build_title_prompt(user_text, assistant_text);
+    let prompt = build_title_prompt(transcript);
     let result = agentrun::run_headless(
         agent_id,
         title_model(agent_id),
@@ -146,14 +140,19 @@ pub async fn generate(
         .ok_or_else(|| AppError::Agent("the agent returned no usable title".to_string()))
 }
 
-fn clip(text: &str, max: usize) -> String {
-    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if collapsed.chars().count() <= max {
-        return collapsed;
+/// Keep the **tail** of a transcript, not its head.
+///
+/// A terminal starts with a banner, a version line and the agent's own splash;
+/// the conversation is at the bottom. Clipping from the front would hand the
+/// model the boilerplate and cut off the actual task.
+fn clip_tail(text: &str, max: usize) -> String {
+    let trimmed = text.trim();
+    let count = trimmed.chars().count();
+    if count <= max {
+        return trimmed.to_string();
     }
-    let mut out: String = collapsed.chars().take(max).collect();
-    out.push('…');
-    out
+    let tail: String = trimmed.chars().skip(count - max).collect();
+    format!("…{tail}")
 }
 
 #[cfg(test)]
@@ -230,18 +229,27 @@ mod tests {
     }
 
     #[test]
-    fn the_prompt_carries_the_reply_and_stays_small() {
-        let with_reply = build_title_prompt("why is login failing", "the token expired");
-        assert!(with_reply.contains("User: why is login failing"));
-        assert!(with_reply.contains("Assistant: the token expired"));
-        assert!(with_reply.contains("same language"));
+    fn the_prompt_keeps_the_tail_of_a_transcript_and_stays_small() {
+        let p = build_title_prompt(
+            "fix the login bug
+agent: the token expired",
+        );
+        assert!(p.contains("fix the login bug"));
+        assert!(p.contains("same language"));
+        assert!(p.contains("ONLY the title"));
 
-        let without = build_title_prompt("just the question", "   ");
-        assert!(!without.contains("Assistant:"));
-
-        let clipped = build_title_prompt(&"x".repeat(5000), &"y".repeat(5000));
+        // A terminal opens with a banner and the conversation is at the BOTTOM,
+        // so a long transcript must be clipped from the front, not the back.
+        let long = format!(
+            "{}THE ACTUAL TASK",
+            "banner line
+"
+            .repeat(400)
+        );
+        let clipped = build_title_prompt(&long);
+        assert!(clipped.contains("THE ACTUAL TASK"), "the tail must survive");
         assert!(
-            clipped.len() < 2000,
+            clipped.len() < 2600,
             "prompt should stay small, got {}",
             clipped.len()
         );

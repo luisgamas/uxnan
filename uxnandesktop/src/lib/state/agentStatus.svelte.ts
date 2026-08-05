@@ -13,6 +13,7 @@ import { listen } from '@tauri-apps/api/event';
 import { agentStates } from '$lib/api';
 import { terminals } from './terminals.svelte';
 import { conversationTitles } from './conversationTitles.svelte';
+import { readInstanceText } from '$lib/terminal/instances';
 import { unread } from './unread.svelte';
 import { requestSweep } from './statusSweepRegistry';
 import { app } from './app.svelte';
@@ -20,6 +21,22 @@ import { toast } from '$lib/toast';
 import { notify } from '$lib/notify';
 import { i18n } from '$lib/i18n';
 import type { AgentStatus, AgentStatusEvent, SubagentEntry } from '$lib/types';
+
+/** Below this the terminal has nothing worth naming a conversation from. */
+const MIN_TRANSCRIPT_CHARS = 80;
+
+/**
+ * The CLI id the title runner should use for a hook's agent kind.
+ *
+ * The two vocabularies are NOT the same: the hook reports `antigravity` while
+ * the runnable CLI is `agy`, so passing the hook's kind straight through made
+ * `agentcli::resolve` fail and every Antigravity title silently do nothing.
+ */
+function titleAgentId(hookKind: string): string {
+  const kind = hookKind.trim();
+  if (kind === 'antigravity') return 'agy';
+  return kind;
+}
 
 /** A report grows stale (shown dimmed) after this long with no update (spec §1.5). */
 const STALE_MS = 30 * 60 * 1000;
@@ -87,7 +104,7 @@ class AgentStatusStore {
         // summarize, so the session can stop being labelled with whatever the
         // user typed first. Fire-and-forget, once per session, and harmless if
         // it fails (see `conversationTitles`).
-        if (p.status === 'done') this.nameConversation(p, prevState);
+        if (p.status === 'done') this.nameConversation(p);
         if (prevState?.status !== p.status) {
           this.notifyChange(p, prevState);
           // An agent changing state is the cheapest evidence that the working
@@ -110,26 +127,28 @@ class AgentStatusStore {
    *  it's in the background, a native OS notification is sent (enriched with the
    *  task and a short response preview for `done`). A non-`working` result also
    *  flags its worktree "unread" unless you're already looking at it. */
-  /** Name this session from its opening exchange, once, using its own agent CLI. */
-  private nameConversation(p: AgentStatusEvent, prev?: LiveAgentState): void {
+  /**
+   * Name this session once, from what its terminal actually shows.
+   *
+   * **Not from the hook.** Measured against a real run of all seven agents,
+   * only Claude ever reports a prompt or a reply through the hook payload
+   * (`prompt`/`summary` came back empty for codex, opencode and pi), so the
+   * first version of this named two agents and silently did nothing for the
+   * rest. The terminal buffer is the one source every agent has.
+   */
+  private nameConversation(p: AgentStatusEvent): void {
     const tab = terminals.findTab(p.agentId);
     if (!tab || tab.kind !== 'terminal') return;
-    // The Stop report's own prompt can be a freshly-read transcript task, so
-    // prefer the prompt we already had — the same recovery `notifyChange` does.
-    const userText = (prev?.prompt ?? p.prompt ?? '').trim();
-    // `agentType` is the CLI id the hook reported (`claude`, `codex`, …), which
-    // is what the title command needs; `agentCommand` is the same id sealed on
-    // the tab at launch.
-    const agentId = (p.agentType ?? tab.agentCommand ?? '').trim();
     const cwd = tab.cwd;
-    if (!userText || !agentId || !cwd) return;
-    void conversationTitles.ensure({
-      tabId: p.agentId,
-      agentId,
-      userText,
-      assistantText: p.summary ?? '',
-      cwd,
-    });
+    // `agentType` is the hook's kind (`antigravity`), which is NOT always the
+    // CLI id the runner resolves (`agy`) — see `titleAgentId`.
+    const agentId = titleAgentId(p.agentType ?? tab.agentCommand ?? '');
+    if (!agentId || !cwd) return;
+
+    const transcript = readInstanceText(p.agentId);
+    if (!transcript || transcript.trim().length < MIN_TRANSCRIPT_CHARS) return;
+
+    void conversationTitles.ensure({ tabId: p.agentId, agentId, transcript, cwd });
   }
 
   private notifyChange(p: AgentStatusEvent, prevState?: LiveAgentState): void {

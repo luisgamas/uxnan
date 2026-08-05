@@ -24,26 +24,26 @@
 // `Terminal.svelte`) so parked/hidden terminals never hold a GPU context; the
 // handle lives on the instance only so a remount can find it.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { Terminal, type ITerminalOptions } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { SerializeAddon } from "@xterm/addon-serialize";
-import { LigaturesAddon } from "@xterm/addon-ligatures";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import type { WebglAddon } from "@xterm/addon-webgl";
-import { openUrl } from "$lib/api";
-import { agentMonitor } from "$lib/state/agentMonitor.svelte";
-import { KeyboardProtocol } from "$lib/terminal/keyboardProtocol";
-import { DEFAULT_TERMINAL_SCROLLBACK, SNAPSHOT_SCROLLBACK } from "$lib/terminal/scrollback";
-import { scanForJunctionBlock, forgetJunctionBlock } from "$lib/terminal/windowsJunctionGuard";
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { Terminal, type ITerminalOptions } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { SerializeAddon } from '@xterm/addon-serialize';
+import { LigaturesAddon } from '@xterm/addon-ligatures';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import type { WebglAddon } from '@xterm/addon-webgl';
+import { openUrl } from '$lib/api';
+import { agentMonitor } from '$lib/state/agentMonitor.svelte';
+import { KeyboardProtocol } from '$lib/terminal/keyboardProtocol';
+import { DEFAULT_TERMINAL_SCROLLBACK, SNAPSHOT_SCROLLBACK } from '$lib/terminal/scrollback';
+import { scanForJunctionBlock, forgetJunctionBlock } from '$lib/terminal/windowsJunctionGuard';
 
 /** Read CSI parameter `i` as a non-negative integer, or `def` when absent.
  *  (xterm hands sub-parameters as `number[]`; the keyboard sequences handled
  *  here never use them, so those are treated as absent.) */
 function numParam(params: (number | number[])[], i: number, def: number): number {
   const v = params[i];
-  return typeof v === "number" && v >= 0 ? v : def;
+  return typeof v === 'number' && v >= 0 ? v : def;
 }
 
 // Shell output is debounced before typing an agent command so profile scripts
@@ -157,6 +157,41 @@ export function serializeInstance(id: string, scrollback = SNAPSHOT_SCROLLBACK):
   }
 }
 
+/**
+ * The terminal's visible conversation as PLAIN text — the last `maxLines`
+ * non-empty lines of screen + scrollback, ANSI already resolved.
+ *
+ * This is the only source of a session's content that works for **every**
+ * agent. The hook payload is not: measured against a real run, only Claude
+ * reports a prompt or a reply through it, so anything built on `hook.prompt`
+ * silently does nothing for the other six.
+ *
+ * Unlike {@link serializeInstance} (which emits ANSI so a pane can be
+ * restored), this walks the parsed buffer, so the caller gets text a model can
+ * read. Returns `null` when the instance is gone.
+ */
+export function readInstanceText(id: string, maxLines = 120): string | null {
+  const inst = registry.get(id);
+  if (!inst) return null;
+  try {
+    const buf = inst.term.buffer.active;
+    const end = buf.length;
+    const start = Math.max(0, end - maxLines);
+    const lines: string[] = [];
+    for (let i = start; i < end; i++) {
+      const line = buf.getLine(i);
+      if (!line) continue;
+      const text = line.translateToString(true).trimEnd();
+      // Blank rows are mostly padding from full-screen TUIs; dropping them
+      // keeps the excerpt dense enough to be worth summarizing.
+      if (text) lines.push(text);
+    }
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
 /** Get-or-create the instance for `id`. `created` tells the caller whether it
  *  owns first-time setup (spawning the PTY). `host` is only used on creation. */
 export async function acquireInstance(
@@ -258,7 +293,7 @@ export function requestPtyResize(inst: TerminalInstance, cols: number, rows: num
   if (cols === inst.lastCols && rows === inst.lastRows) return;
   inst.lastCols = cols;
   inst.lastRows = rows;
-  invoke("pty_resize", { id: inst.id, cols, rows }).catch(() => {
+  invoke('pty_resize', { id: inst.id, cols, rows }).catch(() => {
     // Don't let a lost resize masquerade as the PTY's real grid.
     inst.lastCols = 0;
     inst.lastRows = 0;
@@ -280,7 +315,7 @@ export async function spawnPty(
 ): Promise<{ fresh: boolean; error?: string }> {
   const { spec } = inst;
   try {
-    const fresh = await invoke<boolean>("pty_create", {
+    const fresh = await invoke<boolean>('pty_create', {
       id: inst.id,
       cwd: spec.cwd,
       shell: spec.shell,
@@ -307,10 +342,10 @@ export async function spawnPty(
     if (!fresh) await nudgeRepaint(inst, inst.lastCols, inst.lastRows);
     return { fresh };
   } catch (e) {
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       inst.spawnFailed = true;
       const error =
-        e && typeof e === "object" && "message" in e
+        e && typeof e === 'object' && 'message' in e
           ? String((e as { message: unknown }).message)
           : String(e);
       return { fresh: true, error };
@@ -327,8 +362,8 @@ export async function spawnPty(
 async function nudgeRepaint(inst: TerminalInstance, cols: number, rows: number): Promise<void> {
   if (cols <= 0 || rows <= 0) return; // grid unknown (a resize just failed) — skip
   try {
-    await invoke("pty_resize", { id: inst.id, cols, rows: Math.max(1, rows - 1) });
-    await invoke("pty_resize", { id: inst.id, cols, rows });
+    await invoke('pty_resize', { id: inst.id, cols, rows: Math.max(1, rows - 1) });
+    await invoke('pty_resize', { id: inst.id, cols, rows });
     inst.lastCols = cols;
     inst.lastRows = rows;
   } catch {
@@ -346,7 +381,7 @@ export function scheduleAgentLaunch(inst: TerminalInstance, delay = RUN_COMMAND_
     inst.launchTimer = undefined;
     try {
       // Auto-run appends Enter; "type only" leaves the line for the user to run.
-      await invoke("pty_write", {
+      await invoke('pty_write', {
         id: inst.id,
         data: runCommandExecute ? `${runCommand}\r` : runCommand,
       });
@@ -363,9 +398,9 @@ async function createInstance(
   host: HTMLElement,
   opts: TerminalCreateOptions,
 ): Promise<TerminalInstance> {
-  const wrapper = document.createElement("div");
-  wrapper.style.width = "100%";
-  wrapper.style.height = "100%";
+  const wrapper = document.createElement('div');
+  wrapper.style.width = '100%';
+  wrapper.style.height = '100%';
   // In the document before `open()` so xterm measures real font metrics.
   host.appendChild(wrapper);
 
@@ -439,7 +474,7 @@ async function createInstance(
     disposables: [],
   };
 
-  const ptyWrite = (data: string) => invoke("pty_write", { id, data }).catch(() => {});
+  const ptyWrite = (data: string) => invoke('pty_write', { id, data }).catch(() => {});
 
   // Layer 2 monitoring: agents that update the terminal title (OSC 0/2) report
   // their state in it ("thinking…", "waiting for input", "done"); map it.
@@ -461,19 +496,19 @@ async function createInstance(
   // must survive remounts — hence instance-level); a query is answered straight
   // back to the PTY.
   for (const handler of [
-    term.parser.registerCsiHandler({ prefix: "?", final: "u" }, () => {
+    term.parser.registerCsiHandler({ prefix: '?', final: 'u' }, () => {
       void ptyWrite(inst.kbd.queryReply());
       return true;
     }),
-    term.parser.registerCsiHandler({ prefix: ">", final: "u" }, (params) => {
+    term.parser.registerCsiHandler({ prefix: '>', final: 'u' }, (params) => {
       inst.kbd.push(numParam(params, 0, 0));
       return true;
     }),
-    term.parser.registerCsiHandler({ prefix: "<", final: "u" }, (params) => {
+    term.parser.registerCsiHandler({ prefix: '<', final: 'u' }, (params) => {
       inst.kbd.pop(numParam(params, 0, 1));
       return true;
     }),
-    term.parser.registerCsiHandler({ prefix: "=", final: "u" }, (params) => {
+    term.parser.registerCsiHandler({ prefix: '=', final: 'u' }, (params) => {
       inst.kbd.set(numParam(params, 0, 0), numParam(params, 1, 1));
       return true;
     }),

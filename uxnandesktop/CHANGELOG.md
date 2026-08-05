@@ -5,6 +5,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — every agent gets a conversation name, and Grok's status unsticks
+
+Shipped in 0.0.27, naming worked on **two of seven** agents. Both causes were
+found by reading real data rather than reasoning about it.
+
+- **The trigger read the user's prompt out of the hook payload.** Checked
+  against a real run of all seven agents, only `claude` ever carries a prompt or
+  a reply there — `codex`, `opencode` and `pi` reported empty strings — so the
+  naming path returned early for everyone else. It now names from the session's
+  **terminal buffer** (`readInstanceText`), the one source every agent has, and
+  asks the CLI to title a transcript excerpt. The clip keeps the **tail**: a
+  terminal opens with a banner and the conversation is at the bottom.
+- **The hook kind and the CLI id are different vocabularies.** The hook reports
+  `antigravity` while the runnable CLI is `agy`, so `agentcli::resolve` failed
+  and every Antigravity title silently did nothing.
+- **Zero emits no hook at all**, so it never reached the trigger, and its card
+  kept snapping back to `"ACP session"` — a placeholder **Zero writes itself**
+  (`internal/acp/agent.go`), not something read wrong. It is now named from its
+  own poll.
+- **Grok's status hung on "working".** uxnan writes PascalCase keys into Grok's
+  hooks file (Grok accepts them as aliases) but Grok **dispatches in
+  snake_case** — its `HookEventName` carries
+  `#[serde(rename_all = "snake_case")]`, so the payload says `stop`, not `Stop`.
+  `normalize_event` matched only PascalCase, so every Grok report fell through
+  to `None` and was discarded, leaving nothing able to move the card. Both
+  spellings are accepted now.
+
+Verified against the real CLI on the actual delivery path (`run_headless` pipes
+the prompt to **stdin** for claude/codex/opencode/pi): a transcript full of
+banner, box-drawing and spinner frames produced *"Introducción al proyecto
+Uxnan"*.
+
+**On speed** (measured, since it looked slow): CLI startup is **143 ms** and not
+the bottleneck; the floor for any model round-trip is **~3.3 s**; a full
+transcript titles in **7.5–9.1 s**. Clipping the transcript does **not** help —
+1800 / 900 / 500 chars all landed in the same range — and a shorter clip makes
+the title *worse* (at 500 chars it lost the subject entirely). The time is the
+model's, so the input stays at the size that titles best.
+
+Desktop suites **770 frontend / 497 Rust**.
+
+
 ## [0.0.27] - 2026-08-04
 
 ### Added — agent sessions get a real name, on the card and on the tab

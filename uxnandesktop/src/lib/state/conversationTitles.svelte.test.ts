@@ -10,8 +10,7 @@ const { conversationTitles } = await import('./conversationTitles.svelte');
 const base = {
   tabId: 'tab-1',
   agentId: 'claude',
-  userText: 'why is login failing',
-  assistantText: 'the token expired',
+  transcript: '> why is login failing\nagent: the token expired at 5 minutes',
   cwd: '/repo',
 };
 
@@ -25,12 +24,7 @@ describe('conversationTitles', () => {
     generateConversationTitle.mockResolvedValue('Fix JWT expiry on login');
     await conversationTitles.ensure(base);
     expect(conversationTitles.get('tab-1')).toBe('Fix JWT expiry on login');
-    expect(generateConversationTitle).toHaveBeenCalledWith(
-      'claude',
-      'why is login failing',
-      'the token expired',
-      '/repo',
-    );
+    expect(generateConversationTitle).toHaveBeenCalledWith('claude', base.transcript, '/repo');
   });
 
   it('names a session once, even across repeated reports', async () => {
@@ -61,7 +55,7 @@ describe('conversationTitles', () => {
   });
 
   it('does nothing without the pieces it needs', async () => {
-    await conversationTitles.ensure({ ...base, userText: '  ' });
+    await conversationTitles.ensure({ ...base, transcript: '  ' });
     await conversationTitles.ensure({ ...base, tabId: 't2', agentId: '' });
     await conversationTitles.ensure({ ...base, tabId: 't3', cwd: '' });
     expect(generateConversationTitle).not.toHaveBeenCalled();

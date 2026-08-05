@@ -7,15 +7,17 @@
 // The poll runs only while at least one Zero agent is open and pauses itself
 // otherwise; the agent view calls `ensurePolling()` when it detects a Zero agent.
 
-import { zeroSession } from "$lib/api";
-import { terminals, type TerminalTab } from "./terminals.svelte";
-import type { ZeroSession } from "$lib/types";
+import { zeroSession } from '$lib/api';
+import { terminals, type TerminalTab } from './terminals.svelte';
+import type { ZeroSession } from '$lib/types';
+import { conversationTitles } from './conversationTitles.svelte';
+import { readInstanceText } from '$lib/terminal/instances';
 
 const POLL_MS = 4000;
 
 /** Whether a terminal tab is the Zero agent (by command or logo key). */
 export function isZeroAgent(tab: TerminalTab): boolean {
-  return tab.agentCommand === "zero" || tab.agentIcon === "zero";
+  return tab.agentCommand === 'zero' || tab.agentIcon === 'zero';
 }
 
 class ZeroSessionStore {
@@ -72,8 +74,35 @@ class ZeroSessionStore {
         }
       }
       this.byCwd = next;
+      this.nameFinishedSessions(next);
     } finally {
       this.polling = false;
+    }
+  }
+
+  /**
+   * Name a Zero conversation once its session goes quiet.
+   *
+   * Zero has no hook, so the status-driven naming path never sees it — and its
+   * on-disk title is the literal placeholder `"ACP session"` that Zero writes
+   * itself (`internal/acp/agent.go`), which is why the card kept snapping back
+   * to it. Naming from the terminal here gives Zero the same treatment every
+   * other agent gets; `conversationTitles` still only ever tries once per tab.
+   */
+  private nameFinishedSessions(sessions: Record<string, ZeroSession | null>): void {
+    for (const [cwd, session] of Object.entries(sessions)) {
+      if (!session || session.status === 'working') continue;
+      for (const tab of terminals.agentTabs(cwd)) {
+        if (!isZeroAgent(tab) || tab.kind !== 'terminal') continue;
+        const transcript = readInstanceText(tab.id);
+        if (!transcript || transcript.trim().length < 80) continue;
+        void conversationTitles.ensure({
+          tabId: tab.id,
+          agentId: 'zero',
+          transcript,
+          cwd,
+        });
+      }
     }
   }
 }
