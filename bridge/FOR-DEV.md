@@ -370,6 +370,18 @@ push validation (FOR-HUMAN).
       `session/set_mode { modeId: <effort> }` actually applies the
       reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
       in `grok-adapter.ts` / `grok-tools.ts`.
+- [ ] **Antigravity token usage** — `AntigravityAdapter` reports
+      `reportsContextUsage:false`, so its card shows no context meter. It is not
+      that `agy` has none: captured from a real run, its `result` event carries
+      `usage:{ input_tokens, output_tokens, thinking_tokens, cache_read_tokens,
+      total_tokens }` — but **only under `--output-format stream-json`**, while
+      the turn currently runs on `text`. Surfacing it means migrating the turn's
+      stream parsing from plain text to the JSON events (`step_update` for
+      deltas, `result` for the final answer + usage), which is why it was not
+      done alongside Grok/Zero/Codex. Once migrated, emit `usage` on
+      `stream/turn/completed` and flip the capability. See the inline marker in
+      `antigravity-adapter.ts`.
+
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot
