@@ -44,7 +44,18 @@ transcript titles in **7.5–9.1 s**. Clipping the transcript does **not** help 
 the title *worse* (at 500 chars it lost the subject entirely). The time is the
 model's, so the input stays at the size that titles best.
 
-Desktop suites **770 frontend / 497 Rust**.
+### Changed — the agent card's second line says what the agent answered
+
+When a turn ends the card showed `summary`, which — measured across the same
+real run — **only Claude reports**. Every other card, and Zero (no hook at all),
+fell back to a bare status. The preview now falls back to the session's
+terminal, reading the **first line of the last reply**: the bottom of a TUI is
+its input box, and the bottom of the reply is a mid-sentence fragment, so it
+walks up past the chrome (input box, shortcut footer, context meter, spinner
+frames, the user's own `>` turn) and returns the start of the block it lands in.
+This matches the mobile thread row, which now does the same thing.
+
+Desktop suites **778 frontend / 497 Rust**.
 
 
 ## [0.0.27] - 2026-08-04

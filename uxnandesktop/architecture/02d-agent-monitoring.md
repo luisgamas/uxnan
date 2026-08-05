@@ -433,7 +433,23 @@ Detalle de uso y formato: [`docs/pets.md`](../docs/pets.md).
 
 ---
 
-### 1.8 Nombres de conversacion generados
+### 1.8 Segunda linea de la tarjeta: lo que el agente respondio
+
+Mientras el agente trabaja, la segunda linea muestra la herramienta en curso.
+Al terminar el turno debe mostrar **lo que respondio**. La fuente original era
+`summary` del hook, pero —medido sobre la misma corrida real— **solo Claude lo
+reporta**, asi que el resto de tarjetas, y Zero (sin hook), caian a un estado
+pelado.
+
+El preview cae ahora al terminal de la sesion y toma la **primera linea de la
+ultima respuesta** (`lastReplyPreview`). Sube desde abajo saltandose el cromo
+—la caja de entrada, el pie de atajos, el medidor de contexto, los fotogramas
+del spinner y el turno `>` del propio usuario— y devuelve el inicio del bloque
+en el que aterriza: el fondo de un TUI es su caja de entrada, y el fondo de la
+respuesta es un fragmento a media frase. Es el mismo criterio que la fila de
+hilo en movil.
+
+### 1.9 Nombres de conversacion generados
 
 La tarjeta y la pestana de una sesion muestran un **nombre generado**, no las
 primeras palabras que escribio el usuario: dos sesiones abiertas con una frase
