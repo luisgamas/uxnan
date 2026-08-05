@@ -3,12 +3,36 @@ name: E2E — Desktop (uxnandesktop)
 # The end-to-end layer: a real release binary, a real WebView2, real IPC.
 # Documented in `uxnandesktop/tests/e2e/README.md`.
 #
-# On demand and nightly, never on a PR — and deliberately **not yet required**.
-# It needs a release build (minutes), a WebDriver matched to the runner's
-# WebView2, and a machine with no other uxnan running. Making it blocking before
-# it has a track record on this runner is how a gate earns a reputation for
-# false failures and gets switched off; the plan is to require it once it has run
-# green for a fortnight (tracked in `uxnandesktop/FOR-DEV.md`).
+# **On demand only — this suite does not pass on a GitHub-hosted runner, and the
+# schedule was removed rather than left failing every night.** E2E is a local
+# layer today (`npm run test:e2e`, green on Windows); this workflow stays so the
+# next attempt costs a dispatch instead of a rebuild.
+#
+# What four failed runs plus `npm run test:e2e:diagnose` established, so nobody
+# pays for it twice:
+#
+#   * every spec dies in `session not created: DevToolsActivePort file doesn't
+#     exist`, before any assertion — the WebDriver attach, not the app;
+#   * NOT the app: `resource-benchmarks.yml` is green on this same image, and the
+#     diagnosis sees the webview come up under automation too (6 processes:
+#     browser, gpu, renderer, utilities);
+#   * NOT the driver pairing: `setup-driver.mjs` fetches the matching driver here
+#     as it does locally;
+#   * NOT the runtime version: forcing the runner to 151.0.4129.59 — byte for
+#     byte what the green local machine runs — changed nothing;
+#   * NOT `webviewOptions.userDataFolder`: it made no difference, and locally
+#     `DevToolsActivePort` is absent from that folder on a *passing* run anyway.
+#
+# What it IS: the browser process comes up with **no `--remote-debugging-port`**
+# and none of msedgedriver's other switches, so nothing was ever listening —
+# `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is dropped on this runner while the
+# same variable is honoured locally. The env-var channel itself works (the
+# webview does pick up msedgedriver's `--user-data-dir`), so it is the additional
+# *arguments* specifically. A machine policy is the open lead — the steps below
+# print the Edge/WebView2 policy keys, which are empty on the machine where this
+# passes; the other path is the app passing the switch itself through wry's
+# `additional_browser_args` rather than the environment. Both in
+# `uxnandesktop/FOR-DEV.md`.
 #
 # Windows only. `tauri-driver` supports Linux and does not support macOS, and
 # neither has been exercised here — this workflow does not claim a platform
@@ -21,9 +45,6 @@ on:
         description: "Spec file filter (empty runs them all)"
         required: false
         default: ""
-  schedule:
-    # 03:40 UTC, off the hour so it does not queue behind everyone else's cron.
-    - cron: "40 3 * * *"
 
 concurrency:
   group: e2e-desktop
@@ -71,6 +92,71 @@ jobs:
       - name: Build a release binary with its frontend embedded
         run: npm run bench:build
 
+      # The runner image ships WebView2 150.0.4078.105, and that runtime is the
+      # last standing suspect for a failure the diagnosis narrowed to one step:
+      # the app launches and creates its webview there (the resource benchmarks
+      # see `msedgewebview2.exe` in the tree), but it never opens the
+      # remote-debugging port, so no session can be created. The same code, the
+      # same binary and the same experiment on WebView2 151 answer in 611 ms.
+      #
+      # So the runtime is updated rather than accepted: the Evergreen
+      # bootstrapper installs the current version, and the driver step below
+      # re-reads the registry, so the pairing stays matched with nothing pinned.
+      # If a green run proves this was not the cause, this step comes out again.
+      # This was the runtime hypothesis, and it is **disproved**: with the
+      # `edgeupdate` service started the bootstrapper does work (150.0.4078.105 →
+      # 151.0.4129.59, the exact version the suite passes on locally) and the
+      # attach failed exactly as before. The step stays anyway, for two reasons:
+      # a retry should not be confounded by a stale runtime, and its policy dump
+      # is the live evidence for the open lead — those keys are empty on the
+      # machine where this suite is green.
+      #
+      # Never fatal: provisioning that fails leaves the image's runtime in place
+      # and the run still reports what it found.
+      - name: Update the WebView2 Runtime
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = { (Get-ItemProperty -Path $key -EA SilentlyContinue).pv }
+          "before: $(& $version)"
+
+          Get-Service -Name 'edgeupdate*' -EA SilentlyContinue |
+            ForEach-Object { "service {0}: {1} ({2})" -f $_.Name, $_.Status, $_.StartType }
+          # Every policy that could plausibly strip a switch from the browser
+          # command line. All three are empty on the machine where the suite
+          # passes, which is why a value here would be the answer.
+          foreach ($path in @(
+            'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Edge',
+            'HKLM:\SOFTWARE\Policies\Microsoft\EdgeWebView',
+            'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WebView2'
+          )) {
+            $policy = Get-ItemProperty -Path $path -EA SilentlyContinue
+            if ($policy) {
+              $policy.PSObject.Properties |
+                Where-Object { $_.Name -notlike 'PS*' } |
+                ForEach-Object { "policy {0}\{1} = {2}" -f (Split-Path $path -Leaf), $_.Name, $_.Value }
+            } else { "policy {0}: none set" -f (Split-Path $path -Leaf) }
+          }
+
+          try {
+            # The updater is a service on this box; the bootstrapper cannot move
+            # anything while it is disabled, which is how the first attempt
+            # "succeeded" without changing the version.
+            Get-Service -Name 'edgeupdate' -EA SilentlyContinue |
+              Set-Service -StartupType Manual -EA SilentlyContinue
+            Start-Service -Name 'edgeupdate' -EA SilentlyContinue
+
+            $exe = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $exe
+            & $exe '/silent' '/install' | Out-Null
+            "installer exit code: '$LASTEXITCODE'"
+          } catch {
+            "could not update the runtime ($($_.Exception.Message)) — staying on the image's"
+          }
+          "after:  $(& $version)"
+          $global:LASTEXITCODE = 0
+
       # Reads the runner's installed WebView2 version and fetches the matching
       # driver. Not pinned in a file on purpose — the runner image updates its
       # runtime, and a pinned version would break on their schedule.
@@ -88,14 +174,30 @@ jobs:
             npm run test:e2e
           fi
 
+      # After the suite, never before it: the diagnosis launches the app, which
+      # creates the webview's user-data folder — and "a runner that has never
+      # launched this app" is one of the differences it exists to measure. It
+      # cannot fail the job; it explains one.
+      - name: Diagnose the WebDriver attach
+        if: always()
+        continue-on-error: true
+        run: npm run test:e2e:diagnose
+
       # Evidence, not noise: a screenshot and the page source per failed test,
-      # plus the driver log. The suite writes nothing else, and the profile it
-      # used is a temp directory that never leaves the runner.
+      # plus the driver logs and the diagnosis report. The suite writes nothing
+      # else, and the profile it used is a temp directory that never leaves the
+      # runner.
+      #
+      # `include-hidden-files` is not optional here: the directory is
+      # `.artifacts`, and upload-artifact skips dot-paths by default — every run
+      # so far uploaded nothing and logged "No files were found", which is why
+      # four failed nightlies left no evidence to read.
       - name: Upload failure artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-artifacts-windows
           path: uxnandesktop/tests/e2e/.artifacts/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14

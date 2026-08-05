@@ -100,6 +100,56 @@ app that outlives its session is matched on *our* profile directory, killed, and
 test, plus the driver log. The empty-document case above is diagnosable straight
 from the saved HTML.
 
+### When no session starts at all
+
+A different failure, and nothing above explains it: every spec dies in
+`session not created: DevToolsActivePort file doesn't exist` before its first
+assertion. That is the **attach** failing, not the app.
+
+It is also what `e2e-desktop.yml` does on every GitHub-hosted runner, which is
+why **this suite is a local layer** and that workflow is dispatch-only. Measured
+there: the browser process starts with **no `--remote-debugging-port`** (the
+webview itself comes up fine — 6 processes), so nothing is listening.
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is dropped on that machine and honoured
+here. Ruled out: the driver pairing, the runtime version (the runner was forced
+to the same 151.0.4129.59) and `webviewOptions.userDataFolder`. The leads that
+remain are in [`../../FOR-DEV.md`](../../FOR-DEV.md) — don't spend a cycle
+re-deriving any of the above.
+
+```bash
+npm run test:e2e:diagnose
+```
+
+`diagnose-session.mjs` runs the experiment the suite cannot run around itself,
+and prints a verdict:
+
+1. **Does the app expose a debugging endpoint at all?** It launches the release
+   binary with the environment `tauri-driver` arranges
+   (`TAURI_WEBVIEW_AUTOMATION`, plus `--remote-debugging-port` through
+   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`) and asks `/json/version` who
+   answers. Silence means the problem sits below WebDriver.
+2. **Can `msedgedriver` attach?** It drives `msedgedriver` directly — verbose,
+   logging into `.artifacts/` — first with the exact capabilities
+   `tauri-driver` forwards, then with `webviewOptions.userDataFolder` naming the
+   folder Tauri forces the webview to use. Plain failing while scoped succeeds
+   would make the fix a capability the suite can pass, proved rather than
+   guessed.
+
+It asserts nothing and changes nothing; the report is
+`.artifacts/diagnose-session.json`. Same preconditions as the suite — a release
+binary, and no other uxnan running, which it refuses to start without. It reaps
+only what it started, and the name-based sweep is armed **only** after that
+guard passes, so a failure before it can never touch an app you had open.
+
+**A healthy machine, for comparison** (WebView2 151.0.4129.59, 2026-08-04):
+the endpoint answers in **611 ms** and a session is created in **956 ms**. A
+report that instead shows silence at 90 s is not a slow machine — the runner's
+numbers, and what they narrowed the cause to, are in
+[`../../FOR-DEV.md`](../../FOR-DEV.md) → *Make E2E a required gate*. Note that
+`DevToolsActivePort` is absent from the app's own user-data folder **even on a
+green run**: the driver locates the port some other way, so that file missing is
+not itself the fault.
+
 ## Platforms
 
 Windows only for now. `tauri-driver` supports Linux (WebKitWebDriver) and does

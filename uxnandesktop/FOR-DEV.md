@@ -1005,17 +1005,61 @@ go stale; these are the ones worth calling out.
       has the old shapes (missing `isGit`, no terminal profiles, tabs without a
       `kind`, a truncated file) and nothing consumes them yet — so the migration
       path is covered in Rust but never end to end.
-- [ ] **Make E2E a required gate** once `e2e-desktop.yml` has run green for a
-      fortnight. Blocking before it has a track record on that runner is how a
-      gate earns a reputation for false failures. **Its first scheduled run
-      (2026-08-01) failed as pure infrastructure**: all 9 specs died identically
-      in `Failed to create a session` (timeout POSTing `127.0.0.1:4444/session`)
-      — tauri-driver never accepted a session on `windows-latest`, so no spec
-      even started; the same 9-spec suite ran green locally the same night. The
-      runner needs provisioning work (msedgedriver ↔ installed-WebView2 version
-      matching is the first suspect — locally `test:e2e:setup` resolves the
-      driver against the machine's WebView2; the runner's Edge/WebView2 pairing
-      is unverified), and iterating on it needs push-per-attempt CI cycles.
+- [ ] **E2E on a hosted runner: measured, unresolved, and no longer on a
+      schedule.** `e2e-desktop.yml` never passed on `windows-latest` — four
+      nightlies plus three diagnostic dispatches (2026-08-01 … 08-04), all 9
+      specs dying in `session not created: DevToolsActivePort file doesn't exist`
+      before any assertion, while the same suite is green locally. The cron is
+      **removed** (dispatch-only): a permanently red nightly teaches people to
+      ignore CI mail. **E2E is a local layer today**, and the required gate stays
+      out of reach until a runner can attach at all.
+
+      **The cause, measured** (`npm run test:e2e:diagnose`, both sides, same
+      release binary): on the runner the browser process comes up with **no
+      `--remote-debugging-port`** and none of msedgedriver's other switches, so
+      nothing was ever listening. `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is
+      dropped there and honoured here. The env-var channel itself is fine — the
+      webview does pick up msedgedriver's `--user-data-dir`
+      (`C:\Windows\SystemTemp\scoped_dir…`) — so it is the additional
+      *arguments* specifically.
+
+      | | local (green) | runner (red) |
+      |---|---|---|
+      | remote-debugging endpoint | **611 ms** | never, at 90 s |
+      | session, capabilities as sent | **956 ms** | refused at 60 s |
+      | session + `webviewOptions.userDataFolder` | 748 ms | refused at 60 s |
+      | webview processes under automation | — | **6** (browser, gpu, renderer, …) |
+      | of those carrying `--remote-debugging-port` | — | **0** |
+
+      Ruled out, with the evidence, so none of it is re-investigated:
+
+      - **The driver pairing.** `setup-driver.mjs` fetches the matching driver on
+        the runner as it does locally, and a mismatch says so explicitly.
+      - **The app, and the graphics environment.** `resource-benchmarks.yml` is
+        green on the same image, and the diagnosis sees the webview come up
+        under automation too — 6 processes, renderer and GPU included.
+      - **The runtime version.** With the `edgeupdate` service started (it ships
+        `Stopped`, which is why the first attempt was a silent no-op) the
+        bootstrapper does work: the runner ran 151.0.4129.59, byte for byte what
+        the green machine runs, and failed identically.
+      - **`webviewOptions.userDataFolder`.** No difference — and locally
+        `DevToolsActivePort` is absent from that folder on a *passing* run, so it
+        was never the mechanism.
+
+      Two leads, if CI E2E is ever worth another attempt:
+
+      1. **A machine policy stripping the switch.** `HKLM\SOFTWARE\Policies\
+         Microsoft\{Edge,EdgeWebView,EdgeUpdate}` and `…\Windows\WebView2` are
+         **empty** on the machine where the suite passes; the workflow now dumps
+         all four, so one dispatch answers it.
+      2. **Stop routing the switch through the environment.** The app could pass
+         it itself via wry's `additional_browser_args` / Tauri's
+         `additionalBrowserArgs` when a `TAURI_WEBVIEW_AUTOMATION` build asks for
+         it. That is a change to the shipped binary for testability's sake, so it
+         needs a deliberate decision, not a drive-by patch.
+
+      Each attempt costs a push-per-dispatch CI cycle (~35 min, dominated by the
+      release build).
 - [ ] **Multi-window journeys are unproven** with this driver — the pet overlay
       and the browser panel are both separate windows. Find out before promising
       coverage for either.
@@ -1078,8 +1122,10 @@ when an announced state exceeds the evidence. Announced today: **Windows
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
   keeps the default `{ubuntu, windows}`. 488 Rust + 764 Vitest tests (both
-  projects: pure logic and components). E2E runs in its own on-demand/nightly
-  Windows workflow (`e2e-desktop.yml`), deliberately outside the required gate.
+  projects: pure logic and components). E2E has its own **dispatch-only** Windows
+  workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
+  on a hosted runner at all: E2E is a local layer, for the measured reason in the
+  open item above.
 - ✅ **`release-desktop.yml`** — `tauri-action` bundles on a `desktop-*-v*` tag →
   draft GitHub Release, **and signs the updater artifacts** when the signing secrets
   are set. The build now also depends on the **platform-support gate**

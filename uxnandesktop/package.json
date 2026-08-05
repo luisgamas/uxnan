@@ -19,6 +19,7 @@
     "test:dom": "svelte-kit sync && vitest run --project dom",
     "test:watch": "vitest",
     "test:e2e:setup": "node tests/e2e/setup-driver.mjs",
+    "test:e2e:diagnose": "node tests/e2e/diagnose-session.mjs",
     "test:e2e": "wdio run tests/e2e/wdio.conf.mjs",
     "bench:build": "tauri build --no-bundle",
     "bench": "node scripts/resources/run.mjs",
