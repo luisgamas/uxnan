@@ -337,6 +337,15 @@ fn text_of(content: &Value) -> String {
         return s.to_string();
     }
     let Some(arr) = content.as_array() else {
+        // A single block, the shape ACP transcripts use:
+        // `"content": {"type":"text","text":"…"}`.
+        if content.get("type").and_then(|t| t.as_str()) == Some("text") {
+            return content
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string();
+        }
         return String::new();
     };
     arr.iter()
@@ -355,6 +364,11 @@ fn claude_transcript_base() -> Option<PathBuf> {
     crate::agent_hooks::home_dir().map(|h| h.join(".claude"))
 }
 
+/// Where Grok keeps the ACP transcript it points us at, for the same gate.
+fn grok_transcript_base() -> Option<PathBuf> {
+    crate::agent_hooks::home_dir().map(|h| h.join(".grok"))
+}
+
 /// Where Antigravity keeps the transcript it points us at, for the same gate.
 fn antigravity_transcript_base() -> Option<PathBuf> {
     crate::agent_hooks::home_dir().map(|h| h.join(".gemini").join("antigravity-cli"))
@@ -366,6 +380,7 @@ fn transcript_base_for(agent_type: &str) -> Option<PathBuf> {
     match agent_type {
         "claude" => claude_transcript_base(),
         "antigravity" => antigravity_transcript_base(),
+        "grok" => grok_transcript_base(),
         _ => None,
     }
 }
@@ -403,6 +418,12 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
     };
     let mut prompt = None;
     let mut summary = None;
+    // ACP transcripts (Grok) stream a turn as CHUNKS, so the reply has to be
+    // reassembled: taking the last line would show the tail of a sentence. A new
+    // user chunk starts a new turn and drops what came before, leaving the last
+    // turn's reply at the end.
+    let mut acp_prompt = String::new();
+    let mut acp_reply = String::new();
     for line in raw.lines() {
         if line.trim().is_empty() {
             continue;
@@ -410,6 +431,24 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
         let Ok(entry) = serde_json::from_str::<Value>(line) else {
             continue;
         };
+        // ACP shape (Grok): the interesting part is nested under
+        // `params.update`, and `agent_thought_chunk` is the model thinking out
+        // loud — never the answer, so it must not reach the card.
+        if let Some(update) = entry.get("params").and_then(|p| p.get("update")) {
+            let text = update.get("content").map(text_of).unwrap_or_default();
+            match update.get("sessionUpdate").and_then(|u| u.as_str()) {
+                Some("user_message_chunk") => {
+                    if !acp_reply.is_empty() {
+                        acp_prompt.clear();
+                        acp_reply.clear();
+                    }
+                    acp_prompt.push_str(&text);
+                }
+                Some("agent_message_chunk") => acp_reply.push_str(&text),
+                _ => {}
+            }
+            continue;
+        }
         let msg = entry.get("message");
         let role = msg
             .and_then(|m| m.get("role"))
@@ -439,6 +478,15 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
             Some("USER_INPUT") => prompt = Some(text),
             _ => {}
         }
+    }
+    // Reassembled ACP chunks win: a transcript in that shape has nothing else.
+    let acp_reply = tidy(&acp_reply, PREVIEW_MAX);
+    if !acp_reply.is_empty() {
+        summary = Some(acp_reply);
+    }
+    let acp_prompt = tidy(&acp_prompt, PREVIEW_MAX);
+    if !acp_prompt.is_empty() {
+        prompt = Some(acp_prompt);
     }
     (prompt, summary)
 }
@@ -1268,6 +1316,47 @@ mod tests {
         assert!(transcript_base_for("opencode").is_none());
         assert!(transcript_base_for("claude").is_some());
         assert!(transcript_base_for("antigravity").is_some());
+        assert!(transcript_base_for("grok").is_some());
+    }
+
+    #[test]
+    fn transcript_preview_reassembles_groks_acp_chunks() {
+        // Captured from a real `~/.grok/sessions/**/updates.jsonl`: the turn is
+        // streamed as chunks under `params.update`, so the reply has to be put
+        // back together — and the model's thinking must never reach the card.
+        let dir = std::env::temp_dir().join("uxnan-grok-transcript-test");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("updates.jsonl");
+        let chunk = |kind: &str, text: &str| {
+            json!({"method":"session/update","params":{"update":{
+                "sessionUpdate": kind, "content": {"type":"text","text": text}}}})
+            .to_string()
+        };
+        let lines = [
+            chunk("user_message_chunk", "first question"),
+            chunk("agent_message_chunk", "first answer"),
+            chunk("user_message_chunk", "que es uxnan"),
+            chunk(
+                "agent_thought_chunk",
+                "The user wants an explanation, I should",
+            ),
+            chunk("agent_message_chunk", "Uxnan es un monorepo "),
+            chunk("agent_message_chunk", "para controlar agentes"),
+        ]
+        .join(
+            "
+",
+        );
+        std::fs::write(&path, lines).expect("write");
+
+        let (prompt, summary) = transcript_preview(path.to_str().expect("utf-8"));
+        // The LAST turn, reassembled — not the first, and not a tail fragment.
+        assert_eq!(
+            summary.as_deref(),
+            Some("Uxnan es un monorepo para controlar agentes")
+        );
+        assert_eq!(prompt.as_deref(), Some("que es uxnan"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

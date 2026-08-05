@@ -131,13 +131,58 @@ pub async fn generate(agent_id: &str, transcript: &str, cwd: &str) -> Result<Str
         // A title is read-only work: never let it act on the workspace.
         false,
     )
-    .await?;
+    .await
+    .inspect_err(|e| fail(agent_id, &format!("could not run the CLI: {e}")))?;
 
     if result.exit_code != Some(0) {
+        // Every failure is logged because naming is silent by design: the card
+        // just keeps its old label, so without a line here a session that never
+        // gets named leaves no evidence at all of why.
+        fail(
+            agent_id,
+            &format!("exit {:?}: {}", result.exit_code, tail_of(&result.stderr)),
+        );
         return Err(AppError::Agent("the agent failed to name it".to_string()));
     }
-    sanitize_title(&result.stdout)
-        .ok_or_else(|| AppError::Agent("the agent returned no usable title".to_string()))
+    match sanitize_title(&result.stdout) {
+        Some(title) => {
+            crate::diagnostics::log(
+                crate::diagnostics::Level::Info,
+                "convtitle",
+                &format!("{agent_id} named a conversation: {title:?}"),
+            );
+            Ok(title)
+        }
+        None => {
+            fail(
+                agent_id,
+                &format!("no usable title in {:?}", tail_of(&result.stdout)),
+            );
+            Err(AppError::Agent(
+                "the agent returned no usable title".to_string(),
+            ))
+        }
+    }
+}
+
+/// Record why a session went unnamed.
+fn fail(agent_id: &str, detail: &str) {
+    crate::diagnostics::log(
+        crate::diagnostics::Level::Warn,
+        "convtitle",
+        &format!("{agent_id} could not name a conversation — {detail}"),
+    );
+}
+
+/// The end of a CLI's output, short enough for a log line. The tail is what
+/// carries the error; a banner would just push it out of view.
+fn tail_of(text: &str) -> String {
+    let t = text.trim();
+    let chars: Vec<char> = t.chars().collect();
+    if chars.len() <= 200 {
+        return t.to_string();
+    }
+    format!("…{}", chars[chars.len() - 200..].iter().collect::<String>())
 }
 
 /// Keep the **tail** of a transcript, not its head.

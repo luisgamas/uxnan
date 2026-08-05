@@ -36,16 +36,35 @@ describe('conversationTitles', () => {
     expect(generateConversationTitle).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the old label when the agent fails, and does not retry', async () => {
-    generateConversationTitle.mockRejectedValue(new Error('no credit'));
+  it('survives one transient failure, because a blip should not cost the name', async () => {
+    generateConversationTitle.mockRejectedValueOnce(new Error('CLI busy'));
     await conversationTitles.ensure(base);
     expect(conversationTitles.get('tab-1')).toBeUndefined();
 
-    generateConversationTitle.mockResolvedValue('Now it works');
+    // The next `done` gets one more go — a lock held by the interactive session
+    // or a slow cold start used to cost the session its name permanently.
+    generateConversationTitle.mockResolvedValue('Fix JWT expiry on login');
     await conversationTitles.ensure(base);
-    // Naming is cosmetic — retrying it in a loop would spend real quota.
-    expect(generateConversationTitle).toHaveBeenCalledTimes(1);
+    expect(conversationTitles.get('tab-1')).toBe('Fix JWT expiry on login');
+  });
+
+  it('gives up after the second failure rather than burning quota', async () => {
+    generateConversationTitle.mockRejectedValue(new Error('no credit'));
+    await conversationTitles.ensure(base);
+    await conversationTitles.ensure(base);
+    await conversationTitles.ensure(base);
+    await conversationTitles.ensure(base);
+    expect(generateConversationTitle).toHaveBeenCalledTimes(2);
     expect(conversationTitles.get('tab-1')).toBeUndefined();
+  });
+
+  it('never re-names a session that already has a name', async () => {
+    generateConversationTitle.mockResolvedValue('First name');
+    await conversationTitles.ensure(base);
+    generateConversationTitle.mockResolvedValue('Second name');
+    await conversationTitles.ensure(base);
+    expect(conversationTitles.get('tab-1')).toBe('First name');
+    expect(generateConversationTitle).toHaveBeenCalledTimes(1);
   });
 
   it('ignores an empty or whitespace-only title', async () => {

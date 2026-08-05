@@ -15,14 +15,28 @@
 
 import { generateConversationTitle } from '$lib/api';
 
-/** One attempt per session, ever — a title is not worth retrying in a loop. */
+/** In flight, or finished (successfully or not). */
 type Attempt = 'pending' | 'done';
+
+/**
+ * How many times a session may be named before we stop trying.
+ *
+ * Not one: a single transient failure — the CLI busy, a lock held by the
+ * interactive session, a slow cold start — used to cost the session its name
+ * *permanently*, because the first attempt marked it done forever. Not
+ * unbounded either: naming spends real quota, so a session that genuinely
+ * cannot be named must stop asking. Two is the cheapest number that survives a
+ * blip.
+ */
+const MAX_ATTEMPTS = 2;
 
 class ConversationTitles {
   /** tabId → the generated name. */
   private titles = $state<Record<string, string>>({});
-  /** tabId → whether we already tried, so a failure is not retried forever. */
+  /** tabId → whether an attempt is in flight, so two never overlap. */
   private attempts = new Map<string, Attempt>();
+  /** tabId → attempts spent, so a failure is retried once and then dropped. */
+  private tries = new Map<string, number>();
 
   /** The generated name for a session, or undefined while there is none. */
   get(tabId: string): string | undefined {
@@ -48,14 +62,20 @@ class ConversationTitles {
     const { tabId, agentId, transcript, cwd } = input;
     if (!tabId || !agentId || !cwd) return;
     if (!transcript.trim()) return;
-    if (this.attempts.has(tabId)) return;
+    // Never overlap an in-flight attempt, never re-name a named session, and
+    // never exceed the budget.
+    if (this.attempts.get(tabId) === 'pending') return;
+    if (this.titles[tabId]) return;
+    if ((this.tries.get(tabId) ?? 0) >= MAX_ATTEMPTS) return;
 
     this.attempts.set(tabId, 'pending');
+    this.tries.set(tabId, (this.tries.get(tabId) ?? 0) + 1);
     try {
       const title = await generateConversationTitle(agentId, transcript, cwd);
       if (title.trim()) this.titles[tabId] = title.trim();
     } catch {
-      // No credit, CLI missing, timeout — the session keeps its old label.
+      // No credit, CLI missing, timeout — the session keeps its old label, and
+      // the next `done` gets one more go. The backend logs why (`[convtitle]`).
     } finally {
       this.attempts.set(tabId, 'done');
     }
@@ -65,12 +85,14 @@ class ConversationTitles {
   forget(tabId: string): void {
     delete this.titles[tabId];
     this.attempts.delete(tabId);
+    this.tries.delete(tabId);
   }
 
   /** Test seam: drop everything. */
   reset(): void {
     this.titles = {};
     this.attempts.clear();
+    this.tries.clear();
   }
 }
 

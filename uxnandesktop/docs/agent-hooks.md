@@ -157,9 +157,10 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
   works it shows the current tool; once the turn ends it shows the reply. That
   reply has to come from somewhere, and measured across a real run of every
   wired agent **only Claude fills the hook's `summary`** (15 of 34 reports;
-  codex, opencode, pi, grok and antigravity report none). Antigravity is covered
-  because it hands us a `transcriptPath` and the reader understands its record
-  shape. Everything else keeps showing its **status**, which is the honest
+  codex, opencode, pi, grok and antigravity report none). Antigravity and Grok are covered
+  because they hand us a `transcriptPath` and the reader understands their
+  record shapes (Antigravity's flat records; Grok's ACP chunks, which are
+  reassembled per turn, excluding its `agent_thought_chunk` thinking). Everything else keeps showing its **status**, which is the honest
   fallback — and the one that scales, since any CLI can be driven here. To add
   an agent, give it a transcript root in `transcript_base_for` and teach the
   reader its records; never scrape the terminal, which renders a UI, not data.

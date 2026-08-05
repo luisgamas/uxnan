@@ -73,7 +73,26 @@ agent's own home, never anywhere else. An agent with no known transcript root
 dereferences nothing and keeps showing its status, which stays the honest
 fallback for any CLI that reports neither.
 
-Desktop suites **770 frontend / 500 Rust**.
+### Added — Grok's card shows its reply too, and naming survives a blip
+
+Grok hands us a `transcriptPath` in its payload just like Antigravity, so its
+reply is available as data. Its transcript is **ACP-shaped and streamed in
+chunks**, so the reply is reassembled rather than read off the last line (which
+would show the tail of a sentence), a new user chunk starts a new turn, and
+`agent_thought_chunk` — the model thinking out loud — is never mistaken for the
+answer. Verified against a real `~/.grok/sessions/**/updates.jsonl`.
+
+**Naming now gets a second chance.** It used to be one attempt per session ever:
+right about quota, wrong about transient failures, since a CLI that was busy or
+cold cost that session its name *permanently*. Two attempts is the cheapest
+number that survives a blip, and a named session still never re-names.
+
+**And it says why it failed.** Naming is silent by design — the card just keeps
+its old label — so a session that never got named left no evidence at all. Every
+outcome is now logged under `[convtitle]`, with the tail of the CLI's own output
+on failure.
+
+Desktop suites **772 frontend / 501 Rust**.
 
 
 ## [0.0.27] - 2026-08-04
