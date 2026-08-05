@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — Grok reports its token usage, so context and stats work for it
+
+Grok was the only wired agent reporting no usage at all, which left the phone
+with no context indicator and no consumption stats for it. Two causes, both
+found by running the real CLI against a local sink and reading its own ACP
+transcript:
+
+- **Its stream arrives on two methods.** The adapter accepted only
+  `session/update`, but Grok emits `turn_completed` — the update that carries
+  the usage block — on **`_x.ai/session/update`**. Every usage report was
+  dropped before it was ever parsed.
+- **The capability said it had none.** `reportsContextUsage` was `false` with a
+  `FOR-DEV` noting it was unverified because the account was balance-blocked.
+  It reports a full block: `{ inputTokens, outputTokens, totalTokens,
+  cachedReadTokens, reasoningTokens }`.
+
+`totalTokens` is used as the turn's size, falling back to input + output.
+`cachedReadTokens` is a subset of `inputTokens` (as in Codex's
+`cached_input_tokens`) and is not added, or it would double-count. The context
+window comes from the model cache, which already carries Grok's own
+`totalContextTokens` from the ACP handshake.
+
+
 ## [0.0.16-alpha.20260804] - 2026-08-04
 
 ### Added — the bridge names a conversation instead of reusing its first words

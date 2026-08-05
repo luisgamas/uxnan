@@ -120,6 +120,20 @@ class _EnumControl extends ConsumerWidget {
   /// (`showMenu` returns null) is distinguishable from picking "Auto".
   static const String _autoValue = '__uxnan_run_option_auto__';
 
+  /// Waits for the software keyboard to finish collapsing.
+  ///
+  /// It animates away over several frames, so anchoring a menu immediately
+  /// after `unfocus()` measures a viewport that is about to change. Bounded, so
+  /// a platform that reports no inset (or never reaches zero) cannot hang the
+  /// tap — the menu just opens against whatever space there is.
+  static Future<void> _keyboardSettled(BuildContext context) async {
+    for (var frame = 0; frame < 25; frame++) {
+      if (!context.mounted) return;
+      if (MediaQuery.viewInsetsOf(context).bottom == 0) return;
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
@@ -144,19 +158,34 @@ class _EnumControl extends ConsumerWidget {
     WidgetRef ref,
   ) async {
     final notifier = ref.read(runOptionSelectionsProvider.notifier);
+
+    // This button sits directly above the keyboard, and the menu is anchored to
+    // it — so with the keyboard up the menu opens underneath it, out of reach.
+    // Keeping the composer's focus (which is what `requestFocus: false` alone
+    // did) preserved the keyboard, and the keyboard IS the problem. Dropping
+    // focus dismisses it; the composer's text is untouched.
+    // Captured before the gap. Only the render objects are held, never a
+    // position: `positionBuilder` below asks them for their global rect on
+    // every layout, so the anchor follows the button down as the keyboard
+    // collapses instead of pointing at where it used to be.
     final button = context.findRenderObject()! as RenderBox;
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final menuContext = context;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _keyboardSettled(context);
+    if (!menuContext.mounted) return;
     final value = await showMenu<String?>(
-      context: context,
+      context: menuContext,
       // Recompute the anchor after every layout change. This keeps the menu on
       // the reasoning button even if the keyboard changes the usable height.
       positionBuilder: (_, __) => RelativeRect.fromRect(
         button.localToGlobal(Offset.zero, ancestor: overlay) & button.size,
         Offset.zero & overlay.size,
       ),
-      // A run-option menu should not steal the composer's text focus or close
-      // the software keyboard merely because it opened.
+      // The menu still must not take focus for itself — the keyboard is already
+      // gone by now, and letting it grab focus would bring it back.
       requestFocus: false,
       constraints: const BoxConstraints(minWidth: 200),
       items: [

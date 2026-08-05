@@ -59,6 +59,20 @@ It is now a `ShapeBorder` on the bubble's own decoration, so it is stroked on
 exactly the shape being filled and cannot drift from it, and it animates with
 the rest of the decoration rather than independently.
 
+### Fixed — the reasoning-effort menu is no longer trapped under the keyboard
+
+Entering a conversation focuses the composer, so the keyboard is up. The effort
+button sits directly above it and the menu is anchored to that button, which put
+the menu underneath the keyboard and out of reach. `requestFocus: false` had
+been added so the menu would not close the keyboard — but the keyboard is the
+problem, so that is what kept the bug.
+
+Tapping the button now drops focus and waits for the viewport to settle before
+anchoring, so the menu opens in the space the keyboard vacated. The anchor is
+measured after the wait (the button moves down as the keyboard collapses), the
+wait is bounded so a platform that reports no inset cannot hang the tap, and the
+composer's text is untouched — only its keyboard is dismissed.
+
 Mobile suite **839 passing**.
 
 

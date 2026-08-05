@@ -266,8 +266,9 @@ void main() {
     }
   });
 
-  testWidgets('reasoning menu keeps composer focus and keyboard intent',
-      (tester) async {
+  testWidgets(
+      'reasoning menu drops composer focus so the keyboard gets out '
+      'of its way', (tester) async {
     final focusNode = FocusNode();
     addTearDown(focusNode.dispose);
     const option = AgentModelOption(
@@ -306,6 +307,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('High'), findsOneWidget);
-    expect(focusNode.hasFocus, isTrue);
+    // The shelf sits directly above the keyboard and the menu is anchored to
+    // it, so holding the composer's focus kept the keyboard up and left the
+    // menu rendered underneath it, out of reach. Dropping focus is what puts
+    // the menu back on screen; the composer's text is untouched.
+    expect(focusNode.hasFocus, isFalse);
   });
 }

@@ -361,17 +361,14 @@ push validation (FOR-HUMAN).
 - [ ] **Grok live-turn verification (balance-blocked)** — the ACP envelope,
       handshake and model discovery were exercised against a live `grok 0.2.93`, but
       a real turn could **not** be run because the test account's Grok Build balance
-      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). Re-verify against a
-      funded account: the per-turn `session/update` `tool_call`/`plan` shapes and
+      was exhausted (HTTP 402 from `cli-chat-proxy.grok.com`). A funded account has
+      since confirmed the hook vocabulary and **token usage** (both shipped); still
+      to re-verify on a real turn: the per-turn `session/update` `tool_call`/`plan` shapes and
       arg names (`grok-tools.ts` assumes ACP-standard `kind`/`rawInput`/`content`),
-      the `session/request_permission` option `kind`s, whether Grok emits token
-      usage, and whether `session/set_mode { modeId: <effort> }` actually applies the
+      the `session/request_permission` option `kind`s, and whether
+      `session/set_mode { modeId: <effort> }` actually applies the
       reasoning effort (it accepts any modeId without error). See the FOR-DEV notes
       in `grok-adapter.ts` / `grok-tools.ts`.
-- [ ] **Grok token usage** — like Zero, `GrokAdapter` reports
-      `reportsContextUsage:false` (no per-turn usage was observed over ACP). If Grok
-      exposes usage (its `/context` command implies it tracks it), emit `usage` on
-      `stream/turn/completed` so the phone's context meter lights up.
 ### Adding the next agent (recipe — do these one by one)
 
 Pick the template that matches the CLI's headless surface. For a **one-shot

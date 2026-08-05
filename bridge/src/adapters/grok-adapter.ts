@@ -81,9 +81,11 @@ const GROK_CAPABILITIES: AgentCapabilities = {
   // and Grok opens it with its own file tools. Verified against `grok --print`
   // with a four-quadrant probe image, which it described correctly.
   images: true,
-  // ACP `session/prompt` returns only `{ stopReason }`; no per-turn token usage
-  // was observed (FOR-DEV: verify once a Grok turn can run — balance-blocked).
-  reportsContextUsage: false,
+  // `session/prompt` itself returns only `{ stopReason }`, but the stream's
+  // `turn_completed` update carries a full `usage` block — captured from a real
+  // run: `{ inputTokens, outputTokens, totalTokens, cachedReadTokens,
+  // reasoningTokens }`.
+  reportsContextUsage: true,
   // ACP advertises slash commands via `available_commands_update` (captured below).
   commands: true,
 };
@@ -131,7 +133,25 @@ interface ActiveRun {
   emitted: Set<string>;
   /** How this run answers permission prompts (from the thread's access mode). */
   posture: PermissionPosture;
+  /** Context-occupying tokens from the stream's `turn_completed`, if it said. */
+  tokens?: number;
   finished: boolean;
+}
+
+/**
+ * Context-occupying tokens from Grok's `turn_completed` usage block.
+ *
+ * `totalTokens` is what Grok itself reports as the turn's size; falling back to
+ * `inputTokens + outputTokens` covers a build that omits it.
+ * `cachedReadTokens` is a SUBSET of `inputTokens` (as in Codex's
+ * `cached_input_tokens`), so adding it would double-count.
+ */
+export function grokUsageTokens(usage: unknown): number | undefined {
+  if (!isRecord(usage)) return undefined;
+  const total = num(usage['totalTokens']);
+  if (total > 0) return Math.round(total);
+  const sum = num(usage['inputTokens']) + num(usage['outputTokens']);
+  return sum > 0 ? Math.round(sum) : undefined;
 }
 
 /** One model as reported by Grok's ACP `modelState.availableModels`. */
@@ -447,7 +467,11 @@ export class GrokAdapter extends BaseAgentAdapter {
 
   /** Route a `session/update` notification to the run + bridge events. */
   #onNotification(method: string, params: unknown): void {
-    if (method !== 'session/update') return;
+    // Grok splits its stream across two methods: the plain ACP `session/update`
+    // and its own `_x.ai/session/update`, which is where `turn_completed` — and
+    // with it the turn's token usage — actually arrives. Accepting only the
+    // former dropped every usage report on the floor.
+    if (method !== 'session/update' && method !== '_x.ai/session/update') return;
     const p = isRecord(params) ? params : {};
     const update = isRecord(p['update']) ? p['update'] : {};
     // Slash-command availability is session-scoped and can arrive before any
@@ -470,6 +494,11 @@ export class GrokAdapter extends BaseAgentAdapter {
             data: { text },
           });
         }
+        return;
+      }
+      case 'turn_completed': {
+        const tokens = grokUsageTokens(update['usage']);
+        if (tokens !== undefined) run.tokens = tokens;
         return;
       }
       case 'agent_thought_chunk': {
@@ -617,12 +646,34 @@ export class GrokAdapter extends BaseAgentAdapter {
       this.emit({ type: 'turn_aborted', threadId: run.threadId, turnId: run.bridgeTurnId });
       return;
     }
+    const contextWindow = this.#currentContextWindow();
     this.emit({
       type: 'turn_completed',
       threadId: run.threadId,
       turnId: run.bridgeTurnId,
-      data: { text: run.full },
+      data: {
+        text: run.full,
+        ...(run.tokens !== undefined
+          ? {
+              usage: {
+                tokens: run.tokens,
+                ...(contextWindow !== undefined ? { contextWindow } : {}),
+              },
+            }
+          : {}),
+      },
     });
+  }
+
+  /** The context window of the model this session runs on, when known.
+   *
+   * Grok reports it per model on the ACP handshake, so it is already in the
+   * model cache; without it the phone can show a token count but no share of
+   * the window. */
+  #currentContextWindow(): number | undefined {
+    const models = this.#modelsCache ?? [];
+    const current = models.find((m) => m.isDefault) ?? models[0];
+    return current?.contextWindow;
   }
 
   #finishError(run: ActiveRun, text: string): void {
