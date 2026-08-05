@@ -355,6 +355,21 @@ fn claude_transcript_base() -> Option<PathBuf> {
     crate::agent_hooks::home_dir().map(|h| h.join(".claude"))
 }
 
+/// Where Antigravity keeps the transcript it points us at, for the same gate.
+fn antigravity_transcript_base() -> Option<PathBuf> {
+    crate::agent_hooks::home_dir().map(|h| h.join(".gemini").join("antigravity-cli"))
+}
+
+/// The transcript root an agent's `transcriptPath` must live under, or `None`
+/// when we know of no transcript for that agent (and so dereference nothing).
+fn transcript_base_for(agent_type: &str) -> Option<PathBuf> {
+    match agent_type {
+        "claude" => claude_transcript_base(),
+        "antigravity" => antigravity_transcript_base(),
+        _ => None,
+    }
+}
+
 /// Whether a request-supplied `transcript_path` may be dereferenced: it must be a
 /// `.jsonl` file that, once canonicalized, lives inside the canonicalized `base`
 /// (the user's `~/.claude` home). Canonicalizing both sides collapses any `..`
@@ -400,7 +415,10 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
             .and_then(|m| m.get("role"))
             .and_then(|r| r.as_str())
             .or_else(|| entry.get("type").and_then(|t| t.as_str()));
-        let content = msg.and_then(|m| m.get("content"));
+        // Claude nests the text under `message`; Antigravity's records are flat.
+        let content = msg
+            .and_then(|m| m.get("content"))
+            .or_else(|| entry.get("content"));
         let text = content.map(text_of).unwrap_or_default();
         let text = tidy(&text, PREVIEW_MAX);
         if text.is_empty() {
@@ -409,6 +427,16 @@ fn transcript_preview(path: &str) -> (Option<String>, Option<String>) {
         match role {
             Some("user") => prompt = Some(text),
             Some("assistant") => summary = Some(text),
+            // Antigravity's records are flat and speak their own vocabulary:
+            // `{"source":"MODEL","type":"PLANNER_RESPONSE","content":"…"}` for a
+            // reply, `USER_INPUT` for the turn that asked for it. Verified
+            // against real transcripts under `~/.gemini/antigravity-cli/brain/`.
+            Some("PLANNER_RESPONSE")
+                if entry.get("source").and_then(Value::as_str) == Some("MODEL") =>
+            {
+                summary = Some(text)
+            }
+            Some("USER_INPUT") => prompt = Some(text),
             _ => {}
         }
     }
@@ -769,20 +797,24 @@ async fn handle_hook(
         .or_else(|| source.and_then(source_tool));
     let mut summary = body_get("summary").filter(|s| !s.trim().is_empty());
 
-    // On a Claude completion, enrich with the task + a short response preview,
-    // read from the session transcript the hook pointed us at.
-    if status == AgentStatus::Done && agent_type.as_deref() == Some("claude") {
-        if let Some(tp) = source
-            .and_then(|s| s.get("transcript_path"))
-            .and_then(|v| v.as_str())
-        {
+    // On a completion, enrich with the task + a short response preview, read
+    // from the session transcript the hook pointed us at. Only Claude fills the
+    // hook's own `summary` (measured across a real run of every wired agent), so
+    // for the others this file IS the reply — without it their card can only ever
+    // show a bare status.
+    if status == AgentStatus::Done {
+        let base = agent_type.as_deref().and_then(transcript_base_for);
+        if let (Some(base), Some(tp)) = (
+            base,
+            source
+                .and_then(|s| s.get("transcript_path").or_else(|| s.get("transcriptPath")))
+                .and_then(|v| v.as_str()),
+        ) {
             // Only dereference a request-supplied path that is a `.jsonl`
             // transcript inside the user's `~/.claude` home — never an arbitrary
             // readable file a token-holding caller named. On any failure the
             // report still succeeds, just without the preview.
-            let allowed = claude_transcript_base()
-                .map(|base| transcript_path_allowed(Path::new(tp), &base))
-                .unwrap_or(false);
+            let allowed = transcript_path_allowed(Path::new(tp), &base);
             if allowed {
                 let (t_prompt, t_summary) = transcript_preview(tp);
                 if let Some(p) = t_prompt {
@@ -1193,6 +1225,49 @@ mod tests {
         // Unknown event / agent → ignored, never a bogus state.
         assert_eq!(normalize_event("claude", "What", None), None);
         assert_eq!(normalize_event("mystery", "Stop", None), None);
+    }
+
+    #[test]
+    fn transcript_preview_reads_antigravitys_own_record_shape() {
+        // Captured from a real `~/.gemini/antigravity-cli/brain/**/
+        // transcript_full.jsonl`: flat records, not Claude's `{message:{role}}`,
+        // and the reply is the LAST `MODEL`/`PLANNER_RESPONSE`.
+        let dir = std::env::temp_dir().join("uxnan-agy-transcript-test");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("transcript_full.jsonl");
+        let lines = [
+            json!({"source":"USER_EXPLICIT","type":"USER_INPUT","content":"que es esta app"}),
+            json!({"source":"SYSTEM","type":"CONVERSATION_HISTORY","content":""}),
+            json!({"source":"MODEL","type":"VIEW_FILE","content":"File Path: `README.md`"}),
+            json!({"source":"MODEL","type":"PLANNER_RESPONSE","content":"Uxnan es una plataforma para controlar agentes"}),
+            json!({"source":"SYSTEM","type":"CHECKPOINT","content":"{{ CHECKPOINT 0 }}"}),
+        ]
+        .map(|v| v.to_string())
+        .join("\n");
+        std::fs::write(&path, lines).expect("write");
+
+        let (prompt, summary) = transcript_preview(path.to_str().expect("utf-8"));
+        assert_eq!(prompt.as_deref(), Some("que es esta app"));
+        assert_eq!(
+            summary.as_deref(),
+            Some("Uxnan es una plataforma para controlar agentes"),
+            "a tool record or the checkpoint must not be mistaken for the reply"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_transcript_outside_its_agents_home_is_never_dereferenced() {
+        // The path is request-supplied, so the gate is what stops a token-holding
+        // caller pointing the preview at any readable file.
+        let base = std::env::temp_dir().join("uxnan-base");
+        assert!(!transcript_path_allowed(
+            Path::new("/etc/passwd.jsonl"),
+            &base
+        ));
+        assert!(transcript_base_for("opencode").is_none());
+        assert!(transcript_base_for("claude").is_some());
+        assert!(transcript_base_for("antigravity").is_some());
     }
 
     #[test]

@@ -57,7 +57,23 @@ Registration is already per event, so the event name now travels as the
 reporter's second argument and arrives as `X-Uxnan-Event`, which the server
 prefers over anything it can dig out of the body.
 
-Desktop suites **770 frontend / 498 Rust**.
+### Added — Antigravity's card shows its reply, not just a status
+
+The second line can only show what an agent actually reports, and measured
+across a real run of every wired agent **only Claude fills the hook's
+`summary`** (claude 15 of 34 reports; codex, opencode, pi, grok, antigravity:
+zero). Antigravity, though, hands us a `transcriptPath` in its payload, so its
+reply is available as data rather than as scraped terminal text.
+
+The existing Claude transcript reader now serves both: it learned Antigravity's
+flat record shape (`{"source":"MODEL","type":"PLANNER_RESPONSE","content":…}`
+instead of Claude's `{message:{role,content}}`) and its transcript root, keeping
+the same path gate — a request-supplied path is dereferenced only inside that
+agent's own home, never anywhere else. An agent with no known transcript root
+dereferences nothing and keeps showing its status, which stays the honest
+fallback for any CLI that reports neither.
+
+Desktop suites **770 frontend / 500 Rust**.
 
 
 ## [0.0.27] - 2026-08-04

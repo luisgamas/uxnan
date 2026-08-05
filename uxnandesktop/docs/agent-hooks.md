@@ -153,6 +153,16 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
   Grok report and left the card stuck on **working** forever, since nothing else
   could move it. Both spellings are accepted; if you add an event, add it to the
   snake_case path too.
+- **What the card's second line can say depends on the agent.** While an agent
+  works it shows the current tool; once the turn ends it shows the reply. That
+  reply has to come from somewhere, and measured across a real run of every
+  wired agent **only Claude fills the hook's `summary`** (15 of 34 reports;
+  codex, opencode, pi, grok and antigravity report none). Antigravity is covered
+  because it hands us a `transcriptPath` and the reader understands its record
+  shape. Everything else keeps showing its **status**, which is the honest
+  fallback — and the one that scales, since any CLI can be driven here. To add
+  an agent, give it a transcript root in `transcript_base_for` and teach the
+  reader its records; never scrape the terminal, which renders a UI, not data.
 - **Antigravity names no event in its payload.** Measured against the real CLI,
   its bodies carry `invocationNum` / `fullyIdle` / `terminationReason` and no
   event field, so a report had nothing to identify it and was dropped — the
