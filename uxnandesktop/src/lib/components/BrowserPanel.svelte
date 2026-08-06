@@ -7,9 +7,16 @@
   // commands) — a real system webview, so it loads any site (Google included) and
   // has real DevTools. We glue that window over this slot: every frame we measure
   // the slot's rect and, when it changes, push it to the backend, which converts it
-  // to screen coords and repositions the owned window. We hide the window whenever
-  // the slot isn't visible (panel closed, or the Settings overlay is on top), since
-  // an owned window always paints above the main one.
+  // to screen coords and repositions the owned window.
+  //
+  // An owned native window ALWAYS paints above its owner's web content — no
+  // `z-index` can put anything in front of it — so the window must be hidden
+  // whenever something in the main window has to be on top. That is: the slot is
+  // gone or zero-sized, the app is hidden, a full-screen view (Settings /
+  // Automations) covers the panels, or a floating layer (dialog, menu, popover,
+  // select) overlaps the slot. The last one comes from `$lib/overlayLayer`, which
+  // the shared `ui/` primitives register themselves with — so every dialog in the
+  // app, present and future, opens *in front of* the browser instead of behind it.
   //
   // In the web preview (no Tauri) the window commands throw and we show a hint.
 
@@ -30,6 +37,7 @@
     openExternal,
   } from "$lib/api";
   import { app } from "$lib/state/app.svelte";
+  import { overlayCovers } from "$lib/overlayLayer";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
@@ -53,12 +61,19 @@
   type Bounds = { x: number; y: number; w: number; h: number };
 
   /** Slot geometry in CSS (logical) px relative to the main window content, or
-   *  null when the slot shouldn't show the window (hidden / Settings overlay). */
+   *  null when the window must not be shown right now — the slot is gone, a
+   *  full-screen view covers the panels, the app is hidden, or something in the
+   *  DOM has to be in front of the page (see the header note). */
   function measure(): Bounds | null {
-    if (!slot || app.settingsOpen) return null;
+    if (!slot || app.settingsOpen || app.automationsOpen) return null;
     if (document.visibilityState === "hidden") return null;
     const r = slot.getBoundingClientRect();
     if (r.width <= 1 || r.height <= 1) return null;
+    // A dialog/menu/popover over the slot has to win: it lives in the DOM, which
+    // can never paint above this native window, so the window steps aside. Only
+    // layers that actually OVERLAP the slot count — a menu in the left sidebar
+    // has no business blanking the page on the far right.
+    if (overlayCovers(r)) return null;
     return {
       x: Math.round(r.left),
       y: Math.round(r.top),

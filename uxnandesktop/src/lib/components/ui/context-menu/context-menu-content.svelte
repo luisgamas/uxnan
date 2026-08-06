@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { cn } from "$lib/utils.js";
 	import { ContextMenu as ContextMenuPrimitive } from "bits-ui";
+	import { registerOverlay } from "$lib/overlayLayer.js";
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		...restProps
 	}: ContextMenuPrimitive.ContentProps = $props();
+
+	// Hide the integrated browser's native window while this menu sits over it,
+	// or it opens behind the page (see `$lib/overlayLayer`).
+	$effect(() => registerOverlay(ref));
 </script>
 
 <ContextMenuPrimitive.Portal>

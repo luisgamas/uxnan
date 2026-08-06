@@ -3,6 +3,7 @@
 	import PopoverPortal from "./popover-portal.svelte";
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 	import type { ComponentProps } from "svelte";
+	import { registerOverlay } from "$lib/overlayLayer.js";
 
 	let {
 		ref = $bindable(null),
@@ -14,6 +15,10 @@
 	}: PopoverPrimitive.ContentProps & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof PopoverPortal>>;
 	} = $props();
+
+	// Hide the integrated browser's native window while this popover sits over it,
+	// or it opens behind the page (see `$lib/overlayLayer`).
+	$effect(() => registerOverlay(ref));
 </script>
 
 <PopoverPortal {...portalProps}>

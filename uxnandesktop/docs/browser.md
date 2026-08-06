@@ -176,6 +176,30 @@ Cursor's `cursor-agent`, Grok, amp, Pi, …) is three edits in `src-tauri/src/mc
 Then add the agent's id to the frontend's per-agent toggle list. Nothing else
 changes — injection, merging and cleanup are format-driven.
 
+## Dialogs and menus over the browser
+
+The page is a real **native window**, not DOM, and on every platform an owned
+window paints above its owner's web content — no amount of `z-index` can put a
+uxnan dialog in front of it. So the browser **steps aside on its own**: whenever a
+dialog, menu, popover or select overlaps the browser panel, the page window hides
+until it closes, and then comes straight back on the same URL.
+
+That is why adding a project, picking a folder, opening a context menu or any
+other overlay now works normally with the browser open, instead of the dialog
+opening *behind* the page and being unclickable.
+
+Two details worth knowing:
+
+- Only overlays that **actually overlap** the panel hide the page — a menu on the
+  far side of the window leaves your preview alone.
+- **Tooltips are excluded** on purpose: they are transient and non-interactive,
+  and the browser toolbar's own tooltips open right over the page, so honouring
+  them would blank the preview on every hover. A tooltip that lands over the page
+  stays behind it.
+
+The same rule covers the full-screen views (Settings, Automations): they cover
+the panels, so the page hides while either is open.
+
 ## Performance
 
 The browser only consumes resources while the panel is open: the webview window is
@@ -189,5 +213,8 @@ Keep heavy pages closed when you don't need them.
   profiles or extensions).
 - The page is a separate (owned) window glued over the panel, so during a fast
   app-window resize it may lag a frame before it catches up.
+- Because it is a native window, anything uxnan draws over it has to hide it
+  first (see *Dialogs and menus over the browser*): while a dialog is open the
+  panel shows an empty slot instead of the page.
 - The `$BROWSER` auto-interception only covers tools that honor that convention; for
   others, use the explicit `curl` call above.

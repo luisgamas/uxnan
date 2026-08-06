@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils.js";
+	import { registerOverlay } from "$lib/overlayLayer.js";
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		...restProps
 	}: DropdownMenuPrimitive.SubContentProps = $props();
+
+	// A submenu reaches past its parent menu — register it too, so it can't land
+	// behind the integrated browser's native window (see `$lib/overlayLayer`).
+	$effect(() => registerOverlay(ref));
 </script>
 
 <DropdownMenuPrimitive.SubContent

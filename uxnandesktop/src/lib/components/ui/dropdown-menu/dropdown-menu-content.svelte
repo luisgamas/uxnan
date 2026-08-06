@@ -3,6 +3,7 @@
 	import DropdownMenuPortal from "./dropdown-menu-portal.svelte";
 	import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
 	import type { ComponentProps } from "svelte";
+	import { registerOverlay } from "$lib/overlayLayer.js";
 
 	let {
 		ref = $bindable(null),
@@ -14,6 +15,10 @@
 	}: DropdownMenuPrimitive.ContentProps & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof DropdownMenuPortal>>;
 	} = $props();
+
+	// Hide the integrated browser's native window while this menu sits over it,
+	// or the menu opens behind the page (see `$lib/overlayLayer`).
+	$effect(() => registerOverlay(ref));
 </script>
 
 <DropdownMenuPortal {...portalProps}>

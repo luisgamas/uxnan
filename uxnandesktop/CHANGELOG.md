@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — dialogs open in front of the integrated browser
+
+With the browser panel open, adding a project (or any other dialog, menu or
+popover that reached the panel) opened **behind** the page and could not be
+clicked. The page is not DOM: it is a real child `WebviewWindow` docked over the
+panel, and an owned native window always paints above its owner's web content, so
+no `z-index` could ever put a dialog in front of it. The window has to hide
+instead — until now only the Settings overlay did that.
+
+- Floating layers now register themselves in a small module
+  (`$lib/overlayLayer`) from the shared `ui/` primitives — dialog scrim, dropdown
+  and context menus (including submenus), popovers and selects — so the browser
+  steps aside for **every** dialog in the app, including ones added later, and no
+  feature component has to know the browser exists.
+- The test is **overlap**, not "something is open": a menu in the left sidebar no
+  longer has any effect on a preview on the far right. Tooltips are deliberately
+  excluded — the browser toolbar's own tooltips open over the page, so honouring
+  them would blank the preview on every hover.
+- **Automations** joins Settings as a full-screen view that hides the page. It
+  covers the panels exactly like Settings, so the browser used to paint straight
+  over it.
+
 ## [0.0.28] - 2026-08-05
 
 ### Fixed — every agent gets a conversation name, and Grok's status unsticks
