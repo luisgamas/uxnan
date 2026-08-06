@@ -1,120 +1,139 @@
-import { Coffee, Scale, ShieldCheck, Star } from "lucide-react";
-
-import { DownloadButton } from "@/components/site/download-button";
-import { LinkButton } from "@/components/ui/button";
-import { links } from "@/lib/site";
-
-const PILLARS = [
-  {
-    icon: Scale,
-    title: "MPL-2.0",
-    body: "Apps, bridge, relay, contracts. Fork it, audit it, ship your own build.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Open protocol",
-    body: "E2EE and JSON-RPC are written in the public repo — not reverse-engineered from a binary.",
-  },
-] as const;
+import { Coffee, Heart } from "lucide-react";
+import { DownloadButton } from "@/components/download-button";
+import { Reveal } from "@/components/reveal";
+import { LICENSE, LINKS, SITE } from "@/lib/site";
 
 export function Cta() {
   return (
-    <section
-      id="download"
-      className="section relative isolate overflow-hidden border-y border-border/70"
-    >
+    <section className="relative isolate overflow-hidden py-24 sm:py-32">
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 bg-accent-tint"
+        className="pointer-events-none absolute inset-0"
         style={{
-          backgroundImage:
-            "linear-gradient(180deg, color-mix(in oklab, var(--accent) 11%, var(--accent-tint)) 0%, var(--accent-tint) 58%, var(--accent-tint) 100%)",
+          background:
+            "radial-gradient(50% 60% at 50% 100%, rgba(27,110,243,0.16), transparent 72%)",
         }}
       />
 
-      <div className="shell text-center">
-        <p className="eyebrow justify-center" data-reveal>
-          <span className="size-1.5 rounded-full bg-positive" />
-          Open source
-        </p>
+      <div className="wrap relative text-center">
+        <Reveal>
+          <h2 className="display mx-auto max-w-[16ch] text-[clamp(2.1rem,5vw,3.6rem)]">
+            Give your agents somewhere to work.
+          </h2>
+          <p className="mx-auto mt-6 max-w-[54ch] text-[1.0625rem] leading-relaxed text-muted">
+            Install it, sign your agents in the way you already do, and let them
+            run. Your machine stays usable, and your phone keeps the thread.
+          </p>
 
-        <h2
-          className="mx-auto mt-5 max-w-[18ch] text-[clamp(2rem,4vw,3.25rem)] font-semibold"
-          data-reveal
-          data-reveal-delay="60"
-        >
-          Start with the app that hurts less to wait on.
-        </h2>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            <DownloadButton />
+            <a
+              href={LINKS.play}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl border border-line px-5 py-3 text-[15px] text-muted transition-colors hover:border-line-2 hover:text-fg"
+            >
+              Get it on Google Play
+            </a>
+          </div>
 
-        <p
-          className="mx-auto mt-6 max-w-[48ch] text-[clamp(1.0625rem,1.4vw,1.1875rem)] leading-[1.7] text-muted-foreground"
-          data-reveal
-          data-reveal-delay="120"
-        >
-          Desktop for a light PC workspace. Mobile for remote control without a vendor
-          leash. Same public repository either way — no paid tier at the bottom of the
-          page.
-        </p>
-
-        <div className="mt-11 flex justify-center" data-reveal data-reveal-delay="180">
-          <DownloadButton
-            secondary="link"
-            extra={
-              <LinkButton
-                href={links.github}
-                target="_blank"
-                rel="noreferrer noopener"
-                variant="secondary"
-                size="lg"
-                className="w-full sm:w-auto"
-              >
-                <Star className="size-[18px]" aria-hidden />
-                Star on GitHub
-              </LinkButton>
-            }
-          />
-        </div>
-
-        <div className="mx-auto mt-16 grid max-w-[40rem] gap-8 text-left sm:grid-cols-2">
-          {PILLARS.map((pillar, index) => (
-            <div key={pillar.title} data-reveal data-reveal-delay={index * 70}>
-              <span className="mb-4 grid size-10 place-items-center rounded-xl border border-accent/20 bg-surface-raised text-accent">
-                <pillar.icon className="size-[18px]" aria-hidden />
-              </span>
-              <h3 className="text-[1.0625rem] font-semibold">{pillar.title}</h3>
-              <p className="mt-2 text-[15px] leading-[1.7] text-muted-foreground">
-                {pillar.body}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <p
-          className="mx-auto mt-14 flex max-w-[52ch] flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[15px] text-muted-foreground"
-          data-reveal
-        >
-          <Coffee className="size-4 text-faint-foreground" aria-hidden />
-          Built in spare time.
-          <a
-            href={links.sponsor}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="font-medium text-accent hover:underline"
-          >
-            Sponsoring
-          </a>
-          or
-          <a
-            href={links.coffee}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="font-medium text-accent hover:underline"
-          >
-            a coffee
-          </a>
-          keeps it moving.
-        </p>
+          <p className="mx-auto mt-8 max-w-[58ch] text-[12.5px] leading-relaxed text-faint">
+            Honest heads-up: the Windows and macOS builds aren&apos;t
+            code-signed yet, so SmartScreen and Gatekeeper will warn you on first
+            run.{" "}
+            <a
+              href={LINKS.macInstall}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-dim underline decoration-line-2 underline-offset-4 transition-colors hover:text-fg"
+            >
+              How to get past it
+            </a>
+            . That&apos;s an alpha without a signing certificate, not a sign
+            anything is wrong.
+          </p>
+        </Reveal>
       </div>
     </section>
+  );
+}
+
+const FOOTER_LINKS = [
+  { label: "GitHub", href: LINKS.repo },
+  { label: "Uxnan Desktop", href: LINKS.releasesAll },
+  { label: "Uxnan Mobile (Android)", href: LINKS.play },
+  { label: "Bridge", href: LINKS.bridgeNpm },
+  { label: "Security", href: LINKS.security },
+];
+
+/* Each support link hovers into its own brand colour: GitHub Sponsors pink,
+   Buy Me a Coffee yellow. */
+const SUPPORT = [
+  {
+    label: "Sponsor on GitHub",
+    href: LINKS.sponsor,
+    icon: <Heart className="size-4" />,
+    hover: "#db61a2",
+  },
+  {
+    label: "Buy the maintainer a coffee",
+    href: LINKS.coffee,
+    icon: <Coffee className="size-4" />,
+    hover: "#ffdd00",
+  },
+];
+
+export function Footer() {
+  const year = new Date().getFullYear();
+
+  return (
+    <footer className="border-t border-line py-12">
+      <div className="wrap flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2.5 text-[12.5px] text-faint">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="" className="size-5 rounded-[5px]" />
+            <span>
+              © {year} {SITE.name} · {LICENSE}
+            </span>
+          </div>
+
+          <p className="mt-3 max-w-[46ch] text-[12px] text-faint italic">
+            {SITE.disclaimer}
+          </p>
+
+          <div className="mt-4 flex items-center gap-2">
+            {SUPPORT.map((s) => (
+              <a
+                key={s.label}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={s.label}
+                title={s.label}
+                className="grid size-9 place-items-center rounded-lg border border-line text-dim transition-colors duration-200 hover:border-[color:var(--hover)] hover:text-[color:var(--hover)]"
+                style={{ "--hover": s.hover } as React.CSSProperties}
+              >
+                {s.icon}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <nav className="flex flex-wrap gap-x-6 gap-y-3 text-[12.5px] text-dim sm:justify-end">
+          {FOOTER_LINKS.map((l) => (
+            <a
+              key={l.label}
+              href={l.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-fg"
+            >
+              {l.label}
+            </a>
+          ))}
+        </nav>
+      </div>
+    </footer>
   );
 }

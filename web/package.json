@@ -1,40 +1,33 @@
 {
   "name": "uxnan-web",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
-  "description": "Marketing website for the Uxnan ecosystem (uxnandesktop + uxnanmobile).",
+  "description": "Marketing site for Uxnan \u2014 run coding agents in parallel on your PC, steer them from your phone.",
   "license": "MPL-2.0",
-  "author": "Luis Donaldo Gamas Vazquez",
-  "type": "module",
-  "engines": {
-    "node": ">=18.18"
-  },
   "scripts": {
-    "dev": "next dev",
+    "predev": "node scripts/sync-agent-marks.mjs",
+    "dev": "next dev --port 3100",
+    "prebuild": "node scripts/sync-agent-marks.mjs",
     "build": "next build",
-    "start": "npx serve out",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run lint"
+    "start": "npx --yes serve out -l 3100",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
-    "geist": "^1.4.2",
-    "lucide-react": "^0.469.0",
+    "lucide-react": "^1.28.0",
     "next": "^15.5.4",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "tailwind-merge": "^2.6.0"
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/eslintrc": "^3.3.6",
     "@tailwindcss/postcss": "^4.1.13",
-    "@types/node": "^22.10.5",
-    "@types/react": "^19.0.7",
-    "@types/react-dom": "^19.0.3",
-    "eslint": "^9.18.0",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "eslint": "^9.28.0",
     "eslint-config-next": "^15.5.4",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5.7.3"
+    "typescript": "^5.8.3"
   }
 }

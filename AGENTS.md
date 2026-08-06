@@ -15,7 +15,7 @@ mobile MVP runs end-to-end with a real agent.
 | `bridge/` | implemented | [`bridge/FOR-DEV.md`](bridge/FOR-DEV.md) → `## Status` | same file, below `## Status` |
 | `uxnanmobile/` | MVP wired | [`uxnanmobile/FOR-DEV.md`](uxnanmobile/FOR-DEV.md) → `## Status` | same file, below `## Status` |
 | `uxnandesktop/` | ALPHA-functional (standalone) | [`uxnandesktop/FOR-DEV.md`](uxnandesktop/FOR-DEV.md) → `## Status` | same file, below `## Status` |
-| `web/` | built, deploy wired | [`web/FOR-DEV.md`](web/FOR-DEV.md) → `## Status` | same file, below `## Status` |
+| `web/` | published | [`web/FOR-DEV.md`](web/FOR-DEV.md) → `## Status` | same file, below `## Status` |
 
 **This table is the only status kept here, and it stays this short on purpose.**
 The per-component detail lives in each `FOR-DEV.md` `## Status` (what works today
@@ -195,8 +195,16 @@ If it affects contracts in `shared/`, all consuming components must be updated i
   another component, update that file in the same change set — see
   `web/docs/content.md` for the claim-to-source table.
 - Interface visuals are DOM recreations, never screenshots, so they follow the
-  theme and stay sharp. Scroll animation is CSS driven by a single custom property
-  written by a scroll handler; React does not re-render per frame.
+  theme and stay sharp. They are held to the shipped UI: when the desktop shell or
+  a mobile screen changes shape, `web/src/components/mockups/` is part of that
+  change set. Phone screens are drawn once at a canonical size and scaled by the
+  frame — never re-size their contents to fit (`web/docs/design.md`).
+- **Agent marks live once, in `assets/agents/`** — the root READMEs render those
+  files directly and the site syncs them into `web/public/agents/` before dev and
+  build (`web/scripts/sync-agent-marks.mjs`; the synced copy is git-ignored). A
+  new agent means one SVG there, plus its entry in `web/src/lib/site.ts` and the
+  agent row in `README.md` **and** `README.es.md`. Marks that are black or grey
+  need adding to `INVERT_ON_DARK` so they stay visible on the site's dark tiles.
 - The site is **not tag-versioned** — it has no release artifact. A push to `main`
   runs `deploy-web.yml`, which builds it on GitHub's runners and uploads the static
   export to Cloudflare Pages (Direct Upload). See `web/docs/deploy.md`.

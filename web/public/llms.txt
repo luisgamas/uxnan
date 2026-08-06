@@ -1,10 +1,10 @@
 # Uxnan
 
 > Uxnan is two independent, free, open-source (MPL-2.0) tools for the CLI coding
-> agents a developer already uses (Claude Code, Codex, OpenCode, Gemini CLI,
-> Antigravity, Zero, Grok, pi). It is NOT itself an agent and NOT an AI provider:
-> every agent runs as its own official local CLI under the account the user
-> already signed in with — no Uxnan API key, no SDK, no provider key handed over.
+> agents a developer already uses (Claude Code, Codex, OpenCode, Pi, Grok,
+> Antigravity, Zero). It is NOT itself an agent and NOT an AI provider: every
+> agent runs as its own official local CLI under the account the user already
+> signed in with — no Uxnan API key, no SDK, no provider key handed over.
 
 The two products share one ecosystem and one optional daemon (the "bridge"), and
 nothing else. Each is useful with the other uninstalled — they are not two halves
@@ -15,18 +15,18 @@ companion phone app".
 
 - **Uxnan Desktop** — a terminal-native workspace (Tauri 2 + Rust + Svelte 5) that
   runs several CLI agents in parallel on the PC, each in its own git worktree and
-  pseudoterminal. It uses about 250 MB of RAM — a ~40 MB Rust core plus the
-  operating system's own webview — where a typical Electron shell, which bundles
-  a second browser, idles at 200–500 MB. Any
-  CLI agent runs in it unmodified. Platforms: Windows (developed/tested), Linux
-  (built in CI), macOS (experimental, unsigned — Gatekeeper blocks the first
-  launch until authorised once).
-- **Uxnan Mobile** — a Flutter app (Android; iOS pending) that drives the agents
-  already running on the PC, from the phone, over an end-to-end encrypted channel
-  (X25519 + Ed25519 + AES-256-GCM + HKDF). It reaches the PC directly over LAN or
-  Tailscale first, falling back to an optional self-hosted relay that only ever
-  sees sealed envelopes. It needs only the bridge on the PC — NOT Uxnan Desktop.
-  7 agents are selectable in the app today.
+  pseudoterminal. Measured on Windows 11 (release build, private working memory):
+  226 MB with the workspace asleep, 252 MB with one agent in one terminal, 274 MB
+  with four agents in four terminals — the method and the full scenario matrix are
+  published in the repository. Any CLI agent runs in it unmodified. Platforms:
+  Windows (developed/tested), Linux (built in CI), macOS (experimental, unsigned —
+  Gatekeeper blocks the first launch until authorised once).
+- **Uxnan Mobile** — a Flutter app (Android; iOS written but not published) that
+  drives the agents already running on the PC, from the phone, over an end-to-end
+  encrypted channel (X25519 + Ed25519 + AES-256-GCM + HKDF). It reaches the PC
+  directly over LAN or Tailscale first, falling back to an optional self-hosted
+  relay that only ever sees sealed envelopes. It needs only the bridge on the PC —
+  NOT Uxnan Desktop.
 
 ## Key facts
 
@@ -34,20 +34,25 @@ companion phone app".
   account with Uxnan, nothing gated.
 - The bridge is installed once with `npm install -g uxnan-bridge` and exposes
   every project beneath it to the phone.
-- 8 agent CLIs are wired end to end for the phone path; 7 appear in the mobile
-  picker (Gemini CLI stays wired but hidden in favour of Antigravity).
+- Seven agents have first-class integration on both paths: precise working /
+  waiting / done status, session resume, live model discovery and per-agent run
+  options. Any other CLI can be registered by hand and launches the same way.
+  The retired Gemini CLI has no mobile surface and is not offered.
 - Status: alpha. The core loops work daily; rough edges are filed in the open.
 
 ## Pages
 
-- [Home](https://uxnan.pages.dev/): what Uxnan is, the two products, downloads.
-- [Download](https://uxnan.pages.dev/download/): every installer, per channel
-  (stable / nightly) and platform, plus the bridge for the phone app.
+- [Home](https://uxnan.pages.dev/): the whole site — what Uxnan is, the agents it
+  drives, parallel worktrees, the phone app, its measured footprint, and where to
+  download it. There are no other routes; installers live on GitHub Releases.
 
 ## Source and docs
 
 - [GitHub repository](https://github.com/luisgamas/uxnan): the full monorepo.
+- [Releases](https://github.com/luisgamas/uxnan/releases): every installer, per
+  channel (stable / nightly) and platform.
 - [Uxnan Desktop README](https://github.com/luisgamas/uxnan/blob/main/uxnandesktop/README.md)
 - [Uxnan Mobile README](https://github.com/luisgamas/uxnan/blob/main/uxnanmobile/README.md)
 - [Bridge README](https://github.com/luisgamas/uxnan/blob/main/bridge/README.md)
+- [Resource benchmarks](https://github.com/luisgamas/uxnan/blob/main/uxnandesktop/docs/resource-benchmarks.md)
 - [License (MPL-2.0)](https://github.com/luisgamas/uxnan/blob/main/LICENSE)
