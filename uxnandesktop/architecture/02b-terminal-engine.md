@@ -334,6 +334,36 @@ El usuario cierra el tab o el worktree. El backend envía **SIGTERM** al proceso
 
 Se liberan los recursos del PTY en Rust (drop automático del struct, que cierra file descriptors y libera memoria). Se actualiza el estado del **store reactivo de Svelte** para reflejar que el tab ya no existe. Opcionalmente, se guarda el **scrollback** de la sesión a disco para referencia futura.
 
+### Salida del shell **no** pedida por el usuario (pestañas de agente)
+
+`pty:exit:{id}` significa "el proceso del shell terminó", no "el usuario quiere
+cerrar este panel", y en una pestaña de agente esas dos cosas se separan: **el
+shell puede morir como daño colateral de que el agente salga**. Verificado contra
+un PTY real (la misma `portable-pty` que usa el ADE): salir del TUI de OpenCode
+con `/exit` se lleva por delante al shell padre en Windows de forma
+**intermitente** — 5 de 13 corridas — y pasa igual con `cmd.exe` que con `pwsh`,
+tanto invocando `opencode` como `opencode.cmd`, así que es el desmontaje de la
+consola y no el shim `.ps1`. Destruir el tab ahí tiraba scrollback, punto de
+reanudación de la conversación y sitio en el layout por algo que nadie pidió.
+
+Regla (`terminals.handleShellExit`):
+
+- **Terminal simple → se cierra**, como siempre: `exit` en un prompt *es* la
+  petición de cerrar el panel.
+- **Pestaña que alojó un agente → permanece.** Se marca `exited` (el aviso dentro
+  del pane, con **Reiniciar** y **Cerrar**) y se limpia su `runCommand` de un solo
+  uso, para que ningún remount posterior arranque en silencio una sesión de agente
+  nueva. "Alojó un agente" se lee de `agentCommand`/`agentName` (lanzamiento de
+  esta sesión) o de `agentSession` (persistido, así que un tab restaurado también
+  cuenta).
+
+**Reiniciar es *in situ*** (`respawnPty`): se cierra la sesión muerta en el
+backend — `pty_create` es idempotente por id y reportaría el cadáver como "ya
+existe" —, se devuelve la instancia a su estado pre-spawn y se levanta un PTY
+nuevo **bajo el mismo xterm**, así que el scrollback que dejó el agente sigue ahí
+encima del prompt nuevo. Si el tab tiene sesión reanudable, su comando de
+`resume` se **pre-escribe sin ejecutar**: el usuario lo ve y decide.
+
 ---
 
 ## 4.b Arbitraje de teclado (atajo de app vs TUI/agente)

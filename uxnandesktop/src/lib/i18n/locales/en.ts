@@ -1155,6 +1155,9 @@ export const en = {
 
   // Terminal tab state
   "terminal.exited": "exited",
+  "terminal.exitedNotice": "The shell in this terminal ended.",
+  "terminal.restart": "Restart",
+  "terminal.restarted": "shell restarted",
   "terminal.focusMode": "Focus mode",
   "terminal.focusModeOn": "Focus mode is on — every key goes to the TUI/agent. Click to turn off.",
   "terminal.spawnFailed": "Failed to start the terminal — check the shell profile.",

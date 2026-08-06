@@ -30,6 +30,8 @@
   import KeyChord from "./KeyChord.svelte";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import MoonIcon from "@lucide/svelte/icons/moon";
+  import PowerOffIcon from "@lucide/svelte/icons/power-off";
+  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
   import { Button } from "$lib/components/ui/button";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FileIcon from "@lucide/svelte/icons/file";
@@ -738,10 +740,36 @@
                             </div>
                           {:else}
                             {#if t.exited}
-                              <span
-                                class="absolute left-1 top-1 z-10 rounded bg-card/80 px-1 text-[10px] text-muted-foreground"
-                                >{i18n.t("terminal.exited")}</span
+                              <!-- The shell behind this agent tab ended — often as
+                                   collateral of the agent's own TUI quitting, not
+                                   because anyone asked to close a pane. The pane and
+                                   its scrollback stay put; this bar is the way back
+                                   (restart in place) or out (close). -->
+                              <div
+                                class="absolute inset-x-1 top-1 z-10 flex items-center gap-1.5 rounded-md border border-border/60 bg-card/95 px-2 py-1 shadow-sm supports-backdrop-filter:backdrop-blur-xs"
                               >
+                                <PowerOffIcon class="size-3.5 shrink-0 text-muted-foreground/70" />
+                                <span class={cn("min-w-0 flex-1 truncate", text.meta)}>
+                                  {i18n.t("terminal.exitedNotice")}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  class="h-6 shrink-0 gap-1 px-2"
+                                  onclick={() => void terminals.restartTab(t.id)}
+                                >
+                                  <RotateCcwIcon class="size-3" />
+                                  {i18n.t("terminal.restart")}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  class="h-6 shrink-0 px-2"
+                                  onclick={() => void terminals.closeTabAnywhere(t.id)}
+                                >
+                                  {i18n.t("common.close")}
+                                </Button>
+                              </div>
                             {/if}
                             <Terminal
                               id={t.id}
@@ -752,7 +780,7 @@
                               runCommandExecute={t.runCommandExecute}
                               env={t.env}
                               focused={activeRegion && paneActive}
-                              onexit={() => void terminals.closeTabAnywhere(t.id)}
+                              onexit={() => terminals.handleShellExit(t.id)}
                             />
                           {/if}
                         {:else if t.kind === "file"}

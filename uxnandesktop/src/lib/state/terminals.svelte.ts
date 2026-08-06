@@ -494,6 +494,9 @@ export interface TermController {
   paste: () => Promise<void>;
   hasSelection: () => boolean;
   focus: () => void;
+  /** Respawn this pane's shell in place, keeping the xterm and its scrollback.
+   *  `resume` re-arms the one-shot launch (an agent's resume command). */
+  restart: (resume?: { command: string; execute?: boolean }) => Promise<void>;
 }
 
 class TerminalStore {
@@ -1272,9 +1275,55 @@ class TerminalStore {
     if (group) void this.closeTab(group.id, group.activeTabId);
   }
 
+  /** A tab's shell process ended. What that means depends on the tab:
+   *
+   *  - **A plain terminal** closes, as it always has: `exit` at a shell prompt is
+   *    a request to close the pane.
+   *  - **A tab that hosted an agent stays.** Its shell can die as *collateral* of
+   *    the agent quitting — quitting OpenCode's TUI with `/exit` takes the parent
+   *    PowerShell down with it on Windows, intermittently (verified against a
+   *    real PTY; it happens with `opencode.cmd` too, so it is the console
+   *    teardown, not the `.ps1` shim). Destroying the tab there threw away the
+   *    scrollback, the conversation's resume point and the pane's place in the
+   *    layout for something the user never asked for. Now the pane survives,
+   *    marks itself exited and offers a restart.
+   *
+   *  "Hosted an agent" is read from `agentCommand`/`agentName` (this session's
+   *  launch) or `agentSession` (persisted, so a restored tab still counts). */
+  handleShellExit(tabId: string): void {
+    const tab = this.findTab(tabId);
+    if (tab?.kind === 'terminal' && (tab.agentCommand || tab.agentName || tab.agentSession)) {
+      tab.exited = true;
+      tab.working = false;
+      // The one-shot launch already fired for the dead shell; leaving it set
+      // would silently start a brand-new agent session on any later remount.
+      tab.runCommand = undefined;
+      tab.runCommandExecute = undefined;
+      return;
+    }
+    void this.closeTabAnywhere(tabId);
+  }
+
+  /** Bring an exited tab's shell back in place: same pane, same cwd and profile,
+   *  same xterm — so the scrollback the agent produced is still there above the
+   *  new prompt. A resumable agent session is pre-typed (never auto-run): the
+   *  user sees the command and decides. */
+  async restartTab(tabId: string): Promise<void> {
+    const tab = this.findTab(tabId);
+    if (tab?.kind !== 'terminal') return;
+    // Only the mounted pane can respawn in place (it owns the xterm). With no
+    // controller there is nothing to restart, so leave the tab exited rather
+    // than clearing the notice and stranding the user with a dead pane.
+    const ctl = this.controller(tabId);
+    if (!ctl) return;
+    const resume = tab.agentSession ? resumeCommand(tab.agentSession) : null;
+    tab.exited = false;
+    await ctl.restart(resume ? { command: resume, execute: false } : undefined);
+  }
+
   /** Close a tab in whichever workspace holds it (even a hidden one): kill its
    *  PTY and remove it, collapsing an emptied region/workspace. Called when a
-   *  terminal's process exits (e.g. the user ran `exit`) so the pane doesn't
+   *  plain terminal's process exits (the user ran `exit`) so the pane doesn't
    *  linger open-but-unwritable — it closes completely. */
   async closeTabAnywhere(tabId: string): Promise<void> {
     for (const key of Object.keys(this.workspaces)) {

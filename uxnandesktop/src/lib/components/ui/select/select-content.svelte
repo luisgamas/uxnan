@@ -6,6 +6,7 @@
 	import { cn, type WithoutChild } from "$lib/utils.js";
 	import type { ComponentProps } from "svelte";
 	import type { WithoutChildrenOrChild } from "$lib/utils.js";
+	import { registerOverlay } from "$lib/overlayLayer.js";
 
 	let {
 		ref = $bindable(null),
@@ -18,6 +19,10 @@
 	}: WithoutChild<SelectPrimitive.ContentProps> & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof SelectPortal>>;
 	} = $props();
+
+	// Hide the integrated browser's native window while this list sits over it,
+	// or it opens behind the page (see `$lib/overlayLayer`).
+	$effect(() => registerOverlay(ref));
 </script>
 
 <SelectPortal {...portalProps}>

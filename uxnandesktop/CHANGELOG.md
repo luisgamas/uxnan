@@ -5,6 +5,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — dialogs open in front of the integrated browser
+
+With the browser panel open, adding a project (or any other dialog, menu or
+popover that reached the panel) opened **behind** the page and could not be
+clicked. The page is not DOM: it is a real child `WebviewWindow` docked over the
+panel, and an owned native window always paints above its owner's web content, so
+no `z-index` could ever put a dialog in front of it. The window has to hide
+instead — until now only the Settings overlay did that.
+
+- Floating layers now register themselves in a small module
+  (`$lib/overlayLayer`) from the shared `ui/` primitives — dialog scrim, dropdown
+  and context menus (including submenus), popovers and selects — so the browser
+  steps aside for **every** dialog in the app, including ones added later, and no
+  feature component has to know the browser exists.
+- The test is **overlap**, not "something is open": a menu in the left sidebar no
+  longer has any effect on a preview on the far right. Tooltips are deliberately
+  excluded — the browser toolbar's own tooltips open over the page, so honouring
+  them would blank the preview on every hover.
+- **Automations** joins Settings as a full-screen view that hides the page. It
+  covers the panels exactly like Settings, so the browser used to paint straight
+  over it.
+
+### Fixed — quitting an agent's TUI no longer takes the terminal tab with it
+
+Typing `/exit` in OpenCode's TUI closed the tab it was running in, losing the
+scrollback, the conversation's resume point and the pane's place in the layout.
+Verified against a real PTY (the same `portable-pty` the ADE uses): quitting the
+TUI takes the **parent shell** down with it on Windows, intermittently — 5 of 13
+runs — and it happens with `cmd.exe` as well as `pwsh`, and whether the launch
+goes through `opencode` or `opencode.cmd`. So it is the console teardown, not the
+`.ps1` shim, and uxnan cannot prevent it — but it should not amplify it into a
+destroyed tab.
+
+- `pty:exit` no longer means "close this pane" for a tab that hosted an agent. It
+  now marks the tab **exited** and keeps everything: the pane, its scrollback and
+  its agent session. A plain terminal still closes on exit — `exit` at a shell
+  prompt *is* a request to close the pane.
+- The exited pane shows an inline notice with **Restart** and **Close**. Restart
+  respawns the shell **in place**, under the same xterm, so the output the agent
+  produced is still there above the new prompt; a resumable agent session gets
+  its resume command **pre-typed, never auto-run**.
+- This also gives the long-dead `exited` tab state (a strikethrough title and the
+  agent-row badge) something to display — nothing could set it before, because
+  the tab was destroyed first.
+
 ## [0.0.28] - 2026-08-05
 
 ### Fixed — every agent gets a conversation name, and Grok's status unsticks

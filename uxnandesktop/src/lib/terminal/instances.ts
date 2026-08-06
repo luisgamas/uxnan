@@ -51,8 +51,10 @@ function numParam(params: (number | number[])[], i: number, def: number): number
 const RUN_COMMAND_QUIET_MS = 160;
 const RUN_COMMAND_FALLBACK_MS = 1800;
 
-/** Spawn parameters for the instance's PTY (fixed per tab — they come from the
- *  tab's state and never change for a given id). */
+/** Spawn parameters for the instance's PTY. Fixed per tab — they come from the
+ *  tab's state — with one exception: `respawnPty` re-arms `runCommand` when an
+ *  exited pane is restarted, since the one-shot launch has to be allowed to fire
+ *  again for the new shell. */
 export interface TerminalSpawnSpec {
   cwd?: string;
   shell?: string;
@@ -353,6 +355,45 @@ export async function spawnPty(
     // Plain web preview — no backend to spawn; the xterm still renders.
     return { fresh: true };
   }
+}
+
+/** Respawn this instance's shell **in place**, after the previous one ended.
+ *
+ *  Keeps the xterm — and with it the whole scrollback — and replaces only the
+ *  dead PTY behind it, so restarting a terminal never costs the user what the
+ *  agent already printed. `pty_close` runs first because the backend still holds
+ *  the finished session under this id and `pty_create` is idempotent per id: it
+ *  would report the corpse as "already there" and spawn nothing.
+ *
+ *  `runCommand` re-arms the one-shot launch (an agent's resume command,
+ *  pre-typed unless `execute` says otherwise, so nothing auto-runs behind the
+ *  user's back); omitting it brings back a bare shell. */
+export async function respawnPty(
+  inst: TerminalInstance,
+  runCommand?: { command: string; execute?: boolean },
+): Promise<{ error?: string }> {
+  await invoke('pty_close', { id: inst.id }).catch(() => {
+    // Already reaped by the backend — the respawn below is what matters.
+  });
+  if (inst.launchTimer) {
+    clearTimeout(inst.launchTimer);
+    inst.launchTimer = undefined;
+  }
+  // Back to the pre-spawn state: a fresh PTY knows nothing of the old grid, and
+  // the one-shot launch has to be allowed to fire again for the new shell.
+  inst.ptyReady = false;
+  inst.spawnFailed = false;
+  inst.launched = false;
+  inst.lastCols = 0;
+  inst.lastRows = 0;
+  inst.spec.runCommand = runCommand?.command;
+  inst.spec.runCommandExecute = runCommand ? runCommand.execute === true : undefined;
+  const { error } = await spawnPty(
+    inst,
+    inst.term.cols || inst.desiredCols || 80,
+    inst.term.rows || inst.desiredRows || 24,
+  );
+  return { error };
 }
 
 /** Ask a pre-existing PTY (webview reload over a live backend) for a full

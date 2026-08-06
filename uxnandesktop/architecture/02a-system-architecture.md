@@ -348,6 +348,23 @@ agentes y abrir los enlaces que generan — no un navegador de uso general.
   por la misma política. Mismo patrón que `UXNAN_HOOK_*`.
 - **Terminal:** las URLs impresas en la terminal son clicables con **Ctrl/Cmd+clic**
   (`@xterm/addon-web-links`) y pasan por `open_url` (toggle `terminalLinks`).
+- **Apilamiento (la ventana nativa gana siempre):** una ventana *owned* pinta por
+  encima del contenido web de su owner, así que **ningún `z-index` del DOM de uxnan
+  puede quedar delante de la página**. La única salida es ocultar la ventana
+  mientras algo del DOM deba estar al frente, y ese es el contrato de
+  `browser_window_hide`. El panel lo aplica en cada frame de su tick: oculta la
+  ventana si el slot desaparece o mide ~0, si el documento está oculto, si una
+  vista a pantalla completa cubre los paneles (**Settings o Automations**), o si
+  una **capa flotante** (diálogo, menú, popover, select) **solapa** el rect del
+  slot. Las capas se auto-registran desde las primitivas compartidas de `ui/` en
+  `$lib/overlayLayer` (`registerOverlay` en `dialog-overlay`,
+  `dropdown-menu-content` + `sub-content`, `context-menu-content` + `sub-content`,
+  `popover-content`, `select-content`), de modo que **cualquier diálogo de la app —
+  presente o futuro — hereda el comportamiento** sin conocer al navegador. El test
+  es de *solape*, no de "hay algo abierto": un menú en la sidebar izquierda no
+  borra la vista previa de la derecha. Los **tooltips quedan fuera a propósito**
+  (transitorios y no interactivos; los de la propia barra del navegador se abren
+  sobre la página, y honrarlos la haría parpadear en cada hover).
 
 ### 4.3 Ejemplo de Layout Complejo
 
