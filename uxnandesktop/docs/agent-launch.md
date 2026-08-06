@@ -40,8 +40,16 @@ Each agent's logo resolves in a chain: a custom image you set → a bundled SVG
 fetched by the **backend** and inlined as a `data:` URL, because the app's CSP
 allows no remote image host — a URL rendered directly by the webview is simply
 blocked (`src/lib/agentLogoCache.ts`). That step needs network the first time per
-app run; a bundled SVG never does, which is why adding more of them is tracked in
-[`FOR-HUMAN.md`](../FOR-HUMAN.md).
+app run; a bundled SVG never does.
+
+Only four marks ship as assets — Claude Code, Codex, OpenClaude and Zero. Every
+other agent resolves through its `favicon` domain, which is what lets a CLI we
+have never heard of still show a real logo the moment someone registers it, so
+**a new catalog entry needs `favicon`, not an SVG**. A bundled mark drawn in a
+single dark colour (Codex uses `currentColor`, which an `<img>` resolves to
+black) sets `mono: true` in the catalog, and `AgentLogo` inverts it on dark
+themes so it reads white there and stays dark on light ones — favicons and
+custom logos are never inverted, because their colours are not ours to flip.
 
 Each agent profile has:
 

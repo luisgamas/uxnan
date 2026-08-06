@@ -6,7 +6,12 @@
   // under the app's CSP, so it is fetched by the backend and rendered as a
   // `data:` URL (see `$lib/agentLogoCache`). When everything is exhausted the Bot
   // shows, so a broken <img> never appears. Sized via tokens.
-  import { agentIconSources } from "$lib/agentCatalog";
+  //
+  // A bundled mark that is a single dark colour (`mono` in the catalog — Codex
+  // draws with `currentColor`, which an <img> resolves to black) is inverted on
+  // dark themes so it reads white there and stays dark on light ones. Only the
+  // asset we ship is inverted: favicons and custom logos are left alone.
+  import { agentIconSources, isMonochromeLogo } from "$lib/agentCatalog";
   import { isRemoteLogo, peekRemoteLogo, resolveRemoteLogo } from "$lib/agentLogoCache";
   import { cn } from "$lib/utils";
   import { icon } from "$lib/design";
@@ -52,13 +57,22 @@
   // A remote candidate renders only once the backend has handed us the bytes;
   // while it's in flight (and if it fails) the Bot glyph stands in.
   const src = $derived(candidate && isRemoteLogo(candidate) ? fetched : candidate);
+  // True only while the bundled SVG is the one on screen.
+  const invert = $derived(
+    !!candidate && !isRemoteLogo(candidate) && isMonochromeLogo(logo),
+  );
 </script>
 
 {#if src}
   <img
     {src}
     alt=""
-    class={cn(icon.button, "shrink-0 object-contain", className)}
+    class={cn(
+      icon.button,
+      "shrink-0 object-contain",
+      invert && "dark:invert",
+      className,
+    )}
     onerror={() => (idx += 1)}
   />
 {:else}
