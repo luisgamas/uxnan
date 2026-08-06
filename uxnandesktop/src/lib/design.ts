@@ -30,6 +30,10 @@ export const icon = {
   /** Purely-visual / informational: breadcrumb, leading item icons,
    *  status & running indicators (14px). */
   decorative: "size-3.5",
+  /** An agent-state glyph — the Comet Trail matrix or a state icon — in a
+   *  sidebar row, a context menu or a terminal tab (12px). Deliberately a notch
+   *  under `decorative`: it sits beside 12-13px text and must not outweigh it. */
+  status: "size-3",
   /** Empty-state illustration (32px). */
   empty: "size-8",
 } as const;

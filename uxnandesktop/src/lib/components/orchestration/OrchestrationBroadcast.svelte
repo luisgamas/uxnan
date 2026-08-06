@@ -21,7 +21,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentLogo from "../AgentLogo.svelte";
-  import AgentStatusDot from "../AgentStatusDot.svelte";
+  import AgentStatusIndicator from "../AgentStatusIndicator.svelte";
   import EraserIcon from "@lucide/svelte/icons/eraser";
   import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
   import SendIcon from "@lucide/svelte/icons/send-horizontal";
@@ -175,7 +175,7 @@
               class="flex min-w-0 flex-1 items-center gap-2 text-left"
               onclick={() => setSel(a.tabId, !on)}
             >
-              <AgentStatusDot status={dotStatus(a)} />
+              <AgentStatusIndicator status={dotStatus(a)} />
               <AgentLogo logo={a.icon} class="size-4 shrink-0" />
               <div class="min-w-0 flex-1">
                 <div class={cn("truncate", text.body)}>{a.name}</div>

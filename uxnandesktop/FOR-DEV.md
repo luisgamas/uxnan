@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 501 Rust tests (473 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 782 frontend Vitest tests across two
+probe) + 801 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its

@@ -82,6 +82,11 @@ available today are:
   top) — and **pin** the ones you live in so they always lead. Or flip to a
   **by-status** view that pools every worktree into lanes by what its agent is
   doing (needs you · done · working · idle).
+- **A sidebar that reads at a glance.** It reopens exactly as you left it, a
+  collapsed project still shows its worktree count and who is working inside it,
+  a header pill counts the agents waiting on *you*, and hovering a worktree opens
+  its full story — path, branch, pull request with its checks, and every agent in
+  it — without any row growing taller.
 - **A full terminal multiplexer.** Tabs, nested splits, drag-to-reorder and the
   ability to move tabs across panes, `Ctrl+Tab` MRU cycling, hardware-accelerated
   WebGL rendering with DOM fallback, and configurable scrollback (Settings →
@@ -112,9 +117,11 @@ available today are:
   your OS's native editor, and in **Settings → Open with** you can browse for any other
   app, add custom ones, and set each editor's icon.
 - **Agent monitoring.** Three layers — a precise local hook server, terminal-title
-  inference, and process-tree detection — drive colored status dots, unread / done
-  badges, and native idle notifications, so you always know whether an agent is
-  working, blocked, waiting, or done.
+  inference, and process-tree detection — drive a per-state glyph (a sweeping
+  **comet trail** while an agent works, a question bubble when it needs you, a
+  pause when it's blocked on another system, a check when it's done), unread /
+  done badges, and native idle notifications, so you always know where each agent
+  stands without reading a legend.
 - **Multi-agent orchestration.** A console with two surfaces: **Broadcast** routes a
   message to the agents you tick (individuals, whole types, or all), with
   backpressure; and a **run engine** (**Runs**) chains agents into a durable graph of

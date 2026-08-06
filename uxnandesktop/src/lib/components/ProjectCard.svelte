@@ -25,6 +25,8 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import WorktreeRow from "./WorktreeRow.svelte";
   import AgentSpace from "./AgentSpace.svelte";
+  import AgentAvatar from "./AgentAvatar.svelte";
+  import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import LauncherDialog from "./LauncherDialog.svelte";
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
@@ -34,7 +36,9 @@
   import { createDragReorder, type DragReorder } from "$lib/state/dragReorder.svelte";
   import { isStaticSortMode } from "$lib/sidebar-sort";
   import type { RepoData } from "$lib/types";
+  import type { DisplayStatus } from "$lib/state/agentDisplay";
   import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
+  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import FolderIcon from "@lucide/svelte/icons/folder";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -72,7 +76,6 @@
   let confirmRemoveOpen = $state(false);
   let settingsOpen = $state(false);
   let iconPickerOpen = $state(false);
-  let expanded = $state(false);
 
   const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
 
@@ -95,6 +98,41 @@
     }
     return n;
   });
+
+  // Agents running anywhere in this project (main + every worktree), deduped by
+  // tab id and resolved to their display state. Feeds the collapsed summary: a
+  // closed card used to be just a name, with no way to tell it holds eight
+  // worktrees and three working agents until you opened it.
+  const projectAgents = $derived.by(() => {
+    const paths = [repo.path, ...projects.worktreesOf(repo.id).map((w) => w.path)];
+    const seen = new Set<string>();
+    const out: {
+      id: string;
+      name: string;
+      icon?: string | null;
+      status: DisplayStatus;
+      stale: boolean;
+    }[] = [];
+    for (const key of terminals.openWorkspaceKeys) {
+      if (!paths.some((p) => samePath(p, key))) continue;
+      for (const t of terminals.agentTabs(key)) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        const d = resolveAgentDisplay(t);
+        out.push({
+          id: t.id,
+          name: t.agentName ?? t.title,
+          icon: t.agentIcon,
+          status: d?.status ?? "idle",
+          stale: d?.stale ?? false,
+        });
+      }
+    }
+    return out;
+  });
+  const worktreeCount = $derived(projects.worktreesOf(repo.id).length);
+  /** Avatars shown in the collapsed strip before overflowing into a "+N". */
+  const MAX_AVATARS = 3;
 
   // Child worktrees in their effective order — frozen against jumping for the
   // drifting modes — plus the pointer-drag reorder that feeds this project's
@@ -138,15 +176,24 @@
       (projects.activeWorktreePath === mainPath ||
         projects.childWorktrees(repo.id).some((w) => w.path === projects.activeWorktreePath)),
   );
-  // Auto-expand while searching so matching worktrees are visible.
-  const isExpanded = $derived(expanded || projects.query.trim().length > 0);
+  // Expansion is persisted (`projects.setProjectExpanded`), so the panel comes
+  // back exactly as you left it. A live search still force-expands every card so
+  // matching worktrees are visible, without touching what's stored.
+  const isExpanded = $derived(
+    projects.isProjectExpanded(repo.id) || projects.query.trim().length > 0,
+  );
+  /** The collapsed summary only earns its line when there's real signal: a lone
+   *  worktree with no agents keeps the card a single row. */
+  const showCollapsedSummary = $derived(
+    isGit && !isExpanded && (projectAgents.length > 0 || worktreeCount > 1),
+  );
 
   const hoverReveal = "opacity-0 group-hover/header:opacity-100";
 
   function onHeaderActivate() {
     // Swallow the click that a just-finished drag would otherwise fire.
     if (drag.consumeClick()) return;
-    if (isGit) expanded = !isExpanded;
+    if (isGit) projects.setProjectExpanded(repo.id, !isExpanded);
     else projects.setActiveWorktree(repo.path);
   }
 </script>
@@ -231,7 +278,7 @@
               aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
               onclick={(e) => {
                 e.stopPropagation();
-                expanded = !isExpanded;
+                projects.setProjectExpanded(repo.id, !isExpanded);
               }}
             >
               <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
@@ -363,6 +410,54 @@
       </DropdownMenu.Root>
     </div>
   </div>
+
+  <!-- Collapsed summary — what the card holds, without opening it: how many
+       worktrees, and who is working inside them. Aligned under the title (not the
+       icon) and purely informational: a click falls through to the header and
+       expands the card, which is what you want anyway. -->
+  {#if showCollapsedSummary}
+    <div class="flex items-center gap-2 pb-1.5 pl-8 pr-2">
+      <TooltipSimple
+        title={i18n.t(
+          worktreeCount === 1 ? "project.worktreeOne" : "project.worktreeOther",
+          { n: worktreeCount },
+        )}
+      >
+        {#snippet children(tp)}
+          <span
+            {...tp}
+            class={cn(
+              "inline-flex shrink-0 items-center gap-0.5 text-muted-foreground/70",
+              text.indicator,
+            )}
+          >
+            <GitBranchIcon class="size-3" />{worktreeCount}
+          </span>
+        {/snippet}
+      </TooltipSimple>
+      {#if projectAgents.length > 0}
+        <!-- No `overflow-hidden`: each avatar's status ring is a box-shadow drawn
+             outside the circle and would be clipped. Overflow is bounded by the
+             "+N" cap instead. -->
+        <div class="flex min-w-0 items-center gap-1">
+          {#each projectAgents.slice(0, MAX_AVATARS) as a (a.id)}
+            <TooltipSimple title={`${a.name} · ${i18n.t(`monitor.${a.status}`)}`}>
+              {#snippet children(tp)}
+                <span {...tp} class="inline-flex">
+                  <AgentAvatar logo={a.icon} status={a.status} stale={a.stale} size="sm" />
+                </span>
+              {/snippet}
+            </TooltipSimple>
+          {/each}
+          {#if projectAgents.length > MAX_AVATARS}
+            <span class={cn("shrink-0 tabular-nums text-muted-foreground/70", text.indicator)}>
+              +{projectAgents.length - MAX_AVATARS}
+            </span>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   {#if isGit}
     {#if isExpanded}

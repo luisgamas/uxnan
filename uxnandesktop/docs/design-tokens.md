@@ -27,7 +27,8 @@ in [`src/lib/design.ts`](../src/lib/design.ts); apply them with `cn(...)`.
 | `icon.button` | 16px (`size-4`) | Icons inside a button, control or the search field |
 | `icon.action` | 14px (`size-3.5`) | Icon inside a compact toolbar / panel-header action button (pairs with `iconButton.xs`) |
 | `icon.nav` | 16px (`size-4`) | A leading icon in a nav / list row |
-| `icon.decorative` | 14px (`size-3.5`) | Purely-visual / informational: breadcrumb, leading item icons, status & "running terminals" indicators |
+| `icon.decorative` | 14px (`size-3.5`) | Purely-visual / informational: breadcrumb, leading item icons, "running terminals" indicators |
+| `icon.status` | 12px (`size-3`) | An agent-state glyph — the Comet Trail matrix or a state icon (`AgentStatusIndicator`) — in a sidebar row, a context menu or a terminal tab. A notch under `decorative`: it sits beside 12-13px text and must not outweigh it |
 | `icon.empty` | 32px (`size-8`) | Empty-state illustration |
 
 ### Icon buttons (`iconButton`)

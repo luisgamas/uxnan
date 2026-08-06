@@ -21,7 +21,7 @@
   import FileTabView from "./FileTabView.svelte";
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
-  import AgentStatusDot from "./AgentStatusDot.svelte";
+  import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
   import { divider, icon, iconButton, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -580,7 +580,7 @@
                           {#if t.kind === "terminal"}
                           {@const display = resolveAgentDisplay(t)}
                           {#if display}
-                            <AgentStatusDot status={display.status} stale={display.stale} />
+                            <AgentStatusIndicator status={display.status} stale={display.stale} />
                           {/if}
                           <TooltipSimple title={tabDisplayTitle(t)}>
                             {#snippet children(tp)}
