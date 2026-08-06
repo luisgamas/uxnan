@@ -27,6 +27,29 @@ instead — until now only the Settings overlay did that.
   covers the panels exactly like Settings, so the browser used to paint straight
   over it.
 
+### Fixed — quitting an agent's TUI no longer takes the terminal tab with it
+
+Typing `/exit` in OpenCode's TUI closed the tab it was running in, losing the
+scrollback, the conversation's resume point and the pane's place in the layout.
+Verified against a real PTY (the same `portable-pty` the ADE uses): quitting the
+TUI takes the **parent shell** down with it on Windows, intermittently — 5 of 13
+runs — and it happens with `cmd.exe` as well as `pwsh`, and whether the launch
+goes through `opencode` or `opencode.cmd`. So it is the console teardown, not the
+`.ps1` shim, and uxnan cannot prevent it — but it should not amplify it into a
+destroyed tab.
+
+- `pty:exit` no longer means "close this pane" for a tab that hosted an agent. It
+  now marks the tab **exited** and keeps everything: the pane, its scrollback and
+  its agent session. A plain terminal still closes on exit — `exit` at a shell
+  prompt *is* a request to close the pane.
+- The exited pane shows an inline notice with **Restart** and **Close**. Restart
+  respawns the shell **in place**, under the same xterm, so the output the agent
+  produced is still there above the new prompt; a resumable agent session gets
+  its resume command **pre-typed, never auto-run**.
+- This also gives the long-dead `exited` tab state (a strikethrough title and the
+  agent-row badge) something to display — nothing could set it before, because
+  the tab was destroyed first.
+
 ## [0.0.28] - 2026-08-05
 
 ### Fixed — every agent gets a conversation name, and Grok's status unsticks

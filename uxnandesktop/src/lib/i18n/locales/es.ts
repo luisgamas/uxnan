@@ -1157,6 +1157,9 @@ export const es: Record<MessageKey, string> = {
 
   // Terminal tab state
   "terminal.exited": "finalizada",
+  "terminal.exitedNotice": "El shell de esta terminal ha finalizado.",
+  "terminal.restart": "Reiniciar",
+  "terminal.restarted": "shell reiniciado",
   "terminal.focusMode": "Modo foco",
   "terminal.focusModeOn": "Modo foco activo — todas las teclas van al TUI/agente. Clic para desactivar.",
   "terminal.spawnFailed": "No se pudo iniciar la terminal — revisa el perfil de shell.",

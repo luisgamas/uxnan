@@ -15,6 +15,7 @@
     releaseInstance,
     disposeInstance,
     requestPtyResize,
+    respawnPty,
     spawnPty,
     type TerminalInstance,
   } from "$lib/terminal/instances";
@@ -694,12 +695,26 @@
     resizeObserver.observe(el);
     term.focus();
 
-    // Expose imperative copy/paste/focus so the context menu can drive them.
+    // Expose imperative copy/paste/focus so the context menu can drive them, and
+    // `restart` so an exited pane can bring its shell back without losing the
+    // scrollback (the instance — and its xterm — is never torn down).
     terminals.registerController(id, {
       copy: copySelection,
       paste: pasteClipboard,
       hasSelection,
       focus: () => term?.focus(),
+      restart: async (resume) => {
+        if (!inst || !term) return;
+        term.write(`\r\n\x1b[2m── ${i18n.t("terminal.restarted")} ──\x1b[0m\r\n`);
+        const { error } = await respawnPty(inst, resume);
+        if (error !== undefined) {
+          term.writeln(`\r\n\x1b[31m${i18n.t("terminal.spawnFailed")}\x1b[0m`);
+          term.writeln(`\x1b[90m${error}\x1b[0m`);
+          return;
+        }
+        applyFit();
+        term.focus();
+      },
     });
   });
 
