@@ -1,11 +1,10 @@
 node_modules/
 .next/
 out/
-next-env.d.ts
 *.tsbuildinfo
-.env*.local
-.vercel
+next-env.d.ts
 .DS_Store
+*.log
 
-# "See it work" clips (docs/development.md) — real screen recordings, dropped
-# in locally or via CI, never committed as binaries.
+# Synced from the repository root by scripts/sync-agent-marks.mjs
+public/agents/

@@ -9,74 +9,49 @@ happened.
 
 ## Status
 
-**Built and verified locally; deploy pipeline wired, awaiting its first run.**
-Build to Cloudflare Pages via GitHub Actions (`deploy-web.yml` → Direct Upload)
-is in place; the `og.png` social card, `/sitemap.xml`, `/robots.txt`, per-page
-canonicals, JSON-LD and `/llms.txt` are all configured. Publishing is blocked
-only on the human's one-time Cloudflare setup (see `FOR-HUMAN.md`).
+**Rebuilt as a single-page site (v2), replacing the version currently published.**
+The Cloudflare Pages project, its secrets and the deploy workflow are all live —
+the previous site is what `uxnan.pages.dev` serves until this lands on `main`.
 
-The site is now a **single-page funnel** (`/`) plus **`/download`**; the earlier
-`/desktop` and `/mobile` product routes were removed along with their unused
-sections and the `PageHero` / `DeepRow` / `ConnectionDiagram` helpers.
+The site is one route (`/`) that runs hero → agents → parallel worktrees →
+mobile → measured footprint → open source → call to action. It is a Next.js 15
+static export (React 19, Tailwind v4, `lucide-react`), self-hosting Geist and
+JetBrains Mono through `next/font`.
 
-Done today:
+What works today:
 
-- **Two pages** — home and `/download` — sharing one
-  chrome (`SiteShell`), with the header rewriting in-page anchors to `/#id` when
-  it is not on the home page.
-- Home: hero (glyph field + scroll stage + OS-aware split download + macOS auth
-  card + proof strip), problem, two-product cards, three real "See it work"
-  screen-recording clips, an agents strip (first-class CLIs + any-CLI pitch),
-  FAQ, full-bleed CTA and revealing footer.
-- **Interface recreations rebuilt from the apps' own components** — borderless
-  project groups, two-line worktree rows with real git indicators, the agent view
-  with sub-agents, a Files-first right panel with a git-coloured tree, and a
-  faithful Claude Code transcript.
-- One-click, OS-aware downloads against the GitHub Releases API (including macOS
-  architecture), with a nightly fallback when stable has no build for a platform,
-  and a permanent macOS "experimental" note.
-- Live star and download counters.
-- Light/dark theming with no flash on first paint, `prefers-reduced-motion`
-  fallbacks throughout, and a no-JavaScript path that still renders everything.
-- Responsive down to 390px: the pinned hero choreography is desktop-only, and
-  phones get the same panels as a swipeable strip plus their own entrance and
-  float animations.
+- **DOM recreations of both apps**, held to the shipped UI: the Uxnan Desktop
+  window (one tab per running agent, the project rail with its live agent view
+  and nested subagents, a Claude Code terminal with its session header and
+  composer, and the Files / Changes / History / GitHub panel) and five Uxnan
+  Mobile screens (conversation list, live conversation, agent picker, profile
+  statistics, devices). Phone screens are drawn once at a canonical 260 × 563 and
+  scaled by the frame, so proportions stay real at any size.
+- **Every claim sourced** through `src/lib/site.ts`, with the claim-to-source
+  table in `docs/content.md`.
+- **Star and download counters** read from the GitHub API at build time, counting
+  installer assets only so the total cannot go down (see `src/lib/github.ts`).
+- **Agent marks are the repository's own SVGs**, synced from `assets/agents/`
+  before dev and build so the site and the READMEs never diverge.
+- Benchmark figures count down from 999 on first scroll, fading red → green →
+  white as they land, and server-render at the real number.
+- SEO wiring carried over: `metadataBase` / canonical from
+  `NEXT_PUBLIC_SITE_URL`, `/robots.txt`, `/sitemap.xml`, the `og.png` social
+  card, `llms.txt` and the Cloudflare `_headers` file.
 - `npm run typecheck`, `npm run lint` and `npm run build` are green, and CI runs
   all three on Node 20 and 22.
 
 ## Pending
 
-- [ ] **First live deploy.** The deploy pipeline is built (`deploy-web.yml` →
-      Cloudflare Pages Direct Upload) and the build is green, but it has never
-      run: it is blocked only on the human creating the `uxnan` Pages project and
-      adding the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets (see
-      `FOR-HUMAN.md`). Once those exist, push to `main` and confirm the run is
-      green and `https://uxnan.pages.dev` serves the site.
-- [ ] **PR preview deployments (optional).** `deploy-web.yml` only publishes
-      production on push to `main`. A preview deploy per PR (`wrangler pages
-      deploy … --branch=<pr>`) would give a shareable URL per change; skipped for
-      now to keep the first setup simple and the token off every PR run.
-- [ ] **Real screenshots alongside the recreations.** The DOM recreations are
-      deliberately stylised. Once the desktop app's UI settles, consider a
-      screenshot gallery section for people who want to see the genuine article.
 - [ ] **Spanish version.** The rest of the ecosystem ships EN/ES; the site is
-      English only. Adding `es` means extracting the copy from the section
-      components into a dictionary and adding a locale switch — the structure
-      already isolates the facts in `src/lib/site.ts`, but the prose is inline.
+      English only. The facts are already isolated in `src/lib/site.ts`, but the
+      prose is inline in the section components.
 - [ ] **Automated tests.** There are none. The logic worth covering is small but
-      real: `downloadOptionsFor` asset matching per platform and channel,
-      `resolveBestDownload`'s channel fallback, `detectOs`, and the number
-      formatters in `utils.ts`. A Vitest harness like the desktop app's would be
-      the natural shape.
-- [ ] **Hero collage between 1024px and 1280px.** The pinned window scrolls and
-      widens there, but the surrounding panels are `xl`-only: at `lg` there is no
-      room for a 56rem window plus four satellites without heavy overlap. Either
-      shrink the window at `lg` and show two panels, or leave it as is
-      deliberately.
-- [ ] **Keep the recreations honest as the apps move.** The mockups now mirror
-      real component structure (`ProjectCard`, `WorktreeRow`, `AgentRow`,
-      `RightPanel`, `FileTreeRow`). When those change shape in `uxnandesktop/`,
-      `web/src/components/mockups/` is the thing that silently goes stale.
-- [ ] **Decide on link-rot protection.** The footer and FAQ deep-link into
-      `main` on GitHub (`docs/*.md`). If those files move, the links break
+      real: the download total's exclusion rules and `formatCount` in
+      `src/lib/github.ts`, and `detect()` in `download-button.tsx`.
+- [ ] **Keep the recreations honest as the apps move.** `src/components/mockups/`
+      mirrors real UI: when the desktop shell or the mobile screens change shape,
+      those files are what silently goes stale.
+- [ ] **Decide on link-rot protection.** The footer and the copy deep-link into
+      `main` on GitHub (`docs/*.md`). If those files move the links break
       silently; a periodic link check in CI would catch it.
