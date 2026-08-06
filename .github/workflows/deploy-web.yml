@@ -71,9 +71,13 @@ jobs:
         #     repo *variable* (Settings → Secrets and variables → Actions →
         #     Variables) so it never lives in this public repo's source; it is
         #     only emitted into the built HTML, where it is public by design.
+        #   GITHUB_TOKEN — lifts the anonymous rate limit on the API call that
+        #     bakes the star and download counters into the page; without it the
+        #     build still succeeds and simply omits them.
         env:
           NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://uxnan.pages.dev' }}
           NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${{ vars.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run build
 
       - name: Deploy to Cloudflare Pages

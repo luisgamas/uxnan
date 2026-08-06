@@ -42,6 +42,11 @@ jobs:
 
       # The same command Cloudflare Pages runs; it must produce `web/out/`.
       - name: Build the static export
+        # The hero's star / download counters are read from the GitHub API at
+        # build time; the token only lifts the anonymous rate limit, and the
+        # build degrades to hiding them if the call fails.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run build
 
       - name: Assert the export landed
