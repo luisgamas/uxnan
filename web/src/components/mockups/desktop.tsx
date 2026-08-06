@@ -1,8 +1,11 @@
 import {
   ChevronDown,
   ChevronRight,
+  CircleCheck,
+  CirclePause,
   Folder,
   GitBranch,
+  MessageCircleQuestionMark,
   Minus,
   Plus,
   RefreshCw,
@@ -22,8 +25,12 @@ import { AGENT_ICON, CLAUDE_TERMINAL_ICON, INVERT_ON_DARK } from "@/lib/site";
    Files / Changes / History / GitHub on the right.
    ─────────────────────────────────────────────────────────────────────────── */
 
-type Tone = "live" | "done" | "idle";
+/** The agent states the app renders, and the only ones this mockup may show. */
+type Tone = "live" | "waiting" | "blocked" | "done" | "idle";
 
+/* Between them the four agents (and OpenCode's two subagents) show every state
+   the app can report — working, needs-you, blocked, done — so a visitor sees the
+   whole vocabulary in one glance instead of a wall of identical green. */
 const AGENTS_RUNNING = [
   {
     name: "Claude Code",
@@ -33,7 +40,10 @@ const AGENTS_RUNNING = [
     tone: "live" as Tone,
     time: "now",
     active: true,
-    children: ["Explore the mobile UI screens", "Document the web mockups"],
+    children: [
+      { name: "Explore the mobile UI screens", tone: "live" as Tone },
+      { name: "Document the web mockups", tone: "live" as Tone },
+    ],
   },
   {
     name: "Uxnan project session startup",
@@ -47,19 +57,25 @@ const AGENTS_RUNNING = [
     name: "OpenCode",
     id: "opencode",
     icon: AGENT_ICON.opencode,
-    state: "Working",
-    tone: "live" as Tone,
+    // Blocked on the parent, not on a child: a subagent only ever reaches
+    // `working` / `done` (`SubagentEntry`), and the app renders only the working
+    // ones — a blocked child row is not something the software can produce.
+    state: "Blocked",
+    tone: "blocked" as Tone,
     time: "now",
     badge: "2/2",
-    children: ["Sweep the changelog entries", "Check the release checklist"],
+    children: [
+      { name: "Sweep the changelog entries", tone: "live" as Tone },
+      { name: "Check the release checklist", tone: "live" as Tone },
+    ],
   },
   {
     name: "Antigravity",
     id: "antigravity",
     icon: AGENT_ICON.antigravity,
-    state: "run_command",
-    tone: "live" as Tone,
-    time: "now",
+    state: "Waiting for input",
+    tone: "waiting" as Tone,
+    time: "2m",
   },
 ];
 
@@ -78,21 +94,70 @@ const TREE = [
 
 const DOT: Record<Tone, string> = {
   live: "bg-live",
+  waiting: "bg-orange",
+  blocked: "bg-amber",
   done: "bg-brand-lit",
   idle: "bg-faint",
 };
 
-function Dot({ tone = "live" }: { tone?: Tone }) {
+/** Row-major 3×3 grid: the eight perimeter cells, clockwise from top-left. */
+const COMET_RING = [0, 1, 2, 5, 8, 7, 6, 3];
+const COMET_LAP = 1150;
+
+/** The app's working indicator: a bright head with a fading two-dot tail
+ *  sweeping a 3×3 dot matrix, while the centre breathes. Pure CSS, same as the
+ *  shipped component — one keyframe plus a negative per-dot delay. */
+function Comet({ size = 9 }: { size?: number }) {
+  const dot = Math.max(2, Math.round(size / 4));
+  const gap = (size - dot * 3) / 2;
+  const step = COMET_LAP / COMET_RING.length;
   return (
     <span
-      className={`size-[5px] shrink-0 rounded-full ${DOT[tone]}`}
-      style={
-        tone === "live"
-          ? { animation: "ux-pulse 2.4s ease-out infinite" }
-          : undefined
-      }
-    />
+      aria-hidden
+      className="inline-grid shrink-0 text-live"
+      style={{
+        width: size,
+        height: size,
+        gridTemplateColumns: `repeat(3, ${dot}px)`,
+        gridTemplateRows: `repeat(3, ${dot}px)`,
+        gap,
+      }}
+    >
+      {Array.from({ length: 9 }, (_, cell) => {
+        const i = COMET_RING.indexOf(cell);
+        const centre = cell === 4;
+        return (
+          <span
+            key={cell}
+            className="rounded-full bg-current opacity-[0.14]"
+            style={{
+              animation: `${
+                centre ? "ux-comet-breathe" : "ux-comet-sweep"
+              } ${centre ? COMET_LAP * 2 : COMET_LAP}ms linear infinite`,
+              animationDelay: centre ? undefined : `${(i - COMET_RING.length) * step}ms`,
+            }}
+          />
+        );
+      })}
+    </span>
   );
+}
+
+/** The agent-state glyph, one shape per state, exactly as the app draws them:
+ *  the Comet Trail while working, a question bubble when it needs *you*, a pause
+ *  circle when it's blocked on another system, a check when the turn is done.
+ *  `idle` stays a plain dot — the most frequent state earns the quietest mark. */
+function Dot({ tone = "live" }: { tone?: Tone }) {
+  if (tone === "live") return <Comet />;
+  if (tone === "waiting")
+    return (
+      <MessageCircleQuestionMark className="size-[9px] shrink-0 text-orange" />
+    );
+  if (tone === "blocked")
+    return <CirclePause className="size-[9px] shrink-0 text-amber" />;
+  if (tone === "done")
+    return <CircleCheck className="size-[9px] shrink-0 text-brand-lit" />;
+  return <span className={`size-[5px] shrink-0 rounded-full ${DOT[tone]}`} />;
 }
 
 function Mark({
@@ -228,11 +293,13 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
 
                 {a.children?.map((child) => (
                   <div
-                    key={child}
+                    key={child.name}
                     className="flex items-center gap-1.5 py-[3px] pl-[18px]"
                   >
-                    <Dot />
-                    <span className="truncate text-[9px] text-dim">{child}</span>
+                    <Dot tone={child.tone} />
+                    <span className="truncate text-[9px] text-dim">
+                      {child.name}
+                    </span>
                   </div>
                 ))}
               </div>

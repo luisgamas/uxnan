@@ -38,7 +38,7 @@ const LANES = [
 
 const TONE = {
   working: { dot: "bg-live", label: "Working", text: "text-live" },
-  waiting: { dot: "bg-amber", label: "Waiting on you", text: "text-amber" },
+  waiting: { dot: "bg-orange", label: "Waiting on you", text: "text-orange" },
   done: { dot: "bg-brand-lit", label: "Done", text: "text-brand-lit" },
 } as const;
 
