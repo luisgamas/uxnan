@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex's mark disappeared on dark themes.** Its SVG draws with
+  `currentColor`, which an `<img>` resolves to black. Bundled marks that are a
+  single dark colour now set `mono: true` in the catalog and `AgentLogo` inverts
+  them on dark themes only — favicons and custom logos are never touched.
+- **Pi had no logo source at all**: no `favicon` domain and, since its bundled
+  SVG was dropped, nothing to fall back to but the generic glyph. It now
+  resolves through `pi.dev`.
+- **Zero and OpenClaude pointed at `gitlawb.com`**, the personal site, which
+  serves neither product's mark. They now use `zero.gitlawb.com` and
+  `openclaude.gitlawb.com`.
+
+### Changed
+
+- Agent marks are favicon-first by design: only `claudecode`, `codex`,
+  `openclaude` and `zero` ship as assets under `static/agents/`; every other
+  catalog entry resolves through its `favicon` domain, which is what lets a CLI
+  we have never heard of show a real logo the moment someone registers it. The
+  `FOR-HUMAN` request for more bundled SVGs is withdrawn.
+
 ### Fixed — dialogs open in front of the integrated browser
 
 With the browser panel open, adding a project (or any other dialog, menu or

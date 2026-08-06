@@ -20,14 +20,20 @@ export interface CatalogAgent {
   logo: string;
   /** Site to pull a favicon from when no bundled SVG resolves (e.g. `cursor.com`). */
   favicon?: string;
+  /**
+   * The bundled SVG is a single dark colour (a black path, or `currentColor`,
+   * which an `<img>` resolves to black), so it needs inverting on dark themes to
+   * stay visible. Never set this for a coloured mark — inverting one breaks it.
+   */
+  mono?: boolean;
 }
 
 export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "claudecode", name: "Claude Code", command: "claude", logo: "claudecode", favicon: "claude.ai" },
-  { id: "codex", name: "Codex", command: "codex", logo: "codex", favicon: "openai.com" },
+  { id: "codex", name: "Codex", command: "codex", logo: "codex", favicon: "openai.com", mono: true },
   { id: "gemini", name: "Gemini CLI", command: "gemini", logo: "gemini", favicon: "gemini.google.com" },
   { id: "opencode", name: "OpenCode", command: "opencode", logo: "opencode", favicon: "opencode.ai" },
-  { id: "pi", name: "Pi", command: "pi", logo: "pi" },
+  { id: "pi", name: "Pi", command: "pi", logo: "pi", favicon: "pi.dev" },
   { id: "antigravity", name: "Antigravity", command: "agy", logo: "antigravity", favicon: "antigravity.google" },
   { id: "goose", name: "Goose", command: "goose", logo: "goose", favicon: "goose-docs.ai" },
   { id: "grok", name: "Grok", command: "grok", logo: "grok", favicon: "x.ai" },
@@ -55,10 +61,10 @@ export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "mistralvibe", name: "Mistral Vibe", command: "vibe", logo: "mistralvibe", favicon: "mistral.ai" },
   { id: "rovo", name: "Rovo Dev", command: "rovo", logo: "rovo", favicon: "atlassian.com" },
   { id: "autohand", name: "Autohand Code", command: "autohand", logo: "autohand", favicon: "autohand.ai" },
-  { id: "openclaude", name: "OpenClaude by Gitlawb", command: "openclaude", logo: "openclaude", favicon: "gitlawb.com" },
+  { id: "openclaude", name: "OpenClaude by Gitlawb", command: "openclaude", logo: "openclaude", favicon: "openclaude.gitlawb.com", mono: true },
   { id: "omp", name: "OMP", command: "omp", logo: "omp", favicon: "omp.sh" },
   { id: "ante", name: "Ante", command: "ante", logo: "ante", favicon: "antigma.ai" },
-  { id: "zero", name: "Zero by Gitlawb", command: "zero", logo: "zero", favicon: "gitlawb.com" },
+  { id: "zero", name: "Zero by Gitlawb", command: "zero", logo: "zero", favicon: "zero.gitlawb.com" },
 ];
 
 /** A site's favicon, via Google's public favicon service (64px, downscaled for
@@ -79,6 +85,14 @@ export function agentIconSources(logo?: string | null): string[] {
   const entry = AGENT_CATALOG.find((c) => c.logo === logo || c.id === logo);
   if (entry?.favicon) out.push(faviconUrl(entry.favicon));
   return out;
+}
+
+/** Whether a logo key's **bundled** SVG is a single dark colour (the `mono`
+ *  flag). A custom logo (`data:` / `http(s)` / `/…`) and a favicon are never
+ *  reported as monochrome — only the asset we ship can be assumed. */
+export function isMonochromeLogo(logo?: string | null): boolean {
+  if (!logo || /^(data:|https?:|\/)/.test(logo)) return false;
+  return AGENT_CATALOG.find((c) => c.logo === logo || c.id === logo)?.mono === true;
 }
 
 /** Best logo key for an agent: its stored `icon`, else matched from the catalog

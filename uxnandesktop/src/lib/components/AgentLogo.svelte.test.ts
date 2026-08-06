@@ -102,6 +102,31 @@ describe("AgentLogo", () => {
     expect(second.backend.called("image_fetch_data_url")).toBe(false);
   });
 
+  it("inverts a monochrome bundled mark so a dark theme cannot swallow it", async () => {
+    // Codex's SVG draws with `currentColor`, which an <img> resolves to black.
+    const { screen } = mount(AgentLogo, { props: { logo: "codex" } });
+
+    await until(() => img(screen.container) !== null, { label: "the mark to render" });
+    expect(img(screen.container)?.className).toContain("dark:invert");
+  });
+
+  it("leaves a coloured mark and a fetched favicon untouched", async () => {
+    // Claude's mark is orange; inverting it would be vandalism. A favicon is
+    // not ours to recolour either.
+    const claude = mount(AgentLogo, { props: { logo: "claudecode" } });
+    await until(() => img(claude.screen.container) !== null, { label: "the bundled mark" });
+    expect(img(claude.screen.container)?.className).not.toContain("dark:invert");
+
+    const remote = mount(AgentLogo, {
+      props: { logo: "https://example.invalid/favicon.png" },
+      commands: { image_fetch_data_url: () => PIXEL },
+    });
+    await until(() => img(remote.screen.container)?.getAttribute("src") === PIXEL, {
+      label: "the fetched logo",
+    });
+    expect(img(remote.screen.container)?.className).not.toContain("dark:invert");
+  });
+
   it("remembers a failure too, so a dead URL is not retried on every render", async () => {
     const url = "https://example.invalid/dead.png";
     const first = mount(AgentLogo, {

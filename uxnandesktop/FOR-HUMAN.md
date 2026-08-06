@@ -9,26 +9,11 @@ only this checklist and the inline `FOR-HUMAN:` markers describing what's needed
 
 ## Open items
 
-- [ ] **(Optional) Crisper brand SVGs for catalog agents** — every catalog agent
-      already shows a logo automatically: `AgentLogo.svelte` resolves a bundled SVG
-      first, then the agent's favicon (`favicon` field in `src/lib/agentCatalog.ts`,
-      fetched by the backend and inlined as a `data:` URL — see
-      `src/lib/agentLogoCache.ts`), then the generic Bot glyph. So this is **not
-      blocking** — it only sharpens agents that currently fall back to a low-res
-      favicon, and removes their dependency on being online.
-      - **What/Where:** drop a vector logo at `static/agents/<logo>.svg`, where
-        `<logo>` is the catalog entry's `logo` field; it takes priority over the
-        favicon. **7 of 32** catalog agents have one today (`antigravity`,
-        `claudecode`, `codex`, `gemini`, `openclaude`, `pi`, `zero`). The 25
-        without: `opencode`, `goose`, `grok`, `kilocode`, `kimi`, `qwen`, `cursor`,
-        `aider`, `amp`, `cline`, `droid`, `copilot`, `continue`, `kiro`, `auggie`,
-        `crush`, `codebuff`, `commandcode`, `mimo`, `devin`, `mistralvibe`, `rovo`,
-        `autohand`, `omp`, `ante`. Worth doing first for the ones uxnan drives as
-        real agents — **`opencode` and `grok`** — since those show up in the
-        sidebar and tab strip, not just in the Settings catalog.
-      - **Config:** none — `AgentLogo` picks up `/agents/<logo>.svg` automatically
-        once the file exists (viewBox-normalized, monochrome-friendly like the
-        existing ones).
+_Nothing open._ Agent marks are **favicon-first by design**: a catalog entry
+carries a `favicon` domain, the backend fetches it once per app run and inlines
+it, and only four flagship marks ship as assets (`claudecode`, `codex`,
+`openclaude`, `zero`). Adding an SVG for the rest is deliberately **not** wanted
+— see [`docs/agent-launch.md`](docs/agent-launch.md).
 
 ## Needed for distributable / signed release builds
 
