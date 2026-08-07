@@ -69,6 +69,19 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
     (`~/.config/opencode/plugins/uxnan-status.js`); OpenCode lo auto-descubre, así
     que **no** se toca `opencode.json` (no tiene key `plugins` en su schema).
   - **Pi / OMP** — una extensión in-process en `~/.pi/agent/extensions/`.
+  - **Plugins in-process de terceros** — **MiMo Code** y **Kilo Code** ejecutan el
+    plugin de OpenCode tal cual (MiMo es un fork suyo; Kilo reimplementó el mismo
+    bus de eventos): el instalador reescribe el tipo de agente que declara y, para
+    Kilo, el descriptor `export default { id, server }` que exige su cargador —
+    tres copias casi idénticas de un reporter ya validado serían tres sitios donde
+    corregir el siguiente bug. **Amp** tiene API propia (`amp.on(...)`, con un
+    `agent.end` que distingue turno terminado de turno muerto), así que lleva su
+    propio archivo; su `tool.call` **decide** si la herramienta corre, y el
+    reporter responde `allow` — observar no puede ser la razón de que algo no se
+    ejecute (la misma regla que hace que el reporter de shell conteste `{}`).
+    Ninguno toca configuración del usuario: los tres CLIs auto-descubren su
+    directorio de plugins, y una instalación jamás sobrescribe un archivo sin
+    nuestro marcador.
   - **Agentes declarativos** — el resto de CLIs cableados (OpenClaude, Qwen Code,
     Droid, Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro, Kimi Code)
     no necesita maquinaria propia: todos ejecutan un comando por evento y le

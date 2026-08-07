@@ -7,6 +7,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Four more agents report precise state: Goose, MiMo Code, Kilo Code and Amp**
+  — twenty in total. Goose follows the Open Plugins hook spec, so it gets a
+  plugin of its own under `~/.agents/plugins/` whose event names are Claude
+  Code's. The other three run **in-process** plugins their CLI auto-discovers,
+  so there is no config of the user's to merge at all: MiMo Code is a fork of
+  OpenCode and runs the very same reporter (only the identity it declares
+  changes), Kilo Code exposes the same event bus behind a different export
+  shape, and Amp has a plugin API of its own — including an `agent.end` that
+  says whether the turn finished or died, so it reports a real `blocked`.
+  Amp's `tool.call` is a gating hook, so the reporter answers `allow`: observing
+  a tool must never be the reason it didn't run.
+
+  The reporters were validated as real modules rather than as text: each
+  generated body is loaded by Node and driven against a stand-in for its CLI's
+  plugin API, which is what proves Kilo's descriptor and Amp's five
+  subscriptions are the shapes their loaders actually require.
+
+  **The rest of the catalog is left uncovered on purpose, and documented as
+  such** — Crush ships only `PreToolUse` (enough to start a spinner, never to
+  stop it), Cline's CLI hooks are macOS/Linux-only with no published format,
+  Rovo Dev documents no event list, Aider's hooks belong to a separate GUI, and
+  Continue, Mistral Vibe, Codebuff, Autohand and Ante publish no turn lifecycle
+  at all. They keep working under the coarse inference or the generic wrapper.
+
 - **Ten more agents report precise state out of the box.** Alongside Claude
   Code, Codex, OpenCode, Pi, Grok and Antigravity, the ADE now installs a
   managed reporter for **Cursor, GitHub Copilot, Droid (Factory), Devin, Qwen

@@ -53,6 +53,8 @@ pub const OPENCODE_STATUS_PLUGIN: &str =
     include_str!("../../static/hooks/uxnan-opencode-status-plugin.js");
 /// Pi / OMP in-process status extension.
 pub const PI_STATUS_EXTENSION: &str = include_str!("../../static/hooks/uxnan-pi-status.js");
+/// Amp in-process status plugin (its plugin API is its own, not OpenCode's).
+pub const AMP_STATUS_PLUGIN: &str = include_str!("../../static/hooks/uxnan-amp-status.js");
 
 /// The generic launcher wrappers (any CLI agent without a native hook surface).
 /// Per-event `curl` reporter with the agent kind passed as an argument — Grok and
@@ -76,6 +78,7 @@ const CODEX_HOOK_SH_FILENAME: &str = "uxnan-codex-hook.sh";
 const CODEX_HOOK_CMD_FILENAME: &str = "uxnan-codex-hook.cmd";
 const OPENCODE_PLUGIN_SRC_FILENAME: &str = "uxnan-opencode-status.js";
 const PI_EXTENSION_SRC_FILENAME: &str = "uxnan-pi-status.js";
+const AMP_PLUGIN_SRC_FILENAME: &str = "uxnan-amp-status.js";
 const EVENT_HOOK_SH_FILENAME: &str = "uxnan-event-hook.sh";
 const EVENT_HOOK_CMD_FILENAME: &str = "uxnan-event-hook.cmd";
 
@@ -118,6 +121,7 @@ const PI_EXTENSION_FILENAME: &str = "uxnan-agent-status.js";
 /// Marker line that identifies our OpenCode plugin / Pi extension as managed.
 const OPENCODE_PLUGIN_MARKER: &str = "Uxnan Desktop - OpenCode status plugin";
 const PI_EXTENSION_MARKER: &str = "Uxnan Desktop - Pi status extension";
+const AMP_PLUGIN_MARKER: &str = "Uxnan Desktop - Amp status plugin";
 
 /// Per-hook timeout (seconds) for the node-relay agents; short because the
 /// report is fire-and-forget.
@@ -405,6 +409,10 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
     let codex_cmd = write(CODEX_HOOK_CMD_FILENAME, CODEX_HOOK_CMD)?;
     let opencode = write(OPENCODE_PLUGIN_SRC_FILENAME, OPENCODE_STATUS_PLUGIN)?;
     let pi = write(PI_EXTENSION_SRC_FILENAME, PI_STATUS_EXTENSION)?;
+    // Amp's plugin ships here like the others so it is inspectable on disk and
+    // survives the sweep below; it is installed into Amp's own plugin dir from
+    // the embedded copy, so no path of it needs to be reported to the UI.
+    let amp = write(AMP_PLUGIN_SRC_FILENAME, AMP_STATUS_PLUGIN)?;
     let bash = write(WRAPPER_BASH_FILENAME, WRAPPER_BASH)?;
     let ps = write(WRAPPER_POWERSHELL_FILENAME, WRAPPER_POWERSHELL)?;
     let cmd = write(WRAPPER_CMD_FILENAME, WRAPPER_CMD)?;
@@ -433,6 +441,7 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
             &codex_cmd,
             &opencode,
             &pi,
+            &amp,
             &bash,
             &ps,
             &cmd,
@@ -1531,6 +1540,10 @@ enum HookLayout {
     /// lists plus the `version` its CLI requires. Nothing of the user's is in
     /// it, so install writes it whole and uninstall deletes it.
     OwnFile(HookTimeout),
+    /// A file that is entirely ours, holding a `hooks` object in Claude's
+    /// **grouped** shape (`[{ matcher?, hooks: [...] }]`) and no `version` —
+    /// the Open Plugins layout Goose reads.
+    OwnGrouped(HookTimeout),
     /// A file that is entirely ours, holding a **list** of named hook objects
     /// (`{ name, trigger, action: { type, command } }`). Kiro's shape.
     OwnList,
@@ -1538,6 +1551,15 @@ enum HookLayout {
     /// CLI keeps its settings in TOML and we vendor no TOML writer: everything
     /// outside our markers is left byte-for-byte alone.
     TomlBlock,
+    /// An in-process plugin dropped into the CLI's own plugin directory, which
+    /// it auto-discovers — no config entry at all. The reporter runs *inside*
+    /// the agent, so it reads the agent's own event bus rather than being handed
+    /// one event per process, and posts straight to the hook server.
+    ///
+    /// The body is built per agent by [`plugin_body`], because these CLIs share
+    /// one plugin API but not one identity: the same source has to declare which
+    /// agent it speaks for, and Kilo wants a different export shape.
+    Plugin,
 }
 
 /// A CLI whose managed reporter is fully described by data.
@@ -1734,6 +1756,55 @@ const TABLE_AGENTS: &[TableAgent] = &[
             ev("SessionStart"),
         ],
     },
+    // MiMo Code is a fork of OpenCode that renamed the packages and kept the
+    // plugin API, so it runs OpenCode's reporter verbatim — only the agent kind
+    // it declares differs (its own plugin dir, its own identity on the card).
+    TableAgent {
+        id: "mimo",
+        label: "uxnan-status.js",
+        command: "mimo",
+        path: mimo_plugin_path,
+        layout: HookLayout::Plugin,
+        events: &[],
+    },
+    // Kilo's plugin API is the same event bus with a different export shape.
+    TableAgent {
+        id: "kilocode",
+        label: "uxnan-status.js",
+        command: "kilo",
+        path: kilo_plugin_path,
+        layout: HookLayout::Plugin,
+        events: &[],
+    },
+    // Amp has a plugin API of its own (`amp.on(...)`), so its reporter is its
+    // own source rather than a variant of the shared one.
+    TableAgent {
+        id: "amp",
+        label: "uxnan-status.js",
+        command: "amp",
+        path: amp_plugin_path,
+        layout: HookLayout::Plugin,
+        events: &[],
+    },
+    // Goose follows the Open Plugins hook spec: a plugin directory of our own
+    // under `~/.agents/plugins/`, holding a Claude-shaped `hooks.json`. Nothing
+    // of the user's is in it, so install writes it whole.
+    TableAgent {
+        id: "goose",
+        label: "hooks.json",
+        command: "goose",
+        path: goose_hooks_path,
+        layout: HookLayout::OwnGrouped(TIMEOUT_SECS),
+        events: &[
+            ev("UserPromptSubmit"),
+            ev("PreToolUse"),
+            ev("PostToolUse"),
+            ev("PostToolUseFailure"),
+            ev("Stop"),
+            ev("SessionStart"),
+            ev("SessionEnd"),
+        ],
+    },
     // Kimi Code keeps everything in TOML; ours is a marker-delimited block.
     TableAgent {
         id: "kimi",
@@ -1807,6 +1878,91 @@ fn copilot_hooks_path() -> Option<PathBuf> {
     Some(home.join("hooks").join("uxnan-status.json"))
 }
 
+/// MiMo Code's plugin dir — its own, not OpenCode's (its loader only scans
+/// `.mimocode`, which is exactly the mix-up its own docs had).
+fn mimo_plugin_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".config")
+            .join("mimocode")
+            .join("plugins")
+            .join(OPENCODE_PLUGIN_FILENAME),
+    )
+}
+
+/// Kilo's global plugin dir (singular `plugin`, per its docs).
+fn kilo_plugin_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".config")
+            .join("kilo")
+            .join("plugin")
+            .join(OPENCODE_PLUGIN_FILENAME),
+    )
+}
+
+fn amp_plugin_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".config")
+            .join("amp")
+            .join("plugins")
+            .join(OPENCODE_PLUGIN_FILENAME),
+    )
+}
+
+/// The plugin source installed for `id`.
+///
+/// OpenCode, MiMo and Kilo share one reporter because they share one plugin API
+/// (MiMo is a fork of OpenCode; Kilo reimplemented the same event bus). What
+/// differs is the identity it declares — the agent kind is what the server maps
+/// and what names the tab — and, for Kilo, the export shape its loader requires:
+/// a default `{ id, server }` rather than a bare named factory. Rewriting those
+/// two lines at install beats keeping three near-identical copies of a reporter
+/// whose behavior was validated once.
+/// The marker line that proves a plugin file on disk is ours to rewrite or
+/// remove — the only thing standing between an install and a user's own file of
+/// the same name.
+fn plugin_marker(id: &str) -> &'static str {
+    if id == "amp" {
+        AMP_PLUGIN_MARKER
+    } else {
+        OPENCODE_PLUGIN_MARKER
+    }
+}
+
+fn plugin_body(id: &str) -> String {
+    if id == "amp" {
+        return AMP_STATUS_PLUGIN.to_string();
+    }
+    let body = OPENCODE_STATUS_PLUGIN.replace(
+        "const AGENT_TYPE = \"opencode\";",
+        &format!("const AGENT_TYPE = \"{id}\";"),
+    );
+    if id != "kilocode" {
+        return body;
+    }
+    body.replace(
+        "export const UxnanStatusPlugin = async () => ({\n  event: handleEvent,\n});",
+        "const UxnanStatusPlugin = async () => ({\n  event: handleEvent,\n});\n\n\
+         // Kilo's loader takes a default-exported descriptor, not a bare factory.\n\
+         export default { id: \"uxnan-status\", server: UxnanStatusPlugin };",
+    )
+}
+
+/// Goose reads hooks from a plugin directory (the Open Plugins layout), so ours
+/// gets its own plugin name rather than sharing a file with anyone.
+fn goose_hooks_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".agents")
+            .join("plugins")
+            .join(MANAGED_HOOK_NAME)
+            .join("hooks")
+            .join("hooks.json"),
+    )
+}
+
 fn kiro_hooks_path() -> Option<PathBuf> {
     Some(
         home_dir()?
@@ -1868,23 +2024,33 @@ fn native_unquotable_path(path: &str) -> Option<String> {
 /// The entry our reporter takes inside one event, in this agent's shape.
 fn table_hook_entry(layout: HookLayout, command: &str) -> Value {
     match layout {
-        HookLayout::Grouped(t) | HookLayout::OwnFile(t) => {
+        HookLayout::Grouped(t) | HookLayout::OwnFile(t) | HookLayout::OwnGrouped(t) => {
             json!({ "type": "command", "command": command, t.key: t.value })
         }
         HookLayout::Flat(t) => json!({ "command": command, t.key: t.value }),
-        // Not entry-shaped: these two build their whole document at once.
-        HookLayout::OwnList | HookLayout::TomlBlock => json!({ "command": command }),
+        // Not entry-shaped: these build their whole artifact at once (a list of
+        // named hooks, a TOML block, or a plugin source with no command at all).
+        HookLayout::OwnList | HookLayout::TomlBlock | HookLayout::Plugin => {
+            json!({ "command": command })
+        }
     }
 }
 
-/// The `hooks` object for an agent whose file is entirely ours.
+/// The `hooks` object for an agent whose file is entirely ours, in whichever of
+/// the two shapes it reads: a flat list of command entries, or Claude's grouped
+/// one (a `hooks` array per matcher).
 fn table_own_hooks_object(agent: &TableAgent, command: &str) -> Value {
     let mut hooks = serde_json::Map::new();
     for event in agent.events {
-        hooks.insert(
-            event.name.to_string(),
-            json!([table_hook_entry(agent.layout, command)]),
-        );
+        let entry = table_hook_entry(agent.layout, command);
+        let value = match agent.layout {
+            HookLayout::OwnGrouped(_) => match event.matcher {
+                Some(m) => json!([{ "matcher": m, "hooks": [entry] }]),
+                None => json!([{ "hooks": [entry] }]),
+            },
+            _ => json!([entry]),
+        };
+        hooks.insert(event.name.to_string(), value);
     }
     Value::Object(hooks)
 }
@@ -1910,6 +2076,8 @@ fn table_own_document(agent: &TableAgent, command: &str) -> Value {
                 .collect();
             json!({ "version": "v1", "hooks": hooks })
         }
+        // Goose's spec has no `version` key; the others require one.
+        HookLayout::OwnGrouped(_) => json!({ "hooks": table_own_hooks_object(agent, command) }),
         _ => json!({ "version": 1, "hooks": table_own_hooks_object(agent, command) }),
     }
 }
@@ -1979,7 +2147,14 @@ pub fn install_table_agent(id: &str, install: &HookInstall) -> Result<AgentHooks
         table_agent(id).ok_or_else(|| AppError::Invalid(format!("unknown hook agent: {id}")))?;
     let path = (agent.path)()
         .ok_or_else(|| AppError::Invalid(format!("cannot resolve the {id} config path")))?;
-    let Some(command) = table_agent_command(agent.id, install) else {
+    // A plugin posts to the hook server itself, so it needs no command; the
+    // unavailable-path check below only applies to the CLIs that run one.
+    let command = if matches!(agent.layout, HookLayout::Plugin) {
+        Some(String::new())
+    } else {
+        table_agent_command(agent.id, install)
+    };
+    let Some(command) = command else {
         return Err(AppError::Invalid(format!(
             "the hooks folder path contains a space and Windows won't shorten it ({}). \
              A hook command is a literal path to these CLIs, so none can be installed from here.",
@@ -2010,8 +2185,29 @@ pub fn install_table_agent(id: &str, install: &HookInstall) -> Result<AgentHooks
             }
             write_json_atomic(&path, &to_pretty(&doc))?;
         }
-        HookLayout::OwnFile(_) | HookLayout::OwnList => {
+        HookLayout::OwnFile(_) | HookLayout::OwnGrouped(_) | HookLayout::OwnList => {
             write_json_atomic(&path, &to_pretty(&table_own_document(agent, &command)))?;
+        }
+        HookLayout::Plugin => {
+            // Never clobber a user-authored file of the same name: only ever
+            // (re)write one carrying our marker.
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if !text.contains(plugin_marker(agent.id)) {
+                    return Ok(AgentHooksStatus {
+                        installed: false,
+                        file_exists: true,
+                        unavailable: true,
+                        detail: format!(
+                            "a non-managed file already exists at {}",
+                            path.to_string_lossy()
+                        ),
+                    });
+                }
+            }
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            write_if_changed(&path, &plugin_body(agent.id))?;
         }
         HookLayout::TomlBlock => {
             let existing = std::fs::read_to_string(&path).unwrap_or_default();
@@ -2047,9 +2243,17 @@ pub fn uninstall_table_agent(id: &str) -> Result<AgentHooksStatus, AppError> {
             }
         }
         // The file is entirely ours — removing it is the whole uninstall.
-        HookLayout::OwnFile(_) | HookLayout::OwnList => {
+        HookLayout::OwnFile(_) | HookLayout::OwnGrouped(_) | HookLayout::OwnList => {
             if path.exists() {
                 std::fs::remove_file(&path)?;
+            }
+        }
+        // Ours only: a file of the same name that we did not write stays.
+        HookLayout::Plugin => {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if text.contains(plugin_marker(agent.id)) {
+                    let _ = std::fs::remove_file(&path);
+                }
             }
         }
         HookLayout::TomlBlock => {
@@ -2093,12 +2297,16 @@ pub fn read_table_agent_status(id: &str) -> AgentHooksStatus {
         }
         // Ours whole: its presence IS the install state, and the tag guards
         // against reading someone else's file of the same name.
-        HookLayout::OwnFile(_) | HookLayout::OwnList | HookLayout::TomlBlock => {
+        HookLayout::OwnFile(_)
+        | HookLayout::OwnGrouped(_)
+        | HookLayout::OwnList
+        | HookLayout::TomlBlock
+        | HookLayout::Plugin => {
             let path_str = path.to_string_lossy().into_owned();
-            let marker = if matches!(agent.layout, HookLayout::TomlBlock) {
-                TOML_BLOCK_START
-            } else {
-                MANAGED_HOOK_NAME
+            let marker = match agent.layout {
+                HookLayout::TomlBlock => TOML_BLOCK_START,
+                HookLayout::Plugin => plugin_marker(agent.id),
+                _ => MANAGED_HOOK_NAME,
             };
             match std::fs::read_to_string(&path) {
                 Ok(text) => AgentHooksStatus {
@@ -2134,8 +2342,9 @@ pub fn render_table_agent_config(id: &str, install: &HookInstall) -> Result<Stri
     let command =
         table_agent_command(agent.id, install).unwrap_or_else(|| "<unavailable>".to_string());
     match agent.layout {
+        HookLayout::Plugin => Ok(plugin_body(agent.id)),
         HookLayout::TomlBlock => Ok(table_toml_block(agent, &command)),
-        HookLayout::OwnFile(_) | HookLayout::OwnList => {
+        HookLayout::OwnFile(_) | HookLayout::OwnGrouped(_) | HookLayout::OwnList => {
             serde_json::to_string_pretty(&table_own_document(agent, &command))
                 .map_err(AppError::Serde)
         }
@@ -2382,6 +2591,22 @@ mod tests {
         for agent in TABLE_AGENTS {
             let rendered = render_table_agent_config(agent.id, &install)
                 .unwrap_or_else(|e| panic!("{} failed to render: {e}", agent.id));
+            // A plugin carries no command: it runs inside the agent and posts
+            // for itself, so what has to be true is that it declares the right
+            // identity and stays recognisable as ours on disk.
+            if matches!(agent.layout, HookLayout::Plugin) {
+                assert!(
+                    rendered.contains(&format!("const AGENT_TYPE = \"{}\";", agent.id)),
+                    "{} plugin does not declare its own agent kind",
+                    agent.id
+                );
+                assert!(
+                    rendered.contains(plugin_marker(agent.id)),
+                    "{} plugin has no managed marker, so install could clobber a user file",
+                    agent.id
+                );
+                continue;
+            }
             // The reporter is shared, so the tag is the ONLY thing that says
             // which agent a report came from: without it the server has no arm
             // to match and the report is dropped.
@@ -2412,15 +2637,55 @@ mod tests {
     }
 
     #[test]
+    fn the_shared_plugin_declares_the_agent_it_speaks_for() {
+        // MiMo runs OpenCode's reporter verbatim — it is a fork of it — so the
+        // one thing that must change is the kind it reports: leaving it as
+        // "opencode" would file every MiMo session under OpenCode's identity
+        // and give the tab the wrong brand.
+        let mimo = plugin_body("mimo");
+        assert!(mimo.contains("const AGENT_TYPE = \"mimo\";"));
+        assert!(!mimo.contains("const AGENT_TYPE = \"opencode\";"));
+        // …and nothing else about a validated reporter is rewritten.
+        assert!(mimo.contains("SubagentStart"));
+        assert!(mimo.contains(OPENCODE_PLUGIN_MARKER));
+
+        // Kilo's loader takes a default-exported descriptor; a bare named
+        // factory is simply never registered, so the export has to change too.
+        let kilo = plugin_body("kilocode");
+        assert!(kilo.contains("const AGENT_TYPE = \"kilocode\";"));
+        assert!(
+            kilo.contains("export default { id: \"uxnan-status\", server: UxnanStatusPlugin };")
+        );
+        assert!(
+            !kilo.contains("export const UxnanStatusPlugin"),
+            "the named export must not survive, or the plugin loads twice"
+        );
+
+        // OpenCode's own copy is untouched by all of this.
+        assert_eq!(plugin_body("opencode"), OPENCODE_STATUS_PLUGIN);
+
+        // Amp's API is its own, so it gets its own source — not a rewrite.
+        let amp = plugin_body("amp");
+        assert!(amp.contains("const AGENT_TYPE = \"amp\";"));
+        assert!(amp.contains("amp.on(\"agent.end\""));
+        // A gating hook that answers nothing would BLOCK the tool it observes.
+        assert!(amp.contains("action: \"allow\""));
+    }
+
+    #[test]
     fn table_agent_ids_match_the_servers_event_table() {
         // The id is posted as the agent type and matched by `normalize_event`.
         // A typo here means a perfectly installed hook whose every report is
         // silently discarded, which is exactly the failure that is hardest to
         // notice: the card just never moves.
         for agent in TABLE_AGENTS {
+            // Each agent's own spelling for "I am working on it".
             let event = match agent.id {
-                "cursor" => "preToolUse",
-                "copilot" => "preToolUse",
+                "cursor" | "copilot" => "preToolUse",
+                // The in-process plugins report their reporter's own vocabulary,
+                // not the CLI's bus event names.
+                "mimo" | "kilocode" => "SessionBusy",
+                "amp" => "tool.call",
                 _ => "PreToolUse",
             };
             assert_eq!(

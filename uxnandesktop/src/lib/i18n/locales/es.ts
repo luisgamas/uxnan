@@ -1309,6 +1309,14 @@ export const es: Record<MessageKey, string> = {
     "Escribe su propio archivo en `~/.kiro/hooks/`, que Kiro combina con todo lo demás de esa carpeta. Reporta su turno, su bucle de herramientas y el fin del turno.",
   "hooks.desc.kimi":
     "Kimi Code guarda su configuración en TOML, así que el reporter es un bloque delimitado que se añade a `~/.kimi-code/config.toml` — todo lo que está fuera de esas marcas queda exactamente como lo escribiste.",
+  "hooks.desc.goose":
+    "Escribe su propio plugin en `~/.agents/plugins/`, el formato Open Plugins que lee Goose, así que nunca toca tus hooks. Sus nombres de evento son los de Claude Code, de modo que reporta todo el rango.",
+  "hooks.desc.mimo":
+    "MiMo Code es un fork de OpenCode y ejecuta exactamente el mismo plugin de estado, depositado en su propio directorio `plugins/` — incluidas las filas de subagente que producen sus sesiones hijas.",
+  "hooks.desc.kilocode":
+    "Kilo Code expone el bus de eventos de OpenCode con otra forma de export, así que ejecuta el mismo reporter in-process — con eventos de sesión, herramientas y permisos.",
+  "hooks.desc.amp":
+    "Instala un plugin en `~/.config/amp/plugins/`, que Amp descubre solo. La API de plugins de Amp es propia; su `agent.end` dice si el turno terminó o murió, así que reporta un `blocked` real.",
   "hooks.agentListLabel": "Agentes",
   "hooks.groupInstalled": "En este equipo",
   "hooks.groupOthers": "Otros agentes",

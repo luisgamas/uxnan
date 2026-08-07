@@ -1306,6 +1306,14 @@ export const en = {
     "Writes its own file in `~/.kiro/hooks/`, which Kiro merges with everything else in that folder. It reports its turn, its tool loop and the end of a turn.",
   "hooks.desc.kimi":
     "Kimi Code keeps its settings in TOML, so the reporter is a marked block appended to `~/.kimi-code/config.toml` — everything outside those markers is left exactly as you wrote it.",
+  "hooks.desc.goose":
+    "Writes its own plugin under `~/.agents/plugins/`, the Open Plugins layout Goose reads, so your hooks are never touched. Its event names are Claude Code's, so it reports the full range.",
+  "hooks.desc.mimo":
+    "MiMo Code is a fork of OpenCode and runs the very same status plugin, dropped into its own `plugins/` dir — including the sub-agent rows its child sessions produce.",
+  "hooks.desc.kilocode":
+    "Kilo Code exposes OpenCode's event bus with a different export shape, so it runs the same in-process reporter — session, tool and permission events included.",
+  "hooks.desc.amp":
+    "Installs a plugin into `~/.config/amp/plugins/`, which Amp auto-discovers. Amp's plugin API is its own; its `agent.end` says whether the turn finished or died, so it reports a real `blocked`.",
   "hooks.agentListLabel": "Agents",
   "hooks.groupInstalled": "On this machine",
   "hooks.groupOthers": "Other agents",

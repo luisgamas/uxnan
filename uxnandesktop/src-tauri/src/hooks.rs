@@ -143,11 +143,33 @@ pub fn normalize_event(
             "Stop" => Some(AgentStatus::Done),
             _ => None,
         },
-        "opencode" => match event {
+        // OpenCode's in-process plugin, and the two CLIs that run the same
+        // reporter because they share its plugin API: MiMo Code (a fork of
+        // OpenCode) and Kilo Code (the same event bus, a different export
+        // shape). They report the plugin's own synthetic vocabulary, not the
+        // bus event names, so one arm serves all three.
+        "opencode" | "mimo" | "kilocode" => match event {
             "SessionStart" | "SessionBusy" | "MessagePart" => Some(AgentStatus::Working),
             "SessionIdle" | "Stop" => Some(AgentStatus::Done),
             "PermissionRequest" | "AskUserQuestion" => Some(AgentStatus::Waiting),
             "Error" => Some(AgentStatus::Blocked),
+            _ => None,
+        },
+        // Amp's plugin API is its own: five events, reported under their native
+        // names. `agent.end` carries a `status`, which is the only way to tell a
+        // finished turn from one that died — so Amp reports a real `blocked`
+        // rather than one inferred from silence.
+        "amp" => match event {
+            "agent.start" | "tool.call" | "tool.result" => Some(AgentStatus::Working),
+            "agent.end" => match source
+                .and_then(|s| s.get("status"))
+                .and_then(|v| v.as_str())
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+            {
+                Some("error" | "failed" | "failure") => Some(AgentStatus::Blocked),
+                _ => Some(AgentStatus::Done),
+            },
             _ => None,
         },
         // ---- Agents that reimplement Claude Code's hook vocabulary ----------
@@ -157,7 +179,10 @@ pub fn normalize_event(
         // they share one table and each is narrowed to what it actually sends —
         // registering an event a CLI never fires is harmless, but claiming a
         // state it can't report is not.
-        "openclaude" | "qwen" | "kimi" => claude_vocabulary(event, source),
+        // Goose follows the Open Plugins hook spec, whose event names are Claude
+        // Code's; it names the event `event` rather than `hook_event_name`,
+        // which the payload reader already accepts.
+        "openclaude" | "qwen" | "kimi" | "goose" => claude_vocabulary(event, source),
         // Grok's vocabulary IS Claude's (it loads a Claude settings file
         // unchanged) plus a `StopFailure` of its own, but it **dispatches in
         // snake_case** — its `HookEventName` carries
@@ -298,9 +323,13 @@ pub fn is_session_boundary(agent_type: &str, event: &str, source: Option<&Value>
                 | "copilot"
                 | "openclaude"
                 | "cursor"
-                | "kiro",
+                | "kiro"
+                | "goose",
             "SessionStart"
         ) | ("kiro", "AgentSpawn")
+            // Amp's plugin reports its native name; a thread session starting is
+            // the same boundary, and nothing has been asked of it yet.
+            | ("amp", "Session.start")
     );
     if !is_start {
         return false;

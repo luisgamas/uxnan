@@ -114,6 +114,20 @@ function classify(evt) {
   if (type === "permission.asked" || type === "permission.updated") {
     return { event: "PermissionRequest", source: rootSid ? { sessionID: rootSid } : undefined };
   }
+  // …and an answered one puts the agent back to work. Kilo Code names this
+  // event (OpenCode does not emit it), and without it a session that was
+  // waiting would sit there until its next status event.
+  if (type === "permission.replied") {
+    return { event: "SessionBusy", source: rootSid ? { sessionID: rootSid } : undefined };
+  }
+  // Kilo Code's tool events. OpenCode reports tool use through `session.status`
+  // instead, so this arm is simply never taken there.
+  if (type === "tool.execute.before" || type === "tool.execute.after") {
+    return {
+      event: "SessionBusy",
+      source: { sessionID: rootSid || undefined, tool_name: props.tool || props.name },
+    };
+  }
   if (type === "question.asked") {
     return { event: "AskUserQuestion", source: rootSid ? { sessionID: rootSid } : undefined };
   }

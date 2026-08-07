@@ -113,10 +113,13 @@ started.**
   dot-relative command (Antigravity) and an 8.3 short-path fallback (Grok).
   Gemini CLI is no longer auto-installed (discontinued upstream) but its card
   still appears while its reporter is present, so it can be removed.
-  **Ten more agents are wired declaratively** — OpenClaude, Qwen Code, Droid,
-  Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro and Kimi Code — as
-  rows in `agent_hooks::TABLE_AGENTS` (config path, detection command, entry
-  shape, events) driving the shared `uxnan-event-hook`; adding one is a row plus
+  **Fourteen more agents are wired declaratively** — OpenClaude, Qwen Code,
+  Droid, Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro, Kimi Code,
+  Goose, MiMo Code, Kilo Code and Amp — as rows in `agent_hooks::TABLE_AGENTS`
+  (config path, detection command, entry shape, events) driving the shared
+  `uxnan-event-hook`, or — for the last three — an in-process plugin the CLI
+  auto-discovers (MiMo and Kilo run OpenCode's reporter with the agent kind and,
+  for Kilo, the export shape rewritten at install; Amp has its own source); adding one is a row plus
   a `normalize_event` arm with the same id, which a test enforces. Startup only
   installs the agents the machine actually has (`PATH` or an existing config).
   Per-event merge preserves user hooks and is tag-scoped, so two of our own

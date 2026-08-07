@@ -2,7 +2,7 @@
 
 ![States](https://img.shields.io/badge/states-working_%7C_blocked_%7C_waiting_%7C_done-2ea44f?style=for-the-badge)
 ![Server](https://img.shields.io/badge/hook_server-127.0.0.1_(loopback)-0a0a0a?style=for-the-badge)
-![Agents](https://img.shields.io/badge/precise-16_agents-D97757?style=for-the-badge)
+![Agents](https://img.shields.io/badge/precise-20_agents-D97757?style=for-the-badge)
 ![Others](https://img.shields.io/badge/other_agents-generic_wrapper-blue?style=for-the-badge)
 
 The ADE infers a coarse **working / idle** state from terminal output with no
@@ -10,7 +10,7 @@ setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` —
 agent must actively report them to the ADE's local **hook server** (Layer 1 of
 the monitoring design, spec `architecture/02d-agent-monitoring.md` §1.1).
 
-The ADE ships a managed reporter for **sixteen** agents and installs them
+The ADE ships a managed reporter for **twenty** agents and installs them
 **automatically on startup** (you can turn that off any time):
 
 | Agent | Where its reporter is installed |
@@ -31,6 +31,10 @@ The ADE ships a managed reporter for **sixteen** agents and installs them
 | GitHub Copilot | `~/.copilot/hooks/uxnan-status.json` |
 | Kiro | `~/.kiro/hooks/uxnan-status.json` |
 | Kimi Code | `~/.kimi-code/config.toml` (a marked block) |
+| Goose | `~/.agents/plugins/uxnan-status/hooks/hooks.json` |
+| MiMo Code | its `plugins/` dir (`~/.config/mimocode/plugins/`) |
+| Kilo Code | its `plugin/` dir (`~/.config/kilo/plugin/`) |
+| Amp | its `plugins/` dir (`~/.config/amp/plugins/`) |
 
 The **Gemini CLI** reporter is still wired but no longer installed or offered,
 since Google discontinued that CLI in favour of Antigravity; if you already have
@@ -54,6 +58,21 @@ for it is answer enough.
 >   ADE writes.
 > - **Anything else** → use the **generic wrapper** as the agent's launch
 >   command (full step-by-step per OS below).
+
+**The rest of the catalog has no usable surface yet, and the ADE says so rather
+than pretending.** An agent only earns a reporter when its CLI can tell us a turn
+*ended* — without that the card could start a spinner it can never stop:
+
+| Agent | Why not |
+|---|---|
+| Crush | Hooks exist but only `PreToolUse` ships so far — enough to say "working", never "done". |
+| Cline | Its CLI hooks are documented as macOS/Linux only, and the registration format isn't published. |
+| Rovo Dev | Has event hooks (`/hooks`, `~/.rovodev/config.yml`) but Atlassian documents no event list or payload shape. |
+| Aider | The lifecycle hooks belong to AiderDesk (a separate GUI); the CLI has an open request for them. |
+| Continue · Mistral Vibe · Codebuff · Autohand · Ante | No turn-lifecycle hook or plugin surface published. `codebuff.json` covers file-change and startup processes, not turns. |
+
+Any of them still works in uxnan — they just fall back to the coarse
+working/idle inference, or you can point them at the generic wrapper below.
 
 ---
 
