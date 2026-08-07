@@ -29,7 +29,7 @@ import CodeIcon from "@hugeicons/core-free-icons/CodeIcon";
 import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
 import CpuIcon from "@hugeicons/core-free-icons/CpuIcon";
 import DatabaseIcon from "@hugeicons/core-free-icons/DatabaseIcon";
-import ServerIcon from "@hugeicons/core-free-icons/CloudServerIcon";
+import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
 import PackageIcon from "@hugeicons/core-free-icons/PackageIcon";
 import BoxIcon from "@hugeicons/core-free-icons/BoxIcon";
 import BoxesIcon from "@hugeicons/core-free-icons/BoxesIcon";

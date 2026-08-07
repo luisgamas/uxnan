@@ -15,7 +15,7 @@
   import { pets } from "$lib/state/pets.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import UserRoundIcon from "@hugeicons/core-free-icons/UserIcon";
-  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
   import CalendarClockIcon from "@hugeicons/core-free-icons/CalendarClockIcon";
   import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";

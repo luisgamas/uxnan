@@ -743,6 +743,26 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 ## Deferred follow-ups (non-blocking) — by area
 
+**Icons**
+- [ ] **Four glyphs are drawing a stand-in because the npm package lags
+      hugeicons.com.** `WholeWordIcon`, `ServerIcon`, `TrendingUpIcon` and
+      `TrendingDownIcon` are free stroke-rounded icons on the site (e.g.
+      `hugeicons.com/icon/whole-word?style=stroke-rounded`) but are **not** in
+      `@hugeicons/core-free-icons@4.2.3`, the newest release (5,437 glyphs,
+      published 2026-07-21). Until they ship, the file-search "whole word"
+      toggle draws `Text`, the backend-status + `server` catalog glyph draw
+      `ServerStack01`, and the resource summary's trend arrows draw
+      `ChartUp`/`ChartDown` — all chosen and approved on their own merits, so
+      this is a nice-to-have, not a defect.
+
+      *What unblocks it:* a `@hugeicons/core-free-icons` release containing
+      them. Check with
+      `ls node_modules/@hugeicons/core-free-icons/dist/esm | grep -E '^(WholeWord|Server|TrendingUp|TrendingDown)Icon'`
+      after any bump; if they appear, swap the four imports (search for
+      `TextIcon` in `FileTreePanel.svelte`, `ServerStack01Icon`, and
+      `ChartUpIcon`/`ChartDownIcon` in `ResourceSummary.svelte`) and drop this
+      item.
+
 **Terminal**
 - [ ] **OPTIONAL — persistent PTY host, so a session never has to be resumed at
       all. Needs the maintainer's go-ahead before any code is written: it changes

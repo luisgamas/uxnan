@@ -12,7 +12,7 @@
   import { i18n } from "$lib/i18n";
   import type { AgentModel } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
-  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
 
   let {
     models,

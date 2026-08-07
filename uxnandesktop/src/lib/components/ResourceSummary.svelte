@@ -20,8 +20,10 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { Icon } from "$lib/components/ui/icon";
   import ActivityIcon from "@hugeicons/core-free-icons/Activity01Icon";
-  import TrendingUpIcon from "@hugeicons/core-free-icons/AnalyticsUpIcon";
-  import TrendingDownIcon from "@hugeicons/core-free-icons/AnalyticsDownIcon";
+  // FOR-DEV: stand-ins — `TrendingUp/DownIcon` are free on hugeicons.com but absent
+  // from core-free-icons@4.2.3. Swap when they ship (FOR-DEV.md → Icons).
+  import TrendingUpIcon from "@hugeicons/core-free-icons/ChartUpIcon";
+  import TrendingDownIcon from "@hugeicons/core-free-icons/ChartDownIcon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   const summary = $derived(resources.summary);

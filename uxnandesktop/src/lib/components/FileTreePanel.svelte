@@ -58,6 +58,8 @@
   import TextSearchIcon from "@hugeicons/core-free-icons/FileSearchIcon";
   import ListFilterIcon from "@hugeicons/core-free-icons/FilterIcon";
   import CaseSensitiveIcon from "@hugeicons/core-free-icons/CaseSensitiveIcon";
+  // FOR-DEV: stand-in — Hugeicons publishes `WholeWordIcon` as free on the site
+  // but it is not in core-free-icons@4.2.3 yet. Swap when it ships (FOR-DEV.md → Icons).
   import WholeWordIcon from "@hugeicons/core-free-icons/TextIcon";
   import RegexIcon from "@hugeicons/core-free-icons/RegexIcon";
 

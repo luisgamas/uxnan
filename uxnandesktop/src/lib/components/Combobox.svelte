@@ -30,7 +30,7 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
-  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 
   let {

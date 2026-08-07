@@ -33,7 +33,7 @@
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { Icon } from "$lib/components/ui/icon";
-  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
   import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
 

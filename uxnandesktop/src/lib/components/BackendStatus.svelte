@@ -18,7 +18,9 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Icon } from "$lib/components/ui/icon";
-  import ServerIcon from "@hugeicons/core-free-icons/CloudServerIcon";
+  // FOR-DEV: stand-in — `ServerIcon` is free on hugeicons.com but absent from
+  // core-free-icons@4.2.3. Swap when it ships (FOR-DEV.md → Icons).
+  import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
   import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
