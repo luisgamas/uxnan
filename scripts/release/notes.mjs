@@ -20,21 +20,44 @@ import { execFileSync } from 'node:child_process';
 
 import { component } from './components.mjs';
 import { tagsFor } from './git.mjs';
+import { baseOf } from './version.mjs';
 
 /**
- * The tag a release should be compared against: the newest build of the same
- * component in **any** channel, excluding the one being released.
+ * How far back a tag sits, as a sortable number: the numeric base first, then
+ * the nightly counter. String order cannot do this — `desktop-stable-v0.0.28`
+ * sorts *after* `desktop-nightly-v0.0.30` alphabetically, which is exactly how
+ * 0.0.30's notes ended up listing everything since 0.0.28.
+ */
+function rankOf(tag) {
+  const base = baseOf(tag);
+  if (!base) return null;
+  const nightly = Number(/-nightly\.\d+\.(\d+)$/.exec(tag)?.[1] ?? 0);
+  return base.major * 1e9 + base.minor * 1e6 + base.patch * 1e3 + nightly;
+}
+
+/**
+ * The tag a release should be compared against: the build immediately below it
+ * in the same component, in **any** channel.
  *
- * Pure, so the rule can be tested without the network — it is the part that was
- * wrong, not the API call.
+ * Pure, so the rule can be tested without the network — it is the part that has
+ * been wrong twice, not the API call.
  *
  * @param {string} tag the tag being released
- * @param {string[]} allTags every tag for that component, newest first
+ * @param {string[]} allTags every tag for that component, any order
  * @returns {string|null}
  */
 export function previousTagFor(tag, allTags) {
-  const remaining = allTags.filter((candidate) => candidate !== tag);
-  return remaining.length > 0 ? remaining[0] : null;
+  const mine = rankOf(tag);
+  if (mine === null) return null;
+
+  let best = null;
+  for (const candidate of allTags) {
+    if (candidate === tag) continue;
+    const rank = rankOf(candidate);
+    if (rank === null || rank >= mine) continue;
+    if (!best || rank > best.rank) best = { tag: candidate, rank };
+  }
+  return best?.tag ?? null;
 }
 
 /** Which component a tag belongs to, from its prefix. */
@@ -79,11 +102,6 @@ if (process.argv[1] && process.argv[1].endsWith('notes.mjs')) {
     process.exit(2);
   }
 
-  // Sorted newest-first by version, which is what "the build before this one"
-  // means for every scheme this repo uses.
-  const all = tagsFor(component(id).tagPrefixes).sort((a, b) =>
-    b.localeCompare(a, 'en', { numeric: true }),
-  );
-  const previous = previousTagFor(tag, all);
+  const previous = previousTagFor(tag, tagsFor(component(id).tagPrefixes));
   process.stdout.write(generate(tag, { repo, previous }) + '\n');
 }

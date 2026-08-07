@@ -177,11 +177,30 @@ jobs:
   # "this is now the default download" is a human decision.
   notes:
     needs: build
+    # `build` tolerates a macOS leg failing on purpose (fail-fast: false) — the
+    # Windows and Linux installers are still worth shipping. `needs:` alone would
+    # skip this job in that case, leaving the release with no body and, for a
+    # nightly, unpublished. It happened on 0.0.30, where the Intel mac leg built
+    # everything and then hit a network timeout uploading it.
+    if: always() && needs.build.result != 'cancelled' && needs.build.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
+      # Publishing with GITHUB_TOKEN creates a `release: published` event that
+      # GitHub refuses to act on — the same anti-recursion rule that stops a tag
+      # from starting a build. On 0.0.30 the release went public and
+      # `release-desktop-manifest.yml` never ran, so the updater kept serving
+      # 0.0.29. The app token makes the publish a real event.
+      - name: Mint a release token
+        id: token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -206,11 +225,32 @@ jobs:
           cat notes.md
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
 
+      # Publishing a nightly whose installers are all missing would be worse than
+      # leaving it: the updater would offer a release with nothing to download.
+      - name: Refuse to publish an empty release
+        id: assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          count=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"             --json assets --jq '[.assets[] | select(.name | test("\.(msi|exe|dmg|deb|rpm|AppImage)$"))] | length')
+          echo "installers=$count" >> "$GITHUB_OUTPUT"
+          echo "$count installer(s) attached"
+          if [ "$count" = "0" ]; then
+            echo "::error::No installers were attached — not publishing."
+            exit 1
+          fi
+
       - name: Publish (nightly only)
         if: steps.meta.outputs.channel == 'nightly'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+          GH_TOKEN: ${{ steps.token.outputs.token || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+          if [ -z "${{ steps.token.outputs.token }}" ]; then
+            echo "::warning::Published with GITHUB_TOKEN, so release-desktop-manifest.yml will NOT run and the updater will not see this build. Re-publish it by hand (unpublish, publish) to roll latest.json."
+          fi
 
       - name: Say what is left to a human
         run: |

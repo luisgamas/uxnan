@@ -59,8 +59,14 @@ button does, but with `previous_tag_name` pinned to the previous desktop build i
 **either** channel. Left to choose, GitHub reached back to the previous *nightly*
 and re-listed nine pull requests that had already shipped.
 
-Both print to stdout and change nothing; `.github/workflows/release.yml` is what
-turns their output into commits and tags.
+`record.mjs` writes the `VERSIONS.md` row — date, the version in its component's
+column, and a summary seeded from the pull request titles in the release. It is
+idempotent on the version, so a retried run cannot record the same release
+twice. The row goes in the **same commit as the version bump**, so it travels in
+the same pull request: merging that is what records the release.
+
+`plan.mjs` and `notes.mjs` print to stdout and change nothing;
+`.github/workflows/release.yml` is what turns their output into commits and tags.
 
 ## What the pieces are
 
@@ -74,6 +80,7 @@ turns their output into commits and tags.
 | `git.mjs` | the only place that shells out to git |
 | `plan.mjs` | what to cut, in what order — the workflow's decisions |
 | `notes.mjs` | the release body, with the baseline pinned |
+| `record.mjs` | the `VERSIONS.md` history row, written at cut time |
 
 `node --test "scripts/release/*.test.mjs"` (also part of the root `npm test`)
 covers all of it, including the two failures that have actually shipped here: a
