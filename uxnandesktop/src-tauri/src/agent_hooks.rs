@@ -1942,11 +1942,19 @@ fn plugin_body(id: &str) -> String {
     if id != "kilocode" {
         return body;
     }
-    body.replace(
-        "export const UxnanStatusPlugin = async () => ({\n  event: handleEvent,\n});",
-        "const UxnanStatusPlugin = async () => ({\n  event: handleEvent,\n});\n\n\
-         // Kilo's loader takes a default-exported descriptor, not a bare factory.\n\
-         export default { id: \"uxnan-status\", server: UxnanStatusPlugin };",
+    // Kilo's loader takes a default-exported descriptor, not a bare named
+    // factory. Anchored on the single `export` line and with the descriptor
+    // appended at the end — a multi-line anchor would silently stop matching the
+    // day the file's line endings or spacing change, and the plugin would load
+    // as nothing at all.
+    let demoted = body.replace(
+        "export const UxnanStatusPlugin = async () => ({",
+        "const UxnanStatusPlugin = async () => ({",
+    );
+    format!(
+        "{}\n// Kilo's loader takes a default-exported descriptor, not a bare factory.\n\
+         export default {{ id: \"{MANAGED_HOOK_NAME}\", server: UxnanStatusPlugin }};\n",
+        demoted.trim_end()
     )
 }
 

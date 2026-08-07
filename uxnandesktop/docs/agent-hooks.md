@@ -180,7 +180,7 @@ spawns (inherited by any agent run inside that terminal):
 | `UXNAN_HOOK_URL` | Full POST endpoint, e.g. `http://127.0.0.1:51234/hook` |
 | `UXNAN_HOOK_TOKEN` | Shared secret for this ADE launch (sent as `X-Uxnan-Token`) |
 | `UXNAN_AGENT_ID` | This terminal's id — echo it back as `agentId` |
-| `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd` — a file the ADE rewrites every launch with the live url + token. Reporters prefer it, so a terminal that outlived an app restart still reaches the live server. |
+| `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd` — a file the ADE rewrites every launch with the live url + token. It is the **rescue**, not the first choice: a reporter uses the terminal's own environment and falls back to this file only when that fails, which is what a terminal that outlived an app restart needs. |
 
 You never need to set these by hand — the reporters pick them up from the
 environment, and so does anything else you write against the contract.
@@ -190,6 +190,27 @@ environment, and so does anything else you write against the contract.
 > However, in **WSL2** `127.0.0.1` points at the WSL VM, not the Windows host, so
 > a hook running *inside* WSL2 can't reach the host's hook server — a known
 > limitation. WSL1 and native Windows/macOS/Linux shells work.
+
+### More than one uxnan window
+
+Every window runs its own hook server on its own port with its own token, and
+each terminal is given its window's coordinates in its environment. That is what
+makes a report land in the window that launched the agent.
+
+The endpoint file cannot do that job: it lives at **one shared path**, so a
+second window overwrites it with its own coordinates. Reporters used to prefer
+it, which meant the moment you opened a second window every agent in the first
+one started reporting to the second — its cards stopped moving, and a finished
+turn never showed its check. Now the environment wins and the file is only tried
+when the environment's server does not answer, so both windows work at once and
+an agent that outlived a restart is still rescued.
+
+One thing genuinely does not survive two windows: the **browser MCP** entry in
+each CLI's config holds a URL, and a config file has no per-window environment to
+read it from, so the last window to start owns it. A window whose entry was
+overwritten simply gets no browser tools (the token is per-window, so a
+cross-window call is refused rather than misrouted). Closing a window no longer
+deletes the other's entry, so reopening it restores its own.
 
 ---
 

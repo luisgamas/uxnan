@@ -33,15 +33,26 @@ function readEndpointFile(path) {
   }
 }
 
-function coords() {
+// Where to report, in the order that survives more than one uxnan window.
+//
+// The extension's own environment comes FIRST and the endpoint file is only the
+// rescue. The file lives at one shared path, so a second uxnan window overwrites
+// it with its own coordinates — and preferring it sent every agent of the first
+// window's reports to the second one, which is why a second window showed no
+// completion checks. The file still matters when the environment is stale (a
+// session that outlived an app restart), so it is tried when the first attempt
+// gets no 2xx.
+function coordCandidates() {
+  const out = [];
+  const envUrl = process.env.UXNAN_HOOK_URL || "";
+  if (envUrl) out.push({ url: envUrl, token: process.env.UXNAN_HOOK_TOKEN || "" });
   const file = process.env.UXNAN_ENDPOINT_FILE
     ? readEndpointFile(process.env.UXNAN_ENDPOINT_FILE)
     : {};
-  return {
-    url: file.UXNAN_HOOK_URL || process.env.UXNAN_HOOK_URL || "",
-    token: file.UXNAN_HOOK_TOKEN || process.env.UXNAN_HOOK_TOKEN || "",
-    agentId: process.env.UXNAN_AGENT_ID || "",
-  };
+  if (file.UXNAN_HOOK_URL && file.UXNAN_HOOK_URL !== envUrl) {
+    out.push({ url: file.UXNAN_HOOK_URL, token: file.UXNAN_HOOK_TOKEN || "" });
+  }
+  return out;
 }
 
 // Last session identity seen on any event payload (Pi resumes by session file:
@@ -75,38 +86,55 @@ function noteSession(e) {
 }
 
 function post(event, source) {
-  const { url, token, agentId } = coords();
-  if (!url || !agentId || !event) return;
+  const agentId = process.env.UXNAN_AGENT_ID || "";
+  if (!agentId || !event) return;
   if (lastSession) {
     source = Object.assign({}, source, {
       session_id: lastSession.session_id,
       session_file: lastSession.session_file,
     });
   }
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return;
-  }
-  try {
-    const transport = parsed.protocol === "https:" ? require("https") : require("http");
-    const data = JSON.stringify({ agentId, agentType: AGENT_TYPE, event, source: source || {} });
-    const req = transport.request(parsed, {
-      method: "POST",
-      timeout: 1500,
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(data),
-        "X-Uxnan-Token": token,
-      },
-    });
-    req.on("error", () => {});
-    req.on("timeout", () => req.destroy());
-    req.end(data);
-  } catch {
-    // Fire-and-forget.
-  }
+  const data = JSON.stringify({ agentId, agentType: AGENT_TYPE, event, source: source || {} });
+  const candidates = coordCandidates();
+  // Try each in turn, stopping at the first that accepts it. A 401 from another
+  // window's server is a failed attempt, not a delivery.
+  const attempt = (i) => {
+    if (i >= candidates.length) return;
+    let parsed;
+    try {
+      parsed = new URL(candidates[i].url);
+    } catch {
+      return attempt(i + 1);
+    }
+    try {
+      const transport = parsed.protocol === "https:" ? require("https") : require("http");
+      const req = transport.request(
+        parsed,
+        {
+          method: "POST",
+          timeout: 1500,
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(data),
+            "X-Uxnan-Token": candidates[i].token,
+          },
+        },
+        (res) => {
+          res.resume();
+          if (!(res.statusCode >= 200 && res.statusCode < 300)) attempt(i + 1);
+        },
+      );
+      req.on("error", () => attempt(i + 1));
+      req.on("timeout", () => {
+        req.destroy();
+        attempt(i + 1);
+      });
+      req.end(data);
+    } catch {
+      // Fire-and-forget.
+    }
+  };
+  attempt(0);
 }
 
 /** Flatten an assistant message's content to plain text (text parts only). */

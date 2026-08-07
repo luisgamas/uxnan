@@ -25,32 +25,50 @@ $url = $env:UXNAN_HOOK_URL
 $token = $env:UXNAN_HOOK_TOKEN
 $id = $env:UXNAN_AGENT_ID
 
-# Prefer the endpoint file (rewritten every launch) for live coordinates.
+# The terminal's own environment wins; the endpoint file is only the rescue.
+# The file lives at ONE shared path, so a second uxnan window overwrites it with
+# its own coordinates — reading it first sent the first window's agents to the
+# second one. It is kept aside and used when the environment has no coordinates,
+# or when the ones it has stop answering (a terminal that outlived a restart).
+$fileUrl = $null
+$fileToken = $null
 if ($env:UXNAN_ENDPOINT_FILE -and (Test-Path -LiteralPath $env:UXNAN_ENDPOINT_FILE)) {
   try {
     foreach ($line in Get-Content -LiteralPath $env:UXNAN_ENDPOINT_FILE) {
       $m = [regex]::Match($line, '^(?:set\s+)?([A-Za-z0-9_]+)=(.*)$')
       if ($m.Success) {
-        if ($m.Groups[1].Value -eq 'UXNAN_HOOK_URL') { $url = $m.Groups[2].Value.TrimEnd("`r") }
-        if ($m.Groups[1].Value -eq 'UXNAN_HOOK_TOKEN') { $token = $m.Groups[2].Value.TrimEnd("`r") }
+        if ($m.Groups[1].Value -eq 'UXNAN_HOOK_URL') { $fileUrl = $m.Groups[2].Value.TrimEnd("`r") }
+        if ($m.Groups[1].Value -eq 'UXNAN_HOOK_TOKEN') { $fileToken = $m.Groups[2].Value.TrimEnd("`r") }
       }
     }
   } catch { }
+}
+if (-not $url) { $url = $fileUrl; $token = $fileToken; $fileUrl = $null }
+
+function Send-State {
+  param([string]$Url, [string]$Token, [string]$Status, [bool]$Interrupted)
+  Invoke-RestMethod -Uri $Url -Method Post -TimeoutSec 3 -Headers @{
+    'X-Uxnan-Token'       = $Token
+    'X-Uxnan-Agent-Id'    = $id
+    'X-Uxnan-Agent-Type'  = $Type
+    'X-Uxnan-Status'      = $Status
+    'X-Uxnan-Interrupted' = ($Interrupted.ToString().ToLower())
+  } -ErrorAction Stop | Out-Null
 }
 
 function Post-State {
   param([string]$Status, [bool]$Interrupted)
   if (-not $url) { return }
   try {
-    Invoke-RestMethod -Uri $url -Method Post -TimeoutSec 3 -Headers @{
-      'X-Uxnan-Token'       = $token
-      'X-Uxnan-Agent-Id'    = $id
-      'X-Uxnan-Agent-Type'  = $Type
-      'X-Uxnan-Status'      = $Status
-      'X-Uxnan-Interrupted' = ($Interrupted.ToString().ToLower())
-    } -ErrorAction Stop | Out-Null
+    Send-State -Url $url -Token $token -Status $Status -Interrupted $Interrupted
   } catch {
-    # Fire-and-forget; never block the agent on a slow hook server.
+    # The environment's server didn't take it — try the live coordinates on
+    # disk before giving up. Fire-and-forget either way; never block the agent.
+    if ($fileUrl -and $fileUrl -ne $url) {
+      try {
+        Send-State -Url $fileUrl -Token $fileToken -Status $Status -Interrupted $Interrupted
+      } catch { }
+    }
   }
 }
 

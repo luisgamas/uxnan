@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 526 Rust tests (498 unit + 28
+always wins). 529 Rust tests (501 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
 probe) + 891 frontend Vitest tests across two
 projects — pure logic and **Svelte
@@ -130,6 +130,15 @@ started.**
   WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks is a
   master–detail list (agents on this machine first) + a master install switch,
   rendered from the backend registry, over four generic Tauri commands.
+  **More than one uxnan window works.** Each window has its own port + token and
+  injects them per terminal; the shared `endpoint.*` file is now only the rescue
+  when the environment's server stops answering (it is one path, so the last
+  window to start owns it — preferring it sent the first window's agents to the
+  second). Every reporter uxnan ships follows that order and both paths are
+  verified. The browser MCP entry still belongs to the last window to start (a
+  config file has no per-window environment to read a URL from), but a window
+  closing no longer deletes the live window's entry.
+
   **Live-verified this cycle:** Codex (its `SessionStart {"source":"startup"}`
   before any prompt — the bug that made it read as working forever — and the
   `last_assistant_message` its `Stop` carries), Grok (still reporting through the

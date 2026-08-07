@@ -25,9 +25,12 @@ set URL $UXNAN_HOOK_URL
 set TOKEN $UXNAN_HOOK_TOKEN
 set ID $UXNAN_AGENT_ID
 
-# Prefer the endpoint file (rewritten every launch) — fish can't `source` a POSIX
-# env file, so parse KEY=VALUE lines ourselves.
-if set -q UXNAN_ENDPOINT_FILE; and test -r "$UXNAN_ENDPOINT_FILE"
+# The terminal's own environment wins; the endpoint file is only the rescue —
+# it lives at ONE shared path, so a second uxnan window overwrites it with its
+# own coordinates, and reading it first sent the first window's agents to the
+# second one. Read only when the environment carries nothing. (fish can't
+# `source` a POSIX env file, so parse KEY=VALUE lines ourselves.)
+if test -z "$URL"; and set -q UXNAN_ENDPOINT_FILE; and test -r "$UXNAN_ENDPOINT_FILE"
   for line in (cat "$UXNAN_ENDPOINT_FILE" 2>/dev/null)
     set clean (string replace -r '^set ' '' -- $line)
     set kv (string split -m1 '=' -- $clean)

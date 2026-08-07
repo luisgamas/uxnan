@@ -155,6 +155,11 @@ pub struct Written {
     pub agent: String,
     /// True if we created the file (so cleanup may delete it when left empty).
     pub created: bool,
+    /// The endpoint we wrote. Cleanup checks the file still names it before
+    /// removing anything: a SECOND uxnan window overwrites the same entry with
+    /// its own port, and the first one exiting must not take the live window's
+    /// config with it.
+    pub endpoint: String,
 }
 
 /// Turn the hook server's `…/hook` URL into its `…/mcp` sibling (the MCP endpoint).
@@ -407,6 +412,7 @@ fn write_entry(agent: &str, path: &Path, endpoint: &str) -> Option<Written> {
         path: path.to_path_buf(),
         agent: agent.to_string(),
         created: !existed,
+        endpoint: endpoint.to_string(),
     })
 }
 
@@ -418,6 +424,14 @@ fn undo_entry(w: &Written) {
     let Ok(text) = std::fs::read_to_string(&w.path) else {
         return; // unreadable → do nothing
     };
+    // Only undo an entry that is still OURS. With two uxnan windows open, the
+    // second one rewrites this same entry with its own port; the first one
+    // exiting would otherwise delete the live window's config and leave its
+    // agents with no browser tools. The endpoint carries the port, so it
+    // identifies the writer.
+    if !w.endpoint.is_empty() && !text.contains(&w.endpoint) {
+        return;
+    }
     if is_toml_agent(&w.agent) {
         if !toml_parses(&text) {
             return; // unparseable → leave untouched
@@ -731,6 +745,49 @@ mod tests {
     }
 
     #[test]
+    fn undo_entry_leaves_another_windows_config_alone() {
+        // Two uxnan windows write this same entry; the second one's port is what
+        // the file holds. The first window exiting must not delete the live
+        // window's config — that would leave its agents with no browser tools
+        // and no way back until the next launch.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claude.json");
+        let live = json!({
+            "mcpServers": {
+                SERVER_NAME: { "type": "http", "url": "http://127.0.0.1:2222/mcp" },
+                "someone-elses": { "url": "http://example/mcp" }
+            }
+        });
+        std::fs::write(&path, live.to_string()).unwrap();
+
+        undo_entry(&Written {
+            path: path.clone(),
+            agent: "claude".to_string(),
+            created: false,
+            // The FIRST window's endpoint — no longer what the file names.
+            endpoint: "http://127.0.0.1:1111/mcp".to_string(),
+        });
+
+        let after: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            after["mcpServers"][SERVER_NAME]["url"],
+            json!("http://127.0.0.1:2222/mcp"),
+            "the live window's entry was removed by another window's cleanup"
+        );
+
+        // …and the window that DID write it still cleans up after itself.
+        undo_entry(&Written {
+            path: path.clone(),
+            agent: "claude".to_string(),
+            created: false,
+            endpoint: "http://127.0.0.1:2222/mcp".to_string(),
+        });
+        let after: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(after["mcpServers"].get(SERVER_NAME).is_none());
+        assert!(after["mcpServers"].get("someone-elses").is_some());
+    }
+
+    #[test]
     fn undo_entry_leaves_unparseable_file_alone() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("claude.json");
@@ -741,6 +798,7 @@ mod tests {
             path: path.clone(),
             agent: "claude".to_string(),
             created: false,
+            endpoint: String::new(),
         };
         undo_entry(&w);
 

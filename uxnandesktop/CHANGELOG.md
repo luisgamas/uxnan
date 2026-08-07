@@ -224,6 +224,25 @@ new controls now carry `aria-label`s, so the panel is operable by name.
 
 ### Fixed
 
+- **A second uxnan window stole the first one's hook reports.** Every window runs
+  its own hook server on its own port with its own token, and each terminal is
+  given its window's coordinates — but the reporters preferred the *endpoint
+  file*, which lives at one shared path and is rewritten by whichever window
+  started last. So opening a second window silently redirected every agent in the
+  first one to it: cards stopped moving there, and a finished turn never showed
+  its check. Measured by running the real reporter with one window's environment
+  and the other's endpoint file — the report landed in the wrong window every
+  time.
+
+  The environment now wins, and the endpoint file is tried only when the
+  environment's server does not answer — which is exactly the case it was added
+  for (a terminal that outlived an app restart). Both paths are verified for
+  every reporter uxnan ships: shell, Node relay and in-process plugin.
+
+  Two windows also fought over the browser MCP config: closing one deleted the
+  entry the other was still using. Cleanup now removes an entry only while it
+  still names the window's own endpoint.
+
 - **Codex claimed to be working from the second its TUI opened.** Opening a
   session emits `SessionStart` — measured against the running CLI, exactly
   `{"source":"startup"}` and then nothing until the first prompt — and the ADE
