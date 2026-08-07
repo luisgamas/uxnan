@@ -60,10 +60,19 @@ button does, but with `previous_tag_name` pinned to the previous desktop build i
 and re-listed nine pull requests that had already shipped.
 
 `record.mjs` writes the `VERSIONS.md` row — date, the version in its component's
-column, and a summary seeded from the pull request titles in the release. It is
+column, and a summary seeded from the pull request titles in the release
+(`summarizeNotes`, given the generated notes through `--notes-file`). It is
 idempotent on the version, so a retried run cannot record the same release
 twice. The row goes in the **same commit as the version bump**, so it travels in
 the same pull request: merging that is what records the release.
+
+The summary keeps only the **What's Changed** list, drops GitHub's `by @… in …`
+attribution, and drops the release plumbing — `build(release):` names the
+*previous* version and reads, in the row, as if that version shipped inside this
+one. This was a shell pipeline in the workflow until the first unattended run
+recorded "@uxnan-releases[bot] made their first contribution" as one of 0.0.31's
+changes: **New Contributors** is a bullet list too. Moving it here is the point —
+a `grep | sed` in YAML has no tests and fails only in production.
 
 `plan.mjs` and `notes.mjs` print to stdout and change nothing;
 `.github/workflows/release.yml` is what turns their output into commits and tags.
