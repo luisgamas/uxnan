@@ -332,12 +332,20 @@ export interface AppSettings {
   pinnedProjects?: string[];
   /** Pinned worktrees (paths) — shown first within their project. Self-healing. */
   pinnedWorktrees?: string[];
-  /** How the left sidebar groups its rows: the project→worktree tree, or every
+  /** Free-text note per worktree path — *why this space exists*. Seeded from the
+   *  name typed when it was created, which survives here in full: the branch only
+   *  keeps a slug of it, truncated and accent-folded. Read in the row's hover
+   *  card, so a branch you opened three weeks ago can still explain itself.
+   *  Self-healing (a note for a path that is gone is ignored). */
+  worktreeNotes?: Record<string, string>;
+  /** How the left sidebar groups its rows: the project→worktree tree, lanes by agent attention, or lanes by review state
    *  worktree flattened into lanes by agent attention. */
   sidebarGroupBy?: SidebarGroupBy;
   /** Attention lanes (class 1–4) the user collapsed in the "group by status"
    *  view; persisted so the collapse survives a restart. */
   sidebarCollapsedLanes?: number[];
+  /** Review lanes the user collapsed in the "group by review" view. */
+  sidebarCollapsedReviewLanes?: string[];
   /** Projects (repo ids) the user left **expanded** in the tree view. Stored as
    *  the expanded set (not the collapsed one) so a freshly added project keeps
    *  the compact default, while the panel you built up comes back as you left
@@ -436,11 +444,16 @@ export interface GithubSettings {
   aiInstructions?: string;
 }
 
-/** Left-sidebar grouping mode.
- *  - `none`   — the project → worktree tree (default).
- *  - `status` — every worktree flattened into lanes by agent attention
- *    (needs-you · done · working · idle), empty lanes omitted. */
-export type SidebarGroupBy = "none" | "status";
+/** Left-sidebar grouping mode. Three questions, three views:
+ *  - `none`   — "what belongs to what": the project → worktree tree (default).
+ *  - `status` — "who needs me right now": every worktree flattened into lanes by
+ *    agent attention (needs-you · done · working · idle · ready to close).
+ *  - `review` — "how far along is this": lanes by pull-request state (failing ·
+ *    in review · in progress · merged · closed). The question you start asking
+ *    once there are a dozen workspaces, since a branch waiting on a reviewer
+ *    needs nothing from you but is not finished either.
+ *  Empty lanes are omitted in both grouped views. */
+export type SidebarGroupBy = "none" | "status" | "review";
 
 /** How the left-sidebar project cards / worktree rows are ordered.
  *  - `manual`   — the user's own drag-and-drop arrangement (persisted).
@@ -666,6 +679,11 @@ export interface RemoveOutcome {
   /** A local delete was requested but refused for unmerged commits (no force).
    *  No work is lost — the UI can offer a forced retry. */
   localBranchUnmerged: boolean;
+  /** A local delete was requested and **attempted** (forced, or after confirming a
+   *  squash merge) but git refused it; a reason for the toast, else null. Distinct
+   *  from `localBranchUnmerged`, which means "we chose not to try" — without this
+   *  a failed `-D` left every flag false and the toast read as plain success. */
+  localBranchError: string | null;
   /** The remote branch (`origin/<branch>`) was deleted. */
   remoteBranchDeleted: boolean;
   /** A requested remote delete failed (offline / protected / no origin); a short
@@ -1324,6 +1342,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   workspaceLastActive: {},
   pinnedProjects: [],
   pinnedWorktrees: [],
+  worktreeNotes: {},
   sidebarGroupBy: "none",
   sidebarCollapsedLanes: [],
   sidebarExpandedProjects: [],

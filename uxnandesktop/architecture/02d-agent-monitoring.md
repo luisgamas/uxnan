@@ -246,7 +246,54 @@ Estos estados se muestran en dos lugares de la interfaz:
 - **Tarjeta de proyecto contraida**: la tira de avatares con anillo de estado
   (`AgentAvatar size="sm"`) + el conteo de worktrees, para que un proyecto cerrado
   siga diciendo que hay dentro. Solo aparece si hay senal real (algun agente, o
-  mas de un worktree).
+  mas de un worktree). La cabecera **y** ese resumen viven dentro de **una sola
+  superficie**, igual que una fila de worktree y sus agentes: con el relleno de
+  seleccion solo en la cabecera, el resumen quedaba fuera del bloque resaltado y
+  se leia como si perteneciera al elemento siguiente.
+
+### Tercera vista: agrupar por revisión
+
+`sidebarGroupBy` tiene tres valores porque son **tres preguntas distintas**:
+
+| Vista | Pregunta | Carriles |
+|---|---|---|
+| `none` (árbol) | ¿qué pertenece a qué? | proyecto → worktree → agentes |
+| `status` | ¿quién me necesita ahora? | te necesita · listo · trabajando · ocioso · listo para cerrar |
+| `review` | ¿qué tan avanzado está esto? | checks fallando · en revisión · en curso · mergeado · cerrado |
+
+La tercera aparece cuando hay suficientes espacios como para que las otras dos
+dejen sin ubicar a una rama que espera a un revisor: no necesita nada de ti, pero
+tampoco está terminada. `reviewGroupOf` (`$lib/sidebar-review.ts`) la resuelve
+desde el PR cacheado, y los carriles se ordenan por **cuánta acción tuya piden**,
+no por progreso — por eso *checks fallando* va primero (es el único estado
+abierto bloqueado en ti) y *sin PR* comparte carril con *borrador* (ninguno se ha
+entregado todavía). El PR llega al store empujado desde `github` (`notePr`), igual
+que el veredicto de completitud, para no cerrar un ciclo de imports.
+
+### Lane «Listo para cerrar» (vista por estado)
+
+La vista por estado tiene una lane mas, **al final**, alimentada por
+`isClosable(completion)` (ver `02c` → *¿Este espacio ya termino?*) en vez de por
+`attentionClass`. Un worktree terminado se saca de las lanes de atencion por
+completo: caia en «Ocioso», que es donde se busca trabajo para **retomar**, no
+trabajo para cerrar.
+
+Va **ultima** a proposito. Es la unica lane que pide una *decision* en vez de
+atencion, asi que no debe competir con lo que sigue en vuelo. `CLOSABLE_LANE`
+viaja dentro de `AttentionClass` para que la vista renderice una sola lista de
+lanes, pero no es un nivel de urgencia — por eso ordena al final y no por
+prioridad.
+
+Su cabecera lleva un **cierre en lote** (revelado al pasar el raton), que es el
+punto de todo lo anterior: cerrar de a uno esta bien con tres espacios terminados
+y es inutil con treinta. `planBatchClose` (`$lib/worktree-batch-close.ts`) es
+**mas estricto que el dialogo individual**: ahi los cambios sin commitear son una
+advertencia que puedes ignorar — estas mirando *un* worktree y sabes que hay
+dentro; aqui estas mirando un numero, asi que cualquier espacio con cambios sin
+commitear, commits sin subir o un agente vivo se **omite y se lista**, nunca se
+arrastra. El dialogo enseña las dos mitades antes de actuar: lo que se cierra y
+lo que se queda **con su razon** — un lote que encogiera en silencio seria peor
+que no tenerlo, porque el conteo es lo unico que se lee.
 
 ### Agent view (sidebar izquierda)
 

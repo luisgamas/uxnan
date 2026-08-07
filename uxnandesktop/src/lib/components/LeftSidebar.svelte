@@ -9,9 +9,13 @@
   import KeyChord from "./KeyChord.svelte";
   import FreshnessHint from "./FreshnessHint.svelte";
   import SidebarProfile from "./SidebarProfile.svelte";
+  import BatchCloseDialog from "./BatchCloseDialog.svelte";
+  // Aliased: `WorktreeRow` is already the component imported above.
+  import type { WorktreeRow as WorktreeRowData } from "$lib/state/projects.svelte";
   import { createStableOrder } from "$lib/state/sidebarOrder.svelte";
   import { createDragReorder } from "$lib/state/dragReorder.svelte";
-  import { isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
+  import { CLOSABLE_LANE, isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
+  import type { ReviewGroup } from "$lib/sidebar-review";
   import type { SidebarGroupBy, SortMode } from "$lib/types";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import { divider, icon, iconButton, text } from "$lib/design";
@@ -102,8 +106,27 @@
       : null,
   );
 
+  // The batch close, driven from the finished lane's header.
+  let batchOpen = $state(false);
+  let batchRows = $state<WorktreeRowData[]>([]);
+
   // "Group by status" view: the human label for each attention lane. The collapse
   // state lives in the store (persisted across restarts).
+  function reviewLabel(g: ReviewGroup): string {
+    switch (g) {
+      case "failing":
+        return i18n.t("sidebar.review.failing");
+      case "in-review":
+        return i18n.t("sidebar.review.in-review");
+      case "in-progress":
+        return i18n.t("sidebar.review.in-progress");
+      case "merged":
+        return i18n.t("sidebar.review.merged");
+      default:
+        return i18n.t("sidebar.review.closed");
+    }
+  }
+
   function laneLabel(c: AttentionClass): string {
     switch (c) {
       case 1:
@@ -112,6 +135,8 @@
         return i18n.t("sidebar.laneDone");
       case 3:
         return i18n.t("sidebar.laneWorking");
+      case CLOSABLE_LANE:
+        return i18n.t("sidebar.laneReadyToClose");
       default:
         return i18n.t("sidebar.laneIdle");
     }
@@ -252,6 +277,7 @@
         >
           <DropdownMenu.RadioItem class={text.menu} value="none">{i18n.t("sidebar.viewTree")}</DropdownMenu.RadioItem>
           <DropdownMenu.RadioItem class={text.menu} value="status">{i18n.t("sidebar.viewStatus")}</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem class={text.menu} value="review">{i18n.t("sidebar.viewReview")}</DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
         <DropdownMenu.Separator />
         <DropdownMenu.Label class={text.menuLabel}>{i18n.t("sidebar.sortProjects")}</DropdownMenu.Label>
@@ -337,19 +363,77 @@
       {:else}
         <div class="flex flex-col gap-3">
           {#each lanes as lane (lane.attention)}
+            <div class="group/lane flex flex-col">
+              <!-- Lane header — collapsible; the attention label + a count. The
+                   finished lane also carries the batch close, hover-revealed so
+                   it never sits next to the lanes that are still working. -->
+              <div class="flex items-center gap-1">
+                <button
+                  class="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
+                  onclick={() => projects.toggleLane(lane.attention)}
+                >
+                  <ChevronRightIcon
+                    class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
+                  />
+                  <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
+                  <span class="text-xs tabular-nums text-muted-foreground/60">{lane.items.length}</span>
+                </button>
+                {#if lane.attention === CLOSABLE_LANE}
+                  <TooltipSimple title={i18n.t("sidebar.closeLane")}>
+                    {#snippet children(props)}
+                      <button
+                        {...props}
+                        class={cn(
+                          "shrink-0 rounded px-1.5 py-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground focus-visible:opacity-100 group-hover/lane:opacity-100",
+                          text.indicator,
+                        )}
+                        onclick={() => {
+                          batchRows = lane.items;
+                          batchOpen = true;
+                        }}
+                      >
+                        {i18n.t("sidebar.closeLane")}
+                      </button>
+                    {/snippet}
+                  </TooltipSimple>
+                {/if}
+              </div>
+              {#if !projects.isLaneCollapsed(lane.attention)}
+                <div class="flex flex-col">
+                  {#each lane.items as row (row.path)}
+                    <WorktreeRow {row} showRepo />
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {:else if projects.groupBy === "review"}
+      <!-- "How far along is this" — the third question, once there are enough
+           workspaces that "who needs me" and "what belongs to what" both leave
+           a branch waiting on a reviewer unaccounted for. -->
+      {@const lanes = projects.reviewGroups()}
+      {#if lanes.length === 0}
+        {@render emptyState()}
+      {:else}
+        <div class="flex flex-col gap-3">
+          {#each lanes as lane (lane.group)}
             <div class="flex flex-col">
-              <!-- Lane header — collapsible; the attention label + a count. -->
               <button
                 class="flex w-full items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
-                onclick={() => projects.toggleLane(lane.attention)}
+                onclick={() => projects.toggleReviewLane(lane.group)}
               >
                 <ChevronRightIcon
-                  class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
+                  class={cn(
+                    "size-3 shrink-0 text-muted-foreground/70 transition-transform",
+                    !projects.isReviewLaneCollapsed(lane.group) && "rotate-90",
+                  )}
                 />
-                <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
+                <span class={cn("flex-1 truncate", text.section)}>{reviewLabel(lane.group)}</span>
                 <span class="text-xs tabular-nums text-muted-foreground/60">{lane.items.length}</span>
               </button>
-              {#if !projects.isLaneCollapsed(lane.attention)}
+              {#if !projects.isReviewLaneCollapsed(lane.group)}
                 <div class="flex flex-col">
                   {#each lane.items as row (row.path)}
                     <WorktreeRow {row} showRepo />
@@ -377,6 +461,8 @@
        Settings (moved here from the quick actions) and the profile editor. -->
   <SidebarProfile />
 </div>
+
+<BatchCloseDialog bind:open={batchOpen} rows={batchRows} />
 
 <!-- Floating label that follows the pointer while dragging a project card. -->
 {#if cardDrag.active && draggedRepo}

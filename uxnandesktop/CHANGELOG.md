@@ -7,6 +7,75 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **A third way to group the sidebar: by review state.** The tree answers "what
+  belongs to what" and the status view answers "who needs me right now"; neither
+  places a branch that is waiting on a reviewer — it needs nothing from you and
+  is not finished either. The new view lanes every workspace by its pull request:
+  **checks failing · in review · in progress · merged · closed**, ordered by how
+  much of *your* action they want rather than by progress. A failing run leads
+  because it is the one open state blocked on you; a draft shares the lane with
+  "no pull request" because neither has been handed over.
+
+- **Each worktree can carry a note — why this space exists.** Seeded from the
+  name you typed when creating it and editable from the row's menu, shown in the
+  hover card. The branch only keeps a slug of that name (folded, truncated); the
+  note keeps the sentence, which is what answers "what was this again?" three
+  weeks later. It is dropped when the worktree is removed.
+
+- **Starting work in a new worktree begins with the task, not the branch name.**
+  The project's "+" dialog now asks *what should happen here* first and derives
+  the branch name from it as you type (`taskBranchName` — deterministic, no
+  round trip, trimmed to a whole word so a sentence doesn't end mid-syllable).
+  Branch, base, location and the new/existing toggle fold into a collapsed
+  **Advanced** section, marked with a dot when you set something inside, so the
+  dialog asks the two questions it is actually about — where, and what to open —
+  and the name stays editable one click away rather than being a chore you owe
+  before you can describe the work.
+
+- **uxnan can now tell that a workspace is *finished*, not just idle.** A new
+  read-only check (`branch_integrated`) asks git whether a branch already landed
+  in the repo's default base — as real ancestry or as a squash — reusing the
+  exact detection the removal runs before a safe delete, so whatever the sidebar
+  calls finished is what the removal would agree to clean up. Combined with the
+  pull request's own verdict and the working-tree status,
+  `classifyCompletion` sorts a workspace into `active` / `inert` / `abandoned` /
+  `done`. Only the last two are ever treated as closable: "nothing has moved in a
+  while" describes every branch you mean to come back to on Monday, so it is
+  allowed to dim a row and nothing more. The git call is paced with the existing
+  status sweep and only spent on worktrees that already look quiet, and its
+  answer is dropped whenever the branch's commits move.
+
+- **The "Ready to close" lane can be emptied in one go.** Its header carries a
+  hover-revealed *Close them all…*, which shows the split before doing anything:
+  which workspaces go, which keep their branch, and — the half that matters —
+  which are being **left alone and why**. A batch is stricter than the single
+  dialog on purpose: there, uncommitted work is a warning you may override
+  because you are looking at one worktree; here you are looking at a count, so
+  anything with uncommitted changes, unpushed commits or a live agent is skipped
+  and listed rather than swept up. The batch only ever does the provably safe
+  part, and the toast reports what actually went.
+
+- **"Remove worktree" now arrives already filled in for a finished space.** When
+  the work landed, the dialog opens with *delete local branch* ticked and a line
+  saying why, so closing a finished workspace is one button instead of three
+  decisions. Defaults never destroy more than the obvious — a branch is only
+  pre-ticked when its commits demonstrably landed, so the safe `git branch -d`
+  accepts it — and everything that destroys *more* (forcing an unmerged branch
+  delete, removing over uncommitted work) moved into a collapsed **Advanced**
+  section: never a default, never hidden. Uncommitted changes, unpushed commits
+  and a live agent are now stated as warnings rather than silently ignored, and
+  they still don't block: wiping a dead end is sometimes the point.
+
+- **A finished workspace now says so, and gathers in its own lane.** A worktree
+  whose work landed shows a quiet chip on its row — `merged` when the pull
+  request says so, `landed` when git itself confirms the branch is in the base —
+  and `closed` when its PR was closed unmerged; the row also steps back so the
+  work still in flight reads first. In the by-status view those rows leave the
+  attention lanes for a **Ready to close** lane at the bottom: a merged worktree
+  used to fall into "Idle", which is where you look for work to *resume*. The
+  lane sits last on purpose — it is the only one asking for a decision rather
+  than attention.
+
 - **The left panel now says what it holds without being opened.** A collapsed
   project card carries a summary line — its worktree count and a strip of
   status-ringed agent avatars — so three working agents inside a closed project
@@ -90,6 +159,33 @@ new controls now carry `aria-label`s, so the panel is operable by name.
 
 ### Fixed
 
+- **A brand-new worktree was immediately marked as finished.** Creating one and
+  closing its terminal showed the `landed` chip right away: a fresh branch shares
+  its base's tip and contributes nothing, so plain ancestry reports every commit
+  on it as already in the base — "has landed" and "has not started" looked
+  identical. `branch_integrated` now answers `false` while the branch still
+  points at its base, which also stops the batch close from offering to delete a
+  workspace that was just set up. Trade-off: a fast-forward merge shares the tip
+  too and is now reported as not-finished — under-reporting costs a manual close,
+  over-reporting offers to delete work that never happened.
+
+- **A collapsed project card's summary hung outside its own selection.** The
+  worktree count and the agent avatars were rendered as a sibling of the card
+  header, so the selection fill and ring wrapped only the header and the summary
+  read as if it belonged to the next item — crowding the project title. Header
+  and summary now share one surface, the way a worktree row already shares one
+  with its agents, and the line reserves its height instead of clawing back the
+  header's padding (the status ring is drawn *outside* the avatar, so that line
+  is taller than its text).
+- **A forced branch delete that git refused was reported as success.** Removing a
+  worktree with "delete local branch" + "force" ticked ran `git branch -D`, and
+  when git said no — it refuses while the branch is still checked out anywhere,
+  which is exactly what a half-removed worktree leaves behind on Windows — every
+  outcome flag stayed `false`. The success toast is composed from those flags, so
+  the app announced "Worktree removed" while the branch was still there.
+  `RemoveOutcome` now carries `localBranchError` (mirroring the remote side,
+  which always had one) and the reason is surfaced as a warning toast. The same
+  gap mislabelled a confirmed squash-merge whose delete failed as "unmerged".
 - **Codex's mark disappeared on dark themes.** Its SVG draws with
   `currentColor`, which an `<img>` resolves to black. Bundled marks that are a
   single dark colour now set `mono: true` in the catalog and `AgentLogo` inverts

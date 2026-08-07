@@ -28,7 +28,10 @@
   import IconPicker from "./IconPicker.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import RemoveWorktreeDialog from "./RemoveWorktreeDialog.svelte";
+  import WorktreeNoteDialog from "./WorktreeNoteDialog.svelte";
   import type { DragReorder } from "$lib/state/dragReorder.svelte";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
   import MoonIcon from "@lucide/svelte/icons/moon";
@@ -63,6 +66,16 @@
   const prBadge = $derived(github.contextFor(row.path)?.pr ?? null);
   const status = $derived(projects.status(row.path));
   const hasUnread = $derived(unread.has(row.path));
+  // Is this space finished? `done`/`abandoned` earn a chip and a quieter row —
+  // the work is over, so it should stop competing with what is still in flight.
+  // `inert` deliberately gets nothing: "quiet" is not "over".
+  const completion = $derived(projects.completion(row));
+  const note = $derived(projects.note(row.path));
+  const doneLabel = $derived(
+    prBadge?.state?.trim().toUpperCase() === "MERGED"
+      ? i18n.t("worktree.doneMerged")
+      : i18n.t("worktree.doneIntegrated"),
+  );
   const dirName = $derived(
     row.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? row.path,
   );
@@ -154,6 +167,7 @@
   const branchIcon = $derived(projects.branchIcon(row.repoId, iconKey));
 
   let iconPickerOpen = $state(false);
+  let noteOpen = $state(false);
   let removeOpen = $state(false);
 
   function openRemove() {
@@ -187,6 +201,12 @@
       </div>
       <span class={cn("break-all font-mono", text.meta)}>{tipText}</span>
     </div>
+
+    <!-- Why this space exists, in the words it was created with. Sits right under
+         the identity because it answers the first question an old branch raises. -->
+    {#if note}
+      <p class={cn("whitespace-pre-wrap break-words", text.body)}>{note}</p>
+    {/if}
 
     {#if status && (status.dirty > 0 || status.ahead > 0 || status.behind > 0)}
       <div class={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1", text.meta)}>
@@ -278,6 +298,13 @@
               class={cn(
                 "group flex items-center gap-2 rounded-md py-1 pl-2 pr-2 transition-colors",
                 !active && "hover:bg-foreground/[0.05]",
+                // A finished space steps back so the work still in flight reads
+                // first. Full opacity returns on hover and while it's selected —
+                // it is quieter, not disabled.
+                completion === "done" || completion === "abandoned"
+                  ? "opacity-60 hover:opacity-100"
+                  : "",
+                active && "opacity-100",
                 drag?.draggingKey === row.path && "opacity-40",
               )}
               role="button"
@@ -298,6 +325,37 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">
                   <span class={cn("truncate", text.body, active && "font-medium")}>{label}</span>
+                  <!-- The verdict, stated once and quietly. Only `done` and
+                       `abandoned` earn a chip: they are the two uxnan can defend. -->
+                  {#if completion === "done"}
+                    <TooltipSimple title={i18n.t("worktree.doneTooltip")}>
+                      {#snippet children(tp2)}
+                        <span
+                          {...tp2}
+                          class={cn(
+                            "inline-flex shrink-0 items-center gap-0.5 rounded bg-sky-500/10 px-1 text-sky-600 dark:text-sky-400",
+                            text.indicator,
+                          )}
+                        >
+                          <CircleCheckIcon class="size-2.5" />{doneLabel}
+                        </span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {:else if completion === "abandoned"}
+                    <TooltipSimple title={i18n.t("worktree.abandonedTooltip")}>
+                      {#snippet children(tp2)}
+                        <span
+                          {...tp2}
+                          class={cn(
+                            "inline-flex shrink-0 items-center gap-0.5 rounded bg-foreground/[0.06] px-1 text-muted-foreground",
+                            text.indicator,
+                          )}
+                        >
+                          <CircleSlashIcon class="size-2.5" />{i18n.t("worktree.abandoned")}
+                        </span>
+                      {/snippet}
+                    </TooltipSimple>
+                  {/if}
                   {#if !row.isMain && projects.isWorktreePinned(row.path)}
                     <PinIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
                   {/if}
@@ -413,6 +471,7 @@
       removeLabel={row.isMain ? i18n.t("project.removeProject") : i18n.t("worktree.removeWorktree")}
       onRemove={row.isMain ? onRemoveProject : openRemove}
       onChangeIcon={() => (iconPickerOpen = true)}
+      onEditNote={() => (noteOpen = true)}
       onTogglePin={row.isMain ? undefined : () => projects.toggleWorktreePin(row.path)}
       onSleep={requestSleep}
       pinned={projects.isWorktreePinned(row.path)}
@@ -437,6 +496,8 @@
 />
 
 <RemoveWorktreeDialog bind:open={removeOpen} {row} />
+
+<WorktreeNoteDialog bind:open={noteOpen} {row} />
 
 <IconPicker
   bind:open={iconPickerOpen}

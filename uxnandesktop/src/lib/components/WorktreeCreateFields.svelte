@@ -14,7 +14,7 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import { worktreeFolderFor, randomBranchName } from "$lib/branchName";
+  import { taskBranchName, worktreeFolderFor, randomBranchName } from "$lib/branchName";
   import type { RepoData } from "$lib/types";
   import FolderSelectDialog from "./FolderSelectDialog.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -40,6 +40,13 @@
     canSubmit = $bindable(false),
     /** Out: whether branch discovery is still in flight. */
     loading = $bindable(false),
+    /** The plain-words name the caller collected, when it has one. The branch
+     *  name derives from it live — see `nameHint` in the props type. */
+    nameHint = "",
+    /** Whether the user has taken over the branch name (typed or generated one).
+     *  Mirrors `locationTouched`: once they own it, nothing overwrites it. */
+    newBranchTouched = $bindable(false),
+    advanced = false,
     /** Enter in the branch field (parent's submit). */
     onEnter,
   }: {
@@ -54,13 +61,31 @@
     effectiveBranch?: string;
     canSubmit?: boolean;
     loading?: boolean;
+    /** Free text describing the task. While the user hasn't touched the branch
+     *  field, the name is derived from it (`branchSlug` + `uniqueBranchName`) and
+     *  updates as they type — the name is a *consequence* of the task, not a
+     *  question to answer before stating it.
+     *
+     *  It stays a visible, editable field on purpose: deriving it removes the
+     *  chore, hiding it would remove the control. */
+    nameHint?: string;
+    newBranchTouched?: boolean;
+    /** Fold every field into an "Advanced" section, collapsed. For a caller whose
+     *  real question is something else — the launcher asks WHERE and WHAT, and
+     *  the branch falls out of the task. The dedicated new-worktree dialog leaves
+     *  this off: there, the branch IS the question. */
+    advanced?: boolean;
     onEnter?: () => void;
   } = $props();
 
   let branches = $state<string[]>([]);
   let remoteBranches = $state<string[]>([]);
   let locationOpen = $state(false);
+  let advancedOpen = $state(false);
   let browseOpen = $state(false);
+  /** The name used when the fields are folded away and no task was typed. Seeded
+   *  once (not per keystroke) so it doesn't churn while the user types. */
+  let fallbackName = $state("");
 
   const repoName = $derived(
     repo.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? repo.name,
@@ -92,6 +117,20 @@
   // Keep the location in sync with the automatic path until the user takes over.
   $effect(() => {
     if (!locationTouched) location = autoPath;
+  });
+
+  // Derive the branch name from the task, live, until the user takes the field
+  // over. Deterministic and instant — `branchSlug` folds accents and collapses
+  // punctuation, so a Spanish sentence yields a valid name with no round trip.
+  // Nothing here can fail or stall the way naming through an agent would.
+  $effect(() => {
+    if (!active || mode !== "new" || newBranchTouched) return;
+    const derived = taskBranchName(nameHint, [...branches, ...remoteBranches]);
+    // No task: clear the field so deleting the sentence doesn't leave its ghost.
+    // Except when the fields are folded away — an empty name there would disable
+    // submit with the reason hidden inside a collapsed section, so it falls back
+    // to the same friendly auto-name the "Generate" button produces.
+    newBranch = derived || (advanced ? fallbackName : "");
   });
 
   const baseOptions = $derived(
@@ -133,8 +172,11 @@
     mode = "new";
     newBranch = "";
     existingBranch = "";
+    newBranchTouched = false;
     locationTouched = false;
     locationOpen = false;
+    advancedOpen = false;
+    fallbackName = "";
     loading = true;
     projects.error = null;
     projects
@@ -143,6 +185,8 @@
         branches = info.branches;
         remoteBranches = info.remoteBranches;
         base = info.defaultBase;
+        // Seed the no-task name only now: uniqueness needs the branch list.
+        fallbackName = randomBranchName([...info.branches, ...info.remoteBranches]);
       })
       .catch((e) => {
         projects.error = e instanceof Error ? e.message : String(e);
@@ -152,6 +196,8 @@
 
   function generateName() {
     newBranch = randomBranchName([...branches, ...remoteBranches]);
+    // An explicit choice — stop deriving from the task from here on.
+    newBranchTouched = true;
   }
 
   function onBrowse(parent: string) {
@@ -169,7 +215,7 @@
   }
 </script>
 
-<div class="flex flex-col gap-4">
+{#snippet fields()}
   <!-- Mode toggle: create a new branch, or check out an existing one. -->
   <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted/50 p-1">
     {#each [{ id: "new", label: i18n.t("newWorktree.modeNew") }, { id: "existing", label: i18n.t("newWorktree.modeExisting") }] as opt (opt.id)}
@@ -216,6 +262,7 @@
           placeholder={i18n.t("newWorktree.branchPlaceholder")}
           bind:value={newBranch}
           autocomplete="off"
+          oninput={() => (newBranchTouched = true)}
           onkeydown={(e) => e.key === "Enter" && onEnter?.()}
         />
       </div>
@@ -314,7 +361,38 @@
       <code class="break-all text-[11px] leading-5 text-muted-foreground">{location}</code>
     </div>
   {/if}
-</div>
+{/snippet}
+
+{#if advanced}
+  <!-- Folded away for callers whose real question is something else (the
+       launcher asks WHERE and WHAT; the branch is a consequence of the task).
+       Folded, not removed: the derived name is still here, still editable — the
+       chore goes away, the control does not. The dot marks a name you set
+       yourself, so a closed section never hides a decision you made. -->
+  <Collapsible.Root bind:open={advancedOpen}>
+    <Collapsible.Trigger
+      class={cn(
+        "flex w-full items-center gap-1 rounded-md px-1 py-1 hover:bg-accent/40",
+        text.meta,
+      )}
+    >
+      <ChevronDownIcon
+        class={cn(icon.button, "transition-transform", advancedOpen && "rotate-180")}
+      />
+      {i18n.t("worktree.advanced")}
+      {#if !advancedOpen && (newBranchTouched || locationTouched || mode === "existing")}
+        <span class="ml-0.5 size-1.5 rounded-full bg-primary"></span>
+      {/if}
+    </Collapsible.Trigger>
+    <Collapsible.Content class="mt-2 flex flex-col gap-4">
+      {@render fields()}
+    </Collapsible.Content>
+  </Collapsible.Root>
+{:else}
+  <div class="flex flex-col gap-4">
+    {@render fields()}
+  </div>
+{/if}
 
 <FolderSelectDialog
   bind:open={browseOpen}

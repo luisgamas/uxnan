@@ -1128,6 +1128,25 @@ pub async fn worktree_status(path: String) -> Result<git::WorktreeStatus, Comman
         .map_err(CommandError::from)
 }
 
+/// Whether a worktree's branch already landed in its repo's default base —
+/// merged outright or squashed. Read-only; nothing is deleted.
+///
+/// This is the "is this space finished?" question the sidebar asks before
+/// offering to close one, so it deliberately reuses the exact check
+/// [`git::remove_worktree`] runs on its way to a safe delete: whatever the
+/// sidebar claims is finished is, by construction, what the removal would agree
+/// to clean up.
+///
+/// A detached worktree (no branch) is never "finished" — there is no branch to
+/// have landed anywhere.
+#[tauri::command]
+pub async fn branch_integrated(path: String, branch: String) -> Result<bool, CommandError> {
+    if branch.trim().is_empty() || !git::is_git_repo(&path).await {
+        return Ok(false);
+    }
+    Ok(git::branch_integrated(&path, branch.trim()).await)
+}
+
 /// List a directory's sub-folders (flagging git repos) for the in-app project
 /// picker. Defaults to the home directory when `path` is omitted.
 #[tauri::command]

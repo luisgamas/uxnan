@@ -560,6 +560,13 @@ export function worktreeStatus(path: string): Promise<WorktreeStatus> {
   return invoke<WorktreeStatus>('worktree_status', { path });
 }
 
+/** Whether `branch` already landed in its repo's default base — merged outright
+ *  or squashed. Read-only: the same check the removal runs on its way to a safe
+ *  delete, asked without deleting anything. */
+export function branchIntegrated(path: string, branch: string): Promise<boolean> {
+  return invoke<boolean>('branch_integrated', { path, branch });
+}
+
 // --- Filesystem: file tree + editor ----------------------------------------
 
 /** List the immediate children of a directory (sub-dirs first, then files) for

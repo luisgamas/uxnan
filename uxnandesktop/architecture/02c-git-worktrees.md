@@ -114,14 +114,87 @@ defecto— y el backend (`worktree_remove` con un `cleanup`:
 
 2. **Eliminación del worktree**: `git worktree remove` + `git worktree prune` (+ borrado del directorio con reintentos en Windows).
 
+> **Un solo diálogo, prellenado.** No hay una acción "cerrar espacio" aparte: en
+> la cabeza del usuario hay **una** intención — deshacerse de este worktree — y
+> partirla en dos según cuánta limpieza viene predecidida es una distinción del
+> implementador, no suya. Lo que cambia es cuánto puede contestar el diálogo por
+> él: cuando el espacio está `done`, `removalDefaults`
+> (`$lib/worktree-removal.ts`) llega con "eliminar rama local" **ya marcada** y
+> una línea explicando por qué. Reglas: los valores por defecto nunca destruyen
+> más de lo obvio (solo se premarca una rama cuyos commits ya aterrizaron, para
+> que el `-d` seguro la acepte); **forzar nunca es un default** y vive bajo
+> **Avanzado**, contraído; y las advertencias (cambios sin commitear, commits sin
+> subir, agente vivo) **avisan pero no bloquean** — a veces borrar un callejón sin
+> salida es exactamente lo que se quiere.
+
 3. **Rama local** *(solo si se marca "Eliminar rama local")*:
    - Se intenta borrar con `git branch -d` (safe delete, falla si hay commits sin mergear).
    - Si `-d` falla y el usuario marcó **Forzar**, se borra con `git branch -D`.
    - Si `-d` falla sin forzar, se analiza si la rama es "patch-equivalente" a la base (squash-merge); si lo es, se borra con seguridad (`-D`). Si no, la rama se **conserva** y se reporta como "sin mergear" para que la UI ofrezca forzar.
+   - **Un `-D` que git rechaza NO es un no-op.** Se distingue de "no lo intentamos"
+     (`local_branch_unmerged`) mediante `local_branch_error`, que lleva la razón —
+     git rechaza mientras la rama siga *checked out* en algún lado, que es
+     justamente lo que deja un worktree a medio eliminar (en Windows, un proceso
+     que aún sostiene su carpeta). Sin ese campo el resultado quedaba todo en
+     `false` y, como el toast se compone de esas banderas, la app anunciaba
+     "worktree eliminado" mientras la rama seguía ahí.
 
 4. **Rama remota** *(solo si se marca "Eliminar rama remota")*: si `origin/<rama>` existe, se borra con `git push origin --delete <rama>`. Un fallo (offline, protegida, sin `origin`) se reporta como aviso —la eliminación local del worktree ya tuvo éxito—.
 
-El `RemoveOutcome` reporta el destino de cada rama (borrada / squash-merge / conservada-sin-mergear / error remoto) para el toast compuesto.
+### Nota por worktree — «¿por qué existe esto?»
+
+Cada worktree puede llevar una **nota** libre (`worktreeNotes` en `app.settings`,
+por ruta). Se siembra con el nombre en palabras que escribiste al crearlo y se
+edita después desde el menú de la fila; se ve en el hover card, junto a la
+identidad.
+
+Existe porque **la rama solo guarda un slug** de ese nombre: plegado, sin acentos
+y recortado a 50 caracteres en el límite de palabra. La nota conserva la frase
+entera, que es lo que contesta «¿de qué iba esto?» tres semanas después. Se borra
+sola al eliminar el worktree, para que el mapa no acumule rutas muertas.
+
+### ¿Este espacio ya terminó? (consulta de solo lectura)
+
+`branch_integrated(path, branch)` responde si la rama **ya aterrizó** en la base
+por defecto — ancestría real (`merge-base --is-ancestor`) o **squash**
+(`is_squash_merged`) — **sin borrar nada**.
+
+> **Una rama que no se ha movido de su base NO ha aterrizado: no ha empezado.**
+> La ancestría no distingue los dos casos — una rama recién creada no aporta
+> nada, así que todo lo alcanzable desde ella lo es también desde la base y
+> `--is-ancestor` dice que sí. Por eso se compara primero el tip: si coincide con
+> el de la base, la respuesta es `false`. Sin esa guarda, un worktree se marcaba
+> "aterrizado" en el instante de crearlo, invitando a cerrar el espacio que
+> acababas de montar — y el **cierre en lote** lo habría barrido como seguro.
+>
+> El intercambio es deliberado: una rama mergeada por *fast-forward* también
+> termina compartiendo el tip de la base y se reporta como no-terminada. Reportar
+> de menos cuesta un cierre manual; reportar de más ofrece borrar trabajo que
+> nunca ocurrió. Los merges con commit y los squash — las formas que produce un
+> flujo de revisión real — no se ven afectados. Es deliberadamente la misma detección
+que corre `remove_worktree` camino de un borrado seguro: lo que la sidebar declare
+"terminado" es, por construcción, lo que la eliminación aceptaría limpiar. La rama
+base contesta `false` (nunca se propone cerrar aquello sobre lo que todo aterriza),
+y cualquier error de git también, para no invitar a cerrar un repo ilegible.
+
+En el frontend, `classifyCompletion` (`$lib/worktree-completion.ts`) compone el
+veredicto con datos ya cacheados — el PR, el status del árbol, los agentes vivos —
+más ese bit:
+
+| Veredicto | Significa | ¿Ofrece cerrar? |
+|---|---|---|
+| `done` | PR mergeado, o git confirma que la rama aterrizó | **sí** |
+| `abandoned` | PR cerrado sin mergear | **sí** |
+| `inert` | limpio, sin commits sin subir y sin agente — pero nada lo *prueba* | no: solo se atenúa |
+| `active` | todo lo demás | no |
+
+La distinción `inert` vs `done` es la regla central: "no se ha movido en un rato"
+describe a toda rama a la que piensas volver el lunes, así que jamás propone un
+borrado. La llamada a git se paga **solo** para worktrees que ya se ven quietos
+(`shouldCheckIntegration`), se pacea con el barrido de status existente, y su
+respuesta se descarta en cuanto los commits de la rama se mueven.
+
+El `RemoveOutcome` reporta el destino de cada rama (borrada / squash-merge / conservada-sin-mergear / **borrado local rechazado** / error remoto) para el toast compuesto. Los dos casos de error se avisan aparte del toast de éxito, porque el worktree sí se eliminó.
 
 ---
 

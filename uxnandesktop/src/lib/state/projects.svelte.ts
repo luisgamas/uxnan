@@ -7,6 +7,7 @@
 // currently-active worktree. All git mutations go through `$lib/api`.
 
 import {
+  branchIntegrated,
   branchList,
   fsPathExists,
   ptyWrite,
@@ -54,6 +55,16 @@ import {
   type SortMeta,
   type StatusLane,
 } from "$lib/sidebar-sort";
+import {
+  classifyCompletion,
+  isClosable,
+  shouldCheckIntegration,
+  type CompletionInputs,
+  type CompletionState,
+} from "$lib/worktree-completion";
+import type { RemovalInputs } from "$lib/worktree-removal";
+import { planBatchClose } from "$lib/worktree-batch-close";
+import { buildReviewGroups, type ReviewGroup, type ReviewPr } from "$lib/sidebar-review";
 import { resourceMode } from "$lib/state/resourceMode.svelte";
 import { toast, toastError } from "$lib/toast";
 import { i18n } from "$lib/i18n";
@@ -274,6 +285,20 @@ class ProjectsStore {
     void app.persistSettings();
   }
 
+  /** Whether a review lane is collapsed (persisted, like the attention lanes). */
+  isReviewLaneCollapsed(group: ReviewGroup): boolean {
+    return app.settings.sidebarCollapsedReviewLanes?.includes(group) ?? false;
+  }
+
+  /** Toggle a review lane's collapse state and persist it. */
+  toggleReviewLane(group: ReviewGroup): void {
+    const cur = app.settings.sidebarCollapsedReviewLanes ?? [];
+    app.settings.sidebarCollapsedReviewLanes = cur.includes(group)
+      ? cur.filter((g) => g !== group)
+      : [...cur, group];
+    void app.persistSettings();
+  }
+
   // --- Expansion (left sidebar) --------------------------------------------
   //
   // Both of these are persisted. They used to be component-local `$state`, which
@@ -329,7 +354,11 @@ class ProjectsStore {
         all.push({ ...w, repoId: repo.id, repoName: repo.name });
       }
     }
-    return buildStatusGroups(all, (w) => this.worktreeSortMeta(w)).map((lane) => ({
+    return buildStatusGroups(
+      all,
+      (w) => this.worktreeSortMeta(w),
+      (w) => isClosable(this.completion(w)),
+    ).map((lane) => ({
       attention: lane.attention,
       items: partitionPinned(lane.items, (w) => this.isWorktreePinned(w.path)),
     }));
@@ -361,6 +390,26 @@ class ProjectsStore {
   revealNeedsYou(): void {
     if (this.isLaneCollapsed(1)) this.toggleLane(1);
     this.setGroupBy("status");
+  }
+
+  /** Every visible worktree grouped by where it sits in the review process
+   *  (`groupBy: "review"`). Reuses the same flattened row set as the attention
+   *  view, so the two groupings can never disagree about what exists. */
+  reviewGroups(): { group: ReviewGroup; items: WorktreeRow[] }[] {
+    const all: WorktreeRow[] = [];
+    for (const repo of this.filteredRepos) {
+      const main = this.mainWorktree(repo.id);
+      if (main) {
+        all.push({ ...main, isMain: true, repoId: repo.id, repoName: repo.name });
+      }
+      for (const w of this.visibleChildWorktrees(repo.id)) {
+        all.push({ ...w, repoId: repo.id, repoName: repo.name });
+      }
+    }
+    return buildReviewGroups(all, (w) => this.prFor(w.path)).map((lane) => ({
+      group: lane.group,
+      items: partitionPinned(lane.items, (w) => this.isWorktreePinned(w.path)),
+    }));
   }
 
   /** Sort metadata for a workspace path — the agent status/unread/recency the
@@ -674,6 +723,10 @@ class ProjectsStore {
       // this from `github` instead of calling it here keeps the store graph
       // one-way — `github` already imports `projects`, not the reverse.
       this.changedPaths = [...new Set([...this.changedPaths, ...changed])];
+      // A worktree whose commits moved may have just landed (or stopped being
+      // landed): drop the cached "is it integrated?" answer so the next sweep
+      // re-asks instead of serving a verdict about an older commit.
+      for (const path of changed) this.forgetIntegration(path);
     }
     return changed;
   }
@@ -716,6 +769,9 @@ class ProjectsStore {
     this.#sweepInFlight = true;
     try {
       await this.refreshStatuses(paths);
+      // Statuses first: the integration pass reads them to decide which
+      // worktrees are quiet enough to be worth a git call at all.
+      await this.#sweepIntegration();
       this.#lastSweep = Date.now();
     } finally {
       this.#sweepInFlight = false;
@@ -727,6 +783,142 @@ class ProjectsStore {
    *  the window regaining focus, and our own git actions. */
   requestStatusSweep(): void {
     void this.sweepStatuses(true);
+  }
+
+  // --- Completion ("is this space finished?") -------------------------------
+  //
+  // The verdict is composed in `completion()` from data that is already cached
+  // (the PR, the working-tree status, the live agents) plus one bit that costs a
+  // git call — whether the branch landed in the base. That bit is filled in
+  // lazily, only for worktrees that already look quiet, so the panel never pays
+  // for an answer it cannot use.
+
+  /** `path` → whether its branch landed in the base. Absent = not asked yet. */
+  #integrated = $state<Record<string, boolean>>({});
+  /** Paths with an integration check in flight, so a sweep can't stack them. */
+  #integrationInFlight = new Set<string>();
+  /** `path` → the pull request the GitHub store discovered for it, narrowed to
+   *  what the sidebar reads. Pushed in rather than read back: `github` already
+   *  imports this module, so reading from here would close an import cycle. */
+  #pr = $state<Record<string, ReviewPr | null>>({});
+
+  /** Record a worktree's pull request (called by the GitHub store when it caches
+   *  a context). `null` clears it — no PR, or none discoverable. */
+  notePr(path: string, pr: ReviewPr | null): void {
+    const prev = this.#pr[path] ?? null;
+    if (prev?.state === pr?.state && prev?.isDraft === pr?.isDraft) return;
+    this.#pr = { ...this.#pr, [path]: pr };
+    // The PR just spoke, so any locally-inferred verdict is stale.
+    this.forgetIntegration(path);
+  }
+
+  /** The cached pull request for a worktree path, for the review grouping. */
+  prFor(path: string): ReviewPr | null {
+    return this.#pr[path] ?? null;
+  }
+
+  /** The completion verdict for a worktree row. Pure read — safe from markup. */
+  completion(row: { path: string; branch: string | null; isMain?: boolean }): CompletionState {
+    return classifyCompletion(this.#completionInputs(row));
+  }
+
+  #completionInputs(row: {
+    path: string;
+    branch: string | null;
+    isMain?: boolean;
+  }): CompletionInputs {
+    const pr = this.#pr[row.path] ?? null;
+    return {
+      pr: pr ? { state: pr.state } : null,
+      status: this.status(row.path) ?? null,
+      integrated: this.#integrated[row.path] ?? null,
+      hasLiveAgent: terminals.agentTabs(row.path).some((t) => !t.exited),
+      isMain: row.isMain === true,
+    };
+  }
+
+  /** Fill in the integration bit for the worktrees where it can change the
+   *  verdict. Called from the paced sweep, never from markup: it spawns git. */
+  async #sweepIntegration(): Promise<void> {
+    for (const repo of app.repos) {
+      for (const w of this.worktreesOf(repo.id)) {
+        if (w.isMain || !w.branch) continue;
+        if (this.#integrationInFlight.has(w.path)) continue;
+        if (!shouldCheckIntegration(this.#completionInputs(w))) continue;
+        this.#integrationInFlight.add(w.path);
+        try {
+          this.#integrated[w.path] = await branchIntegrated(w.path, w.branch);
+        } catch {
+          // A repo we can't read is not "finished" — leave it unasked so a later
+          // sweep retries instead of freezing a wrong verdict into the panel.
+        } finally {
+          this.#integrationInFlight.delete(w.path);
+        }
+      }
+    }
+  }
+
+  /** Drop a cached integration verdict when the branch may have moved (a commit,
+   *  a push, a status change), so it is re-asked rather than served stale. */
+  forgetIntegration(path: string): void {
+    delete this.#integrated[path];
+  }
+
+  // --- Notes ("why does this space exist?") --------------------------------
+
+  /** This worktree's note, or "" when it has none. */
+  note(path: string): string {
+    return app.settings.worktreeNotes?.[path] ?? "";
+  }
+
+  /** Set (or, with empty text, clear) a worktree's note and persist it. The
+   *  branch name only keeps a slug of what you typed — folded, truncated, cut to
+   *  a word boundary — so the note is where the sentence itself survives. */
+  setNote(path: string, note: string): void {
+    const next = { ...(app.settings.worktreeNotes ?? {}) };
+    const text = note.trim();
+    if (text) next[path] = text;
+    else delete next[path];
+    app.settings.worktreeNotes = next;
+    void app.persistSettings();
+  }
+
+  /** Forget a removed worktree's note, so the map doesn't accumulate paths that
+   *  no longer exist. Called from the removal path. */
+  dropNote(path: string): void {
+    if (!app.settings.worktreeNotes?.[path]) return;
+    this.setNote(path, "");
+  }
+
+  /** The removal inputs for a row — shared by the single dialog and the batch so
+   *  neither can drift into judging a workspace differently from the other. */
+  removalInputsFor(row: { path: string; branch: string | null; isMain?: boolean }): RemovalInputs {
+    const status = this.status(row.path);
+    return {
+      completion: this.completion(row),
+      dirty: status?.dirty ?? 0,
+      ahead: status?.ahead ?? 0,
+      liveAgents: terminals.agentTabs(row.path).filter((t) => !t.exited).length,
+      hasBranch: !!row.branch,
+    };
+  }
+
+  /** Close every workspace the batch deems safe, one at a time. Returns how many
+   *  actually went, so the caller can report the real number rather than the
+   *  number it hoped for. Sequential on purpose: each removal kills terminals and
+   *  reloads its repo's worktree list, and running those concurrently raced. */
+  async closeBatch(rows: WorktreeRow[]): Promise<number> {
+    const plan = planBatchClose(rows.map((row) => ({ item: row, inputs: this.removalInputsFor(row) })));
+    let closed = 0;
+    for (const entry of plan.close) {
+      const ok = await this.removeWorktree(entry.item, false, {
+        deleteLocal: entry.deleteLocal,
+        forceLocal: false,
+        deleteRemote: false,
+      });
+      if (ok) closed += 1;
+    }
+    return closed;
   }
 
   /** Manual "refresh now" (the freshness hint's action): re-read the worktree
@@ -967,6 +1159,7 @@ class ProjectsStore {
       await this.loadWorktrees(row.repoId);
       // Drop any quick commands scoped to the now-removed worktree.
       app.pruneWorktreeCommands(row.path);
+      this.dropNote(row.path);
       // The worktree is always gone; compose a message from what the opt-in
       // branch cleanup did (deleted / cleaned up / kept unmerged / remote).
       const parts = [i18n.t("toast.worktreeRemoved")];
@@ -983,8 +1176,13 @@ class ProjectsStore {
         parts.push(i18n.t("toast.remoteBranchDeleted"));
       }
       toast.success(parts.join(" · "));
-      // A requested remote delete that failed is surfaced separately (the local
-      // removal still succeeded, so it's a warning, not a hard failure).
+      // A requested delete that git refused is surfaced separately (the worktree
+      // still went, so it's a warning, not a hard failure) — but it MUST be
+      // surfaced: the success toast above is composed from the flags, so a local
+      // delete that silently failed used to read as if the branch were gone.
+      if (outcome?.localBranchError) {
+        toastError(i18n.t("toast.localBranchError", { error: outcome.localBranchError }));
+      }
       if (outcome?.remoteError) {
         toastError(i18n.t("toast.remoteBranchError", { error: outcome.remoteError }));
       }

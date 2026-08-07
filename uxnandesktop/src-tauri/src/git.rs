@@ -62,6 +62,16 @@ pub struct RemoveOutcome {
     /// aren't merged and no force was given (and it isn't squash-merged). No work
     /// is lost — the UI can offer a forced retry.
     pub local_branch_unmerged: bool,
+    /// A local delete was requested and **attempted** (forced, or after confirming
+    /// a squash-merge) but git refused it; carries the reason for the toast.
+    ///
+    /// Not the same as [`local_branch_unmerged`](Self::local_branch_unmerged),
+    /// which means "we chose not to try". Without this a failed `-D` left every
+    /// flag `false`, and since the frontend composes its message from those flags
+    /// the user ticked "delete branch (force)", the branch survived, and the app
+    /// still said "Worktree removed" as if nothing had gone wrong. Mirrors
+    /// [`remote_error`](Self::remote_error).
+    pub local_branch_error: Option<String>,
     /// The remote branch (`origin/<branch>`) was deleted.
     pub remote_branch_deleted: bool,
     /// A remote delete was requested but failed (offline, no `origin`, protected
@@ -706,20 +716,32 @@ pub async fn remove_worktree(
         if git(repo_path, &["branch", "-d", branch]).await.is_ok() {
             outcome.local_branch_deleted = true;
         } else if cleanup.force_local {
-            // The user explicitly asked to force it, unmerged or not.
-            outcome.local_branch_deleted = git(repo_path, &["branch", "-D", branch]).await.is_ok();
+            // The user explicitly asked to force it, unmerged or not. A `-D` that
+            // fails is NOT "nothing happened" — the branch is still there and its
+            // removal was explicitly requested — so capture why. git refuses while
+            // the branch is checked out anywhere, which is exactly what a
+            // half-removed worktree (a process still holding its directory on
+            // Windows) leaves behind.
+            match git(repo_path, &["branch", "-D", branch]).await {
+                Ok(_) => outcome.local_branch_deleted = true,
+                Err(e) => outcome.local_branch_error = Some(e.to_string()),
+            }
         } else {
             // `-d` was refused (unmerged commits). The work may still have landed
             // as a *squash* merge — a single commit on the base carrying the same
             // net diff. If we can confirm that patch-equivalence, force-delete is
             // safe; otherwise keep the branch and report it as unmerged.
             let base = default_base(repo_path).await;
-            if base != branch
-                && is_squash_merged(repo_path, branch, &base).await
-                && git(repo_path, &["branch", "-D", branch]).await.is_ok()
-            {
-                outcome.local_branch_deleted = true;
-                outcome.squash_merged = true;
+            if base != branch && is_squash_merged(repo_path, branch, &base).await {
+                match git(repo_path, &["branch", "-D", branch]).await {
+                    Ok(_) => {
+                        outcome.local_branch_deleted = true;
+                        outcome.squash_merged = true;
+                    }
+                    // Confirmed squash-merged but the delete still failed. Calling
+                    // that "unmerged" would be a lie: report the real reason.
+                    Err(e) => outcome.local_branch_error = Some(e.to_string()),
+                }
             } else {
                 outcome.local_branch_unmerged = true;
             }
@@ -765,6 +787,55 @@ async fn delete_remote_branch(repo_path: &str, branch: &str) -> Result<(), Remot
         .await
         .map(|_| ())
         .map_err(|e| RemoteDeleteError::Failed(e.to_string()))
+}
+
+/// Whether `branch`'s work already landed in the repo's default base — either as
+/// real ancestry (what `git branch -d` accepts) or as a **squash merge**
+/// ([`is_squash_merged`]).
+///
+/// Read-only: the same question [`remove_worktree`] answers on its way to
+/// deleting a branch, asked without deleting anything. That is what lets the
+/// sidebar say "this one is finished" *before* you decide to close it, instead
+/// of only finding out inside the removal dialog.
+///
+/// Best-effort like the checks it wraps: any git error yields `false`, so an
+/// unreadable repo is reported as "not finished" rather than inviting a close.
+/// A branch that IS the base answers `false` — you never close the base. So does
+/// a branch that has not moved off its base yet (see below).
+pub async fn branch_integrated(repo_path: &str, branch: &str) -> bool {
+    let base = default_base(repo_path).await;
+    if base.is_empty() || base == branch {
+        return false;
+    }
+    // A branch that still points at the base's tip has not *landed* — it has not
+    // started. Ancestry cannot tell those apart: a brand-new branch contributes
+    // nothing, so every commit reachable from it is trivially reachable from the
+    // base, and `--is-ancestor` says yes. Without this guard a worktree was
+    // marked "landed" the moment it was created, inviting you to close the space
+    // you had just set up — and the batch close would have swept it up as safe.
+    //
+    // The trade is deliberate: a branch merged by *fast-forward* also ends up
+    // sharing the base's tip and is reported as not-finished. Under-reporting a
+    // finished space costs a manual close; over-reporting one offers to delete
+    // work that never happened. Merge commits and squashes — the shapes a review
+    // flow actually produces — are unaffected.
+    if let (Ok(branch_tip), Ok(base_tip)) = (
+        git(repo_path, &["rev-parse", "--verify", "--quiet", branch]).await,
+        git(repo_path, &["rev-parse", "--verify", "--quiet", &base]).await,
+    ) {
+        if !branch_tip.trim().is_empty() && branch_tip.trim() == base_tip.trim() {
+            return false;
+        }
+    }
+    // Real ancestry: the common case for a merge commit. `--is-ancestor` exits 0
+    // when every commit on `branch` is already reachable from `base`.
+    if git(repo_path, &["merge-base", "--is-ancestor", branch, &base])
+        .await
+        .is_ok()
+    {
+        return true;
+    }
+    is_squash_merged(repo_path, branch, &base).await
 }
 
 /// Whether `branch`'s net changes are already present in `base` as a squash
@@ -1830,6 +1901,149 @@ mod tests {
         assert!(!outcome.squash_merged);
         let branches = list_branches(&repo_path).await.unwrap();
         assert!(branches.iter().any(|b| b == "wip"));
+    }
+
+    #[tokio::test]
+    async fn branch_integrated_sees_a_merged_branch() {
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "feature");
+        add_worktree(&repo_path, "feature", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/f.txt"), "work\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "feature work"]).await;
+
+        assert!(
+            !branch_integrated(&repo_path, "feature").await,
+            "unmerged work is not finished"
+        );
+
+        run_git(&repo_path, &["merge", "--no-ff", "-m", "merge", "feature"]).await;
+        assert!(
+            branch_integrated(&repo_path, "feature").await,
+            "a merged branch is finished"
+        );
+    }
+
+    #[tokio::test]
+    async fn branch_integrated_sees_a_squash_merged_branch() {
+        // The case plain ancestry misses: the base carries the same net diff as a
+        // single commit, so no commit of the branch is an ancestor of it.
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "squashed");
+        add_worktree(&repo_path, "squashed", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/s.txt"), "squashed work\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "part one"]).await;
+
+        run_git(&repo_path, &["merge", "--squash", "squashed"]).await;
+        run_git(&repo_path, &["commit", "-m", "squashed work"]).await;
+
+        assert!(
+            branch_integrated(&repo_path, "squashed").await,
+            "a squash-merged branch is finished even though its commits aren't ancestors"
+        );
+    }
+
+    #[tokio::test]
+    async fn branch_integrated_does_not_call_a_brand_new_branch_finished() {
+        // Reported from real use: create a worktree, launch an agent, close its
+        // terminal, and the row immediately claimed the branch had landed. A
+        // fresh branch shares its base's tip and contributes nothing, so plain
+        // ancestry says yes — and the batch close would then have offered to
+        // delete the workspace that had just been set up.
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "brand-new");
+        add_worktree(&repo_path, "brand-new", &wt, Some("main"))
+            .await
+            .unwrap();
+
+        assert!(
+            !branch_integrated(&repo_path, "brand-new").await,
+            "a branch that has not moved off its base has not landed"
+        );
+
+        // One commit and it is genuinely unmerged — still not finished.
+        std::fs::write(format!("{wt}/n.txt"), "work\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "first commit"]).await;
+        assert!(!branch_integrated(&repo_path, "brand-new").await);
+
+        // Merged for real — now it is.
+        run_git(
+            &repo_path,
+            &["merge", "--no-ff", "-m", "merge", "brand-new"],
+        )
+        .await;
+        assert!(branch_integrated(&repo_path, "brand-new").await);
+    }
+
+    #[tokio::test]
+    async fn branch_integrated_never_reports_the_base_itself() {
+        // Guard against inviting the user to close the branch everything lands on.
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        assert!(!branch_integrated(&repo_path, "main").await);
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_reports_a_forced_delete_that_git_refused() {
+        // The failure this covers is real and used to be invisible: the user ticks
+        // "delete local branch (force)", git refuses the `-D`, every outcome flag
+        // stays false, and because the frontend composes its message from those
+        // flags the toast reads "Worktree removed" — as if the branch were gone.
+        //
+        // In the wild git refuses because the branch is still checked out
+        // somewhere (a half-removed worktree whose directory a process still
+        // holds, which is the common Windows case). Here we reproduce that
+        // refusal deterministically by pointing the cleanup at the branch the
+        // PRIMARY worktree has checked out; the git error is identical
+        // ("cannot delete branch ... checked out at ...") and the contract under
+        // test is the reporting, not the cause.
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "side");
+        add_worktree(&repo_path, "side", &wt, Some("main"))
+            .await
+            .unwrap();
+
+        let cleanup = BranchCleanup {
+            delete_local: true,
+            force_local: true,
+            ..Default::default()
+        };
+        // `main` is checked out in the primary worktree, so `-D main` must fail.
+        let outcome = remove_worktree(&repo_path, &wt, Some("main"), false, cleanup)
+            .await
+            .unwrap();
+
+        assert!(!outcome.local_branch_deleted, "the branch is still there");
+        assert!(
+            !outcome.local_branch_unmerged,
+            "we DID try; reporting 'unmerged' would be the wrong reason"
+        );
+        assert!(
+            outcome.local_branch_error.is_some(),
+            "a refused forced delete must say so instead of reading as success"
+        );
+        let branches = list_branches(&repo_path).await.unwrap();
+        assert!(branches.iter().any(|b| b == "main"));
     }
 
     #[tokio::test]

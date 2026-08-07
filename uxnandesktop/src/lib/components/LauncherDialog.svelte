@@ -10,6 +10,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
+  import { Input } from "$lib/components/ui/input";
   import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
   import MultiSelect from "./MultiSelect.svelte";
   import AgentLogo from "./AgentLogo.svelte";
@@ -87,6 +88,13 @@
   let wtEffectiveBranch = $state("");
   let wtValid = $state(false);
   let wtLoading = $state(false);
+  let wtNewBranchTouched = $state(false);
+
+  /** What this workspace is called, in plain words. It is the *same* value the
+   *  branch name under Advanced holds — this field just lets you write it as a
+   *  sentence and have the branch derived, instead of spelling out a valid ref.
+   *  Optional: left empty, the dialog behaves exactly as it always has. */
+  let workspaceName = $state("");
 
   // --- What to open (multi-select) ------------------------------------------
   // Each openable is an id: `term:default`, `term:<profileId>`, `agent:<id>`,
@@ -152,6 +160,7 @@
       const belongs = active && worktrees.some((w) => w.path === active);
       target = belongs ? active! : (worktrees[0]?.path ?? repo.path);
       selected = [];
+      workspaceName = "";
       projects.error = null;
     });
   });
@@ -191,6 +200,12 @@
         });
         if (!ok) return;
         path = projects.activeWorktreePath ?? path;
+        // Keep the sentence, not just the ref derived from it. The branch only
+        // carries a folded, truncated slug; three weeks from now the note is what
+        // still explains why this space exists. Skipped when the name *is* the
+        // branch (typed straight into Advanced) — repeating it says nothing.
+        const typed = workspaceName.trim();
+        if (typed && typed !== wtEffectiveBranch) projects.setNote(path, typed);
       }
       runActions(path, actions);
       open = false;
@@ -230,14 +245,33 @@
       </div>
 
       <!-- New-worktree extras — the shared creation form (modes / auto-name /
-           existing branch / optional custom location). -->
+           existing branch / optional custom location), fronted by the name.
+           ONE name, written twice over: this field takes it in plain words, the
+           branch under Advanced holds the ref it derives to. They are not two
+           questions — spelling out a valid ref before you can say what the space
+           is for is exactly the chore the dice button exists to dodge. -->
       {#if isNew}
-        <div class="rounded-lg border border-border/50 bg-card/40 p-3">
+        <div class="flex flex-col gap-3 rounded-lg border border-border/50 bg-card/40 p-3">
+          <div class="flex flex-col gap-1.5">
+            <label for="launcher-name" class={cn("font-medium", text.body)}>
+              {i18n.t("launcher.nameLabel")}
+            </label>
+            <Input
+              id="launcher-name"
+              placeholder={i18n.t("launcher.namePlaceholder")}
+              bind:value={workspaceName}
+              autocomplete="off"
+              onkeydown={(e) => e.key === "Enter" && submit()}
+            />
+          </div>
           <WorktreeCreateFields
             {repo}
             active={isNew}
+            advanced
+            nameHint={workspaceName}
             bind:mode={wtMode}
             bind:newBranch={wtNewBranch}
+            bind:newBranchTouched={wtNewBranchTouched}
             bind:existingBranch={wtExistingBranch}
             bind:base={wtBase}
             bind:location={wtLocation}
