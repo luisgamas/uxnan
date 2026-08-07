@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — search inside files, and a tree that follows what you opened
+
+The Files tab's search could only match file *names*. The magnifier still opens
+exactly the same bar, with two sections underneath it that stay collapsed until
+you want them ([`docs/file-tree.md`](docs/file-tree.md)):
+
+- **Search in file contents** — a new backend walk (`fs_search_content`) that
+  reads the files the name search only listed, as literal text (default), whole
+  word, or a regular expression. Results are grouped by file with the line number
+  and the matching line, the matched span marked; clicking one opens the file's
+  Edit view **scrolled to that line**, briefly highlighted. Long lines are
+  windowed around the match. Binary, oversized (> 2 MiB) and unreadable files are
+  skipped; a file contributes at most 50 matches and a search 1000, and says so
+  when it truncates. An unparsable regular expression is reported under the input
+  rather than blanking the panel.
+- **Filters** — include / exclude glob patterns that narrow **both** searches.
+  `*.ts` matches a name anywhere, `src/lib/**` a path, and a bare `docs` covers
+  everything inside that folder; exclude is applied after include, and a
+  half-typed pattern narrows nothing instead of emptying the results.
+
+Both walks share the existing gitignore-aware `ignore` walker and the Show hidden
+files toggle, and the content walk is multi-threaded on the blocking pool.
+
+Opening a hit no longer forces a choice between seeing the result list and seeing
+where the file lives: **the tree now follows the file you're looking at.** Its
+ancestors expand, its row scrolls into view and carries a quiet background mark,
+all behind the still-open search — so closing search reveals a tree already
+pointing at the file. The mark tracks the most recently viewed file tab that is
+still open, so it moves between file tabs, survives a detour into a terminal,
+falls back to the previous file when one is closed, and disappears with the last
+one. The click selection stays the louder, separate mark it always was.
+
+The file-tree toolbar buttons (search, collapse, refresh, close search) and the
+new controls now carry `aria-label`s, so the panel is operable by name.
+
 ### Fixed
 
 - **Codex's mark disappeared on dark themes.** Its SVG draws with
