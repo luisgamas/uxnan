@@ -539,6 +539,16 @@ that component's `release-*.yml` workflow. The version convention, the release
 matrix, and the full step-by-step are in **[`VERSIONS.md`](VERSIONS.md)**; the
 contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Releases*.
 
+> **Do not cut a release by hand.** `npm run release:status` says what genuinely
+> needs one; the **Release — cut versions** workflow (`release.yml`) does the cut —
+> it computes the version, writes every version-bearing file, proves they agree,
+> commits, tags, and pushes **in the required order**, waiting for npm between
+> `shared` and its consumers. The desktop nightly cuts itself at 06:20 UTC when
+> there is something to ship. How it all fits together, and what is deliberately
+> left to a human, is in **[`docs/releases.md`](docs/releases.md)**. The rules
+> below are what that automation enforces — they still bind anyone doing it
+> manually, which should be nobody.
+
 **Non-negotiable rules when cutting a release:**
 
 1. **The release version comes from the tag** (e.g.

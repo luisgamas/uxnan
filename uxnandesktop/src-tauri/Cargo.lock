@@ -5341,16 +5341,18 @@ dependencies = [
 
 [[package]]
 name = "uxnan-desktop"
-version = "0.0.28"
+version = "0.0.30"
 dependencies = [
  "axum",
  "base64 0.22.1",
  "git2",
+ "globset",
  "hex",
  "ignore",
  "notify",
  "notify-debouncer-full",
  "portable-pty",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

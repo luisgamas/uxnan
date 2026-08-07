@@ -533,6 +533,10 @@ class TerminalStore {
   /** Most-recently-used tab ids, most-recent first (across all workspaces). Plain
    *  (non-reactive) — it only orders the `Ctrl+Tab` quick-switch, never renders. */
   private mru: string[] = [];
+  /** The same order restricted to **file** tabs. Reactive, because it drives the
+   *  file tree's "this is the file you're looking at" highlight (see
+   *  [`activeFilePath`]) — which is rendered, unlike the quick-switch order. */
+  private fileMru = $state<string[]>([]);
   /** Frozen MRU order for an in-progress `Ctrl+Tab` cycle (null = not cycling).
    *  Freezing keeps repeated presses walking a stable list instead of reshuffling
    *  under their own feet; the landed tab is promoted to MRU-front when the cycle
@@ -1003,6 +1007,23 @@ class TerminalStore {
     return id;
   }
 
+  /** Open (or focus) `absPath` and scroll its editor to `line` (1-based) — how the
+   *  file tree opens a content-search hit. Forces the **Edit** view, since that is
+   *  where a matched line lives (an SVG, say, would otherwise open in Preview).
+   *  The reveal is queued on the file's state, so it also works for a file that is
+   *  still loading. */
+  openFileAtLine(
+    absPath: string,
+    worktree: string | null,
+    line: number,
+    opts?: { workspace?: string; groupId?: string },
+  ): string {
+    const id = this.openFile(absPath, worktree, opts);
+    this.setFileView(id, 'edit');
+    this.fileStates.get(id)?.requestReveal(line);
+    return id;
+  }
+
   /** Open (or focus) the file tab for a worktree-relative `file` and switch it to
    *  its **Changes** view showing the `staged`/unstaged diff — the single entry
    *  point the right-panel Changes list uses, so reviewing a diff and editing a
@@ -1148,6 +1169,27 @@ class TerminalStore {
   /** Whether a file is already open in some tab (for the tree's open-row mark). */
   isFileOpen(path: string): boolean {
     return this.findFileTab(path) !== undefined;
+  }
+
+  /** Path of the file the user is looking at — the most recently activated file
+   *  tab that is still open, or null when no file tab is left. The file tree
+   *  highlights this row, so the highlight follows the viewer: it moves when the
+   *  user switches between file tabs, survives a detour into a terminal tab (the
+   *  file is still open, just not frontmost), falls back to the previous file when
+   *  the current one is closed, and goes away once the last file tab is gone.
+   *  Stale ids clean themselves up here — a closed tab simply stops resolving. */
+  get activeFilePath(): string | null {
+    for (const id of this.fileMru) {
+      const tab = this.findFileTabById(id);
+      if (tab) return tab.path;
+    }
+    // Nothing has been activated yet this session (a restored layout assigns tabs
+    // without going through `setActiveTab`), so fall back to what the center is
+    // actually showing: the active region's active tab, when it is a file.
+    if (!this.root) return null;
+    const group = findGroup(this.root, this.activeGroupId) ?? firstGroup(this.root);
+    const tab = group?.tabs.find((t) => t.id === group.activeTabId);
+    return tab?.kind === 'file' ? tab.path : null;
   }
   /** Whether a file's Changes view is the one currently showing this `staged` side
    *  (for the right-panel changed-file "open" mark). */
@@ -1376,11 +1418,15 @@ class TerminalStore {
 
   // --- MRU quick-switch + tab move (reorder / cross-region drag) -----------
 
-  /** Promote a tab to the front of the MRU list (most-recently-used). */
+  /** Promote a tab to the front of the MRU list (most-recently-used), and — when
+   *  it is a file tab — of the file-only order the tree highlight follows. */
   private noteActivation(tabId: string): void {
     const i = this.mru.indexOf(tabId);
     if (i !== -1) this.mru.splice(i, 1);
     this.mru.unshift(tabId);
+    if (this.findFileTabById(tabId)) {
+      this.fileMru = [tabId, ...this.fileMru.filter((id) => id !== tabId)];
+    }
   }
   /** Forget a tab that's leaving the tree (called from every close path via
    *  `disposeTab`), and drop it from any in-progress cycle. */
@@ -1389,6 +1435,9 @@ class TerminalStore {
     if (i !== -1) this.mru.splice(i, 1);
     const j = this.cycleOrder?.indexOf(tabId) ?? -1;
     if (j !== -1) this.cycleOrder!.splice(j, 1);
+    if (this.fileMru.includes(tabId)) {
+      this.fileMru = this.fileMru.filter((id) => id !== tabId);
+    }
   }
   /** End an in-progress `Ctrl+Tab` cycle (the next activation reseeds it). */
   private endCycle(): void {

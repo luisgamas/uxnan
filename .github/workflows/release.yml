@@ -1,0 +1,280 @@
+name: Release — cut versions
+
+# The single entry point for cutting a release, and the nightly that cuts itself.
+#
+# What it does, in order: work out what genuinely needs releasing, refuse a
+# version that cannot move forward, write it into every version-bearing file,
+# verify those files agree, commit, tag, and push. The tag is what triggers the
+# existing `release-*.yml` workflows, which are untouched by this.
+#
+# What it deliberately does NOT do: publish. A desktop nightly publishes itself
+# from `release-desktop.yml` once its installers are built; a stable stays a
+# draft for a human to review. npm and Play publish from their own workflows, as
+# before.
+#
+# Ordering is the reason this is one workflow rather than "push some tags":
+# `release-npm.yml` resolves `@uxnan/shared` from npm AT BUILD TIME, so a bridge
+# tagged alongside shared publishes against the *previous* shared. That happened
+# (bridge 0.0.14, superseded by 0.0.15). Here, shared is cut first and the
+# consumers wait until npm actually serves the new version.
+#
+# It never pushes to `main`, so it needs no ruleset bypass. The bump lands on its
+# own branch, the tag points at that commit, and a pull request brings the branch
+# into `main` through the same reviewed path as everything else.
+#
+# The one credential it wants is a GitHub App token, and NOT for permissions:
+# GitHub refuses to start a workflow from an event created with `GITHUB_TOKEN`
+# (its anti-recursion rule), so a tag pushed with the default token would never
+# trigger `release-*.yml`. Without the app the run does everything except push
+# the tag, and prints the single command to finish by hand. See
+# `docs/releases.md` → *The credential*.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shared:
+        description: 'Cut @uxnan/shared'
+        type: boolean
+        default: false
+      bridge:
+        description: 'Cut uxnan-bridge'
+        type: boolean
+        default: false
+      relay:
+        description: 'Cut uxnan-relay'
+        type: boolean
+        default: false
+      mobile:
+        description: 'Cut Uxnan Mobile (Play open testing)'
+        type: boolean
+        default: false
+      desktop:
+        description: 'Cut Uxnan Desktop'
+        type: choice
+        default: none
+        options: [none, nightly, stable]
+      force:
+        description: 'Cut even when nothing release-worthy changed'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Work everything out and print it, but tag nothing'
+        type: boolean
+        default: true
+  schedule:
+    # 06:20 UTC = 00:20 in Mexico City (UTC-6 all year). Cutting just after
+    # midnight local keeps the version's date stamp — which is UTC — equal to
+    # the local day it belongs to, and the installers are built by morning.
+    - cron: '20 6 * * *'
+
+permissions:
+  contents: write # push the release branch and the tag
+  pull-requests: write # open the bump PR
+
+# Never let two cuts race: they would compute the same next version.
+concurrency:
+  group: release-cut
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    # A fork running the schedule would tag and push its own main every night.
+    if: github.repository == 'luisgamas/uxnan'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # A token that is not GITHUB_TOKEN, so the tag push actually starts the
+      # release build. Absent, the run still does everything else.
+      - name: Mint a release token
+        id: token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0 # the scripts read the whole tag history
+          token: ${{ steps.token.outputs.token || github.token }}
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The release scripts use only Node built-ins and git, so there is nothing
+      # to install — one less way for a release to fail.
+      - name: Work out what to cut
+        id: plan
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            node scripts/release/plan.mjs --scheduled > plan.json
+          else
+            components=""
+            [ "${{ inputs.shared }}" = "true" ] && components="$components,shared"
+            [ "${{ inputs.bridge }}" = "true" ] && components="$components,bridge"
+            [ "${{ inputs.relay }}"  = "true" ] && components="$components,relay"
+            [ "${{ inputs.mobile }}" = "true" ] && components="$components,mobile"
+            [ "${{ inputs.desktop }}" != "none" ] && components="$components,desktop"
+            components="${components#,}"
+
+            if [ -z "$components" ]; then
+              echo "::error::Nothing was selected. Tick at least one component."
+              exit 1
+            fi
+
+            channel="stable"
+            [ "${{ inputs.desktop }}" = "nightly" ] && channel="nightly"
+            force=""
+            [ "${{ inputs.force }}" = "true" ] && force="--force"
+
+            node scripts/release/plan.mjs --components="$components" --channel="$channel" $force > plan.json
+          fi
+
+          cat plan.json
+          echo "count=$(jq '.cuts | length' plan.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Report the plan
+        run: |
+          {
+            echo "### Release plan"
+            echo
+            jq -r '.cuts[] | "- **\(.id)** → `\(.tag)`"' plan.json
+            jq -r '.skipped[] | "- _\(.id)_ skipped — \(.reason)"' plan.json
+            echo
+            if [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "_Scheduled nightly._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nothing to do
+        if: steps.plan.outputs.count == '0'
+        run: echo "::notice::No component has a release-worthy change. Nothing was tagged."
+
+      - name: Identify as the release bot
+        if: steps.plan.outputs.count != '0' && inputs.dry_run != true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Cut each component, in order
+        if: steps.plan.outputs.count != '0'
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          HAS_APP: ${{ steps.token.outputs.token != '' }}
+          GH_TOKEN: ${{ steps.token.outputs.token || github.token }}
+        run: |
+          set -euo pipefail
+
+          # The channel the plan settled on, not the raw input — a scheduled run
+          # has no inputs at all.
+          channel=$(jq -r '.channel' plan.json)
+          dry=""
+          [ "$DRY_RUN" = "true" ] && dry="--dry-run"
+
+          jq -c '.cuts[]' plan.json | while read -r cut; do
+            id=$(jq -r '.id' <<<"$cut")
+            version=$(jq -r '.version' <<<"$cut")
+            tag=$(jq -r '.tag' <<<"$cut")
+            waitFor=$(jq -r '.waitFor // empty' <<<"$cut")
+
+            echo "::group::$id → $version"
+
+            # `prepare` writes every version-bearing file and then reads them all
+            # back; a manifest that disagrees with its lockfile stops the run here
+            # rather than shipping.
+            node scripts/release/prepare.mjs "$id" \
+              --version="$version" \
+              --channel="$channel" \
+              --force $dry
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "dry run — not committing or tagging $tag"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # The history row travels in the same commit, so the pull request
+            # carries both and the table can never silently fall behind — which
+            # is what happened to 0.0.29. The summary is seeded from the pull
+            # request titles this release contains; enrich it by hand if you
+            # want, but nobody has to remember to add it.
+            note=""
+            if [ "$HAS_APP" = "true" ] || [ -n "${GH_TOKEN:-}" ]; then
+              note=$(node scripts/release/notes.mjs "$tag" --repo="$GITHUB_REPOSITORY" 2>/dev/null                 | grep '^\* ' | sed 's/^\* //; s/ by @.*//' | paste -sd ';' - | sed 's/;/; /g' || true)
+            fi
+            node scripts/release/record.mjs "$id" "$version" ${note:+--note="$note"}
+
+            git commit -am "build: prepare $id $version"
+            git tag "$tag"
+
+            # The tag is what starts the build — but only if it was pushed by
+            # something other than GITHUB_TOKEN. Without the app, stop short and
+            # say exactly how to finish, rather than leaving a tag that triggers
+            # nothing.
+            if [ "$HAS_APP" = "true" ]; then
+              git push origin "$tag"
+              echo "::notice::Tagged and pushed $tag"
+            else
+              echo "::warning::$tag was created but NOT pushed: a tag pushed with GITHUB_TOKEN does not start a workflow. Push it yourself to build: git push origin $tag"
+              echo "- \`git push origin $tag\`" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # A consumer resolving this from npm must not build until npm serves
+            # it, or it silently pins the previous version. Pointless if the tag
+            # was never pushed — nothing is publishing it.
+            if [ -n "$waitFor" ] && [ "$HAS_APP" = "true" ]; then
+              echo "waiting for npm to serve $waitFor@$version"
+              for attempt in $(seq 1 60); do
+                published=$(npm view "$waitFor" version 2>/dev/null || echo "")
+                if [ "$published" = "$version" ]; then
+                  echo "npm serves $version"
+                  break
+                fi
+                if [ "$attempt" = "60" ]; then
+                  echo "::error::$waitFor@$version never appeared on npm; its consumers were NOT tagged."
+                  exit 1
+                fi
+                sleep 30
+              done
+            fi
+
+            echo "::endgroup::"
+          done
+
+      # `main` is protected and stays that way: the bumps arrive through a pull
+      # request, reviewed like everything else. The tags already point at these
+      # commits, so the builds do not wait for the merge.
+      - name: Open the bump pull request
+        if: steps.plan.outputs.count != '0' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token || github.token }}
+        run: |
+          set -euo pipefail
+          branch="release/$(date -u +%Y%m%d-%H%M%S)"
+          git push origin "HEAD:$branch"
+
+          titles=$(jq -r '[.cuts[] | "\(.id) \(.version)"] | join(", ")' plan.json)
+          body="Version bumps for the tags this run created. The tags already point at these commits, so the builds are under way; merging this only brings main level with them."
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "build(release): $titles" \
+            --body "$body"
+
+          echo "::notice::Bump PR opened from $branch"
+
+      - name: What happens next
+        if: steps.plan.outputs.count != '0'
+        run: |
+          {
+            echo
+            echo "Each pushed tag triggers its own release workflow. A desktop nightly"
+            echo "publishes itself once built; a stable waits as a draft for a human."
+            echo "Merge the bump pull request to bring \`main\` level with the tags."
+          } >> "$GITHUB_STEP_SUMMARY"

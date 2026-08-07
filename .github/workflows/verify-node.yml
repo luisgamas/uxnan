@@ -11,7 +11,13 @@ jobs:
   verify:
     name: verify (node ${{ matrix.node }} · ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # `timeout-minutes` counts from the moment the job is QUEUED, not from when a
+    # runner picks it up. The work here takes 2-6 minutes, so 15 looked generous
+    # — until 2026-08-06, when GitHub's hosted queue stalled and both Linux legs
+    # were cancelled at exactly 15m01s without ever starting. A cancellation that
+    # says nothing about the code is worse than a slow run, so this leaves ~25
+    # minutes of queue tolerance while still catching a genuine hang.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

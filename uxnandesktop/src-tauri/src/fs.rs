@@ -8,8 +8,9 @@
 //! [`crate::browse`], this is the user's own machine, so access is not confined.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 
@@ -61,6 +62,188 @@ pub struct FileSearch {
     /// The walk hit `limit` before exhausting the tree — results are a prefix and
     /// the user should narrow the query.
     pub truncated: bool,
+}
+
+/// Largest file [`search_content`] will read. Matches [`MAX_EDIT_BYTES`] on
+/// purpose: a file the editor refuses to open is not one the user can act on
+/// from a search hit either.
+const MAX_SEARCH_BYTES: u64 = MAX_EDIT_BYTES;
+
+/// Bytes sniffed for a NUL before deciding a file is binary and skipping it.
+const BINARY_SNIFF_BYTES: usize = 8 * 1024;
+
+/// Matches reported per file before that file's list is cut (`truncated`). Keeps
+/// one generated/minified file from crowding out the rest of the results.
+const MAX_MATCHES_PER_FILE: usize = 50;
+
+/// Characters of a matching line sent to the UI. A longer line is windowed
+/// around the match (see [`ContentMatch::elided`]) so a minified bundle still
+/// yields a readable snippet.
+const MAX_SNIPPET_CHARS: usize = 400;
+
+/// Characters of leading context kept when a match sits past [`MAX_SNIPPET_CHARS`].
+const SNIPPET_LEAD_CHARS: usize = 40;
+
+/// Include/exclude glob filters shared by both project-wide searches.
+///
+/// Each field is a comma-separated list of patterns, VSCode-style. A pattern with
+/// no `/` matches the file **name** (`*.ts`); one with a `/` matches the
+/// worktree-relative **path** (`src/**/*.ts`). A bare name with no glob
+/// metacharacters (`docs`, `node_modules`) also matches everything **under** a
+/// folder of that name, which is what a user typing a folder name means. Matching
+/// is case-insensitive so `*.TS` and `*.ts` behave the same on every platform.
+/// Empty fields mean "no filter".
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchFilters {
+    /// Only files matching one of these patterns are searched (empty = all).
+    #[serde(default)]
+    pub include: String,
+    /// Files matching one of these patterns are skipped (applied after `include`).
+    #[serde(default)]
+    pub exclude: String,
+}
+
+/// One matching line inside a file.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentMatch {
+    /// 1-based line number, for "go to line" when the hit is opened.
+    pub line: u32,
+    /// The line's text, capped at [`MAX_SNIPPET_CHARS`] and windowed around the
+    /// match when the line is longer.
+    pub text: String,
+    /// Offset of the match inside `text`, in UTF-16 code units so the frontend can
+    /// `slice()` it directly (JavaScript string indices are UTF-16).
+    pub start: u32,
+    /// End offset of the match inside `text` (UTF-16 code units).
+    pub end: u32,
+    /// `text` starts mid-line — the UI renders a leading ellipsis.
+    pub elided: bool,
+}
+
+/// Every match found in one file.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentFileMatch {
+    /// Absolute, forward-slash path.
+    pub path: String,
+    pub name: String,
+    pub matches: Vec<ContentMatch>,
+    /// The file had more than [`MAX_MATCHES_PER_FILE`] matches; `matches` is a prefix.
+    pub truncated: bool,
+}
+
+/// A page of project-wide **content** search results.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentSearch {
+    /// Files with at least one match, sorted by path.
+    pub files: Vec<ContentFileMatch>,
+    /// Total matches carried in `files`.
+    pub total: u32,
+    /// The walk stopped at `limit` — results are a prefix, narrow the search.
+    pub truncated: bool,
+}
+
+/// Compile one comma-separated pattern list into a [`globset::GlobSet`], or
+/// `None` when the list is empty (meaning "no filter" — never "match nothing").
+/// See [`SearchFilters`] for the pattern rules. An unparsable pattern is skipped
+/// rather than failing the whole search: the user is typing it live, and a
+/// half-written glob should narrow nothing, not blank the results.
+fn build_glob_set(patterns: &str) -> Option<globset::GlobSet> {
+    let mut builder = globset::GlobSetBuilder::new();
+    let mut any = false;
+    for raw in patterns.split(',') {
+        let pat = raw.trim().replace('\\', "/");
+        if pat.is_empty() {
+            continue;
+        }
+        // A trailing slash, a bare folder name, or a plain name all expand to the
+        // forms a user means by them; anything else is used as written.
+        let mut forms: Vec<String> = Vec::new();
+        if let Some(stripped) = pat.strip_suffix('/') {
+            forms.push(format!("{stripped}/**"));
+        } else if !pat.contains('/') {
+            forms.push(format!("**/{pat}"));
+            if !pat.contains(['*', '?', '[', '{']) {
+                forms.push(format!("**/{pat}/**")); // `docs` also means "inside docs"
+            }
+        } else {
+            forms.push(pat.clone());
+            if !pat.contains(['*', '?', '[', '{']) {
+                forms.push(format!("{pat}/**"));
+            }
+        }
+        for form in forms {
+            if let Ok(glob) = globset::GlobBuilder::new(&form)
+                .literal_separator(true) // `*` must not cross a path separator
+                .case_insensitive(true)
+                .build()
+            {
+                builder.add(glob);
+                any = true;
+            }
+        }
+    }
+    if !any {
+        return None;
+    }
+    builder.build().ok()
+}
+
+/// The include/exclude test both searches apply to a worktree-relative path.
+struct CompiledFilters {
+    include: Option<globset::GlobSet>,
+    exclude: Option<globset::GlobSet>,
+}
+
+impl CompiledFilters {
+    fn new(filters: &SearchFilters) -> Self {
+        Self {
+            include: build_glob_set(&filters.include),
+            exclude: build_glob_set(&filters.exclude),
+        }
+    }
+    /// Whether `rel` (worktree-relative, forward-slash) survives the filters.
+    fn allows(&self, rel: &str) -> bool {
+        if let Some(inc) = &self.include {
+            if !inc.is_match(rel) {
+                return false;
+            }
+        }
+        if let Some(exc) = &self.exclude {
+            if exc.is_match(rel) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Shared `ignore` walker for both project-wide searches: honors `.gitignore`
+/// (+ global/exclude files), never descends `.git`, and hides dotfiles unless
+/// `include_hidden`.
+fn search_walker(root: &Path, include_hidden: bool) -> ignore::WalkBuilder {
+    let mut builder = ignore::WalkBuilder::new(root);
+    builder
+        .hidden(!include_hidden) // hide dotfiles unless the caller asks for them
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true)
+        // never descend git's own store (kept even when include_hidden shows dotfiles)
+        .filter_entry(|e| e.file_name() != std::ffi::OsStr::new(".git"));
+    builder
+}
+
+/// `path` relative to `root`, forward-slash normalized (falls back to the full
+/// path when it is not under `root`).
+fn rel_of(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn normalize(path: &Path) -> String {
@@ -436,9 +619,16 @@ pub async fn duplicate_file(path: &str) -> Result<String, AppError> {
 /// tokens). This backs the file tree's **project-wide** filename search — unlike the
 /// lazy per-folder tree (`list_dir`), it walks the whole subtree. Uses the `ignore`
 /// walker so it honors `.gitignore` (+ global excludes) and skips `.git`; dotfiles
-/// are included only when `include_hidden`. Stops at `limit` matches, setting
-/// `truncated`. Synchronous (blocking I/O) — call it from the blocking pool.
-pub fn search_files(root: &str, query: &str, include_hidden: bool, limit: usize) -> FileSearch {
+/// are included only when `include_hidden`, and `filters` narrows by include/exclude
+/// globs. Stops at `limit` matches, setting `truncated`. Synchronous (blocking I/O) —
+/// call it from the blocking pool.
+pub fn search_files(
+    root: &str,
+    query: &str,
+    include_hidden: bool,
+    filters: &SearchFilters,
+    limit: usize,
+) -> FileSearch {
     let tokens: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
     if tokens.is_empty() || limit == 0 {
         return FileSearch {
@@ -448,20 +638,11 @@ pub fn search_files(root: &str, query: &str, include_hidden: bool, limit: usize)
     }
 
     let root_path = Path::new(root);
+    let globs = CompiledFilters::new(filters);
     let mut entries: Vec<FsEntry> = Vec::new();
     let mut truncated = false;
 
-    let walker = ignore::WalkBuilder::new(root_path)
-        .hidden(!include_hidden) // hide dotfiles unless the caller asks for them
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .parents(true)
-        // never descend git's own store (kept even when include_hidden shows dotfiles)
-        .filter_entry(|e| e.file_name() != std::ffi::OsStr::new(".git"))
-        .build();
-
-    for dent in walker.flatten() {
+    for dent in search_walker(root_path, include_hidden).build().flatten() {
         if dent.depth() == 0 {
             continue; // the root itself
         }
@@ -469,8 +650,11 @@ pub fn search_files(root: &str, query: &str, include_hidden: bool, limit: usize)
             continue; // surface files only
         }
         let path = dent.path();
-        let rel = path.strip_prefix(root_path).unwrap_or(path);
-        let rel_lower = rel.to_string_lossy().replace('\\', "/").to_lowercase();
+        let rel = rel_of(root_path, path);
+        if !globs.allows(&rel) {
+            continue;
+        }
+        let rel_lower = rel.to_lowercase();
         if !tokens.iter().all(|t| rel_lower.contains(t.as_str())) {
             continue;
         }
@@ -490,9 +674,238 @@ pub fn search_files(root: &str, query: &str, include_hidden: bool, limit: usize)
     FileSearch { entries, truncated }
 }
 
+/// What the user typed in the content-search box, with its three match modes.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentQuery {
+    pub query: String,
+    /// Off by default — a search box is expected to ignore case.
+    #[serde(default)]
+    pub case_sensitive: bool,
+    /// Match only at word boundaries.
+    #[serde(default)]
+    pub whole_word: bool,
+    /// Treat `query` as a regular expression instead of literal text.
+    #[serde(default)]
+    pub is_regex: bool,
+}
+
+/// Compile a [`ContentQuery`] into one regex. A literal query is escaped (so
+/// `a.b` means `a.b`, not "a, any char, b"); `whole_word` wraps it in word
+/// boundaries; `is_regex` passes it through as written. Returns the user-facing
+/// error for an unparsable pattern, so the UI can show it under the input.
+fn build_content_regex(q: &ContentQuery) -> Result<regex::Regex, AppError> {
+    let base = if q.is_regex {
+        q.query.clone()
+    } else {
+        regex::escape(&q.query)
+    };
+    let pattern = if q.whole_word {
+        format!(r"\b(?:{base})\b")
+    } else {
+        base
+    };
+    regex::RegexBuilder::new(&pattern)
+        .case_insensitive(!q.case_sensitive)
+        // A content search is line-oriented; a `.` must not swallow the rest of
+        // the file, and a multi-line pattern would break the line/column report.
+        .multi_line(true)
+        .size_limit(1 << 22) // reject a pathologically large compiled program
+        .build()
+        .map_err(|e| AppError::Invalid(format!("invalid search pattern: {e}")))
+}
+
+/// Number of UTF-16 code units in `s` — the unit JavaScript string offsets use.
+fn utf16_len(s: &str) -> u32 {
+    s.encode_utf16().count() as u32
+}
+
+/// Build the snippet the UI shows for one match: the whole line when it is short
+/// enough, otherwise a window around the match. Offsets come back in UTF-16 code
+/// units, relative to the returned text.
+fn snippet_for(line: &str, m_start: usize, m_end: usize) -> ContentMatch {
+    // Character (not byte) positions, so a window never splits a multi-byte char.
+    let char_start = line[..m_start].chars().count();
+    let char_len = line[m_start..m_end].chars().count();
+    let total_chars = line.chars().count();
+
+    let (window_start, elided) =
+        if total_chars <= MAX_SNIPPET_CHARS || char_start + char_len <= MAX_SNIPPET_CHARS {
+            (0, false)
+        } else {
+            (char_start.saturating_sub(SNIPPET_LEAD_CHARS), true)
+        };
+
+    let text: String = line
+        .chars()
+        .skip(window_start)
+        .take(MAX_SNIPPET_CHARS)
+        .collect();
+    // Re-derive the offsets against the emitted text, in UTF-16 units.
+    let rel_char_start = char_start - window_start;
+    let prefix: String = text.chars().take(rel_char_start).collect();
+    let matched: String = text.chars().skip(rel_char_start).take(char_len).collect();
+    let start = utf16_len(&prefix);
+    ContentMatch {
+        line: 0, // filled in by the caller
+        start,
+        end: start + utf16_len(&matched),
+        text,
+        elided,
+    }
+}
+
+/// Find every match of `re` in `text`, at most [`MAX_MATCHES_PER_FILE`]. Returns
+/// the matches plus whether the file had more. Empty matches (a regex like `^`)
+/// are skipped: they would report a hit on every line while highlighting nothing.
+fn matches_in_text(text: &str, re: &regex::Regex) -> (Vec<ContentMatch>, bool) {
+    let mut out: Vec<ContentMatch> = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        for m in re.find_iter(line) {
+            if m.start() == m.end() {
+                continue;
+            }
+            if out.len() >= MAX_MATCHES_PER_FILE {
+                return (out, true);
+            }
+            let mut snippet = snippet_for(line, m.start(), m.end());
+            snippet.line = (i + 1) as u32; // 1-based, for "go to line"
+            out.push(snippet);
+        }
+    }
+    (out, false)
+}
+
+/// Read a file for content search, or `None` when it should be skipped: too large
+/// ([`MAX_SEARCH_BYTES`]), unreadable, or binary (a NUL in the first
+/// [`BINARY_SNIFF_BYTES`], the same test the editor applies). Invalid UTF-8 is
+/// read lossily rather than skipped, so a file with a stray byte still matches.
+fn read_searchable(path: &Path) -> Option<String> {
+    let meta = std::fs::metadata(path).ok()?;
+    if meta.len() > MAX_SEARCH_BYTES {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    let sniff = bytes.len().min(BINARY_SNIFF_BYTES);
+    if bytes[..sniff].contains(&0) {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Recursively search the **content** of the files under `root` for `query` (text
+/// plus its match modes — see [`ContentQuery`]), backing the file tree's content
+/// search. Walks with the same `ignore` rules as [`search_files`] (gitignore-aware,
+/// `.git` skipped, dotfiles behind `include_hidden`, narrowed by `filters`), then
+/// reads each candidate and reports the matching lines with 1-based line numbers so
+/// a hit can be opened in place.
+///
+/// Binary, oversized and unreadable files are skipped silently. The walk stops
+/// once `limit` total matches are collected (`truncated`), and each file
+/// contributes at most [`MAX_MATCHES_PER_FILE`]. Multi-threaded (ripgrep's
+/// parallel walker) and blocking — call it from the blocking pool. Returns an
+/// error only for an unparsable pattern.
+pub fn search_content(
+    root: &str,
+    query: &ContentQuery,
+    include_hidden: bool,
+    filters: &SearchFilters,
+    limit: usize,
+) -> Result<ContentSearch, AppError> {
+    if query.query.is_empty() || limit == 0 {
+        return Ok(ContentSearch {
+            files: Vec::new(),
+            total: 0,
+            truncated: false,
+        });
+    }
+    let re = build_content_regex(query)?;
+
+    let root_path = Path::new(root).to_path_buf();
+    let globs = Arc::new(CompiledFilters::new(filters));
+    // One lock around the shared accumulator: the walker's threads only take it
+    // after the (far more expensive) read + match of a whole file.
+    let state = Arc::new(Mutex::new((Vec::<ContentFileMatch>::new(), 0usize, false)));
+
+    search_walker(&root_path, include_hidden)
+        .build_parallel()
+        .run(|| {
+            let state = Arc::clone(&state);
+            let globs = Arc::clone(&globs);
+            let re = re.clone();
+            let root_path = root_path.clone();
+            Box::new(move |result| {
+                let Ok(dent) = result else {
+                    return ignore::WalkState::Continue;
+                };
+                if dent.depth() == 0 || !dent.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                    return ignore::WalkState::Continue;
+                }
+                // Cheap pre-checks before touching the disk.
+                if !globs.allows(&rel_of(&root_path, dent.path())) {
+                    return ignore::WalkState::Continue;
+                }
+                if state.lock().map(|s| s.2).unwrap_or(true) {
+                    return ignore::WalkState::Quit; // another thread hit the cap
+                }
+                let Some(text) = read_searchable(dent.path()) else {
+                    return ignore::WalkState::Continue;
+                };
+                let (mut matches, mut file_truncated) = matches_in_text(&text, &re);
+                if matches.is_empty() {
+                    return ignore::WalkState::Continue;
+                }
+                let Ok(mut guard) = state.lock() else {
+                    return ignore::WalkState::Quit;
+                };
+                let (files, total, hit_cap) = &mut *guard;
+                if *hit_cap {
+                    return ignore::WalkState::Quit;
+                }
+                // Honor the global cap even mid-file, so a huge result set can't blow
+                // past `limit` by however many matches the last file happened to have.
+                let room = limit.saturating_sub(*total);
+                if matches.len() >= room {
+                    matches.truncate(room);
+                    file_truncated = true;
+                    *hit_cap = true;
+                }
+                *total += matches.len();
+                files.push(ContentFileMatch {
+                    path: normalize(dent.path()),
+                    name: dent.file_name().to_string_lossy().to_string(),
+                    matches,
+                    truncated: file_truncated,
+                });
+                if *hit_cap {
+                    ignore::WalkState::Quit
+                } else {
+                    ignore::WalkState::Continue
+                }
+            })
+        });
+
+    // Every walker thread has been joined by `run`, so this lock is uncontended.
+    let (mut files, total, truncated) = {
+        let mut guard = state.lock().unwrap_or_else(|e| e.into_inner());
+        std::mem::take(&mut *guard)
+    };
+    files.sort_by_key(|f| f.path.to_lowercase());
+    Ok(ContentSearch {
+        files,
+        total: total as u32,
+        truncated,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The "search everything" filter set — most tests aren't about narrowing.
+    fn no_filters() -> SearchFilters {
+        SearchFilters::default()
+    }
 
     #[tokio::test]
     async fn lists_dirs_first_then_files_sorted_skipping_git() {
@@ -753,26 +1166,30 @@ mod tests {
         let root_s = root.to_string_lossy();
 
         // Finds a file inside a folder the lazy tree would never have expanded.
-        let r = search_files(&root_s, "widget", false, 100);
+        let r = search_files(&root_s, "widget", false, &no_filters(), 100);
         assert!(!r.truncated);
         assert_eq!(r.entries.len(), 1);
         assert!(r.entries[0].path.ends_with("/src/deep/nested/widget.rs"));
         assert!(!r.entries[0].is_dir);
 
         // Multi-token AND matches against the relative path (dir + name).
-        let r = search_files(&root_s, "deep rs", false, 100);
+        let r = search_files(&root_s, "deep rs", false, &no_filters(), 100);
         assert_eq!(r.entries.len(), 1);
         assert!(r.entries[0].path.ends_with("/widget.rs"));
 
         // ".rs" hits both rust files; results are path-sorted.
-        let r = search_files(&root_s, ".rs", false, 100);
+        let r = search_files(&root_s, ".rs", false, &no_filters(), 100);
         let paths: Vec<&str> = r.entries.iter().map(|e| e.path.as_str()).collect();
         assert_eq!(paths.len(), 2);
         assert!(paths[0] < paths[1]);
 
         // Empty query / zero limit → no walk, no results.
-        assert!(search_files(&root_s, "   ", false, 100).entries.is_empty());
-        assert!(search_files(&root_s, "rs", false, 0).entries.is_empty());
+        assert!(search_files(&root_s, "   ", false, &no_filters(), 100)
+            .entries
+            .is_empty());
+        assert!(search_files(&root_s, "rs", false, &no_filters(), 0)
+            .entries
+            .is_empty());
     }
 
     #[test]
@@ -789,12 +1206,12 @@ mod tests {
         let root_s = root.to_string_lossy();
 
         // Hidden off: gitignored + dotfiles excluded, git store never walked.
-        let r = search_files(&root_s, ".log", false, 100);
+        let r = search_files(&root_s, ".log", false, &no_filters(), 100);
         let names: Vec<&str> = r.entries.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["kept.log"]);
 
         // include_hidden surfaces the dotfile but still respects .gitignore + skips .git.
-        let r = search_files(&root_s, ".log", true, 100);
+        let r = search_files(&root_s, ".log", true, &no_filters(), 100);
         let mut names: Vec<String> = r.entries.iter().map(|e| e.name.clone()).collect();
         names.sort();
         assert_eq!(names, [".secret.log", "kept.log"]);
@@ -807,8 +1224,279 @@ mod tests {
         for i in 0..5 {
             std::fs::write(root.join(format!("file{i}.txt")), b"x").unwrap();
         }
-        let r = search_files(&root.to_string_lossy(), ".txt", false, 3);
+        let r = search_files(&root.to_string_lossy(), ".txt", false, &no_filters(), 3);
         assert!(r.truncated);
         assert_eq!(r.entries.len(), 3);
+    }
+
+    // --- Search filters (shared by both project-wide searches) ---------------
+
+    /// A tree with the same name in two folders, for the include/exclude tests.
+    fn filter_tree() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src/ui")).unwrap();
+        std::fs::create_dir_all(root.join("dist")).unwrap();
+        std::fs::create_dir_all(root.join("docs/guide")).unwrap();
+        std::fs::write(root.join("src/ui/panel.ts"), b"needle here").unwrap();
+        std::fs::write(root.join("src/ui/panel.css"), b"needle here").unwrap();
+        std::fs::write(root.join("dist/panel.ts"), b"needle here").unwrap();
+        std::fs::write(root.join("docs/guide/panel.md"), b"needle here").unwrap();
+        tmp
+    }
+
+    /// The last two path segments of each hit ("folder/name"), sorted — enough to
+    /// tell `src/ui/panel.ts` from `dist/panel.ts` without the temp-dir prefix.
+    fn names_of(r: &FileSearch) -> Vec<String> {
+        let mut v: Vec<String> = r
+            .entries
+            .iter()
+            .map(|e| {
+                let mut tail: Vec<&str> = e.path.rsplit('/').take(2).collect();
+                tail.reverse();
+                tail.join("/")
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn glob_filters_narrow_by_name_path_and_folder() {
+        let tmp = filter_tree();
+        let root_s = tmp.path().to_string_lossy();
+
+        // A pattern with no `/` matches the file name, anywhere in the tree.
+        let f = SearchFilters {
+            include: "*.ts".into(),
+            exclude: String::new(),
+        };
+        assert_eq!(
+            names_of(&search_files(&root_s, "panel", false, &f, 100)),
+            ["dist/panel.ts", "ui/panel.ts"]
+        );
+
+        // A pattern with a `/` matches the relative path.
+        let f = SearchFilters {
+            include: "src/**/*.ts".into(),
+            exclude: String::new(),
+        };
+        assert_eq!(
+            names_of(&search_files(&root_s, "panel", false, &f, 100)),
+            ["ui/panel.ts"]
+        );
+
+        // A bare folder name means "everything under it", for include and exclude.
+        let f = SearchFilters {
+            include: "docs".into(),
+            exclude: String::new(),
+        };
+        assert_eq!(
+            names_of(&search_files(&root_s, "panel", false, &f, 100)),
+            ["guide/panel.md"]
+        );
+        let f = SearchFilters {
+            include: String::new(),
+            exclude: "dist, docs".into(),
+        };
+        assert_eq!(
+            names_of(&search_files(&root_s, "panel", false, &f, 100)),
+            ["ui/panel.css", "ui/panel.ts"]
+        );
+
+        // Exclude wins over include, and matching is case-insensitive.
+        let f = SearchFilters {
+            include: "*.TS".into(),
+            exclude: "dist/**".into(),
+        };
+        assert_eq!(
+            names_of(&search_files(&root_s, "panel", false, &f, 100)),
+            ["ui/panel.ts"]
+        );
+
+        // An unparsable pattern is ignored rather than blanking the results.
+        let f = SearchFilters {
+            include: "[unclosed".into(),
+            exclude: String::new(),
+        };
+        assert_eq!(
+            search_files(&root_s, "panel", false, &f, 100).entries.len(),
+            4
+        );
+    }
+
+    // --- Content search ------------------------------------------------------
+
+    /// A plain literal, case-insensitive content search — the default modes.
+    fn text_query(query: &str) -> ContentQuery {
+        ContentQuery {
+            query: query.into(),
+            ..ContentQuery::default()
+        }
+    }
+
+    fn search_text(root: &str, query: &str) -> ContentSearch {
+        search_content(root, &text_query(query), false, &no_filters(), 100).unwrap()
+    }
+
+    #[test]
+    fn search_content_reports_lines_and_offsets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(
+            root.join("src/a.rs"),
+            b"let x = 1;\nlet needle = 2;\nlet y = 3;\nneedle again\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("b.txt"), b"nothing to see\n").unwrap();
+        let root_s = root.to_string_lossy();
+
+        let r = search_text(&root_s, "needle");
+        assert!(!r.truncated);
+        assert_eq!(r.total, 2);
+        assert_eq!(r.files.len(), 1);
+        let f = &r.files[0];
+        assert!(f.path.ends_with("/src/a.rs"));
+        assert_eq!(f.name, "a.rs");
+        // 1-based line numbers, so a hit can be opened at its line.
+        assert_eq!(f.matches[0].line, 2);
+        assert_eq!(f.matches[1].line, 4);
+        // The snippet is the whole line, and the offsets slice the match out of it.
+        assert_eq!(f.matches[0].text, "let needle = 2;");
+        let m = &f.matches[0];
+        let sliced: String = m
+            .text
+            .chars()
+            .skip(m.start as usize)
+            .take((m.end - m.start) as usize)
+            .collect();
+        assert_eq!(sliced, "needle");
+        assert!(!m.elided);
+    }
+
+    #[test]
+    fn search_content_honors_case_word_and_regex_modes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("a.txt"), b"Needle\nneedles\nneedle\na.b\naxb\n").unwrap();
+        let root_s = root.to_string_lossy();
+        let count = |q: &str, case: bool, word: bool, rx: bool| {
+            let query = ContentQuery {
+                query: q.into(),
+                case_sensitive: case,
+                whole_word: word,
+                is_regex: rx,
+            };
+            search_content(&root_s, &query, false, &no_filters(), 100)
+                .unwrap()
+                .total
+        };
+
+        // Case-insensitive by default; case-sensitive drops the capitalized line.
+        assert_eq!(count("needle", false, false, false), 3);
+        assert_eq!(count("needle", true, false, false), 2);
+        // Whole word drops "needles".
+        assert_eq!(count("needle", true, true, false), 1);
+        // A literal query escapes regex metacharacters — `a.b` is not "a<any>b".
+        assert_eq!(count("a.b", false, false, false), 1);
+        assert_eq!(count("a.b", false, false, true), 2);
+        // An unparsable regex is a user-facing error, not a panic.
+        let bad = ContentQuery {
+            query: "a(".into(),
+            is_regex: true,
+            ..ContentQuery::default()
+        };
+        assert!(search_content(&root_s, &bad, false, &no_filters(), 100).is_err());
+    }
+
+    #[test]
+    fn search_content_skips_binary_and_oversized_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("text.txt"), b"needle\n").unwrap();
+        std::fs::write(root.join("blob.bin"), b"needle\0binary\n").unwrap();
+        let mut huge = vec![b'.'; (MAX_SEARCH_BYTES + 1) as usize];
+        huge.extend_from_slice(b"needle");
+        std::fs::write(root.join("huge.txt"), &huge).unwrap();
+
+        let r = search_text(&root.to_string_lossy(), "needle");
+        let names: Vec<&str> = r.files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["text.txt"]);
+    }
+
+    #[test]
+    fn search_content_windows_long_lines_around_the_match() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // A minified-style line with the match far past the snippet cap.
+        let line = format!("{}needle{}", "x".repeat(2000), "y".repeat(2000));
+        std::fs::write(root.join("min.js"), line.as_bytes()).unwrap();
+
+        let r = search_text(&root.to_string_lossy(), "needle");
+        let m = &r.files[0].matches[0];
+        assert!(m.elided, "a windowed snippet flags its elided start");
+        assert!(m.text.chars().count() <= MAX_SNIPPET_CHARS);
+        // The offsets still slice the match out of the *windowed* text.
+        let sliced: String = m
+            .text
+            .chars()
+            .skip(m.start as usize)
+            .take((m.end - m.start) as usize)
+            .collect();
+        assert_eq!(sliced, "needle");
+    }
+
+    #[test]
+    fn search_content_offsets_are_utf16_units() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // An emoji is 2 UTF-16 units (and 4 bytes) — the frontend slices in UTF-16.
+        std::fs::write(root.join("e.txt"), "🚀 ñ needle".as_bytes()).unwrap();
+
+        let r = search_text(&root.to_string_lossy(), "needle");
+        let m = &r.files[0].matches[0];
+        let units: Vec<u16> = m.text.encode_utf16().collect();
+        let sliced = String::from_utf16(&units[m.start as usize..m.end as usize]).unwrap();
+        assert_eq!(sliced, "needle");
+    }
+
+    #[test]
+    fn search_content_caps_total_matches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        for i in 0..4 {
+            let body = "needle\n".repeat(10);
+            std::fs::write(root.join(format!("f{i}.txt")), body.as_bytes()).unwrap();
+        }
+        let r = search_content(
+            &root.to_string_lossy(),
+            &text_query("needle"),
+            false,
+            &no_filters(),
+            12,
+        )
+        .unwrap();
+        assert!(r.truncated);
+        assert_eq!(r.total, 12, "the cap holds across files, not just per file");
+        let counted: usize = r.files.iter().map(|f| f.matches.len()).sum();
+        assert_eq!(counted, 12);
+    }
+
+    #[test]
+    fn search_content_honors_gitignore_and_filters() {
+        let tmp = filter_tree();
+        let root_s = tmp.path().to_string_lossy();
+
+        // Same include/exclude semantics as the filename search.
+        let f = SearchFilters {
+            include: String::new(),
+            exclude: "dist".into(),
+        };
+        let r = search_content(&root_s, &text_query("needle"), false, &f, 100).unwrap();
+        let mut names: Vec<&str> = r.files.iter().map(|x| x.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["panel.css", "panel.md", "panel.ts"]);
+        assert!(r.files.iter().all(|x| !x.path.contains("/dist/")));
     }
 }

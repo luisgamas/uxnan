@@ -1306,20 +1306,44 @@ pub async fn zero_session(cwd: String) -> Result<Option<crate::zero::ZeroSession
 
 /// Project-wide filename search for the file tree: recursively find files under
 /// `root` whose relative path matches every token of `query` (see
-/// [`crate::fs::search_files`]). `include_hidden` surfaces dotfiles; `limit` caps
-/// the results. Runs the blocking walk on the blocking pool.
+/// [`crate::fs::search_files`]). `include_hidden` surfaces dotfiles, `filters`
+/// narrows by include/exclude globs, and `limit` caps the results. Runs the
+/// blocking walk on the blocking pool.
 #[tauri::command]
 pub async fn fs_search_files(
     root: String,
     query: String,
     include_hidden: bool,
+    filters: crate::fs::SearchFilters,
     limit: usize,
 ) -> Result<crate::fs::FileSearch, CommandError> {
     tokio::task::spawn_blocking(move || {
-        crate::fs::search_files(&root, &query, include_hidden, limit)
+        crate::fs::search_files(&root, &query, include_hidden, &filters, limit)
     })
     .await
     .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))
+}
+
+/// Project-wide **content** search for the file tree: find the lines under `root`
+/// matching `query` — the text plus its case / whole-word / regex modes (see
+/// [`crate::fs::search_content`]). `include_hidden` and `filters` narrow the walk
+/// the same way the filename search does; `limit` caps total matches. Runs the
+/// multi-threaded walk on the blocking pool. An unparsable pattern comes back as
+/// `SEARCH_INVALID` so the UI can show it under the input.
+#[tauri::command]
+pub async fn fs_search_content(
+    root: String,
+    query: crate::fs::ContentQuery,
+    include_hidden: bool,
+    filters: crate::fs::SearchFilters,
+    limit: usize,
+) -> Result<crate::fs::ContentSearch, CommandError> {
+    tokio::task::spawn_blocking(move || {
+        crate::fs::search_content(&root, &query, include_hidden, &filters, limit)
+    })
+    .await
+    .map_err(|e| CommandError::new("SEARCH_FAILED", e.to_string()))?
+    .map_err(|e| CommandError::new("SEARCH_INVALID", e.to_string()))
 }
 
 /// Largest remote image the icon fetcher will inline (5 MiB). Icons are tiny;
