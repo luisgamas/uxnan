@@ -11,27 +11,57 @@
  * Text in, text out: no file I/O here, so every rule is testable on a string.
  */
 
+/**
+ * Replaces a JSON string value **in place**, leaving every other byte alone.
+ *
+ * Re-serialising with `JSON.stringify` is the obvious implementation, and it is
+ * wrong: it reformats whatever the author wrote. The first real use of this
+ * tooling turned `"dangerousDisableAssetCspModification": ["style-src"]` in
+ * `tauri.conf.json` into a three-line array — churn inside a security block, in
+ * a release commit. A version bump reformats nothing.
+ *
+ * `indent` anchors the key to its nesting level, so a top-level `"version"` is
+ * never confused with one belonging to a dependency. When the pattern does not
+ * match — a minified file, say — the caller falls back to re-serialising, and
+ * `applyVersion` reads the value back either way.
+ */
+function replaceValue(text, key, version, { indent = '  ' } = {}) {
+  const pattern = new RegExp(`^(${indent}"${key}"\\s*:\\s*")([^"]*)(")`, 'm');
+  return pattern.test(text) ? text.replace(pattern, `$1${version}$3`) : null;
+}
+
+function reserialise(text, mutate) {
+  const data = JSON.parse(text);
+  mutate(data);
+  return JSON.stringify(data, null, 2) + (text.endsWith('\n') ? '\n' : '');
+}
+
 /** `package.json`, `tauri.conf.json` — a top-level `"version"`. */
 export const json = {
   read: (text) => JSON.parse(text).version ?? null,
-  write: (text, version) => {
-    const data = JSON.parse(text);
-    data.version = version;
-    // Keep the file's own trailing newline habit.
-    return JSON.stringify(data, null, 2) + (text.endsWith('\n') ? '\n' : '');
-  },
+  write: (text, version) =>
+    replaceValue(text, 'version', version) ??
+    reserialise(text, (data) => {
+      data.version = version;
+    }),
 };
 
 /** A component's entry inside the **root** `package-lock.json`. */
 export const lockWorkspace = {
   read: (text, { pkgPath }) => JSON.parse(text).packages?.[pkgPath]?.version ?? null,
   write: (text, version, { pkgPath }) => {
-    const data = JSON.parse(text);
-    if (!data.packages?.[pkgPath]) {
+    if (!JSON.parse(text).packages?.[pkgPath]) {
       throw new Error(`package-lock.json has no entry for "${pkgPath}"`);
     }
-    data.packages[pkgPath].version = version;
-    return JSON.stringify(data, null, 2) + (text.endsWith('\n') ? '\n' : '');
+    // The entry sits one level inside `packages`, so its keys are indented by 6.
+    const block = new RegExp(`("${pkgPath}"\\s*:\\s*\\{)([\\s\\S]*?)(\\n    \\})`);
+    const found = block.exec(text);
+    const bumped = found && replaceValue(found[2], 'version', version, { indent: '      ' });
+    if (bumped) return text.replace(block, `$1${bumped}$3`);
+
+    return reserialise(text, (data) => {
+      data.packages[pkgPath].version = version;
+    });
   },
 };
 
@@ -39,10 +69,17 @@ export const lockWorkspace = {
 export const lockRoot = {
   read: (text) => JSON.parse(text).version ?? null,
   write: (text, version) => {
-    const data = JSON.parse(text);
-    data.version = version;
-    if (data.packages?.['']) data.packages[''].version = version;
-    return JSON.stringify(data, null, 2) + (text.endsWith('\n') ? '\n' : '');
+    // Both copies, or the next install re-resolves the root package.
+    const top = replaceValue(text, 'version', version);
+    const block = /("" *: *\{)([\s\S]*?)(\n    \})/;
+    const found = top && block.exec(top);
+    const bumped = found && replaceValue(found[2], 'version', version, { indent: '      ' });
+    if (top && bumped) return top.replace(block, `$1${bumped}$3`);
+
+    return reserialise(text, (data) => {
+      data.version = version;
+      if (data.packages?.['']) data.packages[''].version = version;
+    });
   },
 };
 
