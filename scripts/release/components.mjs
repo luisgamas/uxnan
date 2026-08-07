@@ -1,0 +1,116 @@
+/**
+ * The release registry: one place that knows what each component is, where its
+ * version lives, and which tag drives it.
+ *
+ * `VERSIONS.md` describes all of this in prose for humans. This file is the
+ * machine's copy — when the two disagree, one of them is a bug, and the tests in
+ * `components.test.mjs` pin the parts that have burned us before (a version file
+ * left out of a bump is invisible until a release ships wrong).
+ */
+
+/** Paths whose change cannot possibly need a new build. */
+export const DOCS_ONLY = [
+  /\.md$/i,
+  /(^|\/)docs\//,
+  /(^|\/)architecture(\.old)?\//,
+  /(^|\/)\.github\//,
+];
+
+/**
+ * `kind` decides how a version string is built:
+ *   npm      → 0.0.PATCH-alpha.YYYYMMDD
+ *   mobile   → 0.0.PATCH-alpha.YYYYMMDD+BUILD   (Play needs a rising integer)
+ *   desktop  → 0.0.PATCH            (stable)
+ *              0.0.PATCH-nightly.YYYYMMDD.N     (nightly)
+ */
+export const COMPONENTS = [
+  {
+    id: 'shared',
+    name: '@uxnan/shared',
+    kind: 'npm',
+    path: 'shared',
+    tagPrefixes: ['shared-v'],
+    workspace: 'shared',
+    /** Every file that carries the version, in the order a human would check. */
+    versionFiles: [
+      { file: 'shared/package.json', adapter: 'json' },
+      { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'shared' },
+    ],
+    /** Consumers that resolve this from npm at build time — order matters. */
+    releaseBefore: ['bridge', 'relay'],
+  },
+  {
+    id: 'bridge',
+    name: 'uxnan-bridge',
+    kind: 'npm',
+    path: 'bridge',
+    tagPrefixes: ['bridge-v'],
+    workspace: 'bridge',
+    versionFiles: [
+      { file: 'bridge/package.json', adapter: 'json' },
+      { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'bridge' },
+    ],
+    releaseBefore: [],
+  },
+  {
+    id: 'relay',
+    name: 'uxnan-relay',
+    kind: 'npm',
+    path: 'relay',
+    tagPrefixes: ['relay-v'],
+    workspace: 'relay',
+    versionFiles: [
+      { file: 'relay/package.json', adapter: 'json' },
+      { file: 'package-lock.json', adapter: 'lock-workspace', pkgPath: 'relay' },
+    ],
+    releaseBefore: [],
+  },
+  {
+    id: 'desktop',
+    name: 'uxnan-desktop',
+    kind: 'desktop',
+    path: 'uxnandesktop',
+    // Both channels share one numeric line: a base must be new against BOTH, or
+    // the Windows MSI and the updater cannot see the newer build.
+    tagPrefixes: ['desktop-stable-v', 'desktop-nightly-v'],
+    versionFiles: [
+      { file: 'uxnandesktop/src-tauri/tauri.conf.json', adapter: 'json' },
+      { file: 'uxnandesktop/src-tauri/Cargo.toml', adapter: 'cargo-toml' },
+      { file: 'uxnandesktop/src-tauri/Cargo.lock', adapter: 'cargo-lock', crate: 'uxnan-desktop' },
+      { file: 'uxnandesktop/package.json', adapter: 'json' },
+      { file: 'uxnandesktop/package-lock.json', adapter: 'lock-root' },
+    ],
+    releaseBefore: [],
+  },
+  {
+    id: 'mobile',
+    name: 'uxnanmobile',
+    kind: 'mobile',
+    path: 'uxnanmobile',
+    tagPrefixes: ['mobile-v'],
+    versionFiles: [{ file: 'uxnanmobile/pubspec.yaml', adapter: 'pubspec' }],
+    releaseBefore: [],
+  },
+];
+
+/** The order releases must be cut in: a component never precedes its provider. */
+export const RELEASE_ORDER = ['shared', 'bridge', 'relay', 'mobile', 'desktop'];
+
+export function component(id) {
+  const found = COMPONENTS.find((c) => c.id === id);
+  if (!found) throw new Error(`unknown component: ${id}`);
+  return found;
+}
+
+/** True when a changed path cannot affect what a build produces. */
+export function isDocsOnly(file) {
+  return DOCS_ONLY.some((rule) => rule.test(file));
+}
+
+/**
+ * The desktop's numeric base must exceed every build already shipped in either
+ * channel, so its "previous version" is not one tag but the whole line.
+ */
+export function tagPrefixes(id) {
+  return component(id).tagPrefixes;
+}

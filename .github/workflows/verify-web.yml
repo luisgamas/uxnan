@@ -15,7 +15,10 @@ jobs:
   verify:
     name: verify (node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Queue time counts against this — see the note in `verify-node.yml`, where a
+    # stalled hosted queue cancelled two legs at 15m01s without starting them.
+    # The build itself takes about two minutes.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

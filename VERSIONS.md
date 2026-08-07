@@ -77,11 +77,22 @@ which versions "go together".
 
 ## Release checklist
 
+> **Two commands do the mechanical half of this.** `npm run release:status`
+> prints, for every component, what shipped last, what changed since, whether
+> that change can affect a build, and what the next version would be — so step 0
+> is never guesswork. `npm run release:prepare -- <comp> [--channel=nightly]`
+> then computes the version, refuses it if the component has nothing to ship or
+> the base would not move past every channel, writes it into **every**
+> version-bearing file, reads them all back to prove they agree, and prints the
+> exact commit/tag commands. It never commits, tags or pushes. See
+> [`scripts/release/README.md`](scripts/release/README.md).
+
 Cutting a release for component `<comp>` (tag `<comp>-v<version>`; Desktop uses
 the channel-specific forms above):
 
 1. **Pre-flight** — the commit you will tag is green on CI (`ci-*.yml`) and its
-   `CHANGELOG.md [Unreleased]` accurately describes what ships.
+   `CHANGELOG.md [Unreleased]` accurately describes what ships. `npm run
+   release:status` confirms the component genuinely has something to ship.
 2. **Mobile only — bump the source version FIRST (non-negotiable)** — set
    `uxnanmobile/pubspec.yaml` `version:` to the release `<name>+<build>` (e.g.
    `0.0.1-alpha.20260621+5`), then **commit and push it**, so the *tagged commit*
