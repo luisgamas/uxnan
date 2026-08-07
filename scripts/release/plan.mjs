@@ -52,8 +52,8 @@ export function planCuts({ components, channel = 'stable', force = false, inspec
       skipped.push({
         id,
         since: report.since,
-        reason: report.files.length > 0 ? 'only docs changed' : 'no changes',
-        files: report.docsOnly,
+        reason: report.files.length > 0 ? 'nothing that ships changed' : 'no changes',
+        files: report.nonShipping,
       });
       continue;
     }

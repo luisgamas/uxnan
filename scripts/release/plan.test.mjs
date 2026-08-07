@@ -6,12 +6,12 @@ import { planCuts, tagPrefixFor } from './plan.mjs';
 /** A stand-in for the git-backed inspector, so the rules are testable. */
 function inspectorFor(state) {
   return (id, { channel } = {}) => {
-    const entry = state[id] ?? { worthy: false, files: [], docsOnly: [] };
+    const entry = state[id] ?? { worthy: false, files: [], nonShipping: [] };
     return {
       id,
       since: entry.since ?? `${id}-v0.0.1`,
       files: entry.files ?? [],
-      docsOnly: entry.docsOnly ?? [],
+      nonShipping: entry.nonShipping ?? [],
       substantive: entry.worthy ? ['src/x.ts'] : [],
       worthy: entry.worthy,
       next:
@@ -50,12 +50,16 @@ describe('planCuts', () => {
     assert.equal(plan.cuts[1].waitFor, null);
   });
 
-  it('drops a component whose only change is documentation', () => {
+  it('drops a component whose only changes cannot reach a build', () => {
     const plan = planCuts({
       components: ['relay', 'desktop'],
       channel: 'nightly',
       inspector: inspectorFor({
-        relay: { worthy: false, files: ['relay/FOR-DEV.md'], docsOnly: ['relay/FOR-DEV.md'] },
+        relay: {
+          worthy: false,
+          files: ['relay/FOR-DEV.md', 'relay/test/ws.test.ts'],
+          nonShipping: ['relay/FOR-DEV.md', 'relay/test/ws.test.ts'],
+        },
         desktop: { worthy: true },
       }),
     });
@@ -64,7 +68,8 @@ describe('planCuts', () => {
       ['desktop'],
     );
     assert.equal(plan.skipped[0].id, 'relay');
-    assert.equal(plan.skipped[0].reason, 'only docs changed');
+    assert.equal(plan.skipped[0].reason, 'nothing that ships changed');
+    assert.deepEqual(plan.skipped[0].files, ['relay/FOR-DEV.md', 'relay/test/ws.test.ts']);
   });
 
   it('reports an untouched component as having no changes at all', () => {

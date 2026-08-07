@@ -8,7 +8,7 @@
  * for nothing.
  */
 
-import { component, isDocsOnly } from './components.mjs';
+import { component, isNonShipping } from './components.mjs';
 import { changedFiles, commitSubjects, latestTag } from './git.mjs';
 import { highestBase, nextVersion } from './version.mjs';
 import { tagsFor } from './git.mjs';
@@ -17,7 +17,7 @@ import { tagsFor } from './git.mjs';
  * @param {string} id component id
  * @param {{cwd?: string, channel?: 'stable'|'nightly', date?: Date}} [options]
  * @returns {{
- *   id: string, since: string|null, files: string[], docsOnly: string[],
+ *   id: string, since: string|null, files: string[], nonShipping: string[],
  *   substantive: string[], commits: number, worthy: boolean,
  *   shipped: string|null, next: string,
  * }}
@@ -28,8 +28,8 @@ export function inspect(id, options = {}) {
 
   const since = latestTag(meta.tagPrefixes, gitOptions);
   const files = changedFiles(since, meta.path, gitOptions);
-  const docsOnly = files.filter(isDocsOnly);
-  const substantive = files.filter((file) => !isDocsOnly(file));
+  const nonShipping = files.filter(isNonShipping);
+  const substantive = files.filter((file) => !isNonShipping(file));
 
   const tags = tagsFor(meta.tagPrefixes, gitOptions);
   const shipped = highestBase(tags);
@@ -44,7 +44,7 @@ export function inspect(id, options = {}) {
     id,
     since,
     files,
-    docsOnly,
+    nonShipping,
     substantive,
     commits: commitSubjects(since, meta.path, gitOptions).length,
     worthy: substantive.length > 0,

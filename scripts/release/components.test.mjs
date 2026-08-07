@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import { COMPONENTS, RELEASE_ORDER, component, isDocsOnly } from './components.mjs';
+import { COMPONENTS, RELEASE_ORDER, component, isNonShipping } from './components.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -68,7 +68,7 @@ describe('the registry', () => {
   });
 });
 
-describe('isDocsOnly', () => {
+describe('isNonShipping', () => {
   it('treats prose and specs as unable to change a build', () => {
     for (const file of [
       'relay/FOR-DEV.md',
@@ -78,7 +78,25 @@ describe('isDocsOnly', () => {
       'architecture.old/whitepaper.md',
       '.github/workflows/ci-node.yml',
     ]) {
-      assert.equal(isDocsOnly(file), true, file);
+      assert.equal(isNonShipping(file), true, file);
+    }
+  });
+
+  it('treats tests and their helpers as unable to change a build', () => {
+    // A test proves something about code that already shipped. Cutting a
+    // nightly for one means four installers and an updater roll for a build
+    // nobody can tell apart — which is exactly what happened the day
+    // `setup.dom.ts` was fixed.
+    for (const file of [
+      'uxnandesktop/src/test/setup.dom.ts',
+      'uxnandesktop/src/lib/components/FileTreePanel.svelte.test.ts',
+      'uxnandesktop/src/lib/agentModel.test.ts',
+      'bridge/test/handlers/threads.test.ts',
+      'scripts/release/record.test.mjs',
+      'uxnandesktop/tests/platform-support.json',
+      'shared/src/__tests__/validators.spec.ts',
+    ]) {
+      assert.equal(isNonShipping(file), true, file);
     }
   });
 
@@ -90,8 +108,15 @@ describe('isDocsOnly', () => {
       'uxnanmobile/lib/main.dart',
       'shared/package.json',
       'uxnandesktop/src-tauri/Cargo.toml',
+      // Rust keeps its unit tests inline under `#[cfg(test)]`, so a file with
+      // tests in it is still a source file. Erring toward releasing is correct.
+      'uxnandesktop/src-tauri/src/agentcli.rs',
+      // "latest" is not "test": the rule must match a path segment, not a
+      // substring of a longer word.
+      'uxnandesktop/src/lib/latest/index.ts',
+      'bridge/src/protest-banner.ts',
     ]) {
-      assert.equal(isDocsOnly(file), false, file);
+      assert.equal(isNonShipping(file), false, file);
     }
   });
 });

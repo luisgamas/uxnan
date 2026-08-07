@@ -52,9 +52,9 @@ if (tree.dirty && !has('force')) {
 const report = inspect(id, { channel });
 if (!report.worthy && !has('force')) {
   console.error(`\n${id} has nothing to release since ${report.since ?? 'the beginning'}.`);
-  if (report.docsOnly.length > 0) {
+  if (report.nonShipping.length > 0) {
     console.error('Only these changed, and none of them can affect a build:');
-    for (const file of report.docsOnly) console.error(`  ${file}`);
+    for (const file of report.nonShipping) console.error(`  ${file}`);
   }
   console.error('\nPass --force to release it anyway.\n');
   process.exit(1);

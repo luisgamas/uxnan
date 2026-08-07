@@ -8,12 +8,30 @@
  * left out of a bump is invisible until a release ships wrong).
  */
 
-/** Paths whose change cannot possibly need a new build. */
-export const DOCS_ONLY = [
+/**
+ * Paths whose change cannot possibly need a new build.
+ *
+ * Two classes, kept in one list because the question they answer is the same —
+ * "would a user get anything different if we released this?".
+ *
+ * **Prose and specs.** Documentation, architecture, workflow files.
+ *
+ * **Tests and their helpers.** A test change proves something about code that
+ * already shipped; it never alters what a user downloads. Without this, the
+ * nightly cron cuts a release for a test-only commit — it did, the day
+ * `setup.dom.ts` was fixed, and a nightly is four installers, a published
+ * pre-release and an updater roll for a build nobody can tell apart from the
+ * one before it. Rust unit tests live inline in `src/` under `#[cfg(test)]` and
+ * are deliberately NOT matched: this errs toward releasing.
+ */
+export const NON_SHIPPING = [
   /\.md$/i,
   /(^|\/)docs\//,
   /(^|\/)architecture(\.old)?\//,
   /(^|\/)\.github\//,
+  /\.test\.[cm]?[jt]sx?$/i,
+  /\.spec\.[cm]?[jt]sx?$/i,
+  /(^|\/)(test|tests|__tests__)\//,
 ];
 
 /**
@@ -103,8 +121,8 @@ export function component(id) {
 }
 
 /** True when a changed path cannot affect what a build produces. */
-export function isDocsOnly(file) {
-  return DOCS_ONLY.some((rule) => rule.test(file));
+export function isNonShipping(file) {
+  return NON_SHIPPING.some((rule) => rule.test(file));
 }
 
 /**
