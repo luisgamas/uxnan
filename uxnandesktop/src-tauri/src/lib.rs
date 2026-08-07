@@ -364,6 +364,7 @@ pub fn run() {
             commands::fs_delete,
             commands::fs_duplicate,
             commands::fs_search_files,
+            commands::fs_search_content,
             commands::zero_session,
             commands::image_fetch_data_url,
             commands::fs_set_watch,

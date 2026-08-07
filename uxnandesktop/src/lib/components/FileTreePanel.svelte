@@ -4,15 +4,24 @@
   // switches). Files — and the folders containing them — with a git-tracked change
   // are colored, mirroring the right-panel review; git-ignored entries are dimmed.
   // Clicking a file opens it in the center editor; dragging a row onto a terminal
-  // inserts its path. Search runs project-wide (backend `fs_search_files`) and shows
-  // a flat match list. Toolbar: search · collapse · reveal · refresh, plus a "…"
-  // menu (show/hide hidden files) that also creates New File/Folder at the selected
-  // folder or the root, plus Esc/empty-area to clear the selection. Each row has a
-  // context menu (`FileTreeContextMenu`) with full file operations, and F2/Delete
-  // shortcuts on the selection. Create + rename are inline in the tree
-  // (`FileTreeDraftRow` / `FileTreeRow` via the shared `TreeInlineInput`); delete uses
-  // the shared destructive `ConfirmDialog`.
-  import type { FsEntry } from "$lib/types";
+  // inserts its path. The row of the file the center area is showing keeps a quiet
+  // background mark (see `terminals.activeFilePath`), and the tree expands to it, so
+  // closing the search leaves the tree pointing at what you opened.
+  //
+  // Search (the toolbar's magnifier) opens a bar that searches file *names*
+  // project-wide (backend `fs_search_files`), plus two sections that stay collapsed
+  // until asked for: **content** search (`fs_search_content` — literal / whole-word /
+  // regex, showing the matching lines, which open the file at that line) and
+  // **filters** (include/exclude globs, which narrow both searches). Toolbar:
+  // search · collapse · reveal · refresh, plus a "…" menu (show/hide hidden files)
+  // that also creates New File/Folder at the selected folder or the root, plus
+  // Esc/empty-area to clear the selection. Each row has a context menu
+  // (`FileTreeContextMenu`) with full file operations, and F2/Delete shortcuts on the
+  // selection. Create + rename are inline in the tree (`FileTreeDraftRow` /
+  // `FileTreeRow` via the shared `TreeInlineInput`); delete uses the shared
+  // destructive `ConfirmDialog`.
+  import { tick, untrack } from "svelte";
+  import type { ContentFileMatch, ContentMatch, FsEntry } from "$lib/types";
   import { projects } from "$lib/state/projects.svelte";
   import { git, type FileEntry } from "$lib/state/git.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
@@ -27,6 +36,7 @@
   import { Button } from "$lib/components/ui/button";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as ContextMenu from "$lib/components/ui/context-menu";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import FileTreeRow from "./FileTreeRow.svelte";
   import FileTreeDraftRow from "./FileTreeDraftRow.svelte";
   import OpenWith from "./OpenWith.svelte";
@@ -42,6 +52,13 @@
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import Loader2Icon from "@lucide/svelte/icons/loader-2";
   import XIcon from "@lucide/svelte/icons/x";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import TextSearchIcon from "@lucide/svelte/icons/text-search";
+  import ListFilterIcon from "@lucide/svelte/icons/list-filter";
+  import CaseSensitiveIcon from "@lucide/svelte/icons/case-sensitive";
+  import WholeWordIcon from "@lucide/svelte/icons/whole-word";
+  import RegexIcon from "@lucide/svelte/icons/regex";
 
   /** Active worktree root, forward-slash normalized (matches backend paths). */
   const root = $derived(
@@ -59,24 +76,46 @@
   let searching = $state(false);
   function toggleSearch(): void {
     searching = !searching;
-    if (!searching) {
-      fileTree.query = "";
-      fileTree.searchScope = null;
-    }
+    // Closing search drops both queries but keeps the filters and match modes, so
+    // reopening it resumes the setup the user built.
+    if (!searching) fileTree.resetSearch();
   }
   // "Find in Folder" (from a row's context menu) sets a scope — open the search UI.
   $effect(() => {
     if (fileTree.searchScope) searching = true;
   });
-  // Re-run the project-wide search whenever the query, scope, or hidden toggle
-  // changes (reading them here registers the effect's dependencies).
+  // Re-run the project-wide searches whenever an input they depend on changes
+  // (reading them here registers the effect's dependencies). The two are separate
+  // effects so typing in one box doesn't restart the other's walk — but both watch
+  // the shared scope / filters / hidden toggle.
   $effect(() => {
     void fileTree.query;
     void fileTree.searchScope;
     void fileTree.showHidden;
+    void fileTree.filterInclude;
+    void fileTree.filterExclude;
     fileTree.scheduleSearch();
   });
+  $effect(() => {
+    void fileTree.contentQuery;
+    void fileTree.contentCaseSensitive;
+    void fileTree.contentWholeWord;
+    void fileTree.contentRegex;
+    void fileTree.searchScope;
+    void fileTree.showHidden;
+    void fileTree.filterInclude;
+    void fileTree.filterExclude;
+    fileTree.scheduleContentSearch();
+  });
   const queryActive = $derived(fileTree.query.trim().length > 0);
+  /** Content search is driving the list (it wins over the filename list: it is the
+   *  more specific ask, and narrowing *which files* is what the glob filters do). */
+  const contentActive = $derived(fileTree.contentQuery.length > 0);
+  const hasFilters = $derived(
+    fileTree.filterInclude.trim().length > 0 || fileTree.filterExclude.trim().length > 0,
+  );
+  /** The normal lazy tree is what's on screen (no search list covering it). */
+  const showingTree = $derived(!contentActive && !queryActive);
   /** Name of the scoped folder, for the search-bar chip. */
   const scopeName = $derived(
     fileTree.searchScope ? (fileTree.searchScope.split("/").pop() ?? fileTree.searchScope) : "",
@@ -101,6 +140,58 @@
     // Open as a file tab in the active workspace (which corresponds to this
     // worktree); `root` (forward-slash) drives the git change gutter.
     terminals.openFile(entry.path, root);
+  }
+
+  // --- The tree follows the file you're looking at --------------------------
+  // Opening a search hit must not close the search — the user closes that when
+  // they're done — so instead the tree quietly keeps up behind it: the open file's
+  // ancestors are expanded and its row is marked and scrolled into view. Closing
+  // the search then reveals a tree already pointing at the file. The mark follows
+  // `terminals.activeFilePath`, so it moves between file tabs and disappears with
+  // the last one.
+  const activeFilePath = $derived(terminals.activeFilePath);
+  let treeEl = $state<HTMLDivElement>();
+
+  $effect(() => {
+    const path = activeFilePath;
+    // Also re-run when the tree comes back into view, so a file opened while the
+    // search list covered it gets scrolled to on close.
+    void showingTree;
+    if (!path) return;
+    // `revealFile` reads and writes the store's expansion state; untracked so this
+    // effect depends on the open file alone and can't re-trigger itself.
+    untrack(() => void revealActiveFile(path));
+  });
+
+  async function revealActiveFile(path: string): Promise<void> {
+    await fileTree.revealFile(path);
+    await tick();
+    const row = treeEl?.querySelector(`[data-path="${CSS.escape(path)}"]`);
+    row?.scrollIntoView({ block: "nearest" });
+  }
+
+  // --- Content-search results ----------------------------------------------
+  /** Result files the user folded shut (reset whenever a new result set lands). */
+  let contentCollapsed = $state(new Set<string>());
+  $effect(() => {
+    void fileTree.contentResults;
+    contentCollapsed = new Set();
+  });
+  function toggleContentFile(path: string): void {
+    const next = new Set(contentCollapsed);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    contentCollapsed = next;
+  }
+  /** Open a matched line in the editor, scrolled to it. */
+  function openMatch(file: ContentFileMatch, m: ContentMatch): void {
+    terminals.openFileAtLine(file.path, root, m.line);
+  }
+  /** Folder of a result file, worktree-relative (the dimmed part of its row). */
+  function dirLabel(path: string): string {
+    const rel = relOf(path);
+    const i = rel.lastIndexOf("/");
+    return i > 0 ? rel.slice(0, i) : "";
   }
 
   function reveal(): void {
@@ -391,6 +482,23 @@
     if (f.index === "D" || f.worktree === "D") return "text-red-600 dark:text-red-400";
     return "text-amber-600 dark:text-amber-400";
   }
+
+  // Recipes for the two collapsible search sections — quiet rows, not cards (this
+  // is a dense panel, and the tree below is the surface that matters).
+  const sectionTrigger = cn(
+    "flex h-7 w-full items-center gap-1.5 rounded-md px-1.5 hover:bg-accent/40",
+    text.meta,
+  );
+  const sectionField = cn(
+    "h-7 w-full min-w-0 rounded-md border border-sidebar-border/60 bg-sidebar-foreground/5 px-2 text-[12px] text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:border-ring",
+  );
+  /** A match-mode toggle (Aa / whole word / regex) in the content input. */
+  function modeButton(on: boolean): string {
+    return cn(
+      "flex size-5 shrink-0 items-center justify-center rounded transition-colors",
+      on ? "bg-primary/20 text-foreground" : "text-muted-foreground/70 hover:bg-accent/60",
+    );
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -437,7 +545,14 @@
       />
       <TooltipSimple title={i18n.t("common.close")}>
         {#snippet children(tp)}
-          <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+          <Button
+            variant="ghost"
+            size="icon"
+            class={iconButton.xs}
+            {...tp}
+            aria-label={i18n.t("common.close")}
+            onclick={toggleSearch}
+          >
             <XIcon class={icon.action} />
           </Button>
         {/snippet}
@@ -445,23 +560,46 @@
     {:else}
       <span class={cn("flex-1 truncate", text.section)}>{worktreeName}</span>
       {#if root}
+        <!-- The tooltip is a hover affordance only; each icon button also carries its
+             own `aria-label`, so the toolbar is usable by name (screen reader, tests). -->
         <TooltipSimple title={i18n.t("fileTree.search")}>
           {#snippet children(tp)}
-            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+            <Button
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              {...tp}
+              aria-label={i18n.t("fileTree.search")}
+              onclick={toggleSearch}
+            >
               <SearchIcon class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
         <TooltipSimple title={i18n.t("fileTree.collapseAll")}>
           {#snippet children(tp)}
-            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={() => fileTree.collapseAll()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              {...tp}
+              aria-label={i18n.t("fileTree.collapseAll")}
+              onclick={() => fileTree.collapseAll()}
+            >
               <FoldVerticalIcon class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
         <TooltipSimple title={i18n.t("fileTree.refresh")}>
           {#snippet children(tp)}
-            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={() => fileTree.refresh()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              {...tp}
+              aria-label={i18n.t("fileTree.refresh")}
+              onclick={() => fileTree.refresh()}
+            >
               <RefreshCwIcon class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
             </Button>
           {/snippet}
@@ -515,6 +653,122 @@
     {/if}
   </header>
 
+  <!-- Advanced search: two sections that sit between the search bar and the tree,
+       collapsed until the user opens them. They stay mounted while search is open
+       so their inputs (and results) survive folding a section shut. -->
+  {#if root && searching}
+    <div class="shrink-0 border-b border-sidebar-border/60 px-1 py-1">
+      <Collapsible.Root bind:open={fileTree.contentOpen}>
+        <Collapsible.Trigger class={sectionTrigger}>
+          <ChevronRightIcon
+            class={cn(icon.decorative, "shrink-0 transition-transform", fileTree.contentOpen && "rotate-90")}
+          />
+          <TextSearchIcon class={cn(icon.decorative, "shrink-0")} />
+          <span class="min-w-0 flex-1 truncate text-left">{i18n.t("fileTree.contentSection")}</span>
+          <!-- Folded away, the section still reports what it is contributing. -->
+          {#if contentActive && !fileTree.contentOpen}
+            <span class="shrink-0 rounded bg-accent/60 px-1 tabular-nums">{fileTree.contentTotal}</span>
+          {/if}
+        </Collapsible.Trigger>
+        <Collapsible.Content class="flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
+          <div class="flex items-center gap-1">
+            <input
+              type="text"
+              placeholder={i18n.t("fileTree.contentPlaceholder")}
+              bind:value={fileTree.contentQuery}
+              class={cn(sectionField, "flex-1")}
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              onkeydown={(e) => e.key === "Escape" && (fileTree.contentQuery = "")}
+            />
+            <TooltipSimple title={i18n.t("fileTree.matchCase")}>
+              {#snippet children(tp)}
+                <button
+                  {...tp}
+                  type="button"
+                  aria-pressed={fileTree.contentCaseSensitive}
+                  aria-label={i18n.t("fileTree.matchCase")}
+                  class={modeButton(fileTree.contentCaseSensitive)}
+                  onclick={() => (fileTree.contentCaseSensitive = !fileTree.contentCaseSensitive)}
+                >
+                  <CaseSensitiveIcon class={icon.decorative} />
+                </button>
+              {/snippet}
+            </TooltipSimple>
+            <TooltipSimple title={i18n.t("fileTree.matchWholeWord")}>
+              {#snippet children(tp)}
+                <button
+                  {...tp}
+                  type="button"
+                  aria-pressed={fileTree.contentWholeWord}
+                  aria-label={i18n.t("fileTree.matchWholeWord")}
+                  class={modeButton(fileTree.contentWholeWord)}
+                  onclick={() => (fileTree.contentWholeWord = !fileTree.contentWholeWord)}
+                >
+                  <WholeWordIcon class={icon.decorative} />
+                </button>
+              {/snippet}
+            </TooltipSimple>
+            <TooltipSimple title={i18n.t("fileTree.matchRegex")}>
+              {#snippet children(tp)}
+                <button
+                  {...tp}
+                  type="button"
+                  aria-pressed={fileTree.contentRegex}
+                  aria-label={i18n.t("fileTree.matchRegex")}
+                  class={modeButton(fileTree.contentRegex)}
+                  onclick={() => (fileTree.contentRegex = !fileTree.contentRegex)}
+                >
+                  <RegexIcon class={icon.decorative} />
+                </button>
+              {/snippet}
+            </TooltipSimple>
+          </div>
+          {#if fileTree.contentError}
+            <p class={cn("text-destructive", text.meta)}>{fileTree.contentError}</p>
+          {/if}
+        </Collapsible.Content>
+      </Collapsible.Root>
+
+      <Collapsible.Root bind:open={fileTree.filtersOpen}>
+        <Collapsible.Trigger class={sectionTrigger}>
+          <ChevronRightIcon
+            class={cn(icon.decorative, "shrink-0 transition-transform", fileTree.filtersOpen && "rotate-90")}
+          />
+          <ListFilterIcon class={cn(icon.decorative, "shrink-0")} />
+          <span class="min-w-0 flex-1 truncate text-left">{i18n.t("fileTree.filtersSection")}</span>
+          {#if hasFilters && !fileTree.filtersOpen}
+            <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
+          {/if}
+        </Collapsible.Trigger>
+        <Collapsible.Content class="flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
+          <input
+            type="text"
+            placeholder={i18n.t("fileTree.includePlaceholder")}
+            bind:value={fileTree.filterInclude}
+            class={sectionField}
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            aria-label={i18n.t("fileTree.includeLabel")}
+          />
+          <input
+            type="text"
+            placeholder={i18n.t("fileTree.excludePlaceholder")}
+            bind:value={fileTree.filterExclude}
+            class={sectionField}
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            aria-label={i18n.t("fileTree.excludeLabel")}
+          />
+          <p class={text.meta}>{i18n.t("fileTree.filtersHint")}</p>
+        </Collapsible.Content>
+      </Collapsible.Root>
+    </div>
+  {/if}
+
   {#if !root}
     <p class={cn("p-3", text.meta)}>{i18n.t("rightPanel.selectWorktree")}</p>
   {:else}
@@ -522,7 +776,74 @@
       <p class={cn("px-3 py-1.5 text-destructive", text.body)}>{fileTree.error}</p>
     {/if}
 
-    {#if queryActive}
+    {#if contentActive}
+      <!-- Content-search results: one collapsible group per file, each matched line
+           opening the file at that line. -->
+      {#if fileTree.contentResults.length === 0}
+        <p class={cn("p-3", text.meta)}>
+          {fileTree.contentLoading
+            ? i18n.t("fileTree.searching")
+            : fileTree.contentError
+              ? i18n.t("fileTree.contentBadPattern")
+              : i18n.t("fileTree.contentNoMatch")}
+        </p>
+      {:else}
+        <div class="uxnan-scroll min-h-0 flex-1 overflow-auto px-1 py-1">
+          {#each fileTree.contentResults as f (f.path)}
+            {@const collapsed = contentCollapsed.has(f.path)}
+            {@const dir = dirLabel(f.path)}
+            <button
+              type="button"
+              class="flex h-7 w-full items-center gap-1 rounded-md px-1 text-left hover:bg-accent/40"
+              onclick={() => toggleContentFile(f.path)}
+            >
+              {#if collapsed}
+                <ChevronRightIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+              {:else}
+                <ChevronDownIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+              {/if}
+              <FileIcon
+                class={cn(icon.decorative, "shrink-0", fileColor(changes.fileMap.get(relOf(f.path))) || "text-muted-foreground")}
+              />
+              <span class={cn("shrink-0 truncate font-medium", text.body)}>{f.name}</span>
+              {#if dir}
+                <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{dir}</span>
+              {:else}
+                <span class="min-w-0 flex-1"></span>
+              {/if}
+              <span class={cn("shrink-0 rounded bg-accent/60 px-1 tabular-nums", text.indicator)}>
+                {f.matches.length}{f.truncated ? "+" : ""}
+              </span>
+            </button>
+            {#if !collapsed}
+              {#each f.matches as m, i (`${m.line}:${i}`)}
+                <button
+                  type="button"
+                  class="flex h-6 w-full items-center gap-2 rounded-md pl-6 pr-1 text-left hover:bg-accent/40"
+                  onclick={() => openMatch(f, m)}
+                  title={i18n.t("fileTree.openAtLine", { line: m.line })}
+                  aria-label={i18n.t("fileTree.openAtLine", { line: m.line })}
+                >
+                  <span class={cn("w-8 shrink-0 text-right tabular-nums", text.meta)}>{m.line}</span>
+                  <!-- The backend hands us the line plus UTF-16 offsets, so the hit is
+                       sliced out and marked without any HTML injection. -->
+                  <span class="min-w-0 flex-1 truncate font-mono text-[12px]">
+                    {#if m.elided}<span class="text-muted-foreground/60">…</span>{/if}<span
+                      class="text-muted-foreground">{m.text.slice(0, m.start)}</span
+                    ><span class="rounded-[2px] bg-primary/25 text-foreground"
+                      >{m.text.slice(m.start, m.end)}</span
+                    ><span class="text-muted-foreground">{m.text.slice(m.end)}</span>
+                  </span>
+                </button>
+              {/each}
+            {/if}
+          {/each}
+          {#if fileTree.contentTruncated}
+            <p class={cn("px-2 py-1.5", text.meta)}>{i18n.t("fileTree.searchTruncated")}</p>
+          {/if}
+        </div>
+      {/if}
+    {:else if queryActive}
       <!-- Project-wide search results, rendered as a tree (folders + files) so it
            reads like the normal browser. -->
       {#if searchRows.length === 0}
@@ -546,6 +867,7 @@
               {root}
               isExpanded={r.entry.isDir && !searchCollapsed.has(r.entry.path)}
               isOpen={terminals.isFileOpen(r.entry.path)}
+              activeFile={r.entry.path === activeFilePath}
               selected={fileTree.selectedEntry?.path === r.entry.path}
               renaming={fileTree.renamingPath === r.entry.path}
               {changed}
@@ -575,7 +897,7 @@
         {fileTree.loadingDir.has(root) ? i18n.t("common.loading") : i18n.t("fileTree.empty")}
       </p>
     {:else}
-      <div class="uxnan-scroll flex min-h-0 flex-1 flex-col overflow-auto px-1 py-1">
+      <div bind:this={treeEl} class="uxnan-scroll flex min-h-0 flex-1 flex-col overflow-auto px-1 py-1">
         <div class="shrink-0">
         {#each treeRows as r (r.draft ? "__draft__" : r.entry.path)}
           {#if r.draft}
@@ -600,6 +922,7 @@
               {root}
               isExpanded={fileTree.expanded.has(r.entry.path)}
               isOpen={terminals.isFileOpen(r.entry.path)}
+              activeFile={r.entry.path === activeFilePath}
               selected={fileTree.selectedEntry?.path === r.entry.path}
               renaming={fileTree.renamingPath === r.entry.path}
               {changed}

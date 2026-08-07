@@ -98,6 +98,12 @@ available today are:
   relative links and images, anchors, highlighted code), raster and SVG previews,
   native PDF preview, and the file's working diff. See
   [the file viewer](./docs/file-viewer.md).
+- **A file tree that searches inside files.** Beyond matching names, the Files
+  tab searches file **contents** — literal, whole word or regular expression —
+  and narrows either search with include/exclude globs, all gitignore-aware. A
+  hit opens the file at its line, and the tree quietly expands to whatever the
+  center is showing, so closing the search leaves it revealed. See
+  [the file tree](./docs/file-tree.md).
 - **It keeps a record of its own failures.** A rolling log under
   `<app data>/logs/` captures startup/shutdown, Rust panics and uncaught frontend
   errors on one timeline, and the app knows on the next launch whether the
@@ -250,6 +256,7 @@ Detailed docs live in [`docs/`](./docs/):
 [theming & appearance](./docs/theming.md) ·
 [internationalization (i18n)](./docs/i18n.md) ·
 [agent launch & configuration](./docs/agent-launch.md) ·
+[file tree & search](./docs/file-tree.md) ·
 [file viewer](./docs/file-viewer.md) ·
 [provider usage statistics](./docs/providers.md) ·
 [multi-agent orchestration](./docs/orchestration.md) ·

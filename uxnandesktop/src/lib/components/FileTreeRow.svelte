@@ -22,6 +22,7 @@
     depth = 0,
     isExpanded = false,
     isOpen = false,
+    activeFile = false,
     selected = false,
     renaming = false,
     changed = false,
@@ -44,6 +45,9 @@
     depth?: number;
     isExpanded?: boolean;
     isOpen?: boolean;
+    /** This is the file the center area is showing — a quiet background mark that
+     *  follows the viewer, independent of the click selection. */
+    activeFile?: boolean;
     /** The last-clicked row — drives the selection highlight + toolbar create target. */
     selected?: boolean;
     /** When true, the row shows an inline rename input in place of the name. */
@@ -106,15 +110,20 @@
             {...tp}
             {...props}
             type="button"
+            data-path={entry.path}
             class={cn(
               "flex h-7 w-full items-center gap-1 rounded-md pr-1 text-left",
-              // The row background tracks the *selection* (last-clicked row), so Esc /
-              // a click on the empty area clears it — VSCode-style. Being open in a tab
-              // is only a subtle hint (bold text below), never a persistent background,
-              // so every open file no longer reads as "selected".
+              // Two independent marks, in priority order. The *selection* (last-clicked
+              // row) is the loud one and clears on Esc / a click in the empty area —
+              // VSCode-style. Under it, the file the center area is currently showing
+              // keeps a quiet neutral fill, so after a search you can see where the file
+              // you opened lives without it competing with the selection. Merely being
+              // open in some tab still gets nothing but bolder text (below).
               selected
                 ? "bg-primary/15 ring-1 ring-inset ring-primary/25"
-                : "hover:bg-accent/40",
+                : activeFile
+                  ? "bg-foreground/[0.055] hover:bg-foreground/[0.075]"
+                  : "hover:bg-accent/40",
             )}
             style="padding-left: {depth * 12 + 2}px"
             onpointerdown={(e) => {

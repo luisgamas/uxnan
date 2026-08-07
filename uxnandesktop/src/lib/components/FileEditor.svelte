@@ -86,6 +86,8 @@
   const setRemoved = StateEffect.define<RangeSet<GutterMarker>>();
   const togglePeek = StateEffect.define<{ pos: number; lines: string[] }>();
   const clearPeek = StateEffect.define<null>();
+  /** Mark (or, with `null`, unmark) the line a content-search hit landed on. */
+  const flashLine = StateEffect.define<number | null>();
 
   const addedField = StateField.define<DecorationSet>({
     create: () => Decoration.none,
@@ -129,6 +131,27 @@
                   }).range(pos),
                 ],
               });
+        }
+      }
+      return deco;
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+
+  /** Transient highlight on the line a search hit opened, so the eye finds it in a
+   *  wall of code. Cleared on a timer (and by any edit that maps it away). */
+  const flashField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(deco, tr) {
+      deco = deco.map(tr.changes);
+      for (const e of tr.effects) {
+        if (e.is(flashLine)) {
+          deco =
+            e.value === null
+              ? Decoration.none
+              : Decoration.set([
+                  Decoration.line({ class: "cm-flash-line" }).range(e.value),
+                ]);
         }
       }
       return deco;
@@ -201,6 +224,12 @@
       backgroundColor: "color-mix(in srgb, var(--primary) 24%, transparent) !important",
       color: "inherit !important",
     },
+    // The line a content-search hit opened: a quiet band that fades out on its own,
+    // enough to catch the eye without competing with the change gutter.
+    ".cm-flash-line": {
+      backgroundColor: "color-mix(in srgb, var(--primary) 18%, transparent)",
+      transition: "background-color 600ms ease-out",
+    },
   });
 
   let host = $state<HTMLDivElement>();
@@ -239,6 +268,7 @@
         addedField,
         removedField,
         peekField,
+        flashField,
         changeGutter,
         baseTheme,
         EditorView.updateListener.of((u) => {
@@ -272,6 +302,31 @@
     view.dispatch({ effects: [clearPeek.of(null), setAdded.of(g.added), setRemoved.of(g.removed)] });
   });
 
+  // Scroll to the line a content-search hit asked for, once the document exists.
+  // The request survives the load (the file usually opens *because* of the hit, so
+  // it arrives before there is anything to scroll): this re-runs on `rev`, and
+  // `appliedReveal` keeps it from re-firing on later loads/saves. A line past the
+  // end of the file (the file changed since the search) clamps to the last line.
+  let appliedReveal = 0;
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const req = fileState.reveal;
+    void fileState.rev;
+    if (!req || !view || fileState.loading || req.seq === appliedReveal) return;
+    appliedReveal = req.seq;
+    const doc = view.state.doc;
+    const line = doc.line(Math.min(Math.max(1, req.line), doc.lines));
+    view.dispatch({
+      selection: { anchor: line.from },
+      effects: [
+        flashLine.of(line.from),
+        EditorView.scrollIntoView(line.from, { y: "center" }),
+      ],
+    });
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => view?.dispatch({ effects: flashLine.of(null) }), 1600);
+  });
+
   // When this tab becomes active (also after a rebuild), the pane went from
   // hidden (display:none → zero-size) to visible: re-measure so CodeMirror paints.
   // We deliberately do NOT steal focus here (VSCode-style): opening or activating a
@@ -287,7 +342,10 @@
     });
   });
 
-  onDestroy(() => view?.destroy());
+  onDestroy(() => {
+    clearTimeout(flashTimer);
+    view?.destroy();
+  });
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-background">
