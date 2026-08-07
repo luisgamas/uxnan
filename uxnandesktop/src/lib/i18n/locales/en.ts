@@ -1314,6 +1314,8 @@ export const en = {
     "Kilo Code exposes OpenCode's event bus with a different export shape, so it runs the same in-process reporter — session, tool and permission events included.",
   "hooks.desc.amp":
     "Installs a plugin into `~/.config/amp/plugins/`, which Amp auto-discovers. Amp's plugin API is its own; its `agent.end` says whether the turn finished or died, so it reports a real `blocked`.",
+  "hooks.desc.omp":
+    "OMP runs Pi's agent runtime under its own home, so it loads the very same status extension from `~/.omp/agent/extensions/` — reporting as OMP rather than as Pi.",
   "hooks.agentListLabel": "Agents",
   "hooks.groupInstalled": "On this machine",
   "hooks.groupOthers": "Other agents",

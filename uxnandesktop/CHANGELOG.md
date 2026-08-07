@@ -7,6 +7,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **OMP reports precise state too — twenty-one agents.** It ships Pi's agent
+  runtime under its own home, so it loads the very same extension; only the kind
+  it declares differs. Installing into Pi's directory (which is what happened
+  before) left OMP with nothing, even though the server already understood its
+  vocabulary. Verified against the running CLI: `before_agent_start` →
+  `agent_start` → `message_end` → `agent_end` → `session_shutdown`, all reported
+  as OMP. Its executable installs outside `PATH`, so presence is now also
+  detected from the CLI's own plugin directory.
+
+- **The nine agents without precise state are documented as such.** Aider, Cline,
+  Continue, Crush, Codebuff, Mistral Vibe, Rovo Dev, Autohand and Ante stay in
+  the catalog and launch normally — they fall back to the coarse working/idle
+  inference, or to the generic wrapper for `working`/`done`. Each row says why
+  (only `PreToolUse` shipped, macOS/Linux only, no published event list, hooks
+  that belong to a separate GUI…), and the list is written as an invitation:
+  wiring one is a table row plus an event arm, and a pull request with what the
+  CLI actually emits is the fastest path for whoever uses it.
+
 - **The integrated browser's tools reach three more agents: Qwen Code, Droid and
   MiMo Code.** They are auto-configured like the rest — the server registered in
   each CLI's user-global config, so no "approve this MCP server?" prompt appears

@@ -1591,7 +1591,17 @@ fn table_agent_present(agent: &TableAgent) -> bool {
     if crate::which::resolve(agent.command).is_some() {
         return true;
     }
-    (agent.path)().map(|p| p.exists()).unwrap_or(false)
+    let Some(path) = (agent.path)() else {
+        return false;
+    };
+    if path.exists() {
+        return true;
+    }
+    // For a plugin agent the file is what WE write, so its absence proves
+    // nothing; the CLI's own plugin directory is the evidence. It also covers
+    // the CLIs that install themselves outside `PATH` — OMP ships its binary
+    // into a private dir, so nothing else here would ever find it.
+    matches!(agent.layout, HookLayout::Plugin) && path.parent().map(|d| d.is_dir()).unwrap_or(false)
 }
 
 /// Claude's own event vocabulary, shared by every CLI that reimplements it.
@@ -1767,6 +1777,18 @@ const TABLE_AGENTS: &[TableAgent] = &[
         layout: HookLayout::Plugin,
         events: &[],
     },
+    // OMP ships Pi's agent runtime under its own home, so it loads the very same
+    // extension — only the kind it declares differs. Its own extensions dir:
+    // installing into Pi's would leave OMP with nothing (the reason its reports
+    // never appeared even though the server already understood its vocabulary).
+    TableAgent {
+        id: "omp",
+        label: "uxnan-agent-status.js",
+        command: "omp",
+        path: omp_extension_path,
+        layout: HookLayout::Plugin,
+        events: &[],
+    },
     // Kilo's plugin API is the same event bus with a different export shape.
     TableAgent {
         id: "kilocode",
@@ -1901,6 +1923,16 @@ fn kilo_plugin_path() -> Option<PathBuf> {
     )
 }
 
+fn omp_extension_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".omp")
+            .join("agent")
+            .join("extensions")
+            .join(PI_EXTENSION_FILENAME),
+    )
+}
+
 fn amp_plugin_path() -> Option<PathBuf> {
     Some(
         home_dir()?
@@ -1924,16 +1956,21 @@ fn amp_plugin_path() -> Option<PathBuf> {
 /// remove — the only thing standing between an install and a user's own file of
 /// the same name.
 fn plugin_marker(id: &str) -> &'static str {
-    if id == "amp" {
-        AMP_PLUGIN_MARKER
-    } else {
-        OPENCODE_PLUGIN_MARKER
+    match id {
+        "amp" => AMP_PLUGIN_MARKER,
+        "omp" => PI_EXTENSION_MARKER,
+        _ => OPENCODE_PLUGIN_MARKER,
     }
 }
 
 fn plugin_body(id: &str) -> String {
     if id == "amp" {
         return AMP_STATUS_PLUGIN.to_string();
+    }
+    if id == "omp" {
+        // Pi's extension verbatim, speaking for OMP.
+        return PI_STATUS_EXTENSION
+            .replace("const AGENT_TYPE = \"pi\";", "const AGENT_TYPE = \"omp\";");
     }
     let body = OPENCODE_STATUS_PLUGIN.replace(
         "const AGENT_TYPE = \"opencode\";",
@@ -2694,6 +2731,8 @@ mod tests {
                 // not the CLI's bus event names.
                 "mimo" | "kilocode" => "SessionBusy",
                 "amp" => "tool.call",
+                // OMP runs Pi's extension, so it speaks Pi's snake_case events.
+                "omp" => "tool_call",
                 _ => "PreToolUse",
             };
             assert_eq!(

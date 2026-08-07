@@ -2,7 +2,7 @@
 
 ![States](https://img.shields.io/badge/states-working_%7C_blocked_%7C_waiting_%7C_done-2ea44f?style=for-the-badge)
 ![Server](https://img.shields.io/badge/hook_server-127.0.0.1_(loopback)-0a0a0a?style=for-the-badge)
-![Agents](https://img.shields.io/badge/precise-20_agents-D97757?style=for-the-badge)
+![Agents](https://img.shields.io/badge/precise-21_agents-D97757?style=for-the-badge)
 ![Others](https://img.shields.io/badge/other_agents-generic_wrapper-blue?style=for-the-badge)
 
 The ADE infers a coarse **working / idle** state from terminal output with no
@@ -10,7 +10,7 @@ setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` —
 agent must actively report them to the ADE's local **hook server** (Layer 1 of
 the monitoring design, spec `architecture/02d-agent-monitoring.md` §1.1).
 
-The ADE ships a managed reporter for **twenty** agents and installs them
+The ADE ships a managed reporter for **twenty-one** agents and installs them
 **automatically on startup** (you can turn that off any time):
 
 | Agent | Where its reporter is installed |
@@ -35,6 +35,7 @@ The ADE ships a managed reporter for **twenty** agents and installs them
 | MiMo Code | its `plugins/` dir (`~/.config/mimocode/plugins/`) |
 | Kilo Code | its `plugin/` dir (`~/.config/kilo/plugin/`) |
 | Amp | its `plugins/` dir (`~/.config/amp/plugins/`) |
+| OMP | its own extensions dir (`~/.omp/agent/extensions/`) |
 
 The **Gemini CLI** reporter is still wired but no longer installed or offered,
 since Google discontinued that CLI in favour of Antigravity; if you already have
@@ -59,11 +60,15 @@ for it is answer enough.
 > - **Anything else** → use the **generic wrapper** as the agent's launch
 >   command (full step-by-step per OS below).
 
-**The rest of the catalog has no usable surface yet, and the ADE says so rather
-than pretending.** An agent only earns a reporter when its CLI can tell us a turn
-*ended* — without that the card could start a spinner it can never stop:
+**Nine agents in the catalog have no precise state, and that is on record rather
+than hidden.** An agent earns a reporter only when its CLI can say a turn
+*ended* — without that the card would start a spinner it can never stop, which
+is worse than an honest "no idea". They stay in the catalog, launch normally, and
+show the coarse working/idle inference; point them at the [generic
+wrapper](#install--any-other-agent-generic-wrapper) and you get `working` on
+launch and `done` on exit, which for many workflows is enough.
 
-| Agent | Why not |
+| Agent | Why it has no precise state |
 |---|---|
 | Crush | Hooks exist but only `PreToolUse` ships so far — enough to say "working", never "done". |
 | Cline | Its CLI hooks are documented as macOS/Linux only, and the registration format isn't published. |
@@ -71,8 +76,12 @@ than pretending.** An agent only earns a reporter when its CLI can tell us a tur
 | Aider | The lifecycle hooks belong to AiderDesk (a separate GUI); the CLI has an open request for them. |
 | Continue · Mistral Vibe · Codebuff · Autohand · Ante | No turn-lifecycle hook or plugin surface published. `codebuff.json` covers file-change and startup processes, not turns. |
 
-Any of them still works in uxnan — they just fall back to the coarse
-working/idle inference, or you can point them at the generic wrapper below.
+**This list is an invitation.** If you use one of them and its CLI grows a hook
+surface — or you find one we missed — wiring it is usually a single row in
+`agent_hooks::TABLE_AGENTS` plus an arm in `hooks::normalize_event`, both
+described under [Install](#install--the-built-in-agents-automatic). A pull
+request with that row (and what you measured the CLI actually emits) is the
+fastest way for the agent you use to get precise states.
 
 ---
 

@@ -113,9 +113,9 @@ started.**
   dot-relative command (Antigravity) and an 8.3 short-path fallback (Grok).
   Gemini CLI is no longer auto-installed (discontinued upstream) but its card
   still appears while its reporter is present, so it can be removed.
-  **Fourteen more agents are wired declaratively** — OpenClaude, Qwen Code,
+  **Fifteen more agents are wired declaratively** — OpenClaude, Qwen Code,
   Droid, Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro, Kimi Code,
-  Goose, MiMo Code, Kilo Code and Amp — as rows in `agent_hooks::TABLE_AGENTS`
+  Goose, MiMo Code, Kilo Code, Amp and OMP — as rows in `agent_hooks::TABLE_AGENTS`
   (config path, detection command, entry shape, events) driving the shared
   `uxnan-event-hook`, or — for the last three — an in-process plugin the CLI
   auto-discovers (MiMo and Kilo run OpenCode's reporter with the agent kind and,

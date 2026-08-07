@@ -1317,6 +1317,8 @@ export const es: Record<MessageKey, string> = {
     "Kilo Code expone el bus de eventos de OpenCode con otra forma de export, así que ejecuta el mismo reporter in-process — con eventos de sesión, herramientas y permisos.",
   "hooks.desc.amp":
     "Instala un plugin en `~/.config/amp/plugins/`, que Amp descubre solo. La API de plugins de Amp es propia; su `agent.end` dice si el turno terminó o murió, así que reporta un `blocked` real.",
+  "hooks.desc.omp":
+    "OMP ejecuta el runtime de agente de Pi bajo su propia carpeta, así que carga exactamente la misma extensión de estado desde `~/.omp/agent/extensions/` — reportando como OMP y no como Pi.",
   "hooks.agentListLabel": "Agentes",
   "hooks.groupInstalled": "En este equipo",
   "hooks.groupOthers": "Otros agentes",
