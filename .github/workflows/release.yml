@@ -166,6 +166,7 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           HAS_APP: ${{ steps.token.outputs.token != '' }}
+          GH_TOKEN: ${{ steps.token.outputs.token || github.token }}
         run: |
           set -euo pipefail
 
@@ -196,6 +197,17 @@ jobs:
               echo "::endgroup::"
               continue
             fi
+
+            # The history row travels in the same commit, so the pull request
+            # carries both and the table can never silently fall behind — which
+            # is what happened to 0.0.29. The summary is seeded from the pull
+            # request titles this release contains; enrich it by hand if you
+            # want, but nobody has to remember to add it.
+            note=""
+            if [ "$HAS_APP" = "true" ] || [ -n "${GH_TOKEN:-}" ]; then
+              note=$(node scripts/release/notes.mjs "$tag" --repo="$GITHUB_REPOSITORY" 2>/dev/null                 | grep '^\* ' | sed 's/^\* //; s/ by @.*//' | paste -sd ';' - | sed 's/;/; /g' || true)
+            fi
+            node scripts/release/record.mjs "$id" "$version" ${note:+--note="$note"}
 
             git commit -am "build: prepare $id $version"
             git tag "$tag"

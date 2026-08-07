@@ -26,9 +26,9 @@ itself, what waits for you, and what to do when something goes wrong.
 
 **Automated.** Working out whether a component genuinely changed, computing the
 next version, writing it into every version-bearing file, proving those files
-agree, committing, tagging, pushing the tag, opening the pull request that brings
-the bump into `main`, and — for a desktop **nightly** — writing the release notes
-and publishing.
+agree, adding the `VERSIONS.md` history row, committing, tagging, pushing the
+tag, opening the pull request that brings all of it into `main`, and — for a
+desktop **nightly** — writing the release notes and publishing.
 
 **Not automated, on purpose.**
 
@@ -39,7 +39,10 @@ and publishing.
 - **Merging the bump pull request.** `main` is protected and stays that way; the
   run opens the PR, you merge it. The tags already point at those commits, so the
   builds never wait for it.
-- **The `VERSIONS.md` history row.** Still added by hand after a release lands.
+- **Enriching the `VERSIONS.md` note.** The row itself is written for you — date,
+  version in its column, and a summary seeded from the pull request titles the
+  release contains. Rewrite that summary if it deserves better prose; nobody has
+  to remember to add the row.
 - **The CHANGELOG.** The tooling never writes your prose. For a stable release,
   rename `## [Unreleased]` to the version yourself before cutting.
 
@@ -196,6 +199,12 @@ so there is nothing to generate or paste; it appears by itself.
 
 ## When something goes wrong
 
+**A release is public but the updater does not offer it.** `latest.json` on the
+rolling channel was not rolled, because the publish event came from
+`GITHUB_TOKEN` — the same anti-recursion rule that stops a tag from starting a
+build. It happened to 0.0.30. Unpublish and publish it again from the UI or with
+your own `gh`, which is a real event.
+
 **A tag exists but nothing built.** The tag was pushed with `GITHUB_TOKEN`,
 which cannot start a workflow. Either the app credential is missing (the run
 warns and prints the push command) or someone pushed the tag from a workflow by
@@ -225,5 +234,5 @@ a new one — the base must still move forward, so the next nightly gets a highe
 | `.github/workflows/release-desktop.yml` | builds installers, writes the body, publishes a nightly |
 | `.github/workflows/release-desktop-manifest.yml` | rolls `latest.json` onto a channel when a release is published |
 | `.github/workflows/release-npm.yml`, `release-mobile.yml` | publish to npm and Play |
-| `scripts/release/` | the decisions: what needs releasing, what version, which files ([README](../scripts/release/README.md)) |
+| `scripts/release/` | the decisions: what needs releasing, what version, which files, and the history row ([README](../scripts/release/README.md)) |
 | `VERSIONS.md` | the convention, and the release history |
