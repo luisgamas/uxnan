@@ -57,6 +57,11 @@ desktop **nightly** — writing the release notes and publishing.
 affect a build since the last desktop tag **in either channel**. If not, it
 finishes green having done nothing — most days.
 
+"In a way that can affect a build" excludes prose *and tests*: a documentation
+pass or a test-only fix does not earn four installers, a published pre-release
+and an updater roll for a binary nobody can tell apart. `npm run release:status`
+shows both counts, and `scripts/release/README.md` lists what each class covers.
+
 The time is not arbitrary. Version stamps are UTC, and 00:20 local is 06:20 UTC
 **of the same date**, so `nightly.20260808.1` really is the nightly of the 8th on
 your calendar. Cutting at 23:00 local would stamp it with the following day.

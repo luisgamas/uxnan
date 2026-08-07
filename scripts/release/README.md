@@ -12,16 +12,27 @@ pushes** — that stays with a human, and from phase 2 with the release workflow
 The state of the whole monorepo in one table:
 
 ```
-component last tag                                changed  needs release  next
-shared    shared-v0.0.13-alpha.20260804           0+0d     no             —
-relay     relay-v0.0.2-alpha.20260720             0+1d     no (docs only) —
-desktop   desktop-stable-v0.0.28                  25+9d    YES            0.0.29-nightly.20260806.1
+component last tag                                changed needs release     next
+shared    shared-v0.0.13-alpha.20260804           0+0n    no                —
+relay     relay-v0.0.2-alpha.20260720             0+1n    no (nothing ships) —
+desktop   desktop-stable-v0.0.28                  25+9n   YES               0.0.29-nightly.20260806.1
 ```
 
 `changed` is `files that can affect a build + files that cannot`. That second
 number is the whole point: on 2026-08-06 the only change in `relay/` since its
 tag was `FOR-DEV.md`, and a trigger that fired on "the folder changed" would have
 published an identical package.
+
+Two kinds of file cannot reach a build: **prose** (`*.md`, `docs/`,
+`architecture/`, `.github/`) and **tests** (`*.test.*`, `*.spec.*`, `test/`,
+`tests/`). Tests were added to the list when, with 0.0.31 shipped and the only
+desktop change since it being a fix to `setup.dom.ts`, the status still said the
+component owed a release — the next cron would have cut 0.0.32 for a test. A test
+proves something about code that already shipped, and a nightly is four
+installers, a published pre-release and an updater roll for a build nobody can
+tell apart from the one before it. Rust unit
+tests live inline in `src/` under `#[cfg(test)]`, so those files are still source
+and still count: the rule errs toward releasing.
 
 Flags: `--channel=stable|nightly` (how to compute the desktop's next version,
 default `nightly`) and `--json` (for the workflow's job summary).

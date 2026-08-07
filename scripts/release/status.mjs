@@ -46,25 +46,29 @@ console.log(
   `\nuxnan release status — ${tree.branch} @ ${tree.head}${tree.dirty ? ' (dirty)' : ''}\n`,
 );
 
-const pad = (value, width) => String(value).padEnd(width);
+// Every column keeps at least one space after its widest value, so a long tag
+// or a long verdict pushes the row along instead of swallowing the gap — the
+// desktop's nightly tag is 40 characters and used to run straight into the next
+// column.
+const pad = (value, width) => `${value}`.padEnd(width) + ' ';
 console.log(
-  `${pad('component', 10)}${pad('last tag', 40)}${pad('changed', 9)}${pad('needs release', 15)}next`,
+  `${pad('component', 9)}${pad('last tag', 41)}${pad('changed', 7)}${pad('needs release', 17)}next`,
 );
-console.log('-'.repeat(104));
+console.log('-'.repeat(110));
 
 let owed = 0;
 for (const row of rows) {
-  const changed = `${row.substantive.length}+${row.docsOnly.length}d`;
-  const verdict = row.worthy ? 'YES' : row.files.length ? 'no (docs only)' : 'no';
+  const changed = `${row.substantive.length}+${row.nonShipping.length}n`;
+  const verdict = row.worthy ? 'YES' : row.files.length ? 'no (nothing ships)' : 'no';
   if (row.worthy) owed += 1;
   const suffix = row.id === 'desktop' ? ` (${channel})` : '';
   console.log(
-    `${pad(row.id, 10)}${pad(row.since ?? '(never released)', 40)}${pad(changed, 9)}${pad(verdict, 15)}${row.worthy ? row.next + suffix : '—'}`,
+    `${pad(row.id, 9)}${pad(row.since ?? '(never released)', 41)}${pad(changed, 7)}${pad(verdict, 17)}${row.worthy ? row.next + suffix : '—'}`,
   );
 }
 
 console.log(
-  '\nchanged = files that can affect a build + files that cannot (docs, architecture, .github)\n',
+  '\nchanged = files that can affect a build + files that cannot (docs, specs, .github, tests)\n',
 );
 
 for (const row of rows.filter((r) => r.worthy)) {
