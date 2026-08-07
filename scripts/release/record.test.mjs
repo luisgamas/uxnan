@@ -141,9 +141,11 @@ describe('summarizeNotes', () => {
     assert.ok(!summarizeNotes(REAL_NOTES).includes('0.0.30-nightly'));
     assert.equal(
       summarizeNotes(
-        ["## What's Changed", '* build: prepare desktop 0.0.31', '* chore(release): bridge 0.0.17'].join(
-          '\n',
-        ),
+        [
+          "## What's Changed",
+          '* build: prepare desktop 0.0.31',
+          '* chore(release): bridge 0.0.17',
+        ].join('\n'),
       ),
       '',
     );
@@ -152,21 +154,29 @@ describe('summarizeNotes', () => {
   it('survives notes with nothing in them, and notes that are not notes', () => {
     assert.equal(summarizeNotes(''), '');
     assert.equal(summarizeNotes(undefined), '');
-    assert.equal(summarizeNotes('## New Contributors\n* @someone made their first contribution'), '');
+    assert.equal(
+      summarizeNotes('## New Contributors\n* @someone made their first contribution'),
+      '',
+    );
   });
 
   it('does not repeat an entry that appears twice', () => {
     assert.equal(
       summarizeNotes(
-        ["## What's Changed", '* feat: a thing by @a in https://x/1', '* feat: a thing by @b in https://x/2'].join(
-          '\n',
-        ),
+        [
+          "## What's Changed",
+          '* feat: a thing by @a in https://x/1',
+          '* feat: a thing by @b in https://x/2',
+        ].join('\n'),
       ),
       'feat: a thing',
     );
   });
 
   it('leaves a title alone when it has no attribution suffix', () => {
-    assert.equal(summarizeNotes("## What's Changed\n* feat: written by hand"), 'feat: written by hand');
+    assert.equal(
+      summarizeNotes("## What's Changed\n* feat: written by hand"),
+      'feat: written by hand',
+    );
   });
 });
