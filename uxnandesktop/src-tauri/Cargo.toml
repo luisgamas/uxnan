@@ -88,6 +88,13 @@ trash = "5"
 # dotfiles, so a recursive filename search skips `node_modules`/`.git`/ignored
 # paths without us re-implementing gitignore semantics. Synchronous → blocking pool.
 ignore = "0.4"
+# The other two thirds of the file tree's search: `regex` matches file *content*
+# (fs.rs `search_content` — literal, whole-word and user regex all compile down to
+# one pattern), and `globset` compiles the include/exclude filters both searches
+# share. Both are ripgrep's own crates and already in the tree via `ignore`, so
+# naming them here adds no build cost. MIT/Apache-2.0.
+regex = "1"
+globset = "0.4"
 
 # Windows-only: SetThreadExecutionState for the keep-awake feature (power.rs),
 # and GetShortPathNameW for the agent hooks — Grok parses a hook command as a
