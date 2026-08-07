@@ -401,10 +401,13 @@
         fontSize: t.fontSize,
         lineHeight: t.lineHeight,
         letterSpacing: t.letterSpacing,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fontWeight: t.fontWeight as never,
+        fontWeight: t.fontWeight,
+        fontWeightBold: t.fontWeightBold,
         fontFamily: t.fontFamily,
         theme: { ...t.theme },
+        // Legibility floor: lifts any glyph a program paints too close to its
+        // cell background (see `minimumContrastRatio` in `$lib/theme`).
+        minimumContrastRatio: t.minimumContrastRatio,
         // Retained-output cap (Settings → Terminal). A live effect below keeps an
         // already-open terminal in sync when the setting changes.
         scrollback: app.terminalScrollback,
@@ -738,9 +741,15 @@
     term.options.fontFamily = t.fontFamily;
     term.options.lineHeight = t.lineHeight;
     term.options.letterSpacing = t.letterSpacing;
-    term.options.fontWeight = t.fontWeight as never;
+    term.options.fontWeight = t.fontWeight;
+    term.options.fontWeightBold = t.fontWeightBold;
     term.options.cursorStyle = t.cursorStyle;
     term.options.cursorBlink = t.cursorBlink;
+    // Value-gated: writing this drops xterm's contrast cache, so a no-op re-apply
+    // would throw away every already-corrected color for nothing.
+    if (term.options.minimumContrastRatio !== t.minimumContrastRatio) {
+      term.options.minimumContrastRatio = t.minimumContrastRatio;
+    }
   }
 
   // Re-apply appearance live when the theme or terminal overrides change. Font

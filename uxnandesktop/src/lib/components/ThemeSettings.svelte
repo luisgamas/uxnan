@@ -15,10 +15,12 @@
   import { Switch } from "$lib/components/ui/switch";
   import { app } from "$lib/state/app.svelte";
   import {
+    BOLD_TERMINAL_FONT_WEIGHT,
     BUILTIN_IDS,
     BUNDLED_FONTS,
     DEFAULT_FONTS,
     TERMINAL_INHERIT_ID,
+    isBoldTerminalFontWeight,
     duplicateTheme,
     duplicateTerminalTheme,
     newTerminalThemeId,
@@ -81,6 +83,20 @@
   // placeholders, so the global override hints what it inherits.
   const termFontBase = $derived(resolveTerminal(app.resolveActiveTheme().base, app.resolveActiveTerminalTheme()));
   const tf = $derived(app.settings.terminalFonts ?? {});
+
+  // Bold text: a switch over the same `fontWeight` override the theme editor
+  // exposes numerically, so it only changes the weight — the chosen family, size
+  // and spacing are untouched. It shows the EFFECTIVE weight (what's on screen),
+  // so turning it off against a bold preset has to write an explicit regular
+  // weight; against a regular one, clearing the override is enough to inherit.
+  const termBoldInherited = $derived(isBoldTerminalFontWeight(termFontBase.fontWeight));
+  const termBold = $derived(
+    tf.fontWeight == null || tf.fontWeight === "" ? termBoldInherited : isBoldTerminalFontWeight(tf.fontWeight),
+  );
+  function setTermBold(on: boolean) {
+    ensureTermFonts().fontWeight = on ? BOLD_TERMINAL_FONT_WEIGHT : termBoldInherited ? 400 : undefined;
+    persist();
+  }
 
   const activeId = $derived(app.settings.activeThemeId ?? "system");
   const customThemes = $derived(app.settings.customThemes ?? []);
@@ -467,6 +483,11 @@
       <SettingsRow label={i18n.t("terminalTheme.size")} description={i18n.t("appearance.termSizeDesc")}>
         {#snippet control()}
           <Input type="number" class="w-24" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
+        {/snippet}
+      </SettingsRow>
+      <SettingsRow label={i18n.t("terminalTheme.bold")} description={i18n.t("appearance.termBoldDesc")}>
+        {#snippet control()}
+          <Switch aria-label={i18n.t("terminalTheme.bold")} checked={termBold} onCheckedChange={setTermBold} />
         {/snippet}
       </SettingsRow>
       <SettingsRow label={i18n.t("terminalTheme.lineHeight")} description={i18n.t("appearance.termLineHeightDesc")}>

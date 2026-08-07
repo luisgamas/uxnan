@@ -250,6 +250,48 @@ destroyed tab.
   agent-row badge) something to display — nothing could set it before, because
   the tab was destroyed first.
 
+### Fixed — terminal text that came out the colour of its own background
+
+Both base themes had places where output simply wasn't there: a value printed in
+ANSI black landed on the near-black dark background, and the greys and bright
+whites a CLI uses for secondary text washed out on the light one. Two causes, one
+of them ours and one that never can be:
+
+- **The terminal's defaults followed the app theme's base instead of the terminal
+  background it was actually drawing on.** Pick a dark terminal preset while the
+  app is on a light theme (or the reverse) and every field that preset left unset
+  — text colour, cursor, the whole ANSI palette — was inherited from the *opposite*
+  base, so unset fields resolved to the colour of the background sitting under
+  them. `resolveTerminal` now reads the resolved background's luminance and takes
+  its defaults from that; the app theme's base only decides the background when
+  nothing overrides it, and breaks the tie for a background it can't parse
+  (`oklch(...)`, a CSS variable). The Settings preview and the live terminal agree
+  again — the preview was already grouping by the preset's own base tag.
+- **A contrast floor for everything uxnan doesn't own.** No palette can fix a TUI
+  that paints 24-bit grey on grey, so xterm's `minimumContrastRatio` now lifts any
+  glyph that lands too close to its cell background: the full WCAG-AA **4.5** on a
+  light background, where bright-white and bright-yellow output is otherwise
+  unreadable, and the large-text **3.0** on a dark one, which rescues
+  near-background text — ANSI black on `#0b0b0c` sat at 1.07:1 — without washing
+  out the saturated colours a dark palette is built on. It is re-applied only when
+  the value actually changes, since writing it drops xterm's contrast cache.
+
+### Added — bold terminal text, without changing the font
+
+**Settings → Appearance → Terminal → Bold text.** A switch that raises the weight
+of terminal output while leaving the chosen family, size, line-height and spacing
+exactly as they are — it writes the same `fontWeight` override the terminal-theme
+editor exposes numerically, so it composes with presets instead of fighting them.
+The switch shows the *effective* weight, so it also reflects a preset that already
+sets one.
+
+Text a program marks bold now stays heavier than the body weight: uxnan derives
+xterm's `fontWeightBold` two steps above the regular weight (capped at 900) rather
+than leaving it pinned at 700, which would have flattened every emphasis in a
+CLI's output the moment the terminal itself went bold. Weights are normalised on
+the way in, so `"normal"`, `"bold"`, `"600"` and `600` all mean the same thing to
+a saved theme or a hand-written JSON import.
+
 ## [0.0.28] - 2026-08-05
 
 ### Fixed — every agent gets a conversation name, and Grok's status unsticks
