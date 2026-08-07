@@ -102,7 +102,7 @@
   import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
   import StethoscopeIcon from "@hugeicons/core-free-icons/Stethoscope02Icon";
   import FileTextIcon from "@hugeicons/core-free-icons/Doc01Icon";
-  import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+  import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
   import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
 
   // Persist (debounced for typing; immediate for discrete actions).
@@ -768,7 +768,7 @@
         { id: "appearance", key: "settings.appearance", icon: PaletteIcon },
         { id: "language", key: "settings.language", icon: LanguagesIcon },
         { id: "shortcuts", key: "settings.shortcuts", icon: KeyboardIcon },
-        { id: "commands", key: "settings.commands", icon: ZapIcon },
+        { id: "commands", key: "settings.commands", icon: EnergyIcon },
         { id: "pets", key: "settings.pets", icon: PawPrintIcon },
       ],
     },

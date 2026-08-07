@@ -32,7 +32,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Icon } from "$lib/components/ui/icon";
-  import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+  import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import SquarePenIcon from "@hugeicons/core-free-icons/Edit02Icon";
   import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
@@ -230,7 +230,7 @@
 
   {#if app.quickCommands.length === 0}
     <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 bg-card/40 px-6 py-12 text-center">
-      <Icon icon={ZapIcon} class={cn(icon.empty, "text-muted-foreground")} />
+      <Icon icon={EnergyIcon} class={cn(icon.empty, "text-muted-foreground")} />
       <p class={cn("max-w-sm", text.body)}>{i18n.t("commands.emptyState")}</p>
       <Button size="sm" variant="outline" onclick={create}>
         <Icon icon={PlusIcon} data-icon="inline-start" />
@@ -260,7 +260,7 @@
     {#each items as cmd (cmd.id)}
       <div class="flex items-center gap-3 py-3">
         <EntityIcon value={cmd.icon} class="size-4 text-muted-foreground">
-          {#snippet fallback()}<Icon icon={ZapIcon} class="size-4 text-muted-foreground" />{/snippet}
+          {#snippet fallback()}<Icon icon={EnergyIcon} class="size-4 text-muted-foreground" />{/snippet}
         </EntityIcon>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
@@ -315,7 +315,7 @@
               onclick={() => (iconPickerOpen = true)}
             >
               <EntityIcon value={draft.icon} class="size-4">
-                {#snippet fallback()}<Icon icon={ZapIcon} class="size-4 text-muted-foreground" />{/snippet}
+                {#snippet fallback()}<Icon icon={EnergyIcon} class="size-4 text-muted-foreground" />{/snippet}
               </EntityIcon>
             </Button>
             <Input bind:value={draft.name} placeholder={i18n.t("commands.namePlaceholder")} class="flex-1" />
@@ -473,7 +473,7 @@
         current={draft.icon}
         onselect={(v) => (draft && (draft.icon = v))}
       >
-        {#snippet fallback()}<Icon icon={ZapIcon} class="size-7 text-muted-foreground" />{/snippet}
+        {#snippet fallback()}<Icon icon={EnergyIcon} class="size-7 text-muted-foreground" />{/snippet}
       </IconPicker>
     {/if}
   </Dialog.Content>

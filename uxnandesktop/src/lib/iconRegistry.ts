@@ -13,7 +13,7 @@ import { BUILTIN_ICON_NAMES, parseBuiltinKey } from "$lib/iconCatalog";
 import RocketIcon from "@hugeicons/core-free-icons/RocketIcon";
 import StarIcon from "@hugeicons/core-free-icons/StarIcon";
 import FlameIcon from "@hugeicons/core-free-icons/FlameIcon";
-import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
 import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
 import WandSparklesIcon from "@hugeicons/core-free-icons/MagicWand01Icon";
 import BugIcon from "@hugeicons/core-free-icons/Bug01Icon";
@@ -84,7 +84,7 @@ const REGISTRY: Record<string, IconNode> = {
   rocket: RocketIcon,
   star: StarIcon,
   flame: FlameIcon,
-  zap: ZapIcon,
+  zap: EnergyIcon,
   sparkles: SparklesIcon,
   "wand-sparkles": WandSparklesIcon,
   bug: BugIcon,
