@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Command as CommandPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils.js";
-	import CheckIcon from '@lucide/svelte/icons/check';
+	import { Icon } from "$lib/components/ui/icon";
+	import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 
 	let {
 		ref = $bindable(null),
@@ -21,5 +22,5 @@
 	{...restProps}
 >
 	{@render children?.()}
-	<CheckIcon class="cn-command-item-indicator ml-auto opacity-0 group-has-[[data-slot=command-shortcut]]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+	<Icon icon={CheckIcon} class="cn-command-item-indicator ml-auto opacity-0 group-has-[[data-slot=command-shortcut]]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
 </CommandPrimitive.Item>

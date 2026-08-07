@@ -1,10 +1,10 @@
-// Built-in icon catalog — the *pure* string layer (no Svelte/lucide imports, so
-// it's unit-testable and safe to import anywhere).
+// Built-in icon catalog — the *pure* string layer (no Svelte or glyph-data
+// imports, so it's unit-testable and safe to import anywhere).
 //
 // A project/branch icon value is one of three things, all stored inline in the
 // persisted state (`RepoData.icon` / `RepoData.branchIcons`):
-//   - a `builtin:<name>[~<color>]` key → a curated lucide glyph (see the glyph
-//     registry + `resolveBuiltinIcon` in `iconRegistry.ts`);
+//   - a `builtin:<name>[~<color>]` key → a curated Hugeicons glyph (see the
+//     glyph registry + `resolveBuiltinIcon` in `iconRegistry.ts`);
 //   - a custom image `data:` URL (a file / URL / avatar rasterized by `logo.ts`);
 //   - absent (null) → the caller's default folder/branch glyph.
 //
@@ -14,9 +14,12 @@
 // the presets in `BUILTIN_COLORS` are just quick picks. No color → the calm
 // ambient `currentColor` used everywhere else.
 
-/** The curated built-in glyph names, in display order. The concrete lucide
- *  components are attached in `iconRegistry.ts` (kept out of here so this module
- *  stays free of Svelte imports and unit-testable). */
+/** The curated built-in glyph names, in display order. The concrete Hugeicons
+ *  drawing data is attached in `iconRegistry.ts` (kept out of here so this
+ *  module stays free of Svelte imports and unit-testable).
+ *
+ *  These names are persisted in user state, so they are append-only: rename or
+ *  remove one and every project that chose it loses its icon. */
 export const BUILTIN_ICON_NAMES = [
   "rocket",
   "star",

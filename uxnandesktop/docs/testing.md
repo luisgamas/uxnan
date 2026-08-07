@@ -158,7 +158,7 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **882 tests** across both projects,
+[`platform-support.md`](platform-support.md)). **896 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -211,6 +211,20 @@ instead of quietly agreeing with a mock nobody updated.
   "a read is in flight", so every tick unmounted it and took a half-written pull
   request with it — which is why the first assertion is that the digest is *still
   there*, not that it loaded.
+
+- `ui/icon/icon.svelte.test.ts` — the Hugeicons glyph data reaches the DOM as
+  *valid* SVG. The data uses camelCase keys (`strokeLinecap`) that SVG has no
+  concept of, and a browser ignores an unknown attribute silently: spread them
+  verbatim and every icon renders almost right — butt caps, hairline joins — with
+  nothing failing anywhere. So the assertions read the emitted attribute names.
+  It also locks the reason we don't use upstream's `@hugeicons/svelte`: the glyph
+  must repaint when the `icon` prop changes.
+- `AgentStatusIndicator.svelte.test.ts` — the sidebar's state glyphs actually
+  paint. Three of the four states are rare next to `working`, so a glyph that
+  went missing would hide for a long time; and a glyph resolving to `undefined`
+  still type-checks and renders an empty `<svg>`. Each assertion is about painted
+  geometry: real `d`/`r` on every shape, `currentColor` so the state tint reaches
+  it, no `<svg>` at all for the CSS Comet Trail, and a plain dot for `idle`.
 
 House style: query the way a user finds things — role, label, text. Reach for
 `data-testid` only where there is genuinely no accessible handle. A test that

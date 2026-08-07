@@ -19,11 +19,12 @@
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
   import type { ExternalEditor, OpenWithSettings } from "$lib/types";
-  import AppWindowIcon from "@lucide/svelte/icons/app-window";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import FolderSearchIcon from "@lucide/svelte/icons/folder-search";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import { Icon } from "$lib/components/ui/icon";
+  import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import FolderSearchIcon from "@hugeicons/core-free-icons/FolderSearchIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
 
   const OW_DEFAULT: OpenWithSettings = { customEditors: [], hiddenDetected: [] };
   // Merge over a full default so reads/writes are always complete (state saved
@@ -176,19 +177,19 @@
 </script>
 
 {#snippet editorGlyph()}
-  <AppWindowIcon class={cn(icon.button, "text-muted-foreground")} />
+  <Icon icon={AppWindowIcon} class={cn(icon.button, "text-muted-foreground")} />
 {/snippet}
 
 <div class="flex flex-col gap-6">
   <SettingsSection title={i18n.t("openWith.settingsTitle")} description={i18n.t("openWith.settingsDesc")}>
     {#snippet headerAction()}
       <Button variant="outline" size="sm" onclick={() => void openWith.refresh()}>
-        <RefreshCwIcon data-icon="inline-start" class={cn(!openWith.loaded && "animate-spin")} />
+        <Icon icon={RefreshCwIcon} data-icon="inline-start" class={cn(!openWith.loaded && "animate-spin")} />
         {i18n.t("openWith.refresh")}
       </Button>
     {/snippet}
     <p class={cn("flex items-center gap-2", text.meta)}>
-      <AppWindowIcon class={cn(icon.decorative, "shrink-0")} />
+      <Icon icon={AppWindowIcon} class={cn(icon.decorative, "shrink-0")} />
       {i18n.t("openWith.settingsHint")}
     </p>
   </SettingsSection>
@@ -238,11 +239,11 @@
       <span class={text.section}>{i18n.t("openWith.custom")}</span>
       <div class="flex items-center gap-1.5">
         <Button variant="outline" size="sm" disabled={browsing} onclick={browseForApp}>
-          <FolderSearchIcon data-icon="inline-start" />
+          <Icon icon={FolderSearchIcon} data-icon="inline-start" />
           {i18n.t("openWith.browse")}
         </Button>
         <Button variant="outline" size="sm" onclick={addEditor}>
-          <PlusIcon data-icon="inline-start" />
+          <Icon icon={PlusIcon} data-icon="inline-start" />
           {i18n.t("openWith.addEditor")}
         </Button>
       </div>
@@ -284,7 +285,7 @@
                     aria-label={i18n.t("common.remove")}
                     onclick={() => removeEditor(ed.id)}
                   >
-                    <Trash2Icon class={icon.button} />
+                    <Icon icon={Trash2Icon} class={icon.button} />
                   </Button>
                 {/snippet}
               </TooltipSimple>

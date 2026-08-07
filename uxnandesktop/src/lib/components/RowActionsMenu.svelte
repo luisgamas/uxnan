@@ -22,22 +22,23 @@
   import AgentLogo from "./AgentLogo.svelte";
   import OpenWith from "./OpenWith.svelte";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import MoonIcon from "@lucide/svelte/icons/moon";
-  import SunIcon from "@lucide/svelte/icons/sun";
-  import BotIcon from "@lucide/svelte/icons/bot";
-  import ActivityIcon from "@lucide/svelte/icons/activity";
-  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import ImageIcon from "@lucide/svelte/icons/image";
-  import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-  import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import PinIcon from "@lucide/svelte/icons/pin";
-  import PinOffIcon from "@lucide/svelte/icons/pin-off";
+  import { Icon } from "$lib/components/ui/icon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import MoonIcon from "@hugeicons/core-free-icons/MoonIcon";
+  import SunIcon from "@hugeicons/core-free-icons/Sun01Icon";
+  import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+  import ActivityIcon from "@hugeicons/core-free-icons/Activity01Icon";
+  import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import ImageIcon from "@hugeicons/core-free-icons/Image01Icon";
+  import StickyNoteIcon from "@hugeicons/core-free-icons/StickyNote01Icon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
+  import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import PinIcon from "@hugeicons/core-free-icons/PinIcon";
+  import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
 
   let {
     path,
@@ -102,20 +103,20 @@
 <ContextMenu.Content>
   <!-- Terminals -->
   <ContextMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path)}>
-    <TerminalIcon />
+    <Icon icon={TerminalIcon} />
     {i18n.t("terminal.newDefault")}
     <KeyChord chord={resolveBinding("newTerminal")} class="ml-auto pl-2" />
   </ContextMenu.Item>
   {#if profiles.length}
     <ContextMenu.Sub>
       <ContextMenu.SubTrigger class={text.menu}>
-        <TerminalIcon />
+        <Icon icon={TerminalIcon} />
         {i18n.t("ctx.terminalProfiles")}
       </ContextMenu.SubTrigger>
       <ContextMenu.SubContent>
         {#each profiles as p (p.id)}
           <ContextMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path, p.id)}>
-            <TerminalIcon />
+            <Icon icon={TerminalIcon} />
             {profileLabel(p.name)}
           </ContextMenu.Item>
         {/each}
@@ -128,7 +129,7 @@
   <!-- Agents (both submenus scroll when long) -->
   <ContextMenu.Sub>
     <ContextMenu.SubTrigger class={text.menu}>
-      <BotIcon />
+      <Icon icon={BotIcon} />
       {i18n.t("ctx.launchAgent")}
     </ContextMenu.SubTrigger>
     <ContextMenu.SubContent>
@@ -147,7 +148,7 @@
   {#if activeAgents.length}
     <ContextMenu.Sub>
       <ContextMenu.SubTrigger class={text.menu}>
-        <ActivityIcon />
+        <Icon icon={ActivityIcon} />
         {i18n.t("ctx.activeAgents")}
       </ContextMenu.SubTrigger>
       <ContextMenu.SubContent>
@@ -174,13 +175,13 @@
 
   {#if asleep}
     <ContextMenu.Item class={text.menu} onclick={() => terminals.wakeWorkspace(path)}>
-      <SunIcon />
+      <Icon icon={SunIcon} />
       {i18n.t("workspace.wake")}
     </ContextMenu.Item>
     <ContextMenu.Separator />
   {:else if onSleep && termCount > 0}
     <ContextMenu.Item class={text.menu} onclick={onSleep}>
-      <MoonIcon />
+      <Icon icon={MoonIcon} />
       {i18n.t("workspace.sleep")}
       <KeyChord chord={resolveBinding("sleepWorkspace")} class="ml-auto pl-2" />
     </ContextMenu.Item>
@@ -190,10 +191,10 @@
   {#if onTogglePin}
     <ContextMenu.Item class={text.menu} onclick={onTogglePin}>
       {#if pinned}
-        <PinOffIcon />
+        <Icon icon={PinOffIcon} />
         {i18n.t("common.unpin")}
       {:else}
-        <PinIcon />
+        <Icon icon={PinIcon} />
         {i18n.t("common.pin")}
       {/if}
     </ContextMenu.Item>
@@ -202,40 +203,40 @@
 
   <OpenWith menu={ContextMenu} {path} />
   <ContextMenu.Item class={text.menu} onclick={() => void revealPath(path)}>
-    <FolderOpenIcon />
+    <Icon icon={FolderOpenIcon} />
     {i18n.t("ctx.reveal")}
   </ContextMenu.Item>
   <ContextMenu.Item class={text.menu} onclick={() => clipboardWrite(path)}>
-    <CopyIcon />
+    <Icon icon={CopyIcon} />
     {i18n.t("common.copyPath")}
   </ContextMenu.Item>
   {#if onChangeIcon}
     <!-- Defer the dialog open until this context menu has fully closed, so its
          teardown releases the body pointer-lock before the dialog captures it. -->
     <ContextMenu.Item class={text.menu} onclick={() => deferModalOpen(onChangeIcon)}>
-      <ImageIcon />
+      <Icon icon={ImageIcon} />
       {i18n.t("worktree.changeIcon")}
     </ContextMenu.Item>
   {/if}
   {#if onEditNote}
     <ContextMenu.Item class={text.menu} onclick={() => deferModalOpen(onEditNote)}>
-      <StickyNoteIcon />
+      <Icon icon={StickyNoteIcon} />
       {i18n.t("worktree.editNote")}
     </ContextMenu.Item>
   {/if}
 
   <ContextMenu.Sub>
     <ContextMenu.SubTrigger class={text.menu}>
-      <SettingsIcon />
+      <Icon icon={SettingsIcon} />
       {i18n.t("ctx.configure")}
     </ContextMenu.SubTrigger>
     <ContextMenu.SubContent>
       <ContextMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
-        <BotIcon />
+        <Icon icon={BotIcon} />
         {i18n.t("agent.configure")}
       </ContextMenu.Item>
       <ContextMenu.Item class={text.menu} onclick={() => app.openSettings("terminal")}>
-        <TerminalIcon />
+        <Icon icon={TerminalIcon} />
         {i18n.t("ctx.configureTerminals")}
       </ContextMenu.Item>
     </ContextMenu.SubContent>
@@ -248,7 +249,7 @@
          project so it's clear what the panes will be scoped to. -->
     <ContextMenu.Sub>
       <ContextMenu.SubTrigger class={text.menu}>
-        <GitPullRequestIcon />
+        <Icon icon={GitPullRequestIcon} />
         {i18n.t("github.title")}
       </ContextMenu.SubTrigger>
       <ContextMenu.SubContent>
@@ -260,15 +261,15 @@
             {repo?.name ?? i18n.t("github.title")}
           </ContextMenu.GroupHeading>
           <ContextMenu.Item class={text.menu} onclick={() => github.openSection(githubPath, "pulls")}>
-            <GitPullRequestIcon />
+            <Icon icon={GitPullRequestIcon} />
             {i18n.t("github.nav.pulls")}
           </ContextMenu.Item>
           <ContextMenu.Item class={text.menu} onclick={() => github.openSection(githubPath, "issues")}>
-            <CircleDotIcon />
+            <Icon icon={CircleDotIcon} />
             {i18n.t("github.nav.issues")}
           </ContextMenu.Item>
           <ContextMenu.Item class={text.menu} onclick={() => github.openSection(githubPath, "actions")}>
-            <PlayIcon />
+            <Icon icon={PlayIcon} />
             {i18n.t("github.nav.actions")}
           </ContextMenu.Item>
         </ContextMenu.Group>
@@ -280,7 +281,7 @@
     <ContextMenu.Separator />
 
     <ContextMenu.Item variant="destructive" class={text.menu} onclick={() => deferModalOpen(onRemove)}>
-      <Trash2Icon />
+      <Icon icon={Trash2Icon} />
       {removeLabel}
     </ContextMenu.Item>
   {/if}

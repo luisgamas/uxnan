@@ -20,10 +20,11 @@
   import { i18n } from "$lib/i18n";
   import type { BrowseChangedEvent, DirEntry, DirListing } from "$lib/types";
   import type { Snippet } from "svelte";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
-  import CornerLeftUpIcon from "@lucide/svelte/icons/corner-left-up";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
+  import CornerLeftUpIcon from "@hugeicons/core-free-icons/CornerLeftUpIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
 
   let {
     /** Whether the containing dialog is open — drives the initial load and the
@@ -216,12 +217,12 @@
         disabled={!listing?.parent || loading}
         onclick={() => listing?.parent && go(listing.parent)}
       >
-        <CornerLeftUpIcon class={icon.button} />
+        <Icon icon={CornerLeftUpIcon} class={icon.button} />
       </Button>
     {/snippet}
   </TooltipSimple>
   <div class="relative min-w-0 flex-1">
-    <FolderIcon
+    <Icon icon={FolderIcon}
       class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
     />
     <Input
@@ -242,7 +243,7 @@
         disabled={!listing || loading}
         onclick={refresh}
       >
-        <RefreshCwIcon class={cn(icon.button, loading && "animate-spin")} />
+        <Icon icon={RefreshCwIcon} class={cn(icon.button, loading && "animate-spin")} />
       </Button>
     {/snippet}
   </TooltipSimple>
@@ -261,7 +262,7 @@
     </div>
   {:else if listing && listing.entries.length === 0}
     <div class="flex flex-col items-center gap-2.5 py-10 text-center">
-      <FolderIcon class="size-6 text-muted-foreground/40" />
+      <Icon icon={FolderIcon} class="size-6 text-muted-foreground/40" />
       <p class={text.meta}>{i18n.t("picker.empty")}</p>
     </div>
   {:else if listing}
@@ -283,9 +284,9 @@
               onclick={() => go(entry.path)}
             >
               {#if entry.isRepo}
-                <FolderGitIcon class={cn(icon.button, "shrink-0 text-primary")} />
+                <Icon icon={FolderGitIcon} class={cn(icon.button, "shrink-0 text-primary")} />
               {:else}
-                <FolderIcon class={cn(icon.button, "shrink-0 text-muted-foreground/80")} />
+                <Icon icon={FolderIcon} class={cn(icon.button, "shrink-0 text-muted-foreground/80")} />
               {/if}
               <span class="truncate">{entry.name}</span>
               {#if entry.isRepo}

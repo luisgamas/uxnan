@@ -13,13 +13,14 @@
   import EntityIcon from "./EntityIcon.svelte";
   import SidebarProfileDialog from "./SidebarProfileDialog.svelte";
   import { pets } from "$lib/state/pets.svelte";
-  import UserRoundIcon from "@lucide/svelte/icons/user-round";
-  import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
-  import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import PawPrintIcon from "@lucide/svelte/icons/paw-print";
-  import CheckIcon from "@lucide/svelte/icons/check";
+  import { Icon } from "$lib/components/ui/icon";
+  import UserRoundIcon from "@hugeicons/core-free-icons/UserIcon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import CalendarClockIcon from "@hugeicons/core-free-icons/CalendarClockIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 
   let editOpen = $state(false);
 
@@ -56,7 +57,7 @@
 </script>
 
 {#snippet avatarGlyph()}
-  <UserRoundIcon class="size-5 text-muted-foreground" />
+  <Icon icon={UserRoundIcon} class="size-5 text-muted-foreground" />
 {/snippet}
 
 <div class={cn("shrink-0 p-2", divider.top)}>
@@ -87,7 +88,7 @@
               </span>
             {/if}
           </span>
-          <ChevronsUpDownIcon class={cn(icon.action, "shrink-0 text-muted-foreground/70")} />
+          <Icon icon={ChevronsUpDownIcon} class={cn(icon.action, "shrink-0 text-muted-foreground/70")} />
         </button>
       {/snippet}
     </DropdownMenu.Trigger>
@@ -112,14 +113,14 @@
       </div>
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => app.openAutomations()}>
-        <CalendarClockIcon class={icon.button} />
+        <Icon icon={CalendarClockIcon} class={icon.button} />
         <span class="flex-1">{i18n.t("automations.title")}</span>
         {#if automationsBinding}
           <KeyChord chord={automationsBinding} />
         {/if}
       </DropdownMenu.Item>
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => app.openSettings()}>
-        <SettingsIcon class={icon.button} />
+        <Icon icon={SettingsIcon} class={icon.button} />
         <span class="flex-1">{i18n.t("settings.title")}</span>
         {#if settingsBinding}
           <KeyChord chord={settingsBinding} />
@@ -129,13 +130,13 @@
       <!-- Pet companion: a quick on/off, plus a picker once more than one pet is
            installed. Everything else lives in Settings → Pets. -->
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={togglePets}>
-        <PawPrintIcon class={icon.button} />
+        <Icon icon={PawPrintIcon} class={icon.button} />
         <span class="flex-1">{i18n.t(petsOn ? "pets.hide" : "pets.show")}</span>
       </DropdownMenu.Item>
       {#if petsOn && pets.library.length > 1}
         <DropdownMenu.Sub>
           <DropdownMenu.SubTrigger class={cn(text.menu, "gap-2")}>
-            <PawPrintIcon class={cn(icon.button, "opacity-0")} />
+            <Icon icon={PawPrintIcon} class={cn(icon.button, "opacity-0")} />
             <span class="flex-1">{i18n.t("pets.choose")}</span>
           </DropdownMenu.SubTrigger>
           <DropdownMenu.SubContent class="max-h-72 min-w-48 overflow-y-auto">
@@ -144,7 +145,7 @@
                 class={cn(text.menu, "gap-2")}
                 onclick={() => choosePet(p.id)}
               >
-                <CheckIcon
+                <Icon icon={CheckIcon}
                   class={cn(icon.button, pets.active?.id === p.id ? "" : "opacity-0")}
                 />
                 <span class="flex-1 truncate">{p.displayName}</span>
@@ -155,7 +156,7 @@
       {/if}
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={cn(text.menu, "gap-2")} onclick={() => (editOpen = true)}>
-        <PencilIcon class={icon.button} />
+        <Icon icon={PencilIcon} class={icon.button} />
         <span class="flex-1">{i18n.t("sidebarProfile.edit")}</span>
       </DropdownMenu.Item>
     </DropdownMenu.Content>

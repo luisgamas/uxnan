@@ -9,8 +9,9 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import DiffView from "./DiffView.svelte";
-  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
+  import { Icon } from "$lib/components/ui/icon";
+  import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
+  import FileDiffIcon from "@hugeicons/core-free-icons/FileDiffIcon";
 
   let { state }: { state: CommitViewerState } = $props();
 
@@ -20,7 +21,7 @@
 <div class="flex h-full min-h-0 flex-col bg-background">
   <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
     {#if fileName}
-      <FileDiffIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      <Icon icon={FileDiffIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       <TooltipSimple title={state.file ?? ""}>
         {#snippet children(tp)}
           <span {...tp} class={cn("min-w-0 flex-1 truncate", text.body)}>
@@ -36,7 +37,7 @@
         {/snippet}
       </TooltipSimple>
     {:else}
-      <GitCommitIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      <Icon icon={GitCommitIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       <TooltipSimple title={state.subject}>
         {#snippet children(tp)}
           <span {...tp} class={cn("min-w-0 flex-1 truncate", text.body)}>

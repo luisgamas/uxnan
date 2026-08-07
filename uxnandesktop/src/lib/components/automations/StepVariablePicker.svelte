@@ -17,8 +17,9 @@
   import type { Step } from "$lib/automations/types";
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import CornerDownLeftIcon from "@lucide/svelte/icons/corner-down-left";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import CornerDownLeftIcon from "@hugeicons/core-free-icons/CornerDownLeftIcon";
 
   let {
     step,
@@ -69,7 +70,7 @@
           class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
           onclick={() => toggle("steps")}
         >
-          <ChevronRightIcon
+          <Icon icon={ChevronRightIcon}
             class={cn(
               "size-3 shrink-0 text-muted-foreground transition-transform",
               isOpen && "rotate-90",
@@ -109,7 +110,7 @@
                         class="h-6 px-2 text-[11px]"
                         onclick={() => oninsert(`{{steps.${s.id}.output}}`, s.id)}
                       >
-                        <CornerDownLeftIcon class="mr-1 size-3" />
+                        <Icon icon={CornerDownLeftIcon} class="mr-1 size-3" />
                         {i18n.t("automations.varItsAnswer")}
                       </Button>
                     {/snippet}
@@ -146,7 +147,7 @@
           class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
           onclick={() => toggle("prev")}
         >
-          <ChevronRightIcon
+          <Icon icon={ChevronRightIcon}
             class={cn(
               "size-3 shrink-0 text-muted-foreground transition-transform",
               isOpen && "rotate-90",
@@ -179,7 +180,7 @@
                       class="h-6 shrink-0 px-2 text-[11px]"
                       onclick={() => oninsert(`{{prev.${s.id}.output}}`)}
                     >
-                      <CornerDownLeftIcon class="mr-1 size-3" />
+                      <Icon icon={CornerDownLeftIcon} class="mr-1 size-3" />
                       {i18n.t("automations.varInsert")}
                     </Button>
                   {/snippet}
@@ -198,7 +199,7 @@
         class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
         onclick={() => toggle("run")}
       >
-        <ChevronRightIcon
+        <Icon icon={ChevronRightIcon}
           class={cn(
             "size-3 shrink-0 text-muted-foreground transition-transform",
             runOpen && "rotate-90",
@@ -225,7 +226,7 @@
                 class="h-6 shrink-0 px-2 text-[11px]"
                 onclick={() => oninsert("{{workingDir}}")}
               >
-                <CornerDownLeftIcon class="mr-1 size-3" />
+                <Icon icon={CornerDownLeftIcon} class="mr-1 size-3" />
                 {i18n.t("automations.varInsert")}
               </Button>
             {/snippet}

@@ -31,10 +31,11 @@
   import Combobox from "../Combobox.svelte";
   import AiModelPicker from "../AiModelPicker.svelte";
   import StepContextPicker from "./StepContextPicker.svelte";
-  import TerminalIcon from "@lucide/svelte/icons/square-terminal";
-  import MessageIcon from "@lucide/svelte/icons/message-square";
-  import HandIcon from "@lucide/svelte/icons/hand";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import { Icon } from "$lib/components/ui/icon";
+  import TerminalIcon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+  import MessageIcon from "@hugeicons/core-free-icons/Message01Icon";
+  import HandIcon from "@hugeicons/core-free-icons/HandIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 
   let {
     run,
@@ -216,7 +217,7 @@
     <span class={text.section}>{i18n.t("orchestration.stepKind")}</span>
     <div class="grid grid-cols-3 gap-1.5">
       {#each KINDS as k (k.value)}
-        {@const Icon = k.icon}
+        {@const glyph = k.icon}
         {@const on = kind === k.value}
         <TooltipSimple title={i18n.t(k.hint)}>
           {#snippet children(tp)}
@@ -232,7 +233,7 @@
               )}
               onclick={() => (kind = k.value)}
             >
-              <Icon class={cn("size-3.5 shrink-0", on ? "text-primary" : "text-muted-foreground")} />
+              <Icon icon={glyph} class={cn("size-3.5 shrink-0", on ? "text-primary" : "text-muted-foreground")} />
               <span class={cn("truncate", text.body, on && "font-medium")}>{i18n.t(k.label)}</span>
             </button>
           {/snippet}
@@ -383,7 +384,7 @@
       <Collapsible.Trigger
         class={cn("flex items-center gap-1 text-left", text.meta, "hover:text-foreground")}
       >
-        <ChevronDownIcon class={cn("size-3 transition-transform", !advancedOpen && "-rotate-90")} />
+        <Icon icon={ChevronDownIcon} class={cn("size-3 transition-transform", !advancedOpen && "-rotate-90")} />
         {i18n.t("orchestration.advancedOptions")}
       </Collapsible.Trigger>
       <Collapsible.Content>

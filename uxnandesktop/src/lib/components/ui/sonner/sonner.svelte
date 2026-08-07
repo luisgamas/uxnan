@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { Toaster as Sonner, type ToasterProps as SonnerProps } from "svelte-sonner";
 	import { app } from "$lib/state/app.svelte";
-	import Loader2Icon from '@lucide/svelte/icons/loader-2';
-	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
-	import OctagonXIcon from '@lucide/svelte/icons/octagon-x';
-	import InfoIcon from '@lucide/svelte/icons/info';
-	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+	import { Icon } from "$lib/components/ui/icon";
+	import Loader2Icon from "@hugeicons/core-free-icons/Loading03Icon";
+	import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+	import OctagonXIcon from "@hugeicons/core-free-icons/OctagonXIcon";
+	import InfoIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+	import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
 	let { ...restProps }: SonnerProps = $props();
 </script>
@@ -18,18 +19,18 @@
 	{...restProps}
 >
 	{#snippet loadingIcon()}
-		<Loader2Icon class="size-4 animate-spin" />
+		<Icon icon={Loader2Icon} class="size-4 animate-spin" />
 	{/snippet}
 	{#snippet successIcon()}
-		<CircleCheckIcon class="size-4" />
+		<Icon icon={CircleCheckIcon} class="size-4" />
 	{/snippet}
 	{#snippet errorIcon()}
-		<OctagonXIcon class="size-4" />
+		<Icon icon={OctagonXIcon} class="size-4" />
 	{/snippet}
 	{#snippet infoIcon()}
-		<InfoIcon class="size-4" />
+		<Icon icon={InfoIcon} class="size-4" />
 	{/snippet}
 	{#snippet warningIcon()}
-		<TriangleAlertIcon class="size-4" />
+		<Icon icon={TriangleAlertIcon} class="size-4" />
 	{/snippet}
 </Sonner>

@@ -12,8 +12,9 @@
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { RunStep } from "$lib/orchestration/run";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import CircleCheckIcon from "@lucide/svelte/icons/circle-check-big";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckBigIcon";
 
   type Field = "output" | "summary" | "title";
 
@@ -86,13 +87,13 @@
           class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
           onclick={() => toggle(c.id)}
         >
-          <ChevronRightIcon
+          <Icon icon={ChevronRightIcon}
             class={cn("size-3 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-90")}
           />
           <span class="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{i + 1}</span>
           <span class={cn("min-w-0 flex-1 truncate", text.body)}>{c.title || c.id}</span>
           {#if ran}
-            <CircleCheckIcon class="size-3 shrink-0 text-emerald-500" />
+            <Icon icon={CircleCheckIcon} class="size-3 shrink-0 text-emerald-500" />
           {/if}
           <span class={cn("shrink-0", text.meta)}>{kindLabel(c)}</span>
         </button>

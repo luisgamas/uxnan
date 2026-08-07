@@ -12,10 +12,11 @@
   import { i18n } from "$lib/i18n";
   import { divider, icon, tab as tabStyle } from "$lib/design";
   import { cn } from "$lib/utils";
-  import FolderTreeIcon from "@lucide/svelte/icons/folder-tree";
-  import GitCompareIcon from "@lucide/svelte/icons/git-compare-arrows";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderTreeIcon from "@hugeicons/core-free-icons/FolderTreeIcon";
+  import GitCompareIcon from "@hugeicons/core-free-icons/GitCompareArrowsIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 
   let tab = $state<"files" | "changes" | "history" | "github">("files");
 
@@ -85,21 +86,21 @@
       value="files"
       class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
-      <FolderTreeIcon data-icon="inline-start" class={cn(icon.decorative)} />
+      <Icon icon={FolderTreeIcon} data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("fileTree.tab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="changes"
       class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
-      <GitCompareIcon data-icon="inline-start" class={cn(icon.decorative)} />
+      <Icon icon={GitCompareIcon} data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("rightPanel.changesTab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="history"
       class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
-      <GitBranchIcon data-icon="inline-start" class={cn(icon.decorative)} />
+      <Icon icon={GitBranchIcon} data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("history.tab")}
     </Tabs.Trigger>
     {#if showGithub}
@@ -107,7 +108,7 @@
         value="github"
         class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "github" ? tabStyle.activeLine : tabStyle.inactiveLine)}
       >
-        <GitPullRequestIcon data-icon="inline-start" class={cn(icon.decorative)} />
+        <Icon icon={GithubIcon} data-icon="inline-start" class={cn(icon.decorative)} />
         {i18n.t("github.panel.tab")}
       </Tabs.Trigger>
     {/if}

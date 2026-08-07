@@ -1,6 +1,6 @@
 <script lang="ts">
   // Renders a project's or branch's icon value through one resolution chain:
-  //   1. a `builtin:<name>[~<color>]` key → the curated lucide glyph (tinted);
+  //   1. a `builtin:<name>[~<color>]` key → the curated Hugeicons glyph (tinted);
   //   2. a custom image (`data:` / `http(s):` URL) → an <img> that falls back to
   //      the default glyph if it fails to load (so a broken image never shows);
   //   3. otherwise → the caller's `fallback` snippet (its default folder/branch
@@ -11,6 +11,7 @@
   import { cn } from "$lib/utils";
   import { isCustomLogo } from "$lib/logo";
   import { resolveBuiltinIcon } from "$lib/iconRegistry";
+  import { Icon } from "$lib/components/ui/icon";
 
   let {
     value,
@@ -36,8 +37,8 @@
 </script>
 
 {#if builtin}
-  {@const Icon = builtin.Icon}
-  <Icon class={cn("shrink-0", className)} style={builtin.color ? `color:${builtin.color}` : undefined} />
+  {@const glyph = builtin.icon}
+  <Icon icon={glyph} class={cn("shrink-0", className)} style={builtin.color ? `color:${builtin.color}` : undefined} />
 {:else if isImage && !failed}
   <img
     src={value}

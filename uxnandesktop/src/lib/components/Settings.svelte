@@ -75,33 +75,35 @@
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
   import { divider, icon, iconButton, panel, tab, text } from "$lib/design";
-  import PaletteIcon from "@lucide/svelte/icons/palette";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import BotIcon from "@lucide/svelte/icons/bot";
-  import GaugeIcon from "@lucide/svelte/icons/gauge";
-  import LanguagesIcon from "@lucide/svelte/icons/languages";
-  import ActivityIcon from "@lucide/svelte/icons/activity";
-  import KeyboardIcon from "@lucide/svelte/icons/keyboard";
-  import WebhookIcon from "@lucide/svelte/icons/webhook";
-  import DownloadIcon from "@lucide/svelte/icons/download";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
-  import LoaderIcon from "@lucide/svelte/icons/loader-circle";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import XIcon from "@lucide/svelte/icons/x";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import GlobeIcon from "@lucide/svelte/icons/globe";
-  import AppWindowIcon from "@lucide/svelte/icons/app-window";
-  import GithubIcon from "@lucide/svelte/icons/git-pull-request";
-  import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import CheckIcon from "@lucide/svelte/icons/check";
-  import FileTextIcon from "@lucide/svelte/icons/file-text";
-  import ZapIcon from "@lucide/svelte/icons/zap";
-  import PawPrintIcon from "@lucide/svelte/icons/paw-print";
+  import { Icon } from "$lib/components/ui/icon";
+  import PaletteIcon from "@hugeicons/core-free-icons/PaintBoardIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+  import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
+  import LanguagesIcon from "@hugeicons/core-free-icons/LanguageSkillIcon";
+  import ComputerActivityIcon from "@hugeicons/core-free-icons/ComputerActivityIcon";
+  import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
+  import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
+  import LoaderIcon from "@hugeicons/core-free-icons/Loading01Icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
+  import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
+  import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
+  import CircleHelpIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import StethoscopeIcon from "@hugeicons/core-free-icons/Stethoscope02Icon";
+  import FileTextIcon from "@hugeicons/core-free-icons/Doc01Icon";
+  import ZapIcon from "@hugeicons/core-free-icons/ZapIcon";
+  import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -791,8 +793,8 @@
     {
       titleKey: "settings.groupApp",
       items: [
-        { id: "resources", key: "settings.resources", icon: ActivityIcon },
-        { id: "diagnostics", key: "settings.diagnostics", icon: FileTextIcon },
+        { id: "resources", key: "settings.resources", icon: ComputerActivityIcon },
+        { id: "diagnostics", key: "settings.diagnostics", icon: StethoscopeIcon },
         { id: "updates", key: "settings.updates", icon: DownloadIcon },
       ],
     },
@@ -819,7 +821,7 @@
             aria-label={i18n.t("common.close")}
             onclick={close}
           >
-            <ArrowLeftIcon class={icon.button} />
+            <Icon icon={ArrowLeftIcon} class={icon.button} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -838,7 +840,7 @@
           <div class="flex flex-col gap-0.5">
             <span class={cn("px-2 pb-0.5", text.section)}>{i18n.t(group.titleKey)}</span>
             {#each group.items as item (item.id)}
-              {@const Icon = item.icon}
+              {@const glyph = item.icon}
               <button
                 class={cn(
                   "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
@@ -848,7 +850,7 @@
                 )}
                 onclick={() => (app.settingsSection = item.id)}
               >
-                <Icon class={icon.button} />
+                <Icon icon={glyph} class={icon.button} />
                 {i18n.t(item.key)}
               </button>
             {/each}
@@ -932,7 +934,7 @@
                           disabled={resolveLeaderChord() === ""}
                           onclick={() => setLeaderKey("")}
                         >
-                          <XIcon class={icon.button} />
+                          <Icon icon={XIcon} class={icon.button} />
                         </Button>
                       {/snippet}
                     </TooltipSimple>
@@ -1011,7 +1013,7 @@
                             disabled={chord === ""}
                             onclick={() => setBinding(action.id, "")}
                           >
-                            <XIcon class={icon.button} />
+                            <Icon icon={XIcon} class={icon.button} />
                           </Button>
                         {/snippet}
                       </TooltipSimple>
@@ -1025,7 +1027,7 @@
                             disabled={chord === action.default}
                             onclick={() => resetBinding(action.id)}
                           >
-                            <RotateCcwIcon class={icon.button} />
+                            <Icon icon={RotateCcwIcon} class={icon.button} />
                           </Button>
                         {/snippet}
                       </TooltipSimple>
@@ -1127,18 +1129,18 @@
                         aria-label={i18n.t("settings.refreshAgents")}
                         onclick={refreshAgents}
                       >
-                        <RefreshCwIcon class={cn(icon.button, detectingAgents && "animate-spin")} />
+                        <Icon icon={RefreshCwIcon} class={cn(icon.button, detectingAgents && "animate-spin")} />
                       </Button>
                     {/snippet}
                   </TooltipSimple>
                   {#if addableCount > 0}
                     <Button variant="outline" size="sm" onclick={addAllInstalled}>
-                      <PlusIcon data-icon="inline-start" />
+                      <Icon icon={PlusIcon} data-icon="inline-start" />
                       {i18n.t("settings.addAllInstalled")}
                     </Button>
                   {/if}
                   <Button variant="outline" size="sm" onclick={addCustomAgent}>
-                    <PlusIcon data-icon="inline-start" />
+                    <Icon icon={PlusIcon} data-icon="inline-start" />
                     {i18n.t("settings.addCustomAgent")}
                   </Button>
                 </div>
@@ -1167,7 +1169,7 @@
                       </div>
                       {#if inst}
                         <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
-                          <PlusIcon class={icon.button} />
+                          <Icon icon={PlusIcon} class={icon.button} />
                           {i18n.t("common.add")}
                         </Button>
                       {:else}
@@ -1401,7 +1403,7 @@
                   <!-- Amber note: installing restarts the app and stops the running agent. -->
                   {#if updater.status === "downloaded" && updater.agentsBusy}
                     <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                      <TriangleAlertIcon class={icon.decorative} />
+                      <Icon icon={TriangleAlertIcon} class={icon.decorative} />
                       <span class={text.indicator}>{i18n.t("updates.agentsBusyWarning")}</span>
                     </span>
                   {/if}
@@ -1413,12 +1415,12 @@
                 <div class="flex shrink-0 items-center gap-1.5">
                   {#if updater.status === "available"}
                     <Button size="sm" onclick={() => void updater.download()}>
-                      <DownloadIcon data-icon="inline-start" />
+                      <Icon icon={DownloadIcon} data-icon="inline-start" />
                       {i18n.t("updates.download")}
                     </Button>
                   {:else if updater.status === "downloading"}
                     <Button size="sm" disabled>
-                      <LoaderIcon data-icon="inline-start" class="animate-spin" />
+                      <Icon icon={LoaderIcon} data-icon="inline-start" class="animate-spin" />
                       {updatePct !== null
                         ? i18n.t("updates.bannerDownloadingPct", {
                             version: updater.update?.version ?? "",
@@ -1441,7 +1443,7 @@
                     {/if}
                   {:else if updater.status === "installing"}
                     <Button size="sm" disabled>
-                      <LoaderIcon data-icon="inline-start" class="animate-spin" />
+                      <Icon icon={LoaderIcon} data-icon="inline-start" class="animate-spin" />
                       {i18n.t("updates.bannerInstalling")}
                     </Button>
                   {:else}
@@ -1451,7 +1453,7 @@
                       disabled={updater.status === "checking"}
                       onclick={() => void updater.checkNow()}
                     >
-                      <RotateCcwIcon data-icon="inline-start" />
+                      <Icon icon={RotateCcwIcon} data-icon="inline-start" />
                       {i18n.t("updates.checkNow")}
                     </Button>
                   {/if}
@@ -1503,7 +1505,7 @@
                           class="inline-flex text-muted-foreground/70 transition-colors hover:text-foreground"
                           aria-label={i18n.t("updates.installPolicyHelpTitle")}
                         >
-                          <CircleHelpIcon class="size-3.5" />
+                          <Icon icon={CircleHelpIcon} class="size-3.5" />
                         </button>
                       {/snippet}
                     </HoverCard.Trigger>
@@ -1665,9 +1667,9 @@
                             onclick={copyMcpSnippet}
                           >
                             {#if mcpCopied}
-                              <CheckIcon class="size-3" />{i18n.t("browser.mcpCopied")}
+                              <Icon icon={CheckIcon} class="size-3" />{i18n.t("browser.mcpCopied")}
                             {:else}
-                              <CopyIcon class="size-3" />{i18n.t("browser.mcpCopy")}
+                              <Icon icon={CopyIcon} class="size-3" />{i18n.t("browser.mcpCopy")}
                             {/if}
                           </Button>
                           <pre class="scrollbar-sleek overflow-x-auto rounded-lg border border-border/50 bg-muted/40 p-3 pr-16 font-mono text-[11px] leading-relaxed text-foreground/80">{mcpSnippet}</pre>
@@ -1715,10 +1717,10 @@
                       )}
                     >
                       {#if diagnostics.previousSessionUnclean}
-                        <TriangleAlertIcon class={icon.decorative} />
+                        <Icon icon={TriangleAlertIcon} class={icon.decorative} />
                         {i18n.t("diagnostics.statusUnclean")}
                       {:else}
-                        <CheckIcon class={icon.decorative} />
+                        <Icon icon={CheckIcon} class={icon.decorative} />
                         {i18n.t("diagnostics.statusClean")}
                       {/if}
                     </span>
@@ -1738,7 +1740,7 @@
                         if (path) void revealPath(path).catch(() => {});
                       }}
                     >
-                      <FileTextIcon data-icon="inline-start" />
+                      <Icon icon={FileTextIcon} data-icon="inline-start" />
                       {i18n.t("diagnostics.revealLog")}
                     </Button>
                   {/snippet}
@@ -1781,7 +1783,7 @@
               <div class="flex items-center gap-1.5">
                 {#if addableShellCount > 0}
                   <Button variant="outline" size="sm" onclick={addDetectedShells}>
-                    <PlusIcon data-icon="inline-start" />
+                    <Icon icon={PlusIcon} data-icon="inline-start" />
                     {i18n.t("settings.addDetectedShells")}
                   </Button>
                 {/if}
@@ -1789,9 +1791,9 @@
                   <DropdownMenu.Trigger>
                     {#snippet child({ props })}
                       <Button variant="outline" size="sm" {...props}>
-                        <PlusIcon data-icon="inline-start" />
+                        <Icon icon={PlusIcon} data-icon="inline-start" />
                         {i18n.t("settings.addProfile")}
-                        <ChevronDownIcon data-icon="inline-end" />
+                        <Icon icon={ChevronDownIcon} data-icon="inline-end" />
                       </Button>
                     {/snippet}
                   </DropdownMenu.Trigger>
@@ -1808,7 +1810,7 @@
                             disabled={notFound}
                             onclick={() => addFromTemplate(t)}
                           >
-                            <TerminalIcon class={icon.button} />
+                            <Icon icon={TerminalIcon} class={icon.button} />
                             {t.name}
                             {#if notFound}
                               <span class={cn("ml-auto", text.meta)}>{i18n.t("settings.agentNotFound")}</span>
@@ -1819,7 +1821,7 @@
                     {/each}
                     <DropdownMenu.Separator />
                     <DropdownMenu.Item class={text.menu} onclick={addBlankProfile}>
-                      <PlusIcon class={icon.button} />
+                      <Icon icon={PlusIcon} class={icon.button} />
                       {i18n.t("settings.blankProfile")}
                     </DropdownMenu.Item>
                   </DropdownMenu.Content>

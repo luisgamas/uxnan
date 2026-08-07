@@ -25,11 +25,12 @@
   import { toast, toastError } from "$lib/toast";
   import UsageMeter from "./UsageMeter.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import InfoIcon from "@lucide/svelte/icons/info";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import EyeIcon from "@lucide/svelte/icons/eye";
-  import EyeOffIcon from "@lucide/svelte/icons/eye-off";
+  import { Icon } from "$lib/components/ui/icon";
+  import InfoIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import EyeIcon from "@hugeicons/core-free-icons/EyeIcon";
+  import EyeOffIcon from "@hugeicons/core-free-icons/EyeOffIcon";
 
   let {
     config,
@@ -207,14 +208,14 @@
           aria-label={i18n.t("providers.refreshNow")}
           onclick={onrefresh}
         >
-          <RefreshCwIcon class={cn(icon.button, loading && "animate-spin")} />
+          <Icon icon={RefreshCwIcon} class={cn(icon.button, loading && "animate-spin")} />
         </Button>
       {/snippet}
     </TooltipSimple>
     <TooltipSimple title={i18n.t("providers.removeProvider")}>
       {#snippet children(tp)}
         <Button {...tp} variant="ghost" size="icon-sm" onclick={onremove}>
-          <Trash2Icon class={icon.button} />
+          <Icon icon={Trash2Icon} class={icon.button} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -224,7 +225,7 @@
        stays readable) but is no longer offered to new setups, so say why once. -->
   {#if meta?.deprecated}
     <div class={cn("flex items-start gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5", text.meta)}>
-      <InfoIcon class={cn(icon.decorative, "mt-0.5 shrink-0")} />
+      <Icon icon={InfoIcon} class={cn(icon.decorative, "mt-0.5 shrink-0")} />
       <span>{i18n.t("providers.deprecatedDesc")}</span>
     </div>
   {/if}
@@ -303,9 +304,9 @@
               onclick={() => (accountRevealed = !accountRevealed)}
             >
               {#if accountRevealed}
-                <EyeIcon class="size-3 shrink-0" />
+                <Icon icon={EyeIcon} class="size-3 shrink-0" />
               {:else}
-                <EyeOffIcon class="size-3 shrink-0" />
+                <Icon icon={EyeOffIcon} class="size-3 shrink-0" />
               {/if}
               <span class={cn("truncate transition-[filter] duration-150", !accountRevealed && "select-none blur-[5px]")}>
                 {snapshot.account.email}

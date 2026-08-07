@@ -7,7 +7,8 @@
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { cn } from "$lib/utils";
-  import LeafIcon from "@lucide/svelte/icons/leaf";
+  import { Icon } from "$lib/components/ui/icon";
+  import LeafIcon from "@hugeicons/core-free-icons/Leaf01Icon";
 
   let {
     label,
@@ -32,7 +33,7 @@
       aria-label={label}
       onclick={onrefresh}
     >
-      <LeafIcon class="size-3.5 text-muted-foreground" />
+      <Icon icon={LeafIcon} class="size-3.5 text-muted-foreground" />
     </Button>
   {/snippet}
 </TooltipSimple>

@@ -32,9 +32,10 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
-  import CheckIcon from "@lucide/svelte/icons/check";
-  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
 
   let {
     value,
@@ -97,7 +98,7 @@
         <span class={cn("truncate", current ? "" : "text-muted-foreground")} style:font-family={current ? `'${current}'` : undefined}>
           {current || placeholder}
         </span>
-        <ChevronsUpDownIcon class="ml-1 shrink-0 opacity-50" />
+        <Icon icon={ChevronsUpDownIcon} class="ml-1 shrink-0 opacity-50" />
       </Button>
     {/snippet}
   </Popover.Trigger>
@@ -109,9 +110,9 @@
 
         <Command.Group>
           <Command.Item value="__default__" keywords={[clearLabel]} onSelect={() => choose(undefined)}>
-            <RotateCcwIcon class="size-3.5 shrink-0 text-muted-foreground" />
+            <Icon icon={RotateCcwIcon} class="size-3.5 shrink-0 text-muted-foreground" />
             <span class={cn("flex-1 truncate", text.body)}>{clearLabel}</span>
-            {#if !current}<CheckIcon class="size-3.5 shrink-0 text-primary" />{/if}
+            {#if !current}<Icon icon={CheckIcon} class="size-3.5 shrink-0 text-primary" />{/if}
           </Command.Item>
         </Command.Group>
 
@@ -130,7 +131,7 @@
             {#each bundled as f (f)}
               <Command.Item value={f} onSelect={() => choose(f)}>
                 <span class={cn("flex-1 truncate", text.body)} style:font-family={`'${f}'`}>{f}</span>
-                {#if current === f}<CheckIcon class="size-3.5 shrink-0 text-primary" />{/if}
+                {#if current === f}<Icon icon={CheckIcon} class="size-3.5 shrink-0 text-primary" />{/if}
               </Command.Item>
             {/each}
           </Command.Group>
@@ -141,7 +142,7 @@
             {#each systemFonts as f (f)}
               <Command.Item value={f} onSelect={() => choose(f)}>
                 <span class={cn("flex-1 truncate", text.body)} style:font-family={`'${f}'`}>{f}</span>
-                {#if current === f}<CheckIcon class="size-3.5 shrink-0 text-primary" />{/if}
+                {#if current === f}<Icon icon={CheckIcon} class="size-3.5 shrink-0 text-primary" />{/if}
               </Command.Item>
             {/each}
           </Command.Group>

@@ -21,11 +21,12 @@
   import FileEditor from "./FileEditor.svelte";
   import FilePreview from "./FilePreview.svelte";
   import DiffPane from "./DiffPane.svelte";
-  import FileIcon from "@lucide/svelte/icons/file";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import EyeIcon from "@lucide/svelte/icons/eye";
-  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
-  import SaveIcon from "@lucide/svelte/icons/save";
+  import { Icon } from "$lib/components/ui/icon";
+  import FileIcon from "@hugeicons/core-free-icons/File01Icon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import EyeIcon from "@hugeicons/core-free-icons/EyeIcon";
+  import FileDiffIcon from "@hugeicons/core-free-icons/FileDiffIcon";
+  import SaveIcon from "@hugeicons/core-free-icons/SaveIcon";
 
   let {
     tab,
@@ -93,7 +94,7 @@
 
 <div class="flex h-full min-h-0 flex-col bg-background">
   <header class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-2">
-    <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+    <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
     <TooltipSimple title={tab.path}>
       {#snippet children(tp)}
         <span {...tp} class={cn("min-w-0 flex-1 truncate font-mono", text.body)}>
@@ -124,7 +125,7 @@
             {#if fileState.saving}
               <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
             {:else}
-              <SaveIcon data-icon="inline-start" />
+              <Icon icon={SaveIcon} data-icon="inline-start" />
             {/if}
             {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
           </Button>
@@ -153,7 +154,7 @@
     {#if views.length > 1}
       <div class="inline-flex shrink-0 overflow-hidden rounded-md border border-border">
         {#each views as v, i (v.view)}
-          {@const Icon = v.icon}
+          {@const glyph = v.icon}
           <TooltipSimple title={v.label}>
             {#snippet children(tp)}
               <button
@@ -167,7 +168,7 @@
                 aria-pressed={shown === v.view}
                 onclick={() => switchView(v.view)}
               >
-                <Icon class="size-3.5" />
+                <Icon icon={glyph} class="size-3.5" />
                 {v.label}
               </button>
             {/snippet}

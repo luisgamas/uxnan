@@ -14,10 +14,11 @@
   import type { AgentProfile, EnvVar } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import XIcon from "@lucide/svelte/icons/x";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import { Icon } from "$lib/components/ui/icon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 
   let {
     agent,
@@ -123,7 +124,7 @@
               aria-label={i18n.t("agentEditor.resetLogo")}
               onclick={resetLogo}
             >
-              <XIcon class="size-2.5" />
+              <Icon icon={XIcon} class="size-2.5" />
             </button>
           {/snippet}
         </TooltipSimple>
@@ -154,7 +155,7 @@
           {...tp}
           class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
-          <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
+          <Icon icon={ChevronDownIcon} class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
         </Collapsible.Trigger>
       {/snippet}
     </TooltipSimple>
@@ -166,7 +167,7 @@
           size="icon-sm"
           onclick={onremove}
         >
-          <Trash2Icon class={icon.button} />
+          <Icon icon={Trash2Icon} class={icon.button} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -228,7 +229,7 @@
             aria-label={i18n.t("agentEditor.addEnvVar")}
             onclick={addEnvVar}
           >
-            <PlusIcon class={icon.button} />
+            <Icon icon={PlusIcon} class={icon.button} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -257,7 +258,7 @@
               aria-label={i18n.t("agentEditor.removeEnvVar")}
               onclick={() => removeEnvVar(i)}
             >
-              <XIcon class={icon.button} />
+              <Icon icon={XIcon} class={icon.button} />
             </Button>
           {/snippet}
         </TooltipSimple>

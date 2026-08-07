@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { Checkbox as CheckboxPrimitive } from "bits-ui";
-	import CheckIcon from "@lucide/svelte/icons/check";
-	import MinusIcon from "@lucide/svelte/icons/minus";
+	import { Icon } from "$lib/components/ui/icon";
+	import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+	import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 
 	let {
@@ -30,9 +31,9 @@
 			class="flex size-full items-center justify-center text-current transition-none"
 		>
 			{#if indeterminate}
-				<MinusIcon class="size-3.5" />
+				<Icon icon={MinusIcon} class="size-3.5" />
 			{:else if checked}
-				<CheckIcon class="size-3.5" />
+				<Icon icon={CheckIcon} class="size-3.5" />
 			{/if}
 		</span>
 	{/snippet}

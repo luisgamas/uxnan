@@ -17,9 +17,10 @@
   import { text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import ServerIcon from "@lucide/svelte/icons/server";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import { Icon } from "$lib/components/ui/icon";
+  import ServerIcon from "@hugeicons/core-free-icons/CloudServerIcon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
   const backend = $derived(
     app.backend === "ready"
@@ -92,7 +93,7 @@
         class="relative flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         aria-label={triggerLabel}
       >
-        <ServerIcon class={cn("size-3.5", backend.icon)} />
+        <Icon icon={ServerIcon} class={cn("size-3.5", backend.icon)} />
         {#if unread > 0}
           <span
             class="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-primary ring-1 ring-background"
@@ -147,7 +148,7 @@
           app.openSettings("resources");
         }}
       >
-        <SettingsIcon class="size-3.5" />
+        <Icon icon={SettingsIcon} class="size-3.5" />
         {i18n.t("resources.settingsLink")}
       </button>
     {/if}
@@ -155,7 +156,7 @@
     {#if showGithub}
       <div class="flex flex-col gap-2 border-t border-border/60 p-3">
         <div class="flex items-center gap-1.5">
-          <GitPullRequestIcon class="size-3.5 text-muted-foreground" />
+          <Icon icon={GitPullRequestIcon} class="size-3.5 text-muted-foreground" />
           <span class="text-sm font-medium text-foreground">{i18n.t("github.title")}</span>
         </div>
         {#if showUnread}
@@ -192,7 +193,7 @@
           app.openSettings("github");
         }}
       >
-        <SettingsIcon class="size-3.5" />
+        <Icon icon={SettingsIcon} class="size-3.5" />
         {i18n.t("status.githubSettings")}
       </button>
     {/if}

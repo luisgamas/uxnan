@@ -33,7 +33,8 @@
   import { icon, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
   import { i18n } from "$lib/i18n";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import { Icon } from "$lib/components/ui/icon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
 
   let { fileState, active = false }: { fileState: FileEditorState; active?: boolean } =
     $props();
@@ -353,7 +354,7 @@
     <div
       class="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5"
     >
-      <RefreshCwIcon class={cn(icon.decorative, "shrink-0 text-amber-600 dark:text-amber-400")} />
+      <Icon icon={RefreshCwIcon} class={cn(icon.decorative, "shrink-0 text-amber-600 dark:text-amber-400")} />
       <span class={cn("min-w-0 flex-1", text.body)}>{i18n.t("editor.externalChanged")}</span>
       <Button variant="outline" size="sm" class={cn("h-6", text.body)} onclick={() => void fileState.load()}>
         {i18n.t("editor.reload")}

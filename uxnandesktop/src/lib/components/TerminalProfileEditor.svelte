@@ -8,9 +8,10 @@
   import { icon, text } from "$lib/design";
   import type { TerminalProfile } from "$lib/types";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import { Icon } from "$lib/components/ui/icon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
 
   let {
     profile,
@@ -39,7 +40,7 @@
 <Collapsible.Root bind:open={expanded} class="flex flex-col gap-2 py-3">
   <div class="flex items-center gap-2.5">
     <span class="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
-      <TerminalIcon class="size-3.5" />
+      <Icon icon={TerminalIcon} class="size-3.5" />
     </span>
     <button
       type="button"
@@ -59,7 +60,7 @@
           {...tp}
           class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
-          <ChevronDownIcon class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
+          <Icon icon={ChevronDownIcon} class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
         </Collapsible.Trigger>
       {/snippet}
     </TooltipSimple>
@@ -71,7 +72,7 @@
           size="icon-sm"
           onclick={onremove}
         >
-          <Trash2Icon class={icon.button} />
+          <Icon icon={Trash2Icon} class={icon.button} />
         </Button>
       {/snippet}
     </TooltipSimple>

@@ -16,9 +16,10 @@
   import type { ExampleStepSpec } from "$lib/orchestration/examples";
   import type { Run } from "$lib/orchestration/run";
   import RunDetail from "./RunDetail.svelte";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import WorkflowIcon from "@hugeicons/core-free-icons/Flowchart01Icon";
 
   let selectedRunId = $state<string | null>(null);
 
@@ -126,7 +127,7 @@
         <DropdownMenu.Trigger>
           {#snippet child({ props })}
             <Button {...props} variant="outline" size="sm">
-              <SparklesIcon data-icon="inline-start" />
+              <Icon icon={SparklesIcon} data-icon="inline-start" />
               {i18n.t("orchestration.examples")}
             </Button>
           {/snippet}
@@ -144,7 +145,7 @@
         </DropdownMenu.Content>
       </DropdownMenu.Root>
       <Button size="sm" onclick={newRun}>
-        <PlusIcon data-icon="inline-start" />
+        <Icon icon={PlusIcon} data-icon="inline-start" />
         {i18n.t("orchestration.newRun")}
       </Button>
     </div>
@@ -152,7 +153,7 @@
 
   {#if !hasAny}
     <div class="flex flex-col items-center gap-1.5 py-8 text-center">
-      <WorkflowIcon class="size-8 text-muted-foreground/50" />
+      <Icon icon={WorkflowIcon} class="size-8 text-muted-foreground/50" />
       <p class={cn("font-medium", text.body)}>{i18n.t("orchestration.runsEmptyTitle")}</p>
       <p class={cn(text.meta, "max-w-sm")}>{i18n.t("orchestration.runsEmptyDesc")}</p>
     </div>

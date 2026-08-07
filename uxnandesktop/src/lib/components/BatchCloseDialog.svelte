@@ -14,9 +14,10 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { planBatchClose, type SkippedEntry } from "$lib/worktree-batch-close";
-  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
+  import { Icon } from "$lib/components/ui/icon";
+  import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import CircleSlashIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
 
   let {
     open = $bindable(false),
@@ -58,7 +59,7 @@
   <Dialog.Content class="flex min-w-0 flex-col gap-4 sm:max-w-[520px]" showCloseButton={false}>
     <div class="flex min-w-0 gap-3">
       <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10">
-        <CircleCheckIcon class={cn(icon.button, "text-sky-500")} />
+        <Icon icon={CircleCheckIcon} class={cn(icon.button, "text-sky-500")} />
       </div>
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <Dialog.Title class={cn(text.title, "break-words")}>
@@ -74,7 +75,7 @@
       <div class="scrollbar-sleek flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border border-border/60 p-2">
         {#each plan.close as entry (entry.item.path)}
           <div class="flex min-w-0 items-center gap-2">
-            <GitBranchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+            <Icon icon={GitBranchIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
             <span class={cn("min-w-0 flex-1 truncate", text.body)}>{rowLabel(entry.item)}</span>
             {#if entry.deleteLocal}
               <span class={cn("shrink-0 text-muted-foreground", text.indicator)}>
@@ -94,7 +95,7 @@
         </p>
         {#each plan.skipped as s (s.item.path)}
           <div class="flex min-w-0 items-baseline gap-2">
-            <CircleSlashIcon class={cn(icon.decorative, "shrink-0 translate-y-0.5 text-amber-600/70 dark:text-amber-400/70")} />
+            <Icon icon={CircleSlashIcon} class={cn(icon.decorative, "shrink-0 translate-y-0.5 text-amber-600/70 dark:text-amber-400/70")} />
             <span class={cn("min-w-0 flex-1 truncate", text.body)}>{rowLabel(s.item)}</span>
             <span class={cn("shrink-0", text.meta)}>{skipText(s)}</span>
           </div>

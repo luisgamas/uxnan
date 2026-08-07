@@ -16,12 +16,13 @@
   import { divider, icon, iconButton, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
-  import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
-  import HistoryIcon from "@lucide/svelte/icons/history";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import SlidersHorizontalIcon from "@lucide/svelte/icons/sliders-horizontal";
+  import { Icon } from "$lib/components/ui/icon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import LayoutDashboardIcon from "@hugeicons/core-free-icons/DashboardSquare01Icon";
+  import CalendarClockIcon from "@hugeicons/core-free-icons/CalendarClockIcon";
+  import HistoryIcon from "@hugeicons/core-free-icons/HistoryIcon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import SlidersHorizontalIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
   import AutomationsOverview from "./automations/AutomationsOverview.svelte";
   import AutomationList from "./automations/AutomationList.svelte";
   import AutomationRuns from "./automations/AutomationRuns.svelte";
@@ -96,7 +97,7 @@
             aria-label={i18n.t("common.close")}
             onclick={close}
           >
-            <ArrowLeftIcon class={icon.button} />
+            <Icon icon={ArrowLeftIcon} class={icon.button} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -114,7 +115,7 @@
           <div class="flex flex-col gap-0.5">
             <span class={cn("px-2 pb-0.5", text.section)}>{i18n.t(group.titleKey)}</span>
             {#each group.items as item (item.id)}
-              {@const Icon = item.icon}
+              {@const glyph = item.icon}
               <button
                 class={cn(
                   "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
@@ -124,7 +125,7 @@
                 )}
                 onclick={() => (app.automationsSection = item.id as AutomationsSection)}
               >
-                <Icon class={icon.button} />
+                <Icon icon={glyph} class={icon.button} />
                 {i18n.t(item.key)}
               </button>
             {/each}

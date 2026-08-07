@@ -19,7 +19,8 @@
   import type { AutomationRun } from "$lib/automations/types";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 
   let { run, showName = false }: { run: AutomationRun; showName?: boolean } = $props();
 
@@ -71,7 +72,7 @@
               {...props}
               class="group flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-accent/40"
             >
-              <ChevronRightIcon
+              <Icon icon={ChevronRightIcon}
                 class={cn(icon.action, "shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90")}
               />
               <span class={cn("size-1.5 shrink-0 rounded-full", stepStatusDot(step.status))}></span>

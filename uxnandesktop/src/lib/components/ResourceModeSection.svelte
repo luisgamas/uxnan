@@ -25,11 +25,12 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
-  import LeafIcon from "@lucide/svelte/icons/leaf";
-  import ScaleIcon from "@lucide/svelte/icons/scale";
-  import GaugeIcon from "@lucide/svelte/icons/gauge";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
+  import { Icon } from "$lib/components/ui/icon";
+  import LeafIcon from "@hugeicons/core-free-icons/Leaf01Icon";
+  import ScaleIcon from "@hugeicons/core-free-icons/BalanceScaleIcon";
+  import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
 
   const policy = $derived(resourceMode.policy);
   const caps = $derived(policy.capabilities);
@@ -190,7 +191,7 @@
       class="grid gap-2 md:grid-cols-3"
     >
       {#each RESOURCE_PROFILES as p (p)}
-        {@const Icon = PROFILE_ICONS[p]}
+        {@const glyph = PROFILE_ICONS[p]}
         {@const checked = policy.profile === p}
         <button
           type="button"
@@ -209,7 +210,7 @@
           onclick={() => resourceMode.setProfile(p)}
         >
           <span class="flex items-center gap-2">
-            <Icon class={cn(icon.button, checked ? "text-foreground" : "text-muted-foreground")} />
+            <Icon icon={glyph} class={cn(icon.button, checked ? "text-foreground" : "text-muted-foreground")} />
             <span class={cn(text.bodyStrong, !checked && "text-muted-foreground")}>
               {profileName(p)}
             </span>
@@ -267,7 +268,7 @@
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         )}
       >
-        <ChevronDownIcon
+        <Icon icon={ChevronDownIcon}
           class={cn("size-3.5 transition-transform", !advancedOpen && "-rotate-90")}
         />
         {i18n.t("resourceMode.advanced")}
@@ -430,7 +431,7 @@
 
           {#if policy.overridden.length > 0}
             <Button variant="outline" size="sm" onclick={() => resourceMode.resetOverrides()}>
-              <RotateCcwIcon class="size-3.5" />
+              <Icon icon={RotateCcwIcon} class="size-3.5" />
               {i18n.t("resourceMode.reset")}
             </Button>
           {/if}
@@ -453,7 +454,7 @@
           aria-label={i18n.t("resourceMode.usePreset")}
           onclick={() => resourceMode.clearOverride(key)}
         >
-          <RotateCcwIcon class="size-3" />
+          <Icon icon={RotateCcwIcon} class="size-3" />
         </Button>
       {/snippet}
     </TooltipSimple>

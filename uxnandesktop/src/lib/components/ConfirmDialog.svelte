@@ -10,7 +10,8 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import { Icon } from "$lib/components/ui/icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   let {
     open = $bindable(false),
@@ -62,7 +63,7 @@
     <div class="flex min-w-0 gap-3">
       {#if danger}
         <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
-          <TriangleAlertIcon class={cn(icon.button, "text-destructive")} />
+          <Icon icon={TriangleAlertIcon} class={cn(icon.button, "text-destructive")} />
         </div>
       {/if}
       <div class="flex min-w-0 flex-1 flex-col gap-2">

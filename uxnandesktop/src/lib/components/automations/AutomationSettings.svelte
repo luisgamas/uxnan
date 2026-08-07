@@ -12,7 +12,8 @@
   import SettingsRow from "$lib/components/SettingsRow.svelte";
   import SchedulerBadge from "./SchedulerBadge.svelte";
   import { Button } from "$lib/components/ui/button";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import { Icon } from "$lib/components/ui/icon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
 
   let runsDir = $state("");
   $effect(() => {
@@ -58,7 +59,7 @@
           <div class="flex items-center gap-2">
             <span class={cn("tabular-nums", text.body)}>{registered} / {enabled.length}</span>
             <Button variant="outline" size="sm" onclick={recheck}>
-              <RefreshCwIcon data-icon="inline-start" />
+              <Icon icon={RefreshCwIcon} data-icon="inline-start" />
               {i18n.t("automations.recheck")}
             </Button>
           </div>

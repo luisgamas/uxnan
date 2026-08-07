@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Top-bar quick-commands launcher (the "Zap" control, left of the window
+  // Top-bar quick-commands launcher (the lightning control, left of the window
   // controls). One stable DropdownMenu trigger: empty → a "create your first
   // command" item that jumps to settings; otherwise a two-section list — the
   // active worktree/project's commands, then the global ones — plus a footer to
@@ -15,9 +15,10 @@
   import type { QuickCommand } from "$lib/types";
   import EntityIcon from "./EntityIcon.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import ZapIcon from "@lucide/svelte/icons/zap";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import { Icon } from "$lib/components/ui/icon";
+  import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
   const ctx = $derived(projects.commandContext());
   const contextual = $derived(contextualQuickCommands(app.quickCommands, ctx));
@@ -56,7 +57,7 @@
         aria-label={i18n.t("commands.menuTitle")}
         title={i18n.t("commands.menuTitle")}
       >
-        <ZapIcon class="size-4" />
+        <Icon icon={EnergyIcon} class="size-4" />
       </button>
     {/snippet}
   </DropdownMenu.Trigger>
@@ -65,7 +66,7 @@
       <div class={cn("px-2 py-1.5", text.meta)}>{i18n.t("commands.empty")}</div>
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={text.menu} onclick={manage}>
-        <PlusIcon class={icon.button} />
+        <Icon icon={PlusIcon} class={icon.button} />
         {i18n.t("commands.createFirst")}
       </DropdownMenu.Item>
     {:else}
@@ -77,7 +78,7 @@
           {#each contextual as cmd (cmd.id)}
             <DropdownMenu.Item class={text.menu} onclick={() => activate(cmd)}>
               <EntityIcon value={cmd.icon} class={icon.button}>
-                {#snippet fallback()}<ZapIcon class={icon.button} />{/snippet}
+                {#snippet fallback()}<Icon icon={EnergyIcon} class={icon.button} />{/snippet}
               </EntityIcon>
               <span class="truncate">{cmd.name.trim() || cmd.command}</span>
             </DropdownMenu.Item>
@@ -94,7 +95,7 @@
           {#each globals as cmd (cmd.id)}
             <DropdownMenu.Item class={text.menu} onclick={() => activate(cmd)}>
               <EntityIcon value={cmd.icon} class={icon.button}>
-                {#snippet fallback()}<ZapIcon class={icon.button} />{/snippet}
+                {#snippet fallback()}<Icon icon={EnergyIcon} class={icon.button} />{/snippet}
               </EntityIcon>
               <span class="truncate">{cmd.name.trim() || cmd.command}</span>
             </DropdownMenu.Item>
@@ -108,7 +109,7 @@
 
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={text.menu} onclick={manage}>
-        <SettingsIcon class={icon.button} />
+        <Icon icon={SettingsIcon} class={icon.button} />
         {i18n.t("commands.manage")}
       </DropdownMenu.Item>
     {/if}

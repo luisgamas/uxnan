@@ -15,7 +15,8 @@
   import { isRemoteLogo, peekRemoteLogo, resolveRemoteLogo } from "$lib/agentLogoCache";
   import { cn } from "$lib/utils";
   import { icon } from "$lib/design";
-  import BotIcon from "@lucide/svelte/icons/bot";
+  import { Icon } from "$lib/components/ui/icon";
+  import BotIcon from "@hugeicons/core-free-icons/BotIcon";
 
   let {
     logo,
@@ -76,5 +77,5 @@
     onerror={() => (idx += 1)}
   />
 {:else}
-  <BotIcon class={cn(icon.button, "shrink-0 text-muted-foreground", className)} />
+  <Icon icon={BotIcon} class={cn(icon.button, "shrink-0 text-muted-foreground", className)} />
 {/if}

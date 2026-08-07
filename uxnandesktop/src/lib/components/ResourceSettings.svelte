@@ -16,7 +16,8 @@
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
-  import DownloadIcon from "@lucide/svelte/icons/download";
+  import { Icon } from "$lib/components/ui/icon";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
 
   const settings = $derived(app.settings.resources ?? {});
 
@@ -158,7 +159,7 @@
             disabled={exportBusy || settings.enabled === false}
             onclick={beginExport}
           >
-            <DownloadIcon class="size-3.5" />
+            <Icon icon={DownloadIcon} class="size-3.5" />
             {i18n.t("resources.exportButton")}
           </Button>
         {/snippet}

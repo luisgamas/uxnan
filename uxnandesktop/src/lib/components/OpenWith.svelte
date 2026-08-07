@@ -13,9 +13,10 @@
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import EntityIcon from "./EntityIcon.svelte";
-  import AppWindowIcon from "@lucide/svelte/icons/app-window";
-  import FileTextIcon from "@lucide/svelte/icons/file-text";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import { Icon } from "$lib/components/ui/icon";
+  import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
+  import FileTextIcon from "@hugeicons/core-free-icons/Doc01Icon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
   /** The Sub/SubTrigger/SubContent/Item/Separator quintet of a bits-ui menu
    *  family (DropdownMenu or ContextMenu) — same shape in both. */
@@ -51,18 +52,18 @@
 </script>
 
 {#snippet editorGlyph()}
-  <AppWindowIcon class={cn(icon.button, "text-muted-foreground")} />
+  <Icon icon={AppWindowIcon} class={cn(icon.button, "text-muted-foreground")} />
 {/snippet}
 
 <menu.Sub>
   <menu.SubTrigger class={text.menu} onpointerenter={warm}>
-    <AppWindowIcon />
+    <Icon icon={AppWindowIcon} />
     {i18n.t("openWith.label")}
   </menu.SubTrigger>
   <menu.SubContent class="uxnan-scroll max-h-80 min-w-52 overflow-y-auto">
     {#if native}
       <menu.Item class={text.menu} onclick={() => void openWith.openNative(path)}>
-        <FileTextIcon />
+        <Icon icon={FileTextIcon} />
         <span class="truncate">{native.name}</span>
       </menu.Item>
       <menu.Separator />
@@ -81,7 +82,7 @@
       </menu.Item>
     {/if}
     <menu.Item class={text.menu} onclick={() => app.openSettings("openWith")}>
-      <SettingsIcon />
+      <Icon icon={SettingsIcon} />
       {i18n.t("openWith.manage")}
     </menu.Item>
   </menu.SubContent>

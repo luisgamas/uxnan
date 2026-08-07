@@ -16,9 +16,10 @@
   import RunView from "./RunView.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import { Icon } from "$lib/components/ui/icon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
 
   let {
     automation,
@@ -49,16 +50,16 @@
 <div class="flex flex-col gap-5">
   <div class="flex flex-wrap items-center gap-2">
     <Button variant="ghost" size="sm" onclick={onback}>
-      <ArrowLeftIcon data-icon="inline-start" />
+      <Icon icon={ArrowLeftIcon} data-icon="inline-start" />
       {i18n.t("common.back")}
     </Button>
     <span class="flex-1"></span>
     <Button variant="outline" size="sm" onclick={() => automations.runNow(automation.id)}>
-      <PlayIcon data-icon="inline-start" />
+      <Icon icon={PlayIcon} data-icon="inline-start" />
       {i18n.t("automations.runNow")}
     </Button>
     <Button variant="outline" size="sm" onclick={onedit}>
-      <PencilIcon data-icon="inline-start" />
+      <Icon icon={PencilIcon} data-icon="inline-start" />
       {i18n.t("common.edit")}
     </Button>
     <Switch

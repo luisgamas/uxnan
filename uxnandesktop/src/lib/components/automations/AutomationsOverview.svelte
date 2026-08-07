@@ -14,7 +14,8 @@
   import SchedulerBadge from "./SchedulerBadge.svelte";
   import RunView from "./RunView.svelte";
   import { Button } from "$lib/components/ui/button";
-  import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
+  import { Icon } from "$lib/components/ui/icon";
+  import CalendarClockIcon from "@hugeicons/core-free-icons/CalendarClockIcon";
 
   // Every automation's runs, so "recent activity" is real rather than whatever
   // happens to be cached.
@@ -61,7 +62,7 @@
 <div class="flex flex-col gap-6">
   {#if automations.items.length === 0}
     <div class="flex flex-col items-center gap-1.5 py-10 text-center">
-      <CalendarClockIcon class={cn(icon.empty, "text-muted-foreground/50")} />
+      <Icon icon={CalendarClockIcon} class={cn(icon.empty, "text-muted-foreground/50")} />
       <p class={cn("font-medium", text.body)}>{i18n.t("automations.emptyTitle")}</p>
       <p class={cn(text.meta, "max-w-md")}>{i18n.t("automations.emptyDesc")}</p>
       <Button size="sm" class="mt-2" onclick={() => (app.automationsSection = "list")}>

@@ -19,11 +19,12 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import InfoIcon from "@lucide/svelte/icons/info";
-  import LightbulbIcon from "@lucide/svelte/icons/lightbulb";
-  import MessageSquareIcon from "@lucide/svelte/icons/message-square-warning";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import OctagonAlertIcon from "@lucide/svelte/icons/octagon-alert";
+  import { Icon } from "$lib/components/ui/icon";
+  import InfoIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+  import LightbulbIcon from "@hugeicons/core-free-icons/BulbIcon";
+  import MessageSquareIcon from "@hugeicons/core-free-icons/MessageNotification01Icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import OctagonAlertIcon from "@hugeicons/core-free-icons/Alert02Icon";
 
   // `inline` renders the document as a compact fragment (no full-height scroller,
   // no centered max-width, tighter rhythm) for embedding inside a card — e.g. a
@@ -244,11 +245,11 @@
       <!-- GitHub alert callout (`> [!WARNING]` …): a colored rail + labeled head. -->
       <div class={cn("md-alert", `md-alert-${b.kind}`)}>
         <p class="md-alert-title">
-          {#if b.kind === "note"}<InfoIcon class="size-4 shrink-0" />
-          {:else if b.kind === "tip"}<LightbulbIcon class="size-4 shrink-0" />
-          {:else if b.kind === "important"}<MessageSquareIcon class="size-4 shrink-0" />
-          {:else if b.kind === "warning"}<TriangleAlertIcon class="size-4 shrink-0" />
-          {:else}<OctagonAlertIcon class="size-4 shrink-0" />{/if}
+          {#if b.kind === "note"}<Icon icon={InfoIcon} class="size-4 shrink-0" />
+          {:else if b.kind === "tip"}<Icon icon={LightbulbIcon} class="size-4 shrink-0" />
+          {:else if b.kind === "important"}<Icon icon={MessageSquareIcon} class="size-4 shrink-0" />
+          {:else if b.kind === "warning"}<Icon icon={TriangleAlertIcon} class="size-4 shrink-0" />
+          {:else}<Icon icon={OctagonAlertIcon} class="size-4 shrink-0" />{/if}
           {i18n.t(`markdown.alert.${b.kind}`)}
         </p>
         {@render blockList(b.children)}

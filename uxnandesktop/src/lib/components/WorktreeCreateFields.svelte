@@ -18,10 +18,11 @@
   import type { RepoData } from "$lib/types";
   import FolderSelectDialog from "./FolderSelectDialog.svelte";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import { Icon } from "$lib/components/ui/icon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 
   let {
     repo,
@@ -248,12 +249,12 @@
           )}
           onclick={generateName}
         >
-          <SparklesIcon class="size-3" />
+          <Icon icon={SparklesIcon} class="size-3" />
           {i18n.t("newWorktree.generate")}
         </button>
       </div>
       <div class="relative">
-        <GitBranchIcon
+        <Icon icon={GitBranchIcon}
           class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
         />
         <Input
@@ -307,7 +308,7 @@
         text.meta,
       )}
     >
-      <ChevronDownIcon
+      <Icon icon={ChevronDownIcon}
         class={cn(icon.button, "transition-transform", locationOpen && "rotate-180")}
       />
       {i18n.t("newWorktree.location")}
@@ -334,7 +335,7 @@
               class="size-9 shrink-0"
               onclick={() => (browseOpen = true)}
             >
-              <FolderIcon class={icon.button} />
+              <Icon icon={FolderIcon} class={icon.button} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -357,7 +358,7 @@
   <!-- Where it lands — a quiet preview of the folder to be created. -->
   {#if location}
     <div class="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2.5">
-      <FolderIcon class={cn(icon.decorative, "mt-px shrink-0 text-muted-foreground")} />
+      <Icon icon={FolderIcon} class={cn(icon.decorative, "mt-px shrink-0 text-muted-foreground")} />
       <code class="break-all text-[11px] leading-5 text-muted-foreground">{location}</code>
     </div>
   {/if}
@@ -376,7 +377,7 @@
         text.meta,
       )}
     >
-      <ChevronDownIcon
+      <Icon icon={ChevronDownIcon}
         class={cn(icon.button, "transition-transform", advancedOpen && "rotate-180")}
       />
       {i18n.t("worktree.advanced")}

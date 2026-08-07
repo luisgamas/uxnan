@@ -19,11 +19,12 @@
   import { cn } from "$lib/utils";
   import { text as textToken } from "$lib/design";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import ColumnsIcon from "@lucide/svelte/icons/columns-2";
-  import AlignLeftIcon from "@lucide/svelte/icons/align-left";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import MinusIcon from "@lucide/svelte/icons/minus";
-  import Undo2Icon from "@lucide/svelte/icons/undo-2";
+  import { Icon } from "$lib/components/ui/icon";
+  import ColumnsIcon from "@hugeicons/core-free-icons/TableColumnsSplitIcon";
+  import AlignLeftIcon from "@hugeicons/core-free-icons/AlignLeftIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
+  import Undo2Icon from "@hugeicons/core-free-icons/ArrowTurnBackwardIcon";
 
   type HunkAction = "stage" | "unstage" | "discard";
 
@@ -249,7 +250,7 @@
                     class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                     onclick={() => act(h.index, "unstage")}
                   >
-                    <MinusIcon class="size-3.5" />
+                    <Icon icon={MinusIcon} class="size-3.5" />
                   </button>
                 {/snippet}
               </TooltipSimple>
@@ -262,7 +263,7 @@
                     class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                     onclick={() => act(h.index, "stage")}
                   >
-                    <PlusIcon class="size-3.5" />
+                    <Icon icon={PlusIcon} class="size-3.5" />
                   </button>
                 {/snippet}
               </TooltipSimple>
@@ -274,7 +275,7 @@
                     class="border-l border-border/60 px-1 py-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
                     onclick={() => act(h.index, "discard")}
                   >
-                    <Undo2Icon class="size-3.5" />
+                    <Icon icon={Undo2Icon} class="size-3.5" />
                   </button>
                 {/snippet}
               </TooltipSimple>
@@ -299,7 +300,7 @@
             )}
             onclick={() => (mode = "unified")}
           >
-            <AlignLeftIcon class="size-3.5" />
+            <Icon icon={AlignLeftIcon} class="size-3.5" />
             {i18n.t("diff.unified")}
           </button>
         {/snippet}
@@ -316,7 +317,7 @@
             )}
             onclick={() => (mode = "side")}
           >
-            <ColumnsIcon class="size-3.5" />
+            <Icon icon={ColumnsIcon} class="size-3.5" />
             {i18n.t("diff.sideBySide")}
           </button>
         {/snippet}

@@ -22,9 +22,10 @@
   import { i18n } from "$lib/i18n";
   import AgentLogo from "../AgentLogo.svelte";
   import AgentStatusIndicator from "../AgentStatusIndicator.svelte";
-  import EraserIcon from "@lucide/svelte/icons/eraser";
-  import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
-  import SendIcon from "@lucide/svelte/icons/send-horizontal";
+  import { Icon } from "$lib/components/ui/icon";
+  import EraserIcon from "@hugeicons/core-free-icons/EraserIcon";
+  import ExternalLinkIcon from "@hugeicons/core-free-icons/ExternalLinkIcon";
+  import SendIcon from "@hugeicons/core-free-icons/SentIcon";
 
   const agents = $derived(orchestration.agents);
   const types = $derived(agentTypes(agents));
@@ -203,7 +204,7 @@
                     class={iconButton.action}
                     onclick={() => orchestration.clearQueue(a.tabId)}
                   >
-                    <EraserIcon class={icon.button} />
+                    <Icon icon={EraserIcon} class={icon.button} />
                   </Button>
                 {/snippet}
               </TooltipSimple>
@@ -217,7 +218,7 @@
                   class={iconButton.action}
                   onclick={() => reveal(a.workspace, a.tabId)}
                 >
-                  <ExternalLinkIcon class={icon.button} />
+                  <Icon icon={ExternalLinkIcon} class={icon.button} />
                 </Button>
               {/snippet}
             </TooltipSimple>
@@ -238,7 +239,7 @@
     <div class="flex items-center gap-2">
       <p class={cn(text.meta, "flex-1")}>{i18n.t("orchestration.backpressureHint")}</p>
       <Button size="sm" disabled={!message.trim() || selectedCount === 0} onclick={send}>
-        <SendIcon data-icon="inline-start" />
+        <Icon icon={SendIcon} data-icon="inline-start" />
         {selectedCount > 0
           ? i18n.t("orchestration.sendN", { n: selectedCount })
           : i18n.t("orchestration.send")}

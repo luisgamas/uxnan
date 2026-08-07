@@ -30,13 +30,14 @@
   import { Switch } from "$lib/components/ui/switch";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import MoreHorizontalIcon from "@lucide/svelte/icons/more-horizontal";
-  import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+  import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+  import CalendarClockIcon from "@hugeicons/core-free-icons/CalendarClockIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
 
   let query = $state("");
   let groupBy = $state<GroupBy>("agent");
@@ -103,7 +104,7 @@
       />
       <span class="flex-1"></span>
       <Button size="sm" onclick={create}>
-        <PlusIcon data-icon="inline-start" />
+        <Icon icon={PlusIcon} data-icon="inline-start" />
         {i18n.t("automations.new")}
       </Button>
     </div>
@@ -118,7 +119,7 @@
       <p class={text.meta}>{i18n.t("common.loading")}</p>
     {:else if automations.items.length === 0}
       <div class="flex flex-col items-center gap-1.5 py-10 text-center">
-        <CalendarClockIcon class={cn(icon.empty, "text-muted-foreground/50")} />
+        <Icon icon={CalendarClockIcon} class={cn(icon.empty, "text-muted-foreground/50")} />
         <p class={cn("font-medium", text.body)}>{i18n.t("automations.emptyTitle")}</p>
         <p class={cn(text.meta, "max-w-md")}>{i18n.t("automations.emptyDesc")}</p>
       </div>
@@ -178,7 +179,7 @@
                     aria-label={i18n.t("automations.runNow")}
                     onclick={() => automations.runNow(a.id)}
                   >
-                    <PlayIcon class={icon.action} />
+                    <Icon icon={PlayIcon} class={icon.action} />
                   </Button>
                 {/snippet}
               </TooltipSimple>
@@ -206,22 +207,22 @@
                       class={iconButton.action}
                       aria-label={i18n.t("common.more")}
                     >
-                      <MoreHorizontalIcon class={icon.action} />
+                      <Icon icon={MoreHorizontalIcon} class={icon.action} />
                     </Button>
                   {/snippet}
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content align="end" class="w-52">
                   <DropdownMenu.Item class={text.menu} onclick={() => (editing = a)}>
-                    <PencilIcon class={icon.button} />
+                    <Icon icon={PencilIcon} class={icon.button} />
                     {i18n.t("common.edit")}
                   </DropdownMenu.Item>
                   <DropdownMenu.Item class={text.menu} onclick={() => duplicate(a)}>
-                    <CopyIcon class={icon.button} />
+                    <Icon icon={CopyIcon} class={icon.button} />
                     {i18n.t("automations.createFrom")}
                   </DropdownMenu.Item>
                   <DropdownMenu.Separator />
                   <DropdownMenu.Item class={text.menu} onclick={() => (pendingDelete = a)}>
-                    <Trash2Icon class={icon.button} />
+                    <Icon icon={Trash2Icon} class={icon.button} />
                     {i18n.t("common.delete")}
                   </DropdownMenu.Item>
                 </DropdownMenu.Content>

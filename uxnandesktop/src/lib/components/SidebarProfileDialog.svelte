@@ -13,8 +13,9 @@
   import { i18n } from "$lib/i18n";
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
-  import UserRoundIcon from "@lucide/svelte/icons/user-round";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import { Icon } from "$lib/components/ui/icon";
+  import UserRoundIcon from "@hugeicons/core-free-icons/UserIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -36,7 +37,7 @@
 </script>
 
 {#snippet avatarGlyph()}
-  <UserRoundIcon class="size-6 text-muted-foreground" />
+  <Icon icon={UserRoundIcon} class="size-6 text-muted-foreground" />
 {/snippet}
 
 <Dialog.Root bind:open>
@@ -60,7 +61,7 @@
           <span
             class="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs group-hover:text-foreground"
           >
-            <PencilIcon class="size-3" />
+            <Icon icon={PencilIcon} class="size-3" />
           </span>
         </button>
         <div class="flex min-w-0 flex-1 flex-col gap-1.5">

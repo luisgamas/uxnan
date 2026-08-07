@@ -40,12 +40,13 @@
   import { overlayCovers } from "$lib/overlayLayer";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import ArrowRightIcon from "@lucide/svelte/icons/arrow-right";
-  import RotateCwIcon from "@lucide/svelte/icons/rotate-cw";
-  import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
-  import BugIcon from "@lucide/svelte/icons/bug";
-  import XIcon from "@lucide/svelte/icons/x";
+  import { Icon } from "$lib/components/ui/icon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import ArrowRightIcon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+  import RotateCwIcon from "@hugeicons/core-free-icons/RotateClockwiseIcon";
+  import ExternalLinkIcon from "@hugeicons/core-free-icons/ExternalLinkIcon";
+  import BugIcon from "@hugeicons/core-free-icons/Bug01Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
   let slot = $state<HTMLDivElement | null>(null);
   let address = $state(untrack(() => app.browserUrl));
@@ -220,7 +221,7 @@
           aria-label={i18n.t("browser.back")}
           onclick={() => void browserWindowBack().catch(() => {})}
         >
-          <ArrowLeftIcon class="size-4" />
+          <Icon icon={ArrowLeftIcon} class="size-4" />
         </button>
       {/snippet}
     </TooltipSimple>
@@ -232,7 +233,7 @@
           aria-label={i18n.t("browser.forward")}
           onclick={() => void browserWindowForward().catch(() => {})}
         >
-          <ArrowRightIcon class="size-4" />
+          <Icon icon={ArrowRightIcon} class="size-4" />
         </button>
       {/snippet}
     </TooltipSimple>
@@ -244,7 +245,7 @@
           aria-label={i18n.t("browser.reload")}
           onclick={() => void browserWindowReload().catch(() => {})}
         >
-          <RotateCwIcon class="size-4" />
+          <Icon icon={RotateCwIcon} class="size-4" />
         </button>
       {/snippet}
     </TooltipSimple>
@@ -266,7 +267,7 @@
           aria-label={i18n.t("browser.openExternal")}
           onclick={() => void openExternal(address).catch(() => {})}
         >
-          <ExternalLinkIcon class="size-4" />
+          <Icon icon={ExternalLinkIcon} class="size-4" />
         </button>
       {/snippet}
     </TooltipSimple>
@@ -278,7 +279,7 @@
           aria-label={i18n.t("browser.devtools")}
           onclick={() => void browserWindowDevtools().catch(() => {})}
         >
-          <BugIcon class="size-4" />
+          <Icon icon={BugIcon} class="size-4" />
         </button>
       {/snippet}
     </TooltipSimple>
@@ -290,7 +291,7 @@
           aria-label={i18n.t("browser.close")}
           onclick={() => app.closeBrowser()}
         >
-          <XIcon class="size-4" />
+          <Icon icon={XIcon} class="size-4" />
         </button>
       {/snippet}
     </TooltipSimple>

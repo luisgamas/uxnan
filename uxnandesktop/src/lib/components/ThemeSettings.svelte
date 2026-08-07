@@ -42,15 +42,16 @@
   import SettingsSection from "./SettingsSection.svelte";
   import SettingsRow from "./SettingsRow.svelte";
   import FontPicker from "./FontPicker.svelte";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import UploadIcon from "@lucide/svelte/icons/upload";
-  import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
-  import MoreVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import DownloadIcon from "@lucide/svelte/icons/download";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import CheckIcon from "@lucide/svelte/icons/check";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import UploadIcon from "@hugeicons/core-free-icons/Upload01Icon";
+  import ClipboardPasteIcon from "@hugeicons/core-free-icons/ClipboardPasteIcon";
+  import MoreVerticalIcon from "@hugeicons/core-free-icons/EllipsisVerticalIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 
   let error = $state<string | null>(null);
   // Transient success line for a completed import (e.g. "Imported 3 themes").
@@ -424,12 +425,12 @@
               {#if importingKind === "theme"}
                 <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
               {:else}
-                <UploadIcon data-icon="inline-start" />
+                <Icon icon={UploadIcon} data-icon="inline-start" />
               {/if}
               {i18n.t("appearance.import")}
             </Button>
-            <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
-            <Button size="sm" onclick={newTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
+            <Button variant="outline" size="sm" onclick={() => openPaste("theme")}><Icon icon={ClipboardPasteIcon} data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
+            <Button size="sm" onclick={newTheme}><Icon icon={PlusIcon} data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
           </div>
         {/snippet}
       </SettingsRow>
@@ -491,12 +492,12 @@
               {#if importingKind === "terminal"}
                 <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
               {:else}
-                <UploadIcon data-icon="inline-start" />
+                <Icon icon={UploadIcon} data-icon="inline-start" />
               {/if}
               {i18n.t("appearance.import")}
             </Button>
-            <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><ClipboardPasteIcon data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
-            <Button size="sm" onclick={newTermTheme}><PlusIcon data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
+            <Button variant="outline" size="sm" onclick={() => openPaste("terminal")}><Icon icon={ClipboardPasteIcon} data-icon="inline-start" />{i18n.t("appearance.paste")}</Button>
+            <Button size="sm" onclick={newTermTheme}><Icon icon={PlusIcon} data-icon="inline-start" />{i18n.t("appearance.newTheme")}</Button>
           </div>
         {/snippet}
       </SettingsRow>
@@ -557,17 +558,17 @@
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
-        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><Icon icon={MoreVerticalIcon} class={icon.button} /></Button>
       {/snippet}
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="end" class="min-w-44">
-      {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
-      <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+      {#if isCustom}<DropdownMenu.Item class={text.menu} onclick={() => editTheme(theme)}><Icon icon={PencilIcon} class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>{/if}
+      <DropdownMenu.Item class={text.menu} onclick={() => duplicateThemeAction(theme)}><Icon icon={CopyIcon} class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(theme.name, themeToJson(theme))}><Icon icon={DownloadIcon} class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(themeToJson(theme))}><Icon icon={CopyIcon} class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
       {#if isCustom}
         <DropdownMenu.Separator />
-        <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+        <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTheme(theme.id)}><Icon icon={Trash2Icon} class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
       {/if}
     </DropdownMenu.Content>
   </DropdownMenu.Root>
@@ -577,16 +578,16 @@
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
-        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><MoreVerticalIcon class={icon.button} /></Button>
+        <Button variant="ghost" size="icon" class={cn(iconButton.action, "shrink-0")} title={i18n.t("common.more")} {...props}><Icon icon={MoreVerticalIcon} class={icon.button} /></Button>
       {/snippet}
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="end" class="min-w-44">
-      <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><PencilIcon class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
-      <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><CopyIcon class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
-      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><DownloadIcon class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
-      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(terminalThemeToJson(preset))}><CopyIcon class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => editTermTheme(preset)}><Icon icon={PencilIcon} class={icon.button} />{i18n.t("appearance.edit")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => duplicateTermAction(preset)}><Icon icon={CopyIcon} class={icon.button} />{i18n.t("appearance.duplicate")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => exportFile(preset.name, terminalThemeToJson(preset))}><Icon icon={DownloadIcon} class={icon.button} />{i18n.t("appearance.exportFile")}</DropdownMenu.Item>
+      <DropdownMenu.Item class={text.menu} onclick={() => void clipboardWrite(terminalThemeToJson(preset))}><Icon icon={CopyIcon} class={icon.button} />{i18n.t("appearance.copyJson")}</DropdownMenu.Item>
       <DropdownMenu.Separator />
-      <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTermTheme(preset.id)}><Trash2Icon class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
+      <DropdownMenu.Item variant="destructive" class={text.menu} onclick={() => removeTermTheme(preset.id)}><Icon icon={Trash2Icon} class={icon.button} />{i18n.t("common.remove")}</DropdownMenu.Item>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
 {/snippet}
@@ -615,7 +616,7 @@
   {@const isActive = termActiveId(scope) === id}
   <div class={cn("flex items-center gap-2 px-3 py-2 transition-colors", termPreviewId(scope) === id ? "bg-accent/60" : "hover:bg-foreground/[0.04]")}>
     <button type="button" class="min-w-0 flex-1 truncate text-left text-[13px] text-foreground" onclick={() => setTermPreview(scope, id)}>{name}</button>
-    {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+    {#if isActive}<Icon icon={CheckIcon} class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
     <Button variant={isActive ? "ghost" : "outline"} size="sm" class="h-7 shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => useTerm(scope, id)}>
       {i18n.t(isActive ? "appearance.inUse" : "appearance.use")}
     </Button>
@@ -627,7 +628,7 @@
   {@const isActive = activeId === id}
   <div class={cn("flex items-center gap-2 px-3 py-2 transition-colors", previewThemeId === id ? "bg-accent/60" : "hover:bg-foreground/[0.04]")}>
     <button type="button" class="min-w-0 flex-1 truncate text-left text-[13px] text-foreground" onclick={() => (previewThemeId = id)}>{name}</button>
-    {#if isActive}<CheckIcon class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
+    {#if isActive}<Icon icon={CheckIcon} class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
     <Button variant={isActive ? "ghost" : "outline"} size="sm" class="h-7 shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => { selectTheme(id); previewThemeId = id; }}>
       {i18n.t(isActive ? "appearance.inUse" : "appearance.use")}
     </Button>

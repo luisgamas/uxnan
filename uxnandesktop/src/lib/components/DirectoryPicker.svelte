@@ -15,7 +15,8 @@
   import DirectoryBrowser from "./DirectoryBrowser.svelte";
   import AddProjectDialog from "./AddProjectDialog.svelte";
   import type { DirEntry, DirListing } from "$lib/types";
-  import LayersIcon from "@lucide/svelte/icons/layers";
+  import { Icon } from "$lib/components/ui/icon";
+  import LayersIcon from "@hugeicons/core-free-icons/Layers01Icon";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -87,7 +88,7 @@
              "Add this folder" lets you add them separately. -->
         {#if hasRepoChildren}
           <div class="flex items-center gap-3 border-b border-border/60 bg-primary/5 px-4 py-2.5">
-            <LayersIcon class={cn(icon.button, "shrink-0 text-primary")} />
+            <Icon icon={LayersIcon} class={cn(icon.button, "shrink-0 text-primary")} />
             <p class="min-w-0 flex-1 text-xs text-muted-foreground">
               {i18n.t("picker.bulkHint", { repos: String(repoChildCount) })}
             </p>

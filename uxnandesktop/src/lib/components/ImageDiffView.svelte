@@ -6,8 +6,9 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import ImageIcon from "@lucide/svelte/icons/image";
-  import ImageOffIcon from "@lucide/svelte/icons/image-off";
+  import { Icon } from "$lib/components/ui/icon";
+  import ImageIcon from "@hugeicons/core-free-icons/Image01Icon";
+  import ImageOffIcon from "@hugeicons/core-free-icons/ImageNotFound01Icon";
 
   let { old: oldSrc, new: newSrc }: { old: string | null; new: string | null } =
     $props();
@@ -17,7 +18,7 @@
   <!-- Before (HEAD / index). -->
   <figure class="flex min-h-0 flex-col gap-1.5">
     <figcaption class={cn("flex items-center gap-1.5", text.section)}>
-      <ImageIcon class="size-3.5 text-muted-foreground" />
+      <Icon icon={ImageIcon} class="size-3.5 text-muted-foreground" />
       {i18n.t("diff.imageBefore")}
     </figcaption>
     <div class="ux-checker flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-md border border-border p-2">
@@ -25,7 +26,7 @@
         <img src={oldSrc} alt={i18n.t("diff.imageBefore")} class="max-h-full max-w-full object-contain" />
       {:else}
         <div class={cn("flex flex-col items-center gap-1 p-4", text.meta)}>
-          <ImageOffIcon class="size-5 text-emerald-600 dark:text-emerald-400" />
+          <Icon icon={ImageOffIcon} class="size-5 text-emerald-600 dark:text-emerald-400" />
           {i18n.t("diff.imageAdded")}
         </div>
       {/if}
@@ -35,7 +36,7 @@
   <!-- After (index / working tree). -->
   <figure class="flex min-h-0 flex-col gap-1.5">
     <figcaption class={cn("flex items-center gap-1.5", text.section)}>
-      <ImageIcon class="size-3.5 text-muted-foreground" />
+      <Icon icon={ImageIcon} class="size-3.5 text-muted-foreground" />
       {i18n.t("diff.imageAfter")}
     </figcaption>
     <div class="ux-checker flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-md border border-border p-2">
@@ -43,7 +44,7 @@
         <img src={newSrc} alt={i18n.t("diff.imageAfter")} class="max-h-full max-w-full object-contain" />
       {:else}
         <div class={cn("flex flex-col items-center gap-1 p-4", text.meta)}>
-          <ImageOffIcon class="size-5 text-red-600 dark:text-red-400" />
+          <Icon icon={ImageOffIcon} class="size-5 text-red-600 dark:text-red-400" />
           {i18n.t("diff.imageRemoved")}
         </div>
       {/if}
