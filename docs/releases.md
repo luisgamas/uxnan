@@ -236,7 +236,7 @@ but their last leg has not been exercised since the automation existed:
 
 | Component | Exercised | What is still unproven |
 |---|---|---|
-| desktop | ✅ 0.0.29 and 0.0.30, end to end | — |
+| desktop | ✅ 0.0.29, 0.0.30 and 0.0.31, end to end — the last one cut by the cron, unattended | — |
 | shared | ❌ | that `release-npm.yml` fires from an app-token tag, and that the npm-visibility wait behaves on a real publish |
 | bridge | ❌ | the same, **plus** the shared→bridge ordering, which is the reason this workflow exists |
 | relay | ❌ | the same as shared |
@@ -246,6 +246,20 @@ One desktop detail is also still unproven: the `notes` job now survives a failed
 macOS leg (`if: always()`), but every run since that fix has been fully green, so
 the path it was written for has not run again. The next release that loses a mac
 leg is the one that confirms it.
+
+**What the first unattended cut cost, and what it teaches.** 0.0.31 was cut by
+the cron with nobody watching, and it got everything right up to the last step:
+it saw the merged work, computed the version, wrote the files, pushed the tag,
+built four installers and wrote the body — then the *guard* added in the previous
+fix refused it. The `--jq` filter counting installers used `\.` for a literal
+dot, which jq rejects outright ("invalid escape sequence"), so the step exited
+non-zero and the nightly stayed a draft. The lesson is narrow and worth keeping:
+**a shell one-liner added to a workflow is untested code shipped straight to
+production.** That expression passes through YAML, then bash, then jq, and only
+the third one has an opinion about backslashes. It is now a `[.]` character
+class, which needs no escaping at any layer, and it was checked against a real
+release before being committed. Anything with the same shape — a guard that only
+runs on the unhappy path, a filter with escapes — deserves the same treatment.
 
 When the next one of those genuinely needs a release, cut it with `dry_run` on
 first and read the plan. The riskiest is **shared + bridge together**: that is

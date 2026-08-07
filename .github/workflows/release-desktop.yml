@@ -233,7 +233,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          count=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"             --json assets --jq '[.assets[] | select(.name | test("\.(msi|exe|dmg|deb|rpm|AppImage)$"))] | length')
+          # `[.]` and not `\.`: this string reaches jq through YAML and bash, and
+          # jq rejects `\.` in a string literal outright ("invalid escape
+          # sequence"). It took the whole 0.0.31 nightly down — four installers
+          # built, body written, and then the guard that exists to protect the
+          # publish is what refused it. A character class needs no escaping at
+          # any of the three layers.
+          count=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"             --json assets --jq '[.assets[] | select(.name | test("[.](msi|exe|dmg|deb|rpm|AppImage)$"))] | length')
           echo "installers=$count" >> "$GITHUB_OUTPUT"
           echo "$count installer(s) attached"
           if [ "$count" = "0" ]; then
