@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildRow, insertRow, today } from './record.mjs';
+import { buildRow, insertRow, summarizeNotes, today } from './record.mjs';
+
+/** Exactly what GitHub generated for desktop 0.0.31 — the run that got it wrong. */
+const REAL_NOTES = [
+  "## What's Changed",
+  '* fix(release): three defects the first real cut exposed by @luisgamas in https://github.com/luisgamas/uxnan/pull/160',
+  '* build(release): desktop 0.0.30-nightly.20260807.2 by @uxnan-releases[bot] in https://github.com/luisgamas/uxnan/pull/159',
+  '* feat(svelte): make the left panel legible without expanding it by @luisgamas in https://github.com/luisgamas/uxnan/pull/154',
+  '* feat: workspace lifecycle — know when a space is finished, and close it by @luisgamas in https://github.com/luisgamas/uxnan/pull/155',
+  '',
+  '## New Contributors',
+  '* @uxnan-releases[bot] made their first contribution in https://github.com/luisgamas/uxnan/pull/159',
+  '',
+  '**Full Changelog**: https://github.com/luisgamas/uxnan/compare/desktop-nightly-v0.0.30-nightly.20260807.2...desktop-nightly-v0.0.31-nightly.20260807.3',
+].join('\n');
 
 /** The shape of the real table, trimmed to what the insert cares about. */
 const TABLE = [
@@ -103,5 +117,56 @@ describe('insertRow', () => {
       () => insertRow('# VERSIONS\n\nno table here\n', '| x |', { version: '1.0.0' }),
       /no history table/,
     );
+  });
+});
+
+describe('summarizeNotes', () => {
+  it('keeps what shipped, in order, without the attribution', () => {
+    assert.equal(
+      summarizeNotes(REAL_NOTES),
+      'fix(release): three defects the first real cut exposed; ' +
+        'feat(svelte): make the left panel legible without expanding it; ' +
+        'feat: workspace lifecycle — know when a space is finished, and close it',
+    );
+  });
+
+  it('never lets New Contributors into the row', () => {
+    // The bug this whole function exists for: 0.0.31 was recorded claiming the
+    // release bot's first contribution was one of the changes.
+    assert.ok(!summarizeNotes(REAL_NOTES).includes('first contribution'));
+    assert.ok(!summarizeNotes(REAL_NOTES).includes('Full Changelog'));
+  });
+
+  it('drops the release plumbing, which names the previous version', () => {
+    assert.ok(!summarizeNotes(REAL_NOTES).includes('0.0.30-nightly'));
+    assert.equal(
+      summarizeNotes(
+        ["## What's Changed", '* build: prepare desktop 0.0.31', '* chore(release): bridge 0.0.17'].join(
+          '\n',
+        ),
+      ),
+      '',
+    );
+  });
+
+  it('survives notes with nothing in them, and notes that are not notes', () => {
+    assert.equal(summarizeNotes(''), '');
+    assert.equal(summarizeNotes(undefined), '');
+    assert.equal(summarizeNotes('## New Contributors\n* @someone made their first contribution'), '');
+  });
+
+  it('does not repeat an entry that appears twice', () => {
+    assert.equal(
+      summarizeNotes(
+        ["## What's Changed", '* feat: a thing by @a in https://x/1', '* feat: a thing by @b in https://x/2'].join(
+          '\n',
+        ),
+      ),
+      'feat: a thing',
+    );
+  });
+
+  it('leaves a title alone when it has no attribution suffix', () => {
+    assert.equal(summarizeNotes("## What's Changed\n* feat: written by hand"), 'feat: written by hand');
   });
 });
