@@ -432,6 +432,24 @@ Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiz
 > es un fallback: prefiere no reportar antes que reportar mal, porque el hook
 > (Capa 1) no está ahí para corregirla.
 >
+> **Zero se lee de su sesión en disco, no del terminal.** No reporta hook ni
+> escribe título, pero sí registra lo que hace en
+> `<data>/zero/sessions/<id>/` (`zero.rs`), y eso es evidencia sobre el
+> **agente**, a diferencia de las dos inferencias de abajo, que son evidencia
+> sobre el **terminal**. Por eso su sesión se resuelve con la misma prioridad que
+> un hook, en `resolveAgentDisplay` y no solo en la fila de agente: antes el
+> punto del worktree salía de la actividad de output, así que hacer clic en su
+> TUI (un redibujo) se leía como trabajo mientras la fila de justo debajo decía
+> otra cosa. Dos reglas la mantienen honesta: un `metadata.json` que lleva
+> `FRESH_SECS` sin tocarse **no afirma nada** (Zero guarda todas las
+> conversaciones de una carpeta, así que la más reciente suele ser el último
+> turno terminado — leer su `message` como `done` ponía un check en una sesión a
+> la que nadie había pedido nada), y una sesión anterior a la pestaña que la
+> muestra no es de esa pestaña (`zeroSessions.forTab`). Su **última respuesta**
+> sale de la cola de su propio `events.jsonl` (el último `message` con
+> `role: "assistant"`), para que su tarjeta diga lo mismo que la de cualquier
+> agente con hook en vez de solo una etiqueta de estado.
+>
 > **La inferencia por output exige actividad sostenida.** Un TUI con mouse
 > tracking responde a un **clic** redibujándose, y tomar cualquier byte como
 > trabajo encendía el punto verde cada vez que la persona tocaba la terminal

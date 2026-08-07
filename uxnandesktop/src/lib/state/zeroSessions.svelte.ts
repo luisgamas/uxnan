@@ -20,15 +20,47 @@ export function isZeroAgent(tab: TerminalTab): boolean {
   return tab.agentCommand === 'zero' || tab.agentIcon === 'zero';
 }
 
+/**
+ * How far before a Zero tab was first seen a session may still be its own.
+ *
+ * Covers the gap between the TUI starting and the tab being recognized as
+ * Zero's, and the case of the ADE restarting around a live session. Anything
+ * older is a previous conversation in that folder, not this one.
+ */
+const SESSION_GRACE_MS = 60_000;
+
 class ZeroSessionStore {
   /** Cached session per worktree cwd (workspace key). */
   private byCwd = $state<Record<string, ZeroSession | null>>({});
+  /** When each Zero tab was first seen (epoch ms), so a session that predates it
+   *  is not mistaken for its own. Non-reactive; read only alongside `byCwd`. */
+  private tabSince = new Map<string, number>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private polling = false;
 
   /** The cached Zero session for a worktree cwd, or null. Reactive. */
   get(cwd: string): ZeroSession | null {
     return this.byCwd[cwd] ?? null;
+  }
+
+  /**
+   * The Zero session that belongs to **this tab**, or null.
+   *
+   * Zero keeps every past conversation of a folder, and the reader picks the
+   * newest one there — which, the moment you open Zero, is normally the last
+   * turn you finished in that worktree. Showing it put a "Done" check on a
+   * session that had not been asked anything yet. A session older than the tab
+   * is therefore not this tab's: the card stays neutral until the agent writes
+   * something of its own (which a live session does within seconds).
+   */
+  forTab(tabId: string, cwd: string): ZeroSession | null {
+    const session = this.byCwd[cwd] ?? null;
+    if (!session) return null;
+    const since = this.tabSince.get(tabId);
+    if (since === undefined) return session;
+    const updated = Date.parse(session.updatedAt);
+    if (Number.isNaN(updated)) return session;
+    return updated >= since - SESSION_GRACE_MS ? session : null;
   }
 
   /** Start the poll loop if it isn't running. Idempotent; the loop stops itself
@@ -46,12 +78,23 @@ class ZeroSessionStore {
     }
   }
 
-  /** Worktree cwds (workspace keys) that currently host a Zero agent. */
+  /** Worktree cwds (workspace keys) that currently host a Zero agent. Also
+   *  stamps each Zero tab the first time it is seen (see [`forTab`]) and forgets
+   *  the ones that closed, so the map can't grow with the session. */
   private zeroCwds(): string[] {
     const out: string[] = [];
+    const live = new Set<string>();
     for (const key of terminals.openWorkspaceKeys) {
       if (!key) continue; // skip the Global scratch space
-      if (terminals.agentTabs(key).some(isZeroAgent)) out.push(key);
+      const zeroTabs = terminals.agentTabs(key).filter(isZeroAgent);
+      for (const tab of zeroTabs) {
+        live.add(tab.id);
+        if (!this.tabSince.has(tab.id)) this.tabSince.set(tab.id, Date.now());
+      }
+      if (zeroTabs.length > 0) out.push(key);
+    }
+    for (const id of this.tabSince.keys()) {
+      if (!live.has(id)) this.tabSince.delete(id);
     }
     return out;
   }

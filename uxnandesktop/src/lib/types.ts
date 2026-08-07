@@ -792,6 +792,9 @@ export interface ZeroSession {
   title: string;
   status: "working" | "waiting" | "done" | "idle";
   updatedAt: string;
+  /** The agent's latest reply, read from its own event log — Zero reports no
+   *  hook, so without this its card's second line could only ever be a status. */
+  reply?: string | null;
 }
 
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`

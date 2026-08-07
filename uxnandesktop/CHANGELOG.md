@@ -196,6 +196,26 @@ new controls now carry `aria-label`s, so the panel is operable by name.
   until the agent really does something. A `SessionStart` fired mid-turn by a
   compaction is excluded, so a live turn is never wiped.
 
+- **Zero showed a completed turn the moment you opened it.** It reports no hook,
+  so its state is read from its on-disk session — and it keeps every past
+  conversation of a folder, so the newest one for that worktree is normally the
+  last turn you finished there. Its `message` was read as `done` regardless of
+  age, putting a completion check on a session that had not been asked anything.
+  Now a session file that has gone quiet claims **nothing** (not `done`, not
+  `waiting` — none of it is true any more), and a session older than the tab that
+  is showing it is not taken as that tab's at all.
+
+- **Zero's card is no longer the one that says least.** Every other agent shows
+  what it just replied, because its hook reports it; Zero reported nothing, so
+  its second line could only ever be a status label. Its own event log holds the
+  answer, so the card now shows it — read from the tail of the log, not the whole
+  file, since it grows for the length of the conversation.
+
+- **Clicking into Zero's terminal made it look busy.** Its worktree dot came from
+  output activity alone, so a TUI redraw read as work while the agent row right
+  below it — which does read the session — said otherwise. Zero's session now
+  drives both, the same way a hook does for every other agent.
+
 - **Clicking inside a terminal made its agent look busy.** A TUI with mouse
   tracking answers a click by redrawing, and any byte of output counted as work
   — three seconds of "working" for having touched the terminal. Output now has
