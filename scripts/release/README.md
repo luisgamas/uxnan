@@ -47,6 +47,21 @@ base does not fail — it ships a build the Windows MSI and the updater cannot s
 
 Flags: `--channel=stable|nightly`, `--version=<exact>`, `--dry-run`, `--force`.
 
+## `plan.mjs` and `notes.mjs` — used by the workflow
+
+`plan.mjs` decides **what a release run should cut and in what order**: it drops
+components with nothing release-worthy, orders `shared` ahead of the packages
+that resolve it from npm, and refuses a version that would not move past every
+channel. `--scheduled` is the nightly cron's plan (desktop, nightly channel).
+
+`notes.mjs` produces the release body the way GitHub's *Generate release notes*
+button does, but with `previous_tag_name` pinned to the previous desktop build in
+**either** channel. Left to choose, GitHub reached back to the previous *nightly*
+and re-listed nine pull requests that had already shipped.
+
+Both print to stdout and change nothing; `.github/workflows/release.yml` is what
+turns their output into commits and tags.
+
 ## What the pieces are
 
 | File | Responsibility |
@@ -57,6 +72,8 @@ Flags: `--channel=stable|nightly`, `--version=<exact>`, `--dry-run`, `--force`.
 | `bump.mjs` | applies a version to every file, then asserts they all agree |
 | `changes.mjs` | "does this component need a release?" — path diff since its last tag, minus docs |
 | `git.mjs` | the only place that shells out to git |
+| `plan.mjs` | what to cut, in what order — the workflow's decisions |
+| `notes.mjs` | the release body, with the baseline pinned |
 
 `node --test "scripts/release/*.test.mjs"` (also part of the root `npm test`)
 covers all of it, including the two failures that have actually shipped here: a

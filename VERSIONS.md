@@ -77,7 +77,14 @@ which versions "go together".
 
 ## Release checklist
 
-> **Two commands do the mechanical half of this.** `npm run release:status`
+> **A workflow does all of this now.** Actions → **Release — cut versions**
+> computes the versions, writes the files, commits, tags and pushes in the right
+> order (waiting for npm between `shared` and its consumers), and the desktop
+> nightly cuts itself at 06:20 UTC. See [`docs/releases.md`](docs/releases.md).
+> The checklist below is what it automates — and what to follow if you ever cut
+> one by hand.
+>
+> **Two commands cover the local half.** `npm run release:status`
 > prints, for every component, what shipped last, what changed since, whether
 > that change can affect a build, and what the next version would be — so step 0
 > is never guesswork. `npm run release:prepare -- <comp> [--channel=nightly]`
