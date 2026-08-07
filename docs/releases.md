@@ -242,6 +242,11 @@ but their last leg has not been exercised since the automation existed:
 | relay | ❌ | the same as shared |
 | mobile | ❌ | that `release-mobile.yml` accepts a pubspec written by `prepare.mjs`, and that the Play build number lands as expected |
 
+One desktop detail is also still unproven: the `notes` job now survives a failed
+macOS leg (`if: always()`), but every run since that fix has been fully green, so
+the path it was written for has not run again. The next release that loses a mac
+leg is the one that confirms it.
+
 When the next one of those genuinely needs a release, cut it with `dry_run` on
 first and read the plan. The riskiest is **shared + bridge together**: that is
 the first time the npm wait runs for real, and if npm is slow the run fails
