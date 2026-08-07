@@ -718,6 +718,55 @@ export interface FileSearch {
   truncated: boolean;
 }
 
+/** Include/exclude glob filters shared by both project-wide searches (mirror of
+ *  Rust `SearchFilters`). Each is a comma-separated pattern list: a pattern with
+ *  no `/` matches the file name (`*.ts`), one with a `/` matches the
+ *  worktree-relative path (`src/lib/**`), and a bare folder name also covers
+ *  everything under it. Empty means "no filter". */
+export interface SearchFilters {
+  include: string;
+  exclude: string;
+}
+
+/** The content-search box's text plus its match modes (mirror of Rust
+ *  `ContentQuery`). A non-regex query is matched literally. */
+export interface ContentQuery {
+  query: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  isRegex: boolean;
+}
+
+/** One matching line of a content search (mirror of Rust `ContentMatch`). `line`
+ *  is 1-based (so a hit can be opened at its line); `start`/`end` index into
+ *  `text` in UTF-16 code units — i.e. plain JavaScript string offsets — and
+ *  `elided` means `text` is a window that starts mid-line. */
+export interface ContentMatch {
+  line: number;
+  text: string;
+  start: number;
+  end: number;
+  elided: boolean;
+}
+
+/** Every content-search match inside one file (mirror of Rust `ContentFileMatch`).
+ *  `truncated` means the file had more matches than the per-file cap. */
+export interface ContentFileMatch {
+  path: string;
+  name: string;
+  matches: ContentMatch[];
+  truncated: boolean;
+}
+
+/** A page of project-wide content-search results (mirror of Rust `ContentSearch`).
+ *  `total` counts the matches carried in `files`; `truncated` means the walk
+ *  stopped at the cap. */
+export interface ContentSearch {
+  files: ContentFileMatch[];
+  total: number;
+  truncated: boolean;
+}
+
 /** The current on-disk conversation of a Zero agent (mirror of Rust `ZeroSession`).
  *  `title` is the session name; `status` is a coarse agent-view state derived from
  *  the session's last event. Read by cwd since Zero emits no hook/OSC. */

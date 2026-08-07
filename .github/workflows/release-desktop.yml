@@ -160,3 +160,62 @@ jobs:
           releaseDraft: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
           args: ${{ matrix.args }} # per-arch --target on macOS; empty on win/linux
+
+  # The body, and — for nightlies only — the publish.
+  #
+  # tauri-action leaves the draft with an EMPTY body: the "What's Changed" list
+  # you normally see is produced by the "Generate release notes" button at
+  # publish time. This writes the same thing from the API, with one correction:
+  # the baseline is pinned to the previous desktop build in EITHER channel.
+  # Left to choose, GitHub compared a nightly against the previous *nightly* —
+  # two weeks and six releases back — and re-listed 9 pull requests that had
+  # already shipped. (The "Contributors" block is not part of the body at all;
+  # GitHub renders it from the commit range once a release is published.)
+  #
+  # Nightly publishes itself, which is what fires `release-desktop-manifest.yml`
+  # and lets the in-app updater see the build. Stable stays a draft on purpose:
+  # "this is now the default download" is a human decision.
+  notes:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the notes script reads the tag history
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Read the channel from the tag
+        id: meta
+        run: node uxnandesktop/scripts/desktop-release-tag.mjs "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Write the release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/release/notes.mjs "$GITHUB_REF_NAME" --repo="$GITHUB_REPOSITORY" > notes.md
+          echo "--- generated body ---"
+          cat notes.md
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+
+      - name: Publish (nightly only)
+        if: steps.meta.outputs.channel == 'nightly'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Say what is left to a human
+        run: |
+          if [ "${{ steps.meta.outputs.channel }}" = "stable" ]; then
+            echo "::notice::Stable draft is ready with its notes — review the assets and press Publish."
+          else
+            echo "::notice::Nightly published; release-desktop-manifest.yml will roll latest.json onto the nightly channel."
+          fi

@@ -13,18 +13,25 @@ import {
   fsDuplicate,
   fsListDir,
   fsRename,
+  fsSearchContent,
   fsSearchFiles,
 } from "$lib/api";
 import { terminals } from "$lib/state/terminals.svelte";
-import type { FsChangedEvent, FsEntry } from "$lib/types";
+import type { ContentFileMatch, FsChangedEvent, FsEntry, SearchFilters } from "$lib/types";
 
 /** Safety cap for "expand all" so it never tries to load an unbounded tree. */
 const EXPAND_ALL_CAP = 1500;
 
 /** Max project-wide search results to fetch (a prefix past this → `truncated`). */
 const SEARCH_LIMIT = 500;
+/** Max content matches to fetch across all files (a prefix past this →
+ *  `truncated`). Higher than the filename cap because one file legitimately
+ *  contributes many lines. */
+const CONTENT_LIMIT = 1000;
 /** Debounce before firing a project-wide search as the query changes. */
 const SEARCH_DEBOUNCE_MS = 180;
+/** Content search reads files, so it waits a touch longer than the name walk. */
+const CONTENT_DEBOUNCE_MS = 300;
 
 /** Parent directory of a forward-slash path (drops the last segment). */
 function parentOf(path: string): string {
@@ -59,6 +66,31 @@ class FileTreeStore {
   searchLoading = $state(false);
   /** The last search hit the result cap (its list is a prefix). */
   searchTruncated = $state(false);
+
+  // --- Content search + filters (the collapsible sections under the search bar) --
+  /** Text searched *inside* files; empty = the content search is idle. */
+  contentQuery = $state("");
+  /** Match modes for [`contentQuery`]. */
+  contentCaseSensitive = $state(false);
+  contentWholeWord = $state(false);
+  contentRegex = $state(false);
+  /** Comma-separated globs a file must match to be searched (empty = all). */
+  filterInclude = $state("");
+  /** Comma-separated globs excluding a file (applied after `filterInclude`). */
+  filterExclude = $state("");
+  /** Content matches grouped by file for the current query; empty when idle. */
+  contentResults = $state<ContentFileMatch[]>([]);
+  contentLoading = $state(false);
+  contentTruncated = $state(false);
+  /** Total matches across `contentResults` (the header's result count). */
+  contentTotal = $state(0);
+  /** A bad regular expression, shown under the content input. Null = the pattern
+   *  is fine (this never blocks the filename search, which has no pattern). */
+  contentError = $state<string | null>(null);
+  /** Which of the two collapsible sections under the search bar are open. Kept in
+   *  the store so they survive the tab being unmounted, like the tree itself. */
+  contentOpen = $state(false);
+  filtersOpen = $state(false);
   /** The row the user last clicked (file or folder). Drives the selection
    *  highlight and resolves the target directory for a toolbar-triggered create
    *  (folder → inside it; file → its parent; nothing selected → the root). */
@@ -73,6 +105,8 @@ class FileTreeStore {
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   /** Monotonic id so a slow search can't overwrite a newer one's results. */
   private searchSeq = 0;
+  private contentTimer: ReturnType<typeof setTimeout> | null = null;
+  private contentSeq = 0;
 
   /** Subscribe to the backend's `fs:changed` events (once) so files created,
    *  deleted or edited on disk reload the affected directories automatically.
@@ -115,10 +149,12 @@ class FileTreeStore {
     this.error = null;
     this.query = "";
     this.searchScope = null;
+    this.contentQuery = "";
     this.selectedEntry = null;
     this.draft = null;
     this.renamingPath = null;
     this.clearSearch();
+    this.clearContentSearch();
     if (root) void this.loadDir(root);
   }
 
@@ -182,6 +218,32 @@ class FileTreeStore {
   refresh(): void {
     for (const dir of Object.keys(this.childrenByDir)) void this.loadDir(dir, true);
     if (this.query.trim()) void this.runSearch();
+    if (this.contentQuery) void this.runContentSearch();
+  }
+
+  /** Expand every folder from the root down to `path`'s parent (loading each), so
+   *  the file has a visible row in the tree. Used to keep the tree pointed at the
+   *  open file while the search UI covers it — when the user closes the search,
+   *  the tree is already showing where that file lives. Files outside the current
+   *  root, and a root that isn't loaded, are a no-op. */
+  async revealFile(path: string): Promise<void> {
+    const root = this.root;
+    if (!root || !path.startsWith(root + "/")) return;
+    const chain: string[] = [];
+    let cur = parentOf(path);
+    while (cur.length > root.length && cur !== root) {
+      chain.unshift(cur);
+      const up = parentOf(cur);
+      if (up === cur) break;
+      cur = up;
+    }
+    // Expand first (one state write) so the rows appear as each listing lands.
+    if (chain.length > 0) {
+      const exp = new Set(this.expanded);
+      for (const d of chain) exp.add(d);
+      this.expanded = exp;
+    }
+    for (const d of chain) await this.loadDir(d);
   }
 
   // --- Project-wide filename search ----------------------------------------
@@ -202,6 +264,11 @@ class FileTreeStore {
     this.searchTimer = setTimeout(() => void this.runSearch(), SEARCH_DEBOUNCE_MS);
   }
 
+  /** The include/exclude globs both searches send to the backend. */
+  private filters(): SearchFilters {
+    return { include: this.filterInclude, exclude: this.filterExclude };
+  }
+
   /** Run the search now against `searchScope ?? root`. A monotonic sequence id
    *  drops any response that a newer query has already superseded. */
   private async runSearch(): Promise<void> {
@@ -214,7 +281,7 @@ class FileTreeStore {
     const seq = ++this.searchSeq;
     this.searchLoading = true;
     try {
-      const res = await fsSearchFiles(root, q, this.showHidden, SEARCH_LIMIT);
+      const res = await fsSearchFiles(root, q, this.showHidden, this.filters(), SEARCH_LIMIT);
       if (seq !== this.searchSeq) return;
       this.searchResults = res.entries;
       this.searchTruncated = res.truncated;
@@ -239,6 +306,89 @@ class FileTreeStore {
     this.searchResults = [];
     this.searchTruncated = false;
     this.searchLoading = false;
+  }
+
+  // --- Project-wide content search ------------------------------------------
+  // Same walker and filters as the filename search, but it reads each candidate
+  // file and reports matching lines. Driven by the panel exactly like the name
+  // search: it calls `scheduleContentSearch()` whenever the content query, a
+  // match mode, a filter or the hidden toggle changes.
+
+  /** Debounced (re)run of the content search from the current state. An empty
+   *  query clears the results immediately (no backend call). */
+  scheduleContentSearch(): void {
+    if (this.contentTimer) clearTimeout(this.contentTimer);
+    if (!this.contentQuery || !this.root) {
+      this.clearContentSearch();
+      return;
+    }
+    this.contentLoading = true;
+    this.contentTimer = setTimeout(() => void this.runContentSearch(), CONTENT_DEBOUNCE_MS);
+  }
+
+  /** Run the content search now against `searchScope ?? root`. A bad regular
+   *  expression lands in `contentError` (shown under the input) rather than the
+   *  panel-wide `error`, since it only invalidates this one search. */
+  private async runContentSearch(): Promise<void> {
+    const root = this.searchScope ?? this.root;
+    const q = this.contentQuery;
+    if (!root || !q) {
+      this.clearContentSearch();
+      return;
+    }
+    const seq = ++this.contentSeq;
+    this.contentLoading = true;
+    try {
+      const res = await fsSearchContent(
+        root,
+        {
+          query: q,
+          caseSensitive: this.contentCaseSensitive,
+          wholeWord: this.contentWholeWord,
+          isRegex: this.contentRegex,
+        },
+        this.showHidden,
+        this.filters(),
+        CONTENT_LIMIT,
+      );
+      if (seq !== this.contentSeq) return;
+      this.contentResults = res.files;
+      this.contentTotal = res.total;
+      this.contentTruncated = res.truncated;
+      this.contentError = null;
+    } catch (e) {
+      if (seq !== this.contentSeq) return;
+      this.contentError = msg(e);
+      this.contentResults = [];
+      this.contentTotal = 0;
+      this.contentTruncated = false;
+    } finally {
+      if (seq === this.contentSeq) this.contentLoading = false;
+    }
+  }
+
+  /** Cancel any pending/in-flight content search and drop its results. */
+  private clearContentSearch(): void {
+    if (this.contentTimer) {
+      clearTimeout(this.contentTimer);
+      this.contentTimer = null;
+    }
+    this.contentSeq++; // invalidate any in-flight response
+    this.contentResults = [];
+    this.contentTotal = 0;
+    this.contentTruncated = false;
+    this.contentLoading = false;
+    this.contentError = null;
+  }
+
+  /** Clear both searches and their inputs — the search UI's "close" action. The
+   *  filters and match modes survive, so reopening search keeps the user's setup. */
+  resetSearch(): void {
+    this.query = "";
+    this.searchScope = null;
+    this.contentQuery = "";
+    this.clearSearch();
+    this.clearContentSearch();
   }
 
   // --- Context-menu file operations ----------------------------------------

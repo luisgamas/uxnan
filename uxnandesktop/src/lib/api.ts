@@ -18,6 +18,8 @@ import type {
   BranchList,
   AgentHooksStatus,
   CommitInfo,
+  ContentQuery,
+  ContentSearch,
   DetectedEditor,
   DiagnosticsReport,
   DirListing,
@@ -57,6 +59,7 @@ import type {
   ResourceSummary,
   SavedRun,
   SavedTerminalLayout,
+  SearchFilters,
   TimelineEvent,
   UpdateInfo,
   UsageProvider,
@@ -635,15 +638,32 @@ export function fsDuplicate(path: string): Promise<string> {
 
 /** Project-wide filename search for the Files tab: recursively find files under
  *  `root` whose relative path matches every whitespace token of `query`. Honors
- *  `.gitignore` and skips `.git`; `includeHidden` surfaces dotfiles; `limit` caps
- *  the results (`truncated` flags an over-cap walk). */
+ *  `.gitignore` and skips `.git`; `includeHidden` surfaces dotfiles; `filters`
+ *  narrows by include/exclude globs; `limit` caps the results (`truncated` flags
+ *  an over-cap walk). */
 export function fsSearchFiles(
   root: string,
   query: string,
   includeHidden: boolean,
+  filters: SearchFilters,
   limit: number,
 ): Promise<FileSearch> {
-  return invoke<FileSearch>('fs_search_files', { root, query, includeHidden, limit });
+  return invoke<FileSearch>('fs_search_files', { root, query, includeHidden, filters, limit });
+}
+
+/** Project-wide **content** search for the Files tab: find the lines under `root`
+ *  matching `query` (its text plus the case / whole-word / regex modes). Walks
+ *  with the same gitignore rules and `filters` as [`fsSearchFiles`]; binary,
+ *  oversized and unreadable files are skipped. `limit` caps total matches.
+ *  Rejects with `SEARCH_INVALID` when the pattern doesn't parse. */
+export function fsSearchContent(
+  root: string,
+  query: ContentQuery,
+  includeHidden: boolean,
+  filters: SearchFilters,
+  limit: number,
+): Promise<ContentSearch> {
+  return invoke<ContentSearch>('fs_search_content', { root, query, includeHidden, filters, limit });
 }
 
 /** The current conversation (title + coarse status) of the Zero agent running in

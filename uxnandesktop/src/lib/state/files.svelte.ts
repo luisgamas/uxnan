@@ -54,6 +54,12 @@ export class FileEditorState {
   externallyChanged = $state(false);
   /** Bumped on each successful load so the editor re-initializes its document. */
   rev = $state(0);
+  /** A pending "scroll to this line" request (1-based), or null. Set when a file
+   *  is opened from a content-search hit; the editor applies it once the document
+   *  has loaded and then leaves it alone. `seq` makes a repeat of the *same* line
+   *  a new request, so clicking the same hit twice scrolls back to it. */
+  reveal = $state<{ line: number; seq: number } | null>(null);
+  private revealSeq = 0;
 
   constructor(absPath: string, worktree: string | null) {
     this.path = absPath;
@@ -65,6 +71,13 @@ export class FileEditorState {
   /** File name (last path segment) of the open file. */
   get name(): string {
     return this.path.split("/").pop() ?? this.path;
+  }
+
+  /** Ask the editor to scroll to (and briefly mark) a 1-based line — how a
+   *  content-search hit lands on the line it matched. Safe before the file has
+   *  loaded: the editor holds the request until the document exists. */
+  requestReveal(line: number): void {
+    this.reveal = { line, seq: ++this.revealSeq };
   }
 
   /** Re-point the editor at a moved file (a rename in the same folder). The bytes

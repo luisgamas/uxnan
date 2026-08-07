@@ -2,7 +2,7 @@
   "name": "uxnan-monorepo",
   "private": true,
   "version": "0.0.0",
-  "description": "Uxnan ecosystem — Node.js workspaces (shared contracts, bridge daemon, relay).",
+  "description": "Uxnan ecosystem \u2014 Node.js workspaces (shared contracts, bridge daemon, relay).",
   "license": "MPL-2.0",
   "author": "Luis Donaldo Gamas Vazquez",
   "workspaces": [
@@ -16,9 +16,12 @@
   "scripts": {
     "build": "npm run build -w @uxnan/shared && npm run build -w uxnan-relay && npm run build -w uxnan-bridge",
     "typecheck": "npm run typecheck -w @uxnan/shared && npm run typecheck -w uxnan-relay && npm run typecheck -w uxnan-bridge",
-    "test": "npm run build && npm run test -w @uxnan/shared && npm run test -w uxnan-relay && npm run test -w uxnan-bridge",
-    "format": "prettier --write \"{shared,bridge,relay}/{src,test}/**/*.{ts,json}\"",
-    "format:check": "prettier --check \"{shared,bridge,relay}/{src,test}/**/*.{ts,json}\""
+    "test": "npm run build && npm run test -w @uxnan/shared && npm run test -w uxnan-relay && npm run test -w uxnan-bridge && npm run test:release",
+    "format": "prettier --write \"{shared,bridge,relay}/{src,test}/**/*.{ts,json}\" \"scripts/**/*.mjs\"",
+    "format:check": "prettier --check \"{shared,bridge,relay}/{src,test}/**/*.{ts,json}\" \"scripts/**/*.mjs\"",
+    "release:status": "node scripts/release/status.mjs",
+    "test:release": "node --test \"scripts/release/*.test.mjs\"",
+    "release:prepare": "node scripts/release/prepare.mjs"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

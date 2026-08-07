@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 501 Rust tests (473 unit + 28
+always wins). 509 Rust tests (481 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 801 frontend Vitest tests across two
+probe) + 827 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -88,6 +88,14 @@ started.**
   links/images, anchors and highlighted fences; images include editable SVG; PDFs
   use the native webview renderer through a validated, bounded data URL. Details:
   [`docs/file-viewer.md`](docs/file-viewer.md).
+- **File tree with content search** — lazy gitignore-aware tree plus three search
+  surfaces sharing one walker: file **names** (`fs_search_files`), file
+  **contents** (`fs_search_content` — literal / whole word / regex, matching lines
+  that open the file at their line) and **include/exclude globs** narrowing both.
+  Binary, oversized (> 2 MiB) and unreadable files are skipped; per-file and total
+  match caps are reported as truncation. The tree marks and reveals whatever the
+  center area is showing, independently of the click selection. Details:
+  [`docs/file-tree.md`](docs/file-tree.md).
 - **Agent monitoring (Phase 4)** — Layer 1 local HTTP hook server (`axum`, precise
   `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
   (OSC, path/word-boundary-hardened) + Layer 3 process-tree detection; colored
@@ -1123,7 +1131,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 501 Rust + 793 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 509 Rust + 827 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the
