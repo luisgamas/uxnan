@@ -136,6 +136,11 @@ pub enum AgentKind {
     Codex,
     Gemini,
     Grok,
+    /// Any agent whose managed entry is the shared per-event reporter carrying
+    /// its own kind as an argument (`uxnan-event-hook.cmd cursor`). One variant
+    /// serves them all because the tag in the command is what identifies the
+    /// entry as ours *and* whose it is — see [`TABLE_AGENTS`].
+    Tagged(&'static str),
 }
 
 /// Claude Code hook events → `hooks` block. `true` = attach an all-tools matcher
@@ -684,6 +689,14 @@ fn is_managed_hook(hook: &Value, kind: AgentKind) -> bool {
             text.contains("uxnan-codex-hook")
                 || (text.contains(STATUS_RELAY_FILENAME) && text.contains("codex"))
         }
+        // Same rule as Grok's, with the tag supplied by the table: the reporter
+        // filename proves the entry is ours, the tag proves it is this agent's.
+        // Requiring both is what stops one agent's uninstall from stripping
+        // another's entry out of a shared config file.
+        AgentKind::Tagged(tag) => {
+            (text.contains(EVENT_HOOK_SH_FILENAME) || text.contains(EVENT_HOOK_CMD_FILENAME))
+                && text.contains(tag)
+        }
     }
 }
 
@@ -767,8 +780,31 @@ fn merge_event(
     }
 }
 
+/// Merge one managed entry into `doc.hooks[event]` for a CLI that puts the
+/// command **directly on the definition** instead of nesting it under a `hooks`
+/// array (Cursor's schema). Same contract as [`merge_event`]: any prior managed
+/// entry of ours is stripped first, so re-installing converges on one.
+fn merge_event_flat(doc: &mut Value, event: &str, entry: &Value, kind: AgentKind) {
+    if !doc["hooks"]
+        .get(event)
+        .map(Value::is_array)
+        .unwrap_or(false)
+    {
+        doc["hooks"][event] = json!([]);
+    }
+    if let Some(arr) = doc["hooks"][event].as_array_mut() {
+        arr.retain(|definition| !is_managed_hook(definition, kind));
+        arr.push(entry.clone());
+    }
+}
+
 /// Strip every managed group for `kind` from a `hooks` document, dropping now-empty
 /// event buckets and an empty top-level `hooks`.
+///
+/// Both shapes are swept in one pass — the grouped one (a managed command nested
+/// under `hooks`) and the flat one (the command on the definition itself) —
+/// because an agent can be re-registered under either and a half-swept config
+/// leaves a second entry firing for every event.
 fn strip_managed(doc: &mut Value, kind: AgentKind) {
     let Some(hooks) = doc.get_mut("hooks").and_then(Value::as_object_mut) else {
         return;
@@ -778,11 +814,12 @@ fn strip_managed(doc: &mut Value, kind: AgentKind) {
     for groups in hooks.values_mut() {
         if let Some(arr) = groups.as_array_mut() {
             arr.retain(|group| {
-                !group
+                let grouped = group
                     .get("hooks")
                     .and_then(Value::as_array)
                     .map(|hs| hs.iter().any(|h| is_managed_hook(h, kind)))
-                    .unwrap_or(false)
+                    .unwrap_or(false);
+                !(grouped || is_managed_hook(group, kind))
             });
         }
     }
@@ -836,11 +873,12 @@ fn contains_managed(text: &str, kind: AgentKind) -> bool {
             .as_array()
             .map(|arr| {
                 arr.iter().any(|group| {
-                    group
-                        .get("hooks")
-                        .and_then(Value::as_array)
-                        .map(|hs| hs.iter().any(|h| is_managed_hook(h, kind)))
-                        .unwrap_or(false)
+                    is_managed_hook(group, kind)
+                        || group
+                            .get("hooks")
+                            .and_then(Value::as_array)
+                            .map(|hs| hs.iter().any(|h| is_managed_hook(h, kind)))
+                            .unwrap_or(false)
                 })
             })
             .unwrap_or(false)
@@ -1420,6 +1458,855 @@ pub fn uninstall_pi_hooks() -> Result<AgentHooksStatus, AppError> {
 }
 
 // ---------------------------------------------------------------------------
+// Declarative agents — one table row per CLI
+// ---------------------------------------------------------------------------
+//
+// Everything below is driven by [`TABLE_AGENTS`]. The six agents above each
+// needed their own installer because each is genuinely different (a Node relay,
+// a trust-hashed command, an in-process plugin, a dot-relative reporter). The
+// rest are not: they all run a command per event and pipe it their raw event
+// JSON, so they share one reporter (`uxnan-event-hook`) and differ only in
+// *where* the entry goes and *how* it is spelled. Encoding that as data instead
+// of code is what keeps the eighteenth agent a table row rather than another
+// 200 lines — and what makes "which agents do we support" answerable by reading
+// one list.
+
+/// Where the per-hook timeout goes and in what unit — the one thing every CLI
+/// spells differently (seconds, milliseconds, or its own key).
+#[derive(Debug, Clone, Copy)]
+struct HookTimeout {
+    key: &'static str,
+    value: u32,
+}
+
+const TIMEOUT_SECS: HookTimeout = HookTimeout {
+    key: "timeout",
+    value: RELAY_TIMEOUT_SECS,
+};
+const TIMEOUT_MILLIS: HookTimeout = HookTimeout {
+    key: "timeout",
+    value: GEMINI_TIMEOUT_MS,
+};
+/// GitHub Copilot's own spelling (`timeoutSec`), per its hooks reference.
+const TIMEOUT_SEC_KEY: HookTimeout = HookTimeout {
+    key: "timeoutSec",
+    value: RELAY_TIMEOUT_SECS,
+};
+
+/// One event to register, and the matcher its CLI wants (if any).
+#[derive(Debug, Clone, Copy)]
+struct HookEvent {
+    name: &'static str,
+    /// `None` writes no `matcher` key. `Some(m)` writes it verbatim — the value
+    /// is not cosmetic: Claude-family CLIs read `""`/`"*"` as "every tool" while
+    /// the ones that treat a matcher as a **regex** (Command Code, Devin) reject
+    /// `*` outright, so each agent states its own.
+    matcher: Option<&'static str>,
+}
+
+const fn ev(name: &'static str) -> HookEvent {
+    HookEvent {
+        name,
+        matcher: None,
+    }
+}
+
+const fn ev_all(name: &'static str, matcher: &'static str) -> HookEvent {
+    HookEvent {
+        name,
+        matcher: Some(matcher),
+    }
+}
+
+/// How our reporter is written into the agent's configuration.
+#[derive(Debug, Clone, Copy)]
+enum HookLayout {
+    /// Merged into the user's config under `hooks[event]`, in Claude's grouped
+    /// shape: `[{ matcher?, hooks: [{ type, command, timeout }] }]`.
+    Grouped(HookTimeout),
+    /// Merged into the user's config under `hooks[event]`, as a flat list of
+    /// command objects: `[{ command, timeout }]`. Cursor's shape.
+    Flat(HookTimeout),
+    /// A file that is entirely ours, holding a `hooks` object of flat command
+    /// lists plus the `version` its CLI requires. Nothing of the user's is in
+    /// it, so install writes it whole and uninstall deletes it.
+    OwnFile(HookTimeout),
+    /// A file that is entirely ours, holding a **list** of named hook objects
+    /// (`{ name, trigger, action: { type, command } }`). Kiro's shape.
+    OwnList,
+    /// A marker-delimited block appended to the user's TOML config, because the
+    /// CLI keeps its settings in TOML and we vendor no TOML writer: everything
+    /// outside our markers is left byte-for-byte alone.
+    TomlBlock,
+}
+
+/// A CLI whose managed reporter is fully described by data.
+struct TableAgent {
+    /// The hook agent type — posted as `X-Uxnan-Agent-Type`, matched by
+    /// `hooks::normalize_event`, and the tag that identifies our entry in the
+    /// agent's config. Must equal the arm name in the server's event table.
+    id: &'static str,
+    /// What the config file is called, for the status line shown in Settings.
+    label: &'static str,
+    /// The executable name this CLI puts on `PATH` — how we tell "the user has
+    /// this agent" from "the user has never heard of it".
+    command: &'static str,
+    /// The config file this agent reads its hooks from.
+    path: fn() -> Option<PathBuf>,
+    layout: HookLayout,
+    events: &'static [HookEvent],
+}
+
+/// Whether this CLI looks present on the machine: its executable is on `PATH`,
+/// or it already has the config file we would be writing into.
+///
+/// The startup auto-install is gated on this. Writing `~/.factory/settings.json`
+/// on a machine that has never had Droid would be creating another product's
+/// config folder behind the user's back — harmless to the ADE, but not ours to
+/// create. An explicit **Install** in Settings is not gated: asking for it is
+/// answer enough.
+fn table_agent_present(agent: &TableAgent) -> bool {
+    if crate::which::resolve(agent.command).is_some() {
+        return true;
+    }
+    (agent.path)().map(|p| p.exists()).unwrap_or(false)
+}
+
+/// Claude's own event vocabulary, shared by every CLI that reimplements it.
+/// `""` is its all-tools matcher.
+const CLAUDE_SHAPED_EVENTS: &[HookEvent] = &[
+    ev("UserPromptSubmit"),
+    ev_all("PreToolUse", ""),
+    ev_all("PostToolUse", ""),
+    ev_all("PostToolUseFailure", ""),
+    ev_all("PermissionRequest", ""),
+    ev("Notification"),
+    ev("Stop"),
+    // A turn that died on an API/model error skips `Stop` entirely; without this
+    // the card spins forever (the same gap Grok's `StopFailure` closes).
+    ev("StopFailure"),
+    ev("SessionStart"),
+    ev("SessionEnd"),
+    ev("SubagentStart"),
+    ev("SubagentStop"),
+];
+
+/// The declaratively-wired agents, in the order Settings lists them.
+const TABLE_AGENTS: &[TableAgent] = &[
+    // Claude Code fork: same settings shape, same vocabulary, its own home.
+    TableAgent {
+        id: "openclaude",
+        label: "settings.json",
+        command: "openclaude",
+        path: openclaude_settings_path,
+        layout: HookLayout::Grouped(TIMEOUT_SECS),
+        events: CLAUDE_SHAPED_EVENTS,
+    },
+    // Qwen Code speaks Claude's vocabulary but times out in MILLISECONDS, like
+    // the Gemini CLI it descends from.
+    TableAgent {
+        id: "qwen",
+        label: "settings.json",
+        command: "qwen",
+        path: qwen_settings_path,
+        layout: HookLayout::Grouped(TIMEOUT_MILLIS),
+        events: CLAUDE_SHAPED_EVENTS,
+    },
+    TableAgent {
+        id: "droid",
+        label: "settings.json",
+        command: "droid",
+        path: droid_settings_path,
+        layout: HookLayout::Grouped(TIMEOUT_SECS),
+        events: &[
+            ev("UserPromptSubmit"),
+            ev_all("PreToolUse", "*"),
+            ev_all("PostToolUse", "*"),
+            ev_all("PermissionRequest", "*"),
+            ev("Stop"),
+            ev("SessionStart"),
+            ev("SubagentStop"),
+        ],
+    },
+    // Devin reads a matcher as a REGEX and documents an absent one as "all", so
+    // Claude's literal `*` (an invalid regex) must not be written here.
+    TableAgent {
+        id: "devin",
+        label: "config.json",
+        command: "devin",
+        path: devin_config_path,
+        layout: HookLayout::Grouped(TIMEOUT_SECS),
+        events: &[
+            ev("UserPromptSubmit"),
+            ev("PreToolUse"),
+            ev("PostToolUse"),
+            ev("PermissionRequest"),
+            ev("Stop"),
+            ev("SessionStart"),
+            ev("SessionEnd"),
+            ev("PostCompaction"),
+        ],
+    },
+    // Command Code exposes only the tool loop and the end of a turn — no prompt,
+    // permission or session event — so it reports `working` and `done` and can
+    // never claim to need the user.
+    TableAgent {
+        id: "commandcode",
+        label: "settings.json",
+        command: "command-code",
+        path: commandcode_settings_path,
+        layout: HookLayout::Grouped(TIMEOUT_SECS),
+        events: &[
+            ev_all("PreToolUse", ".*"),
+            ev_all("PostToolUse", ".*"),
+            ev("Stop"),
+        ],
+    },
+    TableAgent {
+        id: "auggie",
+        label: "settings.json",
+        command: "auggie",
+        path: auggie_settings_path,
+        layout: HookLayout::Grouped(TIMEOUT_SECS),
+        events: &[
+            ev_all("PreToolUse", "*"),
+            ev_all("PostToolUse", "*"),
+            ev("Stop"),
+            ev("SessionStart"),
+            ev("SessionEnd"),
+        ],
+    },
+    // Cursor keeps the command ON the definition (Claude nests it under `hooks`)
+    // and names its events in camelCase.
+    TableAgent {
+        id: "cursor",
+        label: "hooks.json",
+        command: "cursor-agent",
+        path: cursor_hooks_path,
+        layout: HookLayout::Flat(TIMEOUT_SECS),
+        events: &[
+            ev("beforeSubmitPrompt"),
+            ev("preToolUse"),
+            ev("postToolUse"),
+            ev("postToolUseFailure"),
+            ev("stop"),
+            ev("sessionStart"),
+            ev("sessionEnd"),
+            ev("subagentStart"),
+            ev("subagentStop"),
+        ],
+    },
+    // Copilot loads every `*.json` in its hooks dir, so ours is a file of its
+    // own — nothing of the user's is read or rewritten.
+    TableAgent {
+        id: "copilot",
+        label: "uxnan-status.json",
+        command: "copilot",
+        path: copilot_hooks_path,
+        layout: HookLayout::OwnFile(TIMEOUT_SEC_KEY),
+        events: &[
+            ev("userPromptSubmitted"),
+            ev("preToolUse"),
+            ev("postToolUse"),
+            ev("postToolUseFailure"),
+            ev("permissionRequest"),
+            ev("agentStop"),
+            ev("errorOccurred"),
+            ev("sessionStart"),
+            ev("sessionEnd"),
+            ev("subagentStart"),
+            ev("subagentStop"),
+        ],
+    },
+    // Kiro merges every `*.json` under its global hooks dir, one file per hook
+    // set, keyed by `trigger` rather than by event.
+    TableAgent {
+        id: "kiro",
+        label: "uxnan-status.json",
+        command: "kiro-cli",
+        path: kiro_hooks_path,
+        layout: HookLayout::OwnList,
+        events: &[
+            ev("UserPromptSubmit"),
+            ev("PreToolUse"),
+            ev("PostToolUse"),
+            ev("Stop"),
+            ev("SessionStart"),
+        ],
+    },
+    // Kimi Code keeps everything in TOML; ours is a marker-delimited block.
+    TableAgent {
+        id: "kimi",
+        label: "config.toml",
+        command: "kimi",
+        path: kimi_config_path,
+        layout: HookLayout::TomlBlock,
+        events: &[
+            ev("UserPromptSubmit"),
+            ev("PreToolUse"),
+            ev("PostToolUse"),
+            ev("PostToolUseFailure"),
+            ev("PermissionRequest"),
+            ev("Stop"),
+            ev("StopFailure"),
+        ],
+    },
+];
+
+fn table_agent(id: &str) -> Option<&'static TableAgent> {
+    TABLE_AGENTS.iter().find(|a| a.id == id)
+}
+
+fn openclaude_settings_path() -> Option<PathBuf> {
+    Some(home_dir()?.join(".openclaude").join("settings.json"))
+}
+
+fn qwen_settings_path() -> Option<PathBuf> {
+    Some(home_dir()?.join(".qwen").join("settings.json"))
+}
+
+fn droid_settings_path() -> Option<PathBuf> {
+    Some(home_dir()?.join(".factory").join("settings.json"))
+}
+
+/// Devin is the one that isn't under the home dir on Windows: it keeps its
+/// config in `%APPDATA%`, and only falls back to `~/.config` elsewhere.
+fn devin_config_path() -> Option<PathBuf> {
+    if cfg!(windows) {
+        let base = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .or_else(|| Some(home_dir()?.join("AppData").join("Roaming")))?;
+        return Some(base.join("devin").join("config.json"));
+    }
+    Some(
+        home_dir()?
+            .join(".config")
+            .join("devin")
+            .join("config.json"),
+    )
+}
+
+fn commandcode_settings_path() -> Option<PathBuf> {
+    Some(home_dir()?.join(".commandcode").join("settings.json"))
+}
+
+fn auggie_settings_path() -> Option<PathBuf> {
+    Some(home_dir()?.join(".augment").join("settings.json"))
+}
+
+fn cursor_hooks_path() -> Option<PathBuf> {
+    Some(home_dir()?.join(".cursor").join("hooks.json"))
+}
+
+/// Copilot's hooks dir, honouring `COPILOT_HOME` the way the CLI does.
+fn copilot_hooks_path() -> Option<PathBuf> {
+    let home = std::env::var_os("COPILOT_HOME")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .or_else(|| Some(home_dir()?.join(".copilot")))?;
+    Some(home.join("hooks").join("uxnan-status.json"))
+}
+
+fn kiro_hooks_path() -> Option<PathBuf> {
+    Some(
+        home_dir()?
+            .join(".kiro")
+            .join("hooks")
+            .join("uxnan-status.json"),
+    )
+}
+
+/// Kimi Code's config, honouring `KIMI_CODE_HOME` the way the CLI does.
+fn kimi_config_path() -> Option<PathBuf> {
+    let home = std::env::var_os("KIMI_CODE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .or_else(|| Some(home_dir()?.join(".kimi-code")))?;
+    Some(home.join("config.toml"))
+}
+
+/// The command a table agent's config invokes: our shared per-event reporter,
+/// told which agent it is speaking for.
+///
+/// **On Windows the path keeps its backslashes.** Grok's command is
+/// forward-slashed (it runs the file directly, so either spelling resolves), and
+/// reusing that spelling here looked harmless until it was run: a CLI that hands
+/// the command to `cmd.exe` — measured against the real Cursor CLI — splits
+/// `C:/Users/…/Roaming/…` at the first `/` and reports *"…oaming is not
+/// recognized as an internal or external command"*. The native spelling is the
+/// one every launcher understands: `CreateProcess`, `cmd.exe` and PowerShell all
+/// take it, and no CLI on Windows hands a hook to a POSIX shell that would read
+/// the backslashes as escapes.
+///
+/// Quoting is still not an option — several of these CLIs parse a hook command
+/// as a literal path — so a space in the path falls back to the 8.3 short form,
+/// and `None` (no short form available) makes the caller report the agent
+/// unavailable rather than install a hook that could never run.
+fn table_agent_command(id: &str, install: &HookInstall) -> Option<String> {
+    let script = if cfg!(windows) {
+        &install.event_hook_cmd
+    } else {
+        &install.event_hook_sh
+    };
+    Some(format!("{} {id}", native_unquotable_path(script)?))
+}
+
+/// [`unquotable_path`] in the platform's own path spelling: forward slashes on
+/// POSIX, backslashes on Windows. See [`table_agent_command`] for why the
+/// difference is load-bearing.
+fn native_unquotable_path(path: &str) -> Option<String> {
+    if !cfg!(windows) {
+        return unquotable_path(path);
+    }
+    let native = path.replace('/', "\\");
+    if !native.contains(' ') {
+        return Some(native);
+    }
+    short_path(path).filter(|s| !s.contains(' '))
+}
+
+/// The entry our reporter takes inside one event, in this agent's shape.
+fn table_hook_entry(layout: HookLayout, command: &str) -> Value {
+    match layout {
+        HookLayout::Grouped(t) | HookLayout::OwnFile(t) => {
+            json!({ "type": "command", "command": command, t.key: t.value })
+        }
+        HookLayout::Flat(t) => json!({ "command": command, t.key: t.value }),
+        // Not entry-shaped: these two build their whole document at once.
+        HookLayout::OwnList | HookLayout::TomlBlock => json!({ "command": command }),
+    }
+}
+
+/// The `hooks` object for an agent whose file is entirely ours.
+fn table_own_hooks_object(agent: &TableAgent, command: &str) -> Value {
+    let mut hooks = serde_json::Map::new();
+    for event in agent.events {
+        hooks.insert(
+            event.name.to_string(),
+            json!([table_hook_entry(agent.layout, command)]),
+        );
+    }
+    Value::Object(hooks)
+}
+
+/// The full document written for an `OwnFile` / `OwnList` agent.
+fn table_own_document(agent: &TableAgent, command: &str) -> Value {
+    match agent.layout {
+        HookLayout::OwnList => {
+            // Kiro keys a hook by its `trigger` and wants each one named, so a
+            // re-install replaces our entries by name and leaves other files in
+            // its hooks dir alone.
+            let hooks: Vec<Value> = agent
+                .events
+                .iter()
+                .map(|event| {
+                    json!({
+                        "name": format!("{}-{}", MANAGED_HOOK_NAME, event.name.to_lowercase()),
+                        "description": "Reports agent status to Uxnan Desktop.",
+                        "trigger": event.name,
+                        "action": { "type": "command", "command": command }
+                    })
+                })
+                .collect();
+            json!({ "version": "v1", "hooks": hooks })
+        }
+        _ => json!({ "version": 1, "hooks": table_own_hooks_object(agent, command) }),
+    }
+}
+
+/// Name our managed hook carries where a config keys hooks by name.
+const MANAGED_HOOK_NAME: &str = "uxnan-status";
+
+/// TOML markers delimiting the block we own inside a user's config. Everything
+/// outside them is never parsed, rewritten or reformatted.
+const TOML_BLOCK_START: &str =
+    "# >>> uxnan-managed-hooks (managed by Uxnan Desktop; do not edit) >>>";
+const TOML_BLOCK_END: &str = "# <<< uxnan-managed-hooks <<<";
+
+/// A TOML basic (double-quoted) string. Windows commands carry backslashes and
+/// a path could carry a quote, so both are escaped rather than assumed absent —
+/// an unescaped one would make the CLI reject its whole config file.
+fn toml_string(value: &str) -> String {
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t");
+    format!("\"{escaped}\"")
+}
+
+/// Our `[[hooks]]` block for a TOML-configured agent.
+fn table_toml_block(agent: &TableAgent, command: &str) -> String {
+    let mut out = String::from(TOML_BLOCK_START);
+    for event in agent.events {
+        out.push_str(&format!(
+            "\n[[hooks]]\nevent = \"{}\"\ncommand = {}\ntimeout = {}\n",
+            event.name,
+            toml_string(command),
+            RELAY_TIMEOUT_SECS
+        ));
+    }
+    out.push_str(TOML_BLOCK_END);
+    out
+}
+
+/// Strip our TOML block (and the blank lines that led into it) from `text`.
+fn strip_toml_block(text: &str) -> String {
+    let Some(start) = text.find(TOML_BLOCK_START) else {
+        return text.to_string();
+    };
+    let head = text[..start].trim_end().to_string();
+    // A hand-edit can delete the end marker; without this fallback the orphaned
+    // block would survive every re-install and accumulate.
+    let tail = match text[start..].find(TOML_BLOCK_END) {
+        Some(end) => text[start + end + TOML_BLOCK_END.len()..].to_string(),
+        None => String::new(),
+    };
+    let tail = tail.trim_start_matches(['\r', '\n']).to_string();
+    if tail.is_empty() {
+        head
+    } else if head.is_empty() {
+        tail
+    } else {
+        format!("{head}\n\n{tail}")
+    }
+}
+
+/// Install (or refresh) one table agent's managed reporter.
+pub fn install_table_agent(id: &str, install: &HookInstall) -> Result<AgentHooksStatus, AppError> {
+    let agent =
+        table_agent(id).ok_or_else(|| AppError::Invalid(format!("unknown hook agent: {id}")))?;
+    let path = (agent.path)()
+        .ok_or_else(|| AppError::Invalid(format!("cannot resolve the {id} config path")))?;
+    let Some(command) = table_agent_command(agent.id, install) else {
+        return Err(AppError::Invalid(format!(
+            "the hooks folder path contains a space and Windows won't shorten it ({}). \
+             A hook command is a literal path to these CLIs, so none can be installed from here.",
+            install.dir
+        )));
+    };
+    let kind = AgentKind::Tagged(agent.id);
+    match agent.layout {
+        HookLayout::Grouped(_) | HookLayout::Flat(_) => {
+            let existing = std::fs::read_to_string(&path).unwrap_or_default();
+            let mut doc = read_hooks_doc(&existing);
+            // Sweep our own prior entries first (including from events we no
+            // longer subscribe to), so a re-install converges on one entry per
+            // event instead of stacking a new one every time.
+            strip_managed(&mut doc, kind);
+            ensure_hooks_object(&mut doc);
+            let entry = table_hook_entry(agent.layout, &command);
+            for event in agent.events {
+                match agent.layout {
+                    HookLayout::Flat(_) => merge_event_flat(&mut doc, event.name, &entry, kind),
+                    _ => merge_event(&mut doc, event.name, event.matcher, &entry, kind),
+                }
+            }
+            // Cursor validates a `version` and rejects a file without one; a
+            // value the user pinned themselves is left as they set it.
+            if matches!(agent.layout, HookLayout::Flat(_)) && doc.get("version").is_none() {
+                doc["version"] = json!(1);
+            }
+            write_json_atomic(&path, &to_pretty(&doc))?;
+        }
+        HookLayout::OwnFile(_) | HookLayout::OwnList => {
+            write_json_atomic(&path, &to_pretty(&table_own_document(agent, &command)))?;
+        }
+        HookLayout::TomlBlock => {
+            let existing = std::fs::read_to_string(&path).unwrap_or_default();
+            let base = strip_toml_block(&existing);
+            let block = table_toml_block(agent, &command);
+            let next = if base.trim().is_empty() {
+                format!("{block}\n")
+            } else {
+                format!("{base}\n\n{block}\n")
+            };
+            write_text_atomic(&path, &next)?;
+        }
+    }
+    Ok(read_table_agent_status(id))
+}
+
+/// Remove one table agent's managed reporter, leaving the user's own hooks — and
+/// for the TOML agents every byte outside our markers — untouched.
+pub fn uninstall_table_agent(id: &str) -> Result<AgentHooksStatus, AppError> {
+    let agent =
+        table_agent(id).ok_or_else(|| AppError::Invalid(format!("unknown hook agent: {id}")))?;
+    let path = (agent.path)()
+        .ok_or_else(|| AppError::Invalid(format!("cannot resolve the {id} config path")))?;
+    match agent.layout {
+        HookLayout::Grouped(_) | HookLayout::Flat(_) => {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                let mut doc: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({}));
+                let before = doc.clone();
+                strip_managed(&mut doc, AgentKind::Tagged(agent.id));
+                if doc != before {
+                    write_json_atomic(&path, &to_pretty(&doc))?;
+                }
+            }
+        }
+        // The file is entirely ours — removing it is the whole uninstall.
+        HookLayout::OwnFile(_) | HookLayout::OwnList => {
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+        }
+        HookLayout::TomlBlock => {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                let stripped = strip_toml_block(&text);
+                if stripped != text {
+                    let next = if stripped.trim().is_empty() {
+                        String::new()
+                    } else {
+                        format!("{}\n", stripped.trim_end())
+                    };
+                    write_text_atomic(&path, &next)?;
+                }
+            }
+        }
+    }
+    Ok(read_table_agent_status(id))
+}
+
+/// Whether one table agent's managed reporter is currently installed.
+pub fn read_table_agent_status(id: &str) -> AgentHooksStatus {
+    let Some(agent) = table_agent(id) else {
+        return AgentHooksStatus {
+            installed: false,
+            file_exists: false,
+            unavailable: true,
+            detail: format!("unknown hook agent: {id}"),
+        };
+    };
+    let Some(path) = (agent.path)() else {
+        return AgentHooksStatus {
+            installed: false,
+            file_exists: false,
+            unavailable: true,
+            detail: "home directory not resolvable".to_string(),
+        };
+    };
+    match agent.layout {
+        HookLayout::Grouped(_) | HookLayout::Flat(_) => {
+            status_from_config(Some(path), AgentKind::Tagged(agent.id), agent.label)
+        }
+        // Ours whole: its presence IS the install state, and the tag guards
+        // against reading someone else's file of the same name.
+        HookLayout::OwnFile(_) | HookLayout::OwnList | HookLayout::TomlBlock => {
+            let path_str = path.to_string_lossy().into_owned();
+            let marker = if matches!(agent.layout, HookLayout::TomlBlock) {
+                TOML_BLOCK_START
+            } else {
+                MANAGED_HOOK_NAME
+            };
+            match std::fs::read_to_string(&path) {
+                Ok(text) => AgentHooksStatus {
+                    installed: text.contains(marker)
+                        || text.contains(EVENT_HOOK_SH_FILENAME)
+                        || text.contains(EVENT_HOOK_CMD_FILENAME),
+                    file_exists: true,
+                    unavailable: false,
+                    detail: format!("{} at {path_str}", agent.label),
+                },
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => AgentHooksStatus {
+                    installed: false,
+                    file_exists: false,
+                    unavailable: false,
+                    detail: format!("file not present at {path_str}"),
+                },
+                Err(err) => AgentHooksStatus {
+                    installed: false,
+                    file_exists: true,
+                    unavailable: true,
+                    detail: err.to_string(),
+                },
+            }
+        }
+    }
+}
+
+/// Render exactly what the ADE writes for one table agent (Settings "Show
+/// config"), so what's shown is what lands on disk — not a prettified sketch.
+pub fn render_table_agent_config(id: &str, install: &HookInstall) -> Result<String, AppError> {
+    let agent =
+        table_agent(id).ok_or_else(|| AppError::Invalid(format!("unknown hook agent: {id}")))?;
+    let command =
+        table_agent_command(agent.id, install).unwrap_or_else(|| "<unavailable>".to_string());
+    match agent.layout {
+        HookLayout::TomlBlock => Ok(table_toml_block(agent, &command)),
+        HookLayout::OwnFile(_) | HookLayout::OwnList => {
+            serde_json::to_string_pretty(&table_own_document(agent, &command))
+                .map_err(AppError::Serde)
+        }
+        HookLayout::Grouped(_) | HookLayout::Flat(_) => {
+            let mut doc = json!({ "hooks": {} });
+            let entry = table_hook_entry(agent.layout, &command);
+            let kind = AgentKind::Tagged(agent.id);
+            for event in agent.events {
+                match agent.layout {
+                    HookLayout::Flat(_) => merge_event_flat(&mut doc, event.name, &entry, kind),
+                    _ => merge_event(&mut doc, event.name, event.matcher, &entry, kind),
+                }
+            }
+            if matches!(agent.layout, HookLayout::Flat(_)) {
+                doc["version"] = json!(1);
+            }
+            serde_json::to_string_pretty(&doc).map_err(AppError::Serde)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// One entry point for every agent
+// ---------------------------------------------------------------------------
+
+/// Every agent the ADE can install a reporter for, in the order Settings lists
+/// them: the six hand-written ones first (each needs machinery of its own — a
+/// Node relay, a trust hash, an in-process plugin), then the table.
+///
+/// Gemini CLI is included deliberately even though it is discontinued upstream
+/// and never auto-installed: someone who already has its reporter needs a card
+/// to turn it off.
+pub fn hook_agent_ids() -> Vec<&'static str> {
+    let mut ids = vec![
+        "claude",
+        "codex",
+        "opencode",
+        "pi",
+        "grok",
+        "antigravity",
+        "gemini",
+    ];
+    ids.extend(TABLE_AGENTS.iter().map(|a| a.id));
+    ids
+}
+
+/// One agent's row for the Settings panel: what it is, where its config lives
+/// and whether our reporter is in it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookAgentEntry {
+    pub id: String,
+    /// Whether this CLI looks present on the machine (on `PATH`, or its config
+    /// already exists) — the panel leads with the agents you actually use.
+    pub present: bool,
+    /// The file our reporter is written into, shown under the agent's name.
+    pub config_path: String,
+    pub status: AgentHooksStatus,
+}
+
+/// The install state of every agent, resolved in one pass so the panel makes a
+/// single call instead of one per agent.
+pub fn read_all_agent_status() -> Vec<HookAgentEntry> {
+    hook_agent_ids()
+        .into_iter()
+        .map(|id| HookAgentEntry {
+            id: id.to_string(),
+            present: agent_present(id),
+            config_path: agent_config_path(id),
+            status: read_agent_status(id),
+        })
+        .collect()
+}
+
+/// Where an agent's reporter is written, as an absolute path (empty when the
+/// home directory can't be resolved).
+fn agent_config_path(id: &str) -> String {
+    let path = match id {
+        "claude" => claude_settings_path(),
+        "codex" => codex_hooks_path(),
+        "gemini" => gemini_settings_path(),
+        "opencode" => opencode_plugin_path(),
+        "pi" => pi_extension_path(),
+        "grok" => grok_hooks_path(),
+        "antigravity" => antigravity_hooks_path(),
+        _ => table_agent(id).and_then(|a| (a.path)()),
+    };
+    path.map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Whether an agent looks present on this machine (see `table_agent_present`).
+fn agent_present(id: &str) -> bool {
+    if let Some(agent) = table_agent(id) {
+        return table_agent_present(agent);
+    }
+    // The hand-written six: their executable names, which differ from the hook
+    // kind for Antigravity (`agy`) — the same split `agentStatus.titleAgentId`
+    // handles on the frontend.
+    let command = match id {
+        "claude" => "claude",
+        "codex" => "codex",
+        "opencode" => "opencode",
+        "pi" => "pi",
+        "grok" => "grok",
+        "antigravity" => "agy",
+        "gemini" => "gemini",
+        _ => return false,
+    };
+    crate::which::resolve(command).is_some()
+}
+
+/// Read one agent's install state, whichever machinery owns it.
+pub fn read_agent_status(id: &str) -> AgentHooksStatus {
+    match id {
+        "claude" => read_claude_status(),
+        "codex" => read_codex_hooks_status(),
+        "gemini" => read_gemini_hooks_status(),
+        "opencode" => read_opencode_hooks_status(),
+        "pi" => read_pi_hooks_status(),
+        "grok" => read_grok_hooks_status(),
+        "antigravity" => read_antigravity_hooks_status(),
+        _ => read_table_agent_status(id),
+    }
+}
+
+/// Install one agent's reporter, whichever machinery owns it.
+pub fn install_agent(id: &str, install: &HookInstall) -> Result<AgentHooksStatus, AppError> {
+    match id {
+        "claude" => install_claude_hooks(&install.status_relay_script),
+        "codex" => install_codex_hooks(install),
+        "gemini" => install_gemini_hooks(&install.status_relay_script),
+        "opencode" => install_opencode_hooks(),
+        "pi" => install_pi_hooks(),
+        "grok" => install_grok_hooks(install),
+        "antigravity" => install_antigravity_hooks(),
+        _ => install_table_agent(id, install),
+    }
+}
+
+/// Remove one agent's reporter, whichever machinery owns it.
+pub fn uninstall_agent(id: &str) -> Result<AgentHooksStatus, AppError> {
+    match id {
+        "claude" => uninstall_claude_hooks(),
+        "codex" => uninstall_codex_hooks(),
+        "gemini" => uninstall_gemini_hooks(),
+        "opencode" => uninstall_opencode_hooks(),
+        "pi" => uninstall_pi_hooks(),
+        "grok" => uninstall_grok_hooks(),
+        "antigravity" => uninstall_antigravity_hooks(),
+        _ => uninstall_table_agent(id),
+    }
+}
+
+/// Render exactly what the ADE writes for one agent (Settings "Show config").
+/// OpenCode and Pi have no config entry — their reporter *is* the file — so the
+/// panel shows their source instead and never asks for this.
+pub fn render_agent_config(id: &str, install: &HookInstall) -> Result<String, AppError> {
+    match id {
+        "claude" => render_claude_settings_json(&install.status_relay_script),
+        "codex" => render_codex_hooks_json(install),
+        "gemini" => render_gemini_settings_json(&install.status_relay_script),
+        "grok" => render_grok_hooks_json(install),
+        "antigravity" => render_antigravity_hooks_json(),
+        "opencode" => Ok(OPENCODE_STATUS_PLUGIN.to_string()),
+        "pi" => Ok(PI_STATUS_EXTENSION.to_string()),
+        _ => render_table_agent_config(id, install),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Aggregate install used at startup ("out of the box")
 // ---------------------------------------------------------------------------
 
@@ -1438,6 +2325,12 @@ pub fn install_all(install: &HookInstall) {
     log("pi", install_pi_hooks());
     log("grok", install_grok_hooks(install));
     log("antigravity", install_antigravity_hooks());
+    // The declaratively-wired CLIs, but only the ones this machine actually has:
+    // see `table_agent_present`. An agent installed later is picked up on the
+    // next launch, and its Settings card installs it on demand meanwhile.
+    for agent in TABLE_AGENTS.iter().filter(|a| table_agent_present(a)) {
+        log(agent.id, install_table_agent(agent.id, install));
+    }
     // Gemini CLI is deliberately absent: it is discontinued upstream, so a fresh
     // machine never gets its reporter. `install_gemini_hooks` stays wired for the
     // Settings card, which is still offered to anyone who already has it
@@ -1447,6 +2340,221 @@ pub fn install_all(install: &HookInstall) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `HookInstall` pointing at plausible script paths, for rendering tests
+    /// that never touch the disk.
+    fn fake_install() -> HookInstall {
+        let mut install = HookInstall {
+            dir: "/tmp/uxnan/hooks".into(),
+            status_relay_script: "/tmp/uxnan/hooks/uxnan-status-relay.cjs".into(),
+            codex_hook_sh: "/tmp/uxnan/hooks/uxnan-codex-hook.sh".into(),
+            codex_hook_cmd: "/tmp/uxnan/hooks/uxnan-codex-hook.cmd".into(),
+            opencode_plugin_script: String::new(),
+            pi_extension_script: String::new(),
+            event_hook_sh: "/tmp/uxnan/hooks/uxnan-event-hook.sh".into(),
+            event_hook_cmd: "/tmp/uxnan/hooks/uxnan-event-hook.cmd".into(),
+            wrapper_bash: String::new(),
+            wrapper_powershell: String::new(),
+            wrapper_cmd: String::new(),
+            wrapper_fish: String::new(),
+            browser_shim_bash: String::new(),
+            browser_shim_cmd: String::new(),
+            claude_settings_path: String::new(),
+            codex_hooks_path: String::new(),
+            gemini_settings_path: String::new(),
+            opencode_plugin_path: String::new(),
+            pi_extension_path: String::new(),
+            grok_hooks_path: String::new(),
+            antigravity_hooks_path: String::new(),
+        };
+        // Keep the platform's own script the one under test.
+        if cfg!(windows) {
+            install.event_hook_sh = String::new();
+        } else {
+            install.event_hook_cmd = String::new();
+        }
+        install
+    }
+
+    #[test]
+    fn every_table_agent_renders_a_config_naming_itself() {
+        let install = fake_install();
+        for agent in TABLE_AGENTS {
+            let rendered = render_table_agent_config(agent.id, &install)
+                .unwrap_or_else(|e| panic!("{} failed to render: {e}", agent.id));
+            // The reporter is shared, so the tag is the ONLY thing that says
+            // which agent a report came from: without it the server has no arm
+            // to match and the report is dropped.
+            assert!(
+                rendered.contains(&format!(" {}", agent.id)),
+                "{} does not pass its own kind to the reporter: {rendered}",
+                agent.id
+            );
+            assert!(
+                rendered.contains("uxnan-event-hook"),
+                "{} does not invoke the shared reporter",
+                agent.id
+            );
+            // Every event we said we'd register has to be in there.
+            for event in agent.events {
+                assert!(
+                    rendered.contains(event.name),
+                    "{} is missing event {}",
+                    agent.id,
+                    event.name
+                );
+            }
+            if !matches!(agent.layout, HookLayout::TomlBlock) {
+                serde_json::from_str::<Value>(&rendered)
+                    .unwrap_or_else(|e| panic!("{} rendered invalid JSON: {e}", agent.id));
+            }
+        }
+    }
+
+    #[test]
+    fn table_agent_ids_match_the_servers_event_table() {
+        // The id is posted as the agent type and matched by `normalize_event`.
+        // A typo here means a perfectly installed hook whose every report is
+        // silently discarded, which is exactly the failure that is hardest to
+        // notice: the card just never moves.
+        for agent in TABLE_AGENTS {
+            let event = match agent.id {
+                "cursor" => "preToolUse",
+                "copilot" => "preToolUse",
+                _ => "PreToolUse",
+            };
+            assert_eq!(
+                crate::hooks::normalize_event(agent.id, event, None),
+                Some(crate::model::AgentStatus::Working),
+                "{} has no working arm in the server's event table",
+                agent.id
+            );
+        }
+    }
+
+    #[test]
+    fn grouped_merge_keeps_other_peoples_hooks() {
+        // A user's own hook, and another tool's, must survive our install and
+        // our uninstall. This is the whole contract of writing into a config
+        // file we do not own.
+        let foreign = json!({
+            "hooks": {
+                "PreToolUse": [
+                    { "matcher": "*", "hooks": [{ "type": "command", "command": "my-linter" }] }
+                ],
+                "Stop": [
+                    { "hooks": [{ "type": "command", "command": "/opt/other-tool/report.sh" }] }
+                ]
+            },
+            "model": "some-model"
+        });
+        let mut doc = read_hooks_doc(&foreign.to_string());
+        let kind = AgentKind::Tagged("droid");
+        let entry = json!({ "type": "command", "command": "/h/uxnan-event-hook.sh droid" });
+        merge_event(&mut doc, "PreToolUse", Some("*"), &entry, kind);
+        merge_event(&mut doc, "Stop", None, &entry, kind);
+
+        let rendered = doc.to_string();
+        assert!(rendered.contains("my-linter"));
+        assert!(rendered.contains("/opt/other-tool/report.sh"));
+        assert!(rendered.contains("uxnan-event-hook.sh droid"));
+        // Unrelated top-level keys are not ours to touch.
+        assert_eq!(doc["model"], json!("some-model"));
+
+        strip_managed(&mut doc, kind);
+        let rendered = doc.to_string();
+        assert!(!rendered.contains("uxnan-event-hook"));
+        assert!(rendered.contains("my-linter"));
+        assert!(rendered.contains("/opt/other-tool/report.sh"));
+    }
+
+    #[test]
+    fn flat_merge_sweeps_only_our_own_entry() {
+        // Cursor's shape: the command sits ON the definition. A prior install of
+        // ours is replaced; a hook belonging to anything else is not.
+        let existing = json!({
+            "version": 1,
+            "hooks": {
+                "stop": [
+                    { "command": "someone-elses-hook.sh", "timeout": 10 },
+                    { "command": "/old/uxnan-event-hook.sh cursor", "timeout": 10 }
+                ]
+            }
+        });
+        let mut doc = read_hooks_doc(&existing.to_string());
+        let kind = AgentKind::Tagged("cursor");
+        let entry = json!({ "command": "/new/uxnan-event-hook.sh cursor", "timeout": 10 });
+        merge_event_flat(&mut doc, "stop", &entry, kind);
+
+        let stop = doc["hooks"]["stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 2, "the stale entry of ours was not replaced");
+        assert!(stop
+            .iter()
+            .any(|h| h["command"] == json!("someone-elses-hook.sh")));
+        assert!(stop
+            .iter()
+            .any(|h| h["command"] == json!("/new/uxnan-event-hook.sh cursor")));
+    }
+
+    #[test]
+    fn one_agents_uninstall_leaves_another_agents_entry_alone() {
+        // Two of our own reporters can share a config file only if each is
+        // matched by its tag; matching just the script name would make removing
+        // one silently remove the other.
+        let mut doc = read_hooks_doc("{}");
+        let entry_of = |id: &str| json!({ "type": "command", "command": format!("/h/uxnan-event-hook.sh {id}") });
+        merge_event(
+            &mut doc,
+            "Stop",
+            None,
+            &entry_of("droid"),
+            AgentKind::Tagged("droid"),
+        );
+        merge_event(
+            &mut doc,
+            "Stop",
+            None,
+            &entry_of("qwen"),
+            AgentKind::Tagged("qwen"),
+        );
+
+        strip_managed(&mut doc, AgentKind::Tagged("droid"));
+        let rendered = doc.to_string();
+        assert!(!rendered.contains("uxnan-event-hook.sh droid"));
+        assert!(rendered.contains("uxnan-event-hook.sh qwen"));
+    }
+
+    #[test]
+    fn toml_block_is_replaceable_and_leaves_user_config_intact() {
+        let agent = table_agent("kimi").expect("kimi is wired");
+        let user = "[model]\nname = \"k2\"\n\n[ui]\ntheme = \"dark\"";
+        let block = table_toml_block(agent, "/h/uxnan-event-hook.sh kimi");
+        let installed = format!("{user}\n\n{block}\n");
+
+        // Every event is registered, and the command is a valid TOML string.
+        for event in agent.events {
+            assert!(installed.contains(&format!("event = \"{}\"", event.name)));
+        }
+        // Re-installing must not stack a second block.
+        let stripped = strip_toml_block(&installed);
+        assert_eq!(stripped.trim(), user);
+        assert!(!stripped.contains("uxnan-event-hook"));
+        // An orphaned block (its end marker hand-deleted) is still recovered,
+        // or every re-install would append another one forever.
+        let orphaned = format!("{user}\n\n{TOML_BLOCK_START}\n[[hooks]]\nevent = \"Stop\"\n");
+        assert_eq!(strip_toml_block(&orphaned).trim(), user);
+    }
+
+    #[test]
+    fn windows_paths_survive_toml_escaping() {
+        // A Windows command is full of backslashes; unescaped, they are TOML
+        // escape sequences and the CLI rejects its whole config file.
+        let escaped = toml_string("C:\\Users\\a b\\uxnan-event-hook.cmd kimi");
+        assert_eq!(
+            escaped,
+            "\"C:\\\\Users\\\\a b\\\\uxnan-event-hook.cmd kimi\""
+        );
+    }
 
     #[test]
     fn antigravity_hook_uses_a_path_free_command() {

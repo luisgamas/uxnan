@@ -69,12 +69,38 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
     (`~/.config/opencode/plugins/uxnan-status.js`); OpenCode lo auto-descubre, así
     que **no** se toca `opencode.json` (no tiene key `plugins` en su schema).
   - **Pi / OMP** — una extensión in-process en `~/.pi/agent/extensions/`.
+  - **Agentes declarativos** — el resto de CLIs cableados (OpenClaude, Qwen Code,
+    Droid, Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro, Kimi Code)
+    no necesita maquinaria propia: todos ejecutan un comando por evento y le
+    pipean su JSON crudo, así que comparten el mismo reporter `uxnan-event-hook`
+    y solo difieren en **dónde** va la entrada y **cómo** se escribe. Eso vive
+    como **datos** en `agent_hooks.rs` → `TABLE_AGENTS`: una fila declara el
+    archivo de config, el ejecutable con el que se detecta el CLI, la forma de la
+    entrada (`Grouped` = la forma agrupada de Claude · `Flat` = comando sobre la
+    definición, la de Cursor · `OwnFile`/`OwnList` = un archivo entero nuestro,
+    como Copilot y Kiro · `TomlBlock` = bloque delimitado dentro del TOML del
+    usuario, como Kimi) y los eventos a registrar. Agregar un agente es **una
+    fila + un brazo en `hooks::normalize_event`**, con el mismo id en ambos lados
+    (un test lo verifica: un id mal escrito instala perfecto y luego descarta
+    todos los reportes). La instalación automática al arrancar **solo toca los
+    agentes presentes** en la máquina (ejecutable en `PATH` o su config ya
+    existente); crear la carpeta de configuración de otro producto sin que nadie
+    lo pida no le corresponde al ADE. El **Install** explícito de Settings no
+    está condicionado.
   - **Wrapper genérico** (`uxnan-hook-wrapper.{sh,ps1,cmd,fish}`) — para
     cualquier CLI sin superficie de hooks: postea `working` antes de correr y
     `done` al salir (con `interrupted` si el código es != 0).
   Los reporters de shell **no construyen JSON**: el `agentId`/`agentType`/`status`
   viajan en headers HTTP (`X-Uxnan-Agent-Id` / `-Type` / `-Status`) y el evento
   crudo va en el body — eliminando una clase de bugs de escaping entre shells.
+  El reporter compartido sí **responde `{}` por stdout**, incluidas sus salidas
+  tempranas: varios de estos CLIs parsean lo que imprime el hook y **Cursor
+  condiciona el uso de herramientas a esa respuesta** — un reporter mudo no
+  fallaría en silencio, bloquearía las lecturas de archivo del agente. En Windows
+  su comando se escribe con **backslashes** (medido contra el CLI real de Cursor:
+  un CLI que pasa el comando a `cmd.exe` parte una ruta con `/` en el primer
+  separador y responde «…oaming no se reconoce como un comando»), degradando a la
+  ruta corta 8.3 si hay espacios, igual que Grok.
   **Endpoint file:** el servidor escribe `endpoint.env`/`endpoint.cmd` (url+token
   vivos) al arrancar e inyecta `UXNAN_ENDPOINT_FILE`; cada reporter lo prefiere,
   así una terminal que sobrevive a un reinicio del ADE alcanza al servidor vivo.
@@ -225,9 +251,31 @@ Los estados posibles de un agente son cuatro, cada uno con un significado especi
 > y deje la tarjeta atascada en "Esperando tu respuesta". Solo
 > `permission_prompt` / `elicitation_dialog` / `agent_needs_input` producen
 > `waiting`; `auth_success` y otros avisos transitorios se ignoran
-> (`hooks::normalize_event`). Los demas agentes no tienen este riesgo: Codex no
-> suscribe `Notification`, y Gemini/OpenCode/Pi ya mapean su evento de reposo/fin a
-> `done`.
+> (`hooks::normalize_event`). La regla vale para **cualquier** agente que hable
+> ese vocabulario: una `Notification` sin tipo reconocible **no** es `waiting`
+> — Grok emite rutinarias (un aviso de permiso de herramienta que dispara incluso
+> con permisos bypasseados, y un empujón de reposo al terminar el turno) y
+> tomarlas al pie de la letra es lo que dejaba sesiones terminadas en el carril
+> **Needs you**. El tipo se lee en las tres grafías que usan estos CLIs
+> (`notification_type`, `notificationType`, `type`): los payloads de Grok son
+> camelCase de punta a punta, así que leer solo snake_case no encontraba nada.
+> Codex, medido contra el CLI real, **no tiene evento `Notification`**: su
+> solicitud de permiso es `PermissionRequest`.
+>
+> **`SessionStart` es un límite, no un estado.** La mayoría de estos CLIs lo
+> disparan al abrir o reanudar su TUI, antes de que el usuario pida nada; mapearlo
+> a `working` pintaba el punto verde desde el instante en que se abría la terminal
+> y **nada podía moverlo**, porque el siguiente evento solo llega cuando la persona
+> por fin escribe (medido en Codex: emite exactamente
+> `SessionStart {"source":"startup"}` y después nada). `hooks::is_session_boundary`
+> lo trata como frontera: **borra** el turno cacheado de esa pestaña
+> (`model::clear_agent_state` — la sesión anterior ya no describe nada: prompt,
+> herramienta, respuesta y subagentes son de otra), conserva la identidad de
+> sesión que trae el payload (para el resume) y emite `agent:status-cleared`, un
+> evento aparte porque **no hay estado que reportar**: el agente está presente y
+> en reposo, que es exactamente el `idle` derivado. Un `SessionStart` disparado
+> **a mitad de turno** por una compactación queda excluido por su `source`, así
+> que nunca borra un turno vivo.
 
 Ademas, un reporte sin actualizacion por mas de **30 minutos** se considera
 `stale` y se atenua (`opacity-40`) tanto en la sidebar como en la barra de
@@ -374,6 +422,23 @@ Como **fallback** para agentes que no soportan hooks HTTP nativos, el ADE analiz
 - Muchos agentes CLI actualizan el titulo de la ventana del terminal (via secuencias de escape ANSI/OSC) para reflejar su estado actual (por ejemplo, "thinking...", "waiting for input", "done").
 - El ADE intercepta estas secuencias OSC en el stream del PTY y las interpreta para mapearlas a uno de los cuatro estados definidos (`working`, `blocked`, `waiting`, `done`).
 - Esto permite **monitorear agentes desconocidos** sin que estos necesiten integracion explicita con el ADE. Si un agente actualiza su titulo de terminal con patrones reconocibles, el ADE puede inferir su estado automaticamente.
+
+> **Las heurísticas de esta capa solo valen si no mienten.** Dos de las más
+> laxas se recortaron: el sufijo de puntos suspensivos y el glifo de check ahora
+> **solo cuentan al final del título** (`agentTitle.ts`). Sin ese anclaje también
+> casaban con los puntos suspensivos que cualquier terminal escribe para una ruta
+> truncada (`…/very/long/path`) y con un check usado como decoración, de modo que
+> un título que no dice nada del estado acuñaba un `working` o un `done`. La capa
+> es un fallback: prefiere no reportar antes que reportar mal, porque el hook
+> (Capa 1) no está ahí para corregirla.
+>
+> **La inferencia por output exige actividad sostenida.** Un TUI con mouse
+> tracking responde a un **clic** redibujándose, y tomar cualquier byte como
+> trabajo encendía el punto verde cada vez que la persona tocaba la terminal
+> (`agentMonitor.noteOutput`). Ahora el output tiene que **seguir llegando** un
+> instante después de haber empezado (`ACTIVITY_SUSTAIN_MS`): un agente que
+> piensa emite durante segundos, un redibujo aislado no. Una ráfaga posterior se
+> juzga por sí misma, no arrastra el reloj de la anterior.
 
 ### 1.4 Capa 3: Deteccion de Proceso en Ejecucion
 

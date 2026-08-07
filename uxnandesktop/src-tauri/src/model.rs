@@ -1356,6 +1356,22 @@ impl AppData {
         }
     }
 
+    /// Drop an agent's cached state — the hook reported a **session boundary**
+    /// (its TUI opened, resumed or was cleared), so the turn the cache holds
+    /// belongs to a session that no longer exists: its prompt, tool, reply,
+    /// interrupt flag and sub-agent roster all describe the previous one.
+    ///
+    /// Removing the entry rather than rewriting it is what keeps a fresh session
+    /// honest: the four reported states all claim something (working, blocked,
+    /// waiting, done) and none of them is true of an agent sitting at an empty
+    /// prompt, so the tab falls back to the neutral idle the display derives when
+    /// no hook state exists. Returns whether anything was cached.
+    pub fn clear_agent_state(&mut self, agent_id: &str) -> bool {
+        let before = self.agent_cache.len();
+        self.agent_cache.retain(|e| e.agent_id != agent_id);
+        self.agent_cache.len() != before
+    }
+
     /// Record a sub-agent (child) lifecycle event under its parent PTY entry,
     /// **without touching the parent's own status** (a child spawn/finish must
     /// not flip the parent to working/done). Upserts the child by id; the parent

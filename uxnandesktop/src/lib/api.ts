@@ -17,6 +17,7 @@ import type {
   BranchCleanup,
   BranchList,
   AgentHooksStatus,
+  HookAgentEntry,
   CommitInfo,
   ContentQuery,
   ContentSearch,
@@ -246,103 +247,29 @@ export function getHookInstall(): Promise<HookInstall | null> {
   return invoke<HookInstall | null>('get_hook_install');
 }
 
-/** Current state of the Claude `settings.json` `hooks` block. The UI uses
- *  this to render an honest "Installed" / "Not installed" / "Unavailable"
- *  badge — we never claim installed unless the file carries our marker. */
-export function getClaudeHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_claude_hooks_status');
+/** Every agent the ADE can install a reporter for, with its install state and
+ *  whether the CLI itself looks present on this machine. The backend registry
+ *  is the source of truth for that list — the panel renders whatever it
+ *  returns, so wiring a new agent never touches the frontend. */
+export function listAgentHooks(): Promise<HookAgentEntry[]> {
+  return invoke<HookAgentEntry[]>('list_agent_hooks');
 }
 
-/** Add (or replace) the ADE-managed `hooks` block in `~/.claude/settings.json`,
- *  pointing at the installed script. Preserves every other top-level key.
- *  Returns the new status so the UI can refresh without a second round-trip. */
-export function installClaudeHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_claude_hooks');
+/** Install (or refresh) one agent's managed reporter, preserving whatever hooks
+ *  the user already had in that agent's config. */
+export function installAgentHooks(agent: string): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>('install_agent_hooks', { agent });
 }
 
-/** Remove the ADE-managed `hooks` block from `~/.claude/settings.json`.
- *  Idempotent; no-op if it's not ours. */
-export function uninstallClaudeHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_claude_hooks');
+/** Remove one agent's managed reporter — only ever what the ADE wrote. */
+export function uninstallAgentHooks(agent: string): Promise<AgentHooksStatus> {
+  return invoke<AgentHooksStatus>('uninstall_agent_hooks', { agent });
 }
 
-/** Status of the managed Codex `hooks.json` (+ `config.toml` trust entry). */
-export function getCodexHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_codex_hooks_status');
-}
-
-/** Install the ADE-managed Codex hooks and trust the file in `config.toml`. */
-export function installCodexHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_codex_hooks');
-}
-
-export function uninstallCodexHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_codex_hooks');
-}
-
-/** Status of the managed Gemini CLI `settings.json` hooks block. */
-export function getGeminiHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_gemini_hooks_status');
-}
-
-export function installGeminiHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_gemini_hooks');
-}
-
-export function uninstallGeminiHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_gemini_hooks');
-}
-
-/** Status of the managed Grok reporter (`~/.grok/hooks/uxnan-status.json`). */
-export function getGrokHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_grok_hooks_status');
-}
-
-export function installGrokHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_grok_hooks');
-}
-
-export function uninstallGrokHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_grok_hooks');
-}
-
-/** Status of the managed Antigravity hook (`~/.gemini/config/hooks.json`). */
-export function getAntigravityHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_antigravity_hooks_status');
-}
-
-export function installAntigravityHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_antigravity_hooks');
-}
-
-export function uninstallAntigravityHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_antigravity_hooks');
-}
-
-/** Status of the managed Pi/OMP status extension. */
-export function getPiHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_pi_hooks_status');
-}
-
-export function installPiHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_pi_hooks');
-}
-
-export function uninstallPiHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_pi_hooks');
-}
-
-/** Status of the managed OpenCode status plugin. */
-export function getOpencodeHooksStatus(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('get_opencode_hooks_status');
-}
-
-export function installOpencodeHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('install_opencode_hooks');
-}
-
-export function uninstallOpencodeHooks(): Promise<AgentHooksStatus> {
-  return invoke<AgentHooksStatus>('uninstall_opencode_hooks');
+/** Exactly what the ADE writes into one agent's config, for the "Show config"
+ *  disclosure. For OpenCode and Pi — whose reporter *is* a file — its source. */
+export function renderAgentHooksConfig(agent: string): Promise<string> {
+  return invoke<string>('render_agent_hooks_config', { agent });
 }
 
 /** (Re)install the managed hooks for every supported agent at once. */

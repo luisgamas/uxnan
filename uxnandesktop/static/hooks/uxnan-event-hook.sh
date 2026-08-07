@@ -30,6 +30,10 @@ URL="${UXNAN_HOOK_URL:-}"
 TOKEN="${UXNAN_HOOK_TOKEN:-}"
 ID="${UXNAN_AGENT_ID:-}"
 if [ -z "$URL" ] || [ -z "$ID" ]; then
+  # Nothing to report to (this terminal wasn't spawned by the ADE). Still answer
+  # `{}`: an agent that gates on the hook's stdout must not be blocked just
+  # because there is no server to talk to.
+  printf '{}'
   exit 0
 fi
 
@@ -43,4 +47,11 @@ curl -sS -X POST "$URL" \
   -H "X-Uxnan-Agent-Id: $ID" \
   -H "X-Uxnan-Agent-Type: $TYPE" -H "X-Uxnan-Event: $EVENT" \
   --data-binary @- >/dev/null 2>&1 || true
+
+# An empty object: "I observed this, I decide nothing". Several of these CLIs
+# parse the hook's stdout and read an unparseable one as a refusal — Cursor gates
+# tool use on it, so a reporter that printed nothing would BLOCK the agent's file
+# reads and shell commands rather than merely fail to report. Agents that ignore
+# stdout are unaffected by it.
+printf '{}'
 exit 0

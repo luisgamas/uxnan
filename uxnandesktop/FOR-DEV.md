@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 514 Rust tests (486 unit + 28
+always wins). 526 Rust tests (498 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 882 frontend Vitest tests across two
+probe) + 891 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -113,11 +113,27 @@ started.**
   dot-relative command (Antigravity) and an 8.3 short-path fallback (Grok).
   Gemini CLI is no longer auto-installed (discontinued upstream) but its card
   still appears while its reporter is present, so it can be removed.
-  Per-event merge preserves user hooks; shell
-  reporters pass id/kind/state in headers (no JSON building); an endpoint file
+  **Ten more agents are wired declaratively** — OpenClaude, Qwen Code, Droid,
+  Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro and Kimi Code — as
+  rows in `agent_hooks::TABLE_AGENTS` (config path, detection command, entry
+  shape, events) driving the shared `uxnan-event-hook`; adding one is a row plus
+  a `normalize_event` arm with the same id, which a test enforces. Startup only
+  installs the agents the machine actually has (`PATH` or an existing config).
+  Per-event merge preserves user hooks and is tag-scoped, so two of our own
+  reporters can share one config file; shell
+  reporters pass id/kind/state in headers (no JSON building) and answer `{}` on
+  stdout (Cursor gates tool use on the hook's reply); an endpoint file
   (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
-  WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
-  card per agent (incl. Pi) + a master install switch.
+  WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks is a
+  master–detail list (agents on this machine first) + a master install switch,
+  rendered from the backend registry, over four generic Tauri commands.
+  **Live-verified this cycle:** Codex (its `SessionStart {"source":"startup"}`
+  before any prompt — the bug that made it read as working forever — and the
+  `last_assistant_message` its `Stop` carries), Grok (still reporting through the
+  reporter that now answers `{}`), and Cursor's install (merged into a real
+  `~/.cursor/hooks.json` beside another tool's hooks, then removed cleanly).
+  Cursor's own `-p` print mode runs no hooks at all in 2026.08.04, so its
+  reporting was confirmed at the install layer, not end to end.
 - **Multi-agent orchestration** (spec `02d` §3) — a two-tab console (status bar,
   shown with ≥2 live agents or any saved run): **Broadcast** (**explicit recipient
   selection** — tick individuals / whole types / all; coordinator retired — with
