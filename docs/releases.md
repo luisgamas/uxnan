@@ -226,6 +226,28 @@ a new one — the base must still move forward, so the next nightly gets a highe
 
 ---
 
+## Proven, and still to prove
+
+Desktop has been through the whole path for real — cut, tag, build, notes,
+publish, updater manifest — and the defects that found are fixed and pinned by
+tests. The other three components share **all** of that machinery (the same
+planner, the same version arithmetic, the same file writers, the same ordering),
+but their last leg has not been exercised since the automation existed:
+
+| Component | Exercised | What is still unproven |
+|---|---|---|
+| desktop | ✅ 0.0.29 and 0.0.30, end to end | — |
+| shared | ❌ | that `release-npm.yml` fires from an app-token tag, and that the npm-visibility wait behaves on a real publish |
+| bridge | ❌ | the same, **plus** the shared→bridge ordering, which is the reason this workflow exists |
+| relay | ❌ | the same as shared |
+| mobile | ❌ | that `release-mobile.yml` accepts a pubspec written by `prepare.mjs`, and that the Play build number lands as expected |
+
+When the next one of those genuinely needs a release, cut it with `dry_run` on
+first and read the plan. The riskiest is **shared + bridge together**: that is
+the first time the npm wait runs for real, and if npm is slow the run fails
+having tagged shared but not bridge — recoverable by re-running the dispatch for
+the bridge alone once `npm view @uxnan/shared version` reports the new version.
+
 ## The pieces
 
 | Path | What it is |
