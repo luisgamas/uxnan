@@ -14,7 +14,8 @@
  * has seen the release go green.
  *
  * Usage:
- *   node scripts/release/record.mjs <component> <version> [--date=YYYY-MM-DD] [--note="…"]
+ *   node scripts/release/record.mjs <component> <version> [--date=YYYY-MM-DD]
+ *                                   [--note="…"] [--notes-file=notes.md]
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -38,6 +39,50 @@ export function buildRow({ id, version, date, note }) {
   const cells = COLUMNS.map((column) => (column === id ? version : '—'));
   const comment = note ? ` <!-- ${note} -->` : '';
   return `| ${date} | ${cells.join(' | ')} |${comment}`;
+}
+
+/** Entries that describe the release plumbing, not anything that shipped. */
+const PLUMBING = [/^build\(release\):/i, /^chore\(release\):/i, /^build: prepare /i];
+
+/** The ` by @someone in <url>` GitHub appends to every generated bullet. */
+const ATTRIBUTION = /\s+by\s+@\S+\s+in\s+https?:\/\/\S+$/;
+
+/**
+ * Turns GitHub's generated release notes into the one line the history row
+ * carries.
+ *
+ * This lived in the release workflow as a `grep | sed | paste` pipeline, and it
+ * was wrong on its first unattended run: **New Contributors** is also a bullet
+ * list, so 0.0.31's row was recorded with "@uxnan-releases[bot] made their first
+ * contribution" among the changes — the release tooling's own bot, described as
+ * if it were a feature. It also kept the `build(release):` commit that names the
+ * *previous* version, which reads as if 0.0.30 shipped inside 0.0.31.
+ *
+ * Only the **What's Changed** list contributes; every other section is about
+ * people or links. Plumbing entries are dropped, because the row answers "what
+ * shipped in this version" and preparing the release is not part of the answer.
+ *
+ * It is here rather than in the workflow for the reason the bug proves: a shell
+ * one-liner in a YAML file is untested code with a production-only failure mode.
+ */
+export function summarizeNotes(markdown) {
+  const entries = [];
+  let inChanges = false;
+
+  for (const raw of String(markdown ?? '').split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('#')) {
+      inChanges = /^#+\s+what's changed\b/i.test(line);
+      continue;
+    }
+    if (!inChanges || !line.startsWith('* ')) continue;
+
+    const title = line.slice(2).replace(ATTRIBUTION, '').trim();
+    if (!title || PLUMBING.some((pattern) => pattern.test(title))) continue;
+    if (!entries.includes(title)) entries.push(title);
+  }
+
+  return entries.join('; ');
 }
 
 /**
@@ -73,13 +118,17 @@ if (process.argv[1] && process.argv[1].endsWith('record.mjs')) {
       .join('=');
 
   if (!id || !version) {
-    console.error('usage: record.mjs <component> <version> [--date=YYYY-MM-DD] [--note="…"]');
+    console.error(
+      'usage: record.mjs <component> <version> [--date=YYYY-MM-DD] [--note="…"] [--notes-file=…]',
+    );
     process.exit(2);
   }
 
   component(id); // throws on an unknown component before touching the file
   const path = flag('file') ?? 'VERSIONS.md';
-  const row = buildRow({ id, version, date: flag('date') ?? today(), note: flag('note') });
+  const notesFile = flag('notes-file');
+  const note = flag('note') ?? (notesFile ? summarizeNotes(readFileSync(notesFile, 'utf8')) : '');
+  const row = buildRow({ id, version, date: flag('date') ?? today(), note });
 
   const result = insertRow(readFileSync(path, 'utf8'), row, { version });
   if (!result.inserted) {
