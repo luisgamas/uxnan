@@ -181,7 +181,19 @@ instead of quietly agreeing with a mock nobody updated.
 - `src/test/setup.dom.ts` — jsdom's gaps filled once (`matchMedia`,
   `ResizeObserver`, canvas), plus a console policy: an unknown-prop or
   lifecycle-outside-component warning **fails** the test; known third-party
-  teardown noise is suppressed.
+  teardown noise is suppressed. It also unmounts and then **waits out `bits-ui`'s
+  body-style restore** — see below.
+- **Dialogs leave a timer armed after they unmount.** `bits-ui` restores the body
+  style 24 ms after the last scroll lock is released (a deliberate delay, so a
+  modal that closes and reopens in the same tick does not flicker). If Vitest
+  tears the jsdom environment down inside that window, the callback fires with no
+  `document` and the whole run dies on an unhandled `ReferenceError` — *with
+  every test passing*. It is a race, so it fails one platform at a time: it took
+  the macOS leg of the 0.0.31 release build at 882/882 green while Linux and
+  Windows won it. `setup.dom.ts` closes it by waiting ~40 ms after each test that
+  actually left lock styles on the body — no cost for the tests that never open
+  one. If you add a global body style for another reason, expect those files to
+  pay the wait too.
 - `MarkdownView.svelte.test.ts` — README-style badges render through the typed
   safe-HTML path, unsafe attributes/content stay absent, the full-width preview
   uses the native overflow treatment shared with CodeMirror, explicit badge
