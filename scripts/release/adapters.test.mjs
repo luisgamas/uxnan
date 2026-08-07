@@ -26,6 +26,44 @@ describe('json', () => {
   });
 });
 
+describe('json — formatting', () => {
+  // The bug this exists to prevent: the first real release cut reformatted a
+  // one-line array in tauri.conf.json, inside its CSP block.
+  const tauri = [
+    '{',
+    '  "$schema": "https://schema.tauri.app/config/2",',
+    '  "productName": "Uxnan Desktop",',
+    '  "version": "0.0.28",',
+    '  "app": {',
+    '    "security": {',
+    '      "dangerousDisableAssetCspModification": ["style-src"]',
+    '    }',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+
+  it('changes the version line and nothing else', () => {
+    const next = json.write(tauri, '0.0.29');
+    assert.equal(json.read(next), '0.0.29');
+    assert.equal(next, tauri.replace('"version": "0.0.28"', '"version": "0.0.29"'));
+    assert.match(next, /"dangerousDisableAssetCspModification": \["style-src"\]/);
+  });
+
+  it('never mistakes a nested version for the top-level one', () => {
+    const nested = '{\n  "version": "0.0.28",\n  "deps": {\n    "version": "9.9.9"\n  }\n}\n';
+    const next = json.write(nested, '0.0.29');
+    assert.equal(json.read(next), '0.0.29');
+    assert.match(next, /"version": "9\.9\.9"/);
+  });
+
+  it('still works on a file it cannot edit surgically', () => {
+    // Minified: no indentation to anchor to, so it falls back to re-serialising.
+    const minified = '{"name":"x","version":"0.0.28"}';
+    assert.equal(json.read(json.write(minified, '0.0.29')), '0.0.29');
+  });
+});
+
 describe('lockWorkspace', () => {
   // The root lock is the file that silently drifts: `npm version -w` updates it,
   // a hand edit of package.json does not.
