@@ -39,13 +39,34 @@
 //! | Codex | `~/.codex/config.toml` | `[mcp_servers.<n>] url + bearer_token_env_var` |
 //! | OpenCode | `~/.config/opencode/opencode.json` | `mcp.<n> {type:remote,url,headers,enabled}` |
 //! | Grok | `~/.grok/config.toml` | `[mcp_servers.<n>] url + headers` (`${VAR}` expanded) |
+//! | Qwen Code | `~/.qwen/settings.json` | `mcpServers.<n> {httpUrl,trust,headers}` (Gemini's shape, which it forked) |
+//! | Droid | `~/.factory/mcp.json` | `mcpServers.<n> {type:http,url,headers}` (`${VAR}` expanded) |
+//! | MiMo Code | `~/.config/mimocode/mimocode.json` | `mcp.<n> {type:remote,url,headers,enabled}` (OpenCode's shape, which it forked) |
 //!
-//! Two agents are deliberately absent. **Gemini CLI** is discontinued upstream, so
-//! it is no longer offered (its `config_path` arm is kept so a stale entry can
-//! still be undone). **Antigravity** cannot be supported at all today: its remote
-//! MCP transport is SSE with only a `serverUrl` — no header field — so there is
-//! nowhere to put the bearer token, and our endpoint is Streamable HTTP rather
-//! than SSE. See `FOR-DEV.md` → *Integrated developer browser*.
+//! ## Why some agents are not offered
+//! **The bearer token is never written to a file.** Every row above references
+//! `UXNAN_MCP_TOKEN` in the agent's own expansion syntax, which is also what makes
+//! the server useless outside uxnan: no variable, no credential, no connection —
+//! and the config itself is removed on exit. An agent that cannot express that
+//! reference cannot be supported without leaving a live secret in a file the user
+//! keeps, so it is left out and said so:
+//!
+//! - **Cursor** — `~/.cursor/mcp.json` takes remote servers with headers, but
+//!   `${env:VAR}` is **not expanded in headers for remote servers** (it is for
+//!   stdio ones), so the literal string would be sent as the credential.
+//! - **GitHub Copilot** — `~/.copilot/mcp-config.json` documents header values as
+//!   literal strings; no environment reference is specified for the CLI.
+//! - **Antigravity** — its remote MCP transport is SSE with only a `serverUrl`
+//!   (no header field), and our endpoint is Streamable HTTP rather than SSE.
+//! - **Goose** — keeps extensions in YAML (`~/.config/goose/config.yaml`), and no
+//!   YAML writer is vendored; merging into a user's YAML by hand is how comments
+//!   and formatting get destroyed.
+//! - **Kilo Code** — its config is JSONC; parsing it with a JSON reader would
+//!   throw away the user's comments on write.
+//!
+//! **Gemini CLI** is discontinued upstream, so it is no longer offered (its
+//! `config_path` arm is kept so a stale entry can still be undone).
+//! See `FOR-DEV.md` → *Integrated developer browser*.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -111,6 +132,18 @@ pub const AGENTS: &[McpAgent] = &[
         id: "grok",
         label: "Grok",
     },
+    McpAgent {
+        id: "qwen",
+        label: "Qwen Code",
+    },
+    McpAgent {
+        id: "droid",
+        label: "Droid",
+    },
+    McpAgent {
+        id: "mimo",
+        label: "MiMo Code",
+    },
 ];
 
 /// A config file we wrote, recorded so it can be undone on exit.
@@ -139,6 +172,12 @@ fn config_path(agent: &str, home: &Path) -> Option<PathBuf> {
         "gemini" => Some(home.join(".gemini").join("settings.json")),
         "opencode" => Some(home.join(".config").join("opencode").join("opencode.json")),
         "grok" => Some(home.join(".grok").join("config.toml")),
+        // Qwen Code descends from the Gemini CLI and kept its settings file.
+        "qwen" => Some(home.join(".qwen").join("settings.json")),
+        // Droid keeps MCP in a file of its own, beside its settings.
+        "droid" => Some(home.join(".factory").join("mcp.json")),
+        // MiMo Code is a fork of OpenCode with its own config name.
+        "mimo" => Some(home.join(".config").join("mimocode").join("mimocode.json")),
         _ => None,
     }
 }
@@ -167,9 +206,22 @@ fn json_entry(agent: &str, endpoint: &str) -> Option<(Vec<&'static str>, Value)>
             vec!["mcpServers", SERVER_NAME],
             json!({ "httpUrl": endpoint, "trust": true, "headers": { "Authorization": bearer_dollar } }),
         )),
-        "opencode" => Some((
+        // MiMo Code is a fork of OpenCode, config shape included.
+        "opencode" | "mimo" => Some((
             vec!["mcp", SERVER_NAME],
             json!({ "type": "remote", "url": endpoint, "enabled": true, "headers": { "Authorization": bearer_brace } }),
+        )),
+        // Qwen Code inherited Gemini's settings shape, `trust` included.
+        "qwen" => Some((
+            vec!["mcpServers", SERVER_NAME],
+            json!({ "httpUrl": endpoint, "trust": true, "headers": { "Authorization": bearer_dollar } }),
+        )),
+        // Droid expands `${VAR}` in header values and, when the variable is
+        // unset, fails the connection naming it — which is exactly the behavior
+        // we want outside uxnan: no token in the file, and no silent attempt.
+        "droid" => Some((
+            vec!["mcpServers", SERVER_NAME],
+            json!({ "type": "http", "url": endpoint, "headers": { "Authorization": bearer_dollar } }),
         )),
         _ => None,
     }
@@ -522,12 +574,42 @@ mod tests {
 
     #[test]
     fn json_entry_never_inlines_the_token() {
-        for agent in ["claude", "gemini", "opencode"] {
-            let (_, entry) = json_entry(agent, "http://x/mcp").unwrap();
+        // Every offered agent, so a newly added row cannot skip the rule: the
+        // token is referenced through the environment, never written to a file
+        // the user keeps. It is also what makes the server useless outside
+        // uxnan — no variable, no credential, no connection.
+        for agent in AGENTS.iter().filter(|a| !is_toml_agent(a.id)) {
+            let (_, entry) = json_entry(agent.id, "http://x/mcp")
+                .unwrap_or_else(|| panic!("{} is offered but has no JSON entry", agent.id));
             let s = entry.to_string();
-            assert!(s.contains("Authorization"));
-            // The literal token env var name is referenced, never a raw secret.
-            assert!(s.contains("UXNAN_MCP_TOKEN"));
+            assert!(s.contains("Authorization"), "{} sends no auth", agent.id);
+            assert!(
+                s.contains("UXNAN_MCP_TOKEN"),
+                "{} does not reference the token env var",
+                agent.id
+            );
+            assert!(
+                !s.contains("Bearer secret"),
+                "{} looks like it inlines a secret",
+                agent.id
+            );
+        }
+    }
+
+    #[test]
+    fn every_offered_agent_has_a_user_global_config_path() {
+        // An agent in the list with no path would be offered in Settings and
+        // then silently do nothing.
+        let home = Path::new("/home/u");
+        for agent in AGENTS {
+            let path = config_path(agent.id, home)
+                .unwrap_or_else(|| panic!("{} is offered but has no config path", agent.id));
+            assert!(
+                path.starts_with(home),
+                "{} writes outside the user's home: {}",
+                agent.id,
+                path.display()
+            );
         }
     }
 

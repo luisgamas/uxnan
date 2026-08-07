@@ -7,6 +7,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **The integrated browser's tools reach three more agents: Qwen Code, Droid and
+  MiMo Code.** They are auto-configured like the rest — the server registered in
+  each CLI's user-global config, so no "approve this MCP server?" prompt appears
+  and nothing lands in your project folder.
+
+  The list stops exactly where the security rule does: **the token is never
+  written to a file**, it is referenced through `UXNAN_MCP_TOKEN`, which is also
+  what makes the tools useless outside uxnan. Cursor cannot expand an environment
+  variable in a remote server's headers, GitHub Copilot's CLI documents header
+  values as literal strings, and Antigravity's transport has no header field at
+  all — so supporting them would mean leaving a live credential in a file the
+  user keeps. Goose (YAML) and Kilo Code (JSONC) keep their config in formats
+  uxnan vendors no writer for, and rewriting them with a JSON writer would throw
+  away the user's comments. All of them are one copy-paste away in Settings, and
+  a test now fails if a newly listed agent ever skips the token rule.
+
 - **Four more agents report precise state: Goose, MiMo Code, Kilo Code and Amp**
   — twenty in total. Goose follows the Open Plugins hook spec, so it gets a
   plugin of its own under `~/.agents/plugins/` whose event names are Claude
