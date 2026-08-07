@@ -30,6 +30,7 @@
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import ImageIcon from "@lucide/svelte/icons/image";
+  import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
   import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
@@ -44,6 +45,7 @@
     removeLabel,
     onRemove,
     onChangeIcon,
+    onEditNote,
     onTogglePin,
     onSleep,
     pinned = false,
@@ -63,6 +65,8 @@
     onRemove?: () => void;
     /** When provided, adds a "Change branch icon…" item (worktree rows only). */
     onChangeIcon?: () => void;
+    /** When provided, adds an "Edit note…" item (worktree rows only). */
+    onEditNote?: () => void;
     /** When provided, adds a pin/unpin item (reorderable child worktrees only). */
     onTogglePin?: () => void;
     /** When provided, adds a "Sleep workspace" item while the workspace has
@@ -211,6 +215,12 @@
     <ContextMenu.Item class={text.menu} onclick={() => deferModalOpen(onChangeIcon)}>
       <ImageIcon />
       {i18n.t("worktree.changeIcon")}
+    </ContextMenu.Item>
+  {/if}
+  {#if onEditNote}
+    <ContextMenu.Item class={text.menu} onclick={() => deferModalOpen(onEditNote)}>
+      <StickyNoteIcon />
+      {i18n.t("worktree.editNote")}
     </ContextMenu.Item>
   {/if}
 

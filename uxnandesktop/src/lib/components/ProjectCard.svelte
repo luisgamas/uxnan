@@ -211,6 +211,16 @@
   {#if drag.isDropAt(index)}
     <div class="mx-2 mb-1 h-0.5 rounded-full bg-primary/70"></div>
   {/if}
+  <!-- The header AND its collapsed summary sit inside ONE surface, so the
+       selection fill/ring wraps both. With the fill on the header alone the
+       summary hung outside the highlighted block and read as if it belonged to
+       whatever came next. Same rule the worktree rows follow with their agents. -->
+  <div
+    class={cn(
+      "flex flex-col rounded-md transition-colors",
+      projectActive && !isExpanded && surface.active,
+    )}
+  >
   <!-- Project header — left-click expands (git) or selects (folder); press-and-drag
        reorders the card (pointer events; buttons are excluded from the gesture).
        The ⋯ menu (not a right-click menu) owns the project actions. -->
@@ -219,7 +229,6 @@
     data-drag-index={index}
     class={cn(
       "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
-      projectActive && !isExpanded && surface.active,
       drag.draggingKey === repo.id && "opacity-40",
     )}
     role="button"
@@ -414,9 +423,12 @@
   <!-- Collapsed summary — what the card holds, without opening it: how many
        worktrees, and who is working inside them. Aligned under the title (not the
        icon) and purely informational: a click falls through to the header and
-       expands the card, which is what you want anyway. -->
+       expands the card, which is what you want anyway.
+       No negative margin: the avatars make this line ~19px tall (the status ring
+       is drawn outside the circle), and clawing back the header's padding is how
+       they end up crowding the project title. -->
   {#if showCollapsedSummary}
-    <div class="flex items-center gap-2 pb-1.5 pl-8 pr-2">
+    <div class="flex min-h-5 items-center gap-2 pb-1.5 pl-8 pr-2">
       <TooltipSimple
         title={i18n.t(
           worktreeCount === 1 ? "project.worktreeOne" : "project.worktreeOther",
@@ -458,6 +470,7 @@
       {/if}
     </div>
   {/if}
+  </div>
 
   {#if isGit}
     {#if isExpanded}
