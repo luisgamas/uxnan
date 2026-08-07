@@ -1,23 +1,28 @@
 <script lang="ts">
   // One worktree row — used for both the primary (main) worktree and each child.
-  // Leading: an aggregate agent-status dot (or the branch icon when idle).
+  // Leading: an aggregate agent-status indicator (or the branch icon when idle).
   // Title: the branch name + git status. Second line: the worktree folder name.
   // Left-click opens (and links) the worktree, spawning a default-profile
   // terminal if the workspace has none yet. Right-click opens a rich context
   // menu (terminals · agents · reveal · configure · remove) — the row no longer
   // carries a persistent overflow button.
   import * as ContextMenu from "$lib/components/ui/context-menu";
+  import * as HoverCard from "$lib/components/ui/hover-card";
   import { projects, type WorktreeRow } from "$lib/state/projects.svelte";
   import { unread } from "$lib/state/unread.svelte";
   import { github } from "$lib/state/github.svelte";
   import { terminals } from "$lib/state/terminals.svelte";
-  import { resolveAgentDisplay } from "$lib/state/agentDisplay";
+  import { resolveAgentDisplay, resolveAgentView } from "$lib/state/agentDisplay";
+  // Aliased: this component already binds `agentStatus` to its own aggregate.
+  import { agentStatus as agentReports } from "$lib/state/agentStatus.svelte";
+  import { clock, relTime } from "$lib/time.svelte";
   import { cn } from "$lib/utils";
   import { icon, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentSpace from "./AgentSpace.svelte";
-  import AgentStatusDot from "./AgentStatusDot.svelte";
+  import AgentLogo from "./AgentLogo.svelte";
+  import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
   import RowActionsMenu from "./RowActionsMenu.svelte";
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
@@ -61,9 +66,18 @@
   const dirName = $derived(
     row.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? row.path,
   );
-  // In the status view the project name is the useful context (rows are flattened
-  // out of their project tree); otherwise the worktree's folder name.
-  const meta = $derived(showRepo ? row.repoName : dirName);
+  // Second line, in priority order:
+  //   1. the status view flattens rows out of their project, so the project name
+  //      is the context that's missing there;
+  //   2. else the linked PR's title — the folder name is usually just the branch
+  //      name with the slashes swapped ("feat/login" → "feat-login"), so it spent
+  //      a whole line repeating the line above it; the PR title says what the
+  //      branch is actually *for*;
+  //   3. else the folder name, which does carry information when it differs.
+  // The line always renders, so rows keep a uniform height in the list.
+  const meta = $derived(
+    showRepo ? row.repoName : (prBadge?.title?.trim() || dirName),
+  );
 
   // Tooltip: the full absolute path in the tree, but a short **relative** path in
   // the flattened status view (relative to the project root, else the folder
@@ -97,15 +111,32 @@
     setTimeout(() => (sleepConfirmOpen = true), 0);
   }
 
-  // Aggregate agent status for the leading dot: a working agent wins, else the
-  // first one; null when the worktree has no agents (show the branch icon).
+  const agentTabs = $derived(terminals.agentTabs(row.path));
+
+  // Aggregate agent status for the leading indicator: a working agent wins, else
+  // the first one; null when the worktree has no agents (show the branch icon).
   const agentStatus = $derived.by(() => {
-    const ds = terminals
-      .agentTabs(row.path)
+    const ds = agentTabs
       .map((t) => resolveAgentDisplay(t))
       .filter((d): d is NonNullable<typeof d> => d != null);
     return ds.find((d) => d.status === "working") ?? ds[0] ?? null;
   });
+
+  // "When did this last move" — the freshest agent report in the workspace, shown
+  // at the end of the second line. It's what turns a static list of branches into
+  // something you can triage at a glance; the first line is already crowded, so it
+  // lives beside the meta text rather than among the badges.
+  const lastActivity = $derived.by(() => {
+    let newest = 0;
+    for (const t of agentTabs) {
+      const at = agentReports.get(t.id)?.lastUpdate ?? 0;
+      if (at > newest) newest = at;
+    }
+    return newest || null;
+  });
+  const lastActivityText = $derived(
+    lastActivity ? relTime(lastActivity, clock.now) : "",
+  );
 
   // Left-click / Enter: select + link the worktree, and open a default-profile
   // terminal only when the workspace has none (so repeated clicks don't stack
@@ -134,6 +165,94 @@
   <GitBranchIcon class={cn(icon.decorative, "text-muted-foreground")} />
 {/snippet}
 
+<!-- The row's full story, on hover. Everything here already exists in the stores;
+     the row itself can only afford a handful of glyphs, so the detail lives one
+     hover away instead of costing every row a third line. -->
+{#snippet worktreeDetails()}
+  <div class="flex flex-col gap-2.5">
+    <div class="flex flex-col gap-0.5">
+      <div class="flex items-center gap-1.5">
+        <GitBranchIcon class="size-3 shrink-0 text-muted-foreground" />
+        <span class={cn("min-w-0 flex-1 truncate", text.bodyStrong)}>{label}</span>
+        {#if row.isMain}
+          <span
+            class={cn(
+              "shrink-0 rounded bg-foreground/[0.06] px-1.5 text-foreground/70",
+              text.indicator,
+            )}
+          >
+            {i18n.t("worktree.primary")}
+          </span>
+        {/if}
+      </div>
+      <span class={cn("break-all font-mono", text.meta)}>{tipText}</span>
+    </div>
+
+    {#if status && (status.dirty > 0 || status.ahead > 0 || status.behind > 0)}
+      <div class={cn("flex flex-wrap items-center gap-x-2.5 gap-y-1", text.meta)}>
+        {#if status.dirty > 0}
+          <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+            <span class="size-1.5 rounded-full bg-amber-500"></span>
+            {i18n.t("worktree.dirtyTooltip", { n: status.dirty })}
+          </span>
+        {/if}
+        {#if status.ahead > 0}<span>↑{status.ahead} {i18n.t("worktree.aheadTooltip")}</span>{/if}
+        {#if status.behind > 0}<span>↓{status.behind} {i18n.t("worktree.behindTooltip")}</span>{/if}
+      </div>
+    {/if}
+
+    {#if prBadge}
+      <div class="flex flex-col gap-0.5 border-t border-border/50 pt-2">
+        <div class="flex items-center gap-1.5">
+          <GitPullRequestIcon
+            class={cn(
+              "size-3 shrink-0",
+              prBadge.checks.state === "failure"
+                ? "text-red-500"
+                : prBadge.checks.state === "pending"
+                  ? "text-amber-500"
+                  : prBadge.isDraft
+                    ? "text-muted-foreground"
+                    : "text-emerald-500",
+            )}
+          />
+          <span class={cn("shrink-0 tabular-nums", text.meta)}>#{prBadge.number}</span>
+          {#if prBadge.isDraft}
+            <span class={cn("shrink-0 text-muted-foreground", text.indicator)}>
+              {i18n.t("github.pr.draft")}
+            </span>
+          {/if}
+        </div>
+        <span class={cn("line-clamp-2", text.body)}>{prBadge.title}</span>
+      </div>
+    {/if}
+
+    {#if agentTabs.length > 0}
+      <div class="flex flex-col gap-1 border-t border-border/50 pt-2">
+        <span class={text.section}>
+          {i18n.t("agents.spaceLabel")}
+          <span class="text-muted-foreground/60">({agentTabs.length})</span>
+        </span>
+        {#each agentTabs as t (t.id)}
+          {@const v = resolveAgentView(t, row.path)}
+          {#if v}
+            <div class="flex items-center gap-1.5">
+              <AgentStatusIndicator status={v.status} stale={v.stale} />
+              <AgentLogo logo={t.agentIcon} class="size-3 shrink-0" />
+              <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{v.title}</span>
+              {#if v.lastUpdate}
+                <span class={cn("shrink-0 tabular-nums", text.meta)}>
+                  {relTime(v.lastUpdate, clock.now)}
+                </span>
+              {/if}
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
 <!-- The whole worktree block — its row AND its agents — sits inside one surface:
      when the worktree is selected the selection fill/ring wraps everything, so the
      agents read as living in that worktree's space (not floating below it). -->
@@ -145,10 +264,14 @@
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props })}
-        <TooltipSimple title={tipText}>
-          {#snippet children(tp)}
+        <!-- A hover card, not a tooltip: the path alone was never the question a
+             worktree row raises. `openDelay` is generous so scanning the list
+             doesn't trip it — only resting on a row does. -->
+        <HoverCard.Root openDelay={500} closeDelay={120}>
+          <HoverCard.Trigger>
+            {#snippet child({ props: hoverProps })}
             <div
-              {...tp}
+              {...hoverProps}
               {...props}
               data-drag-key={drag ? row.path : undefined}
               data-drag-index={drag ? dragIndex : undefined}
@@ -167,7 +290,7 @@
             >
               <span class="flex size-4 shrink-0 items-center justify-center">
                 {#if agentStatus}
-                  <AgentStatusDot status={agentStatus.status} stale={agentStatus.stale} />
+                  <AgentStatusIndicator status={agentStatus.status} stale={agentStatus.stale} />
                 {:else}
                   <EntityIcon value={branchIcon} class={cn(icon.decorative, "rounded-[3px]")} fallback={branchGlyph} />
                 {/if}
@@ -237,10 +360,13 @@
                   {#if prBadge}
                     <TooltipSimple title={i18n.t("github.panel.openPr", { n: prBadge.number })}>
                       {#snippet children(tp2)}
+                        <!-- The number rides with the icon: knowing there *is* a
+                             PR was never the useful half — knowing *which* is. -->
                         <span
                           {...tp2}
                           class={cn(
-                            "shrink-0",
+                            "inline-flex shrink-0 items-center gap-0.5 tabular-nums",
+                            text.indicator,
                             prBadge.checks.state === "success"
                               ? "text-emerald-500"
                               : prBadge.checks.state === "failure"
@@ -252,18 +378,33 @@
                                     : "text-emerald-500",
                           )}
                         >
-                          <GitPullRequestIcon class="size-3" />
+                          <GitPullRequestIcon class="size-3" />{prBadge.number}
                         </span>
                       {/snippet}
                     </TooltipSimple>
                   {/if}
             </div>
-            <div class={cn("truncate", text.meta)}>{meta}</div>
+            <div class="flex items-baseline gap-1.5">
+              <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{meta}</span>
+              {#if lastActivityText}
+                <TooltipSimple title={i18n.t("worktree.lastActivityTooltip")}>
+                  {#snippet children(tp2)}
+                    <span {...tp2} class={cn("shrink-0 tabular-nums", text.meta)}>
+                      {lastActivityText}
+                    </span>
+                  {/snippet}
+                </TooltipSimple>
+              {/if}
+            </div>
           </div>
         </div>
+            {/snippet}
+          </HoverCard.Trigger>
+          <HoverCard.Content side="right" align="start" class="w-80">
+            {@render worktreeDetails()}
+          </HoverCard.Content>
+        </HoverCard.Root>
       {/snippet}
-    </TooltipSimple>
-  {/snippet}
     </ContextMenu.Trigger>
 
     <RowActionsMenu

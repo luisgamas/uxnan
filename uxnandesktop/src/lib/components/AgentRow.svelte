@@ -1,5 +1,5 @@
 <script lang="ts">
-  // One agent in the expanded agent view: a two-line row — status dot + logo +
+  // One agent in the expanded agent view: a two-line row — status indicator + logo +
   // conversation title + relative time on the first line, and a muted preview
   // (current tool while working, else the latest reply, else the status) on the
   // second. Clicking reveals the agent's terminal. The title/preview come from the
@@ -13,7 +13,7 @@
   import { resolveAgentView } from "$lib/state/agentDisplay";
   import type { TerminalTab } from "$lib/state/terminals.svelte";
   import AgentLogo from "./AgentLogo.svelte";
-  import AgentStatusDot from "./AgentStatusDot.svelte";
+  import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
 
   let {
     tab,
@@ -54,8 +54,8 @@
           )}
           onclick={onreveal}
         >
-          <span class="mt-1 flex size-3 shrink-0 items-center justify-center">
-            <AgentStatusDot status={view.status} stale={view.stale} />
+          <span class="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+            <AgentStatusIndicator status={view.status} stale={view.stale} />
           </span>
           <AgentLogo logo={tab.agentIcon} class="mt-0.5 size-3.5 shrink-0" />
           <span class="flex min-w-0 flex-1 flex-col leading-tight">
@@ -81,13 +81,30 @@
                   {activeSubs.length ? `${activeSubs.length}/${subagents.length}` : subagents.length}
                 </span>
               {/if}
+              {#if tab.agentModel}
+                <!-- Only shown when the launch profile pinned a model; uxnan can't
+                     see a model the CLI picked on its own, so it doesn't claim one. -->
+                <span
+                  class="shrink-0 truncate font-mono text-[10px] text-muted-foreground/70"
+                  title={tab.agentModel}
+                >
+                  {tab.agentModel}
+                </span>
+              {/if}
               {#if time}
                 <span class={cn("shrink-0 tabular-nums", text.meta)}>{time}</span>
               {/if}
             </span>
-            <span class={cn("truncate", text.meta)}>
-              {secondary}{#if tab.exited}<span class="ml-1">· {i18n.t("terminal.exited")}</span
-                >{/if}
+            <span class={cn("flex items-center gap-1 truncate", text.meta)}>
+              {#if view.interrupted}
+                <!-- An interruption is an outcome, not chatter: give it a marker so
+                     it doesn't read as just another grey preview line. -->
+                <span class="size-1.5 shrink-0 rounded-full bg-amber-500"></span>
+              {/if}
+              <span class="min-w-0 truncate">
+                {secondary}{#if tab.exited}<span class="ml-1">· {i18n.t("terminal.exited")}</span
+                  >{/if}
+              </span>
             </span>
           </span>
         </button>
@@ -97,8 +114,8 @@
       <div class="ml-[1.375rem] mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2">
         {#each activeSubs as sub (sub.id)}
           <div class="flex items-center gap-1.5">
-            <span class="flex size-3 shrink-0 items-center justify-center">
-              <AgentStatusDot status={sub.status} stale={false} />
+            <span class="flex size-3.5 shrink-0 items-center justify-center">
+              <AgentStatusIndicator status={sub.status} stale={false} />
             </span>
             <span class={cn("truncate", text.meta)}>
               {sub.description || sub.agentType || i18n.t("agentView.subagent")}

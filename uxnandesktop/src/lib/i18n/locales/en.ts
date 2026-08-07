@@ -104,6 +104,7 @@ export const en = {
   "sidebar.viewTree": "Tree",
   "sidebar.viewStatus": "By status",
   "sidebar.laneNeedsYou": "Needs you",
+  "sidebar.needsYouTooltip": "{n} workspace(s) waiting on you — show them",
   "sidebar.laneDone": "Done",
   "sidebar.laneWorking": "Working",
   "sidebar.laneIdle": "Idle",
@@ -177,6 +178,8 @@ export const en = {
   "worktree.behindTooltip": "behind upstream",
   "worktree.runningTooltip": "{n} terminal(s) running",
   "worktree.asleepTooltip": "{n} terminal(s) asleep",
+  "worktree.lastActivityTooltip": "Last agent activity here",
+  "worktree.primary": "primary",
 
   // Workspace sleep/wake
   "workspace.sleep": "Sleep workspace",

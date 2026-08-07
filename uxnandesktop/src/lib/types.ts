@@ -338,6 +338,14 @@ export interface AppSettings {
   /** Attention lanes (class 1–4) the user collapsed in the "group by status"
    *  view; persisted so the collapse survives a restart. */
   sidebarCollapsedLanes?: number[];
+  /** Projects (repo ids) the user left **expanded** in the tree view. Stored as
+   *  the expanded set (not the collapsed one) so a freshly added project keeps
+   *  the compact default, while the panel you built up comes back as you left
+   *  it instead of collapsing itself on every launch. Self-healing. */
+  sidebarExpandedProjects?: string[];
+  /** Workspaces (paths) whose agent list the user collapsed. Stored as the
+   *  collapsed set because the agent list defaults to open. Self-healing. */
+  sidebarCollapsedAgentSpaces?: string[];
   /** GitHub integration (the GitHub section + the right-panel GitHub tab). */
   github?: GithubSettings;
   /** "Open with" external editors/IDEs (custom list + hidden auto-detected). */
@@ -1318,6 +1326,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pinnedWorktrees: [],
   sidebarGroupBy: "none",
   sidebarCollapsedLanes: [],
+  sidebarExpandedProjects: [],
+  sidebarCollapsedAgentSpaces: [],
   github: {
     rightPanelTab: true,
     statusBarEnabled: true,

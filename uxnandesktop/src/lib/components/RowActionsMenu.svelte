@@ -21,7 +21,7 @@
   import KeyChord from "./KeyChord.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import OpenWith from "./OpenWith.svelte";
-  import AgentStatusDot from "./AgentStatusDot.svelte";
+  import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
   import TerminalIcon from "@lucide/svelte/icons/terminal";
   import MoonIcon from "@lucide/svelte/icons/moon";
   import SunIcon from "@lucide/svelte/icons/sun";
@@ -157,7 +157,7 @@
             }}
           >
             {#if d}
-              <AgentStatusDot status={d.status} stale={d.stale} />
+              <AgentStatusIndicator status={d.status} stale={d.stale} />
             {/if}
             <span class="truncate">{t.agentName ?? t.title}</span>
           </ContextMenu.Item>

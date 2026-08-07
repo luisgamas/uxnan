@@ -25,6 +25,10 @@
   --color-brand-lit: #5a97ff;
   --color-live: #00c896;
   --color-amber: #f5a524;
+  /* The app splits the two "not moving" states by hue: amber = blocked on
+     another system, orange = waiting on *you*. Matches the desktop's
+     `orange-500`. */
+  --color-orange: #f97316;
   --color-danger: #f2555a;
 
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
@@ -164,6 +168,36 @@ body::after {
 @keyframes ux-blink {
   50% {
     opacity: 0;
+  }
+}
+
+/* Comet Trail — the app's working indicator. The eight perimeter dots of a 3×3
+   matrix share this keyframe; a negative per-dot delay turns the phase offset
+   into a bright head with a two-dot fading tail sweeping the ring clockwise.
+   Mirrors `uxnandesktop/src/lib/components/CometTrail.svelte`. */
+@keyframes ux-comet-sweep {
+  0% {
+    opacity: 1;
+  }
+  12.5% {
+    opacity: 0.58;
+  }
+  25% {
+    opacity: 0.28;
+  }
+  37.5%,
+  100% {
+    opacity: 0.14;
+  }
+}
+
+@keyframes ux-comet-breathe {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.24;
   }
 }
 

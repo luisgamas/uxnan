@@ -33,7 +33,7 @@ import type {
   WorktreeStatus,
 } from "$lib/types";
 import { app } from "$lib/state/app.svelte";
-import { canonicalFor, reconcilePlan } from "$lib/pathid";
+import { canonicalFor, reconcilePlan, samePath } from "$lib/pathid";
 import { registerFlush } from "$lib/state/flushRegistry";
 import { registerStatusSweep, shouldSweep } from "$lib/state/statusSweepRegistry";
 import { terminals, GLOBAL_WORKSPACE } from "$lib/state/terminals.svelte";
@@ -274,6 +274,46 @@ class ProjectsStore {
     void app.persistSettings();
   }
 
+  // --- Expansion (left sidebar) --------------------------------------------
+  //
+  // Both of these are persisted. They used to be component-local `$state`, which
+  // meant every launch reopened the panel with all projects collapsed — the app
+  // looked empty even with a dozen worktrees and several agents running, and the
+  // agent lists you had closed came back open. The sidebar now returns exactly
+  // as you left it.
+
+  /** Whether a project card is expanded in the tree view (persisted). */
+  isProjectExpanded(repoId: string): boolean {
+    return app.settings.sidebarExpandedProjects?.includes(repoId) ?? false;
+  }
+
+  /** Set a project card's expansion and persist it. A setter (not a toggle) on
+   *  purpose: a live search force-expands every matching card, so the caller
+   *  passes the negation of the *effective* state — a blind toggle would store
+   *  "expanded" for a card that is only open because of the query. */
+  setProjectExpanded(repoId: string, expanded: boolean): void {
+    const cur = app.settings.sidebarExpandedProjects ?? [];
+    if (cur.includes(repoId) === expanded) return;
+    app.settings.sidebarExpandedProjects = expanded
+      ? [...cur, repoId]
+      : cur.filter((x) => x !== repoId);
+    void app.persistSettings();
+  }
+
+  /** Whether a workspace's agent list is collapsed (persisted; open by default). */
+  isAgentSpaceCollapsed(path: string): boolean {
+    return app.settings.sidebarCollapsedAgentSpaces?.some((p) => samePath(p, path)) ?? false;
+  }
+
+  /** Toggle a workspace's agent-list collapse and persist it. */
+  toggleAgentSpace(path: string): void {
+    const cur = app.settings.sidebarCollapsedAgentSpaces ?? [];
+    app.settings.sidebarCollapsedAgentSpaces = this.isAgentSpaceCollapsed(path)
+      ? cur.filter((p) => !samePath(p, path))
+      : [...cur, path];
+    void app.persistSettings();
+  }
+
   /** Every visible worktree (each project's main + its children) flattened into
    *  attention lanes for the "group by status" view. Empty lanes are omitted;
    *  within a lane, pinned worktrees float to the top, then the freshest/most-
@@ -293,6 +333,34 @@ class ProjectsStore {
       attention: lane.attention,
       items: partitionPinned(lane.items, (w) => this.isWorktreePinned(w.path)),
     }));
+  }
+
+  /** How many visible worktrees have an agent asking for *you* right now — the
+   *  `waiting`/`blocked` pair that `attentionClass` calls class 1. Drives the
+   *  sidebar header's attention pill: the one number worth surfacing above the
+   *  tree, so a permission prompt inside a collapsed project can't sit unseen.
+   *  One pass over the visible worktrees, no lane building. */
+  get needsYouCount(): number {
+    let n = 0;
+    for (const repo of this.filteredRepos) {
+      const main = this.mainWorktree(repo.id);
+      const paths = main ? [main.path] : [];
+      for (const w of this.visibleChildWorktrees(repo.id)) paths.push(w.path);
+      for (const p of paths) {
+        const s = mostUrgentStatus(
+          terminals.agentTabs(p).map((t) => resolveAgentDisplay(t)?.status ?? null),
+        );
+        if (s === "waiting" || s === "blocked") n += 1;
+      }
+    }
+    return n;
+  }
+
+  /** Jump to the "needs you" lane: switch to the status view and make sure that
+   *  lane is open, so the pill lands on the rows it counted. */
+  revealNeedsYou(): void {
+    if (this.isLaneCollapsed(1)) this.toggleLane(1);
+    this.setGroupBy("status");
   }
 
   /** Sort metadata for a workspace path — the agent status/unread/recency the

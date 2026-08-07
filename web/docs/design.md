@@ -18,7 +18,8 @@ consumed as Tailwind utilities (`bg-panel`, `text-muted`, `border-line`…).
 | `line` / `line-2` | white at 8% / 14% | hairlines; nothing heavier than 1px |
 | `brand` / `brand-lit` | `#1b6ef3` / `#5a97ff` | ambient light, links, "done" |
 | `live` | `#00c896` | running agents, success, prompts |
-| `amber` | `#f5a524` | "waiting on you" only |
+| `orange` | `#f97316` | "waiting on you" — an agent needs *your* input |
+| `amber` | `#f5a524` | "blocked" — an agent is waiting on another system; also the running-command hint |
 
 Both brand seeds are the mobile app's (`uxnanmobile/lib/presentation/theme/colors.dart`).
 Accent is rationed: a whole section may pass without any.

@@ -37,6 +37,7 @@ import { flushAll } from "$lib/state/flushRegistry";
 import { primeNotifications } from "$lib/notify";
 import { buildRunCommand, shellKind } from "$lib/shell";
 import { ownedSession } from "$lib/agentSessionId";
+import { modelFromArgs } from "$lib/agentModel";
 import { currentOS } from "$lib/platform";
 import {
   BUILTIN_DARK,
@@ -718,6 +719,9 @@ class AppStore {
       agentName: name,
       agentIcon: agentLogoKey(agent.icon, agent.command),
       agentCommand: agent.command.trim(),
+      // Read off the profile's own args, not inferred: absent when the profile
+      // pins no model, so the sidebar chip never claims a default it can't see.
+      agentModel: modelFromArgs(agent.args) ?? undefined,
       // Stamp the session we just named on the tab, in the same breath as the
       // launch: nothing else has to happen for this tab to be restorable. A hook
       // report later overwrites it with the provider's own view (same id).

@@ -101,6 +101,7 @@ export const es: Record<MessageKey, string> = {
   "sidebar.viewTree": "Árbol",
   "sidebar.viewStatus": "Por estado",
   "sidebar.laneNeedsYou": "Te necesita",
+  "sidebar.needsYouTooltip": "{n} espacio(s) esperándote — mostrarlos",
   "sidebar.laneDone": "Terminó",
   "sidebar.laneWorking": "Trabajando",
   "sidebar.laneIdle": "Inactivo",
@@ -174,6 +175,8 @@ export const es: Record<MessageKey, string> = {
   "worktree.behindTooltip": "atrás del upstream",
   "worktree.runningTooltip": "{n} terminal(es) activa(s)",
   "worktree.asleepTooltip": "{n} terminal(es) dormida(s)",
+  "worktree.lastActivityTooltip": "Última actividad de agente aquí",
+  "worktree.primary": "principal",
 
   // Workspace sleep/wake
   "workspace.sleep": "Dormir espacio",

@@ -180,6 +180,26 @@
       {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
     </span>
+    <!-- Attention pill — the one signal that must escape the tree: an agent
+         waiting on you inside a collapsed project is otherwise invisible. Click
+         jumps to the status view with the "needs you" lane open. -->
+    {#if projects.needsYouCount > 0}
+      <TooltipSimple title={i18n.t("sidebar.needsYouTooltip", { n: projects.needsYouCount })}>
+        {#snippet children(props)}
+          <button
+            {...props}
+            class={cn(
+              "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 px-1.5 py-px font-medium tabular-nums text-orange-600 transition-colors hover:bg-orange-500/25 dark:text-orange-400",
+              text.indicator,
+            )}
+            onclick={() => projects.revealNeedsYou()}
+          >
+            <span class="size-1.5 rounded-full bg-orange-500"></span>
+            {projects.needsYouCount}
+          </button>
+        {/snippet}
+      </TooltipSimple>
+    {/if}
     {#if resourceMode.freshness.git}
       <FreshnessHint
         label={i18n.t("resourceMode.freshness.git")}

@@ -83,6 +83,10 @@ export interface TerminalTab extends BaseTab {
   /** The launched agent's executable (e.g. `claude`), used to route orchestrated
    *  messages by agent type. Transient. */
   agentCommand?: string;
+  /** The model this launch was pinned to, read off the profile's args
+   *  (`modelFromArgs`). Absent when the profile pins none — the sidebar then
+   *  shows no model chip rather than guessing the CLI's own default. Transient. */
+  agentModel?: string;
   /** Activity inference: `true` while the tab is producing output (set by the
    *  agent monitor). Transient. */
   working?: boolean;
@@ -203,6 +207,8 @@ export interface NewTabOptions {
   agentIcon?: string | null;
   /** The launched agent's executable (e.g. `claude`), for orchestration routing. */
   agentCommand?: string;
+  /** The model this launch pins, for the sidebar row's chip. */
+  agentModel?: string;
   /** Session named by uxnan on this launch (`agentSessionId.ts`), stamped so the
    *  tab is resumable before any hook has reported. */
   agentSession?: CapturedAgentSession;
@@ -227,6 +233,7 @@ function newTab(opts?: Omit<NewTabOptions, 'groupId' | 'workspace'>): TerminalTa
     agentName: opts?.agentName,
     agentIcon: opts?.agentIcon,
     agentCommand: opts?.agentCommand,
+    agentModel: opts?.agentModel,
     agentSession: opts?.agentSession,
     exited: false,
   };

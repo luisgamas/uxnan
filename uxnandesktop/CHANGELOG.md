@@ -5,6 +5,54 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added
+
+- **The left panel now says what it holds without being opened.** A collapsed
+  project card carries a summary line — its worktree count and a strip of
+  status-ringed agent avatars — so three working agents inside a closed project
+  are visible from the outside. Only shown when there is real signal: a lone
+  worktree with no agents keeps the card a single row.
+- **An attention pill in the Projects header.** When an agent is waiting on you
+  (`waiting`/`blocked`), the header shows the count; clicking it switches to the
+  status view with the "Needs you" lane open. A permission prompt inside a
+  collapsed project can no longer sit unseen.
+- **A hover card on every worktree row**, replacing the path-only tooltip: full
+  path, branch, working-tree state, the linked PR (number, checks colour, title)
+  and every agent in that workspace with its state and last update. The detail
+  lives one hover away instead of costing each row a third line.
+- **Worktree rows show when they last moved** — the freshest agent report in the
+  workspace, at the end of the second line.
+- **Agent rows show the model the launch pinned**, read off the profile's own
+  arguments (`modelFromArgs`). Absent when the profile pins none: uxnan cannot
+  see a model the CLI chose on its own and does not claim one.
+
+### Changed
+
+- **Agent state is now a glyph, not a coloured dot.** `working` renders the new
+  **Comet Trail** — a 3×3 dot matrix whose eight perimeter dots carry a bright
+  head with a two-dot fading tail sweeping clockwise while the centre breathes —
+  and the resting states each get their own small icon: a question bubble for
+  `waiting`, a pause circle for `blocked`, a check for `done`. `idle` keeps the
+  quiet grey dot on purpose: it is the most frequent state, so a glyph there
+  would be constant noise. The animation is pure CSS (one keyframe plus per-dot
+  negative delays, animating `opacity` only), so it runs on the compositor with
+  zero JS timers and honours `prefers-reduced-motion`. `AgentStatusDot` is now
+  `AgentStatusIndicator`; the collapsed avatar strip keeps its coloured ring,
+  which stays legible at 16-20px where the matrix would not.
+- **The sidebar remembers how you left it.** Project-card expansion and each
+  workspace's agent list are persisted (`sidebarExpandedProjects`,
+  `sidebarCollapsedAgentSpaces`) instead of living in component state — every
+  launch used to reopen with all projects collapsed, so the panel looked empty
+  even with a dozen worktrees and several agents running. A live search still
+  force-expands matching cards without touching what is stored.
+- **The worktree row's second line stopped repeating the first.** It showed the
+  folder name, which is usually the branch name with the slashes swapped
+  (`feat/login` → `feat-login`); it now prefers the linked PR's title, which says
+  what the branch is *for*, and falls back to the folder name when it differs.
+- The PR badge carries its **number** next to the icon — knowing there *is* a PR
+  was never the useful half.
+- An interrupted agent gets an amber marker on its preview line, and the agents
+  under a worktree are tied to it by a hairline rail.
 ### Added — search inside files, and a tree that follows what you opened
 
 The Files tab's search could only match file *names*. The magnifier still opens

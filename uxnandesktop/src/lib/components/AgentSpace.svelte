@@ -26,7 +26,8 @@
     terminals.activeWorkspace === path ? terminals.activePtyId() : null,
   );
 
-  let expanded = $state(true);
+  // Persisted (open by default) — a list you closed used to reopen on restart.
+  const expanded = $derived(!projects.isAgentSpaceCollapsed(path));
 
   // Zero reports no hook/OSC — poll its on-disk session while it's open here.
   const hasZero = $derived(tabs.some(isZeroAgent));
@@ -50,7 +51,7 @@
           <button
             {...tp}
             class="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
-            onclick={() => (expanded = !expanded)}
+            onclick={() => projects.toggleAgentSpace(path)}
           >
             <ChevronRightIcon
               class={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
@@ -96,7 +97,9 @@
     </div>
 
     {#if expanded}
-      <div class="flex flex-col">
+      <!-- A hairline rail ties the agents to the worktree they live in, the same
+           way a running agent's own children are tied to it inside AgentRow. -->
+      <div class="ml-2 flex flex-col border-l border-border/50 pl-1.5">
         {#each tabs as t (t.id)}
           <AgentRow
             tab={t}

@@ -7,6 +7,20 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The desktop mockup's agent-state glyphs follow the shipped app again**, and
+  now show the whole vocabulary instead of a wall of identical green: the
+  **Comet Trail** (a 3×3 dot matrix with a bright head and a fading two-dot tail
+  sweeping the ring) while working, a question bubble when an agent needs *you*,
+  a pause circle when it is blocked on another system, and a check when the turn
+  is done — replacing the pulsing coloured dot the app no longer uses. `idle`
+  keeps its plain dot, as it does in the app. The four running agents and their
+  subagents were re-cast so each state appears once, including on the tab strip.
+  Subagents stay on the working glyph on purpose: a child only ever reaches
+  `working` / `done` in the real app, and only the working ones are rendered.
+- A new **`orange`** palette token (`#f97316`) splits the two "not moving"
+  states the way the app does — orange for *waiting on you*, amber for *blocked
+  on another system*. The parallel-worktree section's "Waiting on you" tone moved
+  to it, so one state is one colour across the page.
 - **The site was rebuilt from scratch as a single-page funnel**, replacing the
   previous multi-section site in this directory: hero with a live product
   composition, agent line-up, parallel-worktree section, mobile section, measured

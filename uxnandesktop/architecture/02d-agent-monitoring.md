@@ -187,13 +187,33 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
 
 Los estados posibles de un agente son cuatro, cada uno con un significado especifico y un indicador visual diferenciado en la UI:
 
-| Estado | Significado | Indicador Visual |
+| Estado | Significado | Indicador Visual (`AgentStatusIndicator.svelte`) |
 |--------|-------------|------------------|
-| `working` | Procesando activamente una tarea | Punto verde animado |
-| `blocked` | Esperando respuesta de otro sistema (API, servicio externo) | Punto amarillo |
-| `waiting` | Esperando input del usuario | Punto naranja parpadeante |
-| `done` | Tarea completada | Punto azul / check |
+| `working` | Procesando activamente una tarea | **Comet Trail** verde (`CometTrail.svelte`) |
+| `blocked` | Esperando respuesta de otro sistema (API, servicio externo) | Icono de pausa ambar (`circle-pause`) |
+| `waiting` | Esperando input del usuario | Burbuja de pregunta naranja (`message-circle-question-mark`) |
+| `done` | Tarea completada | Check azul (`circle-check`) |
 | `idle` (derivado) | Agente en reposo, sin reporte preciso | Punto gris |
+
+> **Por que un glifo por estado y no un punto de color.** Un punto solo se
+> distingue por el matiz, asi que a 12px la sidebar obligaba a mirar dos veces
+> para separar "te esta esperando" de "termino". Cada estado *activo* tiene ahora
+> su propia forma, legible sin color. `idle` conserva el punto gris **a
+> proposito**: es el estado mas frecuente, y un glifo ahi seria ruido constante —
+> "glifo = pasa algo / punto = no pasa nada" es lo que hace escaneable la lista.
+>
+> **Comet Trail** es una matriz 3x3 de puntos: los 8 del perimetro llevan una
+> cabeza brillante con una cola de 2 puntos que se apaga, girando en sentido
+> horario (vuelta ≈ 1.15 s), mientras el punto central respira. Se anima con **CSS
+> puro** — un solo keyframe mas un `animation-delay` negativo por punto, tocando
+> unicamente `opacity` — para que corra en el compositor sin ningun timer de JS:
+> se renderiza uno por agente *trabajando*, y uxnan apunta a hardware modesto.
+> Respeta `prefers-reduced-motion` congelandose en un anillo **completo** (uno
+> congelado a mitad de barrido se lee como widget roto).
+>
+> El tamano canonico es 12px (`icon.status` en `design.ts`). La **tira contraida**
+> (`AgentAvatar`) mantiene el anillo de color: a 16-20px la matriz no seria
+> legible, y ahi solo hace falta "quien + como".
 
 > **Semantica `done` vs `waiting` (fin de turno).** `done` es el estado de reposo
 > tras completar un turno — la tarjeta muestra "Listo" + badge de no-leido.
@@ -216,16 +236,30 @@ muestra ningun indicador.
 
 Estos estados se muestran en dos lugares de la interfaz:
 
-- **Tarjeta del worktree** en la sidebar izquierda: como badge de color junto al nombre de la rama.
+- **Tarjeta del worktree** en la sidebar izquierda: como indicador junto al nombre de la rama.
 - **Barra de tabs** del area central: como indicador en el tab del terminal donde corre el agente.
+- **Cabecera de Proyectos**: una **pildora de atencion** con cuantos worktrees
+  visibles tienen un agente en `waiting`/`blocked` (`projects.needsYouCount`, la
+  clase 1 de `attentionClass`). Click → `revealNeedsYou()` cambia a la vista por
+  estado con esa lane abierta. Es la unica senal que debe escapar del arbol: un
+  permiso pendiente dentro de un proyecto contraido no puede quedar invisible.
+- **Tarjeta de proyecto contraida**: la tira de avatares con anillo de estado
+  (`AgentAvatar size="sm"`) + el conteo de worktrees, para que un proyecto cerrado
+  siga diciendo que hay dentro. Solo aparece si hay senal real (algun agente, o
+  mas de un worktree).
 
 ### Agent view (sidebar izquierda)
 
 Dentro de cada worktree, la lista de agentes (`AgentSpace.svelte`) es una **"agent
-view"**: cada agente es una **fila de dos lineas** — punto de estado
-(`AgentStatusDot`) + logo (`AgentLogo`) + **titulo de conversacion** + tiempo
-relativo en la 1a linea, y un **preview** atenuado en la 2a (la herramienta actual
-mientras trabaja, si no la ultima respuesta, si no la etiqueta de estado). El
+view"**: cada agente es una **fila de dos lineas** — indicador de estado
+(`AgentStatusIndicator`) + logo (`AgentLogo`) + **titulo de conversacion** +
+**modelo fijado** + tiempo relativo en la 1a linea, y un **preview** atenuado en
+la 2a (la herramienta actual mientras trabaja, si no la ultima respuesta, si no la
+etiqueta de estado). Las dos lineas son deliberadas: es lo que distingue esta
+lista de una fila unica con el texto concatenado. El chip de **modelo** sale de
+los argumentos del propio perfil de lanzamiento (`modelFromArgs` →
+`TerminalTab.agentModel`) y **no aparece** si el perfil no fija ninguno: uxnan no
+puede ver el modelo que el CLI elija por su cuenta y no lo inventa. El
 titulo/preview salen de datos que **ya** captura el hook server y viven en
 `agentStatus` (`prompt` = prompt de usuario mas reciente, `tool`, `summary`); antes
 solo alimentaban notificaciones. `resolveAgentView` (`state/agentDisplay.ts`)
@@ -241,7 +275,7 @@ en su sesion en disco (`~/.local/share/zero/sessions/<id>/metadata.json`). El
 backend `zero_session(cwd)` (`src-tauri/src/zero.rs`) lee la sesion raiz mas
 reciente que coincide con el cwd del worktree y deriva un estado coarse de su
 `lastEventType`; el frontend (`state/zeroSessions.svelte.ts`) lo consulta por
-polling mientras haya un agente Zero abierto. La barra de tabs usa el mismo `AgentStatusDot` que la sidebar (resolucion reactiva `hook` › `title` › `activity`), de modo que un agente con hook server reportando estados muestra el estado preciso (`working` / `blocked` / `waiting` / `done`) y un agente sin hook configurado cae al fallback (output-activity o title-inference) con dot gris/idle cuando no hay movimiento.
+polling mientras haya un agente Zero abierto. La barra de tabs usa el mismo `AgentStatusIndicator` que la sidebar (resolucion reactiva `hook` › `title` › `activity`), de modo que un agente con hook server reportando estados muestra el estado preciso (`working` / `blocked` / `waiting` / `done`) y un agente sin hook configurado cae al fallback (output-activity o title-inference) con dot gris/idle cuando no hay movimiento.
 
 **Descubrimiento de hooks.** Cuando un tab de la barra es de un agente y su
 estado proviene de un fallback (no del hook server), se muestra al lado del
@@ -267,7 +301,7 @@ antiguo). Cada reporte de subagente se difunde reusando `agent:status-changed` c
 lista `subagents` actualizada.
 
 En la agent view (`AgentRow.svelte`) los subagentes **activos** se muestran como
-**filas hijas indentadas** bajo el padre, cada una con su punto de estado, y un
+**filas hijas indentadas** bajo el padre, cada una con su indicador de estado, y un
 **badge** en el padre resume activos/total. El display del padre esta **done-gated**
 (`agentDisplay.ts`): mientras un hijo siga `working`, el padre no se muestra `done`
 (evita un ✓ prematuro cuando un hijo de fondo sobrevive al `Stop` del padre).
@@ -331,7 +365,7 @@ presencia, no estado detallado.
 reporte de hook (Capa 1) establece la identidad del tab**: como el reporter declara
 su `agentType`, un agente iniciado **a mano** en cualquier terminal del ADE — incluso
 un wrapper, un binario renombrado o uno lanzado via `node` que `procscan` no sabe
-nombrar — aparece en la agent view y alimenta el punto de estado del worktree en
+nombrar — aparece en la agent view y alimenta el indicador de estado del worktree en
 cuanto llega su **primer hook**, sin depender de la coincidencia por nombre de
 ejecutable. La deteccion de proceso queda como **fallback** para agentes sin hook. El
 hook solo sella la identidad de un tab que aun no la tiene (una identidad de
