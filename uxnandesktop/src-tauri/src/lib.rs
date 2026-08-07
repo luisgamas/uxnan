@@ -350,6 +350,7 @@ pub fn run() {
             commands::worktree_remove,
             commands::worktree_list,
             commands::worktree_status,
+            commands::branch_integrated,
             commands::browse_dirs,
             commands::fs_list_dir,
             commands::fs_read_file,

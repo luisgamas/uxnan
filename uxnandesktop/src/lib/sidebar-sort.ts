@@ -11,8 +11,18 @@ import type { SortMode } from "$lib/types";
 import type { DisplayStatus } from "$lib/state/agentDisplay";
 
 /** Attention class for the "attention" sort — lower is more urgent:
- *  1 needs-you · 2 done (unreviewed) · 3 working · 4 idle. */
-export type AttentionClass = 1 | 2 | 3 | 4;
+ *  1 needs-you · 2 done (unreviewed) · 3 working · 4 idle.
+ *
+ *  `5` is not an attention level at all: it is the **finished** lane (see
+ *  [`CLOSABLE_LANE`]). It rides this type so the status view can render one list
+ *  of lanes, but it answers a different question — "what can I close?" rather
+ *  than "what needs me?" — which is why it sorts last instead of by urgency. */
+export type AttentionClass = 1 | 2 | 3 | 4 | 5;
+
+/** The lane for workspaces whose work has landed or been abandoned. Kept out of
+ *  the attention lanes on purpose: a merged worktree used to fall into "idle",
+ *  which is where you look for work to *resume*. */
+export const CLOSABLE_LANE = 5 satisfies AttentionClass;
 
 /** Whether a mode's order is static (never drifts over time): manual + the two
  *  name modes. The drifting modes (recent/attention) read live agent state, so
@@ -155,22 +165,31 @@ export interface StatusLane<T> {
   items: T[];
 }
 
-/** Lane order for the status view — most urgent first (needs-you · done · working
- *  · idle). */
-const LANE_ORDER: readonly AttentionClass[] = [1, 2, 3, 4];
+/** Lane order for the status view — most urgent first (needs-you · done ·
+ *  working · idle), with the finished lane last: it is the only one that asks
+ *  for a decision rather than attention, so it belongs at the bottom, out of the
+ *  way of the work still in flight. */
+const LANE_ORDER: readonly AttentionClass[] = [1, 2, 3, 4, CLOSABLE_LANE];
 
-/** Group `items` into attention lanes for the "group by status" view. Empty lanes
- *  are omitted; each lane's items are ordered by the attention comparator (freshest
- *  signal, then recency, then name). Pure, so it's unit-testable. */
+/** Group `items` into lanes for the "group by status" view. Empty lanes are
+ *  omitted; each lane's items are ordered by the attention comparator (freshest
+ *  signal, then recency, then name). Pure, so it's unit-testable.
+ *
+ *  `isClosable` pulls a finished workspace out of the attention lanes entirely.
+ *  Without it a merged worktree lands in "Idle" — technically true and useless,
+ *  since idle is where you look for work to resume, not for work to close. */
 export function buildStatusGroups<T>(
   items: readonly T[],
   metaOf: (item: T) => SortMeta,
+  isClosable?: (item: T) => boolean,
 ): StatusLane<T>[] {
+  const laneOf = (it: T): AttentionClass =>
+    isClosable?.(it)
+      ? CLOSABLE_LANE
+      : attentionClass(metaOf(it).status, metaOf(it).unread);
   const lanes: StatusLane<T>[] = [];
   for (const attention of LANE_ORDER) {
-    const inLane = items.filter(
-      (it) => attentionClass(metaOf(it).status, metaOf(it).unread) === attention,
-    );
+    const inLane = items.filter((it) => laneOf(it) === attention);
     if (inLane.length === 0) continue;
     lanes.push({ attention, items: sortItems(inLane, "attention", metaOf) });
   }

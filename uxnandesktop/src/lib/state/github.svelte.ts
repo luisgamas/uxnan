@@ -319,6 +319,15 @@ class GithubStore {
       if (!sameJson(ctx, this.contextByPath[path])) {
         this.contextByPath = { ...this.contextByPath, [path]: ctx };
       }
+      // Push the PR verdict down to the worktree store, which uses it to decide
+      // whether a space is finished. Pushed, not pulled: this module already
+      // imports `projects`, so reading back the other way would close a cycle.
+      projects.notePr(
+        path,
+        ctx?.pr
+          ? { state: ctx.pr.state, isDraft: ctx.pr.isDraft, checks: ctx.pr.checks }
+          : null,
+      );
       this.contextRevision += 1;
     } catch {
       if (seq !== this.#ctxSeq) return;
@@ -446,6 +455,15 @@ class GithubStore {
       if (!sameJson(ctx, this.contextByPath[path])) {
         this.contextByPath = { ...this.contextByPath, [path]: ctx };
       }
+      // Push the PR verdict down to the worktree store, which uses it to decide
+      // whether a space is finished. Pushed, not pulled: this module already
+      // imports `projects`, so reading back the other way would close a cycle.
+      projects.notePr(
+        path,
+        ctx?.pr
+          ? { state: ctx.pr.state, isDraft: ctx.pr.isDraft, checks: ctx.pr.checks }
+          : null,
+      );
     } catch {
       /* leave the cached value */
     }
