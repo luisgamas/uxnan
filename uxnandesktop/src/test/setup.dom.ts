@@ -15,13 +15,43 @@
  */
 
 import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/svelte";
 import { afterEach, vi } from "vitest";
 
 import { uninstallFakeBackend } from "./tauri";
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount here instead of leaving it to `svelteTesting()`'s own hook: what
+  // follows has to happen *after* the components are gone, and hook order
+  // between two setup files is not something to depend on. `cleanup()` is
+  // idempotent, so running it twice costs nothing.
+  cleanup();
+  await flushScrollLockRestore();
   uninstallFakeBackend();
 });
+
+/**
+ * Wait out `bits-ui`'s body-style restore before the test ends.
+ *
+ * Releasing the last scroll lock (unmounting a dialog) does not restore the
+ * body style immediately — `bits-ui` schedules it 24 ms later, on purpose, so a
+ * modal that closes and reopens in the same tick does not flicker. Unmounting
+ * the last dialog of a file therefore leaves a timer armed, and if Vitest tears
+ * the jsdom environment down inside that window the callback fires into a world
+ * with no `document`: `ReferenceError: document is not defined`, reported as an
+ * unhandled error, exit code 1 — with every test green.
+ *
+ * That is exactly how it surfaced: the macOS leg of the 0.0.31 release build
+ * failed at 882/882 passing, while Linux and Windows won the same race.
+ *
+ * Waiting unconditionally would tax every test in the project for a delay only
+ * dialogs incur, so this waits only when a lock actually left its mark on the
+ * body.
+ */
+async function flushScrollLockRestore(): Promise<void> {
+  if (!document.body.getAttribute("style")) return;
+  await new Promise((resolve) => setTimeout(resolve, 40));
+}
 
 // --- jsdom gaps -------------------------------------------------------------
 
