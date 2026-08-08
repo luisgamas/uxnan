@@ -463,14 +463,24 @@ fn source_interrupted(source: &Value) -> bool {
         .unwrap_or(false)
 }
 
-/// Best-effort extraction of a sub-agent (child) identity from a Claude
+/// Best-effort extraction of a sub-agent (child) identity from a
 /// `SubagentStart`/`SubagentStop` payload: `(id, agent_type, description)`.
 ///
-/// Validated against Claude Code 2.1.209: `SubagentStart` carries `agent_id` +
-/// `agent_type`; `SubagentStop` adds `last_assistant_message` (the child's final
-/// reply, used as the description). Field names are still version-sensitive, so we
-/// try the known aliases and return `None` when no stable child id is present (the
-/// caller then ignores the event rather than inventing a bogus row).
+/// Every spelling below was captured from a real run, because the four CLIs that
+/// report children do not agree on one:
+///
+/// | CLI | id | kind | final reply |
+/// |---|---|---|---|
+/// | Claude Code 2.1.225 | `agent_id` | `agent_type` | `last_assistant_message` |
+/// | Codex 0.147.0 | `agent_id` | `agent_type` | `last_assistant_message` |
+/// | Grok 0.2.118 | `subagentId` | `subagentType` | `lastAssistantMessage` |
+/// | OpenCode 1.18.15 | `agent_id` (child session) | `agent_type` | — |
+///
+/// Grok is camelCase throughout, which is why its `lastAssistantMessage` needs
+/// its own alias: matching only the snake_case spelling silently dropped the
+/// child's answer and left the row showing the task it was given instead.
+/// Returns `None` when no stable child id is present — the caller then ignores
+/// the event rather than inventing a bogus row.
 fn source_subagent(source: &Value) -> Option<(String, Option<String>, Option<String>)> {
     let first_str = |keys: &[&str]| -> Option<String> {
         keys.iter()
@@ -480,17 +490,22 @@ fn source_subagent(source: &Value) -> Option<(String, Option<String>, Option<Str
     };
     let id = first_str(&["agent_id", "subagent_id", "agentId", "subagentId"])?;
     let agent_type = first_str(&["agent_type", "subagent_type", "agentType", "subagentType"]);
-    let description = first_str(&["description", "task", "last_assistant_message"])
-        .or_else(|| {
-            source
-                .get("tool_input")
-                .and_then(|t| t.get("description").or_else(|| t.get("prompt")))
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-        })
-        // A child's final reply can be long — collapse + cap for the roster.
-        .map(|d| tidy(&d, PREVIEW_MAX));
+    let description = first_str(&[
+        "description",
+        "task",
+        "last_assistant_message",
+        "lastAssistantMessage",
+    ])
+    .or_else(|| {
+        source
+            .get("tool_input")
+            .and_then(|t| t.get("description").or_else(|| t.get("prompt")))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    })
+    // A child's final reply can be long — collapse + cap for the roster.
+    .map(|d| tidy(&d, PREVIEW_MAX));
     Some((id, agent_type, description))
 }
 
@@ -506,6 +521,18 @@ fn is_subagent_event(event: &str) -> bool {
         pascal_case(event).as_str(),
         "SubagentStart" | "SubagentStop"
     )
+}
+
+/// Drop a leading UTF-8 byte-order mark from a hook body.
+///
+/// `serde_json` rejects a BOM outright, and the whole body is parsed leniently —
+/// a parse failure degrades to "no body", which for a raw provider event means
+/// **no event name**, so the report is dropped without a sound. Measured on
+/// Cursor 2026.08.04, which prefixes its payload with one: every Cursor report
+/// was being discarded on Windows, so its cards never moved off the coarse
+/// fallback. Cheap and agent-agnostic, so it guards whoever does it next.
+fn strip_bom(body: &[u8]) -> &[u8] {
+    body.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(body)
 }
 
 /// Collapse whitespace and truncate for a one-glance notification preview.
@@ -964,7 +991,7 @@ async fn handle_hook(
     let body_val: Value = if body.is_empty() {
         Value::Null
     } else {
-        serde_json::from_slice(&body).unwrap_or(Value::Null)
+        serde_json::from_slice(strip_bom(&body)).unwrap_or(Value::Null)
     };
     let body_get = |k: &str| body_val.get(k).and_then(|v| v.as_str()).map(str::to_string);
 
@@ -1023,6 +1050,9 @@ async fn handle_hook(
                     id,
                     agent_type: child_type,
                     description,
+                    // A lifecycle event says nothing about what the child is
+                    // running; its tool arrives on the child's own events.
+                    tool: None,
                     status: child_status,
                     started_at: now,
                     last_update: now,
@@ -1034,6 +1064,52 @@ async fn handle_hook(
         };
         emit_agent_status(&ctx.app, entry);
         return StatusCode::NO_CONTENT;
+    }
+
+    // An ordinary event that belongs to a CHILD, not to this tab's agent.
+    //
+    // On the CLIs that run a sub-agent in a session of its own, the child's own
+    // events come up the same pipe under the parent's PTY id, distinguished only
+    // by the session they name. Measured on Grok 0.2.118: a child emits its own
+    // `user_prompt_submit` (which overwrote the parent's conversation title with
+    // the child's task) and its own `session_end` — which maps to `done`, so the
+    // parent's card went to "Done" while it was still working, and no done-gate
+    // could help because the child had already finished. Its session id also
+    // landed in the parent's captured session, which is what a restored tab
+    // resumes: the tab would have come back on the sub-agent's conversation.
+    //
+    // So: attribute it to the child's row (its current tool) and let nothing of
+    // it reach the parent. Claude and Codex never take this path — their
+    // children's events carry the parent's session id.
+    if let Some(child_id) = source
+        .and_then(|s| {
+            SESSION_ID_KEYS
+                .iter()
+                .find_map(|k| s.get(k).and_then(|v| v.as_str()))
+        })
+        .map(str::to_string)
+    {
+        let state = ctx.app.state::<AppState>();
+        let is_child = {
+            let data = state.data.read().await;
+            data.is_subagent_session(&agent_id, &child_id)
+        };
+        if is_child {
+            let tool = source.and_then(source_tool).map(|t| tidy(&t, PREVIEW_MAX));
+            let now = now_secs();
+            let entry = {
+                let mut data = state.data.write().await;
+                let entry = data.touch_subagent_activity(&agent_id, &child_id, tool, now);
+                if entry.is_some() {
+                    let _ = state.persistence.save(&data);
+                }
+                entry
+            };
+            if let Some(entry) = entry {
+                emit_agent_status(&ctx.app, entry);
+            }
+            return StatusCode::NO_CONTENT;
+        }
     }
 
     // Resolve the effective status. Priority: an explicit header/body status
@@ -1797,10 +1873,83 @@ mod tests {
         assert_eq!(source_subagent(&json!({ "foo": "bar" })), None);
     }
 
+    /// Captured from a real `codex exec` run on Codex 0.147.0, which spells its
+    /// sub-agent payload exactly as Claude does — the reason subscribing to the
+    /// two events was the whole change.
+    #[test]
+    fn source_subagent_reads_codex_payload() {
+        let stop = json!({
+            "session_id": "019fdfd4-9bfd-7060-bf35-c8fae1fb6a9b",
+            "turn_id": "019fdfd4-d605-70f1-aa74-96e0beaf4e76",
+            "hook_event_name": "SubagentStop",
+            "agent_id": "019fdfd4-d3e9-7943-8fbc-29eb4169f4ca",
+            "agent_type": "default",
+            "last_assistant_message": "hello",
+        });
+        assert_eq!(
+            source_subagent(&stop),
+            Some((
+                "019fdfd4-d3e9-7943-8fbc-29eb4169f4ca".to_string(),
+                Some("default".to_string()),
+                Some("hello".to_string()),
+            ))
+        );
+    }
+
+    /// Captured from a real Grok 0.2.118 run. Grok is camelCase throughout, so
+    /// matching only `last_assistant_message` dropped the child's answer.
+    #[test]
+    fn source_subagent_reads_grok_camel_case_payload() {
+        let start = json!({
+            "hookEventName": "subagent_start",
+            "subagentId": "019fdfc7-67cc-79c2-ad4b-fe50ebe9362a",
+            "subagentType": "general-purpose",
+            "description": "Report the word hello",
+        });
+        assert_eq!(
+            source_subagent(&start),
+            Some((
+                "019fdfc7-67cc-79c2-ad4b-fe50ebe9362a".to_string(),
+                Some("general-purpose".to_string()),
+                Some("Report the word hello".to_string()),
+            ))
+        );
+        let stop = json!({
+            "hookEventName": "subagent_stop",
+            "subagentId": "019fdfc7-67cc-79c2-ad4b-fe50ebe9362a",
+            "subagentType": "general-purpose",
+            "lastAssistantMessage": "hello",
+        });
+        assert_eq!(
+            source_subagent(&stop).and_then(|(_, _, d)| d),
+            Some("hello".to_string()),
+            "Grok's camelCase final reply must reach the roster"
+        );
+    }
+
+    /// Cursor's real body, byte for byte: a UTF-8 BOM in front of the JSON.
+    /// Without the strip, `serde_json` refuses the whole thing and the report
+    /// silently loses its event name — which is every Cursor report on Windows.
+    #[test]
+    fn a_bom_prefixed_body_still_parses() {
+        let raw = b"\xEF\xBB\xBF{\"hook_event_name\":\"preToolUse\",\"tool_name\":\"Task\"}";
+        let parsed: Value = serde_json::from_slice(strip_bom(raw)).expect("BOM stripped");
+        assert_eq!(event_name(&parsed).as_deref(), Some("preToolUse"));
+        // Untouched when there is no BOM.
+        let plain = b"{\"hook_event_name\":\"stop\"}";
+        assert_eq!(strip_bom(plain), plain);
+        // And a body that is genuinely broken still fails, rather than being
+        // "fixed" into something it never was.
+        assert!(serde_json::from_slice::<Value>(strip_bom(b"\xEF\xBB\xBFnot json")).is_err());
+    }
+
     #[test]
     fn is_subagent_event_matches_lifecycle() {
         assert!(is_subagent_event("SubagentStart"));
         assert!(is_subagent_event("SubagentStop"));
+        // Grok dispatches snake_case, Cursor/Copilot camelCase — both normalize.
+        assert!(is_subagent_event("subagent_start"));
+        assert!(is_subagent_event("subagentStop"));
         assert!(!is_subagent_event("Stop"));
         assert!(!is_subagent_event("PreToolUse"));
     }
