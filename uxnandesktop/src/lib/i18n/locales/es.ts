@@ -1179,6 +1179,7 @@ export const es: Record<MessageKey, string> = {
   "agentView.interrupted": "Interrumpido",
   "agentView.subagents": "{n} subagente(s)",
   "agentView.subagent": "Subagente",
+  "agentView.subagentType": "Tipo de subagente",
   "settings.preventSleep": "Evitar suspensión al trabajar",
   "settings.preventSleepDesc":
     "Mantén el sistema despierto mientras un agente trabaja (se libera solo a las 2 h). El soporte de macOS/Linux está implementado pero sin probar.",

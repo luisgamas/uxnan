@@ -117,8 +117,23 @@
             <span class="flex size-3.5 shrink-0 items-center justify-center">
               <AgentStatusIndicator status={sub.status} stale={false} />
             </span>
-            <span class={cn("truncate", text.meta)}>
-              {sub.description || sub.agentType || i18n.t("agentView.subagent")}
+            {#if sub.agentType}
+              <!-- The child's kind, as a quiet chip: it labels the row without
+                   competing with the task, which is what the eye is looking for. -->
+              <span
+                class="shrink-0 rounded bg-foreground/[0.06] px-1 text-[10px] leading-4 text-muted-foreground/80"
+                title={i18n.t("agentView.subagentType")}
+              >
+                {sub.agentType}
+              </span>
+            {/if}
+            <!-- No elapsed time on a child on purpose: the shared clock ticks
+                 every 30 s, which is right for the parent's "4m" and useless for
+                 a child that lives 12 s — it would sit frozen and then jump. -->
+            <span class={cn("min-w-0 flex-1 truncate", text.meta)}>
+              {sub.description || i18n.t("agentView.subagent")}{#if sub.tool}<span
+                  class="text-muted-foreground/60">{" · "}{sub.tool}</span
+                >{/if}
             </span>
           </div>
         {/each}

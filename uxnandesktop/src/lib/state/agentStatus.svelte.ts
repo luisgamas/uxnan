@@ -69,7 +69,14 @@ function toLive(e: AgentStatusEvent): LiveAgentState {
     tool: e.tool,
     interrupted: e.interrupted,
     summary: e.summary,
-    subagents: e.subagents ?? [],
+    // A child's stamps are scaled here too, so everything above this line is in
+    // epoch ms. Leaving them in the backend's seconds is the kind of mismatch
+    // that renders a child as having started in 1970 and read "20000d".
+    subagents: (e.subagents ?? []).map((s) => ({
+      ...s,
+      startedAt: s.startedAt * 1000,
+      lastUpdate: s.lastUpdate * 1000,
+    })),
     lastUpdate: e.lastUpdate * 1000,
   };
 }
