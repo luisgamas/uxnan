@@ -51,6 +51,15 @@ class UxnanTypography {
     fontWeight: FontWeight.w400,
   );
 
+  /// Floating-menu entries. A step above [bodyMedium]: a menu is a decision
+  /// surface floating over everything else, so it earns more presence than the
+  /// text it was opened from.
+  static const TextStyle menuItem = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 15,
+    fontWeight: FontWeight.w500,
+  );
+
   /// Monospaced body style for code blocks.
   static const TextStyle codeBody = TextStyle(
     fontFamily: monoFontFamily,

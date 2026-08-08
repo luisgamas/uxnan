@@ -6,6 +6,86 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the home screen is a real overview, not a list with a title
+
+The first screen was a list of paired PCs under a "Devices" title, with the
+brand mark pinned in a footer at the bottom.
+
+The bar now carries the **product's** identity rather than the screen's: the
+mark on the left, standing a little taller than the action circles beside it,
+and your avatar on the right (tapping it opens the profile). The footer is
+gone — the logo was spending the bottom of every screen on itself.
+
+Under the bar, the screen opens with a headline in two rows — the constant
+greeting quiet and small, your name below it carrying the weight — over two
+badges: how many machines are reachable, and since when you have been using
+Uxnan. It scrolls away under the pinned bar rather than collapsing into a title;
+the bar already holds the mark and the avatar, and repeating "Welcome back" up
+there would say nothing. Every fragment is dropped rather than faked: without a
+name the greeting becomes the whole headline, and a phone that has never synced
+metrics omits the date badge.
+
+That date is read from the metrics **cache** (`memberSinceProvider`) rather than
+through `profileMetricsProvider` — the latter falls back to aggregating the
+whole local database, which is the right price for the profile screen and far
+too much for one date on the app's first screen.
+
+**Each PC card was rebuilt around a labelled metadata strip**: three
+equal-weight cells — last seen, connection, address — each with a small caption
+over its value, parted by hairlines drawn at a third of the outline tone. A full
+`outlineVariant` rule cut the card in two and fought the calm surface a card is
+supposed to be; the strip needs a seam, not a border. The same facts were there before as
+stacked lines that read like a paragraph; a labelled cell is scannable, so you
+look at the one column you care about instead of reading the card. Status and
+network path now share one cell, because they are one fact seen from two sides:
+the live path (`LAN`, `Tailscale`, `Direct`, `Relay`) when there is one,
+otherwise what the connection is doing. That mapping is shared with the
+transport badge (`networkKindLabel`), so a rename cannot leave the two
+disagreeing. The machine glyph carries a live status dot in its corner, and the
+name's subtitle is what the PC is holding: **agents working right now** and
+**how many conversations** the phone knows for it, both from the local cache so
+they survive having no connection. A count of zero draws nothing.
+
+Only threads explicitly tagged with that PC count. An untagged legacy thread is
+shown under every PC while browsing, which is right, but counting it under every
+PC would inflate each card by the same threads.
+
+**Icon Surfaces are 44 dp now** (22 dp glyph, `UxnanSize.iconSurface`), keeping
+the 48 dp touch target: at the old 40/20 they read as small change beside the
+product mark and gave the thumb less to aim at. The guide now records 44/22 as
+the default and 40/20 as the small variant for dense rows. The overview's avatar
+action matches, so the bar is one rhythm.
+
+**Every floating menu got its type back.** `popupMenuTheme` styled the surface
+but never set `textStyle`, so items fell back to `labelLarge` — a style this
+theme does not define — and rendered in Flutter's default font, a size below the
+surfaces around them. They now use `UxnanTypography.menuItem` (15/w500) and open
+at a shared minimum width, so two entries and six look like the same component.
+
+**`NeMenuButton`** joins `IconSurfaceMenu` as the second and last menu trigger:
+chrome wears the filled circle, in-content triggers do not, and both open the
+identical themed menu.
+
+On windows wide enough for a side pane the cards pair up into two columns of
+equal height. They are laid out as rows of paired cells rather than a
+`SliverGrid`, because a grid needs a fixed extent or aspect ratio and this
+card's height follows text that grows with the user's font scale — the one input
+a fixed extent cannot survive.
+
+### Changed — the profile screen stops repeating itself
+
+Its identity card (avatar, name, member-since, PC count) was a duplicate of the
+overview's header, one screen deeper — so it is gone, and **Edit profile** moved
+into a new overflow menu in the bar.
+
+The **Backup** card went with it: export and import are actions taken once in a
+while, not information worth permanent screen space, so they are menu entries
+too. They stay disabled while no PC is connected — the bridge is what seals and
+verifies the file — with the reason spelled out in the menu instead of left for
+the user to deduce from a greyed row. The note the card carried, about stats
+being lost without a backup, now rides in the export dialog, where it is read at
+the moment it matters.
+
 ### Added — the app knows how wide its window is
 
 `UxnanBreakpoint` (`presentation/theme/breakpoints.dart`) implements the five

@@ -48,6 +48,15 @@ class UxnanSize {
   /// Minimum interactive target required for icon-only controls.
   static const double minTouchTarget = 48;
 
+  /// Visual diameter of an app-bar Icon Surface. The Neural Expressive guide
+  /// specifies 40 dp; uxnan draws 44 — at 40 the actions read as small change
+  /// beside the product mark, and the row lost its balance (guide §4.2 records
+  /// the divergence).
+  static const double iconSurface = 44;
+
+  /// Glyph size inside an [iconSurface].
+  static const double iconSurfaceGlyph = 22;
+
   /// Diameter of the shared floating conversation/history scroll shortcut.
   static const double floatingScrollShortcut = 52;
 

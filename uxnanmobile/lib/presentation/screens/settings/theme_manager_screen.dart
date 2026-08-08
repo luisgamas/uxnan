@@ -13,6 +13,7 @@ import 'package:uxnan/presentation/screens/settings/theme_sheets.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/color_picker.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full-screen library manager for the user's [CustomTheme]s.
@@ -726,6 +727,9 @@ class _CardMenu extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return PopupMenuButton<_CardAction>(
       tooltip: l10n.personalizationCustomThemesHeader,
+      // Not a [NeMenuButton]: the trigger's grey is a deliberate exception
+      // (see below). The MENU still matches every other one in the app.
+      constraints: kNeMenuConstraints,
       // The menu sits over the preview's own colors (the dark side for a dual
       // theme). A fixed neutral grey reads on both light and dark surfaces —
       // the app's `onSurface` would vanish into the dark preview in light mode.

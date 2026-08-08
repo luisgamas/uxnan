@@ -199,12 +199,43 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String profilePairedPcs(int count) {
-    return '$count PCs';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count PCs',
+      one: '1 PC',
+    );
+    return '$_temp0';
   }
 
   @override
   String profileActiveSessions(int count) {
     return '$count en línea';
+  }
+
+  @override
+  String get homeGreeting => 'Hola de nuevo';
+
+  @override
+  String homeDeviceWorking(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trabajando',
+      one: '1 trabajando',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDeviceThreads(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversaciones',
+      one: '1 conversación',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -278,6 +309,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get metricWork => 'Trabajo';
 
   @override
+  String get profileMenuTooltip => 'Acciones de perfil';
+
+  @override
   String get profileEditTitle => 'Editar perfil';
 
   @override
@@ -294,9 +328,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get profileAgentConversationsLabel => 'conversaciones';
-
-  @override
-  String get profileBackupTitle => 'Respaldo';
 
   @override
   String get profileBackupNote =>
@@ -503,6 +534,20 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get deviceAddressHide => 'Ocultar dirección';
+
+  @override
+  String deviceLastConnection(String when) {
+    return 'Última conexión: $when';
+  }
+
+  @override
+  String get deviceMenuTooltip => 'Acciones del dispositivo';
+
+  @override
+  String get deviceConnectionLabel => 'Conexión';
+
+  @override
+  String get deviceAddressLabel => 'Dirección';
 
   @override
   String get deviceNeverConnected => 'Nunca conectado';

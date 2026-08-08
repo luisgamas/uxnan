@@ -76,11 +76,19 @@ ThemeData buildUxnanTheme({
     ),
     // Neural Expressive floating menus: rounded, on the same neutral surface as
     // the Icon Surfaces, never the narrow squared-off default.
+    //
+    // `textStyle` is not optional here: without it Material falls back to
+    // `labelLarge`, which this theme never defines — so every menu in the app
+    // rendered in Flutter's default FONT, a size smaller than the surfaces
+    // around it. One line, and every menu is fixed at once.
     popupMenuTheme: PopupMenuThemeData(
       color: colorScheme.surfaceContainerHigh,
       elevation: 3,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
+      ),
+      textStyle: UxnanTypography.menuItem.copyWith(
+        color: colorScheme.onSurface,
       ),
     ),
     textTheme: _buildTextTheme(colorScheme),

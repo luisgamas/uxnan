@@ -153,13 +153,22 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Open the export passphrase dialog (the Export button is enabled while
-      // a PC is connected).
-      final exportButton = find.text('Export');
-      await tester.ensureVisible(exportButton);
-      await tester.tap(exportButton);
+      // Backup lives in the app-bar overflow menu now (it is an action taken
+      // once in a while, not information worth permanent screen space).
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Export'));
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsOneWidget);
+      // The note the old Backup card carried is now read here, at the moment
+      // the user is actually making a backup.
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('backup'),
+        ),
+        findsWidgets,
+      );
 
       // Cancelling must dismiss it cleanly — previously the dialog's controller
       // was disposed too early and threw "used after being disposed" during the
@@ -249,7 +258,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Export'));
+      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Export'));
       await tester.pumpAndSettle();
       // Confirm with no passphrase — the path that blamed the connection.

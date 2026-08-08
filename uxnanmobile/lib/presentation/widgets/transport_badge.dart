@@ -58,16 +58,14 @@ class TransportBadge extends StatelessWidget {
   }
 
   (IconData, String) _labelFor(NetworkKind kind, AppLocalizations l10n) {
-    return switch (kind) {
-      NetworkKind.lan => (Icons.router_rounded, l10n.transportLan),
-      NetworkKind.tailscale => (
-          Icons.shield_rounded,
-          l10n.transportTailscale,
-        ),
-      NetworkKind.direct => (Icons.link_rounded, l10n.connectionDirect),
-      NetworkKind.relay => (Icons.cloud_outlined, l10n.connectionRelay),
-      NetworkKind.unknown => (Icons.help_outline_rounded, ''),
+    final icon = switch (kind) {
+      NetworkKind.lan => Icons.router_rounded,
+      NetworkKind.tailscale => Icons.shield_rounded,
+      NetworkKind.direct => Icons.link_rounded,
+      NetworkKind.relay => Icons.cloud_outlined,
+      NetworkKind.unknown => Icons.help_outline_rounded,
     };
+    return (icon, networkKindLabel(kind, l10n));
   }
 
   (Color, Color) _colorsFor(NetworkKind kind, ColorScheme colors) {
@@ -138,4 +136,19 @@ class _Pill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The human name of a network path, shared by the badge and any surface that
+/// spells the path out in words (the device card's connection cell). One
+/// mapping, so a rename cannot leave the two disagreeing. Empty for
+/// [NetworkKind.unknown] — callers decide what an unclassified live channel
+/// should say.
+String networkKindLabel(NetworkKind kind, AppLocalizations l10n) {
+  return switch (kind) {
+    NetworkKind.lan => l10n.transportLan,
+    NetworkKind.tailscale => l10n.transportTailscale,
+    NetworkKind.direct => l10n.connectionDirect,
+    NetworkKind.relay => l10n.connectionRelay,
+    NetworkKind.unknown => '',
+  };
 }

@@ -37,9 +37,28 @@ spec, the spec wins.
   settings rows, dynamic 24/4 corners + 3 dp gap), `ConnectedButtonGroup` (the
   M3E replacement for `SegmentedButton`), the `settings_tiles.dart` rows
   (`NeSectionHeader` / `NeSectionHint` / `NeSwitchTile` / `NeNavTile`), plus
-  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`. Cards use
+  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`, `NeBadge` (read-only
+  status pill — `neutral` for a plain fact, `secondary` for supporting metadata,
+  `live` for the one solid `tertiary` fill, reserved for what is true right now). Cards use
   `surfaceContainer`, **never** `surfaceContainerHighest` — that tone is reserved
   for input fills / active chips (NE §2.4).
+- **Two menu triggers, one menu.** `IconSurfaceMenu` for **chrome** (an app-bar
+  action over transparent chrome — it wears the filled circle so the glyph is
+  legible over scrolling content) and `NeMenuButton` for **in-content** triggers
+  (a ⋮ inside a card or row, where a filled circle would stack a button on the
+  surface it already sits on). The menu itself — surface, radius, tone, type,
+  minimum width (`kNeMenuConstraints`) — comes from `ThemeData.popupMenuTheme`,
+  so a menu is the same menu wherever it opens from. A raw `PopupMenuButton` is
+  only justified by a documented exception (the theme-manager card's fixed grey
+  glyph over a colour preview), and even then it passes `kNeMenuConstraints`.
+- **Only five text styles are real.** `UxnanTheme` populates `displayLarge`
+  (32/w700), `headlineMedium` (20/w600), `titleSmall` (14/w500), `bodyMedium`
+  (14) and `bodySmall` (12); every other `textTheme.*` getter falls through to
+  **Flutter's defaults, in a different font family**. So `textTheme.headlineLarge`
+  or `labelSmall` silently render in the wrong typeface next to text that is
+  right — which reads as "the design broke" long before anyone suspects the
+  theme. Build from the five, or add the missing style to
+  `_buildTextTheme` + `UxnanTypography` first.
 - **Never compare a raw width.** `UxnanBreakpoint` (`presentation/theme/
   breakpoints.dart`) is the single source for what a window size means — its
   margin, its content clamp, whether a permanent side pane fits. A stray

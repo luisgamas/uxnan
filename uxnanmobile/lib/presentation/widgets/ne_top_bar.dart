@@ -123,6 +123,7 @@ class NeScaffold extends StatelessWidget {
   const NeScaffold({
     required this.slivers,
     this.title,
+    this.titleWidget,
     this.leading,
     this.actions = const [],
     this.floatingActionButton,
@@ -137,8 +138,12 @@ class NeScaffold extends StatelessWidget {
   /// Content slivers (a top spacer is prepended).
   final List<Widget> slivers;
 
-  /// Optional bar title.
+  /// Optional bar title, rendered as a single truncated line.
   final String? title;
+
+  /// A title built by the caller, for a bar that carries something other than
+  /// text (the overview's brand mark). Wins over [title] when both are given.
+  final Widget? titleWidget;
 
   /// Leading widget; defaults to a back [IconSurface] on pushed routes.
   final Widget? leading;
@@ -236,14 +241,15 @@ class NeScaffold extends StatelessWidget {
               leading: lead,
               // Compact single-line title (slightly smaller than titleLarge),
               // truncated with an ellipsis when it doesn't fit.
-              title: title == null
-                  ? null
-                  : Text(
-                      title!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleLarge?.copyWith(fontSize: 20),
-                    ),
+              title: titleWidget ??
+                  (title == null
+                      ? null
+                      : Text(
+                          title!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                        )),
               actions: actions,
             ),
           ),

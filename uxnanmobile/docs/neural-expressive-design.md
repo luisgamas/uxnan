@@ -392,7 +392,12 @@ When the AppBar is transparent, **all action buttons must have a solid surface**
 They are not icons floating over content — they are *Icon Surfaces*:
 
 - **Shape:** `BoxShape.circle` (not StadiumBorder)
-- **Container size:** 40 dp diameter / Touch area: 48×48 dp (accessibility)
+- **Container size:** 44 dp diameter (glyph 22 dp) / Touch area: 48×48 dp
+  (accessibility). Tokens: `UxnanSize.iconSurface` + `iconSurfaceGlyph`.
+  > The M3E reference figure is 40/20; uxnan settled on **44/22 as the default
+  > and keeps 40/20 as the small variant** for dense contexts. At 44 the actions
+  > hold their own beside the product mark and gain real reach for the thumb;
+  > 40 remains correct where a row is already tight. Same target either way.
 - **Background color:** `surfaceContainerHigh` — never `primary` or `primaryContainer`
   (the neutral color prevents them from competing with the brand mark)
 - **Inner icon:** 20 dp, color `onSurface` or `onSurfaceVariant`

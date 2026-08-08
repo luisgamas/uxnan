@@ -1278,9 +1278,19 @@ SessionCoordinator.connect()
 El usuario puede tener N Macs registradas y cambiar entre ellas:
 
 ```dart
-// MyDevicesScreen → Devices AppBar + (PairEmptyState | DeviceCard list)
-// PairEmptyState keeps the screen chrome and uses the Uxnan logo as its hero.
-// DeviceCard → CTA "Conectar"
+// MyDevicesScreen es la superficie "overview":
+//   AppBar: marca (izquierda) · ajustes + avatar (derecha).
+//   Encabezado en dos filas: saludo fijo pequeno sobre el nombre grande, y
+//     debajo badges de "N en linea" (tono live) y "miembro desde…" (neutro).
+//     Hace scroll bajo la barra, no colapsa a titulo.
+//   DeviceCard list → 1 columna; 2 columnas emparejadas desde `expanded`.
+// Cada DeviceCard: fila de identidad (glifo con punto de estado, nombre,
+//   direccion revelable al tocarla, y "Ultima conexion: <hora>" con el reloj
+//   12/24 h del propio telefono; menu ⋮) sobre badges de modo de conexion
+//   (estado y ruta de red en uno solo) y agentes trabajando ahora; abajo,
+//   "Conectar" a la izquierda y el conteo de conversaciones a la derecha. Los
+//   conteos en cero no se dibujan.
+// El PairEmptyState conserva el logo como hero.
 SessionCoordinator.switchMac(device)
 ├── Desconecta sesion actual
 ├── Actualiza activeMac

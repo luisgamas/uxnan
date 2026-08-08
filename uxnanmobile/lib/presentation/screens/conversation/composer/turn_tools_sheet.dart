@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 
 /// Compact add-to-turn menu anchored to the composer's "+" action.
 ///
@@ -23,6 +24,7 @@ class TurnToolsMenuButton extends StatelessWidget {
       key: const ValueKey('turn-tools-menu'),
       tooltip: l10n.composerTools,
       position: PopupMenuPosition.over,
+      constraints: kNeMenuConstraints,
       onSelected: onSelected,
       itemBuilder: (context) => [
         PopupMenuItem(

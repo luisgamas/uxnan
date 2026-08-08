@@ -11,12 +11,16 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/transport_badge.dart';
 
 /// The app's home: the list of paired PCs (trusted bridges). The app keeps one
@@ -144,8 +148,19 @@ class MyDevicesScreen extends ConsumerWidget {
     // known; only the connected PC uses it.
     final connectedEndpoint = ref.watch(connectedEndpointProvider).value;
 
+    // Two columns once the window earns them. Below expanded the cards keep the
+    // full content width — a phone splitting a 44 dp avatar row in two would
+    // just make both halves cramped.
+    final columns =
+        UxnanBreakpoint.of(context).usesPermanentPane && devices.length > 1
+            ? 2
+            : 1;
+
     return NeScaffold(
-      title: l10n.devicesTitle,
+      // The bar carries the product's identity, not the screen's: the mark on
+      // the left, your avatar on the right (NE §4.2 keeps the main screen's bar
+      // title empty, and this screen's real heading is the headline below).
+      titleWidget: const _BrandMark(),
       actions: [
         // Pair another PC: an M3 popup (matching the threads sort/more menus)
         // offering the QR scanner or the manual host+code flow.
@@ -172,15 +187,11 @@ class MyDevicesScreen extends ConsumerWidget {
           ],
         ),
         IconSurface(
-          icon: Icons.person_outline_rounded,
-          tooltip: l10n.profileTitle,
-          onPressed: () => context.push(AppRoutes.profile),
-        ),
-        IconSurface(
           icon: Icons.settings_outlined,
           tooltip: l10n.settingsTitle,
           onPressed: () => context.push(AppRoutes.settings),
         ),
+        _ProfileAvatarAction(onPressed: () => context.push(AppRoutes.profile)),
       ],
       slivers: [
         if (devices.isEmpty)
@@ -189,52 +200,124 @@ class MyDevicesScreen extends ConsumerWidget {
             child: _PairEmptyState(),
           )
         else ...[
+          const SliverToBoxAdapter(child: _OverviewHeadline()),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(
               UxnanSpacing.lg,
-              UxnanSpacing.sm,
+              0,
               UxnanSpacing.lg,
               UxnanSpacing.lg,
             ),
-            sliver: SliverList.separated(
-              itemCount: devices.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: UxnanSpacing.md),
-              itemBuilder: (context, index) {
-                final device = devices[index];
-                return _DeviceCard(
-                  device: device,
-                  isConnected: device.macDeviceId == connectedId,
-                  isConnecting: device.macDeviceId == connectingId,
-                  networkKind: device.macDeviceId == connectedId
-                      ? networkKind
-                      : NetworkKind.unknown,
-                  connectedEndpoint: device.macDeviceId == connectedId
-                      ? connectedEndpoint
-                      : null,
-                  onStats: () =>
-                      context.push(AppRoutes.deviceStats(device.macDeviceId)),
-                  onOpen: () => _open(context, device),
-                  onConnect: () => _connect(ref, context, device),
-                  onRename: () => _rename(ref, context, device),
-                  onVerify: () => _verify(ref, context, device),
-                  onRemove: () => _remove(ref, context, device),
-                );
-              },
+            sliver: _DeviceCardList(
+              devices: devices,
+              columns: columns,
+              connectedId: connectedId,
+              connectingId: connectingId,
+              networkKind: networkKind,
+              connectedEndpoint: connectedEndpoint,
+              onStats: (device) =>
+                  context.push(AppRoutes.deviceStats(device.macDeviceId)),
+              onOpen: (device) => _open(context, device),
+              onConnect: (device) => _connect(ref, context, device),
+              onRename: (device) => _rename(ref, context, device),
+              onVerify: (device) => _verify(ref, context, device),
+              onRemove: (device) => _remove(ref, context, device),
             ),
-          ),
-          // Pinned footer (app name + ALPHA stage pill). `SliverFillRemaining`
-          // with `hasScrollBody: false` gives the child the remaining viewport
-          // space when the list is short (the inner `Spacer` then pushes the
-          // content to the bottom of the screen), and the child's natural size
-          // when the list overflows — so the footer always sits right after
-          // the last card and never leaves a screen-sized white gap to scroll.
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: _BrandingFooter(),
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The paired PCs, in one column or two.
+///
+/// Two columns are laid out as rows of paired cells rather than a `SliverGrid`
+/// on purpose: a grid needs a fixed extent or aspect ratio, and this card's
+/// height depends on text that grows with the user's font scale — the one input
+/// a fixed extent cannot survive. [IntrinsicHeight] costs nothing on a list of
+/// paired machines and buys equal-height cards for free.
+class _DeviceCardList extends StatelessWidget {
+  const _DeviceCardList({
+    required this.devices,
+    required this.columns,
+    required this.connectedId,
+    required this.connectingId,
+    required this.networkKind,
+    required this.connectedEndpoint,
+    required this.onStats,
+    required this.onOpen,
+    required this.onConnect,
+    required this.onRename,
+    required this.onVerify,
+    required this.onRemove,
+  });
+
+  final List<TrustedDevice> devices;
+  final int columns;
+  final String? connectedId;
+  final String? connectingId;
+  final NetworkKind networkKind;
+  final String? connectedEndpoint;
+  final void Function(TrustedDevice) onStats;
+  final void Function(TrustedDevice) onOpen;
+  final void Function(TrustedDevice) onConnect;
+  final void Function(TrustedDevice) onRename;
+  final void Function(TrustedDevice) onVerify;
+  final void Function(TrustedDevice) onRemove;
+
+  Widget _card(TrustedDevice device) {
+    final isConnected = device.macDeviceId == connectedId;
+    return _DeviceCard(
+      device: device,
+      isConnected: isConnected,
+      isConnecting: device.macDeviceId == connectingId,
+      networkKind: isConnected ? networkKind : NetworkKind.unknown,
+      connectedEndpoint: isConnected ? connectedEndpoint : null,
+      onStats: () => onStats(device),
+      onOpen: () => onOpen(device),
+      onConnect: () => onConnect(device),
+      onRename: () => onRename(device),
+      onVerify: () => onVerify(device),
+      onRemove: () => onRemove(device),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (columns == 1) {
+      return SliverList.separated(
+        itemCount: devices.length,
+        separatorBuilder: (_, __) => const SizedBox(height: UxnanSpacing.md),
+        itemBuilder: (context, index) => _card(devices[index]),
+      );
+    }
+
+    final rows = (devices.length + columns - 1) ~/ columns;
+    return SliverList.separated(
+      itemCount: rows,
+      separatorBuilder: (_, __) => const SizedBox(height: UxnanSpacing.md),
+      itemBuilder: (context, row) {
+        final first = row * columns;
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var column = 0; column < columns; column++) ...[
+                if (column > 0) const SizedBox(width: UxnanSpacing.md),
+                Expanded(
+                  child: first + column < devices.length
+                      ? _card(devices[first + column])
+                      // A trailing gap, not a card: the last row of an odd
+                      // list keeps its sibling at half width instead of
+                      // stretching it across the whole row.
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -285,12 +368,14 @@ class _DeviceCard extends StatelessWidget {
 
     return NeCard(
       onTap: onOpen,
+      padding: const EdgeInsets.all(UxnanSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _PcAvatar(active: _isConnected),
+              _PcAvatar(active: _isConnected, isConnecting: isConnecting),
               const SizedBox(width: UxnanSpacing.md),
               Expanded(
                 child: Column(
@@ -302,112 +387,82 @@ class _DeviceCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.cloud_outlined,
-                          size: 13,
-                          color: colors.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: UxnanSpacing.xs),
-                        // Privacy: the address is blurred by default (it
-                        // exposes the network topology — LAN/Tailscale IPs).
-                        // Tapping it reveals it; tapping again re-hides it.
-                        Flexible(child: _RevealableAddress(address: host)),
-                      ],
+                    // Privacy: the address is blurred by default (it exposes
+                    // the network topology — LAN/Tailscale IPs). Tapping it
+                    // reveals it; tapping again re-hides it.
+                    _RevealableAddress(address: host),
+                    const SizedBox(height: 2),
+                    // Spelled out, not a badge: a bare "9:41" said nothing —
+                    // a time needs its label to mean anything, and a label
+                    // that long turns a badge into a paragraph in a pill.
+                    Text(
+                      device.lastSeen == null
+                          ? l10n.deviceNeverConnected
+                          : l10n.deviceLastConnection(
+                              _lastConnectionText(context, device.lastSeen!),
+                            ),
+                      style: textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              PopupMenuButton<void>(
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  color: colors.onSurfaceVariant,
-                ),
+              NeMenuButton<void>(
+                tooltip: l10n.deviceMenuTooltip,
                 itemBuilder: (context) => [
                   PopupMenuItem<void>(
                     onTap: onStats,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.insights_rounded, size: 18),
-                        const SizedBox(width: UxnanSpacing.sm),
-                        Flexible(child: Text(l10n.deviceStatistics)),
-                      ],
-                    ),
+                    child: Text(l10n.deviceStatistics),
                   ),
                   PopupMenuItem<void>(
                     onTap: onVerify,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.wifi_tethering_rounded, size: 18),
-                        const SizedBox(width: UxnanSpacing.sm),
-                        Flexible(child: Text(l10n.deviceVerifyConnection)),
-                      ],
-                    ),
+                    child: Text(l10n.deviceVerifyConnection),
                   ),
                   PopupMenuItem<void>(
                     onTap: onRename,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.edit_outlined, size: 18),
-                        const SizedBox(width: UxnanSpacing.sm),
-                        Flexible(child: Text(l10n.deviceRename)),
-                      ],
-                    ),
+                    child: Text(l10n.deviceRename),
                   ),
                   PopupMenuItem<void>(
                     onTap: onRemove,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.link_off_rounded,
-                          size: 18,
-                          color: colors.error,
-                        ),
-                        const SizedBox(width: UxnanSpacing.sm),
-                        Flexible(
-                          child: Text(
-                            l10n.deviceRemove,
-                            style: TextStyle(color: colors.error),
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      l10n.deviceRemove,
+                      style: TextStyle(color: colors.error),
                     ),
                   ),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: UxnanSpacing.sm),
-          Row(
+          const SizedBox(height: UxnanSpacing.md),
+          // How it connects and when it last did, as supporting metadata.
+          // They wrap instead of truncating: "Tailscale" and a long relative
+          // time will not both fit a narrow card, and a half-word badge says
+          // less than a second line does.
+          Wrap(
+            spacing: UxnanSpacing.sm,
+            runSpacing: UxnanSpacing.sm,
             children: [
-              Icon(
-                Icons.history_rounded,
-                size: 14,
-                color: colors.onSurfaceVariant,
+              NeBadge(
+                icon: isConnected
+                    ? Icons.wifi_tethering_rounded
+                    : Icons.cloud_off_outlined,
+                // Status and network path are one fact seen from two sides:
+                // the live path when there is one, otherwise what the
+                // connection is doing.
+                label: isConnected
+                    ? _connectionValue(networkKind, l10n)
+                    : isConnecting
+                        ? l10n.transportDetecting
+                        : l10n.connectionDisconnected,
+                tone: isConnected ? NeBadgeTone.live : NeBadgeTone.secondary,
               ),
-              const SizedBox(width: UxnanSpacing.xs),
-              Expanded(
-                child: Text(
-                  _lastSeenText(l10n),
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              _DeviceWorkingBadge(deviceId: device.macDeviceId),
             ],
           ),
-          const SizedBox(height: UxnanSpacing.xs),
+          const SizedBox(height: UxnanSpacing.md),
           Row(
             children: [
-              Expanded(
-                child: _StatusLine(
-                  isConnected: isConnected,
-                  isConnecting: isConnecting,
-                  networkKind: networkKind,
-                ),
-              ),
               if (!isConnected)
                 FilledButton.tonal(
                   onPressed: isConnecting ? null : onConnect,
@@ -417,6 +472,10 @@ class _DeviceCard extends StatelessWidget {
                         : l10n.deviceConnect,
                   ),
                 ),
+              const Spacer(),
+              // Quiet, and last: how much history this PC holds is the reason
+              // to open it, not a reason to look at it.
+              _DeviceThreadCount(deviceId: device.macDeviceId),
             ],
           ),
         ],
@@ -424,10 +483,29 @@ class _DeviceCard extends StatelessWidget {
     );
   }
 
-  String _lastSeenText(AppLocalizations l10n) {
-    final lastSeen = device.lastSeen;
-    if (lastSeen == null) return l10n.deviceNeverConnected;
-    return '${l10n.deviceLastSeenLabel}: ${_relativeTime(lastSeen)}';
+  /// When the PC was last reachable, in the phone's own conventions:
+  /// [MaterialLocalizations.formatTimeOfDay] follows the locale AND the
+  /// device's 12/24-hour setting, which a hand-rolled `DateFormat` pattern
+  /// cannot. Anything older than today carries its date, because a lone time
+  /// from last week is worse than no time at all.
+  static String _lastConnectionText(BuildContext context, DateTime time) {
+    final l10n = MaterialLocalizations.of(context);
+    final clock = l10n.formatTimeOfDay(
+      TimeOfDay.fromDateTime(time),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    final now = DateTime.now();
+    final sameDay =
+        now.year == time.year && now.month == time.month && now.day == time.day;
+    return sameDay ? clock : '${DateFormat.MMMd().format(time)}, $clock';
+  }
+
+  /// What the connection cell says for a LIVE channel: the classified network
+  /// path, or a plain "Connected" while the path is still unclassified — never
+  /// an empty cell.
+  static String _connectionValue(NetworkKind kind, AppLocalizations l10n) {
+    final label = networkKindLabel(kind, l10n);
+    return label.isEmpty ? l10n.connectionConnected : label;
   }
 
   /// The address shown under the device name.
@@ -458,6 +536,105 @@ class _DeviceCard extends StatelessWidget {
     final uri = Uri.tryParse(endpoint);
     if (uri == null || uri.host.isEmpty) return endpoint;
     return uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+  }
+}
+
+/// Agents producing a turn on this PC **right now**, as the card's one live
+/// badge. Zero draws nothing: an empty signal is noise, and a PC at rest keeps
+/// the two badges it already has.
+class _DeviceWorkingBadge extends ConsumerWidget {
+  const _DeviceWorkingBadge({required this.deviceId});
+
+  final String deviceId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final working = ref.watch(deviceWorkingCountProvider(deviceId));
+    if (working == 0) return const SizedBox.shrink();
+    return NeBadge(
+      icon: Icons.smart_toy_outlined,
+      label: AppLocalizations.of(context).homeDeviceWorking(working),
+      tone: NeBadgeTone.live,
+    );
+  }
+}
+
+/// How many conversations the phone knows for this PC — read from the local
+/// cache, so it still describes a machine that is not connected. Quiet text,
+/// not a badge: it is the reason to open the card, not a reason to look at it.
+class _DeviceThreadCount extends ConsumerWidget {
+  const _DeviceThreadCount({required this.deviceId});
+
+  final String deviceId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final threads = ref.watch(deviceThreadCountProvider(deviceId));
+    if (threads == 0) return const SizedBox.shrink();
+    return Text(
+      AppLocalizations.of(context).homeDeviceThreads(threads),
+      style: Theme.of(context).textTheme.bodySmall,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+/// The machine, as a rounded surface glyph with a live status dot in its
+/// corner — the state is read off the card before any text is.
+class _PcAvatar extends StatelessWidget {
+  const _PcAvatar({required this.active, required this.isConnecting});
+
+  final bool active;
+  final bool isConnecting;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final dotColor = active
+        ? UxnanColors.connected
+        : isConnecting
+            ? UxnanColors.connecting
+            : UxnanColors.disconnected;
+
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHigh,
+              borderRadius: const BorderRadius.all(UxnanRadius.lg),
+              border: Border.all(color: colors.outline),
+            ),
+            child: Icon(
+              Icons.laptop_mac_rounded,
+              size: 22,
+              color: active ? UxnanColors.connected : colors.onSurfaceVariant,
+            ),
+          ),
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                // Ringed in the card's own tone so the dot reads as a marker
+                // on the glyph rather than a speck floating over its edge.
+                border: Border.all(color: colors.surfaceContainer, width: 2),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -559,83 +736,6 @@ class _RevealableAddressState extends State<_RevealableAddress> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _PcAvatar extends StatelessWidget {
-  const _PcAvatar({required this.active});
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
-      ),
-      child: Icon(
-        Icons.laptop_mac_rounded,
-        size: 22,
-        color: active ? UxnanColors.connected : colors.onSurfaceVariant,
-      ),
-    );
-  }
-}
-
-class _StatusLine extends StatelessWidget {
-  const _StatusLine({
-    required this.isConnected,
-    required this.isConnecting,
-    required this.networkKind,
-  });
-  final bool isConnected;
-  final bool isConnecting;
-  final NetworkKind networkKind;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
-
-    // Truthful per-device status: connected only when this PC holds the live
-    // channel, connecting only while its own attempt is in flight, else
-    // disconnected — regardless of which PC is selected for browsing.
-    final (label, color) = isConnected
-        ? (l10n.connectionConnected, UxnanColors.connected)
-        : isConnecting
-            ? (l10n.transportDetecting, UxnanColors.connecting)
-            : (l10n.connectionDisconnected, UxnanColors.disconnected);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: UxnanSpacing.xs),
-        Flexible(
-          child: Text(
-            label,
-            style: textTheme.bodySmall?.copyWith(color: color),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        // The network path badge is meaningful only after the live channel has
-        // been established. During detection, the status label above is the
-        // single progress indicator; while disconnected, no network path is
-        // shown.
-        if (isConnected) ...[
-          const SizedBox(width: UxnanSpacing.xs),
-          TransportBadge(kind: networkKind, dense: true),
-        ],
-      ],
     );
   }
 }
@@ -743,91 +843,154 @@ class _PairEmptyState extends StatelessWidget {
   }
 }
 
-String _relativeTime(DateTime time) {
-  final now = DateTime.now();
-  final isSameDay =
-      now.year == time.year && now.month == time.month && now.day == time.day;
-  return isSameDay
-      ? DateFormat.Hm().format(time)
-      : DateFormat.MMMd().format(time);
-}
+/// The product mark in the top bar.
+///
+/// This is where the brand lives now: it used to sit in a footer pinned under
+/// the device list, spending the bottom of the screen on a logo. In the bar it
+/// is chrome — present, quiet, and out of the content's way. It stands a little
+/// taller than the 40 dp action circles beside it so it reads as the product's
+/// mark rather than one more button.
+class _BrandMark extends StatelessWidget {
+  const _BrandMark();
 
-/// Footer pinned to the bottom of the devices screen: a small rendition of
-/// the brand mark with the localized "ALPHA" release-stage pill as a caption
-/// underneath. Picks the white-stroke (`logo_wnb.svg`) or black-stroke
-/// (`logo_nb.svg`) variant by theme brightness.
-///
-/// Layout: lives inside a `SliverFillRemaining(hasScrollBody: false)`, so it
-/// fills the remaining viewport when the device list is short (the inner
-/// `Spacer` then pushes the content to the bottom of the screen) and shrinks
-/// to its natural height — right after the last card — when the list
-/// overflows. The footer is purely informational, never tappable.
-///
-/// Theming: a dedicated white-mark SVG is swapped in on dark surfaces (no
-/// runtime tint); the caption reuses the same neutral surface family the rest
-/// of the app uses for non-interactive status labels.
-class _BrandingFooter extends StatelessWidget {
-  const _BrandingFooter();
+  /// A touch above the 40 dp [IconSurface] circles sharing this row.
+  static const double _height = 44;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    // The tintable foreground mark, not the hand-authored black/white variants:
+    // one asset that follows the theme's `onSurface` instead of two that have
+    // to be picked by brightness.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SvgPicture.asset(
+        'assets/images/logo_fg.svg',
+        height: _height,
+        colorFilter: ColorFilter.mode(colors.onSurface, BlendMode.srcIn),
+      ),
+    );
+  }
+}
+
+/// The user's avatar as a top-bar action, on the same 40 dp circular footprint
+/// every [IconSurface] in the bar keeps so the row stays on one rhythm.
+class _ProfileAvatarAction extends ConsumerWidget {
+  const _ProfileAvatarAction({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    return Tooltip(
+      message: l10n.profileTitle,
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          // The same 48 dp target and 44 dp circle as every [IconSurface] in
+          // this row — an avatar a few dp smaller reads as a mistake, not as a
+          // different kind of control.
+          width: UxnanSize.minTouchTarget,
+          height: UxnanSize.minTouchTarget,
+          child: Center(
+            child: ProfileAvatarView(
+              avatar: ref.watch(profileAvatarProvider),
+              size: UxnanSize.iconSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The overview's heading: a greeting carrying the user's name, over a line
+/// saying how many of their machines are reachable and since when they have
+/// been using Uxnan.
+///
+/// It scrolls away under the pinned bar rather than collapsing into a title.
+/// The bar already holds the identity that matters once the headline is gone —
+/// the mark and the avatar — and repeating "Welcome back" up there would say
+/// nothing. Every fragment is dropped rather than faked when unknown.
+class _OverviewHeadline extends ConsumerWidget {
+  const _OverviewHeadline();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final isDark = colors.brightness == Brightness.dark;
-    // Two hand-authored mark variants: white stroke for dark surfaces,
-    // black stroke for light ones (no runtime tint).
-    final markAsset =
-        isDark ? 'assets/images/logo_wnb.svg' : 'assets/images/logo_nb.svg';
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          UxnanSpacing.lg,
-          0,
-          UxnanSpacing.lg,
-          UxnanSpacing.lg,
-        ),
-        child: Column(
-          children: [
-            // Expands to fill the remaining viewport when the list is short
-            // (so the content below pins to the bottom of the screen) and
-            // collapses to 0 when the list overflows (so the footer takes
-            // only its natural height right after the last card).
-            const Spacer(),
-            SvgPicture.asset(
-              markAsset,
-              height: 44,
+    final name = ref.watch(profileNameProvider);
+    final online = ref.watch(connectedDeviceProvider).value != null ? 1 : 0;
+    // Cache only: a phone that has never synced metrics simply drops the
+    // "member since" fragment instead of dragging the whole metrics
+    // aggregation onto the app's first screen.
+    final since = ref.watch(memberSinceProvider);
+
+    final hasName = name != null && name.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UxnanSpacing.lg,
+        UxnanSpacing.sm,
+        UxnanSpacing.lg,
+        UxnanSpacing.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Two rows when there is a name: the constant half quiet and small,
+          // the half that is *yours* carrying the weight. Without a name the
+          // greeting is the whole headline, so it takes the large style itself
+          // — never a placeholder name to keep the shape.
+          if (hasName) ...[
+            Text(
+              l10n.homeGreeting,
+              style: textTheme.headlineMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: UxnanSpacing.xs),
-            // Release-stage indicator. A neutral, non-interactive label pill
-            // modeled on the project's existing `_RiskBadge` / `_TokenChip`
-            // pattern: a `Container` with an M3 surface-container background
-            // and `onSurfaceVariant` text. Chips imply interactivity and
-            // Flutter's `Badge` widget is for notification counts — neither
-            // fits a non-actionable status label. Colors come from the
-            // surface token family so it survives light/dark theme changes
-            // without standing out.
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UxnanSpacing.sm,
-                vertical: 2,
+            Text(
+              name,
+              style: textTheme.displayLarge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ] else
+            Text(
+              l10n.homeGreeting,
+              style: textTheme.displayLarge,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          const SizedBox(height: UxnanSpacing.md),
+          // Two badges, deliberately unequal: how many machines are reachable
+          // is live and takes the one solid tone on the screen; how long you
+          // have been here is a fact that never changes and stays quiet. They
+          // wrap rather than truncate — the date is long in some locales.
+          Wrap(
+            spacing: UxnanSpacing.sm,
+            runSpacing: UxnanSpacing.sm,
+            children: [
+              NeBadge(
+                label: l10n.profileActiveSessions(online),
+                icon: Icons.podcasts_rounded,
+                tone: online > 0 ? NeBadgeTone.live : NeBadgeTone.neutral,
               ),
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHigh,
-                borderRadius: const BorderRadius.all(UxnanRadius.full),
-              ),
-              child: Text(
-                l10n.appVersionStage,
-                style: textTheme.labelSmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
+              if (since != null)
+                NeBadge(
+                  label: l10n.profileMemberSince(
+                    DateFormat.yMMM().format(since),
+                  ),
                 ),
-              ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

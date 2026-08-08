@@ -72,19 +72,49 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
   the flat GoRouter table. `presentation/theme/` holds the design tokens.
 
-The Devices screen keeps connection feedback scoped to the actual PC card:
+The home screen (`presentation/screens/devices/my_devices_screen.dart`) is the
+**overview**. Its bar carries the product's identity rather than the screen's —
+`_BrandMark` as the title, a `ProfileAvatarView` action on the right — and its
+heading is `_OverviewHeadline`, a two-row greeting plus a status line that
+simply scrolls away under the pinned bar. Facts come from
+`profileNameProvider`, `trustedDevicesProvider`, `connectedDeviceProvider` and
+`memberSinceProvider`; each is dropped rather than faked when absent.
+`memberSinceProvider` reads the metrics **cache** only — `profileMetricsProvider`
+falls back to aggregating the whole local database, which the app's first screen
+must not trigger.
 
-- A live session renders `Connected` plus the classified network badge (`LAN`,
-  `Tailscale`, `Direct`, or `Relay`) derived from the winning endpoint.
-- A PC whose connection attempt is in flight renders one `Detecting…` status.
-  The badge is intentionally hidden until the channel is live because the
-  network path is not known yet.
-- A disconnected PC renders no network badge. Its `Connect` button remains
-  disabled with `Connecting…` only while its own attempt is active.
+Each PC card is an identity row (glyph with a status dot · name · address · a
+labelled last-connection line · overflow menu) over a row of `NeBadge`s —
+connection, and a live one when agents are working — with Connect and the
+conversation count on the bottom row. Status and network path share one badge via `networkKindLabel`, the same
+mapping `TransportBadge` uses, so the two cannot drift apart. The counts come
+from the local thread cache (`deviceThreadCountProvider`,
+`deviceWorkingCountProvider`, both on `deviceThreadsProvider`), so they describe
+a PC the phone is not currently connected to. Those providers count only threads **explicitly tagged** with that
+`deviceId`: the threads list deliberately shows untagged legacy threads under
+every PC, and counting them the same way would inflate every card by the same
+threads.
 
-This presentation logic lives in `_StatusLine` within
-`presentation/screens/devices/my_devices_screen.dart`; the underlying
-`networkKindProvider` and session streams remain unchanged.
+The profile screen carries no identity card — that would duplicate the
+overview's header one screen deeper. Editing the profile and the ledger
+export/import live in its app-bar overflow menu (`profile_backup_actions.dart`),
+disabled while no PC is connected because the bridge is what seals and verifies
+the file.
+
+Connection feedback stays scoped to the actual PC card, and says only what is
+known:
+
+- A live session's connection badge names the classified network path (`LAN`,
+  `Tailscale`, `Direct`, `Relay`) derived from the winning endpoint — falling
+  back to a plain "Connected" when the path is not classified yet, never to an
+  empty badge.
+- A PC whose attempt is in flight reads `Detecting…`. The path is deliberately
+  withheld until the channel is live, because it is not known yet.
+- A disconnected PC reads `Disconnected`, and only its own card's Connect button
+  goes to `Connecting…` while its own attempt runs.
+
+The status dot on the machine glyph carries the same three states, so the card
+is readable before any of its text is.
 
 ## Dependency injection / provider graph
 

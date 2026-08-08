@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/presentation/theme/motion.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 
-/// Neural Expressive **Icon Surface**: a circular 40 dp action on a neutral
-/// `surfaceContainerHigh` surface with a 48 dp touch target, for app-bar and
-/// drawer actions over transparent chrome (guide §4.2). Press feedback uses the
-/// M3E `spatialFast` spring (scale 1.0 → 0.92).
+/// Neural Expressive **Icon Surface**: a circular [UxnanSize.iconSurface]
+/// action on a neutral `surfaceContainerHigh` surface with a 48 dp touch
+/// target, for app-bar and drawer actions over transparent chrome (guide §4.2).
+/// Press feedback uses the M3E `spatialFast` spring (scale 1.0 → 0.92).
 class IconSurface extends StatefulWidget {
   /// Creates an [IconSurface].
   const IconSurface({
@@ -17,7 +19,7 @@ class IconSurface extends StatefulWidget {
     super.key,
   });
 
-  /// The glyph shown at 20 dp.
+  /// The glyph, drawn at [UxnanSize.iconSurfaceGlyph].
   final IconData icon;
 
   /// Tooltip + accessibility semantic label (required for icon-only buttons).
@@ -72,10 +74,10 @@ class _IconSurfaceState extends State<IconSurface>
         onTapCancel: enabled ? _release : null,
         child: ScaleTransition(
           scale: _scale,
-          // 48×48 dp touch target wrapping a 40 dp visual circle (a11y).
+          // A 48 dp touch target wrapping the visual circle (a11y).
           child: SizedBox(
-            width: 48,
-            height: 48,
+            width: UxnanSize.minTouchTarget,
+            height: UxnanSize.minTouchTarget,
             child: Center(
               child: Material(
                 color: background,
@@ -84,11 +86,11 @@ class _IconSurfaceState extends State<IconSurface>
                   customBorder: const CircleBorder(),
                   onTap: widget.onPressed,
                   child: SizedBox(
-                    width: 40,
-                    height: 40,
+                    width: UxnanSize.iconSurface,
+                    height: UxnanSize.iconSurface,
                     child: Icon(
                       widget.icon,
-                      size: 20,
+                      size: UxnanSize.iconSurfaceGlyph,
                       semanticLabel: widget.tooltip,
                       color: enabled
                           ? foreground
@@ -139,7 +141,8 @@ class IconSurfaceMenu<T> extends StatelessWidget {
   /// When false the surface reads as disabled and won't open.
   final bool enabled;
 
-  /// Optional size constraints for the menu (e.g. a wider `minWidth`).
+  /// Size constraints for the menu; defaults to [kNeMenuConstraints], the
+  /// floor both menu triggers share.
   final BoxConstraints? constraints;
 
   Future<void> _open(BuildContext context) async {
@@ -166,7 +169,7 @@ class IconSurfaceMenu<T> extends StatelessWidget {
       context: context,
       position: position,
       items: items,
-      constraints: constraints,
+      constraints: constraints ?? kNeMenuConstraints,
     );
     if (selected != null) onSelected?.call(selected);
   }

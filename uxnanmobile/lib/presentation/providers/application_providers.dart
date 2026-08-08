@@ -30,6 +30,7 @@ import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
@@ -407,6 +408,27 @@ final profileMetricsProvider =
   return aggregateSnapshots(cache.values);
 });
 
+/// When the user first started using Uxnan, per the bridge-owned ledger —
+/// the earliest date any paired PC reports.
+///
+/// Read straight from the snapshot **cache**, deliberately NOT through
+/// [profileMetricsProvider]: that one falls back to aggregating the whole local
+/// database when the cache is empty, which is the right price for the profile
+/// screen and far too much for one date fragment on the app's first screen.
+/// Null until some PC has reported one — callers drop the fragment rather than
+/// print a placeholder.
+final memberSinceProvider = Provider<DateTime?>((ref) {
+  final cache = ref.watch(metricsSnapshotsProvider).value;
+  if (cache == null || cache.isEmpty) return null;
+  DateTime? earliest;
+  for (final snapshot in cache.values) {
+    final since = snapshot.toProfileMetrics().memberSince;
+    if (since == null) continue;
+    if (earliest == null || since.isBefore(earliest)) earliest = since;
+  }
+  return earliest;
+});
+
 /// Metrics scoped to a single PC (its `macDeviceId`), from the bridge snapshot
 /// cache; falls back to the local drift aggregation when that PC has no cached
 /// snapshot yet.
@@ -729,6 +751,46 @@ final threadActivityForProvider =
   final map = ref.watch(threadActivityProvider).value;
   return map?[threadId] ?? ThreadActivity.idle;
 });
+
+/// The PC's own non-archived threads, from the local cache — so the overview
+/// can describe a PC that is not connected right now.
+///
+/// Only threads **explicitly tagged** with [deviceId] count. Untagged legacy
+/// threads (written before the device tag existed, and re-tagged on the next
+/// connected refresh) are deliberately left out: the threads list shows them
+/// under every PC, which is right for browsing and wrong for a count — each one
+/// would be counted once per paired machine.
+final deviceThreadsProvider =
+    Provider.family<List<Thread>, String>((ref, deviceId) {
+  final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
+  return threads
+      .where(
+        (t) => t.deviceId == deviceId && t.status != ThreadStatus.archived,
+      )
+      .toList();
+});
+
+/// How many conversations the phone knows for this PC. See
+/// [deviceThreadsProvider] for what is counted.
+final deviceThreadCountProvider = Provider.family<int, String>(
+  (ref, deviceId) => ref.watch(deviceThreadsProvider(deviceId)).length,
+);
+
+/// How many of this PC's agents are producing a turn **right now**.
+///
+/// Live state, not history: it is the number that makes a device card worth
+/// looking at twice, and it drops back to 0 (and hides its own line) the moment
+/// the turns end.
+final deviceWorkingCountProvider = Provider.family<int, String>(
+  (ref, deviceId) {
+    final activity = ref.watch(threadActivityProvider).value ??
+        const <String, ThreadActivity>{};
+    return ref
+        .watch(deviceThreadsProvider(deviceId))
+        .where((t) => activity[t.id] == ThreadActivity.running)
+        .length;
+  },
+);
 
 /// Map of threadId → its live message queue (the follow-ups sent while a turn
 /// was in flight); threads with nothing waiting are absent.

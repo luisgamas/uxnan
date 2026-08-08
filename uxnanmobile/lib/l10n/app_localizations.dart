@@ -443,7 +443,7 @@ abstract class AppLocalizations {
   /// How many PCs are paired, shown in the profile header.
   ///
   /// In en, this message translates to:
-  /// **'{count} PCs'**
+  /// **'{count, plural, =1{1 PC} other{{count} PCs}}'**
   String profilePairedPcs(int count);
 
   /// How many live sessions the phone currently holds.
@@ -451,6 +451,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} online now'**
   String profileActiveSessions(int count);
+
+  /// Overview header greeting when the user has not set a name.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back'**
+  String get homeGreeting;
+
+  /// Device card signal: agents producing a turn on this PC right now.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 working} other{{count} working}}'**
+  String homeDeviceWorking(int count);
+
+  /// Device card signal: conversations known for this PC.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 conversation} other{{count} conversations}}'**
+  String homeDeviceThreads(int count);
 
   /// No description provided for @statConversations.
   ///
@@ -584,6 +602,12 @@ abstract class AppLocalizations {
   /// **'Work'**
   String get metricWork;
 
+  /// No description provided for @profileMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile actions'**
+  String get profileMenuTooltip;
+
   /// No description provided for @profileEditTitle.
   ///
   /// In en, this message translates to:
@@ -619,12 +643,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'conversations'**
   String get profileAgentConversationsLabel;
-
-  /// No description provided for @profileBackupTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Backup'**
-  String get profileBackupTitle;
 
   /// No description provided for @profileBackupNote.
   ///
@@ -979,6 +997,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hide address'**
   String get deviceAddressHide;
+
+  /// Device card: when the PC was last reachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Last connection: {when}'**
+  String deviceLastConnection(String when);
+
+  /// No description provided for @deviceMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Device actions'**
+  String get deviceMenuTooltip;
+
+  /// No description provided for @deviceConnectionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get deviceConnectionLabel;
+
+  /// No description provided for @deviceAddressLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get deviceAddressLabel;
 
   /// No description provided for @deviceNeverConnected.
   ///

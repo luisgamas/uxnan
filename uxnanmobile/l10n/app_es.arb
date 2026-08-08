@@ -65,7 +65,7 @@
     "description": "Profile subtitle: when the user first started using the app.",
     "placeholders": { "date": { "type": "String" } }
   },
-  "profilePairedPcs": "{count} PCs",
+  "profilePairedPcs": "{count, plural, =1{1 PC} other{{count} PCs}}",
   "@profilePairedPcs": {
     "description": "How many PCs are paired, shown in the profile header.",
     "placeholders": { "count": { "type": "int" } }
@@ -73,6 +73,20 @@
   "profileActiveSessions": "{count} en línea",
   "@profileActiveSessions": {
     "description": "How many live sessions the phone currently holds.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "homeGreeting": "Hola de nuevo",
+  "@homeGreeting": {
+    "description": "Overview header greeting when the user has not set a name."
+  },
+  "homeDeviceWorking": "{count, plural, =1{1 trabajando} other{{count} trabajando}}",
+  "@homeDeviceWorking": {
+    "description": "Device card signal: agents producing a turn on this PC right now.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "homeDeviceThreads": "{count, plural, =1{1 conversación} other{{count} conversaciones}}",
+  "@homeDeviceThreads": {
+    "description": "Device card signal: conversations known for this PC.",
     "placeholders": { "count": { "type": "int" } }
   },
   "statConversations": "Chats",
@@ -105,13 +119,13 @@
   "metricConversations": "Conversaciones",
   "metricMessages": "Mensajes",
   "metricWork": "Trabajo",
+  "profileMenuTooltip": "Acciones de perfil",
   "profileEditTitle": "Editar perfil",
   "profileChoosePhoto": "Elegir foto",
   "profilePickIcon": "O elige un icono",
   "profileNameLabel": "Nombre",
   "profileNameHint": "Tu nombre",
   "profileAgentConversationsLabel": "conversaciones",
-  "profileBackupTitle": "Respaldo",
   "profileBackupNote": "Tus estadísticas se guardan en este teléfono y en tu PC. Sin un respaldo pueden perderse si desinstalas la app o cambias de teléfono.",
   "profileBackupExport": "Exportar",
   "profileBackupImport": "Importar",
@@ -194,6 +208,14 @@
   "@deviceAddressHide": {
     "description": "Accessibility label / tooltip for the revealed PC address; tapping blurs it again."
   },
+  "deviceLastConnection": "Última conexión: {when}",
+  "@deviceLastConnection": {
+    "description": "Device card: when the PC was last reachable.",
+    "placeholders": { "when": { "type": "String" } }
+  },
+  "deviceMenuTooltip": "Acciones del dispositivo",
+  "deviceConnectionLabel": "Conexión",
+  "deviceAddressLabel": "Dirección",
   "deviceNeverConnected": "Nunca conectado",
   "devicePairedLabel": "Pareado",
   "deviceRename": "Renombrar",
