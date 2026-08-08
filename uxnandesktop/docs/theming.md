@@ -35,8 +35,16 @@ wins over each theme's own fonts, so you can change fonts without switching them
   list** — see [Importing many themes at once](#importing-many-themes-at-once).
 
 **Terminal → Fonts** — a **global terminal typography** override (font family /
-size / line-height / letter-spacing / weight / ligatures) that wins over each
-terminal theme's font. Leave empty to use the theme's.
+size / **bold text** / line-height / letter-spacing / ligatures) that wins over
+each terminal theme's font. Leave empty to use the theme's.
+
+**Bold text** is a switch: it raises the weight of terminal output and changes
+**nothing else** — same family, same size, same spacing. It writes the same
+`fontWeight` override the theme editor exposes as a number, and it reflects the
+*effective* weight, so a preset that already sets a bold weight shows it as on.
+Text a program marks bold stays heavier than the body weight: `fontWeightBold` is
+derived two steps above the regular weight (capped at 900), so emphasis survives
+turning the whole terminal bold.
 
 **Terminal → Themes** — saved presets that **override the app theme in the
 terminal only**, shown as a scrollable **name list** beside a **live mini-terminal
@@ -108,13 +116,16 @@ the matching built-in base, so a partial theme still imports cleanly.
 ## Terminal theme JSON (template)
 
 A terminal theme is a flat set of optional overrides — anything you omit inherits
-the app theme's terminal value.
+the default for the background it resolves to (see
+[Terminal legibility](#terminal-legibility)). `fontWeight` accepts a number,
+`"normal"` or `"bold"`; all three normalize to a 100–900 step on resolve.
 
 ```json
 {
   "name": "My terminal theme",
   "fontFamily": "JetBrains Mono",
   "fontSize": 13,
+  "fontWeight": 300,
   "lineHeight": 1.0,
   "ligatures": true,
   "cursorStyle": "block",
@@ -182,12 +193,41 @@ theme (built-in or custom) gets coherent shell, sidebar and panel depth
 automatically. Because the mix is over `--foreground`, the same formula darkens
 light themes and lightens dark ones.
 
-When no font is set, the UI defaults to **DM Sans**, which is **bundled** with
-the app (`@fontsource-variable/dm-sans`, imported in `app.css`) so it renders
-regardless of what's installed on the OS. The default is declared in
-`DEFAULT_FONTS` (`theme.ts`) and mirrored by `--ux-font-*` in `app.css`; the body
-also gets a small `letter-spacing` + grayscale antialiasing for crisp rendering.
+When no font is set, the UI defaults to **Geist**, which is **bundled** with the
+app (`@fontsource-variable/geist`, imported in `app.css`) so it renders regardless
+of what's installed on the OS. The default is declared in `DEFAULT_FONTS`
+(`theme.ts`) and mirrored by `--ux-font-*` in `app.css`; the body also gets a small
+`letter-spacing` + grayscale antialiasing for crisp rendering.
 
-The terminal is resolved by `resolveTerminal`, which starts from the active
-theme's base defaults (background/foreground + a standard ANSI palette) and
-overlays the per-terminal overrides, producing the xterm font options + theme.
+The terminal is resolved by `resolveTerminal`, which produces the xterm font
+options + theme from the terminal overrides on top of a set of defaults.
+
+## Terminal legibility
+
+Two rules keep terminal output readable no matter which theme, preset and CLI
+meet in a pane.
+
+**Defaults follow the background, not the app theme.** `resolveTerminal` reads the
+luminance of the *resolved* background — the preset's if it sets one, the app
+base's otherwise — and takes the default text colour, cursor and ANSI palette from
+that. This is what keeps a dark terminal preset legible under a light app theme
+(and the reverse): every field the preset leaves unset would otherwise inherit the
+opposite base's colours and land on top of a background of the same tone. A
+background it can't parse (`oklch(...)`, a CSS variable) falls back to the app
+theme's base instead of guessing.
+
+**A contrast floor for the colours uxnan doesn't own.** A palette can only fix the
+16 ANSI slots; a TUI painting 24-bit grey on grey is beyond it. xterm's
+`minimumContrastRatio` lifts any glyph that lands too close to its cell
+background:
+
+| Terminal background | Floor | Why |
+|---|---|---|
+| light | **4.5** (WCAG AA) | bright-white / bright-yellow output is unreadable on white without it |
+| dark | **3.0** (AA large text) | rescues near-background text — ANSI black on `#0b0b0c` is 1.07:1 — while leaving the saturated colours a dark palette relies on untouched |
+
+Both constants live in `theme.ts` (`TERMINAL_MIN_CONTRAST_LIGHT` /
+`TERMINAL_MIN_CONTRAST_DARK`). Correction only ever *adds* contrast, so a color
+already clear of the floor renders exactly as authored. The live terminal
+re-applies the value only when it changes — writing it drops xterm's contrast
+cache.
