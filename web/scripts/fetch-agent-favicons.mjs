@@ -15,7 +15,7 @@
 // answered with the service's generic globe, because those are the ones that
 // need a hand-made mark instead of a silent grey circle.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
