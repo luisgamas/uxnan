@@ -40,6 +40,13 @@ pub const CODEX_EVENTS: &[(&str, &str)] = &[
     ("PermissionRequest", "permission_request"),
     ("PostToolUse", "post_tool_use"),
     ("Stop", "stop"),
+    // Sub-agent (child) lifecycle → the parent's roster, the same nested rows
+    // Claude Code's children get. Codex spells the payload exactly as Claude
+    // does (`agent_id` + `agent_type`, and `last_assistant_message` on stop),
+    // so `hooks::source_subagent` reads it unchanged — the only thing that was
+    // missing is being subscribed at all.
+    ("SubagentStart", "subagent_start"),
+    ("SubagentStop", "subagent_stop"),
 ];
 
 /// Serialize a `&str` as a JSON string literal (with surrounding quotes and
@@ -437,6 +444,28 @@ mod tests {
         assert_eq!(
             s,
             r#"{"event_name":"pre_tool_use","hooks":[{"async":true,"command":"cmd","statusMessage":"hi","timeout":10,"type":"command"}],"matcher":"*"}"#
+        );
+    }
+
+    /// Codex 0.147.0 reports its children through `SubagentStart`/`SubagentStop`
+    /// with Claude's exact payload (`agent_id`, `agent_type`,
+    /// `last_assistant_message`) — verified against a real `codex exec` run. Being
+    /// subscribed is the only thing that stands between that and the nested rows
+    /// in the agent view, so the subscription is pinned here: dropping either
+    /// event silently empties Codex's roster, with nothing failing to say so.
+    ///
+    /// The labels matter as much as the names: Codex keys its trust entry by the
+    /// snake_case label, so a wrong one writes a hash Codex never looks up and the
+    /// hook sits un-run.
+    #[test]
+    fn codex_subscribes_to_subagent_lifecycle() {
+        assert!(
+            CODEX_EVENTS.contains(&("SubagentStart", "subagent_start")),
+            "SubagentStart must stay subscribed, with Codex's own label"
+        );
+        assert!(
+            CODEX_EVENTS.contains(&("SubagentStop", "subagent_stop")),
+            "SubagentStop must stay subscribed, with Codex's own label"
         );
     }
 
