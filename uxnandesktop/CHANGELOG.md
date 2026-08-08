@@ -279,6 +279,25 @@ new controls now carry `aria-label`s, so the panel is operable by name.
 
 ### Fixed
 
+- **The "landed" chip appeared on worktrees that had never been touched.** A
+  worktree created from `main` and left alone showed it as soon as `main` moved
+  on, sitting next to genuinely merged branches. Ancestry cannot tell "has
+  landed" from "has not started" — a branch that contributed nothing has all of
+  its commits trivially reachable from the base, so `--is-ancestor` says yes.
+  The previous guard compared the two tips, which only covers the window before
+  the base moves.
+
+  `branch_has_diverged` now asks the branch's **reflog** where it was created and
+  reports it unfinished when it never moved from there. That is the only thing
+  that can decide it: two branches can be the same commit — create one from
+  another's tip and touch neither — while one landed real work and the other
+  never began, so no walk of the commit graph can separate them. Without a
+  reflog (expired, disabled, a fresh clone) it falls back to the shape of the
+  history: a tip sitting on the base's own first-parent chain is an older point
+  of that line, not a contribution to it. When git says nothing, the answer is
+  "unfinished" — under-reporting costs a manual close, over-reporting offers to
+  delete work that never happened.
+
 - **A Grok sub-agent no longer marks its parent "Done" while it is still
   working.** Grok runs a child in a session of its own, and the child's events
   come up under the parent's terminal: its `session_end` mapped to `done` on the

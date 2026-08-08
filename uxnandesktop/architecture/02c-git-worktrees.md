@@ -159,19 +159,38 @@ sola al eliminar el worktree, para que el mapa no acumule rutas muertas.
 por defecto — ancestría real (`merge-base --is-ancestor`) o **squash**
 (`is_squash_merged`) — **sin borrar nada**.
 
-> **Una rama que no se ha movido de su base NO ha aterrizado: no ha empezado.**
-> La ancestría no distingue los dos casos — una rama recién creada no aporta
-> nada, así que todo lo alcanzable desde ella lo es también desde la base y
-> `--is-ancestor` dice que sí. Por eso se compara primero el tip: si coincide con
-> el de la base, la respuesta es `false`. Sin esa guarda, un worktree se marcaba
-> "aterrizado" en el instante de crearlo, invitando a cerrar el espacio que
-> acababas de montar — y el **cierre en lote** lo habría barrido como seguro.
+> **Una rama que nunca se movió NO ha aterrizado: no ha empezado** —
+> `branch_has_diverged`, la guarda que corre *antes* de la ancestría.
 >
-> El intercambio es deliberado: una rama mergeada por *fast-forward* también
-> termina compartiendo el tip de la base y se reporta como no-terminada. Reportar
-> de menos cuesta un cierre manual; reportar de más ofrece borrar trabajo que
-> nunca ocurrió. Los merges con commit y los squash — las formas que produce un
-> flujo de revisión real — no se ven afectados. Es deliberadamente la misma detección
+> La ancestría sola no distingue los dos casos: una rama que no aportó nada tiene
+> todos sus commits trivialmente alcanzables desde la base, así que
+> `--is-ancestor` dice que sí sobre un worktree que creaste esta mañana y no
+> tocaste. Sin la guarda, el chip «integrada» aparecía en espacios recién
+> montados y el **cierre en lote** los barría como seguros.
+>
+> **Por qué no basta comparar tips.** Fue el primer intento y solo cubre el caso
+> en que la base no se ha movido. En cuanto la base avanza, una rama intacta deja
+> de compartir su tip y vuelve a parecer aterrizada — reportado desde uso real.
+>
+> **Por qué el reflog.** Dos ramas pueden ser *literalmente el mismo commit*
+> (crea una desde el tip de otra y no toques ninguna) y una haber aterrizado
+> trabajo real mientras la otra jamás empezó. Ningún recorrido del grafo puede
+> separarlas, porque no hay nada que recorrer que las diferencie. Lo que las
+> separa es el **movimiento**, y git lo registra: la entrada más vieja del reflog
+> de la rama es el commit donde nació (`git rev-list -g <rama> | tail -1`).
+>
+> **Respaldo sin reflog** (expirado a los 90 días, deshabilitado, o una rama de un
+> clon que nunca lo tuvo): la forma de la historia. Un tip que cae sobre la cadena
+> de **primer padre** de la base es simplemente un punto anterior de esa línea, no
+> una contribución; el tip de una rama mergeada cuelga de ella como segundo padre
+> de un merge. Es más débil — no ve el caso de los dos refs en el mismo commit —
+> pero cubre el común: creada desde la base, sin tocar, base avanzada.
+>
+> **Ante la duda, `false`.** Reportar de menos cuesta un cierre manual; reportar
+> de más ofrece borrar trabajo que nunca ocurrió. Un merge por *fast-forward*
+> queda sub-reportado a propósito por esa misma regla.
+>
+> Es deliberadamente la misma detección
 que corre `remove_worktree` camino de un borrado seguro: lo que la sidebar declare
 "terminado" es, por construcción, lo que la eliminación aceptaría limpiar. La rama
 base contesta `false` (nunca se propone cerrar aquello sobre lo que todo aterriza),

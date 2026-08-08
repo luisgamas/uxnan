@@ -807,25 +807,14 @@ pub async fn branch_integrated(repo_path: &str, branch: &str) -> bool {
     if base.is_empty() || base == branch {
         return false;
     }
-    // A branch that still points at the base's tip has not *landed* — it has not
-    // started. Ancestry cannot tell those apart: a brand-new branch contributes
-    // nothing, so every commit reachable from it is trivially reachable from the
-    // base, and `--is-ancestor` says yes. Without this guard a worktree was
-    // marked "landed" the moment it was created, inviting you to close the space
-    // you had just set up — and the batch close would have swept it up as safe.
-    //
-    // The trade is deliberate: a branch merged by *fast-forward* also ends up
-    // sharing the base's tip and is reported as not-finished. Under-reporting a
-    // finished space costs a manual close; over-reporting one offers to delete
-    // work that never happened. Merge commits and squashes — the shapes a review
-    // flow actually produces — are unaffected.
-    if let (Ok(branch_tip), Ok(base_tip)) = (
-        git(repo_path, &["rev-parse", "--verify", "--quiet", branch]).await,
-        git(repo_path, &["rev-parse", "--verify", "--quiet", &base]).await,
-    ) {
-        if !branch_tip.trim().is_empty() && branch_tip.trim() == base_tip.trim() {
-            return false;
-        }
+    // A branch that never moved has not *landed* — it has not started, and the
+    // difference matters because the sidebar offers to close what it calls
+    // finished. Ancestry alone cannot tell the two apart: a branch that
+    // contributed nothing has every one of its commits trivially reachable from
+    // the base, so `--is-ancestor` says yes about a worktree you created this
+    // morning and never touched.
+    if !branch_has_diverged(repo_path, branch, &base).await {
+        return false;
     }
     // Real ancestry: the common case for a merge commit. `--is-ancestor` exits 0
     // when every commit on `branch` is already reachable from `base`.
@@ -836,6 +825,49 @@ pub async fn branch_integrated(repo_path: &str, branch: &str) -> bool {
         return true;
     }
     is_squash_merged(repo_path, branch, &base).await
+}
+
+/// Whether `branch` has done anything since it was created — the question
+/// ancestry cannot answer.
+///
+/// Two branches can be **literally the same commit** (create one from another's
+/// tip and touch neither) while one of them landed real work and the other never
+/// began, so no walk of the commit graph can separate them. What separates them
+/// is movement, and git records that in the branch's **reflog**: its oldest entry
+/// is the commit the branch was created at.
+///
+/// Falls back to the shape of the history when there is no reflog — expired
+/// (90 days by default), disabled, or a branch from a clone that never had one.
+/// A tip sitting on the base's own first-parent chain is simply an older point of
+/// the base line, not a contribution to it; a merged branch's tip hangs off it as
+/// a merge's second parent. That fallback is weaker — it cannot see the
+/// same-commit case above — but it catches the common one: forked from the base,
+/// never touched, base moved on.
+///
+/// Best-effort in the safe direction: when git tells us nothing, answer `false`
+/// so the space is reported as unfinished. Under-reporting costs a manual close;
+/// over-reporting offers to delete work that never happened.
+async fn branch_has_diverged(repo_path: &str, branch: &str, base: &str) -> bool {
+    let Ok(tip) = git(repo_path, &["rev-parse", "--verify", "--quiet", branch]).await else {
+        return false;
+    };
+    let tip = tip.trim();
+    if tip.is_empty() {
+        return false;
+    }
+
+    // The reflog, when there is one: oldest entry = where the branch started.
+    if let Ok(log) = git(repo_path, &["rev-list", "-g", branch]).await {
+        if let Some(created_at) = log.split_whitespace().last() {
+            return created_at != tip;
+        }
+    }
+
+    // No reflog. Is the tip a plain older commit of the base line?
+    let Ok(first_parents) = git(repo_path, &["rev-list", "--first-parent", base]).await else {
+        return false;
+    };
+    !first_parents.split_whitespace().any(|sha| sha == tip)
 }
 
 /// Whether `branch`'s net changes are already present in `base` as a squash
@@ -1951,6 +1983,70 @@ mod tests {
         assert!(
             branch_integrated(&repo_path, "squashed").await,
             "a squash-merged branch is finished even though its commits aren't ancestors"
+        );
+    }
+
+    #[tokio::test]
+    async fn branch_integrated_ignores_an_untouched_branch_after_the_base_moves() {
+        // Reported from real use, and the case the first guard missed: the
+        // worktree was created from `main`, never touched, and `main` moved on.
+        // The tips no longer match, so comparing them proves nothing — but the
+        // branch is still just an older point of the base line, and ancestry says
+        // yes about it. It showed the "landed" chip next to genuinely merged
+        // branches.
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "untouched");
+        add_worktree(&repo_path, "untouched", &wt, Some("main"))
+            .await
+            .unwrap();
+
+        // The base moves on, without the branch contributing anything.
+        std::fs::write(format!("{repo_path}/later.txt"), "moved on\n").unwrap();
+        run_git(&repo_path, &["add", "-A"]).await;
+        run_git(&repo_path, &["commit", "-m", "base moves on"]).await;
+
+        assert!(
+            !branch_integrated(&repo_path, "untouched").await,
+            "a branch that never moved has not landed, however far the base went"
+        );
+    }
+
+    #[tokio::test]
+    async fn branch_integrated_separates_two_branches_on_the_same_commit() {
+        // The case no walk of the commit graph can decide: create a branch from a
+        // merged branch's tip and touch neither, and the two refs are literally
+        // the same commit. One did the work, the other never started. Only the
+        // reflog — which records where each branch began — tells them apart.
+        let repo = tempfile::tempdir().unwrap();
+        let repo_path = repo.path().to_string_lossy().replace('\\', "/");
+        init_repo(&repo_path).await;
+
+        let wt = worktree_path_for(&repo_path, "did-the-work");
+        add_worktree(&repo_path, "did-the-work", &wt, Some("main"))
+            .await
+            .unwrap();
+        std::fs::write(format!("{wt}/w.txt"), "real work\n").unwrap();
+        run_git(&wt, &["add", "-A"]).await;
+        run_git(&wt, &["commit", "-m", "the work"]).await;
+        run_git(
+            &repo_path,
+            &["merge", "--no-ff", "-m", "merge", "did-the-work"],
+        )
+        .await;
+
+        // A second branch created at the first one's tip, never touched.
+        run_git(&repo_path, &["branch", "never-started", "did-the-work"]).await;
+
+        assert!(
+            branch_integrated(&repo_path, "did-the-work").await,
+            "it contributed the commit the base merged"
+        );
+        assert!(
+            !branch_integrated(&repo_path, "never-started").await,
+            "same commit, but this one never did anything"
         );
     }
 

@@ -28,7 +28,7 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 536 Rust tests (508 unit + 28
+always wins). 538 Rust tests (510 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
 probe) + 926 frontend Vitest tests across two
 projects — pure logic and **Svelte
