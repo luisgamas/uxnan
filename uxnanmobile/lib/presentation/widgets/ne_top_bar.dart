@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 
@@ -129,6 +130,7 @@ class NeScaffold extends StatelessWidget {
     this.scrollController,
     this.onRefresh,
     this.automaticBackButton = true,
+    this.constrainContent = true,
     super.key,
   });
 
@@ -161,6 +163,19 @@ class NeScaffold extends StatelessWidget {
   /// Whether to auto-add a back button when the route can pop.
   final bool automaticBackButton;
 
+  /// Whether [slivers] stop growing at the window class's
+  /// [UxnanBreakpoint.maxContentWidth], the surplus becoming lateral margin.
+  ///
+  /// On by default, and a **no-op below expanded**: the inset is 0 there, so a
+  /// phone renders byte-for-byte what it rendered before. Turn it off for a
+  /// screen that already centers itself, or one whose content is meant to span
+  /// the full width (a media surface).
+  ///
+  /// The [NeTopBar] is deliberately left out: chrome spans the whole row even
+  /// when the content under it does not, exactly as the conversation's bar
+  /// already does.
+  final bool constrainContent;
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -174,17 +189,33 @@ class NeScaffold extends StatelessWidget {
               )
             : null);
 
-    Widget scroll = CustomScrollView(
-      controller: scrollController,
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      slivers: [
-        SliverToBoxAdapter(
-          child: SizedBox(height: NeTopBar.preferredHeight(context)),
-        ),
-        ...slivers,
-      ],
+    // The width is read from THIS widget's constraints, not from MediaQuery:
+    // inside a pane the window size says nothing about the space available
+    // here (see [TwoPaneScaffold]).
+    Widget scroll = LayoutBuilder(
+      builder: (context, constraints) {
+        final inset = constrainContent
+            ? UxnanBreakpoint.fromWidth(constraints.maxWidth)
+                .horizontalInsetFor(constraints.maxWidth)
+            : 0.0;
+        final padding = EdgeInsets.symmetric(horizontal: inset);
+        return CustomScrollView(
+          controller: scrollController,
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            SliverToBoxAdapter(
+              child: SizedBox(height: NeTopBar.preferredHeight(context)),
+            ),
+            for (final sliver in slivers)
+              if (inset > 0)
+                SliverPadding(padding: padding, sliver: sliver)
+              else
+                sliver,
+          ],
+        );
+      },
     );
     final onRefresh = this.onRefresh;
     if (onRefresh != null) {

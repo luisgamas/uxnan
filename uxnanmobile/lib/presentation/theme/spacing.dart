@@ -61,6 +61,15 @@ class UxnanSize {
   /// placeholder (icon + optional caption). Anything shorter — an inline badge
   /// row — renders the compact single-glyph variant instead.
   static const double mediaPlaceholderMinHeight = 56;
+
+  /// Width of the permanent side pane (navigation drawer) on expanded and
+  /// large windows — the Neural Expressive guide's pinned-drawer width
+  /// (`docs/neural-expressive-design.md` §4.4).
+  static const double sidePane = 320;
+
+  /// Width of the permanent side pane on extra-large windows, where the guide
+  /// allows it to grow.
+  static const double sidePaneWide = 360;
 }
 
 /// Corner-radius scale for the Uxnan design system.

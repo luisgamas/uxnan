@@ -259,6 +259,33 @@ Large    → Permanent Standard Navigation Drawer (320 dp)
 Extra-L  → Permanent Standard Navigation Drawer (can expand to 400 dp)
 ```
 
+#### How uxnan implements this table (two deliberate divergences)
+
+The five classes above are implemented verbatim in
+[`presentation/theme/breakpoints.dart`](../lib/presentation/theme/breakpoints.dart)
+as `UxnanBreakpoint`, which is the **only** place a width becomes a layout
+decision. A widget that compares `MediaQuery` widths itself is a bug: that is
+how two screens end up disagreeing about what a tablet is.
+
+Uxnan diverges from the *navigation* column in two places, on purpose:
+
+1. **No bottom navigation bar on compact, and no navigation rail on medium.**
+   Uxnan has no 3–5 top-level destinations to put in either one; compact windows
+   navigate with a plain screen stack, and the side pane appears only once it can
+   be **permanent** (`UxnanBreakpoint.usesPermanentPane`, expanded and up). A
+   rail on medium would spend 80 dp to duplicate what the back button already
+   does.
+2. **A 320 dp pane does not start at medium.** On a 600–839 dp window it would
+   leave the detail under 300 dp — narrower than the phone layout it replaced —
+   so medium stays single-pane with wider margins.
+
+The *content margins* table below is implemented as-is. Note the distinction it
+does not make: `UxnanBreakpoint.maxContentWidth` is a **layout clamp** for
+single-pane screens (lists, settings, profile), while the conversation column
+keeps `UxnanSpacing.maxContentWidth` (760 dp), which is a **typographic line
+length**. They are different measurements that happen to share a shape, and
+collapsing them would either stretch prose or shrink lists.
+
 ### Content Margins by Breakpoint
 
 | Breakpoint | Lateral margin | Max content width |

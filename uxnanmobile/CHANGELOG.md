@@ -6,6 +6,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the app knows how wide its window is
+
+`UxnanBreakpoint` (`presentation/theme/breakpoints.dart`) implements the five
+window classes the Neural Expressive guide has always specified but the code
+never had: compact / medium / expanded / large / extra-large, each carrying its
+lateral margin, its content clamp and its side-pane width. It is the single
+place that turns a width into a layout decision — no screen compares raw widths
+any more.
+
+`NeScaffold` gained `constrainContent` (on by default): past 840 dp its content
+stops growing and the surplus becomes margin, so a list no longer stretches an
+entire tablet row. It is a **no-op below expanded** — the inset is 0 there — so
+phones render exactly what they rendered before. The chrome is deliberately
+excluded: the top bar still spans the full row, as the conversation's already
+did.
+
+`TwoPaneScaffold` (`presentation/screens/shell/app_shell_screen.dart`, until now
+an unused stub) lays a side pane beside a detail surface on windows that fit
+one, and is a pass-through everywhere else. It resolves its breakpoint from its
+**own constraints** rather than the window, because it is meant to nest: with a
+side pane already taken out, the window's width says nothing about the space a
+split inside the content actually has.
+
+Nothing is wired to a route yet — this is the foundation the adaptive layout is
+built on, landing on its own so it can be verified in isolation.
+
 ## [0.0.18-alpha.20260805] - 2026-08-05
 
 ### Fixed — the thread row shows the agent's latest reply, not its first

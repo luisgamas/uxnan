@@ -40,6 +40,14 @@ spec, the spec wins.
   `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`. Cards use
   `surfaceContainer`, **never** `surfaceContainerHighest` — that tone is reserved
   for input fills / active chips (NE §2.4).
+- **Never compare a raw width.** `UxnanBreakpoint` (`presentation/theme/
+  breakpoints.dart`) is the single source for what a window size means — its
+  margin, its content clamp, whether a permanent side pane fits. A stray
+  `width < 600` is how two screens start disagreeing about what a tablet is.
+  Screens that own the window use `UxnanBreakpoint.of(context)`; anything that
+  can be rendered **inside a pane** must use `UxnanBreakpoint.fromWidth` with its
+  own `constraints.maxWidth`, because `MediaQuery` still reports the whole
+  window there. `NeScaffold` and `TwoPaneScaffold` already do the latter.
 - Prefer current M3 widgets over Material 2 equivalents. Keep modal sheets
   scrollable so they fit short screens (and the 800×600 test window).
 - **UI is proposed, not committed unilaterally.** Implement → verify once

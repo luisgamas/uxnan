@@ -8,6 +8,8 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 
 /// The relay host every [_device] advertises, so a test can drive the relay
 /// network-kind badge by passing `connectedEndpoint: kRelayUrl`.
@@ -224,5 +226,40 @@ void main() {
     expect(find.byIcon(Icons.person_outline_rounded), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.byIcon(Icons.hub_outlined), findsNothing);
+  });
+
+  // The two widths a Pixel 10 Pro XL actually reports (1344 × 2992 px at
+  // density 480 → 448 dp portrait, 997 dp landscape), so these cases are the
+  // ones a reviewer can reproduce by rotating the emulator.
+  group('adapts to the window width', () {
+    Future<void> pumpAt(WidgetTester tester, Size size) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_wrap(devices: [_device('mac-1', 'My Mac')]));
+      await tester.pump();
+    }
+
+    testWidgets('phone portrait: the card spans the window', (tester) async {
+      await pumpAt(tester, const Size(448, 900));
+
+      // The screen's own 16 dp gutter, and nothing else — proof that turning
+      // `constrainContent` on did not touch the compact layout.
+      expect(
+        tester.getSize(find.byType(NeCard).first).width,
+        448 - UxnanSpacing.lg * 2,
+      );
+    });
+
+    testWidgets('phone landscape: the card stops growing at 840 dp', (
+      tester,
+    ) async {
+      await pumpAt(tester, const Size(997, 448));
+
+      expect(
+        tester.getSize(find.byType(NeCard).first).width,
+        840 - UxnanSpacing.lg * 2,
+      );
+    });
   });
 }
