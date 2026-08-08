@@ -7,6 +7,12 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The desktop mockup's sub-agent rows follow the app again.** A running child
+  now shows its kind as a chip and, when the CLI reports one, the tool in flight
+  after its task — which is what `AgentRow.svelte` draws since sub-agents were
+  widened to Codex and Grok. It still shows no elapsed time on a child, for the
+  same reason the app doesn't.
+
 - **The site draws Hugeicons, the same set as the desktop app.** All 33 glyphs
   across 61 render sites move off `lucide-react` and onto
   [`@hugeicons/core-free-icons`](https://www.npmjs.com/package/@hugeicons/core-free-icons)
