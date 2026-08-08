@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getAppState,
-  getClaudeHooksStatus,
+  listAgentHooks,
   getHookInstall,
   openExternal,
   ping,
@@ -23,7 +23,7 @@ import {
   DEFAULT_SETTINGS,
   type AgentProfile,
   type AppSettings,
-  type AgentHooksStatus,
+  type HookAgentEntry,
   type HookInstall,
   type PetSettings,
   type QuickCommand,
@@ -149,8 +149,8 @@ class AppStore {
   // --- Agent hooks health (drives the status-bar indicator) ----------------
   /** On-disk hook scripts layout, or `null` if the startup install step failed. */
   hookInstall = $state<HookInstall | null>(null);
-  /** Latest Claude hooks install status (read on startup + after a toggle). */
-  claudeHooks = $state<AgentHooksStatus | null>(null);
+  /** Latest per-agent hook install status (read on startup + after a toggle). */
+  hookAgents = $state<HookAgentEntry[]>([]);
   /** Whether we've performed at least one hook-status check (so the indicator
    *  stays hidden until we actually know, instead of flashing on launch). */
   hooksChecked = $state(false);
@@ -158,21 +158,27 @@ class AppStore {
   /** Whether the agent hooks need the user's attention — the only condition
    *  under which the status-bar indicator shows. The hooks auto-install on
    *  startup, so this is true only when something actually went wrong: the
-   *  script/install step degraded, the status couldn't be read, the OS refused
-   *  it, or Claude's block isn't installed while auto-install is on. */
+   *  script/install step degraded, the status couldn't be read, or an agent the
+   *  user actually has is missing its reporter while auto-install is on.
+   *
+   *  Scoped to the agents that are **present**: the ADE knows how to report for
+   *  far more CLIs than any one machine has, and flagging "not installed" for
+   *  agents the user has never heard of would make the indicator meaningless. */
   get hooksNeedAttention(): boolean {
     if (!this.hooksChecked) return false;
     if (this.hookInstall === null) return true;
-    const c = this.claudeHooks;
-    if (!c) return true;
-    if (c.unavailable && !c.installed) return true;
-    if (!c.installed && this.settings.autoInstallHooks !== false) return true;
-    return false;
+    const mine = this.hookAgents.filter((a) => a.present);
+    if (mine.length === 0) return false;
+    return mine.some(
+      (a) =>
+        (a.status.unavailable && !a.status.installed) ||
+        (!a.status.installed && this.settings.autoInstallHooks !== false),
+    );
   }
 
-  /** Refresh the cached hook status (install layout + Claude block). Best-effort:
-   *  a failed read leaves the indicator showing "needs attention". Called once
-   *  after hydrate and again whenever the Hooks settings pane changes it. */
+  /** Refresh the cached hook status (install layout + every agent's state).
+   *  Best-effort: a failed read leaves the indicator showing "needs attention".
+   *  Called once after hydrate and again whenever the Hooks pane changes it. */
   async refreshHooksStatus(): Promise<void> {
     try {
       this.hookInstall = await getHookInstall();
@@ -180,9 +186,9 @@ class AppStore {
       this.hookInstall = null;
     }
     try {
-      this.claudeHooks = await getClaudeHooksStatus();
+      this.hookAgents = await listAgentHooks();
     } catch {
-      this.claudeHooks = null;
+      this.hookAgents = [];
     }
     this.hooksChecked = true;
   }

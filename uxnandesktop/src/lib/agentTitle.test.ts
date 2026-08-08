@@ -19,6 +19,15 @@ describe("statusFromTitle", () => {
     expect(statusFromTitle("Task ✓")).toBe("done");
   });
 
+  it("ignores an ellipsis that is only a truncated path", () => {
+    // Every terminal writes one of these; reading it as "busy" made a title that
+    // says nothing about state mint a working dot.
+    expect(statusFromTitle("…/very/long/project/path")).toBeNull();
+    expect(statusFromTitle("user@host: .../src/lib")).toBeNull();
+    // A check glyph used as decoration is not a finished turn either.
+    expect(statusFromTitle("✓ main — ~/projects/app")).toBeNull();
+  });
+
   it("ignores keywords embedded in a path segment (no false positive)", () => {
     // The keyword sits after a path separator — must NOT mint a status.
     expect(statusFromTitle("~/codex/ready")).toBeNull();

@@ -7,6 +7,89 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **OMP reports precise state too — twenty-one agents.** It ships Pi's agent
+  runtime under its own home, so it loads the very same extension; only the kind
+  it declares differs. Installing into Pi's directory (which is what happened
+  before) left OMP with nothing, even though the server already understood its
+  vocabulary. Verified against the running CLI: `before_agent_start` →
+  `agent_start` → `message_end` → `agent_end` → `session_shutdown`, all reported
+  as OMP. Its executable installs outside `PATH`, so presence is now also
+  detected from the CLI's own plugin directory.
+
+- **The nine agents without precise state are documented as such.** Aider, Cline,
+  Continue, Crush, Codebuff, Mistral Vibe, Rovo Dev, Autohand and Ante stay in
+  the catalog and launch normally — they fall back to the coarse working/idle
+  inference, or to the generic wrapper for `working`/`done`. Each row says why
+  (only `PreToolUse` shipped, macOS/Linux only, no published event list, hooks
+  that belong to a separate GUI…), and the list is written as an invitation:
+  wiring one is a table row plus an event arm, and a pull request with what the
+  CLI actually emits is the fastest path for whoever uses it.
+
+- **The integrated browser's tools reach three more agents: Qwen Code, Droid and
+  MiMo Code.** They are auto-configured like the rest — the server registered in
+  each CLI's user-global config, so no "approve this MCP server?" prompt appears
+  and nothing lands in your project folder.
+
+  The list stops exactly where the security rule does: **the token is never
+  written to a file**, it is referenced through `UXNAN_MCP_TOKEN`, which is also
+  what makes the tools useless outside uxnan. Cursor cannot expand an environment
+  variable in a remote server's headers, GitHub Copilot's CLI documents header
+  values as literal strings, and Antigravity's transport has no header field at
+  all — so supporting them would mean leaving a live credential in a file the
+  user keeps. Goose (YAML) and Kilo Code (JSONC) keep their config in formats
+  uxnan vendors no writer for, and rewriting them with a JSON writer would throw
+  away the user's comments. All of them are one copy-paste away in Settings, and
+  a test now fails if a newly listed agent ever skips the token rule.
+
+- **Four more agents report precise state: Goose, MiMo Code, Kilo Code and Amp**
+  — twenty in total. Goose follows the Open Plugins hook spec, so it gets a
+  plugin of its own under `~/.agents/plugins/` whose event names are Claude
+  Code's. The other three run **in-process** plugins their CLI auto-discovers,
+  so there is no config of the user's to merge at all: MiMo Code is a fork of
+  OpenCode and runs the very same reporter (only the identity it declares
+  changes), Kilo Code exposes the same event bus behind a different export
+  shape, and Amp has a plugin API of its own — including an `agent.end` that
+  says whether the turn finished or died, so it reports a real `blocked`.
+  Amp's `tool.call` is a gating hook, so the reporter answers `allow`: observing
+  a tool must never be the reason it didn't run.
+
+  The reporters were validated as real modules rather than as text: each
+  generated body is loaded by Node and driven against a stand-in for its CLI's
+  plugin API, which is what proves Kilo's descriptor and Amp's five
+  subscriptions are the shapes their loaders actually require.
+
+  **The rest of the catalog is left uncovered on purpose, and documented as
+  such** — Crush ships only `PreToolUse` (enough to start a spinner, never to
+  stop it), Cline's CLI hooks are macOS/Linux-only with no published format,
+  Rovo Dev documents no event list, Aider's hooks belong to a separate GUI, and
+  Continue, Mistral Vibe, Codebuff, Autohand and Ante publish no turn lifecycle
+  at all. They keep working under the coarse inference or the generic wrapper.
+
+- **Ten more agents report precise state out of the box.** Alongside Claude
+  Code, Codex, OpenCode, Pi, Grok and Antigravity, the ADE now installs a
+  managed reporter for **Cursor, GitHub Copilot, Droid (Factory), Devin, Qwen
+  Code, Auggie, Kiro, Kimi Code, Command Code and OpenClaude** — each merged
+  into that CLI's own configuration (JSON for most, a marked block in TOML for
+  Kimi, a file of our own for Copilot and Kiro), always leaving hooks you wrote
+  yourself untouched. They are wired as **data**: one table row names the config
+  file, the shape and the events, so the eighteenth agent is a row rather than
+  another installer. The startup install only touches agents this machine
+  actually has (executable on `PATH`, or a config already there) — the ADE knows
+  how to report for far more CLIs than any one machine runs, and creating
+  another product's config folder unasked is not its business. An explicit
+  **Install** in Settings is not gated: asking for it is answer enough.
+
+- **The hooks pane is a list, not a tab strip.** Agents run down the left,
+  grouped into the ones on this machine and the rest, with the selected one's
+  status, config path, install/uninstall and exact rendered config on the right.
+  The pane now renders whatever the backend registry holds, so adding an agent
+  never edits the frontend. Behind it, twenty-one per-agent Tauri commands
+  collapsed into four that take the agent as an argument.
+
+- **Codex now shows its reply, not just its status.** Measured against the
+  running CLI, its `Stop` carries `last_assistant_message` — so the card's second
+  line can show what the agent actually said, with no transcript file opened.
+
 - **A third way to group the sidebar: by review state.** The tree answers "what
   belongs to what" and the status view answers "who needs me right now"; neither
   places a branch that is waiting on a reviewer — it needs nothing from you and
@@ -158,6 +241,80 @@ The file-tree toolbar buttons (search, collapse, refresh, close search) and the
 new controls now carry `aria-label`s, so the panel is operable by name.
 
 ### Fixed
+
+- **A second uxnan window stole the first one's hook reports.** Every window runs
+  its own hook server on its own port with its own token, and each terminal is
+  given its window's coordinates — but the reporters preferred the *endpoint
+  file*, which lives at one shared path and is rewritten by whichever window
+  started last. So opening a second window silently redirected every agent in the
+  first one to it: cards stopped moving there, and a finished turn never showed
+  its check. Measured by running the real reporter with one window's environment
+  and the other's endpoint file — the report landed in the wrong window every
+  time.
+
+  The environment now wins, and the endpoint file is tried only when the
+  environment's server does not answer — which is exactly the case it was added
+  for (a terminal that outlived an app restart). Both paths are verified for
+  every reporter uxnan ships: shell, Node relay and in-process plugin.
+
+  Two windows also fought over the browser MCP config: closing one deleted the
+  entry the other was still using. Cleanup now removes an entry only while it
+  still names the window's own endpoint.
+
+- **Codex claimed to be working from the second its TUI opened.** Opening a
+  session emits `SessionStart` — measured against the running CLI, exactly
+  `{"source":"startup"}` and then nothing until the first prompt — and the ADE
+  read it as work. Since the next event only arrives when you finally type,
+  nothing could move it: the tab pulsed green for as long as it sat unused. Grok
+  had the same mapping. A session-start event is now treated as what it is, a
+  **boundary**: the tab's cached turn is dropped (a new session owns it, so the
+  previous prompt, tool, reply and children describe nothing) while the session
+  identity it carries is kept for resume, and the tab reads as a neutral idle
+  until the agent really does something. A `SessionStart` fired mid-turn by a
+  compaction is excluded, so a live turn is never wiped.
+
+- **Zero showed a completed turn the moment you opened it.** It reports no hook,
+  so its state is read from its on-disk session — and it keeps every past
+  conversation of a folder, so the newest one for that worktree is normally the
+  last turn you finished there. Its `message` was read as `done` regardless of
+  age, putting a completion check on a session that had not been asked anything.
+  Now a session file that has gone quiet claims **nothing** (not `done`, not
+  `waiting` — none of it is true any more), and a session older than the tab that
+  is showing it is not taken as that tab's at all.
+
+- **Zero's card is no longer the one that says least.** Every other agent shows
+  what it just replied, because its hook reports it; Zero reported nothing, so
+  its second line could only ever be a status label. Its own event log holds the
+  answer, so the card now shows it — read from the tail of the log, not the whole
+  file, since it grows for the length of the conversation.
+
+- **Clicking into Zero's terminal made it look busy.** Its worktree dot came from
+  output activity alone, so a TUI redraw read as work while the agent row right
+  below it — which does read the session — said otherwise. Zero's session now
+  drives both, the same way a hook does for every other agent.
+
+- **Clicking inside a terminal made its agent look busy.** A TUI with mouse
+  tracking answers a click by redrawing, and any byte of output counted as work
+  — three seconds of "working" for having touched the terminal. Output now has
+  to still be arriving a beat after it started, which a streaming agent does and
+  a one-off redraw does not. Terminal-title inference lost its two loosest cues
+  for the same reason: an ellipsis or a check glyph now only counts at the end of
+  the title, not inside the truncated path every terminal writes.
+
+- **Codex had a mapping for an event it never sends, and none for the one it
+  does.** It has no `Notification` hook at all (verified against the running
+  CLI); its permission prompt is `PermissionRequest`. A notification is also no
+  longer read as "waiting on you" unless it says which kind it is — Grok emits
+  routine ones (a tool-permission notice fired even when permissions are
+  bypassed, an idle nudge once the turn ends), and taking them all at face value
+  is what parked finished sessions in the **Needs you** lane. Its payload keys
+  are camelCase, which the previous snake_case-only read never found.
+
+- **A sub-agent could flip its parent's state on two of the new agents.** Cursor
+  and Copilot dispatch `subagentStart` / `subagentStop` in camelCase, and
+  matching only PascalCase would have routed a child's lifecycle into the
+  parent's own status — marking the parent `working` whenever it spawned one and
+  `done` before it had finished.
 
 - **A brand-new worktree was immediately marked as finished.** Creating one and
   closing its terminal showed the `landed` chip right away: a fresh branch shares

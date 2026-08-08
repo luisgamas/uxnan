@@ -792,6 +792,9 @@ export interface ZeroSession {
   title: string;
   status: "working" | "waiting" | "done" | "idle";
   updatedAt: string;
+  /** The agent's latest reply, read from its own event log — Zero reports no
+   *  hook, so without this its card's second line could only ever be a status. */
+  reply?: string | null;
 }
 
 /** A file opened in the center editor (mirror of Rust `FileContent`). `content`
@@ -1008,6 +1011,18 @@ export interface ProviderSession {
  *  `hooks::AgentStatusEvent`). Same shape as a cached `AgentStateEntry`. */
 export type AgentStatusEvent = AgentStateEntry;
 
+/** Payload of the `agent:status-cleared` event (mirror of Rust
+ *  `hooks::AgentStatusClearedEvent`): the agent's hook reported a session
+ *  boundary — its TUI opened, resumed or was cleared — so the cached state was
+ *  dropped. It carries no status because none of the four states is true of a
+ *  session that hasn't started working yet; the display falls back to a neutral
+ *  idle. The agent kind and the new session still ride along. */
+export interface AgentStatusClearedEvent {
+  agentId: string;
+  agentType?: string | null;
+  session?: ProviderSession | null;
+}
+
 /** Coordinates of the local agent hook server (mirror of Rust `HookServerInfo`).
  *  Shown in Settings so a user can wire their agent to report state. */
 export interface HookServerInfo {
@@ -1047,15 +1062,27 @@ export interface HookInstall {
   antigravityHooksPath: string;
 }
 
-/** The current install state of a managed agent hook (Claude Code, Codex,
- *  Gemini CLI, OpenCode or Pi). The UI uses this to render an honest
- *  "Installed" / "Not installed" / "Unavailable" badge. */
+/** The current install state of one agent's managed hook. The UI uses this to
+ *  render an honest "Installed" / "Not installed" / "Unavailable" badge. */
 export interface AgentHooksStatus {
   installed: boolean;
   fileExists: boolean;
   unavailable: boolean;
   /** Human-readable detail; the path on success, the error otherwise. */
   detail: string;
+}
+
+/** One row of the hooks panel (mirror of Rust `agent_hooks::HookAgentEntry`).
+ *  The backend registry decides which agents exist and in what order. */
+export interface HookAgentEntry {
+  /** The hook agent kind — also the key for its name, logo and copy. */
+  id: string;
+  /** Whether this CLI looks present on the machine (on PATH, or its config
+   *  already exists). The panel leads with the agents you actually use. */
+  present: boolean;
+  /** The file our reporter is written into, shown under the agent's name. */
+  configPath: string;
+  status: AgentHooksStatus;
 }
 
 /** Textual content of every bundled hook script. The Claude JSON is

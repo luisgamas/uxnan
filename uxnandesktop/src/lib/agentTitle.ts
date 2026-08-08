@@ -37,16 +37,21 @@ const PATTERNS: [RegExp, AgentStatus][] = [
     ),
     "waiting",
   ],
-  // "working"-ish: keyword set OR a trailing ellipsis (a common "busy" marker).
+  // "working"-ish: keyword set OR a **trailing** ellipsis (a common busy marker).
+  // The ellipsis is anchored to the end for a reason: unanchored, it also matched
+  // the one every terminal writes for a truncated path ("…/very/long/path"), so a
+  // title that says nothing about state minted a `working`.
   [
     new RegExp(
-      `${L}(?:working|thinking|running|generating|processing|executing|busy|compiling|building|analyzing|analysing|searching|reading|writing|editing)${R}|\\.\\.\\.|…`,
+      `${L}(?:working|thinking|running|generating|processing|executing|busy|compiling|building|analyzing|analysing|searching|reading|writing|editing)${R}|(?:\\.\\.\\.|…)\\s*$`,
       "i",
     ),
     "working",
   ],
+  // Same anchoring for the check glyph: a ✓ elsewhere in a title is decoration
+  // (a branch marker, a prompt sigil), not a completed turn.
   [
-    new RegExp(`${L}(?:done|complete|completed|finished|success|succeeded)${R}|[✓✔]`, "i"),
+    new RegExp(`${L}(?:done|complete|completed|finished|success|succeeded)${R}|[✓✔]\\s*$`, "i"),
     "done",
   ],
 ];

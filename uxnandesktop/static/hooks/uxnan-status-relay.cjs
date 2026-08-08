@@ -39,15 +39,28 @@ function readEndpointFile(path) {
   }
 }
 
-function resolveCoords() {
-  // Prefer the endpoint file (rewritten every launch) over the spawn-frozen env,
-  // so a terminal that outlived an app restart still reaches the live server.
+// Where to report, in the order that survives more than one uxnan window.
+//
+// The terminal's own environment comes FIRST and the endpoint file is only the
+// rescue. The file lives at one shared path, so a second uxnan window overwrites
+// it with its own coordinates — and preferring it sent every agent of the first
+// window's reports to the second one, which is why a second window showed no
+// completion checks. The file still matters when the environment is stale (a
+// terminal that outlived an app restart), so it is tried when the first POST
+// fails.
+function coordCandidates() {
+  const out = [];
+  const envUrl = process.env.UXNAN_HOOK_URL || "";
+  if (envUrl) {
+    out.push({ url: envUrl, token: process.env.UXNAN_HOOK_TOKEN || "" });
+  }
   const file = process.env.UXNAN_ENDPOINT_FILE
     ? readEndpointFile(process.env.UXNAN_ENDPOINT_FILE)
     : {};
-  const url = file.UXNAN_HOOK_URL || process.env.UXNAN_HOOK_URL || "";
-  const token = file.UXNAN_HOOK_TOKEN || process.env.UXNAN_HOOK_TOKEN || "";
-  return { url, token };
+  if (file.UXNAN_HOOK_URL && file.UXNAN_HOOK_URL !== envUrl) {
+    out.push({ url: file.UXNAN_HOOK_URL, token: file.UXNAN_HOOK_TOKEN || "" });
+  }
+  return out;
 }
 
 function eventName(input) {
@@ -67,7 +80,7 @@ function post(url, token, agentId, agentType, body) {
     try {
       parsed = new URL(url);
     } catch {
-      return resolve();
+      return resolve(false);
     }
     const transport = parsed.protocol === "https:" ? require("https") : require("http");
     const data = JSON.stringify(body);
@@ -86,13 +99,16 @@ function post(url, token, agentId, agentType, body) {
       },
       (res) => {
         res.resume();
-        res.on("end", resolve);
+        // 2xx only: a 401 from another window's server is a failed attempt, not
+        // a delivery, and must let the next candidate be tried.
+        const ok = res.statusCode >= 200 && res.statusCode < 300;
+        res.on("end", () => resolve(ok));
       },
     );
-    req.on("error", resolve);
+    req.on("error", () => resolve(false));
     req.on("timeout", () => {
       req.destroy();
-      resolve();
+      resolve(false);
     });
     req.end(data);
   });
@@ -115,7 +131,7 @@ function main() {
     if (echoJson) process.stdout.write("{}\n");
   };
 
-  const { url, token } = resolveCoords();
+  const candidates = coordCandidates();
   const agentId = process.env.UXNAN_AGENT_ID || "";
 
   let raw = "";
@@ -129,16 +145,20 @@ function main() {
       input = {};
     }
     const ev = eventName(input);
-    if (url && agentId && ev && agentType) {
-      post(url, token, agentId, agentType, {
-        agentId,
-        agentType,
-        event: ev,
-        source: input,
-      }).then(finish, finish);
-    } else {
+    if (candidates.length === 0 || !agentId || !ev || !agentType) {
       finish();
+      return;
     }
+    const body = { agentId, agentType, event: ev, source: input };
+    // Try each candidate in turn, stopping at the first that accepts it.
+    const attempt = (i) => {
+      if (i >= candidates.length) return finish();
+      post(candidates[i].url, candidates[i].token, agentId, agentType, body).then(
+        (ok) => (ok ? finish() : attempt(i + 1)),
+        () => attempt(i + 1),
+      );
+    };
+    attempt(0);
   });
   process.stdin.on("error", finish);
 }

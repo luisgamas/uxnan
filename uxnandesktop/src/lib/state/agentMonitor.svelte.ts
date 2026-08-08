@@ -25,9 +25,27 @@ interface AgentDetected {
 /** Idle after this long with no output → the "working" dot turns off. */
 const VISUAL_IDLE_MS = 3_000;
 
+/**
+ * How long output must keep coming before it counts as work.
+ *
+ * Terminal output is not proof of an agent working: a TUI with mouse tracking on
+ * answers a plain **click** by redrawing, and treating that first byte as
+ * activity lit the "working" dot every time the user touched the terminal —
+ * three seconds of green for having looked at it. Real work is not a single
+ * redraw: a thinking agent streams (spinner, tokens, tool output) for as long as
+ * it runs, so requiring output that is *still* arriving this long after it
+ * started separates the two without knowing anything about the CLI. The cost is
+ * that the dot lights a fraction of a second late, which nobody can perceive.
+ */
+const ACTIVITY_SUSTAIN_MS = 400;
+
 class AgentMonitor {
   /** When each tab last produced output (epoch ms). */
   private lastOutputAt = new Map<string, number>();
+  /** When the current run of output on each tab began (epoch ms) — output that
+   *  stops before [`ACTIVITY_SUSTAIN_MS`] never becomes "working". Reset once the
+   *  tab falls quiet, so the next burst is judged on its own. */
+  private outputRunStartedAt = new Map<string, number>();
   /** Tabs an agent process has been detected in during this app run. Gates the
    *  "agent exited" edge so a restore's first "no agent" report — emitted before
    *  the resumed TUI has started — can't declare a live session dead. */
@@ -105,11 +123,30 @@ class AgentMonitor {
     return this.titleState[tabId];
   }
 
-  /** Record output on a tab: it's "working" now. Cheap (reactive only on edge). */
+  /** Record output on a tab. Sustained output (see [`ACTIVITY_SUSTAIN_MS`]) reads
+   *  as "working"; a one-off burst — a redraw answering a click — does not.
+   *  Cheap (reactive only on edge). */
   noteOutput(tabId: string): void {
-    this.lastOutputAt.set(tabId, Date.now());
+    const now = Date.now();
+    const last = this.lastOutputAt.get(tabId);
+    // A gap longer than the idle window starts a new run: whatever came before
+    // has already been written off, so it must not count towards this one.
+    const runStart =
+      last !== undefined && now - last < VISUAL_IDLE_MS
+        ? (this.outputRunStartedAt.get(tabId) ?? now)
+        : now;
+    this.outputRunStartedAt.set(tabId, runStart);
+    this.lastOutputAt.set(tabId, now);
     const tab = terminals.findTab(tabId);
-    if (tab && tab.kind === "terminal" && !tab.exited && !tab.working) tab.working = true;
+    if (
+      tab &&
+      tab.kind === "terminal" &&
+      !tab.exited &&
+      !tab.working &&
+      now - runStart >= ACTIVITY_SUSTAIN_MS
+    ) {
+      tab.working = true;
+    }
     this.start();
   }
 
@@ -127,11 +164,18 @@ class AgentMonitor {
       if (seen === undefined) continue;
       // Visual only: turn the "working" dot off once output settles. No
       // notification here — the hook layer owns those (see file header).
-      if (tab.working && now - seen >= VISUAL_IDLE_MS) tab.working = false;
+      if (now - seen >= VISUAL_IDLE_MS) {
+        if (tab.working) tab.working = false;
+        // The run is over; a later burst must earn "working" on its own.
+        this.outputRunStartedAt.delete(tab.id);
+      }
     }
     // Prune tracking for tabs that have closed.
     for (const id of this.lastOutputAt.keys()) {
       if (!live.has(id)) this.lastOutputAt.delete(id);
+    }
+    for (const id of this.outputRunStartedAt.keys()) {
+      if (!live.has(id)) this.outputRunStartedAt.delete(id);
     }
     for (const id of this.agentSeen) {
       if (!live.has(id)) this.agentSeen.delete(id);

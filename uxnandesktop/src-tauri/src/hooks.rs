@@ -98,33 +98,19 @@ pub fn normalize_event(
     source: Option<&Value>,
 ) -> Option<AgentStatus> {
     match agent_type {
-        "claude" => match event {
-            "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure"
-            | "PreCompact" => Some(AgentStatus::Working),
-            "PermissionRequest" => Some(AgentStatus::Waiting),
-            // Claude surfaces several prompts as a `Notification` carrying a
-            // `notification_type`. Only the kinds that genuinely block on the user
-            // *mid-turn* mean `waiting`. `idle_prompt` fires right after `Stop`
-            // when Claude is idle at the prompt — that's the finished/resting
-            // state, so it maps to `done`; mapping it to `waiting` (as before) let
-            // it clobber the preceding `Stop`→`done` (last-write-wins), leaving the
-            // card stuck on "waiting for input". `auth_success` is a transient auth
-            // notice that must not change the turn state.
-            "Notification" => match source.and_then(notification_type).as_deref() {
-                Some("permission_prompt" | "elicitation_dialog" | "agent_needs_input") => {
-                    Some(AgentStatus::Waiting)
-                }
-                Some("idle_prompt") => Some(AgentStatus::Done),
-                _ => None,
-            },
-            "Stop" | "SessionEnd" => Some(AgentStatus::Done),
-            _ => None,
-        },
+        "claude" => claude_vocabulary(event, source),
+        // `SessionStart` is deliberately absent: it fires when the TUI opens (and
+        // on resume), before the user has asked for anything — see
+        // [`is_session_boundary`], which resets the tab instead of claiming work.
+        // Codex has no `Notification` hook at all (verified against the running
+        // CLI, which dispatches SessionStart / UserPromptSubmit / PreToolUse /
+        // PostToolUse / PermissionRequest / PreCompact / Stop), so an arm for it
+        // would be dead code pretending to be a mapping.
         "codex" => match event {
-            "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PreCompact" => {
+            "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PreCompact" => {
                 Some(AgentStatus::Working)
             }
-            "PermissionRequest" | "Notification" => Some(AgentStatus::Waiting),
+            "PermissionRequest" => Some(AgentStatus::Waiting),
             "Stop" => Some(AgentStatus::Done),
             _ => None,
         },
@@ -147,14 +133,6 @@ pub fn normalize_event(
         // `Stop`. Matching only the PascalCase spelling made every Grok report
         // fall through to `None` and be discarded — which is why its card sat on
         // "working" with nothing left able to move it. Accept both spellings.
-        "grok" => match pascal_case(event).as_str() {
-            "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse"
-            | "PostToolUseFailure" | "PreCompact" | "PostCompact" => Some(AgentStatus::Working),
-            "Notification" => Some(AgentStatus::Waiting),
-            "StopFailure" => Some(AgentStatus::Blocked),
-            "Stop" | "SessionEnd" => Some(AgentStatus::Done),
-            _ => None,
-        },
         // Antigravity exposes only its execution loop — there is no prompt,
         // permission or notification hook — so it reports `working` and `done`
         // precisely and can never claim to be waiting on the user.
@@ -165,11 +143,106 @@ pub fn normalize_event(
             "Stop" => Some(AgentStatus::Done),
             _ => None,
         },
-        "opencode" => match event {
+        // OpenCode's in-process plugin, and the two CLIs that run the same
+        // reporter because they share its plugin API: MiMo Code (a fork of
+        // OpenCode) and Kilo Code (the same event bus, a different export
+        // shape). They report the plugin's own synthetic vocabulary, not the
+        // bus event names, so one arm serves all three.
+        "opencode" | "mimo" | "kilocode" => match event {
             "SessionStart" | "SessionBusy" | "MessagePart" => Some(AgentStatus::Working),
             "SessionIdle" | "Stop" => Some(AgentStatus::Done),
             "PermissionRequest" | "AskUserQuestion" => Some(AgentStatus::Waiting),
             "Error" => Some(AgentStatus::Blocked),
+            _ => None,
+        },
+        // Amp's plugin API is its own: five events, reported under their native
+        // names. `agent.end` carries a `status`, which is the only way to tell a
+        // finished turn from one that died — so Amp reports a real `blocked`
+        // rather than one inferred from silence.
+        "amp" => match event {
+            "agent.start" | "tool.call" | "tool.result" => Some(AgentStatus::Working),
+            "agent.end" => match source
+                .and_then(|s| s.get("status"))
+                .and_then(|v| v.as_str())
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+            {
+                Some("error" | "failed" | "failure") => Some(AgentStatus::Blocked),
+                _ => Some(AgentStatus::Done),
+            },
+            _ => None,
+        },
+        // ---- Agents that reimplement Claude Code's hook vocabulary ----------
+        // A fork (OpenClaude) or a CLI that adopted the same event names (Qwen
+        // Code, Kimi Code, Droid, Devin, Command Code, Auggie, Kiro). They differ
+        // in *which* of those events they emit, not in what each one means, so
+        // they share one table and each is narrowed to what it actually sends —
+        // registering an event a CLI never fires is harmless, but claiming a
+        // state it can't report is not.
+        // Goose follows the Open Plugins hook spec, whose event names are Claude
+        // Code's; it names the event `event` rather than `hook_event_name`,
+        // which the payload reader already accepts.
+        "openclaude" | "qwen" | "kimi" | "goose" => claude_vocabulary(event, source),
+        // Grok's vocabulary IS Claude's (it loads a Claude settings file
+        // unchanged) plus a `StopFailure` of its own, but it **dispatches in
+        // snake_case** — its `HookEventName` carries
+        // `#[serde(rename_all = "snake_case")]`, so the payload says `stop`, not
+        // `Stop`. Matching only PascalCase dropped every Grok report and left the
+        // card stuck on working with nothing able to move it.
+        "grok" => claude_vocabulary(&pascal_case(event), source),
+        // Droid, Devin, Kiro and Auggie expose the turn and tool loop plus an
+        // approval prompt (Auggie and Kiro have none). None of them reports an
+        // error event, so `blocked` is not something they can claim.
+        "droid" | "devin" | "kiro" | "auggie" => match event {
+            "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostCompaction" => {
+                Some(AgentStatus::Working)
+            }
+            "PermissionRequest" => Some(AgentStatus::Waiting),
+            "Stop" | "SessionEnd" => Some(AgentStatus::Done),
+            _ => None,
+        },
+        // Command Code exposes only the tool loop and the end of a turn: no
+        // prompt, permission or session event at all, so it reports `working`
+        // and `done` and can never claim to be waiting on the user.
+        "commandcode" => match event {
+            "PreToolUse" | "PostToolUse" => Some(AgentStatus::Working),
+            "Stop" => Some(AgentStatus::Done),
+            _ => None,
+        },
+        // Cursor names its events in camelCase and its turn ends at `stop`.
+        "cursor" => match event {
+            "beforeSubmitPrompt"
+            | "preToolUse"
+            | "postToolUse"
+            | "postToolUseFailure"
+            | "beforeShellExecution"
+            | "beforeMCPExecution"
+            | "preCompact" => Some(AgentStatus::Working),
+            "stop" | "sessionEnd" => Some(AgentStatus::Done),
+            _ => None,
+        },
+        // Copilot accepts both spellings in its config but dispatches the ones
+        // its own reference documents, so both are matched here — the same trap
+        // Grok's snake_case dispatch set, which silently dropped every report.
+        // `errorOccurred` makes it the third agent (with OpenCode and Grok) that
+        // reports a real `blocked` instead of one inferred from silence.
+        "copilot" => match event {
+            "userPromptSubmitted"
+            | "UserPromptSubmit"
+            | "userPromptTransformed"
+            | "preToolUse"
+            | "PreToolUse"
+            | "postToolUse"
+            | "PostToolUse"
+            | "postToolUseFailure"
+            | "PostToolUseFailure"
+            | "preCompact"
+            | "PreCompact" => Some(AgentStatus::Working),
+            "permissionRequest" | "PermissionRequest" | "notification" => {
+                Some(AgentStatus::Waiting)
+            }
+            "errorOccurred" | "ErrorOccurred" => Some(AgentStatus::Blocked),
+            "agentStop" | "Stop" | "sessionEnd" | "SessionEnd" => Some(AgentStatus::Done),
             _ => None,
         },
         // Pi / OMP share one in-process extension API; they only ever reach
@@ -188,12 +261,108 @@ pub fn normalize_event(
     }
 }
 
-/// Pull a `notification_type` out of a raw Claude `Notification` payload.
-fn notification_type(source: &Value) -> Option<String> {
+/// Claude Code's hook vocabulary, shared by the CLIs that reimplement it.
+///
+/// `SessionStart` is absent on purpose — it is a boundary, not a state (see
+/// [`is_session_boundary`]). `StopFailure` is a turn that died on an API/model
+/// error: the agent stops without ever sending `Stop`, so without this arm the
+/// card would spin forever.
+fn claude_vocabulary(event: &str, source: Option<&Value>) -> Option<AgentStatus> {
+    match event {
+        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "PreCompact"
+        | "PostCompact" => Some(AgentStatus::Working),
+        "PermissionRequest" => Some(AgentStatus::Waiting),
+        "StopFailure" => Some(AgentStatus::Blocked),
+        "Stop" | "SessionEnd" => Some(AgentStatus::Done),
+        // Only the notification kinds that genuinely block on the user mid-turn
+        // mean `waiting`; the post-turn idle notice is the resting state, and an
+        // unrecognized kind must never override the turn's real state.
+        "Notification" => match source.and_then(notification_type).as_deref() {
+            Some("permission_prompt" | "elicitation_dialog" | "agent_needs_input") => {
+                Some(AgentStatus::Waiting)
+            }
+            Some("idle_prompt") => Some(AgentStatus::Done),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Whether this event marks the **start of a provider session** rather than a
+/// state — the moment a CLI's TUI opens, resumes or is cleared.
+///
+/// This is not a nuance: a session-start event fires while the agent sits at an
+/// empty prompt with nothing asked of it. Mapping it to `working` (as Codex and
+/// Grok did) painted a green pulsing dot the instant the TUI opened, and since
+/// the next event only arrives when the user finally types, **nothing could move
+/// it** — the tab claimed to be working for as long as it stayed unused.
+/// Measured against the running Codex CLI, opening a session emits exactly
+/// `SessionStart {"source":"startup"}` and then nothing until the first prompt.
+///
+/// So it is treated as a boundary: the tab's cached state is dropped (a new
+/// session owns it now — the previous turn's prompt, tool, reply and children no
+/// longer describe anything) while the session identity the payload carries is
+/// kept for resume. The tab falls back to a neutral idle until the agent really
+/// does something.
+///
+/// `source` is honoured as an allowlist when present, because the same event
+/// name also fires *mid-turn* after a compaction, which must not wipe a live
+/// turn. A payload with no `source` at all is taken as a boundary — for the CLIs
+/// that omit it, opening/resuming is the only thing this event ever means.
+pub fn is_session_boundary(agent_type: &str, event: &str, source: Option<&Value>) -> bool {
+    let is_start = matches!(
+        (agent_type, pascal_case(event).as_str()),
+        (
+            "claude"
+                | "codex"
+                | "grok"
+                | "qwen"
+                | "auggie"
+                | "droid"
+                | "devin"
+                | "copilot"
+                | "openclaude"
+                | "cursor"
+                | "kiro"
+                | "goose",
+            "SessionStart"
+        ) | ("kiro", "AgentSpawn")
+            // Amp's plugin reports its native name; a thread session starting is
+            // the same boundary, and nothing has been asked of it yet.
+            | ("amp", "Session.start")
+    );
+    if !is_start {
+        return false;
+    }
+    match source.and_then(session_start_source) {
+        Some(s) => matches!(s.as_str(), "startup" | "resume" | "clear"),
+        None => true,
+    }
+}
+
+/// The `source` of a session-start payload (`startup` / `resume` / `clear` /
+/// `compact`), lowercased. Absent when the provider doesn't report one.
+fn session_start_source(source: &Value) -> Option<String> {
     source
-        .get("notification_type")
+        .get("source")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+}
+
+/// Pull the kind out of a raw `Notification` payload.
+///
+/// Three spellings, because the same event is not spelled the same way twice:
+/// Claude sends `notification_type`, and the CLIs that copied its vocabulary
+/// carry their payloads in camelCase throughout (Grok's own fields are
+/// `hookEventName` / `sessionId`), so a snake_case-only read would find nothing
+/// and silently treat every notification as unclassifiable.
+fn notification_type(source: &Value) -> Option<String> {
+    ["notification_type", "notificationType", "type"]
+        .iter()
+        .find_map(|k| source.get(*k).and_then(|v| v.as_str()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// `snake_case` → `PascalCase`, leaving an already-Pascal name untouched.
@@ -269,6 +438,21 @@ fn source_tool(source: &Value) -> Option<String> {
         .filter(|s| !s.trim().is_empty())
 }
 
+/// The agent's final reply, when its completion payload carries one.
+///
+/// Worth reading before falling back to the transcript: measured against the
+/// running CLI, Codex's `Stop` carries `last_assistant_message` with the answer
+/// in it, so its card can show the reply instead of a bare status — without
+/// opening (or being allowed to open) any file. Claude sends the same field on
+/// `SubagentStop`, so the spelling is already known to be shared.
+fn source_reply(source: &Value) -> Option<String> {
+    ["last_assistant_message", "lastAssistantMessage"]
+        .iter()
+        .find_map(|k| source.get(*k).and_then(|v| v.as_str()))
+        .map(|s| tidy(s, PREVIEW_MAX))
+        .filter(|s| !s.is_empty())
+}
+
 /// Whether a raw provider `Stop`/result payload signals the agent was
 /// interrupted (user hit Esc / Ctrl-C) rather than finishing naturally.
 fn source_interrupted(source: &Value) -> bool {
@@ -314,7 +498,14 @@ fn source_subagent(source: &Value) -> Option<(String, Option<String>, Option<Str
 /// natively (`SubagentStart`/`SubagentStop`); OpenCode's plugin maps its
 /// child-session lifecycle to the same names, so the routing is agent-agnostic.
 fn is_subagent_event(event: &str) -> bool {
-    matches!(event, "SubagentStart" | "SubagentStop")
+    // Matched on the normalized spelling: Cursor and Copilot dispatch
+    // `subagentStart` / `subagentStop`, and matching only PascalCase would route
+    // their children into the parent's own status — flipping the parent to
+    // `working` every time it spawned one, and to `done` before it had finished.
+    matches!(
+        pascal_case(event).as_str(),
+        "SubagentStart" | "SubagentStop"
+    )
 }
 
 /// Collapse whitespace and truncate for a one-glance notification preview.
@@ -511,6 +702,40 @@ pub struct AgentStatusEvent {
     pub session: Option<AgentSession>,
     pub first_seen: i64,
     pub last_update: i64,
+}
+
+/// The `agent:status-cleared` event payload: a provider session boundary (its
+/// TUI opened, resumed or was cleared) dropped this tab's cached state.
+///
+/// A separate event rather than a status, because there is no state to report —
+/// the agent is present and at rest, which is exactly the neutral idle the
+/// display already derives when no hook state exists. It still carries the two
+/// things the frontend must not lose: the agent kind (so a hand-typed agent
+/// keeps the identity its hook sealed) and the freshly started session (so
+/// restore/wake can resume it).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentStatusClearedEvent {
+    pub agent_id: String,
+    pub agent_type: Option<String>,
+    pub session: Option<AgentSession>,
+}
+
+/// Broadcast a session boundary to the frontend as `agent:status-cleared`.
+fn emit_agent_status_cleared(
+    app: &AppHandle,
+    agent_id: String,
+    agent_type: Option<String>,
+    session: Option<AgentSession>,
+) {
+    let _ = app.emit(
+        "agent:status-cleared",
+        AgentStatusClearedEvent {
+            agent_id,
+            agent_type,
+            session,
+        },
+    );
 }
 
 /// Broadcast a cached agent entry to the frontend as `agent:status-changed`.
@@ -776,7 +1001,10 @@ async fn handle_hook(
     // WITHOUT touching the parent's own status (a child spawn/finish must not flip
     // the parent), then broadcast the parent entry with its updated child list.
     if event.as_deref().is_some_and(is_subagent_event) {
-        let child_status = if event.as_deref() == Some("SubagentStart") {
+        // Normalized, for the same reason `is_subagent_event` is: a camelCase
+        // `subagentStart` would otherwise be read as the child having finished.
+        let child_status = if event.as_deref().map(pascal_case).as_deref() == Some("SubagentStart")
+        {
             AgentStatus::Working
         } else {
             AgentStatus::Done
@@ -816,6 +1044,22 @@ async fn handle_hook(
     let status = match direct_status {
         Some(s) => s,
         None => match (agent_type.as_deref(), event.as_deref()) {
+            // A session boundary is not a state — a new session owns this tab, so
+            // the previous one's cached turn is dropped (keeping the session
+            // identity this payload carries, which is what resume needs) and the
+            // tab reads as a neutral idle until the agent actually does something.
+            (Some(at), Some(ev)) if is_session_boundary(at, ev, source) => {
+                let now = now_secs();
+                let session = source.and_then(|s| extract_session(s, now));
+                let state = ctx.app.state::<AppState>();
+                {
+                    let mut data = state.data.write().await;
+                    data.clear_agent_state(&agent_id);
+                    let _ = state.persistence.save(&data);
+                }
+                emit_agent_status_cleared(&ctx.app, agent_id, agent_type, session);
+                return StatusCode::NO_CONTENT;
+            }
             (Some(at), Some(ev)) => match normalize_event(at, ev, source) {
                 Some(s) => s,
                 // Not a state-changing event — ignore, don't cache a lie.
@@ -843,7 +1087,9 @@ async fn handle_hook(
     let tool = body_get("tool")
         .filter(|s| !s.trim().is_empty())
         .or_else(|| source.and_then(source_tool));
-    let mut summary = body_get("summary").filter(|s| !s.trim().is_empty());
+    let mut summary = body_get("summary")
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| source.and_then(source_reply));
 
     // On a completion, enrich with the task + a short response preview, read
     // from the session transcript the hook pointed us at. Only Claude fills the
@@ -1163,16 +1409,121 @@ mod tests {
     }
 
     #[test]
+    fn session_start_is_a_boundary_not_work() {
+        let start = codex_session_start();
+        assert!(is_session_boundary("codex", "SessionStart", Some(&start)));
+        // …and it must not also resolve to a state, or the boundary would be
+        // shadowed by a `working` the moment the ordering changed.
+        assert_eq!(normalize_event("codex", "SessionStart", Some(&start)), None);
+
+        // Grok dispatches in snake_case (its config takes PascalCase aliases).
+        let grok = json!({ "hook_event_name": "session_start", "source": "startup" });
+        assert!(is_session_boundary("grok", "session_start", Some(&grok)));
+
+        // A resumed or cleared session is the same boundary…
+        for source in ["resume", "clear"] {
+            let ev = json!({ "source": source });
+            assert!(is_session_boundary("codex", "SessionStart", Some(&ev)));
+        }
+        // …but a compaction fires the same event name MID-TURN, and wiping a live
+        // turn there would blank a working agent's card.
+        let compact = json!({ "source": "compact" });
+        assert!(!is_session_boundary(
+            "codex",
+            "SessionStart",
+            Some(&compact)
+        ));
+        // No `source` reported at all: the event only ever means "a session
+        // opened" for those CLIs, so it still counts.
+        assert!(is_session_boundary("codex", "SessionStart", None));
+
+        // Only session-start events, and only for agents that emit one.
+        assert!(!is_session_boundary(
+            "codex",
+            "Stop",
+            Some(&codex_session_start())
+        ));
+        assert!(!is_session_boundary("opencode", "SessionStart", None));
+    }
+
+    #[test]
+    fn codex_stop_carries_the_reply() {
+        // Captured from the running CLI: Codex reports no `summary`, but its
+        // `Stop` holds the answer — so the card can show the reply rather than a
+        // bare status, with no transcript file involved.
+        let stop = json!({
+            "hook_event_name": "Stop",
+            "session_id": "019fdd8a-d95e-7883-a78c-a291a89dd5e3",
+            "stop_hook_active": false,
+            "last_assistant_message": "ok"
+        });
+        assert_eq!(source_reply(&stop).as_deref(), Some("ok"));
+        assert_eq!(source_reply(&json!({ "hook_event_name": "Stop" })), None);
+        // Whitespace-only is nothing to show.
+        assert_eq!(
+            source_reply(&json!({ "last_assistant_message": "  \n " })),
+            None
+        );
+    }
+
+    #[test]
+    fn clearing_state_drops_only_the_named_agent() {
+        let mut data = crate::model::AppData::default();
+        for id in ["tab-a", "tab-b"] {
+            data.upsert_agent_state(
+                AgentReport {
+                    agent_id: id.into(),
+                    status: AgentStatus::Working,
+                    agent_type: Some("codex".into()),
+                    prompt: Some("old turn".into()),
+                    tool: None,
+                    interrupted: false,
+                    summary: None,
+                    session: None,
+                },
+                1,
+            );
+        }
+        assert!(data.clear_agent_state("tab-a"));
+        assert!(!data.agent_cache.iter().any(|e| e.agent_id == "tab-a"));
+        assert!(data.agent_cache.iter().any(|e| e.agent_id == "tab-b"));
+        // Clearing what isn't there is a no-op, not an error.
+        assert!(!data.clear_agent_state("tab-a"));
+    }
+
+    /// The exact `SessionStart` Codex posts when its TUI opens — captured from
+    /// the running CLI, not written from the docs.
+    fn codex_session_start() -> Value {
+        json!({
+            "session_id": "019fdd8a-d95e-7883-a78c-a291a89dd5e3",
+            "transcript_path": "C:\\Users\\u\\.codex\\sessions\\2026\\08\\07\\rollout-019fdd8a.jsonl",
+            "cwd": "C:\\tmp",
+            "hook_event_name": "SessionStart",
+            "model": "gpt-5.6-luna",
+            "permission_mode": "bypassPermissions",
+            "source": "startup"
+        })
+    }
+
+    #[test]
     fn normalize_event_maps_grok_and_antigravity() {
         // Grok speaks Claude's vocabulary, and adds a real error state of its own.
         assert_eq!(
             normalize_event("grok", "UserPromptSubmit", None),
             Some(AgentStatus::Working)
         );
+        // A notification is only `waiting` when it says it is one of the kinds
+        // that actually blocks on the user. A bare notification with no kind is
+        // NOT: Grok emits routine ones (a tool-permission notice it fires even
+        // when permissions are bypassed, and an idle nudge once the turn ends),
+        // and mapping them all to `waiting` is what parked finished sessions in
+        // the "Needs you" lane. Its payloads are camelCase throughout.
+        let grok_permission = json!({ "notificationType": "permission_prompt" });
         assert_eq!(
-            normalize_event("grok", "Notification", None),
+            normalize_event("grok", "notification", Some(&grok_permission)),
             Some(AgentStatus::Waiting)
         );
+        assert_eq!(normalize_event("grok", "Notification", None), None);
         assert_eq!(
             normalize_event("grok", "StopFailure", None),
             Some(AgentStatus::Blocked)
@@ -1237,10 +1588,19 @@ mod tests {
             normalize_event("claude", "Notification", Some(&chatty)),
             None
         );
+        // Codex reports a permission prompt as `PermissionRequest`; it has no
+        // `Notification` hook at all (verified against the running CLI), so the
+        // arm that used to map one was a mapping for an event that never arrives.
         assert_eq!(
-            normalize_event("codex", "Notification", None),
+            normalize_event("codex", "PermissionRequest", None),
             Some(AgentStatus::Waiting)
         );
+        assert_eq!(normalize_event("codex", "Notification", None), None);
+        // Opening a session is not work: neither Codex nor Grok may mint a
+        // `working` from it (see `is_session_boundary`), or the tab claims to be
+        // busy from the moment its TUI opens until the user finally types.
+        assert_eq!(normalize_event("codex", "SessionStart", None), None);
+        assert_eq!(normalize_event("grok", "session_start", None), None);
         assert_eq!(
             normalize_event("gemini", "BeforeTool", None),
             Some(AgentStatus::Working)

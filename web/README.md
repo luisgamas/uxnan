@@ -43,7 +43,7 @@ npm run dev          # http://localhost:3100
 | Command | What it does |
 |---|---|
 | `npm run dev` | dev server on port 3100 |
-| _(`predev` / `prebuild`)_ | `scripts/sync-agent-marks.mjs` copies `assets/agents/*.svg` into `public/agents/`; runs automatically |
+| _(`predev` / `prebuild`)_ | `scripts/sync-agent-marks.mjs` copies `assets/agents/*.{svg,png}` into `public/agents/`; runs automatically |
 | `npm run build` | static export into `out/` |
 | `npm run start` | serve the built `out/` on port 3100 |
 | `npm run lint` | ESLint (`next/core-web-vitals` + TypeScript) |

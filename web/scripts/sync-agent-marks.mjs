@@ -20,7 +20,11 @@ if (!existsSync(source)) {
 
 mkdirSync(target, { recursive: true });
 
-const marks = readdirSync(source).filter((name) => name.endsWith(".svg"));
+// Both kinds: hand-drawn marks (`.svg`) and the vendored favicons (`.png`) that
+// every other agent uses — see `scripts/fetch-agent-favicons.mjs`.
+const marks = readdirSync(source).filter(
+  (name) => name.endsWith(".svg") || name.endsWith(".png"),
+);
 for (const mark of marks) {
   cpSync(join(source, mark), join(target, mark));
 }

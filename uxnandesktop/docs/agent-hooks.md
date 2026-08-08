@@ -2,7 +2,7 @@
 
 ![States](https://img.shields.io/badge/states-working_%7C_blocked_%7C_waiting_%7C_done-2ea44f?style=for-the-badge)
 ![Server](https://img.shields.io/badge/hook_server-127.0.0.1_(loopback)-0a0a0a?style=for-the-badge)
-![Agents](https://img.shields.io/badge/precise-Claude_%7C_Codex_%7C_Gemini_%7C_OpenCode_%7C_Pi-D97757?style=for-the-badge)
+![Agents](https://img.shields.io/badge/precise-21_agents-D97757?style=for-the-badge)
 ![Others](https://img.shields.io/badge/other_agents-generic_wrapper-blue?style=for-the-badge)
 
 The ADE infers a coarse **working / idle** state from terminal output with no
@@ -10,22 +10,78 @@ setup. To get **precise** states — `working`, `blocked`, `waiting`, `done` —
 agent must actively report them to the ADE's local **hook server** (Layer 1 of
 the monitoring design, spec `architecture/02d-agent-monitoring.md` §1.1).
 
-The ADE ships a reporter for each of its six most-used agents — **Claude Code,
-Codex, OpenCode, Pi, Grok and Antigravity** — and installs them **automatically
-on startup** (you can turn that off any time). The **Gemini CLI** reporter is
-still wired but no longer installed or offered, since Google discontinued that
-CLI in favour of Antigravity; if you already have it installed, its card stays in
-the panel so you can turn it off. Each reporter is picked to be robust
-across every shell you might launch the agent from (cmd, PowerShell, PowerShell
-7, Git Bash, WSL, bash, zsh, fish), because the agent's *own* hook runner
-executes it. Any other agent is **opt-in**: point it at the generic wrapper.
+The ADE ships a managed reporter for **twenty-one** agents and installs them
+**automatically on startup** (you can turn that off any time):
+
+| Agent | Where its reporter is installed |
+|---|---|
+| Claude Code | `~/.claude/settings.json` |
+| Codex | `~/.codex/hooks.json` (+ the trust hash in `config.toml`) |
+| OpenCode | its `plugins/` dir |
+| Pi / OMP | `~/.pi/agent/extensions/` |
+| Grok | `~/.grok/hooks/uxnan-status.json` |
+| Antigravity | `~/.gemini/config/hooks.json` |
+| OpenClaude | `~/.openclaude/settings.json` |
+| Qwen Code | `~/.qwen/settings.json` |
+| Droid (Factory) | `~/.factory/settings.json` |
+| Devin | `%APPDATA%\devin\config.json` · `~/.config/devin/config.json` |
+| Command Code | `~/.commandcode/settings.json` |
+| Auggie | `~/.augment/settings.json` |
+| Cursor | `~/.cursor/hooks.json` |
+| GitHub Copilot | `~/.copilot/hooks/uxnan-status.json` |
+| Kiro | `~/.kiro/hooks/uxnan-status.json` |
+| Kimi Code | `~/.kimi-code/config.toml` (a marked block) |
+| Goose | `~/.agents/plugins/uxnan-status/hooks/hooks.json` |
+| MiMo Code | its `plugins/` dir (`~/.config/mimocode/plugins/`) |
+| Kilo Code | its `plugin/` dir (`~/.config/kilo/plugin/`) |
+| Amp | its `plugins/` dir (`~/.config/amp/plugins/`) |
+| OMP | its own extensions dir (`~/.omp/agent/extensions/`) |
+
+The **Gemini CLI** reporter is still wired but no longer installed or offered,
+since Google discontinued that CLI in favour of Antigravity; if you already have
+it installed, its card stays in the panel so you can turn it off. Each reporter
+is picked to be robust across every shell you might launch the agent from (cmd,
+PowerShell, PowerShell 7, Git Bash, WSL, bash, zsh, fish), because the agent's
+*own* hook runner executes it. Any other agent is **opt-in**: point it at the
+generic wrapper.
+
+**Only the agents you actually have are wired at startup** — an executable on
+`PATH`, or a config file already there. The ADE knows how to report for more CLIs
+than any one machine runs, and creating another product's config folder unasked
+is not its business. Installing one by hand from Settings is never gated: asking
+for it is answer enough.
 
 > **TL;DR.** Open **Settings → Agents → Hooks**:
-> - **Claude Code / Codex / Gemini / OpenCode / Pi** → already installed (auto on
->   startup). The **Install agent hooks** switch turns them off (and keeps them
->   off next launch) or back on; each agent also has its own Install/Uninstall.
+> - The agents on your machine are listed first and are **already installed**
+>   (auto on startup). The **Install agent hooks** switch turns them off (and
+>   keeps them off next launch) or back on; each agent also has its own
+>   Install/Uninstall and a **Show config** disclosure with the exact bytes the
+>   ADE writes.
 > - **Anything else** → use the **generic wrapper** as the agent's launch
 >   command (full step-by-step per OS below).
+
+**Nine agents in the catalog have no precise state, and that is on record rather
+than hidden.** An agent earns a reporter only when its CLI can say a turn
+*ended* — without that the card would start a spinner it can never stop, which
+is worse than an honest "no idea". They stay in the catalog, launch normally, and
+show the coarse working/idle inference; point them at the [generic
+wrapper](#install--any-other-agent-generic-wrapper) and you get `working` on
+launch and `done` on exit, which for many workflows is enough.
+
+| Agent | Why it has no precise state |
+|---|---|
+| Crush | Hooks exist but only `PreToolUse` ships so far — enough to say "working", never "done". |
+| Cline | Its CLI hooks are documented as macOS/Linux only, and the registration format isn't published. |
+| Rovo Dev | Has event hooks (`/hooks`, `~/.rovodev/config.yml`) but Atlassian documents no event list or payload shape. |
+| Aider | The lifecycle hooks belong to AiderDesk (a separate GUI); the CLI has an open request for them. |
+| Continue · Mistral Vibe · Codebuff · Autohand · Ante | No turn-lifecycle hook or plugin surface published. `codebuff.json` covers file-change and startup processes, not turns. |
+
+**This list is an invitation.** If you use one of them and its CLI grows a hook
+surface — or you find one we missed — wiring it is usually a single row in
+`agent_hooks::TABLE_AGENTS` plus an arm in `hooks::normalize_event`, both
+described under [Install](#install--the-built-in-agents-automatic). A pull
+request with that row (and what you measured the CLI actually emits) is the
+fastest way for the agent you use to get precise states.
 
 ---
 
@@ -44,6 +100,19 @@ distinct, precise states** plus a derived idle:
 | `idle` *(derived)* | Agent at rest, no precise report | Gray |
 | `stale` *(any)* | No update in > 30 min | Same color, dimmed (`opacity-40`) |
 
+> **Opening a session is not work.** Most of these CLIs fire a `SessionStart`
+> when their TUI opens or resumes — before you have asked for anything. Reading
+> it as `working` painted a green pulsing dot the instant the terminal opened,
+> and since the next event only arrives when you finally type, **nothing could
+> move it**: the tab claimed to be busy for as long as it went unused (measured
+> on Codex, which emits exactly `SessionStart {"source":"startup"}` and then
+> nothing). It is treated as a **boundary** instead: the tab's cached turn is
+> dropped — a new session owns it, so the old prompt, tool, reply and sub-agents
+> describe nothing — while the session identity the event carries is kept for
+> resume, and the tab shows the neutral `idle` until the agent really works. A
+> `SessionStart` fired *mid-turn* by a compaction is excluded by its `source`, so
+> a live turn is never wiped.
+>
 > **`done` vs `waiting`.** A finished turn reads as **`done`** (the resting state) —
 > even though the agent is technically idle at its prompt waiting for your next
 > message. `waiting` is reserved for a genuine **mid-turn** prompt where the agent
@@ -107,7 +176,7 @@ The reporters (one per agent, plus the generic wrapper) — full table in
 |---|---|---|
 | `uxnan-status-relay.cjs` | Claude Code, Gemini CLI | Node relay (both agents *are* Node, so `node` is guaranteed → works from any shell). Forwards the raw event; the server normalizes it. |
 | `uxnan-codex-hook.{sh,cmd}` | Codex | `curl` hook (Codex is a Rust binary — no Node). Paired with a `trusted_hash` in `~/.codex/config.toml`. |
-| `uxnan-event-hook.{sh,cmd}` | Grok, Antigravity | `curl` reporter with the agent kind as its argument (both are single native binaries — Rust and Go — so no Node). |
+| `uxnan-event-hook.{sh,cmd}` | Grok, Antigravity + every declaratively-wired CLI | `curl` reporter with the agent kind as its argument, so one script serves every CLI whose hook runner executes a command and pipes it the raw event JSON. It answers `{}` on stdout, because several of these CLIs parse it and **Cursor gates tool use on it** — a reporter that printed nothing would block the agent's file reads and shell commands, not merely fail to report. On Windows its command is written with **backslashes**: a CLI that hands the command to `cmd.exe` splits a forward-slashed path at the first `/` (`…oaming is not recognized as an internal or external command` — measured against the real Cursor CLI). |
 | `uxnan-opencode-status.js` | OpenCode | In-process plugin. |
 | `uxnan-pi-status.js` | Pi / OMP | In-process extension. |
 | `uxnan-hook-wrapper.{sh,ps1,cmd,fish}` | any CLI agent | Generic wrapper: `working` before exec, `done` on exit. |
@@ -120,7 +189,7 @@ spawns (inherited by any agent run inside that terminal):
 | `UXNAN_HOOK_URL` | Full POST endpoint, e.g. `http://127.0.0.1:51234/hook` |
 | `UXNAN_HOOK_TOKEN` | Shared secret for this ADE launch (sent as `X-Uxnan-Token`) |
 | `UXNAN_AGENT_ID` | This terminal's id — echo it back as `agentId` |
-| `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd` — a file the ADE rewrites every launch with the live url + token. Reporters prefer it, so a terminal that outlived an app restart still reaches the live server. |
+| `UXNAN_ENDPOINT_FILE` | Path to `endpoint.env` / `endpoint.cmd` — a file the ADE rewrites every launch with the live url + token. It is the **rescue**, not the first choice: a reporter uses the terminal's own environment and falls back to this file only when that fails, which is what a terminal that outlived an app restart needs. |
 
 You never need to set these by hand — the reporters pick them up from the
 environment, and so does anything else you write against the contract.
@@ -131,12 +200,46 @@ environment, and so does anything else you write against the contract.
 > a hook running *inside* WSL2 can't reach the host's hook server — a known
 > limitation. WSL1 and native Windows/macOS/Linux shells work.
 
+### More than one uxnan window
+
+Every window runs its own hook server on its own port with its own token, and
+each terminal is given its window's coordinates in its environment. That is what
+makes a report land in the window that launched the agent.
+
+The endpoint file cannot do that job: it lives at **one shared path**, so a
+second window overwrites it with its own coordinates. Reporters used to prefer
+it, which meant the moment you opened a second window every agent in the first
+one started reporting to the second — its cards stopped moving, and a finished
+turn never showed its check. Now the environment wins and the file is only tried
+when the environment's server does not answer, so both windows work at once and
+an agent that outlived a restart is still rescued.
+
+One thing genuinely does not survive two windows: the **browser MCP** entry in
+each CLI's config holds a URL, and a config file has no per-window environment to
+read it from, so the last window to start owns it. A window whose entry was
+overwritten simply gets no browser tools (the token is per-window, so a
+cross-window call is refused rather than misrouted). Closing a window no longer
+deletes the other's entry, so reopening it restores its own.
+
 ---
 
-## Install — the six built-in agents (automatic)
+## Install — the built-in agents (automatic)
 
 On every startup (unless you turned it off) the ADE installs the managed reporter
-for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
+for each agent in the table above that this machine actually has.
+
+**How a new agent gets wired.** Ten of them (Cursor, Copilot, Droid, Devin, Qwen
+Code, Auggie, Kiro, Kimi, Command Code, OpenClaude) are pure data —
+`agent_hooks.rs` → `TABLE_AGENTS` names the config file, the shape our entry
+takes in it, and the events to register; the shared `uxnan-event-hook` reporter
+does the rest. Adding one is a table row plus a `normalize_event` arm in
+`hooks.rs` (their ids must match — a test enforces it, because a typo there
+installs perfectly and then discards every report), plus its one-line
+description in `en.ts`/`es.ts`. The six above it each needed machinery of their
+own — a Node relay, a trust hash, an in-process plugin, a dot-relative command —
+which is why they are still hand-written.
+
+The per-agent notes below are what each CLI made us learn the hard way:
 
 - **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`. Grok merges
   every `*.json` in that folder, so nothing of yours is ever read or rewritten,
@@ -185,12 +288,25 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
   back to the path's **8.3 short form** when needed; if the OS won't produce one,
   the panel says so instead of installing a hook that would never fire.
 
-- **Per-event merge, user-preserving.** For the JSON-config agents (Claude,
-  Codex, Gemini) the reporter is merged into each event of the agent's config
-  (`~/.claude/settings.json`, `~/.codex/hooks.json`, `~/.gemini/settings.json`)
+- **Per-event merge, user-preserving.** For every agent whose hooks live in a
+  config file you also own (Claude, Codex, Gemini, OpenClaude, Qwen, Droid,
+  Devin, Command Code, Auggie, Cursor), the reporter is merged event by event
   **without touching your existing hooks**. A managed entry is recognised by the
-  script/relay it references, so re-installing self-heals a moved path and
-  Uninstall removes only ours.
+  reporter it references *and* the agent kind passed to it, so re-installing
+  self-heals a moved path, Uninstall removes only ours, and two of our own
+  reporters can share one config file without either uninstall taking the other
+  down with it.
+- **Cursor's schema puts the command on the definition** (Claude nests it under
+  `hooks`), names its events in camelCase, and requires a `version`. Both shapes
+  are swept on install, so a repeat never stacks a second entry.
+- **A file of our own** is used where the CLI merges everything in a directory:
+  Grok (`~/.grok/hooks/`), Copilot (`~/.copilot/hooks/`) and Kiro
+  (`~/.kiro/hooks/`). Nothing of yours is read or rewritten, and uninstall is a
+  single delete.
+- **Kimi Code keeps its settings in TOML**, and the ADE vendors no TOML writer,
+  so its reporter is a marker-delimited block appended to `~/.kimi-code/config.toml`.
+  Everything outside those markers is left byte-for-byte alone; a hand-deleted
+  end marker is still recovered on the next install rather than accumulating.
 - **Codex trust.** Codex 0.129+ only runs a hook whose exact identity is trusted;
   the ADE also writes the reproduced `trusted_hash` into `~/.codex/config.toml`,
   so the hook actually fires (a raw `hooks.json` alone would sit un-run).
@@ -200,13 +316,12 @@ for each of Claude Code, Codex, OpenCode, Pi, Grok and Antigravity:
   `settings.json` changes via a file watcher, but restarting is the sure path).
 
 In **Settings → Agents → Hooks**, a master **Install agent hooks** switch installs
-/ removes all five and persists the choice (`AppSettings.autoInstallHooks`); each
-agent card also has its own **Install** / **Uninstall** and an honest status
-badge. Every agent card has a **Show config** disclosure that inspects/copies the
-exact config the ADE installs — the `hooks` block for **Claude Code** / **Gemini
-CLI**, the `~/.codex/hooks.json` body for **Codex** (its `trusted_hash` in
-`config.toml` is managed automatically), and the plugin / extension source for
-**OpenCode** / **Pi**.
+/ removes every agent and persists the choice (`AppSettings.autoInstallHooks`).
+The pane lists the agents on this machine first and everything else after; each
+one has its own **Install** / **Uninstall**, an honest status badge, the path its
+reporter is written to, and a **Show config** disclosure rendering the exact
+bytes the ADE writes (for OpenCode and Pi — whose reporter *is* a file — its
+source).
 
 **Verify.** Launch Claude Code in any terminal. The tab should show a colored
 dot from a precise state (working while it's thinking / using a tool, waiting

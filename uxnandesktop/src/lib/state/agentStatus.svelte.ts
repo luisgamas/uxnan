@@ -20,7 +20,12 @@ import { app } from './app.svelte';
 import { toast } from '$lib/toast';
 import { notify } from '$lib/notify';
 import { i18n } from '$lib/i18n';
-import type { AgentStatus, AgentStatusEvent, SubagentEntry } from '$lib/types';
+import type {
+  AgentStatus,
+  AgentStatusClearedEvent,
+  AgentStatusEvent,
+  SubagentEntry,
+} from '$lib/types';
 
 /** Below this the terminal has nothing worth naming a conversation from. */
 const MIN_TRANSCRIPT_CHARS = 80;
@@ -118,6 +123,23 @@ class AgentStatusStore {
       });
     } catch {
       this.started = false; // no Tauri event bus
+    }
+    try {
+      // A provider session boundary (the agent's TUI opened / resumed / was
+      // cleared): forget the previous session's state instead of leaving it on
+      // the card. Deliberately silent — nothing finished, so no toast, no
+      // notification and no unread badge; the tab just goes back to a neutral
+      // idle until the agent really works. The identity and the new session are
+      // still taken from it, which is what makes a resumed tab resumable again.
+      await listen<AgentStatusClearedEvent>('agent:status-cleared', (e) => {
+        const p = e.payload;
+        const { [p.agentId]: _dropped, ...rest } = this.byId;
+        this.byId = rest;
+        this.sealIdentity({ agentId: p.agentId, agentType: p.agentType });
+        if (p.session) terminals.recordAgentSession(p.agentId, p.agentType, p.session);
+      });
+    } catch {
+      // No Tauri event bus (web preview) — nothing to unsubscribe.
     }
   }
 
@@ -238,7 +260,7 @@ class AgentStatusStore {
    *  detection matching its executable name (a wrapper / renamed / node-launched
    *  agent would otherwise report state but stay invisible). Only seals a tab with
    *  no identity yet — a launched or already-detected identity always wins. */
-  private sealIdentity(p: AgentStatusEvent): void {
+  private sealIdentity(p: { agentId: string; agentType?: string | null }): void {
     const type = (p.agentType ?? '').trim();
     if (!type) return;
     const tab = terminals.findTab(p.agentId);
