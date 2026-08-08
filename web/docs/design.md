@@ -53,8 +53,9 @@ same software a visitor is about to download.
 2. **Only show states the product can actually be in.** Four agents, one of them
    idle; a subagent nested under its parent; a queued message that "delivers
    mid-turn" — each of those is a real feature. Never invent a control.
-3. **Never show an agent that is not offered.** The seven come from `AGENTS` in
-   `src/lib/site.ts`; the deprecated Gemini CLI must not appear.
+3. **Never show an agent that is not offered.** They come from `AGENTS_PRECISE`
+   and `AGENTS_BASIC` in `src/lib/site.ts`; the deprecated Gemini CLI must not
+   appear.
 4. **Keep the content plausible and boring.** Branch names, repo names and
    terminal output describe work on this monorepo. No invented customers, no
    fake handles, no personal paths.
@@ -76,6 +77,33 @@ same software a visitor is about to download.
    `<img>`, and `openclaude.svg` ships solid black. The phone mockups must
    **not** invert: their tiles are white, which is exactly where a black mark
    belongs. Claude's orange and Antigravity's gradient are never touched.
+7. **Icons are Hugeicons, and the desktop mockup uses the app's own glyph.**
+   The site draws [`@hugeicons/core-free-icons`](https://www.npmjs.com/package/@hugeicons/core-free-icons)
+   (MIT), imported one glyph per subpath so a page only bundles what it draws,
+   through the upstream `HugeiconsIcon` component from `@hugeicons/react`.
+
+   The desktop app draws the same set but through a primitive of its own
+   (`uxnandesktop/docs/design-tokens.md` → *The icon set*), because
+   `@hugeicons/svelte` paints inside `onMount` and never repaints when its
+   `icon` prop changes. **None of that applies here:** the React component is a
+   plain `createElement` tree, so it renders during the static export — and it
+   has to, since a marketing page whose icons only appear after hydration is a
+   page that ships blank squares. If you change how icons are drawn, re-check
+   `out/index.html` for empty `<svg>` elements; the build will not tell you.
+
+   **Where a mockup recreates a screen, take the glyph the app takes.** The
+   agent state icons in the desktop window are the same three
+   `AgentStatusIndicator.svelte` draws — `CircleCheckIcon` for done,
+   `PauseCircleIcon` for blocked, `ChatQuestionIcon` for waiting, and CSS dots
+   for working — so the vocabulary a visitor learns here is the one they meet in
+   the app. The `core-free-icons` version is **pinned exactly**, in both
+   `package.json` files, for the same reason: a caret would let the drawn art
+   drift away from the app's on an unrelated install.
+
+   The phone screens are a knowing approximation: Uxnan Mobile is Flutter and
+   draws **Material** icons, which are not on this site at all. Hugeicons is the
+   closest single family the site can hold without shipping a second icon set,
+   and it is what the previous `lucide-react` was doing too.
 
 ## Phone mockups scale, they do not resize
 

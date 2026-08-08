@@ -1,4 +1,6 @@
-import { Coffee, Heart } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import CoffeeIcon from "@hugeicons/core-free-icons/Coffee02Icon";
+import HeartIcon from "@hugeicons/core-free-icons/HeartIcon";
 import { DownloadButton } from "@/components/download-button";
 import { Reveal } from "@/components/reveal";
 import { LICENSE, LINKS, SITE } from "@/lib/site";
@@ -72,13 +74,13 @@ const SUPPORT = [
   {
     label: "Sponsor on GitHub",
     href: LINKS.sponsor,
-    icon: <Heart className="size-4" />,
+    icon: <HugeiconsIcon icon={HeartIcon} className="size-4" />,
     hover: "#db61a2",
   },
   {
     label: "Buy the maintainer a coffee",
     href: LINKS.coffee,
-    icon: <Coffee className="size-4" />,
+    icon: <HugeiconsIcon icon={CoffeeIcon} className="size-4" />,
     hover: "#ffdd00",
   },
 ];
