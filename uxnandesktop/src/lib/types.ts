@@ -973,6 +973,11 @@ export interface SubagentEntry {
   id: string;
   agentType?: string | null;
   description?: string | null;
+  /** The tool the child is running right now. Only the CLIs whose children own a
+   *  session of their own report it (Grok, OpenCode); for Claude and Codex a
+   *  child's tool events carry the parent's session id, so they show on the
+   *  parent's line instead. */
+  tool?: string | null;
   status: AgentStatus;
   startedAt: number;
   lastUpdate: number;

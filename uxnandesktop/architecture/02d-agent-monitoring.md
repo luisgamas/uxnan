@@ -396,37 +396,73 @@ muestran.
 
 ### Subagentes (agentes hijos)
 
-Un agente puede lanzar **subagentes** (p. ej. la herramienta Task de Claude Code).
-Como el hijo corre **dentro del mismo proceso/PTY** que el padre, sus hooks llegan
-con el **mismo `agent_id`** (id del PTY) — la separacion sale de campos del payload
-crudo, no del envelope. El ADE suscribe los eventos de ciclo de vida
-`SubagentStart`/`SubagentStop` de Claude (`agent_hooks::CLAUDE_EVENTS`) y mantiene un
-**roster de subagentes por sesion** en la entrada del padre
-(`AgentStateEntry.subagents` + `model::upsert_subagent`), **sin tocar el estado del
-padre** (un spawn/fin de hijo no debe voltear al padre a `working`/`done`). El roster
-esta limitado (`MAX_SUBAGENTS = 32`; se descarta primero el hijo terminado mas
-antiguo). Cada reporte de subagente se difunde reusando `agent:status-changed` con la
-lista `subagents` actualizada.
+Un agente puede lanzar **subagentes**. El hijo corre bajo el **mismo PTY** que el
+padre, asi que sus hooks llegan con el **mismo `agent_id`** (id del PTY) — la
+separacion sale de campos del payload crudo, no del envelope. El ADE suscribe los
+eventos de ciclo de vida `SubagentStart`/`SubagentStop` y mantiene un **roster de
+subagentes por sesion** en la entrada del padre (`AgentStateEntry.subagents` +
+`model::upsert_subagent`), **sin tocar el estado del padre** (un spawn/fin de hijo no
+debe voltear al padre a `working`/`done`). El roster esta limitado
+(`MAX_SUBAGENTS = 32`; se descarta primero el hijo terminado mas antiguo). Cada
+reporte de subagente se difunde reusando `agent:status-changed` con la lista
+`subagents` actualizada.
+
+El ruteo es **agnostico al agente** (`hooks::is_subagent_event`, que normaliza la
+grafia: Grok despacha `subagent_start`, Cursor/Copilot `subagentStart`), y el
+extractor (`hooks::source_subagent`) sigue defensivo — **ignora un evento sin id de
+hijo estable**, nunca inventa una fila. Cuatro agentes estan cableados y **validados
+corriendolos de verdad y leyendo lo que emiten**:
+
+| Agente | Como lanza | id del hijo | Respuesta final |
+|---|---|---|---|
+| Claude Code 2.1.225 | herramienta `Agent` | `agent_id` | `last_assistant_message` |
+| Codex 0.147.0 | herramienta `spawn_agent` | `agent_id` | `last_assistant_message` |
+| Grok 0.2.118 | herramienta de subagente | `subagentId` | `lastAssistantMessage` |
+| OpenCode 1.18.15 | herramienta `task` (**sesion hija**) | id de la sesion hija | — |
+
+Codex expone los dos eventos con **el mismo payload que Claude**, asi que basta con
+suscribirse: van en `codex_trust::CODEX_EVENTS` con su etiqueta snake_case, porque su
+`trusted_hash` es **por evento** y una etiqueta equivocada deja el hook sin ejecutar.
+**Droid** dispara `SubagentStop` sin id de hijo, asi que su reporte se descarta.
+**Pi** no tiene subagentes; **Antigravity** y **OMP** si los tienen pero no los
+exponen donde los podamos leer (los hooks de Antigravity son solo su bucle de
+ejecucion; los de OMP viven en su capa RPC/TUI, no en el bus de plugins que usa su
+reporter).
+
+**De quien es el evento.** En Grok y OpenCode el hijo corre en **sesion propia** y sus
+eventos suben por el mismo canal, bajo el PTY del padre. Todo evento cuya sesion sea
+la de un hijo conocido (`model::is_subagent_session`) se atribuye a la fila de ese
+hijo (`model::touch_subagent_activity`, que registra su herramienta en curso) y **no
+llega al padre**. Medido en Grok: el hijo emite su propio `user_prompt_submit` — que
+pisaba el titulo de conversacion del padre — y su propio `session_end`, que mapea a
+`done` y dejaba al padre en "Done" **mientras seguia trabajando**; su id de sesion
+tambien acababa como la sesion capturada del tab, es decir, la que se reanuda. Claude
+y Codex no necesitan nada de esto: los eventos de sus hijos llevan la sesion del
+**padre**, asi que el uso de herramientas de un hijo es, honestamente, actividad del
+padre.
 
 En la agent view (`AgentRow.svelte`) los subagentes **activos** se muestran como
-**filas hijas indentadas** bajo el padre, cada una con su indicador de estado, y un
-**badge** en el padre resume activos/total. El display del padre esta **done-gated**
+**filas hijas indentadas** bajo el padre: indicador de estado, **tipo** del hijo como
+chip y su tarea (o la herramienta que corre ahora mismo, cuando el agente la reporta —
+hoy solo Grok, porque el plugin de OpenCode ya filtra los eventos de sus hijas dentro
+del CLI). Un hijo que termina **deja de listarse** pero sigue contando en el **badge**
+del padre, que resume activos/total. El display del padre esta **done-gated**
 (`agentDisplay.ts`): mientras un hijo siga `working`, el padre no se muestra `done`
 (evita un ✓ prematuro cuando un hijo de fondo sobrevive al `Stop` del padre).
 
-El roster es **agnostico al agente**: cualquier agente que reporte senales de hijo se
-enchufa. Hoy estan cableados **Claude** y **OpenCode**. En OpenCode una sub-tarea
-(`task`) corre como **sesion hija** (un `session.created` con `parentID`); su plugin
-la detecta, reporta su ciclo de vida como `SubagentStart`/`SubagentStop` (nombrada por
-su titulo `"… (@<nombre> subagent)"`) y **no deja que los eventos de una hija volteen
-el estado del padre** (antes una hija que terminaba leia el padre como `done`). El
-ruteo backend es agnostico al agente (`hooks::is_subagent_event`), asi Claude y
-OpenCode comparten un mismo camino de roster. Ambos estan **validados capturando
-eventos/payloads reales**: Claude Code **2.1.209** (`SubagentStart`/`Stop` traen
-`agent_id` + `agent_type`; `SubagentStop` agrega la respuesta final del hijo) y
-OpenCode **1.17.20** (eventos del bus con `session.created.parentID` + `sessionID`).
-El extractor (`hooks::source_subagent`) sigue defensivo — **ignora un evento sin id de
-hijo estable** (nunca inventa una fila) — por si los campos cambian entre versiones.
+La fila de un hijo **no lleva tiempo transcurrido**: el reloj compartido de la app
+tictaquea cada 30 s — bien para el "4m" del padre, inutil para un hijo que vive doce
+segundos, que se veria congelado y luego a saltos.
+
+Claude y Codex solo nombran la tarea del hijo **al terminar**, asi que mientras corre
+su fila dice `[general-purpose] Subagente`. Es deliberado: la tarea esta en la llamada
+a la herramienta que lo lanza, pero emparejarla con el hijo que aparece despues es una
+suposicion en cuanto se lanzan dos a la vez, y una fila que muestra con aplomo la
+tarea equivocada es peor que una que no muestra ninguna.
+
+> Los sellos de tiempo del roster llegan del backend en **segundos** y se escalan a ms
+> una sola vez, en `agentStatus.svelte.ts:toLive`, junto con los del padre — la UI
+> entera habla una sola unidad.
 
 ### 1.3 Capa 2: Deteccion por Titulo de Terminal
 

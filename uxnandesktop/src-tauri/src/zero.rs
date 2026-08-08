@@ -5,6 +5,14 @@
 //! file (matched by the worktree cwd) is the practical way to surface its
 //! conversation title. Like the rest of `fs`/`browse`, this is the user's own
 //! machine, so access is not confined.
+//!
+//! FOR-DEV: Zero *does* have a hooks CLI (`zero hooks add … --event`) whose event
+//! list includes `specialistStart`/`specialistStop` — its sub-agents — which would
+//! give it precise states and a roster instead of this file. It is not wired
+//! because on Zero 0.6.0 registering ANY hook makes the agent refuse every tool
+//! ("hook timed out before returning a verdict") while never actually running the
+//! hook's command — reproduced in its TUI and headless, see `FOR-DEV.md` →
+//! *Agent hooks*. Re-test that a declared hook really runs before wiring it.
 
 use std::path::{Path, PathBuf};
 

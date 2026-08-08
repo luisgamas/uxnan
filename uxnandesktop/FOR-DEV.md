@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 529 Rust tests (501 unit + 28
+always wins). 536 Rust tests (508 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 921 frontend Vitest tests across two
+probe) + 926 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -100,6 +100,16 @@ started.**
   `working/blocked/waiting/done` + persistent cache) + Layer 2 terminal-title
   (OSC, path/word-boundary-hardened) + Layer 3 process-tree detection; colored
   status dots, unread/done badges, custom agent logos, per-worktree agent override.
+- **Sub-agent rosters — four agents, each validated by running it**: Claude Code
+  2.1.225, Codex 0.147.0, Grok 0.2.118 and OpenCode 1.18.15. A running child is a
+  nested row under its parent (kind, task or current tool, elapsed), a finished one
+  leaves only the count badge, and the parent is done-gated. Where a child owns a
+  **session of its own** (Grok, OpenCode) its events are attributed to the child and
+  kept off the parent — the fix for a Grok child marking its parent `done`,
+  overwriting its conversation title, and hijacking the tab's resume id. Droid fires
+  `SubagentStop` with no child id, so it is ignored rather than shown as a nameless
+  row; Pi has no children; Antigravity and OMP have them but expose them only where
+  we don't drive (its execution-loop hooks / its RPC layer).
 - **Precise per-agent reporters (auto-installed, multi-shell)** — Claude Code +
   Gemini CLI use a Node relay (`node` guaranteed; Claude in exec-form so no shell
   is involved); Codex uses a `curl` hook + a reproduced `trusted_hash` in
@@ -144,8 +154,14 @@ started.**
   `last_assistant_message` its `Stop` carries), Grok (still reporting through the
   reporter that now answers `{}`), and Cursor's install (merged into a real
   `~/.cursor/hooks.json` beside another tool's hooks, then removed cleanly).
-  Cursor's own `-p` print mode runs no hooks at all in 2026.08.04, so its
-  reporting was confirmed at the install layer, not end to end.
+  Cursor's `-p` print mode **does** run hooks (2026.08.04) — the earlier reading
+  came from launching it out of Git Bash, where its own shell layer dies on
+  `syntax error near unexpected token '&'` and blocks every tool before a hook is
+  reached; from PowerShell it is clean. Run end to end that way, it turned up the
+  **BOM** its payload carries (fixed) and the fact that a `Task` sub-agent fires
+  `preToolUse` but **no `subagentStart`/`subagentStop`**, matching the open report
+  on Cursor's own forum. Its two sub-agent events stay registered — harmless, and
+  ready the day the CLI emits them.
 - **Multi-agent orchestration** (spec `02d` §3) — a two-tab console (status bar,
   shown with ≥2 live agents or any saved run): **Broadcast** (**explicit recipient
   selection** — tick individuals / whole types / all; coordinator retired — with
@@ -771,6 +787,30 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 ## Deferred follow-ups (non-blocking) — by area
 
+**Agent hooks**
+- [ ] **Zero: precise states + its `specialist` sub-agents, blocked on the CLI.**
+      Zero has everything needed — a hooks CLI of its own (`zero hooks add <id>
+      --event <event> --command <cmd> --arg <v> --user`, written to
+      `~/.config/zero/hooks.json`), the four lifecycle events we would map
+      (`beforeTool`/`afterTool` → `working`, `sessionStart` → boundary,
+      `sessionEnd` → `done`) and **`specialistStart`/`specialistStop`** for its
+      sub-agents, which would make it the fifth agent with a roster.
+
+      *Why it is not wired:* measured on **Zero 0.6.0 / Windows**, registering
+      **any** hook makes the agent refuse every tool — *"blocked by hook … hook
+      timed out before returning a verdict"* — while the hook's command is
+      **never executed**: a probe whose whole body appended one line to a file
+      and printed `{}` left that file empty. Reproduced in the **TUI** (the
+      surface uxnan actually drives) and headless (`-p`, `exec`), with the
+      command written as a `.cmd`, as `cmd.exe /c …` and as a bare `curl.exe`.
+      Removing the hooks restores the agent immediately. Installing ours would
+      therefore break Zero for every user who has it.
+
+      *What unblocks it:* a Zero release that runs a hook it accepted. Re-test
+      with one harmless hook and check that the command actually ran before
+      wiring anything. Until then Zero keeps reading its state from its own
+      on-disk session (`zero.rs`), which works and costs the user nothing.
+
 **Icons**
 - [ ] **Four glyphs are drawing a stand-in because the npm package lags
       hugeicons.com.** `WholeWordIcon`, `ServerIcon`, `TrendingUpIcon` and
@@ -1179,7 +1219,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 529 Rust + 921 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 536 Rust + 926 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

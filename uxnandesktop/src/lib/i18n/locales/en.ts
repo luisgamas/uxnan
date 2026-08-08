@@ -1177,6 +1177,7 @@ export const en = {
   "agentView.interrupted": "Interrupted",
   "agentView.subagents": "{n} sub-agent(s)",
   "agentView.subagent": "Sub-agent",
+  "agentView.subagentType": "Sub-agent type",
   "settings.agentNotifications": "Idle notifications",
   "settings.agentNotificationsDesc":
     "Notify when an agent goes idle while you're looking at another space.",

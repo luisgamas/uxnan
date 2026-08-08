@@ -27,6 +27,11 @@ import { AGENT_ICON, CLAUDE_TERMINAL_ICON, INVERT_ON_DARK } from "@/lib/site";
 /** The agent states the app renders, and the only ones this mockup may show. */
 type Tone = "live" | "waiting" | "blocked" | "done" | "idle";
 
+/** A sub-agent row: its kind, its task, and the tool in flight when the CLI
+ *  reports one (`SubagentEntry` — only a child with a session of its own has a
+ *  tool to report). No elapsed time, same as the app. */
+type Child = { kind: string; name: string; tool?: string; tone: Tone };
+
 /* Between them the four agents (and OpenCode's two subagents) show every state
    the app can report — working, needs-you, blocked, done — so a visitor sees the
    whole vocabulary in one glance instead of a wall of identical green. */
@@ -39,10 +44,13 @@ const AGENTS_RUNNING = [
     tone: "live" as Tone,
     time: "now",
     active: true,
+    // A child row carries its kind as a chip and, while it runs, the tool in
+    // flight after its task — exactly what `AgentRow.svelte` draws. It carries
+    // no elapsed time, and neither does this.
     children: [
-      { name: "Explore the mobile UI screens", tone: "live" as Tone },
-      { name: "Document the web mockups", tone: "live" as Tone },
-    ],
+      { kind: "explorer", name: "Map the mobile screens", tone: "live" as Tone },
+      { kind: "general-purpose", name: "Document the mockups", tone: "live" as Tone },
+    ] as Child[],
   },
   {
     name: "Uxnan project session startup",
@@ -64,9 +72,9 @@ const AGENTS_RUNNING = [
     time: "now",
     badge: "2/2",
     children: [
-      { name: "Sweep the changelog entries", tone: "live" as Tone },
-      { name: "Check the release checklist", tone: "live" as Tone },
-    ],
+      { kind: "general", name: "Sweep the changelog", tool: "grep", tone: "live" as Tone },
+      { kind: "general", name: "Check the checklist", tone: "live" as Tone },
+    ] as Child[],
   },
   {
     name: "Antigravity",
@@ -296,8 +304,14 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
                     className="flex items-center gap-1.5 py-[3px] pl-[18px]"
                   >
                     <Dot tone={child.tone} />
+                    <span className="shrink-0 rounded bg-white/[0.06] px-1 text-[8px] leading-[13px] text-dim">
+                      {child.kind}
+                    </span>
                     <span className="truncate text-[9px] text-dim">
                       {child.name}
+                      {child.tool ? (
+                        <span className="opacity-60"> · {child.tool}</span>
+                      ) : null}
                     </span>
                   </div>
                 ))}

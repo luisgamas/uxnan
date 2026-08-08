@@ -1255,6 +1255,13 @@ pub struct SubagentEntry {
     /// Short description of the child's task, if reported.
     #[serde(default)]
     pub description: Option<String>,
+    /// The tool the child is running right now, when the CLI reports its
+    /// children's activity separately from the parent's. Only the agents whose
+    /// children own a **session of their own** can fill this (Grok, OpenCode):
+    /// for Claude and Codex a child's tool events carry the parent's session id,
+    /// so they are the parent's activity and are shown on the parent's line.
+    #[serde(default)]
+    pub tool: Option<String>,
     pub status: AgentStatus,
     pub started_at: i64,
     pub last_update: i64,
@@ -1416,6 +1423,11 @@ impl AppData {
             if child.description.is_some() {
                 existing.description = child.description;
             }
+            // A finished child is not running anything: clearing the tool keeps
+            // its row from freezing on whatever it happened to be doing last.
+            if child.status == AgentStatus::Done {
+                existing.tool = None;
+            }
             existing.last_update = now;
         } else {
             // Cap the roster: when full, drop the oldest finished child (or the
@@ -1432,6 +1444,56 @@ impl AppData {
         }
         parent.last_update = now;
         parent.clone()
+    }
+
+    /// Whether `session_id` names a **child** of `parent_agent_id` — a sub-agent
+    /// already on the roster whose id is the session it runs under.
+    ///
+    /// This is how a report is told apart from its parent's on the CLIs that run
+    /// a child in a session of its own. Measured on Grok: a child emits its own
+    /// `user_prompt_submit` and `session_end` under the *parent's* PTY, carrying
+    /// the child's `sessionId` — and `session_end` maps to `done`, so the parent's
+    /// card read "Done" while it was still working. Claude and Codex are
+    /// unaffected: their children's events carry the parent's session id, which
+    /// never matches a roster entry, so nothing here fires.
+    pub fn is_subagent_session(&self, parent_agent_id: &str, session_id: &str) -> bool {
+        if session_id.is_empty() {
+            return false;
+        }
+        self.agent_cache
+            .iter()
+            .find(|e| e.agent_id == parent_agent_id)
+            .is_some_and(|e| e.subagents.iter().any(|s| s.id == session_id))
+    }
+
+    /// Record what a **child** is doing right now, from an event that belongs to
+    /// the child's own session. Never touches the parent's status, prompt, reply
+    /// or captured session — the whole point is that a child's activity is the
+    /// child's. `tool` is `None` for an event that isn't a tool step, which
+    /// leaves whatever the child was already doing in place.
+    ///
+    /// Returns the parent entry for broadcast, or `None` when the child is
+    /// unknown (nothing to attribute it to, and inventing a row is worse).
+    pub fn touch_subagent_activity(
+        &mut self,
+        parent_agent_id: &str,
+        child_id: &str,
+        tool: Option<String>,
+        now: i64,
+    ) -> Option<AgentStateEntry> {
+        let parent = self
+            .agent_cache
+            .iter_mut()
+            .find(|e| e.agent_id == parent_agent_id)?;
+        let child = parent.subagents.iter_mut().find(|s| s.id == child_id)?;
+        if tool.is_some() {
+            child.tool = tool;
+        }
+        child.last_update = now;
+        // The parent stays fresh while a child of its own is working, so the
+        // staleness dimming doesn't kick in mid-task.
+        parent.last_update = now;
+        Some(parent.clone())
     }
 
     /// Drop cached agent states not updated within [`AGENT_CACHE_TTL_SECS`].
@@ -1884,6 +1946,7 @@ mod tests {
             id: "child-a".into(),
             agent_type: Some("code-reviewer".into()),
             description: Some("review the diff".into()),
+            tool: None,
             status,
             started_at: 110,
             last_update: 110,
@@ -1910,6 +1973,7 @@ mod tests {
                 id: "c1".into(),
                 agent_type: None,
                 description: None,
+                tool: None,
                 status: AgentStatus::Working,
                 started_at: 5,
                 last_update: 5,
@@ -1919,6 +1983,96 @@ mod tests {
         assert_eq!(parent.status, AgentStatus::Working);
         assert_eq!(data.agent_cache.len(), 1);
         assert_eq!(data.agent_cache[0].subagents.len(), 1);
+    }
+
+    /// A child that runs in a session of its own (Grok, OpenCode) is recognized
+    /// by that session id, so its own events can be kept off the parent.
+    #[test]
+    fn subagent_session_is_recognized_only_for_known_children() {
+        let mut data = AppData::default();
+        data.upsert_agent_state(report("pty1", AgentStatus::Working), 100);
+        data.upsert_subagent(
+            "pty1".into(),
+            SubagentEntry {
+                id: "sess-child".into(),
+                agent_type: Some("general-purpose".into()),
+                description: Some("say hello".into()),
+                tool: None,
+                status: AgentStatus::Working,
+                started_at: 110,
+                last_update: 110,
+            },
+            110,
+        );
+        assert!(data.is_subagent_session("pty1", "sess-child"));
+        // The parent's own session, an unknown id and an empty one are not children.
+        assert!(!data.is_subagent_session("pty1", "sess-parent"));
+        assert!(!data.is_subagent_session("pty1", ""));
+        // Another tab's roster must never answer for this one.
+        assert!(!data.is_subagent_session("pty2", "sess-child"));
+    }
+
+    #[test]
+    fn touch_subagent_activity_updates_child_and_leaves_parent_alone() {
+        let mut data = AppData::default();
+        data.upsert_agent_state(
+            AgentReport {
+                prompt: Some("the user's question".into()),
+                ..report("pty1", AgentStatus::Working)
+            },
+            100,
+        );
+        data.upsert_subagent(
+            "pty1".into(),
+            SubagentEntry {
+                id: "sess-child".into(),
+                agent_type: None,
+                description: Some("say hello".into()),
+                tool: None,
+                status: AgentStatus::Working,
+                started_at: 110,
+                last_update: 110,
+            },
+            110,
+        );
+        let parent = data
+            .touch_subagent_activity("pty1", "sess-child", Some("bash".into()), 130)
+            .expect("known child");
+        assert_eq!(parent.subagents[0].tool.as_deref(), Some("bash"));
+        assert_eq!(parent.subagents[0].last_update, 130);
+        // Nothing of the parent's own turn moved.
+        assert_eq!(parent.status, AgentStatus::Working);
+        assert_eq!(parent.prompt.as_deref(), Some("the user's question"));
+        // An event with no tool keeps the child's current one rather than blanking it.
+        let parent = data
+            .touch_subagent_activity("pty1", "sess-child", None, 140)
+            .expect("known child");
+        assert_eq!(parent.subagents[0].tool.as_deref(), Some("bash"));
+        // An unknown child is not invented.
+        assert!(data
+            .touch_subagent_activity("pty1", "nope", Some("bash".into()), 150)
+            .is_none());
+    }
+
+    /// A finished child is not running anything — its tool must be cleared so the
+    /// row doesn't freeze on the last thing it happened to do.
+    #[test]
+    fn finished_child_clears_its_tool() {
+        let mut data = AppData::default();
+        let child = |status, tool: Option<&str>| SubagentEntry {
+            id: "c".into(),
+            agent_type: None,
+            description: None,
+            tool: tool.map(String::from),
+            status,
+            started_at: 10,
+            last_update: 10,
+        };
+        data.upsert_subagent("pty1".into(), child(AgentStatus::Working, None), 10);
+        data.touch_subagent_activity("pty1", "c", Some("web_search".into()), 20);
+        let parent = data.upsert_subagent("pty1".into(), child(AgentStatus::Done, None), 30);
+        assert_eq!(parent.subagents[0].status, AgentStatus::Done);
+        assert_eq!(parent.subagents[0].tool, None);
     }
 
     #[test]
