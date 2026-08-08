@@ -201,10 +201,18 @@ If it affects contracts in `shared/`, all consuming components must be updated i
   frame — never re-size their contents to fit (`web/docs/design.md`).
 - **Agent marks live once, in `assets/agents/`** — the root READMEs render those
   files directly and the site syncs them into `web/public/agents/` before dev and
-  build (`web/scripts/sync-agent-marks.mjs`; the synced copy is git-ignored). A
-  new agent means one SVG there, plus its entry in `web/src/lib/site.ts` and the
-  agent row in `README.md` **and** `README.es.md`. Marks that are black or grey
-  need adding to `INVERT_ON_DARK` so they stay visible on the site's dark tiles.
+  build (`web/scripts/sync-agent-marks.mjs`; the synced copy is git-ignored).
+  **Only four agents keep a drawn mark** (Claude Code, Codex, OpenClaude, Zero);
+  every other one uses its **favicon, vendored as a PNG** by
+  `web/scripts/fetch-agent-favicons.mjs` — the desktop app shows the same
+  favicons, so the app, the site and the READMEs agree, and no visitor's browser
+  calls a third party to draw a logo. So a new agent means running that script
+  (or adding one SVG if it deserves a drawn mark), plus its entry in
+  `web/src/lib/site.ts` — in `AGENTS_PRECISE` or `AGENTS_BASIC`, whichever is
+  true — and the agent cell in `README.md` **and** `README.es.md`. A **drawn**
+  mark that is black needs adding to `INVERT_ON_DARK` (and a `-on-dark.svg`
+  sibling for the READMEs, which GitHub also renders on a dark page); a favicon
+  never does — inverting one wrecks its colours.
 - The site is **not tag-versioned** — it has no release artifact. A push to `main`
   runs `deploy-web.yml`, which builds it on GitHub's runners and uploads the static
   export to Cloudflare Pages (Direct Upload). See `web/docs/deploy.md`.

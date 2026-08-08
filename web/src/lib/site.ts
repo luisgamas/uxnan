@@ -50,33 +50,72 @@ export const LINKS = {
  * site and the root READMEs render the exact same files and neither can drift.
  * Nothing is fetched from a third party at page load.
  */
-const mark = (id: string) => `/agents/${id}.svg`;
+/** The four agents that keep a drawn mark; every other one uses its favicon. */
+const HAND_DRAWN = new Set(["claudecode", "codex", "openclaude", "zero"]);
+
+const mark = (id: string) =>
+  `/agents/${id}.${HAND_DRAWN.has(id) ? "svg" : "png"}`;
 
 /**
- * The seven agents with deep, first-class integration.
- * source: README.md → "Works with any CLI agent"; bridge/docs/agents.md
+ * Every agent uxnan drives, in two groups.
+ *
+ * `precise` is the list that reports **working / blocked / waiting / done**
+ * through its own hook surface (or, for Zero, through the session it writes to
+ * disk). `basic` is the rest of the desktop catalog: they launch and run exactly
+ * the same way and show the coarse working/idle inference, but their CLI exposes
+ * no way to say a turn ENDED — so uxnan does not pretend otherwise.
+ *
+ * source: uxnandesktop/docs/agent-hooks.md → the reporter table and
+ * "Nine agents in the catalog have no precise state"
  */
-export const AGENTS = [
-  { id: "claudecode", name: "Claude Code", icon: mark("claudecode") },
-  { id: "codex", name: "Codex", icon: mark("codex") },
-  { id: "opencode", name: "OpenCode", icon: mark("opencode") },
-  { id: "pi", name: "Pi", icon: mark("pi") },
-  { id: "grok", name: "Grok", icon: mark("grok") },
-  {
-    id: "antigravity",
-    name: "Antigravity",
-    icon: mark("antigravity"),
-    note: "partial",
-  },
-  { id: "zero", name: "Zero", icon: mark("zero") },
-] as const;
+export const AGENTS_PRECISE = [
+  { id: "claudecode", name: "Claude Code" },
+  { id: "codex", name: "Codex" },
+  { id: "opencode", name: "OpenCode" },
+  { id: "cursor", name: "Cursor" },
+  { id: "copilot", name: "GitHub Copilot" },
+  { id: "droid", name: "Droid" },
+  { id: "grok", name: "Grok" },
+  { id: "amp", name: "Amp" },
+  { id: "goose", name: "Goose" },
+  { id: "qwen", name: "Qwen Code" },
+  { id: "kiro", name: "Kiro" },
+  { id: "auggie", name: "Auggie" },
+  { id: "devin", name: "Devin" },
+  { id: "kimi", name: "Kimi" },
+  { id: "kilocode", name: "Kilo Code" },
+  { id: "mimo", name: "MiMo Code" },
+  { id: "commandcode", name: "Command Code" },
+  { id: "openclaude", name: "OpenClaude" },
+  { id: "pi", name: "Pi" },
+  { id: "omp", name: "OMP" },
+  { id: "zero", name: "Zero" },
+  { id: "antigravity", name: "Antigravity", note: "partial" },
+].map((a) => ({ ...a, icon: mark(a.id) }));
+
+/** The catalog agents that launch and run, but report no precise state. */
+export const AGENTS_BASIC = [
+  { id: "aider", name: "Aider" },
+  { id: "cline", name: "Cline" },
+  { id: "continue", name: "Continue" },
+  { id: "crush", name: "Crush" },
+  { id: "codebuff", name: "Codebuff" },
+  { id: "mistralvibe", name: "Mistral Vibe" },
+  { id: "rovo", name: "Rovo Dev" },
+  { id: "autohand", name: "Autohand" },
+  { id: "ante", name: "Ante" },
+].map((a) => ({ ...a, icon: mark(a.id) }));
+
+/** Both groups, for anything that just needs "every agent". */
+export const AGENTS = [...AGENTS_PRECISE, ...AGENTS_BASIC];
 
 /**
- * Marks that ship black or grey (`currentColor` resolves to black inside an
- * `<img>`), so they need lifting to near-white on the page's dark surfaces.
- * They are left untouched on the phone mockups, whose tiles are white.
+ * Marks that ship black (`currentColor` resolves to black inside an `<img>`), so
+ * they need lifting to near-white on the page's dark surfaces. Only the drawn
+ * ones can be here: a favicon carries its own colours and inverting one wrecks
+ * it. They are left untouched on the phone mockups, whose tiles are white.
  */
-export const INVERT_ON_DARK = new Set(["codex", "opencode", "pi", "grok"]);
+export const INVERT_ON_DARK = new Set(["codex", "openclaude"]);
 
 /** Agent marks by id, for the mockups that name one directly. */
 export const AGENT_ICON = Object.fromEntries(
