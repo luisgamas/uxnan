@@ -1107,6 +1107,7 @@ export const es: Record<MessageKey, string> = {
   "appearance.fontMonoDesc": "Texto monoespaciado — fragmentos de código y rutas.",
   "appearance.termFamilyDesc": "Tipografía de los paneles de terminal.",
   "appearance.termSizeDesc": "Tamaño de fuente, en píxeles.",
+  "appearance.termBoldDesc": "Muestra el texto de la terminal con un grosor mayor de la misma fuente — la salida en negrita sigue destacando.",
   "appearance.termLineHeightDesc": "Multiplicador de interlineado.",
   "appearance.termLetterSpacingDesc": "Espaciado adicional entre caracteres, en píxeles.",
   "appearance.termLigaturesDesc": "Mostrar ligaduras de programación (p. ej. => como un glifo).",
@@ -1148,6 +1149,7 @@ export const es: Record<MessageKey, string> = {
   "terminalTheme.lineHeight": "Interlineado",
   "terminalTheme.letterSpacing": "Espaciado",
   "terminalTheme.weight": "Peso de fuente",
+  "terminalTheme.bold": "Texto en negrita",
   "terminalTheme.cursorStyle": "Estilo de cursor",
   "terminalTheme.cursorBlock": "Bloque",
   "terminalTheme.cursorUnderline": "Subrayado",
@@ -1272,27 +1274,58 @@ export const es: Record<MessageKey, string> = {
   "hooks.title": "Hooks",
   "hooks.desc":
     "Configs listas para usar que envían estados precisos del agente al servidor de hooks local del ADE, para que la sidebar y la barra de tabs muestren trabajando / esperando / listo sin configuración manual.",
-  "hooks.claudeTitle": "Claude Code",
-  "hooks.claudeDesc":
+  // Una línea por agente sobre lo que su hook puede reportar realmente — con la
+  // clave del tipo de hook que usa el registro del backend, así un agente nuevo
+  // solo necesita su línea aquí y en `en.ts`.
+  "hooks.desc.claude":
     "Agrega un bloque `hooks` a `~/.claude/settings.json` que ejecuta el relay de Node incluido en cada evento de Claude (exec-form, así funciona desde cualquier shell). Conserva tus hooks existentes.",
-  "hooks.codexTitle": "Codex",
-  "hooks.codexDesc":
+  "hooks.desc.codex":
     "Agrega hooks gestionados a `~/.codex/hooks.json` y registra su hash de confianza en `~/.codex/config.toml` (Codex 0.129+ lo exige), para que Codex reporte estados precisos automáticamente.",
-  "hooks.geminiTitle": "Gemini CLI",
-  "hooks.geminiDesc":
-    "Agrega hooks gestionados a `~/.gemini/settings.json` que ejecutan el relay incluido en cada evento de turno de Gemini. Conserva tus hooks existentes.",
-  "hooks.opencodeTitle": "OpenCode",
-  "hooks.opencodeDesc":
-    "Instala el plugin de estado del ADE en la configuración de OpenCode para reportar trabajando / esperando / listo / bloqueado.",
-  "hooks.piTitle": "Pi",
-  "hooks.piDesc":
+  "hooks.desc.gemini":
+    "Agrega hooks gestionados a `~/.gemini/settings.json` que ejecutan el relay incluido en cada evento de turno de Gemini. Conserva tus hooks existentes. Descontinuado por Google — se ofrece solo para que puedas desactivar una instalación previa.",
+  "hooks.desc.opencode":
+    "Instala el plugin de estado del ADE en la configuración de OpenCode para reportar trabajando / esperando / listo / bloqueado, y convierte sus sesiones hijas en filas de subagente.",
+  "hooks.desc.pi":
     "Instala la extensión de estado del ADE en `~/.pi/agent/extensions` para que Pi reporte trabajando / listo en el propio proceso (no tiene señal de permiso).",
-  "hooks.grokTitle": "Grok",
-  "hooks.grokDesc":
+  "hooks.desc.grok":
     "Escribe su propio archivo en `~/.grok/hooks/`, así que nunca toca tus hooks. Grok habla los eventos de Claude Code, de modo que reporta todo el rango — incluido un `blocked` real cuando un turno muere por un error de la API.",
-  "hooks.antigravityTitle": "Antigravity",
-  "hooks.antigravityDesc":
+  "hooks.desc.antigravity":
     "Agrega un hook con nombre propio a `~/.gemini/config/hooks.json`. Antigravity solo expone su bucle de ejecución — sin evento de prompt ni de permiso — así que reporta trabajando / listo con precisión y nunca dice que te está esperando.",
+  "hooks.desc.openclaude":
+    "Un fork de Claude Code con su propia carpeta: el reporter se integra evento por evento en `~/.openclaude/settings.json`, dejando intactos tus propios hooks.",
+  "hooks.desc.qwen":
+    "Se integra en `~/.qwen/settings.json`. Qwen Code habla el vocabulario de hooks de Claude Code (con timeouts en milisegundos), así que reporta todo el rango, incluido un turno que murió por un error.",
+  "hooks.desc.droid":
+    "Se integra en `~/.factory/settings.json`. Droid reporta su turno, su bucle de herramientas y sus solicitudes de aprobación, así que alcanza trabajando, esperando y listo.",
+  "hooks.desc.devin":
+    "Se integra en el `config.json` propio de Devin (`%APPDATA%\devin` en Windows, `~/.config/devin` en el resto). Sus matchers son expresiones regulares, así que el reporter se registra sin ninguno — que ya significa todas las herramientas.",
+  "hooks.desc.commandcode":
+    "Se integra en `~/.commandcode/settings.json`. Command Code solo expone su bucle de herramientas y el fin del turno, así que reporta trabajando y listo, y nunca dice que te necesita.",
+  "hooks.desc.auggie":
+    "Se integra en `~/.augment/settings.json`. Auggie expone su sesión, su bucle de herramientas y el fin del turno — sin evento de permiso — así que reporta trabajando y listo.",
+  "hooks.desc.cursor":
+    "Se integra en `~/.cursor/hooks.json` conservando todos los hooks que ya tenías. Cursor condiciona sus herramientas a lo que responda un hook, así que el reporter siempre responde (un hook sin respuesta bloquearía al agente, no solo dejaría de reportar).",
+  "hooks.desc.copilot":
+    "Escribe su propio archivo en `~/.copilot/hooks/`, así que nunca toca tus hooks. Copilot reporta su bucle de herramientas, sus solicitudes de permiso y un `blocked` real cuando un turno falla.",
+  "hooks.desc.kiro":
+    "Escribe su propio archivo en `~/.kiro/hooks/`, que Kiro combina con todo lo demás de esa carpeta. Reporta su turno, su bucle de herramientas y el fin del turno.",
+  "hooks.desc.kimi":
+    "Kimi Code guarda su configuración en TOML, así que el reporter es un bloque delimitado que se añade a `~/.kimi-code/config.toml` — todo lo que está fuera de esas marcas queda exactamente como lo escribiste.",
+  "hooks.desc.goose":
+    "Escribe su propio plugin en `~/.agents/plugins/`, el formato Open Plugins que lee Goose, así que nunca toca tus hooks. Sus nombres de evento son los de Claude Code, de modo que reporta todo el rango.",
+  "hooks.desc.mimo":
+    "MiMo Code es un fork de OpenCode y ejecuta exactamente el mismo plugin de estado, depositado en su propio directorio `plugins/` — incluidas las filas de subagente que producen sus sesiones hijas.",
+  "hooks.desc.kilocode":
+    "Kilo Code expone el bus de eventos de OpenCode con otra forma de export, así que ejecuta el mismo reporter in-process — con eventos de sesión, herramientas y permisos.",
+  "hooks.desc.amp":
+    "Instala un plugin en `~/.config/amp/plugins/`, que Amp descubre solo. La API de plugins de Amp es propia; su `agent.end` dice si el turno terminó o murió, así que reporta un `blocked` real.",
+  "hooks.desc.omp":
+    "OMP ejecuta el runtime de agente de Pi bajo su propia carpeta, así que carga exactamente la misma extensión de estado desde `~/.omp/agent/extensions/` — reportando como OMP y no como Pi.",
+  "hooks.agentListLabel": "Agentes",
+  "hooks.groupInstalled": "En este equipo",
+  "hooks.groupOthers": "Otros agentes",
+  "hooks.notOnThisMachine":
+    "Este CLI no se encontró en tu equipo. Instalar su reporter ahora no molesta: empezará a reportar el día que instales el agente.",
   "hooks.statusInstalled": "Instalado en {path}",
   "hooks.statusInstalledShort": "Instalado",
   "hooks.statusNotInstalled": "No instalado",

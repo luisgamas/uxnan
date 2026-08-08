@@ -185,31 +185,70 @@ Un subagente del Task tool de Claude Code (o una sesión hija de OpenCode) apare
 
 Uxnan Desktop es terminal-céntrico: si corre en una terminal, corre en uxnan.
 Agrega cualquier CLI como agente personalizado y se lanza como cualquier otro,
-sin trabajo de integración de por medio. Los siete de abajo traen
-**integración profunda de primera clase** de fábrica: estado preciso de
-working / blocked / waiting / done, auto-resume de sesión, descubrimiento de
-modelos en vivo, y knobs de ejecución por agente.
+sin trabajo de integración de por medio. Los **22 de abajo reportan estado
+preciso de fábrica**: working / blocked / waiting / done conforme ocurre, más
+auto-resume de sesión, descubrimiento de modelos en vivo y knobs de ejecución
+por agente.
 
 <p align="center">
-  <kbd><img src="assets/agents/claudecode.svg" width="16" valign="middle" alt="" /> Claude Code</kbd>
-  <kbd><img src="assets/agents/codex.svg" width="16" valign="middle" alt="" /> Codex</kbd>
-  <kbd><img src="assets/agents/opencode.svg" width="16" valign="middle" alt="" /> OpenCode</kbd>
-  <kbd><img src="assets/agents/pi.svg" width="16" valign="middle" alt="" /> Pi</kbd>
-  <kbd><img src="assets/agents/grok.svg" width="16" valign="middle" alt="" /> Grok</kbd>
-  <kbd><img src="assets/agents/antigravity.svg" width="16" valign="middle" alt="" /> Antigravity</kbd><sup>*</sup>
-  <kbd><img src="assets/agents/zero.svg" width="16" valign="middle" alt="" /> Zero</kbd>
-  <kbd>+ cualquier agente CLI</kbd>
+  <kbd><img src="assets/agents/claudecode.svg" width="22" valign="middle" alt="" /> Claude Code</kbd>
+  <kbd><picture><source media="(prefers-color-scheme: dark)" srcset="assets/agents/codex-on-dark.svg" /><img src="assets/agents/codex.svg" width="22" valign="middle" alt="" /></picture> Codex</kbd>
+  <kbd><img src="assets/agents/opencode.png" width="22" valign="middle" alt="" /> OpenCode</kbd>
+  <kbd><img src="assets/agents/cursor.png" width="22" valign="middle" alt="" /> Cursor</kbd>
+  <kbd><img src="assets/agents/copilot.png" width="22" valign="middle" alt="" /> GitHub Copilot</kbd>
+  <kbd><img src="assets/agents/droid.png" width="22" valign="middle" alt="" /> Droid</kbd>
+  <kbd><img src="assets/agents/grok.png" width="22" valign="middle" alt="" /> Grok</kbd>
+  <kbd><img src="assets/agents/amp.png" width="22" valign="middle" alt="" /> Amp</kbd>
+  <kbd><img src="assets/agents/goose.png" width="22" valign="middle" alt="" /> Goose</kbd>
+  <kbd><img src="assets/agents/qwen.png" width="22" valign="middle" alt="" /> Qwen Code</kbd>
+  <kbd><img src="assets/agents/kiro.png" width="22" valign="middle" alt="" /> Kiro</kbd>
+  <kbd><img src="assets/agents/auggie.png" width="22" valign="middle" alt="" /> Auggie</kbd>
+  <kbd><img src="assets/agents/devin.png" width="22" valign="middle" alt="" /> Devin</kbd>
+  <kbd><img src="assets/agents/kimi.png" width="22" valign="middle" alt="" /> Kimi</kbd>
+  <kbd><img src="assets/agents/kilocode.png" width="22" valign="middle" alt="" /> Kilo Code</kbd>
+  <kbd><img src="assets/agents/mimo.png" width="22" valign="middle" alt="" /> MiMo Code</kbd>
+  <kbd><img src="assets/agents/commandcode.png" width="22" valign="middle" alt="" /> Command Code</kbd>
+  <kbd><picture><source media="(prefers-color-scheme: dark)" srcset="assets/agents/openclaude-on-dark.svg" /><img src="assets/agents/openclaude.svg" width="22" valign="middle" alt="" /></picture> OpenClaude</kbd>
+  <kbd><img src="assets/agents/pi.png" width="22" valign="middle" alt="" /> Pi</kbd>
+  <kbd><img src="assets/agents/omp.png" width="22" valign="middle" alt="" /> OMP</kbd>
+  <kbd><img src="assets/agents/zero.svg" width="22" valign="middle" alt="" /> Zero</kbd>
+  <kbd><img src="assets/agents/antigravity.png" width="22" valign="middle" alt="" /> Antigravity</kbd><sup>*</sup>
 </p>
 
 <p align="center">
-  <sub>*La integración de Antigravity es parcial: corre one-shot por turno y no tiene un canal de aprobación en vivo.</sub>
+  <sub>*La integración de Antigravity es parcial: corre one-shot por turno y no tiene un canal de aprobación en vivo.<br />
+  Zero no expone hooks; su estado se lee de la sesión que escribe en disco.</sub>
+</p>
+
+Estos nueve también están en el catálogo. Se lanzan, corren y muestran un
+indicador de working / idle como cualquier otro; su CLI simplemente no expone
+forma de decir que un turno **terminó**, así que uxnan no afirma un estado
+preciso que no puede conocer. Apunta uno al wrapper incluido y obtienes
+`working` al lanzar y `done` al salir.
+
+<p align="center">
+  <kbd><img src="assets/agents/aider.png" width="22" valign="middle" alt="" /> Aider</kbd>
+  <kbd><img src="assets/agents/cline.png" width="22" valign="middle" alt="" /> Cline</kbd>
+  <kbd><img src="assets/agents/continue.png" width="22" valign="middle" alt="" /> Continue</kbd>
+  <kbd><img src="assets/agents/crush.png" width="22" valign="middle" alt="" /> Crush</kbd>
+  <kbd><img src="assets/agents/codebuff.png" width="22" valign="middle" alt="" /> Codebuff</kbd>
+  <kbd><img src="assets/agents/mistralvibe.png" width="22" valign="middle" alt="" /> Mistral Vibe</kbd>
+  <kbd><img src="assets/agents/rovo.png" width="22" valign="middle" alt="" /> Rovo Dev</kbd>
+  <kbd><img src="assets/agents/autohand.png" width="22" valign="middle" alt="" /> Autohand</kbd>
+  <kbd><img src="assets/agents/ante.png" width="22" valign="middle" alt="" /> Ante</kbd>
+  <kbd>+ any CLI agent</kbd>
+</p>
+
+<p align="center">
+  <sub>¿Usas alguno de estos? Si su CLI incorpora hooks, cablearlo es una sola fila de tabla:<br />
+  mira <a href="uxnandesktop/docs/agent-hooks.md">agent hooks</a> y manda un pull request.</sub>
 </p>
 
 <p align="center">
   Cada uno corre como el CLI local oficial de su proveedor, bajo la cuenta o suscripción<br />
   con la que ya iniciaste sesión: uxnan no llama a ninguna API de proveedor, no guarda<br />
   una key ni integra un SDK. Solo maneja la terminal, tal como lo harías tú.<br />
-  <b>Estos mismos siete son los que Uxnan Mobile maneja desde tu teléfono.</b>
+  <b>Siete de ellos — Claude Code, Codex, OpenCode, Pi, Grok, Antigravity y Zero — son los que Uxnan Mobile maneja desde tu teléfono.</b>
 </p>
 
 ---

@@ -42,6 +42,15 @@ pub struct ZeroSession {
     /// Coarse status in the agent-view vocabulary: working / waiting / done / idle.
     pub status: String,
     pub updated_at: String,
+    /// The agent's latest reply, when the session log holds one.
+    ///
+    /// Every other agent's card can show what the agent just said, because its
+    /// hook reports it. Zero reports nothing at all, so its second line only
+    /// ever showed a status label — the one agent whose card said less the more
+    /// it did. Its own event log has the answer (`events.jsonl`, the last
+    /// `message` with `role: "assistant"`), so it gets the same line.
+    #[serde(default)]
+    pub reply: Option<String>,
 }
 
 /// The user's home directory (`USERPROFILE` on Windows, `HOME` elsewhere).
@@ -80,12 +89,23 @@ fn norm(p: &str) -> String {
     }
 }
 
-/// Map Zero's `lastEventType` to the agent-view status. A `tool_call`/`tool_result`
-/// only counts as "working" while the file is fresh — a stale one is at rest.
+/// Map Zero's `lastEventType` to the agent-view status.
+///
+/// **Staleness ends every claim, not just the busy one.** A session file that
+/// hasn't been touched in [`FRESH_SECS`] describes a conversation that is over,
+/// so none of its states is true of the agent now: a `message` from three days
+/// ago read as a **`done` check the moment you opened Zero**, before you had
+/// asked it anything (its session dir keeps every past conversation, and the
+/// newest one for this worktree is usually yesterday's finished turn). A stale
+/// `permission_request` is no better — it would park the card in "needs you"
+/// over a question nobody is still asking.
 fn derive_status(last_event: &str, stale: bool) -> &'static str {
+    if stale {
+        return "idle";
+    }
     match last_event {
         "permission_request" => "waiting",
-        "tool_call" | "tool_result" if !stale => "working",
+        "tool_call" | "tool_result" => "working",
         "message" => "done",
         _ => "idle",
     }
@@ -93,6 +113,67 @@ fn derive_status(last_event: &str, stale: bool) -> &'static str {
 
 /// A `metadata.json` older than this reads as at-rest for the working downgrade.
 const FRESH_SECS: u64 = 10 * 60;
+
+/// How much of the tail of `events.jsonl` is read to find the latest reply.
+///
+/// The log grows for the whole conversation (tool results included, which are
+/// the big ones), and this runs on a poll — so it reads the end of the file
+/// rather than the file. A reply longer than what fits in the window is
+/// truncated to the preview length anyway.
+const EVENTS_TAIL_BYTES: u64 = 64 * 1024;
+
+/// Longest reply preview kept; the row truncates visually, but the string
+/// crosses the IPC boundary on every poll, so it is cut here too.
+const REPLY_MAX_CHARS: usize = 240;
+
+/// The agent's latest reply in a Zero session directory, if its event log has
+/// one. Best-effort: any I/O or parse problem simply yields `None`.
+///
+/// Reads only the tail of the log and scans it backwards for the last
+/// `{"type":"message", payload:{role:"assistant"}}`. The first line of the
+/// window is skipped — a tail cut lands mid-line, and half a JSON object is not
+/// a record.
+fn latest_reply(session_dir: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let path = session_dir.join("events.jsonl");
+    let mut file = std::fs::File::open(&path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let from = len.saturating_sub(EVENTS_TAIL_BYTES);
+    file.seek(SeekFrom::Start(from)).ok()?;
+    let mut buf = String::new();
+    file.take(EVENTS_TAIL_BYTES).read_to_string(&mut buf).ok()?;
+
+    let mut lines: Vec<&str> = buf.lines().collect();
+    if from > 0 && !lines.is_empty() {
+        lines.remove(0);
+    }
+    for line in lines.iter().rev() {
+        let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if event.get("type").and_then(|v| v.as_str()) != Some("message") {
+            continue;
+        }
+        let payload = event.get("payload")?;
+        if payload.get("role").and_then(|v| v.as_str()) != Some("assistant") {
+            continue;
+        }
+        let content = payload.get("content").and_then(|v| v.as_str())?;
+        let collapsed = content.split_whitespace().collect::<Vec<_>>().join(" ");
+        if collapsed.is_empty() {
+            continue;
+        }
+        return Some(if collapsed.chars().count() > REPLY_MAX_CHARS {
+            let mut out: String = collapsed.chars().take(REPLY_MAX_CHARS - 1).collect();
+            out.push('…');
+            out
+        } else {
+            collapsed
+        });
+    }
+    None
+}
 
 /// The newest resumable Zero session whose `cwd` matches `cwd`, or `None`.
 pub fn session_for(cwd: &str) -> Option<ZeroSession> {
@@ -129,6 +210,7 @@ fn pick_session(root: &Path, cwd: &str) -> Option<ZeroSession> {
             title: m.title.trim().to_string(),
             status: derive_status(&m.last_event_type, stale).to_string(),
             updated_at: m.updated_at.clone(),
+            reply: latest_reply(&entry.path()),
         };
         // Newest `updatedAt` wins (RFC3339 sorts lexicographically).
         if best
@@ -150,6 +232,39 @@ mod tests {
         let dir = root.join(id);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("metadata.json"), json).unwrap();
+    }
+
+    #[test]
+    fn reads_the_latest_reply_from_the_event_log() {
+        // The record shape is Zero's own, captured from a real session log.
+        let dir = std::env::temp_dir().join(format!("uxnan-zero-reply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = [
+            r#"{"id":"s:1","type":"message","createdAt":"2026-08-07T20:22:37Z","payload":{"content":"qué es uxnan?","role":"user"}}"#,
+            r#"{"id":"s:2","type":"tool_call","createdAt":"2026-08-07T20:22:40Z","payload":{"name":"read"}}"#,
+            r#"{"id":"s:3","type":"message","createdAt":"2026-08-07T20:22:45Z","payload":{"content":"Uxnan   is\ntwo apps","role":"assistant"}}"#,
+            r#"{"id":"s:4","type":"provider_usage","createdAt":"2026-08-07T20:22:45Z","payload":{"totalTokens":10}}"#,
+        ]
+        .join("\n");
+        std::fs::write(dir.join("events.jsonl"), log).unwrap();
+
+        // The assistant's last message, whitespace collapsed — never the user's
+        // prompt (which is also a `message`) nor a tool record.
+        assert_eq!(latest_reply(&dir).as_deref(), Some("Uxnan is two apps"));
+
+        // No log, or no assistant turn yet → nothing to show, not an error.
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(latest_reply(&empty), None);
+        std::fs::write(
+            empty.join("events.jsonl"),
+            r#"{"type":"message","payload":{"content":"hi","role":"user"}}"#,
+        )
+        .unwrap();
+        assert_eq!(latest_reply(&empty), None);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -196,9 +311,30 @@ mod tests {
         assert_eq!(derive_status("permission_request", false), "waiting");
         assert_eq!(derive_status("tool_call", false), "working");
         assert_eq!(derive_status("tool_result", false), "working");
-        assert_eq!(derive_status("tool_call", true), "idle"); // stale → downgraded
         assert_eq!(derive_status("message", false), "done");
         assert_eq!(derive_status("session_start", false), "idle");
+    }
+
+    #[test]
+    fn a_stale_session_claims_nothing() {
+        // Zero keeps every past conversation for a worktree, so the newest one
+        // is usually the last finished turn — days old. Reading its `message` as
+        // `done` put a completion check on the card the instant Zero opened,
+        // before the user had asked it anything. Nothing a stale file says
+        // describes the agent now.
+        for event in [
+            "message",
+            "permission_request",
+            "tool_call",
+            "tool_result",
+            "session_start",
+        ] {
+            assert_eq!(
+                derive_status(event, true),
+                "idle",
+                "a stale `{event}` must not claim a state"
+            );
+        }
     }
 
     #[test]

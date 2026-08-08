@@ -60,6 +60,19 @@ export function resolveAgentDisplay(tab: GroupTab): AgentDisplay | null {
     }
     return { status, source: 'hook', stale };
   }
+  // 1b. Zero's own session file. Zero reports no hook and writes no title, but
+  // it does record what it is doing on disk — which is evidence about the agent,
+  // unlike the two inferences below, which are evidence about the *terminal*.
+  // Without this the worktree dot came from output activity alone, so clicking
+  // into Zero's TUI (a redraw) read as work while the row right below it, which
+  // does read the session, said otherwise.
+  if (isZeroAgent(tab)) {
+    // Its session is keyed by the worktree, which the tab knows how to find —
+    // so every caller of this function gets it, not just the agent view.
+    const workspace = terminals.workspaceOfTab(tab.id);
+    const zero = workspace !== undefined ? zeroSessions.forTab(tab.id, workspace) : null;
+    if (zero) return { status: zero.status, source: 'hook', stale: false };
+  }
   // 2. Terminal-title inference.
   const title = agentMonitor.titleStatus(tab.id);
   if (title) return { status: title, source: 'title', stale: false };
@@ -99,7 +112,10 @@ export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentVie
   if (tab.kind !== 'terminal') return null;
   const base = resolveAgentDisplay(tab);
   const hook = agentStatus.get(tab.id);
-  const zero = isZeroAgent(tab) ? zeroSessions.get(workspacePath) : null;
+  // Same session `resolveAgentDisplay` resolved above — scoped to this tab, so a
+  // previous conversation in the same folder can't describe a session that has
+  // just started.
+  const zero = isZeroAgent(tab) ? zeroSessions.forTab(tab.id, workspacePath) : null;
   const name = tab.agentName ?? tab.title ?? '';
 
   let status: DisplayStatus = base?.status ?? 'idle';
@@ -120,9 +136,14 @@ export function resolveAgentView(tab: GroupTab, workspacePath: string): AgentVie
         ? (hook.tool ?? '').trim() || null
         : (hook.summary ?? '').trim() || null;
   } else if (zero) {
-    // Zero has no hook — its title + status come from the on-disk session.
+    // Zero has no hook — its title, status and latest reply come from the
+    // on-disk session. The reply is shown once the turn is over, matching the
+    // hook agents (while one works, its own line is the tool in use, which Zero
+    // does not expose — so it shows the status label instead).
     status = zero.status;
     title = zero.title.trim();
+    lastUpdate = Date.parse(zero.updatedAt) || null;
+    if (status !== 'working') preview = (zero.reply ?? '').trim() || null;
   }
 
   // A generated name wins over the prompt/session fallbacks: it describes the

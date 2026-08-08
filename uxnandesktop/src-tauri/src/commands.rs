@@ -1912,151 +1912,48 @@ pub async fn get_hook_install(
     Ok(state.hook_install.read().await.clone())
 }
 
-/// The current state of the Claude `settings.json` `hooks` block. Lets the
-/// UI render an honest "Installed" / "Not installed" / "Unavailable" badge
-/// (we never claim installed unless our managed reporter is actually present).
+/// Every agent the ADE can install a reporter for, with its install state and
+/// whether the CLI itself looks present on this machine. One call instead of
+/// three per agent: the panel lists whatever the backend registry holds, so
+/// wiring a new agent never means touching the frontend's list.
 #[tauri::command]
-pub async fn get_claude_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_claude_status())
+pub async fn list_agent_hooks() -> Result<Vec<agent_hooks::HookAgentEntry>, CommandError> {
+    Ok(agent_hooks::read_all_agent_status())
 }
 
-/// Merge the ADE-managed `hooks` block into `~/.claude/settings.json`, pointing
-/// at the installed relay (exec-form `node`, so it runs from any shell).
-/// Preserves every other hook and top-level key. Returns the new status so the
-/// UI can refresh without a second round-trip.
+/// Install (or refresh) one agent's managed reporter, merging it into that
+/// agent's own configuration and preserving every hook the user wrote. Returns
+/// the resulting state so the UI refreshes without a second round-trip.
 #[tauri::command]
-pub async fn install_claude_hooks(
+pub async fn install_agent_hooks(
+    agent: String,
     state: State<'_, AppState>,
 ) -> Result<AgentHooksStatus, CommandError> {
     let install = state.hook_install.read().await.clone().ok_or_else(|| {
         CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
     })?;
-    agent_hooks::install_claude_hooks(&install.status_relay_script).map_err(CommandError::from)
+    agent_hooks::install_agent(&agent, &install).map_err(CommandError::from)
 }
 
-/// Remove the ADE-managed `hooks` block from `~/.claude/settings.json` (no
-/// op if it's not ours). Idempotent: safe to call repeatedly.
+/// Remove one agent's managed reporter. Only ever strips what the ADE wrote —
+/// the user's own hooks in the same file survive.
 #[tauri::command]
-pub async fn uninstall_claude_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_claude_hooks().map_err(CommandError::from)
+pub async fn uninstall_agent_hooks(agent: String) -> Result<AgentHooksStatus, CommandError> {
+    agent_hooks::uninstall_agent(&agent).map_err(CommandError::from)
 }
 
-/// Status of the managed Codex `hooks.json` (and its `config.toml` trust entry).
+/// Exactly what the ADE writes into one agent's config (Settings "Show
+/// config"), rendered against the installed script paths so it can be copied
+/// as-is. For OpenCode and Pi — whose reporter *is* a file — this is its source.
 #[tauri::command]
-pub async fn get_codex_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_codex_hooks_status())
-}
-
-/// Install the ADE-managed hooks into `~/.codex/hooks.json` and trust the file
-/// in `~/.codex/config.toml`, so Codex reports precise state out of the box.
-#[tauri::command]
-pub async fn install_codex_hooks(
+pub async fn render_agent_hooks_config(
+    agent: String,
     state: State<'_, AppState>,
-) -> Result<AgentHooksStatus, CommandError> {
+) -> Result<String, CommandError> {
     let install = state.hook_install.read().await.clone().ok_or_else(|| {
         CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
     })?;
-    agent_hooks::install_codex_hooks(&install).map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn uninstall_codex_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_codex_hooks().map_err(CommandError::from)
-}
-
-/// Status of the managed Gemini CLI `settings.json` hooks block.
-#[tauri::command]
-pub async fn get_gemini_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_gemini_hooks_status())
-}
-
-/// Install the ADE-managed hooks into `~/.gemini/settings.json`.
-#[tauri::command]
-pub async fn install_gemini_hooks(
-    state: State<'_, AppState>,
-) -> Result<AgentHooksStatus, CommandError> {
-    let install = state.hook_install.read().await.clone().ok_or_else(|| {
-        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
-    })?;
-    agent_hooks::install_gemini_hooks(&install.status_relay_script).map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn uninstall_gemini_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_gemini_hooks().map_err(CommandError::from)
-}
-
-/// Status of the managed Grok reporter (`~/.grok/hooks/uxnan-status.json`).
-#[tauri::command]
-pub async fn get_grok_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_grok_hooks_status())
-}
-
-/// Install the ADE-managed reporter as its own file in `~/.grok/hooks/`.
-#[tauri::command]
-pub async fn install_grok_hooks(
-    state: State<'_, AppState>,
-) -> Result<AgentHooksStatus, CommandError> {
-    let install = state.hook_install.read().await.clone().ok_or_else(|| {
-        CommandError::new("HOOK_SCRIPTS_MISSING", "hook scripts are not installed")
-    })?;
-    agent_hooks::install_grok_hooks(&install).map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn uninstall_grok_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_grok_hooks().map_err(CommandError::from)
-}
-
-/// Status of the managed Antigravity hook (`~/.gemini/config/hooks.json`).
-#[tauri::command]
-pub async fn get_antigravity_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_antigravity_hooks_status())
-}
-
-/// Install the ADE-managed named hook into `~/.gemini/config/hooks.json`.
-#[tauri::command]
-pub async fn install_antigravity_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::install_antigravity_hooks().map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn uninstall_antigravity_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_antigravity_hooks().map_err(CommandError::from)
-}
-
-/// Status of the managed Pi/OMP status extension.
-#[tauri::command]
-pub async fn get_pi_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_pi_hooks_status())
-}
-
-/// Install the ADE-managed Pi/OMP status extension into `~/.pi/agent/extensions`.
-#[tauri::command]
-pub async fn install_pi_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::install_pi_hooks().map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn uninstall_pi_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_pi_hooks().map_err(CommandError::from)
-}
-
-/// Status of the managed OpenCode status plugin.
-#[tauri::command]
-pub async fn get_opencode_hooks_status() -> Result<AgentHooksStatus, CommandError> {
-    Ok(agent_hooks::read_opencode_hooks_status())
-}
-
-/// Install the ADE-managed OpenCode status plugin and register it.
-#[tauri::command]
-pub async fn install_opencode_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::install_opencode_hooks().map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn uninstall_opencode_hooks() -> Result<AgentHooksStatus, CommandError> {
-    agent_hooks::uninstall_opencode_hooks().map_err(CommandError::from)
+    agent_hooks::render_agent_config(&agent, &install).map_err(CommandError::from)
 }
 
 /// (Re)install the managed hooks for every supported agent. Used by the

@@ -58,18 +58,24 @@ same software a visitor is about to download.
 4. **Keep the content plausible and boring.** Branch names, repo names and
    terminal output describe work on this monorepo. No invented customers, no
    fake handles, no personal paths.
-5. **Marks come from `assets/agents/` at the repository root** — the same seven
-   SVGs the root READMEs render. `scripts/sync-agent-marks.mjs` copies them into
+5. **Marks come from `assets/agents/` at the repository root** — the same files
+   the root READMEs render. `scripts/sync-agent-marks.mjs` copies them into
    `public/agents/` before dev and build, so `public/agents/` is git-ignored and
-   the two surfaces cannot drift. Nothing is fetched from a third party at page
-   load. Update a mark once, in `assets/agents/`.
-6. **Lift the dark marks, never the light ones.** `codex.svg` is authored with
-   `fill="currentColor"`, which resolves to **black** inside an `<img>`, and
-   `opencode` / `pi` / `grok` ship grey — all four are invisible or muddy on this
-   page's dark tiles, so `INVERT_ON_DARK` (`src/lib/site.ts`) flips them to
-   near-white there. The phone mockups must **not** invert: their tiles are
-   white, which is exactly where a black mark belongs. Claude's orange and
-   Antigravity's gradient are never touched.
+   the two surfaces cannot drift. Only four agents keep a drawn mark (Claude
+   Code, Codex, OpenClaude, Zero); the rest use the vendor's own favicon,
+   **vendored as a PNG** by `scripts/fetch-agent-favicons.mjs` rather than
+   hot-linked — nothing is fetched from a third party at page load, and the
+   desktop app shows those same favicons, so app, site and READMEs agree. Update
+   a mark once, in `assets/agents/`.
+6. **Draw the chip light, and never invert a favicon.** A favicon is drawn for a
+   white page, and about half of them are dark shapes that vanish on a dark tile
+   — so the agent grid puts a light chip behind every mark, which is also why
+   nothing in it needs `INVERT_ON_DARK`. That set (`src/lib/site.ts`) is only for
+   a **drawn** black mark shown somewhere without a light chip: `codex.svg` is
+   authored with `fill="currentColor"`, which resolves to black inside an
+   `<img>`, and `openclaude.svg` ships solid black. The phone mockups must
+   **not** invert: their tiles are white, which is exactly where a black mark
+   belongs. Claude's orange and Antigravity's gradient are never touched.
 
 ## Phone mockups scale, they do not resize
 

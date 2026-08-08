@@ -61,6 +61,10 @@ export interface Theme {
   radius?: string;
 }
 
+/** The weights xterm accepts, as the app stores them (a plain 100–900 step —
+ *  `"normal"` / `"bold"` are normalized into this on the way in). */
+export type TerminalFontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+
 /** Per-terminal overrides (applied on top of the general theme, terminal only).
  *  Every field is optional; unset fields inherit the resolved defaults. */
 export interface TerminalTheme {
@@ -68,6 +72,8 @@ export interface TerminalTheme {
   fontSize?: number;
   lineHeight?: number;
   letterSpacing?: number;
+  /** Weight for regular text. Accepts a number or `"normal"` / `"bold"` (older
+   *  saved themes and hand-written JSON both occur); normalized on resolve. */
   fontWeight?: number | string;
   /** Enable programming ligatures (rendered through the WebGL renderer's character
    *  joiner — no DOM-renderer fallback, so glyphs stay on the monospace grid). */
@@ -378,6 +384,116 @@ const LIGHT_ANSI: Record<string, string> = {
   brightWhite: "#8c959f",
 };
 
+// --- Legibility: reading the background, and the contrast floor -------------
+
+/** Parse a terminal color into 8-bit RGB. Covers what terminal palettes actually
+ *  hold — `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()/rgba()` and the two
+ *  named colors that turn up in imported themes. Anything else (`oklch(...)`, a
+ *  CSS variable) returns null so callers fall back instead of guessing. */
+function parseColor(color: string | null | undefined): [number, number, number] | null {
+  const v = (color ?? "").trim().toLowerCase();
+  if (!v) return null;
+  if (v === "black") return [0, 0, 0];
+  if (v === "white") return [255, 255, 255];
+  const hex = /^#([0-9a-f]{3,8})$/.exec(v)?.[1];
+  if (hex) {
+    if (hex.length === 3 || hex.length === 4) {
+      const [r, g, b] = [...hex.slice(0, 3)].map((c) => parseInt(c + c, 16));
+      return [r, g, b];
+    }
+    if (hex.length === 6 || hex.length === 8) {
+      return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
+    }
+    return null;
+  }
+  const rgb = /^rgba?\(([^)]+)\)$/.exec(v)?.[1];
+  if (rgb) {
+    const parts = rgb.split(/[\s,/]+/).filter(Boolean).slice(0, 3).map(Number);
+    if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+      return parts.map((n) => Math.max(0, Math.min(255, n))) as [number, number, number];
+    }
+  }
+  return null;
+}
+
+/** WCAG relative luminance of an sRGB triple. */
+function luminance([r, g, b]: [number, number, number]): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** Luminance at which a surface contrasts equally against black and white — the
+ *  neutral point between "this is a light background" and "this is a dark one". */
+const LIGHT_SURFACE_LUMINANCE = Math.sqrt(1.05 * 0.05) - 0.05;
+
+/** Whether a terminal background reads as light. Unparseable colors fall back to
+ *  `fallback` (the app theme's base) rather than guessing wrong. */
+export function isLightTerminalBackground(color: string | null | undefined, fallback: boolean): boolean {
+  const rgb = parseColor(color);
+  return rgb ? luminance(rgb) >= LIGHT_SURFACE_LUMINANCE : fallback;
+}
+
+// Contrast floor handed to xterm (`minimumContrastRatio`): it lifts any glyph
+// that lands too close to its cell background, which is the only defense against
+// colors the ADE doesn't own — a TUI painting 24-bit grey on grey, or ANSI black
+// (#000) on a near-black background. Two floors, because one doesn't fit both:
+// a light background needs the full WCAG-AA 4.5 (bright-white and bright-yellow
+// output is otherwise plain unreadable on white), while a dark background is
+// held at the large-text 3.0 — enough to rescue near-background text without
+// washing out the saturated ANSI colors that a dark palette relies on.
+export const TERMINAL_MIN_CONTRAST_LIGHT = 4.5;
+export const TERMINAL_MIN_CONTRAST_DARK = 3;
+
+// --- Font weight ------------------------------------------------------------
+
+/** Terminal weight when nothing overrides it: lighter than "normal" (400) reads
+ *  cleaner in a dense grid, and the mono faces in the stack carry a 300 axis. */
+export const DEFAULT_TERMINAL_FONT_WEIGHT: TerminalFontWeight = 300;
+
+/** Weight written by the Bold-text switch (Settings → Appearance → Terminal). */
+export const BOLD_TERMINAL_FONT_WEIGHT: TerminalFontWeight = 700;
+
+/** From here up a weight reads as bold (semibold included). */
+const BOLD_WEIGHT_THRESHOLD = 600;
+
+/** Coerce any stored weight — number, numeric string, `"normal"`, `"bold"` — to
+ *  a 100–900 step. Unrecognized values fall back to `fallback`. */
+export function normalizeTerminalFontWeight(
+  value: number | string | null | undefined,
+  fallback: TerminalFontWeight = DEFAULT_TERMINAL_FONT_WEIGHT,
+): TerminalFontWeight {
+  if (value === "normal") return 400;
+  if (value === "bold") return BOLD_TERMINAL_FONT_WEIGHT;
+  const n = typeof value === "string" ? Number(value.trim()) : value;
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return fallback;
+  const step = Math.round(n / 100) * 100;
+  return Math.max(100, Math.min(900, step)) as TerminalFontWeight;
+}
+
+/** Whether a stored weight renders as bold — what the Bold-text switch reflects. */
+export function isBoldTerminalFontWeight(value: number | string | null | undefined): boolean {
+  return normalizeTerminalFontWeight(value) >= BOLD_WEIGHT_THRESHOLD;
+}
+
+/** The pair xterm needs: the regular weight, plus the one it uses for text a
+ *  program marks bold. Bold always stays two steps above regular (capped at 900)
+ *  so turning the terminal bold doesn't flatten the emphasis a CLI relies on —
+ *  with a 300 regular that keeps the familiar 300/700, and a 700 regular still
+ *  leaves 900 for emphasis. */
+export function resolveTerminalFontWeights(value: number | string | null | undefined): {
+  fontWeight: TerminalFontWeight;
+  fontWeightBold: TerminalFontWeight;
+} {
+  const fontWeight = normalizeTerminalFontWeight(value);
+  return {
+    fontWeight,
+    fontWeightBold: Math.min(900, Math.max(BOLD_TERMINAL_FONT_WEIGHT, fontWeight + 200)) as TerminalFontWeight,
+  };
+}
+
 /** Resolved terminal options for xterm (font + ITheme), merging the general
  *  theme's base defaults with the user's terminal overrides. */
 export interface ResolvedTerminal {
@@ -385,29 +501,40 @@ export interface ResolvedTerminal {
   fontSize: number;
   lineHeight: number;
   letterSpacing: number;
-  fontWeight: number | string;
+  fontWeight: TerminalFontWeight;
+  /** Weight for text a program marks bold — always heavier than `fontWeight`. */
+  fontWeightBold: TerminalFontWeight;
   ligatures: boolean;
   cursorStyle: "block" | "underline" | "bar";
   cursorBlink: boolean;
+  /** Contrast floor for xterm, picked from the resolved background. */
+  minimumContrastRatio: number;
   theme: Record<string, string>;
 }
 
-/** Build the effective terminal options: start from the active theme's base
- *  (light/dark default bg/fg + standard ANSI), then apply the terminal overrides. */
+/** Build the effective terminal options: start from the resolved background's
+ *  defaults (light/dark bg/fg + the matching ANSI set), then apply the terminal
+ *  overrides. `base` is the app theme's base — it only decides the background
+ *  when the override doesn't set one, and breaks the tie for a background this
+ *  can't parse. */
 export function resolveTerminal(base: "light" | "dark", ov: TerminalTheme | null | undefined): ResolvedTerminal {
-  const dark = base === "dark";
-  const bg = dark ? "#0b0b0c" : "#ffffff";
+  const o = ov ?? {};
+  // Every default below follows the BACKGROUND, not the app theme's base: a dark
+  // terminal preset under a light app theme (or the reverse) would otherwise
+  // inherit the opposite base's text and ANSI defaults, landing every field the
+  // preset leaves unset the same color as the background it sits on.
+  const bg = o.background || (base === "dark" ? "#0b0b0c" : "#ffffff");
+  const dark = !isLightTerminalBackground(bg, base === "light");
   const fg = dark ? "#e6e6e6" : "#1f2328";
   // A distinct, saturated caret (not the text color) so the cursor is always easy
   // to find at a shell prompt or inside a TUI editor, in both themes.
   const cursorDefault = dark ? "#58a6ff" : "#0969da";
   const ansi = dark ? DEFAULT_ANSI : LIGHT_ANSI;
-  const o = ov ?? {};
   const theme: Record<string, string> = {
-    background: o.background || bg,
+    background: bg,
     foreground: o.foreground || fg,
     cursor: o.cursor || cursorDefault,
-    cursorAccent: o.cursorAccent || o.background || bg,
+    cursorAccent: o.cursorAccent || bg,
     selectionBackground: o.selectionBackground || "rgba(128,128,128,0.35)",
     selectionForeground: o.foreground || fg,
   };
@@ -421,12 +548,11 @@ export function resolveTerminal(base: "light" | "dark", ov: TerminalTheme | null
     fontSize: o.fontSize ?? 14,
     lineHeight: o.lineHeight ?? 1.0,
     letterSpacing: o.letterSpacing ?? 0,
-    // A lighter default weight reads cleaner for terminal text than a full
-    // "normal" (400); the mono faces in the stack carry a 300 axis.
-    fontWeight: o.fontWeight ?? 300,
+    ...resolveTerminalFontWeights(o.fontWeight),
     ligatures: o.ligatures ?? false,
     cursorStyle: o.cursorStyle ?? "block",
     cursorBlink: o.cursorBlink ?? true,
+    minimumContrastRatio: dark ? TERMINAL_MIN_CONTRAST_DARK : TERMINAL_MIN_CONTRAST_LIGHT,
     theme,
   };
 }

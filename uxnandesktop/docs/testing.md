@@ -158,7 +158,7 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **896 tests** across both projects,
+[`platform-support.md`](platform-support.md)). **921 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -211,6 +211,12 @@ instead of quietly agreeing with a mock nobody updated.
   "a read is in flight", so every tick unmounted it and took a half-written pull
   request with it — which is why the first assertion is that the digest is *still
   there*, not that it loaded.
+- `ThemeSettings.svelte.test.ts` — Settings → Appearance → Terminal's **Bold
+  text** switch changes the weight and nothing else (family, size and spacing
+  come out untouched), keeps program-bold output heavier than the body weight,
+  and reads the *effective* weight: against a preset that is already bold it
+  shows as on and switching it off writes an explicit regular weight, because
+  merely clearing the override would fall straight back onto the preset.
 
 - `ui/icon/icon.svelte.test.ts` — the Hugeicons glyph data reaches the DOM as
   *valid* SVG. The data uses camelCase keys (`strokeLinecap`) that SVG has no

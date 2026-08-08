@@ -12,7 +12,7 @@ change set.**
 |---|---|
 | The star and download counters under the hero badge | GitHub's own API, read **at build time** by `src/lib/github.ts`. Stars are `stargazers_count`; downloads sum the `download_count` of **installer assets only** (`.exe .msi .dmg .deb .rpm .AppImage .apk .aab`) — manifests, signatures and updater bundles are not downloads, and counting them made the figure *drop* after every release because the release workflow re-uploads `latest.json` with `--clobber`. If the call fails the row is omitted rather than guessed |
 | "Windows, Linux · macOS (experimental) · Android on Google Play · iOS coming soon" | root `README.md` → _Install_ — macOS builds are unsigned, iOS is written but unshipped |
-| "Claude Code, Codex, OpenCode and four more" — the seven agent tiles | root `README.md` → _Works with any CLI agent_; `bridge/docs/agents.md` |
+| "22 agents report precise status" + the two agent grids | `uxnandesktop/docs/agent-hooks.md` → the reporter table and _"Nine agents in the catalog have no precise state"_; root `README.md` → _Works with any CLI agent_ |
 | Antigravity is marked _partial support_ | root `README.md` footnote — one-shot per turn, no live approval channel |
 | "+ any CLI agent" | `uxnandesktop/docs/agent-launch.md` — custom agents are registered by hand |
 | "runs the vendor's own official binary… never calls a provider API, holds a key, or embeds an SDK" | root `README.md` → _Works with any CLI agent_ |

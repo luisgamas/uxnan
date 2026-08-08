@@ -184,30 +184,68 @@ A Claude Code Task-tool subagent (or an OpenCode child session) shows up live as
 
 Uxnan Desktop is terminal-centric: if it runs in a terminal, it runs in uxnan —
 add any CLI as a custom agent and it launches like any other, no integration
-work required. The seven below ship with **deep, first-class integration** out
-of the box: precise working / blocked / waiting / done status, session
-auto-resume, live model discovery, and per-agent run options.
+work required. The **22 below report precise state out of the box**: working /
+blocked / waiting / done as it happens, plus session auto-resume, live model
+discovery, and per-agent run options.
 
 <p align="center">
-  <kbd><img src="assets/agents/claudecode.svg" width="16" valign="middle" alt="" /> Claude Code</kbd>
-  <kbd><img src="assets/agents/codex.svg" width="16" valign="middle" alt="" /> Codex</kbd>
-  <kbd><img src="assets/agents/opencode.svg" width="16" valign="middle" alt="" /> OpenCode</kbd>
-  <kbd><img src="assets/agents/pi.svg" width="16" valign="middle" alt="" /> Pi</kbd>
-  <kbd><img src="assets/agents/grok.svg" width="16" valign="middle" alt="" /> Grok</kbd>
-  <kbd><img src="assets/agents/antigravity.svg" width="16" valign="middle" alt="" /> Antigravity</kbd><sup>*</sup>
-  <kbd><img src="assets/agents/zero.svg" width="16" valign="middle" alt="" /> Zero</kbd>
+  <kbd><img src="assets/agents/claudecode.svg" width="22" valign="middle" alt="" /> Claude Code</kbd>
+  <kbd><picture><source media="(prefers-color-scheme: dark)" srcset="assets/agents/codex-on-dark.svg" /><img src="assets/agents/codex.svg" width="22" valign="middle" alt="" /></picture> Codex</kbd>
+  <kbd><img src="assets/agents/opencode.png" width="22" valign="middle" alt="" /> OpenCode</kbd>
+  <kbd><img src="assets/agents/cursor.png" width="22" valign="middle" alt="" /> Cursor</kbd>
+  <kbd><img src="assets/agents/copilot.png" width="22" valign="middle" alt="" /> GitHub Copilot</kbd>
+  <kbd><img src="assets/agents/droid.png" width="22" valign="middle" alt="" /> Droid</kbd>
+  <kbd><img src="assets/agents/grok.png" width="22" valign="middle" alt="" /> Grok</kbd>
+  <kbd><img src="assets/agents/amp.png" width="22" valign="middle" alt="" /> Amp</kbd>
+  <kbd><img src="assets/agents/goose.png" width="22" valign="middle" alt="" /> Goose</kbd>
+  <kbd><img src="assets/agents/qwen.png" width="22" valign="middle" alt="" /> Qwen Code</kbd>
+  <kbd><img src="assets/agents/kiro.png" width="22" valign="middle" alt="" /> Kiro</kbd>
+  <kbd><img src="assets/agents/auggie.png" width="22" valign="middle" alt="" /> Auggie</kbd>
+  <kbd><img src="assets/agents/devin.png" width="22" valign="middle" alt="" /> Devin</kbd>
+  <kbd><img src="assets/agents/kimi.png" width="22" valign="middle" alt="" /> Kimi</kbd>
+  <kbd><img src="assets/agents/kilocode.png" width="22" valign="middle" alt="" /> Kilo Code</kbd>
+  <kbd><img src="assets/agents/mimo.png" width="22" valign="middle" alt="" /> MiMo Code</kbd>
+  <kbd><img src="assets/agents/commandcode.png" width="22" valign="middle" alt="" /> Command Code</kbd>
+  <kbd><picture><source media="(prefers-color-scheme: dark)" srcset="assets/agents/openclaude-on-dark.svg" /><img src="assets/agents/openclaude.svg" width="22" valign="middle" alt="" /></picture> OpenClaude</kbd>
+  <kbd><img src="assets/agents/pi.png" width="22" valign="middle" alt="" /> Pi</kbd>
+  <kbd><img src="assets/agents/omp.png" width="22" valign="middle" alt="" /> OMP</kbd>
+  <kbd><img src="assets/agents/zero.svg" width="22" valign="middle" alt="" /> Zero</kbd>
+  <kbd><img src="assets/agents/antigravity.png" width="22" valign="middle" alt="" /> Antigravity</kbd><sup>*</sup>
+</p>
+
+<p align="center">
+  <sub>*Antigravity's integration is partial — it runs one-shot per turn with no live approval channel.<br />
+  Zero has no hook surface; its state is read from the session it writes to disk.</sub>
+</p>
+
+These nine are in the catalog too. They launch, run and show a working / idle
+indicator like anything else — their CLI simply exposes no way to say a turn
+**ended**, so uxnan doesn't claim a precise state it cannot know. Point one at
+the bundled wrapper and you get `working` on launch and `done` on exit.
+
+<p align="center">
+  <kbd><img src="assets/agents/aider.png" width="22" valign="middle" alt="" /> Aider</kbd>
+  <kbd><img src="assets/agents/cline.png" width="22" valign="middle" alt="" /> Cline</kbd>
+  <kbd><img src="assets/agents/continue.png" width="22" valign="middle" alt="" /> Continue</kbd>
+  <kbd><img src="assets/agents/crush.png" width="22" valign="middle" alt="" /> Crush</kbd>
+  <kbd><img src="assets/agents/codebuff.png" width="22" valign="middle" alt="" /> Codebuff</kbd>
+  <kbd><img src="assets/agents/mistralvibe.png" width="22" valign="middle" alt="" /> Mistral Vibe</kbd>
+  <kbd><img src="assets/agents/rovo.png" width="22" valign="middle" alt="" /> Rovo Dev</kbd>
+  <kbd><img src="assets/agents/autohand.png" width="22" valign="middle" alt="" /> Autohand</kbd>
+  <kbd><img src="assets/agents/ante.png" width="22" valign="middle" alt="" /> Ante</kbd>
   <kbd>+ any CLI agent</kbd>
 </p>
 
 <p align="center">
-  <sub>*Antigravity's integration is partial — it runs one-shot per turn with no live approval channel.</sub>
+  <sub>Using one of these? If its CLI grows a hook surface, wiring it is a single table row —<br />
+  see <a href="uxnandesktop/docs/agent-hooks.md">agent hooks</a>, and send a pull request.</sub>
 </p>
 
 <p align="center">
   Every one of them runs as that vendor's own official local CLI, under the account or<br />
   subscription you already signed it in with — uxnan doesn't call a provider API, hold a key,<br />
   or embed an SDK. It just drives the terminal, exactly like you would.<br />
-  <b>The same seven are what Uxnan Mobile drives from your phone.</b>
+  <b>Seven of them — Claude Code, Codex, OpenCode, Pi, Grok, Antigravity and Zero — are what Uxnan Mobile drives from your phone.</b>
 </p>
 
 ---

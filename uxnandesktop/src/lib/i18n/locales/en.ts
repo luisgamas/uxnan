@@ -1105,6 +1105,7 @@ export const en = {
   "appearance.fontMonoDesc": "Monospaced text — code snippets and inline paths.",
   "appearance.termFamilyDesc": "Typeface for the terminal panes.",
   "appearance.termSizeDesc": "Font size, in pixels.",
+  "appearance.termBoldDesc": "Print terminal text in a heavier weight of the same font — bold output stays heavier still.",
   "appearance.termLineHeightDesc": "Line-height multiplier.",
   "appearance.termLetterSpacingDesc": "Extra spacing between characters, in pixels.",
   "appearance.termLigaturesDesc": "Render coding ligatures (e.g. => as one glyph).",
@@ -1146,6 +1147,7 @@ export const en = {
   "terminalTheme.lineHeight": "Line height",
   "terminalTheme.letterSpacing": "Letter spacing",
   "terminalTheme.weight": "Font weight",
+  "terminalTheme.bold": "Bold text",
   "terminalTheme.cursorStyle": "Cursor style",
   "terminalTheme.cursorBlock": "Block",
   "terminalTheme.cursorUnderline": "Underline",
@@ -1269,27 +1271,58 @@ export const en = {
   "hooks.title": "Hooks",
   "hooks.desc":
     "Out-of-the-box configs that POST precise agent states to the ADE’s local hook server, so the sidebar and tab bar show working / waiting / done without manual setup.",
-  "hooks.claudeTitle": "Claude Code",
-  "hooks.claudeDesc":
+  // One line per agent on what its hook can actually report — keyed by the hook
+  // kind the backend registry uses, so a newly wired agent needs a line here and
+  // in `es.ts` and nothing else.
+  "hooks.desc.claude":
     "Adds a `hooks` block to `~/.claude/settings.json` that runs the bundled Node relay on every Claude event (exec-form, so it works from any shell). Existing hooks are preserved.",
-  "hooks.codexTitle": "Codex",
-  "hooks.codexDesc":
+  "hooks.desc.codex":
     "Adds managed hooks to `~/.codex/hooks.json` and registers their trust hash in `~/.codex/config.toml` (Codex 0.129+ gates hooks on it), so Codex reports precise states out of the box.",
-  "hooks.geminiTitle": "Gemini CLI",
-  "hooks.geminiDesc":
-    "Adds managed hooks to `~/.gemini/settings.json` that run the bundled relay on every Gemini turn event. Existing hooks are preserved.",
-  "hooks.opencodeTitle": "OpenCode",
-  "hooks.opencodeDesc":
-    "Installs the ADE status plugin into OpenCode's config so it reports working / waiting / done / blocked.",
-  "hooks.piTitle": "Pi",
-  "hooks.piDesc":
+  "hooks.desc.gemini":
+    "Adds managed hooks to `~/.gemini/settings.json` that run the bundled relay on every Gemini turn event. Existing hooks are preserved. Discontinued upstream — offered only so you can turn an existing install off.",
+  "hooks.desc.opencode":
+    "Installs the ADE status plugin into OpenCode's config so it reports working / waiting / done / blocked, and maps its child sessions to sub-agent rows.",
+  "hooks.desc.pi":
     "Installs the ADE status extension into `~/.pi/agent/extensions` so Pi reports working / done in-process (it has no permission signal).",
-  "hooks.grokTitle": "Grok",
-  "hooks.grokDesc":
+  "hooks.desc.grok":
     "Writes its own file in `~/.grok/hooks/`, so your hooks are never touched. Grok speaks Claude Code's hook events, so it reports the full range — including a real `blocked` when a turn dies on an API error.",
-  "hooks.antigravityTitle": "Antigravity",
-  "hooks.antigravityDesc":
+  "hooks.desc.antigravity":
     "Adds one named hook to `~/.gemini/config/hooks.json`. Antigravity exposes only its execution loop — no prompt or permission event — so it reports working / done precisely and never claims to be waiting on you.",
+  "hooks.desc.openclaude":
+    "A Claude Code fork with its own home: the reporter is merged into `~/.openclaude/settings.json`, event by event, leaving your own hooks in place.",
+  "hooks.desc.qwen":
+    "Merged into `~/.qwen/settings.json`. Qwen Code speaks Claude Code's hook vocabulary (its timeouts are in milliseconds), so it reports the full range including a turn that died on an error.",
+  "hooks.desc.droid":
+    "Merged into `~/.factory/settings.json`. Droid reports its turn, its tool loop and its approval prompts, so it reaches working, waiting and done.",
+  "hooks.desc.devin":
+    "Merged into Devin's own `config.json` (`%APPDATA%\devin` on Windows, `~/.config/devin` elsewhere). Its matchers are regexes, so the reporter registers without one — which already means every tool.",
+  "hooks.desc.commandcode":
+    "Merged into `~/.commandcode/settings.json`. Command Code exposes only its tool loop and the end of a turn, so it reports working and done and never claims to need you.",
+  "hooks.desc.auggie":
+    "Merged into `~/.augment/settings.json`. Auggie exposes its session, tool loop and turn end — no permission event — so it reports working and done.",
+  "hooks.desc.cursor":
+    "Merged into `~/.cursor/hooks.json`, keeping every hook you already had. Cursor gates its tools on what a hook answers, so the reporter always replies (an unanswered hook would block the agent, not just fail to report).",
+  "hooks.desc.copilot":
+    "Writes its own file in `~/.copilot/hooks/`, so your hooks are never touched. Copilot reports its tool loop, its permission prompts and a real `blocked` when a turn errors out.",
+  "hooks.desc.kiro":
+    "Writes its own file in `~/.kiro/hooks/`, which Kiro merges with everything else in that folder. It reports its turn, its tool loop and the end of a turn.",
+  "hooks.desc.kimi":
+    "Kimi Code keeps its settings in TOML, so the reporter is a marked block appended to `~/.kimi-code/config.toml` — everything outside those markers is left exactly as you wrote it.",
+  "hooks.desc.goose":
+    "Writes its own plugin under `~/.agents/plugins/`, the Open Plugins layout Goose reads, so your hooks are never touched. Its event names are Claude Code's, so it reports the full range.",
+  "hooks.desc.mimo":
+    "MiMo Code is a fork of OpenCode and runs the very same status plugin, dropped into its own `plugins/` dir — including the sub-agent rows its child sessions produce.",
+  "hooks.desc.kilocode":
+    "Kilo Code exposes OpenCode's event bus with a different export shape, so it runs the same in-process reporter — session, tool and permission events included.",
+  "hooks.desc.amp":
+    "Installs a plugin into `~/.config/amp/plugins/`, which Amp auto-discovers. Amp's plugin API is its own; its `agent.end` says whether the turn finished or died, so it reports a real `blocked`.",
+  "hooks.desc.omp":
+    "OMP runs Pi's agent runtime under its own home, so it loads the very same status extension from `~/.omp/agent/extensions/` — reporting as OMP rather than as Pi.",
+  "hooks.agentListLabel": "Agents",
+  "hooks.groupInstalled": "On this machine",
+  "hooks.groupOthers": "Other agents",
+  "hooks.notOnThisMachine":
+    "This CLI wasn’t found on your machine. Installing its reporter now is harmless — it starts reporting the day you install the agent.",
   "hooks.statusInstalled": "Installed at {path}",
   "hooks.statusInstalledShort": "Installed",
   "hooks.statusNotInstalled": "Not installed",

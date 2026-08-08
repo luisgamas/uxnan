@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 514 Rust tests (486 unit + 28
+always wins). 529 Rust tests (501 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 896 frontend Vitest tests across two
+probe) + 921 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -113,11 +113,39 @@ started.**
   dot-relative command (Antigravity) and an 8.3 short-path fallback (Grok).
   Gemini CLI is no longer auto-installed (discontinued upstream) but its card
   still appears while its reporter is present, so it can be removed.
-  Per-event merge preserves user hooks; shell
-  reporters pass id/kind/state in headers (no JSON building); an endpoint file
+  **Fifteen more agents are wired declaratively** — OpenClaude, Qwen Code,
+  Droid, Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro, Kimi Code,
+  Goose, MiMo Code, Kilo Code, Amp and OMP — as rows in `agent_hooks::TABLE_AGENTS`
+  (config path, detection command, entry shape, events) driving the shared
+  `uxnan-event-hook`, or — for the last three — an in-process plugin the CLI
+  auto-discovers (MiMo and Kilo run OpenCode's reporter with the agent kind and,
+  for Kilo, the export shape rewritten at install; Amp has its own source); adding one is a row plus
+  a `normalize_event` arm with the same id, which a test enforces. Startup only
+  installs the agents the machine actually has (`PATH` or an existing config).
+  Per-event merge preserves user hooks and is tag-scoped, so two of our own
+  reporters can share one config file; shell
+  reporters pass id/kind/state in headers (no JSON building) and answer `{}` on
+  stdout (Cursor gates tool use on the hook's reply); an endpoint file
   (`UXNAN_ENDPOINT_FILE`) survives app restarts; `WSLENV` carries the vars into
-  WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks shows a
-  card per agent (incl. Pi) + a master install switch.
+  WSL (WSL2 host-loopback is a documented gap). Settings → Agents → Hooks is a
+  master–detail list (agents on this machine first) + a master install switch,
+  rendered from the backend registry, over four generic Tauri commands.
+  **More than one uxnan window works.** Each window has its own port + token and
+  injects them per terminal; the shared `endpoint.*` file is now only the rescue
+  when the environment's server stops answering (it is one path, so the last
+  window to start owns it — preferring it sent the first window's agents to the
+  second). Every reporter uxnan ships follows that order and both paths are
+  verified. The browser MCP entry still belongs to the last window to start (a
+  config file has no per-window environment to read a URL from), but a window
+  closing no longer deletes the live window's entry.
+
+  **Live-verified this cycle:** Codex (its `SessionStart {"source":"startup"}`
+  before any prompt — the bug that made it read as working forever — and the
+  `last_assistant_message` its `Stop` carries), Grok (still reporting through the
+  reporter that now answers `{}`), and Cursor's install (merged into a real
+  `~/.cursor/hooks.json` beside another tool's hooks, then removed cleanly).
+  Cursor's own `-p` print mode runs no hooks at all in 2026.08.04, so its
+  reporting was confirmed at the install layer, not end to end.
 - **Multi-agent orchestration** (spec `02d` §3) — a two-tab console (status bar,
   shown with ≥2 live agents or any saved run): **Broadcast** (**explicit recipient
   selection** — tick individuals / whole types / all; coordinator retired — with
@@ -1151,7 +1179,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 514 Rust + 896 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 529 Rust + 921 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

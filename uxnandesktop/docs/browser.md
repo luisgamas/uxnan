@@ -147,19 +147,39 @@ project folder). The token is always referenced via `UXNAN_MCP_TOKEN` (never inl
 | Codex | `~/.codex/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `bearer_token_env_var` |
 | OpenCode | `~/.config/opencode/opencode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
 | Grok | `~/.grok/config.toml` | `[mcp_servers.uxnan-browser]` `url` + `headers` |
+| Qwen Code | `~/.qwen/settings.json` | `mcpServers.uxnan-browser` `{httpUrl, trust, headers}` |
+| Droid | `~/.factory/mcp.json` | `mcpServers.uxnan-browser` `{type:"http", url, headers}` |
+| MiMo Code | `~/.config/mimocode/mimocode.json` | `mcp.uxnan-browser` `{type:"remote", url, headers, enabled}` |
 
 Merges are non-destructive (your other keys/servers are preserved), and uxnan removes
 its own entry on exit. Grok's entry authenticates with
 `Authorization = "Bearer ${UXNAN_MCP_TOKEN}"` — Grok expands `${VAR}` in `url`,
 `headers` and `env` at load time, so the token still never lands in a file.
 
+**Why the rest of the wired agents are not on this list.** The rule that keeps the
+browser tools *uxnan-only* is that the token lives in the environment, never in a
+file: outside uxnan there is no `UXNAN_MCP_TOKEN`, so the server is unusable even
+in the window between an unclean exit and the next launch (which is the only time
+the entry outlives the app). An agent that cannot reference an environment
+variable in its headers can only be supported by writing the live token into a
+file the user keeps — so it isn't:
+
+- **Cursor** expands `${env:VAR}` for stdio servers but **not in the headers of a
+  remote one**, so the literal `${env:UXNAN_MCP_TOKEN}` would be sent as the
+  credential.
+- **GitHub Copilot** documents header values for its CLI as literal strings.
+- **Antigravity**'s remote MCP transport is SSE with only a `serverUrl` and no
+  header field, and uxnan's endpoint speaks Streamable HTTP rather than SSE.
+- **Goose** keeps its extensions in YAML and **Kilo Code** in JSONC; uxnan
+  vendors no writer for either, and rewriting them with a plain JSON writer would
+  throw away the user's comments and formatting.
+
+Any of them can still be wired by hand from the copy-paste snippet in Settings.
+
 **Gemini CLI** is no longer configured — Google discontinued it in favour of
 Antigravity — though uxnan still knows its config path, so an entry left behind by
-an earlier version is still cleaned up. **Antigravity itself cannot be supported
-yet**: its remote MCP transport is SSE with only a `serverUrl` and no header
-field, so there is nowhere to put the bearer token, and uxnan's endpoint speaks
-Streamable HTTP rather than SSE. Fixing it needs a change on one side or the
-other; the detail is in [`FOR-DEV.md`](../FOR-DEV.md).
+an earlier version is still cleaned up. Fixing Antigravity needs a change on one
+side or the other; the detail is in [`FOR-DEV.md`](../FOR-DEV.md).
 
 ### Adding another agent
 

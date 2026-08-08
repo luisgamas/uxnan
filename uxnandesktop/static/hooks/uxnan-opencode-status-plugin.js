@@ -55,31 +55,45 @@ function readEndpointFile(path) {
   }
 }
 
-function coords() {
+// Where to report, in the order that survives more than one uxnan window.
+//
+// The terminal's own environment comes FIRST and the endpoint file is only the
+// rescue. The file lives at one shared path, so a second uxnan window overwrites
+// it with its own coordinates — and preferring it sent every agent of the first
+// window's reports to the second one, which is why a second window showed no
+// completion checks. The file still matters when the environment is stale (a
+// session that outlived an app restart), so it is tried when the first POST
+// fails.
+function coordCandidates() {
+  const out = [];
+  const envUrl = process.env.UXNAN_HOOK_URL || "";
+  if (envUrl) out.push({ url: envUrl, token: process.env.UXNAN_HOOK_TOKEN || "" });
   const file = process.env.UXNAN_ENDPOINT_FILE
     ? readEndpointFile(process.env.UXNAN_ENDPOINT_FILE)
     : {};
-  return {
-    url: file.UXNAN_HOOK_URL || process.env.UXNAN_HOOK_URL || "",
-    token: file.UXNAN_HOOK_TOKEN || process.env.UXNAN_HOOK_TOKEN || "",
-    agentId: process.env.UXNAN_AGENT_ID || "",
-  };
+  if (file.UXNAN_HOOK_URL && file.UXNAN_HOOK_URL !== envUrl) {
+    out.push({ url: file.UXNAN_HOOK_URL, token: file.UXNAN_HOOK_TOKEN || "" });
+  }
+  return out;
 }
 
 async function report(event, source) {
-  const { url, token, agentId } = coords();
-  if (!url || !agentId || !event) return;
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Uxnan-Token": token,
-      },
-      body: JSON.stringify({ agentId, agentType: AGENT_TYPE, event, source: source || {} }),
-    });
-  } catch {
-    // Fire-and-forget; never block the agent on a slow/dead hook server.
+  const agentId = process.env.UXNAN_AGENT_ID || "";
+  if (!agentId || !event) return;
+  const body = JSON.stringify({ agentId, agentType: AGENT_TYPE, event, source: source || {} });
+  for (const { url, token } of coordCandidates()) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Uxnan-Token": token },
+        body,
+      });
+      // 2xx only: a 401 from another window's server is a failed attempt, so the
+      // next candidate still gets a turn.
+      if (res.ok) return;
+    } catch {
+      // Fire-and-forget; never block the agent on a slow/dead hook server.
+    }
   }
 }
 
@@ -113,6 +127,20 @@ function classify(evt) {
   // A prompt needs the user regardless of which session raised it.
   if (type === "permission.asked" || type === "permission.updated") {
     return { event: "PermissionRequest", source: rootSid ? { sessionID: rootSid } : undefined };
+  }
+  // …and an answered one puts the agent back to work. Kilo Code names this
+  // event (OpenCode does not emit it), and without it a session that was
+  // waiting would sit there until its next status event.
+  if (type === "permission.replied") {
+    return { event: "SessionBusy", source: rootSid ? { sessionID: rootSid } : undefined };
+  }
+  // Kilo Code's tool events. OpenCode reports tool use through `session.status`
+  // instead, so this arm is simply never taken there.
+  if (type === "tool.execute.before" || type === "tool.execute.after") {
+    return {
+      event: "SessionBusy",
+      source: { sessionID: rootSid || undefined, tool_name: props.tool || props.name },
+    };
   }
   if (type === "question.asked") {
     return { event: "AskUserQuestion", source: rootSid ? { sessionID: rootSid } : undefined };

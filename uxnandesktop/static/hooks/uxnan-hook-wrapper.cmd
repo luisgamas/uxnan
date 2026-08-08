@@ -22,7 +22,11 @@ if not "%~1"=="--" goto :usage
 shift
 if "%~1"=="" goto :usage
 
-if defined UXNAN_ENDPOINT_FILE if exist "%UXNAN_ENDPOINT_FILE%" call "%UXNAN_ENDPOINT_FILE%" 2>nul
+REM The terminal's own environment wins; the endpoint file is only the rescue.
+REM The file lives at ONE shared path, so a second uxnan window overwrites it
+REM with its own coordinates - sourcing it first sent the first window's agents
+REM to the second one. Only read it when the environment carries nothing.
+if not defined UXNAN_HOOK_URL if defined UXNAN_ENDPOINT_FILE if exist "%UXNAN_ENDPOINT_FILE%" call "%UXNAN_ENDPOINT_FILE%" 2>nul
 
 if defined UXNAN_HOOK_URL (
   "%SystemRoot%\System32\curl.exe" -fsS --max-time 3 -X POST "%UXNAN_HOOK_URL%" ^

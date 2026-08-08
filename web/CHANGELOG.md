@@ -7,6 +7,26 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The agent section shows the whole catalog, not seven names.** Two rows of
+  tiles now — same compact shape as before, mark on the left and name on the
+  right: the **22 agents that report precise state** (working / blocked / waiting /
+  done, plus session resume and live model discovery), and the **9 that launch
+  and run but whose CLI cannot say a turn ended** — shown dimmed, with a line
+  saying exactly that rather than leaving the difference implied.
+
+- **Marks are the vendors' own favicons, vendored as PNGs.** Only four agents
+  keep a drawn mark (Claude Code, Codex, OpenClaude, Zero); the rest use their
+  favicon, fetched **once** into `assets/agents/` by
+  `scripts/fetch-agent-favicons.mjs` rather than hot-linked, so no visitor's
+  browser calls a third party to draw a 40px logo. It is also what the desktop
+  app itself shows, so the app, the site and the READMEs agree.
+
+- **The chip behind each mark is light now.** A favicon is drawn for a white
+  page, and about half of them are dark shapes that disappeared on the old dark
+  chip (OpenCode, Kimi, Devin, MiMo, Command Code…). On a light chip they all
+  read, and nothing in that grid needs inverting any more.
+
+
 - **The desktop mockup's agent-state glyphs follow the shipped app again**, and
   now show the whole vocabulary instead of a wall of identical green: the
   **Comet Trail** (a 3×3 dot matrix with a bright head and a fading two-dot tail

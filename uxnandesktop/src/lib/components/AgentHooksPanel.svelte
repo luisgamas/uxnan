@@ -4,17 +4,19 @@
   // working / waiting / done / blocked without manual setup.
   //
   // Layout: one master card carries the "Install agent hooks" switch (the
-  // feature's power) *and* a tab per supported agent (Claude Code, Codex, Gemini
-  // CLI, OpenCode, Pi) — line tabs, same primitive + style as the right panel —
-  // so each agent's status + install/uninstall live in its own pane instead of a
-  // stack of cards. The generic wrapper (for any other CLI) is a separate card.
-  // Per-agent actions are gated by the master switch: Install is available only
-  // when the feature is on, Uninstall is always available so you can clean up.
+  // feature's power) and a master–detail list — agents down the left, the
+  // selected one's status + actions on the right. It replaced a tab strip, which
+  // stopped working the moment the ADE could report for more agents than fit on
+  // one line; the list also groups by whether the CLI is actually on this
+  // machine, so the ones you use are the ones you see first. The generic wrapper
+  // (for any other CLI) is a separate card. Per-agent actions are gated by the
+  // master switch: Install only when the feature is on, Uninstall always, so you
+  // can always clean up. The agent list itself comes from the backend registry —
+  // wiring a new agent never edits this file.
   // See `docs/agent-hooks.md` and `architecture/02d-agent-monitoring.md` §1.1.
 
   import { onMount } from "svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import * as Tabs from "$lib/components/ui/tabs";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Badge } from "$lib/components/ui/badge";
@@ -22,37 +24,22 @@
   import * as Card from "$lib/components/ui/card";
   import { app } from "$lib/state/app.svelte";
   import {
-    getClaudeHooksStatus,
-    getCodexHooksStatus,
-    getGeminiHooksStatus,
-    getGrokHooksStatus,
-    installGrokHooks,
-    uninstallGrokHooks,
-    getAntigravityHooksStatus,
-    installAntigravityHooks,
-    uninstallAntigravityHooks,
-    getPiHooksStatus,
-    getOpencodeHooksStatus,
     getHookInstall,
     getHookScripts,
-    installClaudeHooks,
-    uninstallClaudeHooks,
-    installCodexHooks,
-    uninstallCodexHooks,
-    installGeminiHooks,
-    uninstallGeminiHooks,
-    installPiHooks,
-    uninstallPiHooks,
-    installOpencodeHooks,
-    uninstallOpencodeHooks,
+    installAgentHooks,
     installAllHooks,
+    listAgentHooks,
+    renderAgentHooksConfig,
+    uninstallAgentHooks,
   } from "$lib/api";
-  import type { AgentHooksStatus, HookInstall, HookScripts } from "$lib/types";
+  import type { HookAgentEntry, HookInstall, HookScripts } from "$lib/types";
+  import { AGENT_CATALOG } from "$lib/agentCatalog";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
+  import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { clipboardWrite } from "$lib/clipboard";
-  import { icon, iconButton, tab as tabStyle, text } from "$lib/design";
+  import { icon, iconButton, text } from "$lib/design";
   import AgentLogo from "./AgentLogo.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
@@ -69,97 +56,38 @@
     { id: "fish", label: "fish" },
   ];
 
-  type AgentId = "claude" | "codex" | "gemini" | "opencode" | "pi" | "grok" | "antigravity";
-  /** The agents offered here. Gemini CLI is discontinued upstream so it is not
-   *  among them — but it is appended by `visibleAgents` when its reporter is
-   *  still installed, because hiding the card outright would leave a user no way
-   *  to turn a hook off that keeps on reporting. */
-  const AGENTS: AgentId[] = ["claude", "codex", "opencode", "pi", "grok", "antigravity"];
-
-  /** Short tab label (the tab strip stays compact); the full name + description
-   *  live in the pane. */
-  const SHORT: Record<AgentId, string> = {
-    claude: "Claude",
-    codex: "Codex",
-    gemini: "Gemini",
-    opencode: "OpenCode",
-    pi: "Pi",
-    grok: "Grok",
-    antigravity: "Antigravity",
-  };
-  /** Catalog logo key for each agent (brand SVG → favicon → Bot fallback). */
-  const LOGO: Record<AgentId, string> = {
-    claude: "claudecode",
-    codex: "codex",
-    gemini: "gemini",
-    opencode: "opencode",
-    pi: "pi",
-    grok: "grok",
-    antigravity: "antigravity",
-  };
-
-  function agentTitle(id: AgentId): string {
-    switch (id) {
-      case "claude":
-        return i18n.t("hooks.claudeTitle");
-      case "codex":
-        return i18n.t("hooks.codexTitle");
-      case "gemini":
-        return i18n.t("hooks.geminiTitle");
-      case "opencode":
-        return i18n.t("hooks.opencodeTitle");
-      case "pi":
-        return i18n.t("hooks.piTitle");
-      case "grok":
-        return i18n.t("hooks.grokTitle");
-      case "antigravity":
-        return i18n.t("hooks.antigravityTitle");
-    }
+  /** The hook kind → the catalog id that carries its product name and logo. They
+   *  are the same string for every agent but Claude Code, whose CLI is `claude`
+   *  and whose catalog entry is `claudecode`. */
+  function catalogId(id: string): string {
+    return id === "claude" ? "claudecode" : id;
   }
-  function agentDesc(id: AgentId): string {
-    switch (id) {
-      case "claude":
-        return i18n.t("hooks.claudeDesc");
-      case "codex":
-        return i18n.t("hooks.codexDesc");
-      case "gemini":
-        return i18n.t("hooks.geminiDesc");
-      case "opencode":
-        return i18n.t("hooks.opencodeDesc");
-      case "pi":
-        return i18n.t("hooks.piDesc");
-      case "grok":
-        return i18n.t("hooks.grokDesc");
-      case "antigravity":
-        return i18n.t("hooks.antigravityDesc");
-    }
+
+  function agentName(id: string): string {
+    return AGENT_CATALOG.find((c) => c.id === catalogId(id))?.name ?? id;
+  }
+
+  function agentLogo(id: string): string {
+    return AGENT_CATALOG.find((c) => c.id === catalogId(id))?.logo ?? "";
+  }
+
+  /** One line on what this agent's hook can report. Keyed by hook id, so a new
+   *  agent needs its line here (and in `es.ts`) — the only copy this panel owns. */
+  function agentDesc(id: string): string {
+    // The id comes from the backend registry, so the key is built rather than
+    // literal; a missing one renders as the key itself, which is visible enough
+    // to catch in review.
+    return i18n.t(`hooks.desc.${id}` as MessageKey);
   }
 
   let install = $state<HookInstall | null>(null);
   let scripts = $state<HookScripts | null>(null);
-  let statuses = $state<Record<AgentId, AgentHooksStatus | null>>({
-    claude: null,
-    codex: null,
-    gemini: null,
-    opencode: null,
-    pi: null,
-    grok: null,
-    antigravity: null,
-  });
-  let busy = $state<AgentId | "all" | null>(null);
+  let agents = $state<HookAgentEntry[]>([]);
+  let busy = $state<string | null>(null);
   let busyOperation = $state<"install" | "uninstall" | null>(null);
-  let activeAgent = $state<AgentId>("claude");
-  // Per-agent "show installed config" toggle (JSON for Claude/Gemini/Codex, the
-  // plugin/extension source for OpenCode/Pi).
-  let showConfig = $state<Record<AgentId, boolean>>({
-    claude: false,
-    codex: false,
-    gemini: false,
-    opencode: false,
-    pi: false,
-    grok: false,
-    antigravity: false,
-  });
+  let activeAgent = $state<string>("claude");
+  let configOpen = $state(false);
+  let configText = $state("");
   let platform = $state<Platform>("bash");
   let copied = $state<Record<string, boolean>>({});
 
@@ -167,40 +95,11 @@
   /** The feature is "on" (the master switch) and usable — gates Install. */
   const featureOn = $derived(app.settings.autoInstallHooks !== false && !degraded);
 
-  const GETTERS: Record<AgentId, () => Promise<AgentHooksStatus>> = {
-    claude: getClaudeHooksStatus,
-    codex: getCodexHooksStatus,
-    gemini: getGeminiHooksStatus,
-    opencode: getOpencodeHooksStatus,
-    pi: getPiHooksStatus,
-    grok: getGrokHooksStatus,
-    antigravity: getAntigravityHooksStatus,
-  };
-  const INSTALLERS: Record<AgentId, () => Promise<AgentHooksStatus>> = {
-    claude: installClaudeHooks,
-    codex: installCodexHooks,
-    gemini: installGeminiHooks,
-    opencode: installOpencodeHooks,
-    pi: installPiHooks,
-    grok: installGrokHooks,
-    antigravity: installAntigravityHooks,
-  };
-  const UNINSTALLERS: Record<AgentId, () => Promise<AgentHooksStatus>> = {
-    claude: uninstallClaudeHooks,
-    codex: uninstallCodexHooks,
-    gemini: uninstallGeminiHooks,
-    opencode: uninstallOpencodeHooks,
-    pi: uninstallPiHooks,
-    grok: uninstallGrokHooks,
-    antigravity: uninstallAntigravityHooks,
-  };
-
-  /** The tabs actually shown: the offered agents, plus the discontinued Gemini
-   *  CLI while its reporter is still installed so it can be removed. Its status
-   *  is fetched either way (it is in `GETTERS`), so this stays truthful. */
-  const visibleAgents = $derived<AgentId[]>(
-    statuses.gemini?.installed ? [...AGENTS, "gemini"] : AGENTS,
-  );
+  /** Agents this machine actually has, and the rest — two groups so a long list
+   *  still opens on something meaningful. */
+  const mine = $derived(agents.filter((a) => a.present));
+  const others = $derived(agents.filter((a) => !a.present));
+  const selected = $derived(agents.find((a) => a.id === activeAgent) ?? null);
 
   onMount(async () => {
     try {
@@ -214,61 +113,56 @@
       scripts = null;
     }
     await refreshAll();
+    // Open on an agent the user actually has, rather than always on the first.
+    if (mine.length > 0 && !mine.some((a) => a.id === activeAgent)) {
+      activeAgent = mine[0].id;
+    }
   });
 
   async function refreshAll() {
-    for (const id of AGENTS) {
-      try {
-        statuses = { ...statuses, [id]: await GETTERS[id]() };
-      } catch {
-        statuses = { ...statuses, [id]: null };
-      }
+    try {
+      agents = await listAgentHooks();
+    } catch {
+      agents = [];
     }
   }
 
-  function statusFor(id: AgentId): AgentHooksStatus | null {
-    return statuses[id] ?? null;
-  }
-
-  async function doInstall(id: AgentId) {
-    busy = id;
-    busyOperation = "install";
+  /** Load the exact config the ADE writes for the selected agent, on demand —
+   *  rendering every agent's up front would be one round-trip each for a
+   *  disclosure most users never open. */
+  async function toggleConfig(open: boolean) {
+    configOpen = open;
+    if (!open) return;
+    configText = "";
     try {
-      statuses = { ...statuses, [id]: await INSTALLERS[id]() };
+      configText = await renderAgentHooksConfig(activeAgent);
     } catch (err) {
-      statuses = {
-        ...statuses,
-        [id]: {
-          installed: false,
-          fileExists: statusFor(id)?.fileExists ?? false,
-          unavailable: true,
-          detail: err instanceof Error ? err.message : String(err),
-        },
-      };
-    } finally {
-      busy = null;
-      busyOperation = null;
+      configText = err instanceof Error ? err.message : String(err);
     }
   }
 
-  async function doUninstall(id: AgentId) {
+  function selectAgent(id: string) {
+    activeAgent = id;
+    configOpen = false;
+    configText = "";
+  }
+
+  async function act(id: string, operation: "install" | "uninstall") {
     busy = id;
-    busyOperation = "uninstall";
+    busyOperation = operation;
     try {
-      statuses = { ...statuses, [id]: await UNINSTALLERS[id]() };
+      const status =
+        operation === "install" ? await installAgentHooks(id) : await uninstallAgentHooks(id);
+      agents = agents.map((a) => (a.id === id ? { ...a, status } : a));
     } catch (err) {
-      statuses = {
-        ...statuses,
-        [id]: {
-          installed: statusFor(id)?.installed ?? false,
-          fileExists: statusFor(id)?.fileExists ?? true,
-          unavailable: true,
-          detail: err instanceof Error ? err.message : String(err),
-        },
-      };
+      const detail = err instanceof Error ? err.message : String(err);
+      agents = agents.map((a) =>
+        a.id === id ? { ...a, status: { ...a.status, unavailable: true, detail } } : a,
+      );
     } finally {
       busy = null;
       busyOperation = null;
+      void app.refreshHooksStatus();
     }
   }
 
@@ -277,19 +171,21 @@
   async function toggleAllHooks(on: boolean) {
     app.settings.autoInstallHooks = on;
     void app.persistSettings();
-    if (on) {
-      busy = "all";
-      busyOperation = "install";
-      try {
+    busy = "all";
+    busyOperation = on ? "install" : "uninstall";
+    try {
+      if (on) {
         await installAllHooks();
-      } finally {
-        busy = null;
-        busyOperation = null;
+      } else {
+        for (const a of agents) {
+          if (a.status.installed) await uninstallAgentHooks(a.id).catch(() => undefined);
+        }
       }
-      await refreshAll();
-    } else {
-      for (const id of AGENTS) await doUninstall(id);
+    } finally {
+      busy = null;
+      busyOperation = null;
     }
+    await refreshAll();
     void app.refreshHooksStatus();
   }
 
@@ -308,9 +204,9 @@
     }, 1200);
   }
 
-  function badge(id: AgentId) {
-    const s = statusFor(id);
-    if (!s) return { variant: "secondary" as const, label: i18n.t("settings.detecting") };
+  function badge(entry: HookAgentEntry | null) {
+    if (!entry) return { variant: "secondary" as const, label: i18n.t("settings.detecting") };
+    const s = entry.status;
     if (s.unavailable && !s.installed)
       return { variant: "destructive" as const, label: i18n.t("hooks.statusUnavailable") };
     if (s.installed)
@@ -319,34 +215,12 @@
     return { variant: "outline" as const, label: i18n.t("hooks.statusNotInstalled") };
   }
 
-  /** Colored dot on a tab, telling installed / attention / not-installed apart. */
-  function tone(id: AgentId): string {
-    const s = statusFor(id);
-    if (!s) return "bg-muted-foreground/30";
-    if (s.installed) return "bg-emerald-500";
-    if (s.unavailable) return "bg-amber-500";
+  /** Colored dot on a row, telling installed / attention / not-installed apart. */
+  function tone(entry: HookAgentEntry): string {
+    if (entry.status.installed) return "bg-emerald-500";
+    if (entry.status.unavailable) return "bg-amber-500";
     return "bg-muted-foreground/40";
   }
-
-  const configPath = (id: AgentId): string => {
-    if (!install) return "";
-    switch (id) {
-      case "claude":
-        return install.claudeSettingsPath;
-      case "codex":
-        return install.codexHooksPath;
-      case "gemini":
-        return install.geminiSettingsPath;
-      case "opencode":
-        return install.opencodePluginPath;
-      case "pi":
-        return install.piExtensionPath;
-      case "grok":
-        return install.grokHooksPath;
-      case "antigravity":
-        return install.antigravityHooksPath;
-    }
-  };
 
   const wrapperScript = $derived.by(() => {
     if (!scripts) return "";
@@ -359,28 +233,6 @@
           : scripts.wrapperFish;
   });
 
-  // The exact config the ADE installs for `id`, for the per-agent "Show config"
-  // affordance: a `hooks` block for the JSON-config agents, the plugin/extension
-  // source for OpenCode/Pi.
-  function agentConfig(id: AgentId): string {
-    if (!scripts) return "";
-    switch (id) {
-      case "claude":
-        return scripts.claudeJson;
-      case "gemini":
-        return scripts.geminiJson;
-      case "codex":
-        return scripts.codexJson;
-      case "opencode":
-        return scripts.opencodePluginJs;
-      case "pi":
-        return scripts.piExtensionJs;
-      case "grok":
-        return scripts.grokJson;
-      case "antigravity":
-        return scripts.antigravityJson;
-    }
-  }
   const wrapperPath = $derived.by(() => {
     if (!install) return "";
     return platform === "bash"
@@ -394,12 +246,29 @@
   const wrapperUsage = $derived(i18n.t("hooks.wrapperUsage", { script: wrapperPath || "<path>" }));
 </script>
 
+{#snippet agentRow(entry: HookAgentEntry)}
+  <button
+    type="button"
+    onclick={() => selectAgent(entry.id)}
+    class={cn(
+      "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+      activeAgent === entry.id
+        ? "bg-accent text-accent-foreground"
+        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+    )}
+  >
+    <AgentLogo logo={agentLogo(entry.id)} class={icon.decorative} />
+    <span class="min-w-0 flex-1 truncate">{agentName(entry.id)}</span>
+    <span class={cn("size-1.5 shrink-0 rounded-full", tone(entry))}></span>
+  </button>
+{/snippet}
+
 <div class="flex flex-col gap-4">
   {#if degraded}
     <p class={text.meta}>{i18n.t("settings.detecting")}</p>
   {/if}
 
-  <!-- Master container: the "Install agent hooks" switch + a tab per agent. -->
+  <!-- Master container: the "Install agent hooks" switch + the agent list. -->
   <Card.Root>
     <Card.Header class="gap-3">
       <div class="flex items-start justify-between gap-4">
@@ -425,124 +294,130 @@
     </Card.Header>
 
     <Card.Content>
-      <Tabs.Root bind:value={activeAgent} class="flex w-full flex-col gap-0">
-        <!-- Line tabs (same style as the right panel): brand logo + short name
-             + a status dot, over a hairline. -->
-        <Tabs.List
-          class="h-9 w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b border-border/60 bg-transparent px-0 py-0"
+      <div class="flex gap-4">
+        <!-- Agent list: the ones on this machine first, everything else after. -->
+        <nav
+          class="scrollbar-sleek max-h-[26rem] w-44 shrink-0 overflow-y-auto border-r border-border/50 pr-2"
+          aria-label={i18n.t("hooks.agentListLabel")}
         >
-          {#each visibleAgents as id (id)}
-            <Tabs.Trigger
-              value={id}
-              class={cn(
-                "shrink-0 gap-1.5 whitespace-nowrap px-2.5 text-[13px]",
-                tabStyle.base,
-                activeAgent === id ? tabStyle.activeLine : tabStyle.inactiveLine,
-              )}
+          {#if mine.length > 0}
+            <p
+              class="flex h-8 items-center px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground"
             >
-              <AgentLogo logo={LOGO[id]} class={icon.decorative} />
-              {SHORT[id]}
-              <span class={cn("size-1.5 shrink-0 rounded-full", tone(id))}></span>
-            </Tabs.Trigger>
-          {/each}
-        </Tabs.List>
+              {i18n.t("hooks.groupInstalled")}
+            </p>
+            {#each mine as entry (entry.id)}
+              {@render agentRow(entry)}
+            {/each}
+          {/if}
+          {#if others.length > 0}
+            <p
+              class="flex h-8 items-center px-2 text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground"
+            >
+              {i18n.t("hooks.groupOthers")}
+            </p>
+            {#each others as entry (entry.id)}
+              {@render agentRow(entry)}
+            {/each}
+          {/if}
+        </nav>
 
-        {#each visibleAgents as id (id)}
-          {@const b = badge(id)}
-          <Tabs.Content value={id} class="pt-4">
-            <div class="flex flex-col gap-3">
-              <!-- Name + status badge -->
-              <div class="flex items-start justify-between gap-3">
-                <div class="flex min-w-0 flex-col gap-0.5">
-                  <span class={text.subheading}>{agentTitle(id)}</span>
-                  <span class={text.meta}>{agentDesc(id)}</span>
-                </div>
-                <Badge variant={b.variant} class="shrink-0">{b.label}</Badge>
+        <!-- Detail for the selected agent. -->
+        <div class="flex min-w-0 flex-1 flex-col gap-3">
+          {#if selected}
+            {@const b = badge(selected)}
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span class={text.subheading}>{agentName(selected.id)}</span>
+                <span class={text.meta}>{agentDesc(selected.id)}</span>
               </div>
+              <Badge variant={b.variant} class="shrink-0">{b.label}</Badge>
+            </div>
 
-              <!-- Config path -->
-              {#if install}
-                <p class={cn("truncate font-mono", text.meta)}>{configPath(id)}</p>
-              {/if}
+            {#if selected.configPath}
+              <p class={cn("truncate font-mono", text.meta)}>{selected.configPath}</p>
+            {/if}
 
-              <!-- Actions + gating hint -->
-              <div class="flex flex-wrap items-center gap-2">
-                <Button
-                  size="xs"
-                  variant={statusFor(id)?.installed ? "outline" : "secondary"}
-                  disabled={busy !== null || !featureOn}
-                  onclick={() => doInstall(id)}
-                >
-                  {#if busy === id && busyOperation === "install"}
-                    <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                  {/if}
-                  {busy === id ? i18n.t("hooks.installing") : i18n.t("hooks.install")}
-                </Button>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={busy !== null || !statusFor(id)?.installed}
-                  onclick={() => doUninstall(id)}
-                >
-                  {#if busy === id && busyOperation === "uninstall"}
-                    <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
-                  {/if}
-                  {i18n.t("hooks.uninstall")}
-                </Button>
-                {#if !featureOn && !degraded}
-                  <span class={text.meta}>{i18n.t("hooks.enableToManage")}</span>
+            {#if !selected.present}
+              <p class={text.meta}>{i18n.t("hooks.notOnThisMachine")}</p>
+            {/if}
+
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                size="xs"
+                variant={selected.status.installed ? "outline" : "secondary"}
+                disabled={busy !== null || !featureOn}
+                onclick={() => act(selected.id, "install")}
+              >
+                {#if busy === selected.id && busyOperation === "install"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {/if}
-              </div>
-
-              <!-- Every agent: inspect / copy the exact config the ADE installs
-                   (a `hooks` block for Claude/Gemini/Codex, the plugin/extension
-                   source for OpenCode/Pi). -->
-              {#if scripts && agentConfig(id)}
-                <Collapsible.Root bind:open={showConfig[id]}>
-                  <Collapsible.Trigger
-                    class={cn(
-                      "flex items-center gap-1 self-start rounded-md px-1.5 py-1 hover:bg-muted",
-                      text.meta,
-                    )}
-                  >
-                    <Icon icon={ChevronDownIcon}
-                      class={cn(icon.button, "transition-transform", showConfig[id] && "rotate-180")}
-                    />
-                    {showConfig[id] ? i18n.t("hooks.hideConfig") : i18n.t("hooks.showConfig")}
-                  </Collapsible.Trigger>
-                  <Collapsible.Content>
-                    <div class="relative mt-2">
-                      <TooltipSimple title={i18n.t("hooks.copy")}>
-                        {#snippet children(tp)}
-                          <Button
-                            {...tp}
-                            variant="ghost"
-                            size="icon-sm"
-                            class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
-                            onclick={() => copy(`${id}-config`, agentConfig(id))}
-                          >
-                            {#if copied[`${id}-config`]}
-                              <Icon icon={CheckIcon} class={icon.button} />
-                            {:else}
-                              <Icon icon={CopyIcon} class={icon.button} />
-                            {/if}
-                          </Button>
-                        {/snippet}
-                      </TooltipSimple>
-                      <pre
-                        class={cn(
-                          "max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
-                          text.meta,
-                          "whitespace-pre font-mono",
-                        )}>{agentConfig(id)}</pre>
-                    </div>
-                  </Collapsible.Content>
-                </Collapsible.Root>
+                {busy === selected.id ? i18n.t("hooks.installing") : i18n.t("hooks.install")}
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={busy !== null || !selected.status.installed}
+                onclick={() => act(selected.id, "uninstall")}
+              >
+                {#if busy === selected.id && busyOperation === "uninstall"}
+                  <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
+                {/if}
+                {i18n.t("hooks.uninstall")}
+              </Button>
+              {#if !featureOn && !degraded}
+                <span class={text.meta}>{i18n.t("hooks.enableToManage")}</span>
               {/if}
             </div>
-          </Tabs.Content>
-        {/each}
-      </Tabs.Root>
+
+            <!-- Inspect / copy the exact config the ADE installs (a `hooks`
+                 block for the config agents, the plugin/extension source for
+                 OpenCode and Pi). -->
+            <Collapsible.Root open={configOpen} onOpenChange={toggleConfig}>
+              <Collapsible.Trigger
+                class={cn(
+                  "flex items-center gap-1 self-start rounded-md px-1.5 py-1 hover:bg-muted",
+                  text.meta,
+                )}
+              >
+                <Icon icon={ChevronDownIcon}
+                  class={cn(icon.button, "transition-transform", configOpen && "rotate-180")}
+                />
+                {configOpen ? i18n.t("hooks.hideConfig") : i18n.t("hooks.showConfig")}
+              </Collapsible.Trigger>
+              <Collapsible.Content>
+                <div class="relative mt-2">
+                  <TooltipSimple title={i18n.t("hooks.copy")}>
+                    {#snippet children(tp)}
+                      <Button
+                        {...tp}
+                        variant="ghost"
+                        size="icon-sm"
+                        class={cn(iconButton.action, "absolute right-1 top-1 z-10")}
+                        onclick={() => copy(`${activeAgent}-config`, configText)}
+                      >
+                        {#if copied[`${activeAgent}-config`]}
+                          <Icon icon={CheckIcon} class={icon.button} />
+                        {:else}
+                          <Icon icon={CopyIcon} class={icon.button} />
+                        {/if}
+                      </Button>
+                    {/snippet}
+                  </TooltipSimple>
+                  <pre
+                    class={cn(
+                      "max-h-72 overflow-auto rounded-md border border-border/60 bg-muted/40 p-2 pr-10",
+                      text.meta,
+                      "whitespace-pre font-mono",
+                    )}>{configText || "…"}</pre>
+                </div>
+              </Collapsible.Content>
+            </Collapsible.Root>
+          {:else}
+            <p class={text.meta}>{i18n.t("settings.detecting")}</p>
+          {/if}
+        </div>
+      </div>
     </Card.Content>
   </Card.Root>
 
