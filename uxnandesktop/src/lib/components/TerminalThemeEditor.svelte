@@ -173,7 +173,7 @@
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("fontWeight"))}{i18n.t("terminalTheme.weight")}</Label>
-              <Input value={preset.fontWeight != null ? String(preset.fontWeight) : ""} placeholder="normal" oninput={(e) => setStr("fontWeight", e.currentTarget.value)} />
+              <Input value={preset.fontWeight != null ? String(preset.fontWeight) : ""} placeholder={String(inherited.fontWeight)} oninput={(e) => setStr("fontWeight", e.currentTarget.value)} />
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("cursorStyle"))}{i18n.t("terminalTheme.cursorStyle")}</Label>
