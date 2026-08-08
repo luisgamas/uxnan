@@ -22,11 +22,12 @@
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { RepoData } from "$lib/types";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import GlobeIcon from "@lucide/svelte/icons/globe";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import GitBranchPlusIcon from "@lucide/svelte/icons/git-branch-plus";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import { Icon } from "$lib/components/ui/icon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import GitBranchPlusIcon from "@hugeicons/core-free-icons/GitBranchPlusIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
   let { repo, open = $bindable(false) }: { repo: RepoData; open?: boolean } = $props();
 
@@ -236,9 +237,9 @@
         >
           {#snippet itemPrefix(item)}
             {#if item.value === NEW}
-              <GitBranchPlusIcon class={cn(icon.button, "text-primary")} />
+              <Icon icon={GitBranchPlusIcon} class={cn(icon.button, "text-primary")} />
             {:else}
-              <GitBranchIcon class={cn(icon.button, "text-muted-foreground")} />
+              <Icon icon={GitBranchIcon} class={cn(icon.button, "text-muted-foreground")} />
             {/if}
           {/snippet}
         </Combobox>
@@ -317,7 +318,7 @@
           app.openSettings("agents");
         }}
       >
-        <SettingsIcon class={icon.decorative} />
+        <Icon icon={SettingsIcon} class={icon.decorative} />
         {i18n.t("agent.configure")}
       </button>
       <Button onclick={submit} disabled={!canSubmit || busy || (isNew && wtLoading)}>
@@ -337,8 +338,8 @@
     {@const a = launchable.find((x) => x.id === item.value.slice(6))}
     <AgentLogo logo={a ? agentLogoKey(a.icon, a.command) : null} class="size-4 shrink-0" />
   {:else if item.value === "browser"}
-    <GlobeIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
+    <Icon icon={GlobeIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
   {:else}
-    <TerminalIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
+    <Icon icon={TerminalIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
   {/if}
 {/snippet}

@@ -17,8 +17,9 @@
   import { automations } from "$lib/state/automations.svelte";
   import AgentLogo from "$lib/components/AgentLogo.svelte";
   import { Button } from "$lib/components/ui/button";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import CheckIcon from "@lucide/svelte/icons/check";
+  import { Icon } from "$lib/components/ui/icon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 
   let installed = $state<string[]>([]);
   $effect(() => {
@@ -68,7 +69,7 @@
   {#each EXAMPLES as spec (spec.id)}
     {@const present = isPresent(spec.id)}
     <div class={cn("flex items-start gap-3 p-3.5", panel.card)}>
-      <SparklesIcon class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <Icon icon={SparklesIcon} class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <span class={text.bodyStrong}>{i18n.t(spec.nameKey)}</span>
         <span class={text.meta}>{i18n.t(spec.descKey)}</span>
@@ -90,7 +91,7 @@
       </div>
       <Button variant="outline" size="sm" onclick={() => use(spec)}>
         {#if present}
-          <CheckIcon data-icon="inline-start" />
+          <Icon icon={CheckIcon} data-icon="inline-start" />
           {i18n.t("automations.restoreTemplate")}
         {:else}
           {i18n.t("automations.useTemplate")}

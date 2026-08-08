@@ -23,8 +23,9 @@
   import { text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
-  import CodeIcon from "@lucide/svelte/icons/code";
-  import SlidersIcon from "@lucide/svelte/icons/sliders-horizontal";
+  import { Icon } from "$lib/components/ui/icon";
+  import CodeIcon from "@hugeicons/core-free-icons/CodeIcon";
+  import SlidersIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
   import FontPicker from "./FontPicker.svelte";
 
   let {
@@ -122,10 +123,10 @@
 
     <div class="inline-flex shrink-0 self-start overflow-hidden rounded-md border border-border">
       <button type="button" class={cn("flex items-center gap-1 px-2 py-0.5", text.indicator, mode === "visual" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => (mode = "visual")}>
-        <SlidersIcon class="size-3.5" />{i18n.t("appearance.visual")}
+        <Icon icon={SlidersIcon} class="size-3.5" />{i18n.t("appearance.visual")}
       </button>
       <button type="button" class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => { jsonText = terminalThemeToJson(preset); mode = "json"; }}>
-        <CodeIcon class="size-3.5" />JSON
+        <Icon icon={CodeIcon} class="size-3.5" />JSON
       </button>
     </div>
 

@@ -19,8 +19,9 @@
   import SchedulePicker from "./SchedulePicker.svelte";
   import StepGraphEditor from "./StepGraphEditor.svelte";
   import Combobox from "$lib/components/Combobox.svelte";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import FolderIcon from "@lucide/svelte/icons/folder";
+  import { Icon } from "$lib/components/ui/icon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
 
   let {
     automation,
@@ -83,7 +84,7 @@
 <div class="flex flex-col gap-6">
   <div class="flex items-center gap-2">
     <Button variant="ghost" size="sm" onclick={onback}>
-      <ArrowLeftIcon data-icon="inline-start" />
+      <Icon icon={ArrowLeftIcon} data-icon="inline-start" />
       {i18n.t("common.back")}
     </Button>
     <span class="flex-1"></span>
@@ -128,7 +129,7 @@
           <div class="flex items-center gap-2">
             <Input class="flex-1 font-mono text-xs" bind:value={draft.workingDir} />
             <Button variant="outline" size="sm" onclick={() => (folderOpen = true)}>
-              <FolderIcon class={icon.action} />
+              <Icon icon={FolderIcon} class={icon.action} />
               {i18n.t("automations.browse")}
             </Button>
           </div>

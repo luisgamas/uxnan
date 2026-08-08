@@ -12,10 +12,11 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import MarkdownView from "./MarkdownView.svelte";
-  import ZoomInIcon from "@lucide/svelte/icons/zoom-in";
-  import ZoomOutIcon from "@lucide/svelte/icons/zoom-out";
-  import MaximizeIcon from "@lucide/svelte/icons/maximize";
-  import ScanIcon from "@lucide/svelte/icons/scan";
+  import { Icon } from "$lib/components/ui/icon";
+  import ZoomInIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
+  import ZoomOutIcon from "@hugeicons/core-free-icons/ZoomOutAreaIcon";
+  import MaximizeIcon from "@hugeicons/core-free-icons/Maximize01Icon";
+  import ScanIcon from "@hugeicons/core-free-icons/ScanIcon";
 
   let {
     path,
@@ -173,7 +174,7 @@
                 aria-label={i18n.t("preview.zoomOut")}
                 onclick={() => zoomBy(-1)}
               >
-                <ZoomOutIcon class={icon.action} />
+                <Icon icon={ZoomOutIcon} class={icon.action} />
               </button>
             {/snippet}
           </TooltipSimple>
@@ -186,7 +187,7 @@
                 aria-label={i18n.t("preview.zoomIn")}
                 onclick={() => zoomBy(1)}
               >
-                <ZoomInIcon class={icon.action} />
+                <Icon icon={ZoomInIcon} class={icon.action} />
               </button>
             {/snippet}
           </TooltipSimple>
@@ -200,7 +201,7 @@
                 aria-label={i18n.t("preview.fit")}
                 onclick={() => (zoom = null)}
               >
-                <MaximizeIcon class={icon.action} />
+                <Icon icon={MaximizeIcon} class={icon.action} />
               </button>
             {/snippet}
           </TooltipSimple>
@@ -213,7 +214,7 @@
                 aria-label={i18n.t("preview.actualSize")}
                 onclick={() => (zoom = 1)}
               >
-                <ScanIcon class={icon.action} />
+                <Icon icon={ScanIcon} class={icon.action} />
               </button>
             {/snippet}
           </TooltipSimple>

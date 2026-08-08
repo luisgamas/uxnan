@@ -16,9 +16,10 @@
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import FileTextIcon from "@lucide/svelte/icons/file-text";
-  import XIcon from "@lucide/svelte/icons/x";
+  import { Icon } from "$lib/components/ui/icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import FileTextIcon from "@hugeicons/core-free-icons/Doc01Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
   const logPath = $derived(diagnostics.logPath);
 </script>
@@ -37,13 +38,13 @@
         aria-label={i18n.t("diagnostics.dismiss")}
         onclick={() => diagnostics.dismiss()}
       >
-        <XIcon class={icon.button} />
+        <Icon icon={XIcon} class={icon.button} />
       </Button>
     {/snippet}
   </TooltipSimple>
 
   <div class="flex min-w-0 items-start gap-2 pr-8">
-    <TriangleAlertIcon
+    <Icon icon={TriangleAlertIcon}
       class={cn(icon.button, "mt-0.5 shrink-0 text-amber-600 dark:text-amber-400")}
     />
     <span class={cn("min-w-0 text-foreground", text.heading)}>
@@ -62,7 +63,7 @@
       size="sm"
       onclick={() => void revealPath(logPath).catch(() => {})}
     >
-      <FileTextIcon data-icon="inline-start" />
+      <Icon icon={FileTextIcon} data-icon="inline-start" />
       {i18n.t("diagnostics.revealLog")}
     </Button>
   {/if}

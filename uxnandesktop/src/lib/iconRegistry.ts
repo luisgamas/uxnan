@@ -1,84 +1,90 @@
-// Built-in icon catalog — the *component* layer: maps each curated glyph name
-// (from `iconCatalog.ts`) to its lucide component, and resolves a stored
+// Built-in icon catalog — the *glyph* layer: maps each curated glyph name (from
+// `iconCatalog.ts`) to its Hugeicons drawing data, and resolves a stored
 // `builtin:<name>[~<color>]` value to a renderable icon. Kept separate from the
 // pure string logic so that layer stays free of Svelte imports (unit-testable).
+//
+// The names here are a *persisted contract*: a user's chosen glyph is stored as
+// `builtin:<name>` in their project/branch state, so a name may never be renamed
+// or dropped without orphaning that value. Swapping which glyph a name draws is
+// fine; changing the name is not.
 
-import type { Component } from "svelte";
+import type { IconNode } from "$lib/components/ui/icon";
 import { BUILTIN_ICON_NAMES, parseBuiltinKey } from "$lib/iconCatalog";
-import RocketIcon from "@lucide/svelte/icons/rocket";
-import StarIcon from "@lucide/svelte/icons/star";
-import FlameIcon from "@lucide/svelte/icons/flame";
-import ZapIcon from "@lucide/svelte/icons/zap";
-import SparklesIcon from "@lucide/svelte/icons/sparkles";
-import WandSparklesIcon from "@lucide/svelte/icons/wand-sparkles";
-import BugIcon from "@lucide/svelte/icons/bug";
-import WrenchIcon from "@lucide/svelte/icons/wrench";
-import HammerIcon from "@lucide/svelte/icons/hammer";
-import CogIcon from "@lucide/svelte/icons/cog";
-import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-import GitMergeIcon from "@lucide/svelte/icons/git-merge";
-import GitForkIcon from "@lucide/svelte/icons/git-fork";
-import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-import WorkflowIcon from "@lucide/svelte/icons/workflow";
-import CodeIcon from "@lucide/svelte/icons/code";
-import TerminalIcon from "@lucide/svelte/icons/terminal";
-import CpuIcon from "@lucide/svelte/icons/cpu";
-import DatabaseIcon from "@lucide/svelte/icons/database";
-import ServerIcon from "@lucide/svelte/icons/server";
-import PackageIcon from "@lucide/svelte/icons/package";
-import BoxIcon from "@lucide/svelte/icons/box";
-import BoxesIcon from "@lucide/svelte/icons/boxes";
-import LayersIcon from "@lucide/svelte/icons/layers";
-import ComponentIcon from "@lucide/svelte/icons/component";
-import BeakerIcon from "@lucide/svelte/icons/beaker";
-import AtomIcon from "@lucide/svelte/icons/atom";
-import BrainIcon from "@lucide/svelte/icons/brain";
-import ShieldIcon from "@lucide/svelte/icons/shield";
-import LockIcon from "@lucide/svelte/icons/lock";
-import KeyIcon from "@lucide/svelte/icons/key";
-import FlagIcon from "@lucide/svelte/icons/flag";
-import BookmarkIcon from "@lucide/svelte/icons/bookmark";
-import TagIcon from "@lucide/svelte/icons/tag";
-import PinIcon from "@lucide/svelte/icons/pin";
-import BellIcon from "@lucide/svelte/icons/bell";
-import HeartIcon from "@lucide/svelte/icons/heart";
-import CrownIcon from "@lucide/svelte/icons/crown";
-import TrophyIcon from "@lucide/svelte/icons/trophy";
-import GemIcon from "@lucide/svelte/icons/gem";
-import DiamondIcon from "@lucide/svelte/icons/diamond";
-import TargetIcon from "@lucide/svelte/icons/target";
-import CompassIcon from "@lucide/svelte/icons/compass";
-import MapIcon from "@lucide/svelte/icons/map";
-import RadarIcon from "@lucide/svelte/icons/radar";
-import SatelliteIcon from "@lucide/svelte/icons/satellite";
-import OrbitIcon from "@lucide/svelte/icons/orbit";
-import GlobeIcon from "@lucide/svelte/icons/globe";
-import CloudIcon from "@lucide/svelte/icons/cloud";
-import SunIcon from "@lucide/svelte/icons/sun";
-import MoonIcon from "@lucide/svelte/icons/moon";
-import SnowflakeIcon from "@lucide/svelte/icons/snowflake";
-import LeafIcon from "@lucide/svelte/icons/leaf";
-import SproutIcon from "@lucide/svelte/icons/sprout";
-import MountainIcon from "@lucide/svelte/icons/mountain";
-import FeatherIcon from "@lucide/svelte/icons/feather";
-import GhostIcon from "@lucide/svelte/icons/ghost";
-import PuzzleIcon from "@lucide/svelte/icons/puzzle";
-import LightbulbIcon from "@lucide/svelte/icons/lightbulb";
-import MusicIcon from "@lucide/svelte/icons/music";
-import PaletteIcon from "@lucide/svelte/icons/palette";
-import BrushIcon from "@lucide/svelte/icons/brush";
-import AnchorIcon from "@lucide/svelte/icons/anchor";
-import ShipIcon from "@lucide/svelte/icons/ship";
-import GiftIcon from "@lucide/svelte/icons/gift";
-import EyeIcon from "@lucide/svelte/icons/eye";
-import HexagonIcon from "@lucide/svelte/icons/hexagon";
+import RocketIcon from "@hugeicons/core-free-icons/RocketIcon";
+import StarIcon from "@hugeicons/core-free-icons/StarIcon";
+import FlameIcon from "@hugeicons/core-free-icons/FlameIcon";
+import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
+import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+import WandSparklesIcon from "@hugeicons/core-free-icons/MagicWand01Icon";
+import BugIcon from "@hugeicons/core-free-icons/Bug01Icon";
+import WrenchIcon from "@hugeicons/core-free-icons/Wrench01Icon";
+import HammerIcon from "@hugeicons/core-free-icons/HammerIcon";
+import CogIcon from "@hugeicons/core-free-icons/CogIcon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import GitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
+import GitForkIcon from "@hugeicons/core-free-icons/GitForkIcon";
+import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import WorkflowIcon from "@hugeicons/core-free-icons/Flowchart01Icon";
+import CodeIcon from "@hugeicons/core-free-icons/CodeIcon";
+import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+import CpuIcon from "@hugeicons/core-free-icons/CpuIcon";
+import DatabaseIcon from "@hugeicons/core-free-icons/DatabaseIcon";
+import ServerIcon from "@hugeicons/core-free-icons/ServerStack01Icon";
+import PackageIcon from "@hugeicons/core-free-icons/PackageIcon";
+import BoxIcon from "@hugeicons/core-free-icons/BoxIcon";
+import BoxesIcon from "@hugeicons/core-free-icons/BoxesIcon";
+import LayersIcon from "@hugeicons/core-free-icons/Layers01Icon";
+import ComponentIcon from "@hugeicons/core-free-icons/ComponentIcon";
+import BeakerIcon from "@hugeicons/core-free-icons/BeakerIcon";
+import AtomIcon from "@hugeicons/core-free-icons/Atom01Icon";
+import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
+import ShieldIcon from "@hugeicons/core-free-icons/Shield01Icon";
+import LockIcon from "@hugeicons/core-free-icons/LockIcon";
+import KeyIcon from "@hugeicons/core-free-icons/Key01Icon";
+import FlagIcon from "@hugeicons/core-free-icons/Flag01Icon";
+import BookmarkIcon from "@hugeicons/core-free-icons/Bookmark01Icon";
+import TagIcon from "@hugeicons/core-free-icons/Tag01Icon";
+import PinIcon from "@hugeicons/core-free-icons/PinIcon";
+import BellIcon from "@hugeicons/core-free-icons/BellIcon";
+import HeartIcon from "@hugeicons/core-free-icons/HeartIcon";
+import CrownIcon from "@hugeicons/core-free-icons/CrownIcon";
+import TrophyIcon from "@hugeicons/core-free-icons/ChampionIcon";
+import GemIcon from "@hugeicons/core-free-icons/GemIcon";
+import DiamondIcon from "@hugeicons/core-free-icons/DiamondIcon";
+import TargetIcon from "@hugeicons/core-free-icons/Target01Icon";
+import CompassIcon from "@hugeicons/core-free-icons/CompassIcon";
+import MapIcon from "@hugeicons/core-free-icons/MapsIcon";
+import RadarIcon from "@hugeicons/core-free-icons/Radar01Icon";
+import SatelliteIcon from "@hugeicons/core-free-icons/SatelliteIcon";
+import OrbitIcon from "@hugeicons/core-free-icons/Orbit01Icon";
+import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
+import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
+import SunIcon from "@hugeicons/core-free-icons/Sun01Icon";
+import MoonIcon from "@hugeicons/core-free-icons/MoonIcon";
+import SnowflakeIcon from "@hugeicons/core-free-icons/CloudSnowIcon";
+import LeafIcon from "@hugeicons/core-free-icons/Leaf01Icon";
+import SproutIcon from "@hugeicons/core-free-icons/Plant01Icon";
+import MountainIcon from "@hugeicons/core-free-icons/MountainIcon";
+import FeatherIcon from "@hugeicons/core-free-icons/FeatherIcon";
+import GhostIcon from "@hugeicons/core-free-icons/GhostIcon";
+import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
+import LightbulbIcon from "@hugeicons/core-free-icons/BulbIcon";
+import MusicIcon from "@hugeicons/core-free-icons/MusicNote01Icon";
+import PaletteIcon from "@hugeicons/core-free-icons/PaintBoardIcon";
+import BrushIcon from "@hugeicons/core-free-icons/BrushIcon";
+import AnchorIcon from "@hugeicons/core-free-icons/AnchorIcon";
+import ShipIcon from "@hugeicons/core-free-icons/CargoShipIcon";
+import GiftIcon from "@hugeicons/core-free-icons/GiftIcon";
+import EyeIcon from "@hugeicons/core-free-icons/EyeIcon";
+import HexagonIcon from "@hugeicons/core-free-icons/HexagonIcon";
 
-/** Glyph name → lucide component. Every name in `BUILTIN_ICON_NAMES` has an entry. */
-const REGISTRY: Record<string, Component> = {
+/** Glyph name → Hugeicons drawing data. Every name in `BUILTIN_ICON_NAMES` has
+ *  an entry. */
+const REGISTRY: Record<string, IconNode> = {
   rocket: RocketIcon,
   star: StarIcon,
   flame: FlameIcon,
-  zap: ZapIcon,
+  zap: EnergyIcon,
   sparkles: SparklesIcon,
   "wand-sparkles": WandSparklesIcon,
   bug: BugIcon,
@@ -145,19 +151,19 @@ const REGISTRY: Record<string, Component> = {
 };
 
 /** One choosable built-in glyph, in display order. */
-export const BUILTIN_ICONS: { name: string; Icon: Component }[] = BUILTIN_ICON_NAMES.map(
-  (name) => ({ name, Icon: REGISTRY[name] }),
+export const BUILTIN_ICONS: { name: string; icon: IconNode }[] = BUILTIN_ICON_NAMES.map(
+  (name) => ({ name, icon: REGISTRY[name] }),
 );
 
-/** Resolve a `builtin:<name>[~<color>]` value to its component + color hex.
+/** Resolve a `builtin:<name>[~<color>]` value to its glyph data + color hex.
  *  Returns null when the value isn't a known built-in (unknown glyph → null, so
  *  the caller falls back to its default glyph). */
 export function resolveBuiltinIcon(
   value?: string | null,
-): { name: string; Icon: Component; color: string | null } | null {
+): { name: string; icon: IconNode; color: string | null } | null {
   const parsed = parseBuiltinKey(value);
   if (!parsed) return null;
-  const Icon = REGISTRY[parsed.name];
-  if (!Icon) return null;
-  return { name: parsed.name, Icon, color: parsed.color };
+  const icon = REGISTRY[parsed.name];
+  if (!icon) return null;
+  return { name: parsed.name, icon, color: parsed.color };
 }

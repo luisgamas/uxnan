@@ -10,8 +10,9 @@
   import { i18n } from "$lib/i18n";
   import VirtualList from "./VirtualList.svelte";
   import DialogHints from "./DialogHints.svelte";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import { Icon } from "$lib/components/ui/icon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
   let query = $state("");
   let activeIdx = $state(0);
@@ -71,7 +72,7 @@
 
     <!-- Search: the field is the focal point — a roomy input row over a hairline. -->
     <div class="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
-      <SearchIcon class={cn(icon.button, "shrink-0 text-muted-foreground")} />
+      <Icon icon={SearchIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
       <input
         bind:this={inputEl}
         bind:value={query}
@@ -92,7 +93,7 @@
          chip and the repo as a trailing tag, so each result reads at a glance. -->
     {#if items.length === 0}
       <div class="flex flex-col items-center gap-2.5 px-4 py-12 text-center">
-        <SearchIcon class="size-6 text-muted-foreground/40" />
+        <Icon icon={SearchIcon} class="size-6 text-muted-foreground/40" />
         <p class={text.meta}>{i18n.t("palette.empty")}</p>
       </div>
     {:else}
@@ -109,7 +110,7 @@
             <span
               class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground"
             >
-              <GitBranchIcon class={icon.button} />
+              <Icon icon={GitBranchIcon} class={icon.button} />
             </span>
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class={cn("truncate font-medium", text.body)}>

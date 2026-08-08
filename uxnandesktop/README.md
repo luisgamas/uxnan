@@ -6,7 +6,7 @@ Not an IDE — an orchestration, monitoring, and change-review layer.
 
 Built with **Rust + Tauri 2** (backend) and **Svelte 5 / SvelteKit + Tailwind
 CSS v4 + shadcn-svelte** (frontend). Terminals use xterm.js; diffs use
-CodeMirror 6.
+CodeMirror 6; icons are Hugeicons.
 
 ![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?style=for-the-badge&logo=tauri&logoColor=000000)

@@ -31,12 +31,13 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import ZapIcon from "@lucide/svelte/icons/zap";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import SquarePenIcon from "@lucide/svelte/icons/square-pen";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import { Icon } from "$lib/components/ui/icon";
+  import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import SquarePenIcon from "@hugeicons/core-free-icons/Edit02Icon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 
   const SHELL_DEFAULT = "__default__";
 
@@ -222,17 +223,17 @@
 <SettingsSection bare title={i18n.t("settings.commands")} description={i18n.t("settings.commandsDesc")}>
   {#snippet headerAction()}
     <Button size="sm" onclick={create}>
-      <PlusIcon data-icon="inline-start" />
+      <Icon icon={PlusIcon} data-icon="inline-start" />
       {i18n.t("commands.new")}
     </Button>
   {/snippet}
 
   {#if app.quickCommands.length === 0}
     <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 bg-card/40 px-6 py-12 text-center">
-      <ZapIcon class={cn(icon.empty, "text-muted-foreground")} />
+      <Icon icon={EnergyIcon} class={cn(icon.empty, "text-muted-foreground")} />
       <p class={cn("max-w-sm", text.body)}>{i18n.t("commands.emptyState")}</p>
       <Button size="sm" variant="outline" onclick={create}>
-        <PlusIcon data-icon="inline-start" />
+        <Icon icon={PlusIcon} data-icon="inline-start" />
         {i18n.t("commands.new")}
       </Button>
     </div>
@@ -259,7 +260,7 @@
     {#each items as cmd (cmd.id)}
       <div class="flex items-center gap-3 py-3">
         <EntityIcon value={cmd.icon} class="size-4 text-muted-foreground">
-          {#snippet fallback()}<ZapIcon class="size-4 text-muted-foreground" />{/snippet}
+          {#snippet fallback()}<Icon icon={EnergyIcon} class="size-4 text-muted-foreground" />{/snippet}
         </EntityIcon>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
@@ -272,13 +273,13 @@
         </div>
         <div class="flex shrink-0 items-center gap-0.5">
           <Button variant="ghost" size="icon" class={iconButton.action} aria-label={i18n.t("common.edit")} title={i18n.t("common.edit")} onclick={() => edit(cmd)}>
-            <SquarePenIcon class={icon.button} />
+            <Icon icon={SquarePenIcon} class={icon.button} />
           </Button>
           <Button variant="ghost" size="icon" class={iconButton.action} aria-label={i18n.t("commands.duplicate")} title={i18n.t("commands.duplicate")} onclick={() => app.duplicateQuickCommand(cmd.id)}>
-            <CopyIcon class={icon.button} />
+            <Icon icon={CopyIcon} class={icon.button} />
           </Button>
           <Button variant="ghost" size="icon" class={iconButton.action} aria-label={i18n.t("common.delete")} title={i18n.t("common.delete")} onclick={() => { deleteTarget = cmd; deleteOpen = true; }}>
-            <Trash2Icon class={icon.button} />
+            <Icon icon={Trash2Icon} class={icon.button} />
           </Button>
         </div>
       </div>
@@ -314,7 +315,7 @@
               onclick={() => (iconPickerOpen = true)}
             >
               <EntityIcon value={draft.icon} class="size-4">
-                {#snippet fallback()}<ZapIcon class="size-4 text-muted-foreground" />{/snippet}
+                {#snippet fallback()}<Icon icon={EnergyIcon} class="size-4 text-muted-foreground" />{/snippet}
               </EntityIcon>
             </Button>
             <Input bind:value={draft.name} placeholder={i18n.t("commands.namePlaceholder")} class="flex-1" />
@@ -394,7 +395,7 @@
           <Collapsible.Trigger
             class="flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground {text.body}"
           >
-            <ChevronRightIcon class={cn("size-4 transition-transform", advancedOpen && "rotate-90")} />
+            <Icon icon={ChevronRightIcon} class={cn("size-4 transition-transform", advancedOpen && "rotate-90")} />
             {i18n.t("commands.advanced")}
           </Collapsible.Trigger>
           <Collapsible.Content class="space-y-4">
@@ -472,7 +473,7 @@
         current={draft.icon}
         onselect={(v) => (draft && (draft.icon = v))}
       >
-        {#snippet fallback()}<ZapIcon class="size-7 text-muted-foreground" />{/snippet}
+        {#snippet fallback()}<Icon icon={EnergyIcon} class="size-7 text-muted-foreground" />{/snippet}
       </IconPicker>
     {/if}
   </Dialog.Content>

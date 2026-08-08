@@ -180,6 +180,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Changed
 
+- **New icon set: Hugeicons replaces lucide across the app.** All 191 glyphs the
+  UI draws, at 535 call sites, now come from
+  [`@hugeicons/core-free-icons`](https://www.npmjs.com/package/@hugeicons/core-free-icons)
+  (MIT), imported one glyph per subpath so a screen still bundles only what it
+  draws. Hugeicons strokes at 1.5 where lucide stroked at 2, which reads lighter
+  at the 12-16px sizes this UI lives at. Glyphs are now *data* rather than
+  components, rendered through a new `Icon` primitive
+  (`components/ui/icon`) that builds the SVG declaratively — the upstream
+  `@hugeicons/svelte` component was rejected because it paints inside `onMount`
+  via `innerHTML` and never repaints when its `icon` prop changes, which the
+  agent-state, view-mode and settings rows depend on. Built-in glyph *names*
+  (`builtin:rocket`, chosen per project and branch and stored in your state) are
+  unchanged: the same name simply draws the new glyph, so no saved icon is lost.
+  Two names have no Hugeicons equivalent and now draw a substitute — `paw-print`
+  (the pets section) and `snowflake` (a choosable branch glyph).
+
+  The set also unlocks glyphs lucide could not provide: **GitHub now shows the
+  GitHub mark** in the right panel's tab and in settings, where both had stood in
+  with a pull-request glyph because lucide dropped its brand icons. History's
+  graph toggle takes a commit-graph glyph instead of a branch, quick commands take
+  a lightning bolt, resource settings a monitor with a pulse, and diagnostics a
+  stethoscope.
+
 - **Agent state is now a glyph, not a coloured dot.** `working` renders the new
   **Comet Trail** — a 3×3 dot matrix whose eight perimeter dots carry a bright
   head with a two-dot fading tail sweeping clockwise while the centre breathes —

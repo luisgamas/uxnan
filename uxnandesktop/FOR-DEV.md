@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 529 Rust tests (501 unit + 28
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 907 frontend Vitest tests across two
+probe) + 921 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -771,6 +771,26 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
 
 ## Deferred follow-ups (non-blocking) — by area
 
+**Icons**
+- [ ] **Four glyphs are drawing a stand-in because the npm package lags
+      hugeicons.com.** `WholeWordIcon`, `ServerIcon`, `TrendingUpIcon` and
+      `TrendingDownIcon` are free stroke-rounded icons on the site (e.g.
+      `hugeicons.com/icon/whole-word?style=stroke-rounded`) but are **not** in
+      `@hugeicons/core-free-icons@4.2.3`, the newest release (5,437 glyphs,
+      published 2026-07-21). Until they ship, the file-search "whole word"
+      toggle draws `Text`, the backend-status + `server` catalog glyph draw
+      `ServerStack01`, and the resource summary's trend arrows draw
+      `ChartUp`/`ChartDown` — all chosen and approved on their own merits, so
+      this is a nice-to-have, not a defect.
+
+      *What unblocks it:* a `@hugeicons/core-free-icons` release containing
+      them. Check with
+      `ls node_modules/@hugeicons/core-free-icons/dist/esm | grep -E '^(WholeWord|Server|TrendingUp|TrendingDown)Icon'`
+      after any bump; if they appear, swap the four imports (search for
+      `TextIcon` in `FileTreePanel.svelte`, `ServerStack01Icon`, and
+      `ChartUpIcon`/`ChartDownIcon` in `ResourceSummary.svelte`) and drop this
+      item.
+
 **Terminal**
 - [ ] **OPTIONAL — persistent PTY host, so a session never has to be resumed at
       all. Needs the maintainer's go-ahead before any code is written: it changes
@@ -1159,7 +1179,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 529 Rust + 907 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 529 Rust + 921 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

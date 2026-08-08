@@ -24,12 +24,13 @@
   import SettingsRow from "./SettingsRow.svelte";
   import FolderSelectDialog from "./FolderSelectDialog.svelte";
   import PetSprite from "./PetSprite.svelte";
-  import PawPrintIcon from "@lucide/svelte/icons/paw-print";
-  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import InfoIcon from "@lucide/svelte/icons/info";
-  import XIcon from "@lucide/svelte/icons/x";
-  import DownloadIcon from "@lucide/svelte/icons/download";
+  import { Icon } from "$lib/components/ui/icon";
+  import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
+  import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import InfoIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
 
   const settings = $derived(app.petSettings);
   /** Preview cycles through the states so the user sees what each one looks like. */
@@ -230,12 +231,12 @@
               size="sm"
               onclick={() => scanFolder(codexDir ?? "", i18n.t("pets.originCodex"), true)}
             >
-              <DownloadIcon class={icon.button} />
+              <Icon icon={DownloadIcon} class={icon.button} />
               {i18n.t("pets.importFromCodex")}
             </Button>
           {/if}
           <Button variant="outline" size="sm" onclick={() => (folderOpen = true)}>
-            <FolderOpenIcon class={icon.button} />
+            <Icon icon={FolderOpenIcon} class={icon.button} />
             {i18n.t("pets.importFolder")}
           </Button>
         </div>
@@ -246,7 +247,7 @@
         <div
           class="relative flex gap-2.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 pr-9"
         >
-          <InfoIcon class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <Icon icon={InfoIcon} class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p class="text-[12px] leading-5 text-muted-foreground">
             {i18n.t("pets.provenanceNotice")}
           </p>
@@ -256,7 +257,7 @@
             aria-label={i18n.t("common.close")}
             onclick={dismissNotice}
           >
-            <XIcon class="size-3.5" />
+            <Icon icon={XIcon} class="size-3.5" />
           </button>
         </div>
       {/if}
@@ -293,7 +294,7 @@
                     flavour={false}
                   />
                 {:else}
-                  <PawPrintIcon class="size-8 text-muted-foreground/40" />
+                  <Icon icon={PawPrintIcon} class="size-8 text-muted-foreground/40" />
                 {/if}
               </div>
               <span class="w-full truncate text-[13px] font-medium">{p.displayName}</span>
@@ -313,7 +314,7 @@
                 title={i18n.t("pets.remove")}
                 onclick={() => void pets.remove(p.id)}
               >
-                <Trash2Icon class="size-3.5" />
+                <Icon icon={Trash2Icon} class="size-3.5" />
               </button>
             {/if}
           </div>
@@ -359,7 +360,7 @@
     <!-- Always shown in the import dialog (not dismissible here): this is the
          moment the user takes on someone else's artwork. -->
     <div class="flex gap-2.5 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5">
-      <InfoIcon class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <Icon icon={InfoIcon} class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <p class="text-[12px] leading-5 text-muted-foreground">
         {i18n.t("pets.importAttribution")}
       </p>

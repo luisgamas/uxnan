@@ -18,9 +18,10 @@
   import type { ProviderUsage, UsageProviderConfig, UsageWindow } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
   import UsageMeter from "./UsageMeter.svelte";
-  import GaugeIcon from "@lucide/svelte/icons/gauge";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import { Icon } from "$lib/components/ui/icon";
+  import GaugeIcon from "@hugeicons/core-free-icons/GaugeIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
   // Providers pinned to the status bar, in configured order.
   const pinned = $derived(
@@ -83,7 +84,7 @@
           class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           aria-label={i18n.t("providers.statusBarTooltip")}
         >
-          <GaugeIcon class={cn("size-3.5", iconTint)} />
+          <Icon icon={GaugeIcon} class={cn("size-3.5", iconTint)} />
         </Popover.Trigger>
       {/snippet}
     </TooltipSimple>
@@ -120,7 +121,7 @@
                 aria-label={i18n.t("providers.refreshNow")}
                 onclick={() => void usage.refresh()}
               >
-                <RefreshCwIcon class={cn("size-3.5", usage.loading && "animate-spin")} />
+                <Icon icon={RefreshCwIcon} class={cn("size-3.5", usage.loading && "animate-spin")} />
               </Button>
             {/snippet}
           </TooltipSimple>
@@ -174,7 +175,7 @@
           app.openSettings("providers");
         }}
       >
-        <SettingsIcon class="size-3.5" />
+        <Icon icon={SettingsIcon} class="size-3.5" />
         {i18n.t("providers.manage")}
       </button>
     </Popover.Content>

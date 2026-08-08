@@ -72,38 +72,39 @@
   import MarkdownView from "$lib/components/MarkdownView.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
-  import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
-  import XCircleIcon from "@lucide/svelte/icons/circle-x";
-  import CircleDashedIcon from "@lucide/svelte/icons/circle-dashed";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import CheckIcon from "@lucide/svelte/icons/check";
-  import XIcon from "@lucide/svelte/icons/x";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import ShieldIcon from "@lucide/svelte/icons/shield-alert";
-  import ClockIcon from "@lucide/svelte/icons/clock";
-  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import GitMergeIcon from "@lucide/svelte/icons/git-merge";
-  import MessageSquareIcon from "@lucide/svelte/icons/message-square";
-  import FileDiffIcon from "@lucide/svelte/icons/file-diff";
-  import UsersIcon from "@lucide/svelte/icons/users";
-  import UserIcon from "@lucide/svelte/icons/user";
-  import TagIcon from "@lucide/svelte/icons/tag";
-  import EyeIcon from "@lucide/svelte/icons/eye";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import LinkIcon from "@lucide/svelte/icons/link";
-  import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
-  import GitPullRequestDraftIcon from "@lucide/svelte/icons/git-pull-request-draft";
-  import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
-  import SearchIcon from "@lucide/svelte/icons/search";
+  import { Icon } from "$lib/components/ui/icon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import ExternalLinkIcon from "@hugeicons/core-free-icons/ExternalLinkIcon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
+  import CheckCircle2Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+  import XCircleIcon from "@hugeicons/core-free-icons/CircleXIcon";
+  import CircleDashedIcon from "@hugeicons/core-free-icons/CircleDashedIcon";
+  import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import ShieldIcon from "@hugeicons/core-free-icons/SecurityWarningIcon";
+  import ClockIcon from "@hugeicons/core-free-icons/Clock01Icon";
+  import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
+  import GitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
+  import MessageSquareIcon from "@hugeicons/core-free-icons/Message01Icon";
+  import FileDiffIcon from "@hugeicons/core-free-icons/FileDiffIcon";
+  import UsersIcon from "@hugeicons/core-free-icons/UserMultipleIcon";
+  import UserIcon from "@hugeicons/core-free-icons/UserIcon";
+  import TagIcon from "@hugeicons/core-free-icons/Tag01Icon";
+  import EyeIcon from "@hugeicons/core-free-icons/EyeIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import LinkIcon from "@hugeicons/core-free-icons/Link01Icon";
+  import CircleSlashIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
+  import GitPullRequestDraftIcon from "@hugeicons/core-free-icons/GitPullRequestDraftIcon";
+  import ShieldCheckIcon from "@hugeicons/core-free-icons/SecurityCheckIcon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
 
   // The inline view acts on the repo opened from the project card (stored in the
   // github store as the selected section repo).
@@ -1137,7 +1138,7 @@
               aria-label={i18n.t("common.close")}
               onclick={close}
             >
-              <ArrowLeftIcon class={icon.button} />
+              <Icon icon={ArrowLeftIcon} class={icon.button} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -1161,7 +1162,7 @@
               aria-label={i18n.t("github.refresh")}
               onclick={doRefresh}
             >
-              <RefreshCwIcon class={cn(icon.button, github.sectionContextLoading && "animate-spin")} />
+              <Icon icon={RefreshCwIcon} class={cn(icon.button, github.sectionContextLoading && "animate-spin")} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -1223,11 +1224,11 @@
 <!-- Leading icon for the section switcher (shown on each row and on the trigger). -->
 {#snippet sectionPrefix(item: { value: string })}
   {#if item.value === "pulls"}
-    <GitPullRequestIcon class="size-4 shrink-0" />
+    <Icon icon={GitPullRequestIcon} class="size-4 shrink-0" />
   {:else if item.value === "issues"}
-    <CircleDotIcon class="size-4 shrink-0" />
+    <Icon icon={CircleDotIcon} class="size-4 shrink-0" />
   {:else if item.value === "actions"}
-    <PlayIcon class="size-4 shrink-0" />
+    <Icon icon={PlayIcon} class="size-4 shrink-0" />
   {/if}
 {/snippet}
 
@@ -1247,11 +1248,11 @@
 {/snippet}
 
 {#snippet timelineNode(ev: TimelineEvent, ciSummary: CheckSummary | null, ciChecks: CheckItem[] | null)}
-  {@const Icon = eventIcon(ev)}
+  {@const glyph = eventIcon(ev)}
   {#if eventIsBig(ev)}
     <div class="relative flex gap-3.5">
       <span class={cn("relative z-10 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card", eventToneClass(ev))}>
-        <Icon class="size-4" />
+        <Icon icon={glyph} class="size-4" />
       </span>
       <div class="min-w-0 flex-1 overflow-hidden rounded-lg border border-border/60">
         <div class={cn("flex flex-wrap items-center gap-2 border-b border-border/50 bg-muted/40 px-4 py-2.5", text.meta)}>
@@ -1269,7 +1270,7 @@
   {:else}
     <div class="relative flex min-h-8 items-center gap-3.5">
       <span class={cn("relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card", eventToneClass(ev))}>
-        <Icon class="size-4" />
+        <Icon icon={glyph} class="size-4" />
       </span>
       <div class={cn("flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1", text.body)}>
         {#if ev.actor}<span class="font-medium text-foreground">{ev.actor}</span>{/if}
@@ -1282,7 +1283,7 @@
         {#if ev.commitMessage}<span class="min-w-0 truncate text-foreground">{ev.commitMessage}</span>{/if}
         {#if ev.verified}
           <span class="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:text-emerald-400" title={i18n.t("github.commit.verifiedTip")}>
-            <ShieldCheckIcon class="size-3" />{i18n.t("github.commit.verified")}
+            <Icon icon={ShieldCheckIcon} class="size-3" />{i18n.t("github.commit.verified")}
           </span>
         {/if}
         {#if ev.commitSha}<span class="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{ev.commitSha}</span>{/if}
@@ -1327,7 +1328,7 @@
         {#if c.workflow}<span class={cn("shrink-0 truncate text-muted-foreground", text.indicator)}>{c.workflow}</span>{/if}
         {#if c.link}
           <Button variant="ghost" size="icon-sm" class={iconButton.xs} onclick={() => c.link && openExternal(c.link)} aria-label={i18n.t("github.openOnGitHub")}>
-            <ExternalLinkIcon class="size-3" />
+            <Icon icon={ExternalLinkIcon} class="size-3" />
           </Button>
         {/if}
       </div>
@@ -1338,17 +1339,17 @@
 <!-- A CI badge for a PR-list row / commit: a status icon that opens a popover with
      the "All checks passed / N failing" headline + the full check list (GitHub-style). -->
 {#snippet checksBadgeFull(summary: CheckSummary, checks: CheckItem[])}
-  {@const Ci = ciIcon(summary.state)}
+  {@const ciGlyph = ciIcon(summary.state)}
   <Popover.Root>
     <Popover.Trigger
       class={cn("inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:bg-accent", ciToneClass(summary.state))}
       aria-label={i18n.t("github.pr.checks")}
     >
-      <Ci class="size-4" />
+      <Icon icon={ciGlyph} class="size-4" />
     </Popover.Trigger>
     <Popover.Content align="end" side="bottom" class="w-[24rem] max-w-[calc(100vw-3rem)] overflow-hidden p-0">
       <div class={cn("flex items-center gap-2 border-b border-border/50 px-3.5 py-2.5", text.section)}>
-        <Ci class={cn("size-4", ciToneClass(summary.state))} />{checksHeadline(summary)}
+        <Icon icon={ciGlyph} class={cn("size-4", ciToneClass(summary.state))} />{checksHeadline(summary)}
       </div>
       {#if checks.length > 0}
         {@render checksRows(checks)}
@@ -1365,7 +1366,7 @@
 
 {#snippet searchField(value: string, onInput: (v: string) => void, placeholder: string)}
   <div class="relative">
-    <SearchIcon class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+    <Icon icon={SearchIcon} class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
     <Input
       {value}
       {placeholder}
@@ -1375,9 +1376,9 @@
   </div>
 {/snippet}
 
-{#snippet emptyState(Icon: typeof PlusIcon, title: string, desc: string)}
+{#snippet emptyState(glyph: typeof PlusIcon, title: string, desc: string)}
   <div class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/60 px-6 py-12 text-center">
-    <Icon class={cn(icon.empty, "text-muted-foreground/60")} />
+    <Icon icon={glyph} class={cn(icon.empty, "text-muted-foreground/60")} />
     <p class={cn(text.subheading)}>{title}</p>
     <p class={cn("max-w-sm text-muted-foreground", text.meta)}>{desc}</p>
   </div>
@@ -1385,7 +1386,7 @@
 
 {#snippet detailError(message: string, back: () => void, retry: () => void)}
   <div class="flex flex-col items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center">
-    <TriangleAlertIcon class={cn(icon.empty, "text-destructive/70")} />
+    <Icon icon={TriangleAlertIcon} class={cn(icon.empty, "text-destructive/70")} />
     <p class={cn("max-w-md break-words text-destructive", text.body)}>{message}</p>
     <div class="flex gap-2">
       <Button variant="ghost" size="sm" onclick={back}>{i18n.t("common.back")}</Button>
@@ -1396,7 +1397,7 @@
 
 {#snippet loadingRow()}
   <div class={cn("flex items-center justify-center gap-2 py-10", text.meta)}>
-    <RefreshCwIcon class="size-3.5 animate-spin" />
+    <Icon icon={RefreshCwIcon} class="size-3.5 animate-spin" />
     {i18n.t("github.loading")}
   </div>
 {/snippet}
@@ -1407,7 +1408,7 @@
   <div class="flex h-full items-center justify-center p-8">
     <div class="w-full max-w-md rounded-xl border border-border/60 bg-card/50 px-8 py-10 text-center shadow-xs">
       <div class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-        <GitPullRequestIcon class="size-6 text-muted-foreground" />
+        <Icon icon={GitPullRequestIcon} class="size-6 text-muted-foreground" />
       </div>
       {#if github.status && !github.status.ghInstalled}
         <h2 class={cn("mb-2", text.heading)}>{i18n.t("github.notInstalled")}</h2>
@@ -1417,7 +1418,7 @@
         <p class={cn("text-muted-foreground", text.body)}>{i18n.t("github.notSignedInDesc")}</p>
       {/if}
       <Button variant="outline" size="sm" class="mt-5" onclick={doRefresh}>
-        <RefreshCwIcon class={icon.button} />
+        <Icon icon={RefreshCwIcon} class={icon.button} />
         {i18n.t("github.refresh")}
       </Button>
     </div>
@@ -1428,7 +1429,7 @@
   <div class="flex h-full items-center justify-center p-8">
     <div class="w-full max-w-md rounded-xl border border-border/60 bg-card/50 px-8 py-10 text-center shadow-xs">
       <div class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-        <GitBranchIcon class="size-6 text-muted-foreground" />
+        <Icon icon={GitBranchIcon} class="size-6 text-muted-foreground" />
       </div>
       <h2 class={cn("mb-2", text.heading)}>{i18n.t("github.noRepos")}</h2>
       <p class={cn("text-muted-foreground", text.body)}>{i18n.t("github.noReposDesc")}</p>
@@ -1457,7 +1458,7 @@
               else github.startPrDraft(createPrKey, { title: github.sectionContext?.branch ?? "" });
             }}
           >
-            <PlusIcon class={icon.button} />
+            <Icon icon={PlusIcon} class={icon.button} />
             {i18n.t("github.pr.create")}
           </Button>
         </div>
@@ -1476,7 +1477,7 @@
           {@render loadingRow()}
         {:else if github.prs.length === 0}
           <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 px-6 py-14 text-center">
-            <GitPullRequestIcon class={cn(icon.empty, "text-muted-foreground/60")} />
+            <Icon icon={GitPullRequestIcon} class={cn(icon.empty, "text-muted-foreground/60")} />
             <p class={cn(text.subheading)}>{prState === "open" ? i18n.t("github.pr.emptyOpen") : i18n.t("github.pr.empty")}</p>
             {#if prState !== "all"}
               <Button variant="outline" size="sm" onclick={() => { prState = "all"; void github.loadPrs("all", prSearch.trim() || null); }}>
@@ -1487,11 +1488,11 @@
         {:else}
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.prs as pr (pr.number)}
-              {@const PrIcon = prStateIcon(pr.state, pr.isDraft)}
+              {@const prGlyph = prStateIcon(pr.state, pr.isDraft)}
               <!-- Row is a div (not a button) so the CI popover trigger can be a real
                    sibling button — the title area handles opening the PR. -->
               <div class="group flex w-full items-center gap-3 px-4 py-3.5 transition-colors hover:bg-accent/50">
-                <PrIcon class={cn("size-4 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
+                <Icon icon={prGlyph} class={cn("size-4 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
                 <button class="min-w-0 flex-1 space-y-0.5 text-left" onclick={() => selectPr(pr.number)}>
                   <div class={cn("truncate", text.bodyStrong)}>{pr.title}</div>
                   <div class={cn("truncate text-muted-foreground", text.meta)}>
@@ -1508,7 +1509,7 @@
                   {@render checksBadgeFull(pr.checksSummary, pr.checks)}
                 {/if}
                 <button class="shrink-0" onclick={() => selectPr(pr.number)} aria-label={pr.title} tabindex="-1">
-                  <ChevronRightIcon class="size-4 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
+                  <Icon icon={ChevronRightIcon} class="size-4 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
                 </button>
               </div>
             {/each}
@@ -1522,7 +1523,7 @@
 {#snippet prDetailView()}
   <div class="space-y-4">
     <button class={cn("flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground", text.meta)} onclick={clearDetail}>
-      <ArrowLeftIcon class="size-3.5" /> {i18n.t("github.pr.title")}
+      <Icon icon={ArrowLeftIcon} class="size-3.5" /> {i18n.t("github.pr.title")}
     </button>
     {#if prLoading}
       {@render loadingRow()}
@@ -1532,13 +1533,13 @@
       {@const pr = prDetail}
       {@const isOpen = pr.state.toUpperCase() === "OPEN"}
       {@const isClosed = pr.state.toUpperCase() === "CLOSED"}
-      {@const HeadIcon = prStateIcon(pr.state, pr.isDraft)}
+      {@const headGlyph = prStateIcon(pr.state, pr.isDraft)}
       {#if editOpen}
         {@render editForm("pr")}
       {:else}
       <!-- Title + state -->
       <div class="flex items-start gap-2.5">
-        <HeadIcon class={cn("mt-0.5 size-5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
+        <Icon icon={headGlyph} class={cn("mt-0.5 size-5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-2">
             <h2 class={cn(text.heading, "min-w-0 break-words")}>{pr.title}</h2>
@@ -1552,10 +1553,10 @@
           </div>
         </div>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => startEdit(pr.title, pr.body)} aria-label={i18n.t("github.pr.edit")} title={i18n.t("github.pr.edit")}>
-          <PencilIcon class={icon.button} />
+          <Icon icon={PencilIcon} class={icon.button} />
         </Button>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(pr.url)} aria-label={i18n.t("github.openOnGitHub")}>
-          <ExternalLinkIcon class={icon.button} />
+          <Icon icon={ExternalLinkIcon} class={icon.button} />
         </Button>
       </div>
       {/if}
@@ -1574,7 +1575,7 @@
            asking for a review meant leaving for github.com. -->
       {#if pr.reviewers.length > 0 || isOpen}
         <div class="flex flex-wrap items-center gap-2">
-          <span class={cn("inline-flex items-center gap-1.5", text.section)}><UsersIcon class="size-3.5" />{i18n.t("github.pr.reviewers")}</span>
+          <span class={cn("inline-flex items-center gap-1.5", text.section)}><Icon icon={UsersIcon} class="size-3.5" />{i18n.t("github.pr.reviewers")}</span>
           {#each pr.reviewers as r, ri (ri)}{@render pill(r, "muted")}{/each}
           {#if pr.reviewers.length === 0}
             <span class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.pr.noReviewers")}</span>
@@ -1613,7 +1614,7 @@
             )}
             onclick={() => (prTab = t.id as typeof prTab)}
           >
-            <t.icon class="size-3.5" />
+            <Icon icon={t.icon} class="size-3.5" />
             {t.label}
             {#if t.n !== null}
               <span class={cn("rounded-full bg-muted px-1.5 py-px", text.indicator)}>{t.n}</span>
@@ -1627,7 +1628,7 @@
            vertical rail (the reply box + merge/review tools live at the bottom). -->
       <div class={cn("overflow-hidden", panel.card)}>
         <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-4 py-2.5", text.section)}>
-          <MessageSquareIcon class="size-3.5" />{i18n.t("github.pr.conversation")}
+          <Icon icon={MessageSquareIcon} class="size-3.5" />{i18n.t("github.pr.conversation")}
         </div>
         {@render timelineRail(
           timelineNodes(pr.body, pr.author, pr.createdAt, prTimeline, prTimelineFailed, fallbackNodes(pr)),
@@ -1639,18 +1640,18 @@
 
       <!-- CI checks — an expandable inline section for the head (last) commit. -->
       {#if pr.checks.length > 0}
-        {@const Ci = ciIcon(pr.checksSummary.state)}
+        {@const ciGlyph = ciIcon(pr.checksSummary.state)}
         <div class={cn("overflow-hidden", panel.card)}>
           <button class="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30" onclick={() => (ciOpen = !ciOpen)}>
             <span class={cn("flex size-9 shrink-0 items-center justify-center rounded-full border border-border", ciToneClass(pr.checksSummary.state))}>
-              <Ci class="size-5" />
+              <Icon icon={ciGlyph} class="size-5" />
             </span>
             <div class="min-w-0 flex-1">
               <div class={cn(text.body, "font-medium")}>{checksHeadline(pr.checksSummary)}</div>
               <div class={text.meta}>{i18n.t("github.checks.summaryLine", { passed: pr.checksSummary.passed, total: pr.checksSummary.total })}</div>
             </div>
             <span class={cn("text-muted-foreground", text.meta)}>{ciOpen ? i18n.t("github.checks.hide") : i18n.t("github.checks.viewAll")}</span>
-            {#if ciOpen}<ChevronDownIcon class="size-4 shrink-0 text-muted-foreground/60" />{:else}<ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/60" />{/if}
+            {#if ciOpen}<Icon icon={ChevronDownIcon} class="size-4 shrink-0 text-muted-foreground/60" />{:else}<Icon icon={ChevronRightIcon} class="size-4 shrink-0 text-muted-foreground/60" />{/if}
           </button>
           {#if ciOpen}
             <div class="border-t border-border/50">{@render checksRows(pr.checks)}</div>
@@ -1684,11 +1685,11 @@
               <div>
                 <button class="flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-accent/40" onclick={() => toggleFile(f.path)}>
                   {#if expandedFiles[f.path]}
-                    <ChevronDownIcon class="size-3.5 shrink-0 text-muted-foreground" />
+                    <Icon icon={ChevronDownIcon} class="size-3.5 shrink-0 text-muted-foreground" />
                   {:else}
-                    <ChevronRightIcon class="size-3.5 shrink-0 text-muted-foreground" />
+                    <Icon icon={ChevronRightIcon} class="size-3.5 shrink-0 text-muted-foreground" />
                   {/if}
-                  <FileDiffIcon class="size-3.5 shrink-0 text-muted-foreground" />
+                  <Icon icon={FileDiffIcon} class="size-3.5 shrink-0 text-muted-foreground" />
                   <span class="min-w-0 flex-1 truncate font-mono text-[12px]">{f.path}</span>
                   <span class={cn("shrink-0", text.indicator, fileStatusClass(f.status))}>{fileStatusLabel(f.status)}</span>
                 </button>
@@ -1700,7 +1701,7 @@
                         <div class="p-3 text-center">
                           <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.diffError")}</p>
                           <Button variant="outline" size="sm" class="mt-2" onclick={() => openExternal(pr.url)}>
-                            <ExternalLinkIcon class={icon.button} />
+                            <Icon icon={ExternalLinkIcon} class={icon.button} />
                             {i18n.t("github.openOnGitHub")}
                           </Button>
                         </div>
@@ -1730,7 +1731,7 @@
             </Button>
             <div class="flex-1"></div>
             <Button variant="outline" size="sm" disabled={busy} onclick={() => requestWorktree("pr", pr.number, pr.title)}>
-              <GitBranchIcon class={icon.button} />{i18n.t("github.pr.checkout")}
+              <Icon icon={GitBranchIcon} class={icon.button} />{i18n.t("github.pr.checkout")}
             </Button>
             <!-- Draft ⇄ ready. A draft opened from here used to be a one-way door:
                  nothing in the app could take it out of draft. -->
@@ -1739,7 +1740,7 @@
                 {#if busyAction === "github.toast.prReady"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <CheckIcon data-icon="inline-start" />
+                  <Icon icon={CheckIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.pr.markReady")}
               </Button>
@@ -1748,7 +1749,7 @@
                 {#if busyAction === "github.toast.prDrafted"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <GitPullRequestDraftIcon data-icon="inline-start" />
+                  <Icon icon={GitPullRequestDraftIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.pr.markDraft")}
               </Button>
@@ -1758,7 +1759,7 @@
                 {#if busyAction === "pr-state"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <CircleSlashIcon data-icon="inline-start" />
+                  <Icon icon={CircleSlashIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.pr.close")}
               </Button>
@@ -1767,7 +1768,7 @@
                 {#if busyAction === "pr-state"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <CircleDotIcon data-icon="inline-start" />
+                  <Icon icon={CircleDotIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.pr.reopen")}
               </Button>
@@ -1784,7 +1785,7 @@
                 {#if busyAction === "pr-review-approve"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <CheckIcon data-icon="inline-start" />
+                  <Icon icon={CheckIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.pr.approve")}
               </Button>
@@ -1792,7 +1793,7 @@
                 {#if busyAction === "pr-review-request-changes"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <XIcon data-icon="inline-start" />
+                  <Icon icon={XIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.pr.requestChanges")}
               </Button>
@@ -1809,7 +1810,7 @@
                Shown before the controls so the state is read before the click. -->
           {#if mergeInfo?.state?.autoMergeEnabled}
             <div class={cn("flex items-start gap-2 rounded-lg border border-sky-500/40 bg-sky-500/5 px-3 py-2", text.meta)}>
-              <ClockIcon class="mt-px size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+              <Icon icon={ClockIcon} class="mt-px size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
               <span class="flex-1">{i18n.t("github.merge.autoArmed")}</span>
               <!-- Armed auto-merge was a one-way door: this turns it back off. -->
               <Button variant="ghost" size="sm" class="-my-1 h-6" disabled={busy} onclick={() => prAction(githubPrDisableAutoMerge, "github.toast.autoMergeOff")}>
@@ -1822,7 +1823,7 @@
           {:else if mergeBlocked || mergeStatus === "BEHIND" || mergeStatus === "DIRTY"}
             <div class={cn("space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2", text.meta)}>
               <div class="flex items-start gap-2">
-                <ShieldIcon class="mt-px size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                <Icon icon={ShieldIcon} class="mt-px size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
                 <span class="font-medium">
                   {mergeStatus === "DIRTY"
                     ? i18n.t("github.merge.dirty")
@@ -1856,7 +1857,7 @@
                     {#if busyAction === "branch-update"}
                       <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                     {:else}
-                      <RefreshCwIcon data-icon="inline-start" />
+                      <Icon icon={RefreshCwIcon} data-icon="inline-start" />
                     {/if}
                     {i18n.t("github.merge.updateBranch")}
                   </Button>
@@ -1890,7 +1891,7 @@
                 {#if busyAction === "merge-auto"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <ClockIcon data-icon="inline-start" />
+                  <Icon icon={ClockIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.merge.auto")}
               </Button>
@@ -1906,7 +1907,7 @@
                   : i18n.t("github.merge.bypassMaybeTip")}
                 onclick={() => (adminConfirmOpen = true)}
               >
-                <ShieldIcon class="size-3.5" />{i18n.t("github.merge.bypass")}
+                <Icon icon={ShieldIcon} class="size-3.5" />{i18n.t("github.merge.bypass")}
               </Button>
             {/if}
             <Button size="sm" disabled={busy || mergeMethodItems.length === 0} onclick={requestMerge}>
@@ -1951,7 +1952,7 @@
             onChange={(v) => { issueState = v; void github.loadIssues(v); }}
           />
           <Button size="sm" onclick={openCreateIssue}>
-            <PlusIcon class={icon.button} />
+            <Icon icon={PlusIcon} class={icon.button} />
             {i18n.t("github.issue.create")}
           </Button>
         </div>
@@ -2005,7 +2006,7 @@
                       )}
                       onclick={() => (newIssueAssignees = toggleIn(newIssueAssignees, who))}
                     >
-                      <UserIcon class="size-3" />{who}
+                      <Icon icon={UserIcon} class="size-3" />{who}
                     </button>
                   {/each}
                 </div>
@@ -2028,7 +2029,7 @@
           {@render loadingRow()}
         {:else if github.issues.length === 0}
           <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 px-6 py-14 text-center">
-            <CircleDotIcon class={cn(icon.empty, "text-muted-foreground/60")} />
+            <Icon icon={CircleDotIcon} class={cn(icon.empty, "text-muted-foreground/60")} />
             <p class={cn(text.subheading)}>{issueState === "open" ? i18n.t("github.issue.emptyOpen") : i18n.t("github.issue.empty")}</p>
             {#if issueState !== "all"}
               <Button variant="outline" size="sm" onclick={() => { issueState = "all"; void github.loadIssues("all", issueSearch.trim() || null); }}>
@@ -2039,9 +2040,9 @@
         {:else}
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.issues as issue (issue.number)}
-              {@const IssueIcon = issueStateIcon(issue.state)}
+              {@const issueGlyph = issueStateIcon(issue.state)}
               <button class="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-accent/50" onclick={() => selectIssue(issue.number)}>
-                <IssueIcon class={cn("size-4 shrink-0", issueStateIconClass(issue.state))} />
+                <Icon icon={issueGlyph} class={cn("size-4 shrink-0", issueStateIconClass(issue.state))} />
                 <div class="min-w-0 flex-1 space-y-0.5">
                   <div class={cn("truncate", text.bodyStrong)}>{issue.title}</div>
                   <div class={cn("truncate text-muted-foreground", text.meta)}>
@@ -2051,10 +2052,10 @@
                 {#each issue.labels.slice(0, 3) as label (label)}{@render pill(label, "muted")}{/each}
                 {#if issue.comments > 0}
                   <span class={cn("inline-flex shrink-0 items-center gap-1 text-muted-foreground", text.indicator)}>
-                    <MessageSquareIcon class="size-3.5" />{issue.comments}
+                    <Icon icon={MessageSquareIcon} class="size-3.5" />{issue.comments}
                   </span>
                 {/if}
-                <ChevronRightIcon class="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
+                <Icon icon={ChevronRightIcon} class="size-4 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
               </button>
             {/each}
           </div>
@@ -2067,7 +2068,7 @@
 {#snippet issueDetailView()}
   <div class="space-y-4">
     <button class={cn("flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground", text.meta)} onclick={clearDetail}>
-      <ArrowLeftIcon class="size-3.5" /> {i18n.t("github.issue.title")}
+      <Icon icon={ArrowLeftIcon} class="size-3.5" /> {i18n.t("github.issue.title")}
     </button>
     {#if issueLoading}
       {@render loadingRow()}
@@ -2076,12 +2077,12 @@
     {:else if issueDetail}
       {@const issue = issueDetail}
       {@const issueOpen = issue.state.toUpperCase() === "OPEN"}
-      {@const IssueIcon = issueStateIcon(issue.state)}
+      {@const issueGlyph = issueStateIcon(issue.state)}
       {#if editOpen}
         {@render editForm("issue")}
       {:else}
       <div class="flex items-start gap-2.5">
-        <IssueIcon class={cn("mt-0.5 size-5 shrink-0", issueStateIconClass(issue.state))} />
+        <Icon icon={issueGlyph} class={cn("mt-0.5 size-5 shrink-0", issueStateIconClass(issue.state))} />
         <div class="min-w-0 flex-1">
           <h2 class={cn(text.heading, "break-words")}>{issue.title}</h2>
           <div class="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -2095,10 +2096,10 @@
           </div>
         </div>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => startEdit(issue.title, issue.body)} aria-label={i18n.t("github.pr.edit")} title={i18n.t("github.pr.edit")}>
-          <PencilIcon class={icon.button} />
+          <Icon icon={PencilIcon} class={icon.button} />
         </Button>
         <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(issue.url)} aria-label={i18n.t("github.openOnGitHub")}>
-          <ExternalLinkIcon class={icon.button} />
+          <Icon icon={ExternalLinkIcon} class={icon.button} />
         </Button>
       </div>
       {/if}
@@ -2112,7 +2113,7 @@
            GitHub-style vertical rail, then a comment field. -->
       <div class={cn("overflow-hidden", panel.card)}>
         <div class={cn("flex items-center gap-1.5 border-b border-border/50 px-4 py-2.5", text.section)}>
-          <MessageSquareIcon class="size-3.5" />{i18n.t("github.pr.conversation")}
+          <Icon icon={MessageSquareIcon} class="size-3.5" />{i18n.t("github.pr.conversation")}
         </div>
         {@render timelineRail(
           timelineNodes(
@@ -2139,14 +2140,14 @@
             </Button>
             <div class="flex-1"></div>
             <Button variant="outline" size="sm" disabled={busy} title={i18n.t("github.issue.startWorkTip")} onclick={() => requestWorktree("issue", issue.number, issue.title)}>
-              <GitBranchIcon class={icon.button} />{i18n.t("github.issue.startWork")}
+              <Icon icon={GitBranchIcon} class={icon.button} />{i18n.t("github.issue.startWork")}
             </Button>
             {#if issueOpen}
               <Button variant="outline" size="sm" disabled={busy} class="gap-1 text-purple-600 dark:text-purple-400" onclick={toggleIssueState}>
                 {#if busyAction === "issue-state"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <CheckCircle2Icon data-icon="inline-start" />
+                  <Icon icon={CheckCircle2Icon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.issue.close")}
               </Button>
@@ -2155,7 +2156,7 @@
                 {#if busyAction === "issue-state"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <CircleDotIcon data-icon="inline-start" />
+                  <Icon icon={CircleDotIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("github.issue.reopen")}
               </Button>
@@ -2171,7 +2172,7 @@
   {#if runLog !== null || runError}
     <div class="space-y-3">
       <button class={cn("flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground", text.meta)} onclick={clearDetail}>
-        <ArrowLeftIcon class="size-3.5" /> {i18n.t("github.actions.title")}
+        <Icon icon={ArrowLeftIcon} class="size-3.5" /> {i18n.t("github.actions.title")}
       </button>
       {#if selectedRunTitle}<h2 class={cn(text.subheading, "truncate")}>{selectedRunTitle}</h2>{/if}
       {#if selectedRunId}
@@ -2226,7 +2227,7 @@
                 </div>
                 <Button variant="ghost" size="sm" onclick={() => viewRunLog(run.databaseId, run.displayTitle || run.name)}>{i18n.t("github.actions.viewLog")}</Button>
                 <Button variant="ghost" size="icon-sm" class={iconButton.action} onclick={() => openExternal(run.url)} aria-label={i18n.t("github.openOnGitHub")}>
-                  <ExternalLinkIcon class={icon.button} />
+                  <Icon icon={ExternalLinkIcon} class={icon.button} />
                 </Button>
               </div>
             {/each}

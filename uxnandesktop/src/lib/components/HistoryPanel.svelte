@@ -22,16 +22,17 @@
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import * as HoverCard from "$lib/components/ui/hover-card";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import XIcon from "@lucide/svelte/icons/x";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import TagIcon from "@lucide/svelte/icons/tag";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import UserIcon from "@lucide/svelte/icons/user";
-  import ClockIcon from "@lucide/svelte/icons/clock";
+  import { Icon } from "$lib/components/ui/icon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import GitGraphIcon from "@hugeicons/core-free-icons/GitGraphIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import TagIcon from "@hugeicons/core-free-icons/Tag01Icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
+  import UserIcon from "@hugeicons/core-free-icons/UserIcon";
+  import ClockIcon from "@hugeicons/core-free-icons/Clock01Icon";
 
   // Keep the loaded log pointed at the active worktree (cheap no-op on re-mount).
   $effect(() => {
@@ -219,7 +220,7 @@
     {#if layout && layout.rows[cindex]}
       {@render graphGutter(layout.rows[cindex])}
     {/if}
-    <ChevronRightIcon
+    <Icon icon={ChevronRightIcon}
       class={cn(icon.decorative, "shrink-0 text-muted-foreground/70 transition-transform", expanded && "rotate-90")}
     />
     <HoverCard.Root>
@@ -240,7 +241,7 @@
                         : "bg-muted text-muted-foreground",
                   )}
                 >
-                  {#if kind === "tag"}<TagIcon class="size-2.5" />{/if}
+                  {#if kind === "tag"}<Icon icon={TagIcon} class="size-2.5" />{/if}
                   {refLabel(ref)}
                 </span>
               {/each}
@@ -271,7 +272,7 @@
             void copyHash(commit.hash);
           }}
         >
-          <CopyIcon class={icon.button} />
+          <Icon icon={CopyIcon} class={icon.button} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -291,19 +292,19 @@
     <div class="h-px bg-border/60"></div>
     <div class="flex flex-col gap-1">
       <div class={cn("flex items-center gap-1.5", text.meta)}>
-        <GitCommitIcon class="size-3.5 shrink-0" />
+        <Icon icon={GitCommitIcon} class="size-3.5 shrink-0" />
         <span class="shrink-0 font-mono text-foreground">{commit.shortHash}</span>
         <span class="min-w-0 truncate font-mono">{commit.hash}</span>
       </div>
       <div class={cn("flex items-center gap-1.5", text.meta)}>
-        <UserIcon class="size-3.5 shrink-0" />
+        <Icon icon={UserIcon} class="size-3.5 shrink-0" />
         <span class="min-w-0 truncate">{commit.authorName}</span>
         {#if commit.authorEmail}
           <span class="min-w-0 truncate opacity-70">&lt;{commit.authorEmail}&gt;</span>
         {/if}
       </div>
       <div class={cn("flex items-center gap-1.5", text.meta)}>
-        <ClockIcon class="size-3.5 shrink-0" />
+        <Icon icon={ClockIcon} class="size-3.5 shrink-0" />
         <span>{absoluteTime(commit.timestamp)}</span>
       </div>
     </div>
@@ -322,7 +323,7 @@
                   : "bg-muted text-muted-foreground",
             )}
           >
-            {#if kind === "tag"}<TagIcon class="size-2.5" />{/if}
+            {#if kind === "tag"}<Icon icon={TagIcon} class="size-2.5" />{/if}
             {refLabel(ref)}
           </span>
         {/each}
@@ -397,7 +398,7 @@
       <TooltipSimple title={i18n.t("common.close")}>
         {#snippet children(tp)}
           <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
-            <XIcon class={icon.action} />
+            <Icon icon={XIcon} class={icon.action} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -422,14 +423,14 @@
               )}
               onclick={() => (history.showGraph = !history.showGraph)}
             >
-              <GitBranchIcon class={icon.action} />
+              <Icon icon={GitGraphIcon} class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
         <TooltipSimple title={i18n.t("history.search")}>
           {#snippet children(tp)}
             <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
-              <SearchIcon class={icon.action} />
+              <Icon icon={SearchIcon} class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -442,7 +443,7 @@
               class={iconButton.xs}
               onclick={() => void history.refresh()}
             >
-              <RefreshCwIcon class={cn(icon.action, history.loading && "animate-spin")} />
+              <Icon icon={RefreshCwIcon} class={cn(icon.action, history.loading && "animate-spin")} />
             </Button>
           {/snippet}
         </TooltipSimple>

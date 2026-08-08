@@ -48,6 +48,7 @@
     "@codemirror/view": "^6.43.1",
     "@fontsource-variable/dm-sans": "^5.2.8",
     "@fontsource-variable/geist": "^5.2.9",
+    "@hugeicons/core-free-icons": "4.2.3",
     "@lezer/highlight": "^1.2.3",
     "@tanstack/svelte-virtual": "^3.13.29",
     "@tauri-apps/api": "^2",
@@ -68,7 +69,6 @@
   },
   "devDependencies": {
     "@internationalized/date": "^3.12.2",
-    "@lucide/svelte": "^1.21.0",
     "@sveltejs/adapter-static": "^3.0.6",
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

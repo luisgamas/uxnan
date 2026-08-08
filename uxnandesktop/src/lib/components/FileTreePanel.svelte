@@ -41,24 +41,27 @@
   import FileTreeDraftRow from "./FileTreeDraftRow.svelte";
   import OpenWith from "./OpenWith.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import FileIcon from "@lucide/svelte/icons/file";
-  import FilePlusIcon from "@lucide/svelte/icons/file-plus";
-  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import FoldVerticalIcon from "@lucide/svelte/icons/fold-vertical";
-  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-  import Loader2Icon from "@lucide/svelte/icons/loader-2";
-  import XIcon from "@lucide/svelte/icons/x";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import TextSearchIcon from "@lucide/svelte/icons/text-search";
-  import ListFilterIcon from "@lucide/svelte/icons/list-filter";
-  import CaseSensitiveIcon from "@lucide/svelte/icons/case-sensitive";
-  import WholeWordIcon from "@lucide/svelte/icons/whole-word";
-  import RegexIcon from "@lucide/svelte/icons/regex";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import FileIcon from "@hugeicons/core-free-icons/File01Icon";
+  import FilePlusIcon from "@hugeicons/core-free-icons/FilePlusIcon";
+  import FolderPlusIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import FoldVerticalIcon from "@hugeicons/core-free-icons/FoldVerticalIcon";
+  import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import EllipsisIcon from "@hugeicons/core-free-icons/EllipsisIcon";
+  import Loader2Icon from "@hugeicons/core-free-icons/Loading03Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import TextSearchIcon from "@hugeicons/core-free-icons/FileSearchIcon";
+  import ListFilterIcon from "@hugeicons/core-free-icons/FilterIcon";
+  import CaseSensitiveIcon from "@hugeicons/core-free-icons/CaseSensitiveIcon";
+  // FOR-DEV: stand-in — Hugeicons publishes `WholeWordIcon` as free on the site
+  // but it is not in core-free-icons@4.2.3 yet. Swap when it ships (FOR-DEV.md → Icons).
+  import WholeWordIcon from "@hugeicons/core-free-icons/TextIcon";
+  import RegexIcon from "@hugeicons/core-free-icons/RegexIcon";
 
   /** Active worktree root, forward-slash normalized (matches backend paths). */
   const root = $derived(
@@ -512,7 +515,7 @@
             text.indicator,
           )}
         >
-          <FolderIcon class={cn(icon.decorative, "shrink-0")} />
+          <Icon icon={FolderIcon} class={cn(icon.decorative, "shrink-0")} />
           <span class="truncate">{scopeName}</span>
           <button
             type="button"
@@ -520,14 +523,14 @@
             onclick={() => (fileTree.searchScope = null)}
             aria-label={i18n.t("fileTree.clearScope")}
           >
-            <XIcon class="size-3" />
+            <Icon icon={XIcon} class="size-3" />
           </button>
         </span>
       {/if}
       {#if fileTree.searchLoading}
-        <Loader2Icon class={cn(icon.decorative, "shrink-0 animate-spin text-muted-foreground")} />
+        <Icon icon={Loader2Icon} class={cn(icon.decorative, "shrink-0 animate-spin text-muted-foreground")} />
       {:else}
-        <SearchIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+        <Icon icon={SearchIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       {/if}
       <!-- svelte-ignore a11y_autofocus -->
       <input
@@ -553,7 +556,7 @@
             aria-label={i18n.t("common.close")}
             onclick={toggleSearch}
           >
-            <XIcon class={icon.action} />
+            <Icon icon={XIcon} class={icon.action} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -572,7 +575,7 @@
               aria-label={i18n.t("fileTree.search")}
               onclick={toggleSearch}
             >
-              <SearchIcon class={icon.action} />
+              <Icon icon={SearchIcon} class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -586,7 +589,7 @@
               aria-label={i18n.t("fileTree.collapseAll")}
               onclick={() => fileTree.collapseAll()}
             >
-              <FoldVerticalIcon class={icon.action} />
+              <Icon icon={FoldVerticalIcon} class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -600,7 +603,7 @@
               aria-label={i18n.t("fileTree.refresh")}
               onclick={() => fileTree.refresh()}
             >
-              <RefreshCwIcon class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
+              <Icon icon={RefreshCwIcon} class={cn(icon.action, fileTree.loadingDir.size > 0 && "animate-spin")} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -616,7 +619,7 @@
                 title={i18n.t("fileTree.moreActions")}
                 {...props}
               >
-                <EllipsisIcon class={icon.action} />
+                <Icon icon={EllipsisIcon} class={icon.action} />
               </Button>
             {/snippet}
           </DropdownMenu.Trigger>
@@ -627,19 +630,19 @@
               class={text.menu}
               onclick={() => startCreate("file", toolbarTargetDir())}
             >
-              <FilePlusIcon />
+              <Icon icon={FilePlusIcon} />
               {i18n.t("fileTree.newFile")}
             </DropdownMenu.Item>
             <DropdownMenu.Item
               class={text.menu}
               onclick={() => startCreate("folder", toolbarTargetDir())}
             >
-              <FolderPlusIcon />
+              <Icon icon={FolderPlusIcon} />
               {i18n.t("fileTree.newFolder")}
             </DropdownMenu.Item>
             <DropdownMenu.Separator />
             <DropdownMenu.Item class={text.menu} onclick={reveal}>
-              <FolderOpenIcon />
+              <Icon icon={FolderOpenIcon} />
               {i18n.t("fileTree.reveal")}
             </DropdownMenu.Item>
             <OpenWith menu={DropdownMenu} path={root} />
@@ -660,10 +663,10 @@
     <div class="shrink-0 border-b border-sidebar-border/60 px-1 py-1">
       <Collapsible.Root bind:open={fileTree.contentOpen}>
         <Collapsible.Trigger class={sectionTrigger}>
-          <ChevronRightIcon
+          <Icon icon={ChevronRightIcon}
             class={cn(icon.decorative, "shrink-0 transition-transform", fileTree.contentOpen && "rotate-90")}
           />
-          <TextSearchIcon class={cn(icon.decorative, "shrink-0")} />
+          <Icon icon={TextSearchIcon} class={cn(icon.decorative, "shrink-0")} />
           <span class="min-w-0 flex-1 truncate text-left">{i18n.t("fileTree.contentSection")}</span>
           <!-- Folded away, the section still reports what it is contributing. -->
           {#if contentActive && !fileTree.contentOpen}
@@ -692,7 +695,7 @@
                   class={modeButton(fileTree.contentCaseSensitive)}
                   onclick={() => (fileTree.contentCaseSensitive = !fileTree.contentCaseSensitive)}
                 >
-                  <CaseSensitiveIcon class={icon.decorative} />
+                  <Icon icon={CaseSensitiveIcon} class={icon.decorative} />
                 </button>
               {/snippet}
             </TooltipSimple>
@@ -706,7 +709,7 @@
                   class={modeButton(fileTree.contentWholeWord)}
                   onclick={() => (fileTree.contentWholeWord = !fileTree.contentWholeWord)}
                 >
-                  <WholeWordIcon class={icon.decorative} />
+                  <Icon icon={WholeWordIcon} class={icon.decorative} />
                 </button>
               {/snippet}
             </TooltipSimple>
@@ -720,7 +723,7 @@
                   class={modeButton(fileTree.contentRegex)}
                   onclick={() => (fileTree.contentRegex = !fileTree.contentRegex)}
                 >
-                  <RegexIcon class={icon.decorative} />
+                  <Icon icon={RegexIcon} class={icon.decorative} />
                 </button>
               {/snippet}
             </TooltipSimple>
@@ -733,10 +736,10 @@
 
       <Collapsible.Root bind:open={fileTree.filtersOpen}>
         <Collapsible.Trigger class={sectionTrigger}>
-          <ChevronRightIcon
+          <Icon icon={ChevronRightIcon}
             class={cn(icon.decorative, "shrink-0 transition-transform", fileTree.filtersOpen && "rotate-90")}
           />
-          <ListFilterIcon class={cn(icon.decorative, "shrink-0")} />
+          <Icon icon={ListFilterIcon} class={cn(icon.decorative, "shrink-0")} />
           <span class="min-w-0 flex-1 truncate text-left">{i18n.t("fileTree.filtersSection")}</span>
           {#if hasFilters && !fileTree.filtersOpen}
             <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
@@ -798,11 +801,11 @@
               onclick={() => toggleContentFile(f.path)}
             >
               {#if collapsed}
-                <ChevronRightIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+                <Icon icon={ChevronRightIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
               {:else}
-                <ChevronDownIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+                <Icon icon={ChevronDownIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
               {/if}
-              <FileIcon
+              <Icon icon={FileIcon}
                 class={cn(icon.decorative, "shrink-0", fileColor(changes.fileMap.get(relOf(f.path))) || "text-muted-foreground")}
               />
               <span class={cn("shrink-0 truncate font-medium", text.body)}>{f.name}</span>
@@ -963,20 +966,20 @@
           </ContextMenu.Trigger>
           <ContextMenu.Content>
             <ContextMenu.Item class={text.menu} onclick={() => startCreate("file", root)}>
-              <FilePlusIcon />
+              <Icon icon={FilePlusIcon} />
               {i18n.t("fileTree.newFile")}
             </ContextMenu.Item>
             <ContextMenu.Item class={text.menu} onclick={() => startCreate("folder", root)}>
-              <FolderPlusIcon />
+              <Icon icon={FolderPlusIcon} />
               {i18n.t("fileTree.newFolder")}
             </ContextMenu.Item>
             <ContextMenu.Separator />
             <ContextMenu.Item class={text.menu} onclick={reveal}>
-              <FolderOpenIcon />
+              <Icon icon={FolderOpenIcon} />
               {i18n.t("fileTree.reveal")}
             </ContextMenu.Item>
             <ContextMenu.Item class={text.menu} onclick={() => fileTree.collapseAll()}>
-              <FoldVerticalIcon />
+              <Icon icon={FoldVerticalIcon} />
               {i18n.t("fileTree.collapseAll")}
             </ContextMenu.Item>
           </ContextMenu.Content>
@@ -996,9 +999,9 @@
     style="left: {fileDrag.x + 12}px; top: {fileDrag.y + 8}px"
   >
     {#if fileDrag.entry.isDir}
-      <FolderIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      <Icon icon={FolderIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
     {:else}
-      <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+      <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
     {/if}
     <span class="max-w-56 truncate">{fileDrag.entry.name}</span>
   </div>

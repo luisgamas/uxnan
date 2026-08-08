@@ -28,11 +28,12 @@
   import CreatePrForm from "./CreatePrForm.svelte";
   import FreshnessHint from "./FreshnessHint.svelte";
   import GithubWorktreeDialog from "./GithubWorktreeDialog.svelte";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-  import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import ArrowUpRightIcon from "@lucide/svelte/icons/arrow-up-right";
-  import GitBranchPlusIcon from "@lucide/svelte/icons/git-branch-plus";
+  import { Icon } from "$lib/components/ui/icon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import ExternalLinkIcon from "@hugeicons/core-free-icons/ExternalLinkIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import ArrowUpRightIcon from "@hugeicons/core-free-icons/ArrowUpRight01Icon";
+  import GitBranchPlusIcon from "@hugeicons/core-free-icons/GitBranchPlusIcon";
 
   /** How many items each list shows. A right panel is a digest, not a browser —
    *  the section's own lists are the place to page through everything. */
@@ -161,7 +162,7 @@
   {#if !github.available}
     <!-- Not installed / not signed in -->
     <div class="flex flex-col items-center gap-2 px-3 py-8 text-center">
-      <GitPullRequestIcon class="size-6 text-muted-foreground" />
+      <Icon icon={GitPullRequestIcon} class="size-6 text-muted-foreground" />
       <p class={cn("text-muted-foreground", text.meta)}>
         {github.status && !github.status.ghInstalled ? i18n.t("github.notInstalled") : i18n.t("github.notSignedIn")}
       </p>
@@ -173,7 +174,7 @@
     <!-- No active worktree — like the other right-panel tabs, this is empty until
          a project/worktree is selected. The full GitHub section works standalone. -->
     <div class="flex flex-col items-center gap-2 px-3 py-10 text-center">
-      <GitPullRequestIcon class="size-6 text-muted-foreground/50" />
+      <Icon icon={GitPullRequestIcon} class="size-6 text-muted-foreground/50" />
       <p class={cn("text-muted-foreground", text.meta)}>{i18n.t("github.panel.noWorktree")}</p>
     </div>
   {:else if !ctx}
@@ -204,7 +205,7 @@
             aria-label={i18n.t("github.panel.openViewTip")}
             onclick={() => openSection("pulls")}
           >
-            <ArrowUpRightIcon class="size-3" />
+            <Icon icon={ArrowUpRightIcon} class="size-3" />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -221,7 +222,7 @@
             aria-label={i18n.t("github.panel.refreshTip")}
             onclick={refreshAll}
           >
-            <RefreshCwIcon class="size-3" />
+            <Icon icon={RefreshCwIcon} class="size-3" />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -240,7 +241,7 @@
           class="flex w-full items-start gap-2 text-left"
           onclick={() => openSection("pulls", { kind: "pr", number: pr.number })}
         >
-          <GitPullRequestIcon class={cn("mt-0.5 size-4 shrink-0", pr.isDraft ? "text-muted-foreground" : "text-emerald-500")} />
+          <Icon icon={GitPullRequestIcon} class={cn("mt-0.5 size-4 shrink-0", pr.isDraft ? "text-muted-foreground" : "text-emerald-500")} />
           <div class="min-w-0 flex-1">
             <div class={cn("truncate", text.body)}>{pr.title}</div>
             <div class={cn("truncate text-muted-foreground", text.meta)}>
@@ -273,7 +274,7 @@
                 aria-label={i18n.t("github.openOnGitHub")}
                 onclick={() => openExternal(pr.url)}
               >
-                <ExternalLinkIcon class="size-3.5" />
+                <Icon icon={ExternalLinkIcon} class="size-3.5" />
               </Button>
             {/snippet}
           </TooltipSimple>
@@ -312,12 +313,12 @@
     {:else}
       <div class="mb-3 flex flex-col gap-px">
         {#each prs as pr (pr.number)}
-          {@const Icon = prStateIcon(pr.state, pr.isDraft)}
+          {@const glyph = prStateIcon(pr.state, pr.isDraft)}
           <button
             class="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/50"
             onclick={() => openSection("pulls", { kind: "pr", number: pr.number })}
           >
-            <Icon class={cn("size-3.5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
+            <Icon icon={glyph} class={cn("size-3.5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
             <div class="min-w-0 flex-1">
               <div class={cn("truncate", text.body)}>{pr.title}</div>
               <div class={cn("truncate text-muted-foreground", text.indicator)}>
@@ -368,13 +369,13 @@
     {:else}
       <div class="flex flex-col gap-px">
         {#each issues as issue (issue.number)}
-          {@const Icon = issueStateIcon(issue.state)}
+          {@const glyph = issueStateIcon(issue.state)}
           <div class="group flex items-center gap-1 rounded-md pr-1 hover:bg-accent/50">
             <button
               class="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1.5 text-left"
               onclick={() => openSection("issues", { kind: "issue", number: issue.number })}
             >
-              <Icon class={cn("size-3.5 shrink-0", issueStateIconClass(issue.state))} />
+              <Icon icon={glyph} class={cn("size-3.5 shrink-0", issueStateIconClass(issue.state))} />
               <div class="min-w-0 flex-1">
                 <div class={cn("truncate", text.body)}>{issue.title}</div>
                 <div class={cn("truncate text-muted-foreground", text.indicator)}>
@@ -396,7 +397,7 @@
                   aria-label={i18n.t("github.issue.startWork")}
                   onclick={() => startWorktree(issue)}
                 >
-                  <GitBranchPlusIcon class="size-3" />
+                  <Icon icon={GitBranchPlusIcon} class="size-3" />
                 </Button>
               {/snippet}
             </TooltipSimple>
@@ -429,7 +430,7 @@
           aria-label={openLabel}
           onclick={onOpen}
         >
-          <ArrowUpRightIcon class="size-3" />
+          <Icon icon={ArrowUpRightIcon} class="size-3" />
         </Button>
       {/snippet}
     </TooltipSimple>

@@ -12,10 +12,11 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import FileTreeContextMenu from "./FileTreeContextMenu.svelte";
   import TreeInlineInput from "./TreeInlineInput.svelte";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import FileIcon from "@lucide/svelte/icons/file";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import FileIcon from "@hugeicons/core-free-icons/File01Icon";
 
   let {
     entry,
@@ -81,14 +82,14 @@
   {#snippet renameIcon()}
     {#if entry.isDir}
       {#if isExpanded}
-        <ChevronDownIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+        <Icon icon={ChevronDownIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       {:else}
-        <ChevronRightIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+        <Icon icon={ChevronRightIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
       {/if}
-      <FolderIcon class={cn(icon.decorative, "shrink-0", changed ? color : "text-muted-foreground")} />
+      <Icon icon={FolderIcon} class={cn(icon.decorative, "shrink-0", changed ? color : "text-muted-foreground")} />
     {:else}
       <span class="w-3 shrink-0"></span>
-      <FileIcon class={cn(icon.decorative, "shrink-0", color || "text-muted-foreground")} />
+      <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0", color || "text-muted-foreground")} />
     {/if}
   {/snippet}
   <TreeInlineInput
@@ -144,16 +145,16 @@
           >
             {#if entry.isDir}
               {#if isExpanded}
-                <ChevronDownIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+                <Icon icon={ChevronDownIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
               {:else}
-                <ChevronRightIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+                <Icon icon={ChevronRightIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
               {/if}
-              <FolderIcon
+              <Icon icon={FolderIcon}
                 class={cn(icon.decorative, "shrink-0", changed ? color : "text-muted-foreground")}
               />
             {:else}
               <span class="w-3 shrink-0"></span>
-              <FileIcon class={cn(icon.decorative, "shrink-0", color || "text-muted-foreground")} />
+              <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0", color || "text-muted-foreground")} />
             {/if}
             <!-- Ignored entries are dimmed (muted + italic), winning over any git
                  colour — an ignored entry never has a git change anyway. -->

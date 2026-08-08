@@ -21,9 +21,10 @@
   import { branchSlug, worktreeFolderFor } from "$lib/branchName";
   import AgentLogo from "./AgentLogo.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import { Icon } from "$lib/components/ui/icon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   let {
     open = $bindable(false),
@@ -140,7 +141,7 @@
           {i18n.t("newWorktree.branch")}
         </label>
         <div class="relative">
-          <GitBranchIcon
+          <Icon icon={GitBranchIcon}
             class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
           />
           <Input
@@ -179,14 +180,14 @@
 
       {#if previewPath}
         <div class="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2.5">
-          <FolderIcon class={cn(icon.decorative, "mt-px shrink-0 text-muted-foreground")} />
+          <Icon icon={FolderIcon} class={cn(icon.decorative, "mt-px shrink-0 text-muted-foreground")} />
           <code class="break-all text-[11px] leading-5 text-muted-foreground">{previewPath}</code>
         </div>
       {/if}
 
       {#if existing}
         <div class={cn("flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2", text.meta)}>
-          <TriangleAlertIcon class="mt-px size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+          <Icon icon={TriangleAlertIcon} class="mt-px size-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
           <span>{i18n.t("github.worktree.exists")}</span>
         </div>
       {/if}

@@ -21,8 +21,9 @@
   import { Switch } from "$lib/components/ui/switch";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import StepVariablePicker from "./StepVariablePicker.svelte";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
 
   let {
     steps = $bindable(),
@@ -147,7 +148,7 @@
               aria-label={i18n.t("automations.removeStep")}
               onclick={() => removeStep(step.id)}
             >
-              <Trash2Icon class={icon.action} />
+              <Icon icon={Trash2Icon} class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -250,7 +251,7 @@
 
   <div>
     <Button variant="outline" size="sm" onclick={addStep}>
-      <PlusIcon data-icon="inline-start" />
+      <Icon icon={PlusIcon} data-icon="inline-start" />
       {i18n.t("automations.addStep")}
     </Button>
   </div>

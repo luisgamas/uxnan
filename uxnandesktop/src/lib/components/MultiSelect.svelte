@@ -14,9 +14,10 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { text } from "$lib/design";
   import type { ComboGroup, ComboItem } from "./Combobox.svelte";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import CheckIcon from "@lucide/svelte/icons/check";
-  import XIcon from "@lucide/svelte/icons/x";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
   let {
     groups,
@@ -88,7 +89,7 @@
             aria-label={item.label}
             onclick={() => onToggle(item.value)}
           >
-            <XIcon class="size-3" />
+            <Icon icon={XIcon} class="size-3" />
           </button>
         {/snippet}
       </TooltipSimple>
@@ -104,7 +105,7 @@
           size="sm"
           class="h-6 gap-1 px-1.5 text-xs font-normal text-muted-foreground hover:text-foreground"
         >
-          <PlusIcon class="size-3.5" />
+          <Icon icon={PlusIcon} class="size-3.5" />
           <span class="truncate">{selectedItems.length ? addLabel : placeholder}</span>
         </Button>
       {/snippet}
@@ -132,7 +133,7 @@
                     {#if item.meta}
                       <span class={cn("shrink-0 truncate", text.meta)}>{item.meta}</span>
                     {/if}
-                    <CheckIcon class={cn("size-3.5 shrink-0 text-primary", picked ? "" : "opacity-0")} />
+                    <Icon icon={CheckIcon} class={cn("size-3.5 shrink-0 text-primary", picked ? "" : "opacity-0")} />
                   </Command.Item>
                 {/each}
               </Command.Group>

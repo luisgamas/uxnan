@@ -24,9 +24,10 @@
   import { Switch } from "$lib/components/ui/switch";
   import Combobox, { type ComboGroup } from "./Combobox.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
+  import { Icon } from "$lib/components/ui/icon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 
   let {
     worktreePath,
@@ -205,7 +206,7 @@
 <div class={cn("space-y-2 rounded-lg p-3", surface.panel)}>
   <!-- base ← head: where this PR goes, and where it comes from. -->
   <div class="flex items-center gap-1.5">
-    <GitBranchIcon class="size-3.5 shrink-0 text-muted-foreground" />
+    <Icon icon={GitBranchIcon} class="size-3.5 shrink-0 text-muted-foreground" />
     <Combobox
       value={base}
       groups={branchGroups}
@@ -215,7 +216,7 @@
       disabled={branchesLoading || !branches}
       onChange={(v) => (base = v)}
     />
-    <ArrowLeftIcon class="size-3.5 shrink-0 text-muted-foreground" />
+    <Icon icon={ArrowLeftIcon} class="size-3.5 shrink-0 text-muted-foreground" />
     {#if lockHead}
       <!-- The right-panel tab is bound to the active worktree: its branch IS the
            head. Shown read-only so it's visible without pretending to be a choice. -->
@@ -265,7 +266,7 @@
         {#if aiDrafting}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {:else}
-          <SparklesIcon class="size-3" />
+          <Icon icon={SparklesIcon} class="size-3" />
         {/if}
         {aiDrafting ? i18n.t("github.pr.generating") : i18n.t("github.pr.generateBody")}
       </Button>

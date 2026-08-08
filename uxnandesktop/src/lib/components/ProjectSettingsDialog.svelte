@@ -17,11 +17,12 @@
   import type { RepoData } from "$lib/types";
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
-  import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
-  import CopyIcon from "@lucide/svelte/icons/copy";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
 
   let {
     repo,
@@ -63,9 +64,9 @@
 
 {#snippet projectGlyph()}
   {#if isGit}
-    <FolderGitIcon class="size-6 text-muted-foreground" />
+    <Icon icon={FolderGitIcon} class="size-6 text-muted-foreground" />
   {:else}
-    <FolderIcon class="size-6 text-muted-foreground" />
+    <Icon icon={FolderIcon} class="size-6 text-muted-foreground" />
   {/if}
 {/snippet}
 
@@ -93,7 +94,7 @@
           <span
             class="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs group-hover:text-foreground"
           >
-            <PencilIcon class="size-3" />
+            <Icon icon={PencilIcon} class="size-3" />
           </span>
         </button>
         <div class="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -130,7 +131,7 @@
               aria-label={i18n.t("common.copyPath")}
               onclick={() => clipboardWrite(repo.path)}
             >
-              <CopyIcon class="size-3" />
+              <Icon icon={CopyIcon} class="size-3" />
             </button>
             <button
               class="shrink-0 rounded p-0.5 text-muted-foreground/70 hover:text-foreground"
@@ -138,7 +139,7 @@
               aria-label={i18n.t("ctx.reveal")}
               onclick={() => void revealPath(repo.path)}
             >
-              <FolderOpenIcon class="size-3" />
+              <Icon icon={FolderOpenIcon} class="size-3" />
             </button>
           </span>
         </div>

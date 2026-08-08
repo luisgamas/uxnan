@@ -16,17 +16,18 @@
   import { i18n } from "$lib/i18n";
   import type { FsEntry } from "$lib/types";
   import OpenWith from "./OpenWith.svelte";
-  import FilePlusIcon from "@lucide/svelte/icons/file-plus";
-  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import FilesIcon from "@lucide/svelte/icons/files";
-  import SquareTerminalIcon from "@lucide/svelte/icons/square-terminal";
-  import FileIcon from "@lucide/svelte/icons/file";
-  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
-  import ListCollapseIcon from "@lucide/svelte/icons/list-collapse";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import { Icon } from "$lib/components/ui/icon";
+  import FilePlusIcon from "@hugeicons/core-free-icons/FilePlusIcon";
+  import FolderPlusIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import FilesIcon from "@hugeicons/core-free-icons/Files01Icon";
+  import SquareTerminalIcon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+  import FileIcon from "@hugeicons/core-free-icons/File01Icon";
+  import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+  import ListCollapseIcon from "@hugeicons/core-free-icons/ListChevronsDownUpIcon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
 
   let {
     entry,
@@ -70,74 +71,74 @@
 
 <ContextMenu.Content>
   <ContextMenu.Item class={text.menu} onclick={onNewFile}>
-    <FilePlusIcon />
+    <Icon icon={FilePlusIcon} />
     {i18n.t("fileTree.newFile")}
   </ContextMenu.Item>
   <ContextMenu.Item class={text.menu} onclick={onNewFolder}>
-    <FolderPlusIcon />
+    <Icon icon={FolderPlusIcon} />
     {i18n.t("fileTree.newFolder")}
   </ContextMenu.Item>
 
   <ContextMenu.Separator />
 
   <ContextMenu.Item class={text.menu} onclick={() => void clipboardWrite(entry.path)}>
-    <CopyIcon />
+    <Icon icon={CopyIcon} />
     {i18n.t("common.copyPath")}
   </ContextMenu.Item>
   <ContextMenu.Item class={text.menu} onclick={() => void clipboardWrite(rel)}>
-    <CopyIcon />
+    <Icon icon={CopyIcon} />
     {i18n.t("fileTree.copyRelativePath")}
   </ContextMenu.Item>
 
   {#if !entry.isDir}
     <ContextMenu.Item class={text.menu} onclick={() => void fileTree.duplicateEntry(entry)}>
-      <FilesIcon />
+      <Icon icon={FilesIcon} />
       {i18n.t("fileTree.duplicate")}
     </ContextMenu.Item>
   {/if}
   {#if canAddAsProject}
     <ContextMenu.Item class={text.menu} onclick={() => void projects.addProjectPaths([entry.path])}>
-      <FolderPlusIcon />
+      <Icon icon={FolderPlusIcon} />
       {i18n.t("fileTree.addAsProject")}
     </ContextMenu.Item>
   {/if}
   {#if entry.isDir}
     <ContextMenu.Item class={text.menu} onclick={openInTerminal}>
-      <SquareTerminalIcon />
+      <Icon icon={SquareTerminalIcon} />
       {i18n.t("fileTree.openInTerminal")}
     </ContextMenu.Item>
   {:else}
     <ContextMenu.Item class={text.menu} onclick={() => terminals.openFile(entry.path, root)}>
-      <FileIcon />
+      <Icon icon={FileIcon} />
       {i18n.t("fileTree.viewFile")}
     </ContextMenu.Item>
   {/if}
   {#if entry.isDir && isExpanded}
     <ContextMenu.Item class={text.menu} onclick={() => fileTree.collapseSubtree(entry.path)}>
-      <ListCollapseIcon />
+      <Icon icon={ListCollapseIcon} />
       {i18n.t("fileTree.collapseFolder")}
     </ContextMenu.Item>
   {/if}
   {#if entry.isDir}
     <ContextMenu.Item class={text.menu} onclick={findInFolder}>
-      <SearchIcon />
+      <Icon icon={SearchIcon} />
       {i18n.t("fileTree.findInFolder")}
     </ContextMenu.Item>
   {/if}
   <OpenWith menu={ContextMenu} path={entry.path} textFile={!entry.isDir && isTextFile(entry.name)} />
   <ContextMenu.Item class={text.menu} onclick={() => void revealPath(entry.path)}>
-    <FolderOpenIcon />
+    <Icon icon={FolderOpenIcon} />
     {i18n.t("fileTree.reveal")}
   </ContextMenu.Item>
 
   <ContextMenu.Separator />
 
   <ContextMenu.Item class={text.menu} onclick={onRename}>
-    <PencilIcon />
+    <Icon icon={PencilIcon} />
     {i18n.t("common.rename")}
   </ContextMenu.Item>
   <ContextMenu.Item variant="destructive" class={text.menu} onclick={onDelete}>
-    <Trash2Icon />
+    <Icon icon={Trash2Icon} />
     {i18n.t("fileTree.delete")}
   </ContextMenu.Item>
 </ContextMenu.Content>

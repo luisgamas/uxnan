@@ -37,24 +37,25 @@
   import { isStaticSortMode } from "$lib/sidebar-sort";
   import type { RepoData } from "$lib/types";
   import type { DisplayStatus } from "$lib/state/agentDisplay";
-  import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
-  import ImageIcon from "@lucide/svelte/icons/image";
-  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import BotIcon from "@lucide/svelte/icons/bot";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-  import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import PinIcon from "@lucide/svelte/icons/pin";
-  import PinOffIcon from "@lucide/svelte/icons/pin-off";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import EllipsisIcon from "@hugeicons/core-free-icons/EllipsisIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import ImageIcon from "@hugeicons/core-free-icons/Image01Icon";
+  import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
+  import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import PinIcon from "@hugeicons/core-free-icons/PinIcon";
+  import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
 
   let {
     repo,
@@ -200,9 +201,9 @@
 
 {#snippet projectGlyph()}
   {#if isGit}
-    <FolderGitIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+    <Icon icon={FolderGitIcon} class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
   {:else}
-    <FolderIcon class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
+    <Icon icon={FolderIcon} class={cn(icon.nav, "shrink-0 text-muted-foreground")} />
   {/if}
 {/snippet}
 
@@ -250,7 +251,7 @@
       {/snippet}
     </TooltipSimple>
     {#if projects.isProjectPinned(repo.id)}
-      <PinIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
+      <Icon icon={PinIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
     {/if}
     {#if hasUnread}
       <TooltipSimple title={i18n.t("monitor.unread")}>
@@ -269,7 +270,7 @@
             {...tp2}
             class={cn("inline-flex shrink-0 items-center gap-0.5 text-muted-foreground", text.indicator)}
           >
-            <TerminalIcon class="size-3" />{termCount}
+            <Icon icon={TerminalIcon} class="size-3" />{termCount}
           </span>
         {/snippet}
       </TooltipSimple>
@@ -290,7 +291,7 @@
                 projects.setProjectExpanded(repo.id, !isExpanded);
               }}
             >
-              <ChevronRightIcon class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
+              <Icon icon={ChevronRightIcon} class={cn(icon.action, "transition-transform", isExpanded && "rotate-90")} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -307,7 +308,7 @@
               launcherOpen = true;
             }}
           >
-            <PlusIcon class={icon.action} />
+            <Icon icon={PlusIcon} class={icon.action} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -325,17 +326,17 @@
               onclick={(e: MouseEvent) => e.stopPropagation()}
               {...props}
             >
-              <EllipsisIcon class={icon.action} />
+              <Icon icon={EllipsisIcon} class={icon.action} />
             </Button>
           {/snippet}
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" class="min-w-52">
           <DropdownMenu.Item class={text.menu} onclick={() => projects.toggleProjectPin(repo.id)}>
             {#if projects.isProjectPinned(repo.id)}
-              <PinOffIcon class={icon.button} />
+              <Icon icon={PinOffIcon} class={icon.button} />
               {i18n.t("common.unpin")}
             {:else}
-              <PinIcon class={icon.button} />
+              <Icon icon={PinIcon} class={icon.button} />
               {i18n.t("common.pin")}
             {/if}
           </DropdownMenu.Item>
@@ -344,37 +345,37 @@
                teardown releases the body pointer-lock before the dialog captures
                it (else the dialog can orphan the lock on close). -->
           <DropdownMenu.Item class={text.menu} onclick={() => deferModalOpen(() => (settingsOpen = true))}>
-            <SettingsIcon class={icon.button} />
+            <Icon icon={SettingsIcon} class={icon.button} />
             {i18n.t("project.settings")}
           </DropdownMenu.Item>
           <DropdownMenu.Item class={text.menu} onclick={() => deferModalOpen(() => (iconPickerOpen = true))}>
-            <ImageIcon class={icon.button} />
+            <Icon icon={ImageIcon} class={icon.button} />
             {i18n.t("project.changeIcon")}
           </DropdownMenu.Item>
 
           <DropdownMenu.Separator />
 
           <DropdownMenu.Item class={text.menu} onclick={() => void revealPath(mainPath)}>
-            <FolderOpenIcon class={icon.button} />
+            <Icon icon={FolderOpenIcon} class={icon.button} />
             {i18n.t("ctx.reveal")}
           </DropdownMenu.Item>
           <DropdownMenu.Item class={text.menu} onclick={() => clipboardWrite(mainPath)}>
-            <CopyIcon class={icon.button} />
+            <Icon icon={CopyIcon} class={icon.button} />
             {i18n.t("common.copyPath")}
           </DropdownMenu.Item>
           <OpenWith menu={DropdownMenu} path={mainPath} />
           <DropdownMenu.Sub>
             <DropdownMenu.SubTrigger class={text.menu}>
-              <SettingsIcon class={icon.button} />
+              <Icon icon={SettingsIcon} class={icon.button} />
               {i18n.t("ctx.configure")}
             </DropdownMenu.SubTrigger>
             <DropdownMenu.SubContent>
               <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
-                <BotIcon class={icon.button} />
+                <Icon icon={BotIcon} class={icon.button} />
                 {i18n.t("agent.configure")}
               </DropdownMenu.Item>
               <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("terminal")}>
-                <TerminalIcon class={icon.button} />
+                <Icon icon={TerminalIcon} class={icon.button} />
                 {i18n.t("ctx.configureTerminals")}
               </DropdownMenu.Item>
             </DropdownMenu.SubContent>
@@ -385,20 +386,20 @@
                  panels) on the chosen pane, scoped to this repo. -->
             <DropdownMenu.Sub>
               <DropdownMenu.SubTrigger class={text.menu}>
-                <GitPullRequestIcon class={icon.button} />
+                <Icon icon={GitPullRequestIcon} class={icon.button} />
                 {i18n.t("github.title")}
               </DropdownMenu.SubTrigger>
               <DropdownMenu.SubContent>
                 <DropdownMenu.Item class={text.menu} onclick={() => openGithub("pulls")}>
-                  <GitPullRequestIcon class={icon.button} />
+                  <Icon icon={GitPullRequestIcon} class={icon.button} />
                   {i18n.t("github.nav.pulls")}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item class={text.menu} onclick={() => openGithub("issues")}>
-                  <CircleDotIcon class={icon.button} />
+                  <Icon icon={CircleDotIcon} class={icon.button} />
                   {i18n.t("github.nav.issues")}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item class={text.menu} onclick={() => openGithub("actions")}>
-                  <PlayIcon class={icon.button} />
+                  <Icon icon={PlayIcon} class={icon.button} />
                   {i18n.t("github.nav.actions")}
                 </DropdownMenu.Item>
               </DropdownMenu.SubContent>
@@ -412,7 +413,7 @@
             class={text.menu}
             onclick={() => deferModalOpen(() => (confirmRemoveOpen = true))}
           >
-            <Trash2Icon class={icon.button} />
+            <Icon icon={Trash2Icon} class={icon.button} />
             {i18n.t("project.removeProject")}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
@@ -443,7 +444,7 @@
               text.indicator,
             )}
           >
-            <GitBranchIcon class="size-3" />{worktreeCount}
+            <Icon icon={GitBranchIcon} class="size-3" />{worktreeCount}
           </span>
         {/snippet}
       </TooltipSimple>

@@ -17,13 +17,14 @@
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
   import { divider } from "$lib/design";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import WebhookIcon from "@lucide/svelte/icons/webhook";
-  import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
-  import PanelRightIcon from "@lucide/svelte/icons/panel-right";
-  import GlobeIcon from "@lucide/svelte/icons/globe";
-  import LayersIcon from "@lucide/svelte/icons/layers";
-  import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import { Icon } from "$lib/components/ui/icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
+  import PanelLeftIcon from "@hugeicons/core-free-icons/PanelLeftIcon";
+  import PanelRightIcon from "@hugeicons/core-free-icons/PanelRightIcon";
+  import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
+  import LayersIcon from "@hugeicons/core-free-icons/Layers01Icon";
+  import WorkflowIcon from "@hugeicons/core-free-icons/Flowchart01Icon";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import TerminalArea from "$lib/components/TerminalArea.svelte";
   import SaveDiscardDialog from "$lib/components/SaveDiscardDialog.svelte";
@@ -385,7 +386,7 @@
       <TooltipSimple title={i18n.t("terminal.context")}>
         {#snippet children(props)}
           <div {...props} class="inline-flex min-w-0 items-center gap-1">
-            <LayersIcon class="size-3 shrink-0" />
+            <Icon icon={LayersIcon} class="size-3 shrink-0" />
             {#if ctx.repo}
               <span class="truncate">{ctx.repo}</span>
               <span class="text-muted-foreground/50">/</span>
@@ -404,7 +405,7 @@
               {...props}
               class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
             >
-              <TriangleAlertIcon class="size-3.5" />
+              <Icon icon={TriangleAlertIcon} class="size-3.5" />
               {i18n.t("status.untested", { os: osLabel() })}
             </span>
           {/snippet}
@@ -418,7 +419,7 @@
               class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400"
               onclick={() => app.openSettings("hooks")}
             >
-              <WebhookIcon class="size-3.5" />
+              <Icon icon={WebhookIcon} class="size-3.5" />
               {i18n.t("status.hooksIssue")}
             </button>
           {/snippet}
@@ -441,7 +442,7 @@
               aria-label={i18n.t("orchestration.open")}
               onclick={openOrchestration}
             >
-              <WorkflowIcon class="size-3.5" />
+              <Icon icon={WorkflowIcon} class="size-3.5" />
               {liveAgents.length}
               {#if orchestration.pendingTotal > 0}
                 <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
@@ -473,7 +474,7 @@
             aria-pressed={app.settings.leftSidebarOpen}
             onclick={toggleLeftSidebar}
           >
-            <PanelLeftIcon class="size-3.5" />
+            <Icon icon={PanelLeftIcon} class="size-3.5" />
           </button>
         {/snippet}
       </TooltipSimple>
@@ -491,7 +492,7 @@
             aria-pressed={app.settings.rightSidebarOpen}
             onclick={toggleRightSidebar}
           >
-            <PanelRightIcon class="size-3.5" />
+            <Icon icon={PanelRightIcon} class="size-3.5" />
           </button>
         {/snippet}
       </TooltipSimple>
@@ -510,7 +511,7 @@
               aria-pressed={app.browserOpen}
               onclick={() => app.toggleBrowser()}
             >
-              <GlobeIcon class="size-3.5" />
+              <Icon icon={GlobeIcon} class="size-3.5" />
             </button>
           {/snippet}
         </TooltipSimple>

@@ -14,12 +14,13 @@
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
   import { icon, iconButton, text } from "$lib/design";
-  import DownloadIcon from "@lucide/svelte/icons/download";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import LoaderIcon from "@lucide/svelte/icons/loader-circle";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
-  import XIcon from "@lucide/svelte/icons/x";
+  import { Icon } from "$lib/components/ui/icon";
+  import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import LoaderIcon from "@hugeicons/core-free-icons/Loading01Icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import ExternalLinkIcon from "@hugeicons/core-free-icons/ExternalLinkIcon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
   let { closeToast: _closeToast }: { closeToast?: () => void } = $props();
 
@@ -46,7 +47,7 @@
           aria-label={i18n.t("updates.dismiss")}
           onclick={() => updater.dismiss()}
         >
-          <XIcon class={icon.button} />
+          <Icon icon={XIcon} class={icon.button} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -54,9 +55,9 @@
 
   <div class="flex min-w-0 items-start gap-2 pr-8">
     {#if updater.status === "downloading" || updater.status === "installing"}
-      <LoaderIcon class={cn(icon.button, "mt-0.5 shrink-0 animate-spin text-primary")} />
+      <Icon icon={LoaderIcon} class={cn(icon.button, "mt-0.5 shrink-0 animate-spin text-primary")} />
     {:else}
-      <SparklesIcon class={cn(icon.button, "mt-0.5 shrink-0 text-primary")} />
+      <Icon icon={SparklesIcon} class={cn(icon.button, "mt-0.5 shrink-0 text-primary")} />
     {/if}
     <span class={cn("min-w-0 text-foreground", text.heading)}>
       {#if updater.status === "available"}
@@ -88,7 +89,7 @@
 
     {#if updater.status === "downloaded" && updater.agentsBusy}
       <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
-        <TriangleAlertIcon class={icon.decorative} />
+        <Icon icon={TriangleAlertIcon} class={icon.decorative} />
         <span class={text.body}>{i18n.t("updates.agentsBusyWarning")}</span>
       </span>
     {/if}
@@ -103,7 +104,7 @@
         )}
         title={i18n.t("updates.releaseNotesTitle", { version })}
       >
-        <ExternalLinkIcon class={icon.decorative} />
+        <Icon icon={ExternalLinkIcon} class={icon.decorative} />
         {i18n.t("updates.releaseNotes")}
       </button>
     {/if}
@@ -111,7 +112,7 @@
 
   {#if updater.status === "available"}
     <Button class="w-full" size="sm" onclick={() => void updater.download()}>
-      <DownloadIcon data-icon="inline-start" />
+      <Icon icon={DownloadIcon} data-icon="inline-start" />
       {i18n.t("updates.download")}
     </Button>
   {:else if updater.status === "downloaded"}

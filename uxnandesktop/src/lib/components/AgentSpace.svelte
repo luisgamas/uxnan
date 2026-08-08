@@ -13,7 +13,8 @@
   import { i18n } from "$lib/i18n";
   import AgentRow from "./AgentRow.svelte";
   import AgentAvatar from "./AgentAvatar.svelte";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 
   let { path }: { path: string } = $props();
 
@@ -53,7 +54,7 @@
             class="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
             onclick={() => projects.toggleAgentSpace(path)}
           >
-            <ChevronRightIcon
+            <Icon icon={ChevronRightIcon}
               class={cn("size-3 shrink-0 transition-transform", expanded && "rotate-90")}
             />
             <span class="text-[10px] font-medium uppercase tracking-[0.05em]">{i18n.t("agents.spaceLabel")}</span>

@@ -4,12 +4,12 @@
 // so a merged PR is purple in exactly one place and can't drift between the two.
 
 import type { RunListItem } from "$lib/types";
-import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-import GitPullRequestDraftIcon from "@lucide/svelte/icons/git-pull-request-draft";
-import GitPullRequestClosedIcon from "@lucide/svelte/icons/git-pull-request-closed";
-import GitMergeIcon from "@lucide/svelte/icons/git-merge";
-import CircleDotIcon from "@lucide/svelte/icons/circle-dot";
-import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
+import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+import GitPullRequestDraftIcon from "@hugeicons/core-free-icons/GitPullRequestDraftIcon";
+import GitPullRequestClosedIcon from "@hugeicons/core-free-icons/GitPullRequestClosedIcon";
+import GitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
+import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
+import CheckCircle2Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 
 /** The icon for a PR's state (merged / closed / draft / open). */
 export function prStateIcon(state: string, isDraft: boolean) {

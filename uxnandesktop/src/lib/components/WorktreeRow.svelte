@@ -30,13 +30,14 @@
   import RemoveWorktreeDialog from "./RemoveWorktreeDialog.svelte";
   import WorktreeNoteDialog from "./WorktreeNoteDialog.svelte";
   import type { DragReorder } from "$lib/state/dragReorder.svelte";
-  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import CircleSlashIcon from "@lucide/svelte/icons/circle-slash";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import GitPullRequestIcon from "@lucide/svelte/icons/git-pull-request";
-  import MoonIcon from "@lucide/svelte/icons/moon";
-  import PinIcon from "@lucide/svelte/icons/pin";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import { Icon } from "$lib/components/ui/icon";
+  import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+  import CircleSlashIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import MoonIcon from "@hugeicons/core-free-icons/MoonIcon";
+  import PinIcon from "@hugeicons/core-free-icons/PinIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
 
   let {
     row,
@@ -176,7 +177,7 @@
 </script>
 
 {#snippet branchGlyph()}
-  <GitBranchIcon class={cn(icon.decorative, "text-muted-foreground")} />
+  <Icon icon={GitBranchIcon} class={cn(icon.decorative, "text-muted-foreground")} />
 {/snippet}
 
 <!-- The row's full story, on hover. Everything here already exists in the stores;
@@ -186,7 +187,7 @@
   <div class="flex flex-col gap-2.5">
     <div class="flex flex-col gap-0.5">
       <div class="flex items-center gap-1.5">
-        <GitBranchIcon class="size-3 shrink-0 text-muted-foreground" />
+        <Icon icon={GitBranchIcon} class="size-3 shrink-0 text-muted-foreground" />
         <span class={cn("min-w-0 flex-1 truncate", text.bodyStrong)}>{label}</span>
         {#if row.isMain}
           <span
@@ -224,7 +225,7 @@
     {#if prBadge}
       <div class="flex flex-col gap-0.5 border-t border-border/50 pt-2">
         <div class="flex items-center gap-1.5">
-          <GitPullRequestIcon
+          <Icon icon={GitPullRequestIcon}
             class={cn(
               "size-3 shrink-0",
               prBadge.checks.state === "failure"
@@ -337,7 +338,7 @@
                             text.indicator,
                           )}
                         >
-                          <CircleCheckIcon class="size-2.5" />{doneLabel}
+                          <Icon icon={CircleCheckIcon} class="size-2.5" />{doneLabel}
                         </span>
                       {/snippet}
                     </TooltipSimple>
@@ -351,13 +352,13 @@
                             text.indicator,
                           )}
                         >
-                          <CircleSlashIcon class="size-2.5" />{i18n.t("worktree.abandoned")}
+                          <Icon icon={CircleSlashIcon} class="size-2.5" />{i18n.t("worktree.abandoned")}
                         </span>
                       {/snippet}
                     </TooltipSimple>
                   {/if}
                   {#if !row.isMain && projects.isWorktreePinned(row.path)}
-                    <PinIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
+                    <Icon icon={PinIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground/70")} />
                   {/if}
                   {#if hasUnread}
                     <TooltipSimple title={i18n.t("monitor.unread")}>
@@ -384,7 +385,7 @@
                             text.indicator,
                           )}
                         >
-                          {#if wsAsleep}<MoonIcon class="size-3" />{:else}<TerminalIcon class="size-3" />{/if}{termCount}
+                          {#if wsAsleep}<Icon icon={MoonIcon} class="size-3" />{:else}<Icon icon={TerminalIcon} class="size-3" />{/if}{termCount}
                         </span>
                       {/snippet}
                     </TooltipSimple>
@@ -436,7 +437,7 @@
                                     : "text-emerald-500",
                           )}
                         >
-                          <GitPullRequestIcon class="size-3" />{prBadge.number}
+                          <Icon icon={GitPullRequestIcon} class="size-3" />{prBadge.number}
                         </span>
                       {/snippet}
                     </TooltipSimple>

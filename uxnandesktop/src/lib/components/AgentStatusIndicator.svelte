@@ -16,9 +16,10 @@
   import { i18n } from "$lib/i18n";
   import CometTrail from "./CometTrail.svelte";
   import type { DisplayStatus } from "$lib/state/agentDisplay";
-  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import CirclePauseIcon from "@lucide/svelte/icons/circle-pause";
-  import MessageCircleQuestionMarkIcon from "@lucide/svelte/icons/message-circle-question-mark";
+  import { Icon } from "$lib/components/ui/icon";
+  import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+  import CirclePauseIcon from "@hugeicons/core-free-icons/PauseCircleIcon";
+  import MessageCircleQuestionMarkIcon from "@hugeicons/core-free-icons/ChatQuestionIcon";
 
   let {
     status,
@@ -51,11 +52,11 @@
       {#if status === "working"}
         <CometTrail size={12} />
       {:else if status === "waiting"}
-        <MessageCircleQuestionMarkIcon class={icon.status} />
+        <Icon icon={MessageCircleQuestionMarkIcon} class={icon.status} />
       {:else if status === "blocked"}
-        <CirclePauseIcon class={icon.status} />
+        <Icon icon={CirclePauseIcon} class={icon.status} />
       {:else if status === "done"}
-        <CircleCheckIcon class={icon.status} />
+        <Icon icon={CircleCheckIcon} class={icon.status} />
       {:else}
         <span class="size-1.5 rounded-full bg-current"></span>
       {/if}

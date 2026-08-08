@@ -18,16 +18,17 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import ConfirmDialog from "../ConfirmDialog.svelte";
   import StepEditor from "./StepEditor.svelte";
-  import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
-  import PlayIcon from "@lucide/svelte/icons/play";
-  import PauseIcon from "@lucide/svelte/icons/pause";
-  import SquareIcon from "@lucide/svelte/icons/square";
-  import RotateIcon from "@lucide/svelte/icons/rotate-ccw";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import AlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import { Icon } from "$lib/components/ui/icon";
+  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+  import PlayIcon from "@hugeicons/core-free-icons/PlayIcon";
+  import PauseIcon from "@hugeicons/core-free-icons/PauseIcon";
+  import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
+  import RotateIcon from "@hugeicons/core-free-icons/Rotate01Icon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+  import AlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   let { run, onback }: { run: Run; onback: () => void } = $props();
 
@@ -114,7 +115,7 @@
   <!-- Header -->
   <div class="flex items-center gap-2">
     <Button variant="ghost" size="icon" class={iconButton.action} onclick={onback}>
-      <ArrowLeftIcon class={icon.button} />
+      <Icon icon={ArrowLeftIcon} class={icon.button} />
     </Button>
     {#if isDraft}
       <Input
@@ -131,37 +132,37 @@
     <!-- Lifecycle controls -->
     {#if isDraft}
       <Button size="sm" onclick={start}>
-        <PlayIcon data-icon="inline-start" />
+        <Icon icon={PlayIcon} data-icon="inline-start" />
         {i18n.t("orchestration.start")}
       </Button>
     {:else if isRunning}
       <Button variant="outline" size="sm" onclick={() => orchestrationRun.pauseRun(run.id)}>
-        <PauseIcon data-icon="inline-start" />
+        <Icon icon={PauseIcon} data-icon="inline-start" />
         {i18n.t("orchestration.pause")}
       </Button>
       <Button variant="outline" size="sm" onclick={() => orchestrationRun.cancelRun(run.id)}>
-        <SquareIcon data-icon="inline-start" />
+        <Icon icon={SquareIcon} data-icon="inline-start" />
         {i18n.t("orchestration.cancel")}
       </Button>
     {:else if isPaused}
       <Button size="sm" onclick={() => orchestrationRun.resumeRun(run.id)}>
-        <PlayIcon data-icon="inline-start" />
+        <Icon icon={PlayIcon} data-icon="inline-start" />
         {i18n.t("orchestration.resume")}
       </Button>
       <Button variant="outline" size="sm" onclick={() => orchestrationRun.cancelRun(run.id)}>
-        <SquareIcon data-icon="inline-start" />
+        <Icon icon={SquareIcon} data-icon="inline-start" />
         {i18n.t("orchestration.cancel")}
       </Button>
     {:else if isTerminal}
       <Button variant="outline" size="sm" onclick={start}>
-        <RotateIcon data-icon="inline-start" />
+        <Icon icon={RotateIcon} data-icon="inline-start" />
         {i18n.t("orchestration.rerun")}
       </Button>
     {/if}
     <TooltipSimple title={i18n.t("orchestration.deleteRun")}>
       {#snippet children(tp)}
         <Button {...tp} variant="ghost" size="icon" class={iconButton.action} onclick={() => (deleteOpen = true)}>
-          <Trash2Icon class={icon.button} />
+          <Icon icon={Trash2Icon} class={icon.button} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -171,7 +172,7 @@
   {#if errors.length > 0}
     <div class="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/5 p-2">
       <div class={cn("flex items-center gap-1.5 text-destructive", text.body)}>
-        <AlertIcon class="size-3.5" />
+        <Icon icon={AlertIcon} class="size-3.5" />
         {i18n.t("orchestration.validationTitle")}
       </div>
       {#each errors as e (e)}
@@ -207,7 +208,7 @@
                 class={iconButton.xs}
                 onclick={() => (editingId = step.id)}
               >
-                <PencilIcon class={icon.action} />
+                <Icon icon={PencilIcon} class={icon.action} />
               </Button>
               <Button
                 variant="ghost"
@@ -215,7 +216,7 @@
                 class={iconButton.xs}
                 onclick={() => removeStep(step.id)}
               >
-                <Trash2Icon class={icon.action} />
+                <Icon icon={Trash2Icon} class={icon.action} />
               </Button>
             {/if}
           </div>
@@ -264,7 +265,7 @@
               class={cn("flex items-center gap-1 pl-4 text-left", text.meta)}
               onclick={() => toggleOutput(step.id)}
             >
-              <ChevronRightIcon
+              <Icon icon={ChevronRightIcon}
                 class={cn("size-3 transition-transform", expanded.has(step.id) && "rotate-90")}
               />
               {i18n.t("orchestration.stepOutput")}
@@ -283,7 +284,7 @@
       <StepEditor {run} onsave={saveStep} oncancel={() => (adding = false)} />
     {:else if isDraft}
       <Button variant="outline" size="sm" class="self-start" onclick={() => (adding = true)}>
-        <PlusIcon data-icon="inline-start" />
+        <Icon icon={PlusIcon} data-icon="inline-start" />
         {i18n.t("orchestration.addStep")}
       </Button>
     {/if}

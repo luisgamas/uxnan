@@ -21,11 +21,12 @@
   import { BUILTIN_ICONS, resolveBuiltinIcon } from "$lib/iconRegistry";
   import { imageFetchDataUrl, repoRemoteOwner } from "$lib/api";
   import EntityIcon from "./EntityIcon.svelte";
-  import UploadIcon from "@lucide/svelte/icons/upload";
-  import LinkIcon from "@lucide/svelte/icons/link";
-  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
-  import BanIcon from "@lucide/svelte/icons/ban";
-  import PipetteIcon from "@lucide/svelte/icons/pipette";
+  import { Icon } from "$lib/components/ui/icon";
+  import UploadIcon from "@hugeicons/core-free-icons/Upload01Icon";
+  import LinkIcon from "@hugeicons/core-free-icons/Link01Icon";
+  import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
+  import BanIcon from "@hugeicons/core-free-icons/BanIcon";
+  import PipetteIcon from "@hugeicons/core-free-icons/DropperIcon";
 
   let {
     open = $bindable(false),
@@ -196,7 +197,7 @@
             aria-pressed={currentColor == null}
             onclick={() => pickColor(null)}
           >
-            <BanIcon class="size-3 text-muted-foreground" />
+            <Icon icon={BanIcon} class="size-3 text-muted-foreground" />
           </button>
           {#each BUILTIN_COLORS as c (c.key)}
             {@const selected = currentColor?.toLowerCase() === c.value.toLowerCase()}
@@ -225,7 +226,7 @@
             style={currentColor != null && !isPresetColor ? `background-color:${currentColor}` : undefined}
           >
             {#if isPresetColor || currentColor == null}
-              <PipetteIcon class="size-3 text-muted-foreground" />
+              <Icon icon={PipetteIcon} class="size-3 text-muted-foreground" />
             {/if}
             <input
               type="color"
@@ -240,7 +241,7 @@
         </div>
         <div class="uxnan-scroll grid max-h-40 grid-cols-9 gap-1 overflow-y-auto pr-1">
           {#each BUILTIN_ICONS as b (b.name)}
-            {@const Icon = b.Icon}
+            {@const glyph = b.icon}
             {@const selected = pendingBuiltin?.name === b.name}
             <button
               type="button"
@@ -256,7 +257,7 @@
               aria-pressed={selected}
               onclick={() => pickBuiltin(b.name)}
             >
-              <Icon class="size-4" />
+              <Icon icon={glyph} class="size-4" />
             </button>
           {/each}
         </div>
@@ -270,7 +271,7 @@
             {#if busySource === "file"}
               <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
             {:else}
-              <UploadIcon data-icon="inline-start" />
+              <Icon icon={UploadIcon} data-icon="inline-start" />
             {/if}
             {i18n.t("iconPicker.fromFile")}
           </Button>
@@ -285,7 +286,7 @@
         </div>
         <div class="flex gap-2">
           <div class="relative min-w-0 flex-1">
-            <LinkIcon class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80" />
+            <Icon icon={LinkIcon} class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80" />
             <Input
               class="pl-8"
               placeholder={i18n.t("iconPicker.urlPlaceholder")}
@@ -316,7 +317,7 @@
 
     <Dialog.Footer class="sm:justify-between">
       <Button variant="ghost" class="text-muted-foreground" onclick={reset}>
-        <RotateCcwIcon class={icon.button} />
+        <Icon icon={RotateCcwIcon} class={icon.button} />
         {i18n.t("iconPicker.reset")}
       </Button>
       <Button disabled={busy} onclick={save}>{i18n.t("common.save")}</Button>

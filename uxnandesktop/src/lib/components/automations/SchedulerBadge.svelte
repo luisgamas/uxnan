@@ -11,9 +11,10 @@
   import { schedulerLabelKey, schedulerTipKey } from "$lib/automations/display";
   import type { SchedulerStatus } from "$lib/automations/types";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
-  import CalendarCheckIcon from "@lucide/svelte/icons/calendar-check";
-  import CalendarOffIcon from "@lucide/svelte/icons/calendar-off";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import { Icon } from "$lib/components/ui/icon";
+  import CalendarCheckIcon from "@hugeicons/core-free-icons/CalendarCheckIcon";
+  import CalendarOffIcon from "@hugeicons/core-free-icons/CalendarOffIcon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   let { status, compact = false }: { status?: SchedulerStatus; compact?: boolean } = $props();
 
@@ -41,11 +42,11 @@
       )}
     >
       {#if kind === "registered"}
-        <CalendarCheckIcon class="size-3" />
+        <Icon icon={CalendarCheckIcon} class="size-3" />
       {:else if kind === "failed" || kind === "unsupported"}
-        <TriangleAlertIcon class="size-3" />
+        <Icon icon={TriangleAlertIcon} class="size-3" />
       {:else}
-        <CalendarOffIcon class="size-3" />
+        <Icon icon={CalendarOffIcon} class="size-3" />
       {/if}
       {#if !compact}{label}{/if}
     </span>

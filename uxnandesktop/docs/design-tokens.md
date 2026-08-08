@@ -9,15 +9,45 @@ in [`src/lib/design.ts`](../src/lib/design.ts); apply them with `cn(...)`.
 
 ```svelte
 <script lang="ts">
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
   import { icon, iconButton, text } from "$lib/design";
+  import { Icon } from "$lib/components/ui/icon";
   import { cn } from "$lib/utils";
 </script>
 
 <button class={cn(iconButton.action, "rounded hover:bg-accent")}>
-  <SearchIcon class={icon.button} />
+  <Icon icon={SearchIcon} class={icon.button} />
 </button>
 <span class={text.meta}>{repo.path}</span>
 ```
+
+## The icon set
+
+Icons come from **[Hugeicons](https://hugeicons.com) free** (MIT), as the data
+package [`@hugeicons/core-free-icons`](https://www.npmjs.com/package/@hugeicons/core-free-icons)
+— glyph *data*, not components. One glyph per subpath import, so a screen only
+ever bundles what it draws:
+
+```ts
+import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon"; // ✅ tree-shakes
+import { Folder01Icon } from "@hugeicons/core-free-icons";        // ❌ pulls the barrel
+```
+
+Render every glyph through the local [`Icon`](../src/lib/components/ui/icon/icon.svelte)
+primitive, which turns the data into SVG declaratively. We do **not** use the
+upstream `@hugeicons/svelte` component: it paints via `innerHTML` inside
+`onMount`, so the `<svg>` is empty until hydration and — the reason that settles
+it — it never repaints when the `icon` prop changes, which several call sites
+here rely on (agent state, view mode, settings rows).
+
+Sizing is the caller's job through the `icon.*` tokens above; `Icon` only sets a
+24px fallback, which any `size-*` class overrides. Color is inherited: the glyph
+data draws with `currentColor`, so `text-muted-foreground` tints it and the light
+and dark themes need no per-icon work.
+
+Hugeicons strokes at **1.5** where lucide stroked at 2 — deliberately lighter at
+the 12-16px sizes this UI uses. `strokeWidth` on `Icon` overrides it when a glyph
+needs to hold its own against heavier neighbours.
 
 ## The scale
 

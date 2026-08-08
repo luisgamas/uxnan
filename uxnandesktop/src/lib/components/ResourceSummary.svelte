@@ -18,10 +18,13 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
-  import ActivityIcon from "@lucide/svelte/icons/activity";
-  import TrendingUpIcon from "@lucide/svelte/icons/trending-up";
-  import TrendingDownIcon from "@lucide/svelte/icons/trending-down";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
+  import { Icon } from "$lib/components/ui/icon";
+  import ActivityIcon from "@hugeicons/core-free-icons/Activity01Icon";
+  // FOR-DEV: stand-ins — `TrendingUp/DownIcon` are free on hugeicons.com but absent
+  // from core-free-icons@4.2.3. Swap when they ship (FOR-DEV.md → Icons).
+  import TrendingUpIcon from "@hugeicons/core-free-icons/ChartUpIcon";
+  import TrendingDownIcon from "@hugeicons/core-free-icons/ChartDownIcon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   const summary = $derived(resources.summary);
   const state = $derived(surfaceState(summary, resources.loading));
@@ -54,7 +57,7 @@
 
 <div class="flex flex-col gap-2 border-t border-border/60 p-3" data-testid="resource-summary">
   <div class="flex items-center gap-1.5">
-    <ActivityIcon class="size-3.5 text-muted-foreground" />
+    <Icon icon={ActivityIcon} class="size-3.5 text-muted-foreground" />
     <span class="text-sm font-medium text-foreground">{i18n.t("resources.title")}</span>
     {#if summary?.sampling.active && summary.sampling.intervalMs}
       <span class={cn("ml-auto tabular-nums", text.meta)}>
@@ -90,13 +93,13 @@
           {#if total.trend === "rising"}
             <TooltipSimple title={i18n.t("resources.trendRising")}>
               {#snippet children(tp)}
-                <span {...tp}><TrendingUpIcon class="size-3 text-amber-500" /></span>
+                <span {...tp}><Icon icon={TrendingUpIcon} class="size-3 text-amber-500" /></span>
               {/snippet}
             </TooltipSimple>
           {:else if total.trend === "falling"}
             <TooltipSimple title={i18n.t("resources.trendFalling")}>
               {#snippet children(tp)}
-                <span {...tp}><TrendingDownIcon class="size-3 text-muted-foreground" /></span>
+                <span {...tp}><Icon icon={TrendingDownIcon} class="size-3 text-muted-foreground" /></span>
               {/snippet}
             </TooltipSimple>
           {/if}
@@ -164,7 +167,7 @@
         data-testid="resource-orphans"
       >
         <span class="flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400">
-          <TriangleAlertIcon class="size-3" />
+          <Icon icon={TriangleAlertIcon} class="size-3" />
           {i18n.plural(orphans.length, "resources.orphansOne", "resources.orphansOther")}
         </span>
         {#each orphans as orphan (orphan.id + orphan.sinceMs)}

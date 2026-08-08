@@ -41,11 +41,12 @@
   import { clipboardWrite } from "$lib/clipboard";
   import { icon, iconButton, text } from "$lib/design";
   import AgentLogo from "./AgentLogo.svelte";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import CheckIcon from "@lucide/svelte/icons/check";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import BotIcon from "@lucide/svelte/icons/bot";
+  import { Icon } from "$lib/components/ui/icon";
+  import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import BotIcon from "@hugeicons/core-free-icons/BotIcon";
 
   type Platform = "bash" | "powershell" | "cmd" | "fish";
   const PLATFORMS: { id: Platform; label: string }[] = [
@@ -273,7 +274,7 @@
       <div class="flex items-start justify-between gap-4">
         <div class="flex min-w-0 flex-col gap-1">
           <Card.Title class="flex items-center gap-2">
-            <BotIcon class={icon.button} />
+            <Icon icon={BotIcon} class={icon.button} />
             {i18n.t("hooks.autoInstall")}
           </Card.Title>
           <Card.Description>{i18n.t("hooks.autoInstallDesc")}</Card.Description>
@@ -379,7 +380,7 @@
                   text.meta,
                 )}
               >
-                <ChevronDownIcon
+                <Icon icon={ChevronDownIcon}
                   class={cn(icon.button, "transition-transform", configOpen && "rotate-180")}
                 />
                 {configOpen ? i18n.t("hooks.hideConfig") : i18n.t("hooks.showConfig")}
@@ -396,9 +397,9 @@
                         onclick={() => copy(`${activeAgent}-config`, configText)}
                       >
                         {#if copied[`${activeAgent}-config`]}
-                          <CheckIcon class={icon.button} />
+                          <Icon icon={CheckIcon} class={icon.button} />
                         {:else}
-                          <CopyIcon class={icon.button} />
+                          <Icon icon={CopyIcon} class={icon.button} />
                         {/if}
                       </Button>
                     {/snippet}
@@ -424,7 +425,7 @@
   <Card.Root>
     <Card.Header class="pb-2">
       <Card.Title class="flex items-center gap-2">
-        <TerminalIcon class={icon.button} />
+        <Icon icon={TerminalIcon} class={icon.button} />
         {i18n.t("hooks.wrapperTitle")}
       </Card.Title>
       <Card.Description>{i18n.t("hooks.wrapperDesc")}</Card.Description>
@@ -458,9 +459,9 @@
               onclick={() => copy(`wrapper-${platform}`, wrapperScript)}
             >
               {#if copied[`wrapper-${platform}`]}
-                <CheckIcon class={icon.button} />
+                <Icon icon={CheckIcon} class={icon.button} />
               {:else}
-                <CopyIcon class={icon.button} />
+                <Icon icon={CopyIcon} class={icon.button} />
               {/if}
             </Button>
           {/snippet}

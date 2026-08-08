@@ -3,9 +3,10 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import QuickCommandsMenu from "./QuickCommandsMenu.svelte";
-  import MinusIcon from "@lucide/svelte/icons/minus";
-  import SquareIcon from "@lucide/svelte/icons/square";
-  import XIcon from "@lucide/svelte/icons/x";
+  import { Icon } from "$lib/components/ui/icon";
+  import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
+  import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).
   function windowAction(fn: (w: ReturnType<typeof getCurrentWindow>) => void) {
@@ -37,7 +38,7 @@
         aria-label={i18n.t("titlebar.minimize")}
         onclick={() => windowAction((w) => w.minimize())}
       >
-        <MinusIcon class="size-4" />
+        <Icon icon={MinusIcon} class="size-4" />
       </button>
     {/snippet}
   </TooltipSimple>
@@ -49,7 +50,7 @@
         aria-label={i18n.t("titlebar.maximize")}
         onclick={() => windowAction((w) => w.toggleMaximize())}
       >
-        <SquareIcon class="size-3.5" />
+        <Icon icon={SquareIcon} class="size-3.5" />
       </button>
     {/snippet}
   </TooltipSimple>
@@ -61,7 +62,7 @@
         aria-label={i18n.t("titlebar.close")}
         onclick={() => windowAction((w) => w.close())}
       >
-        <XIcon class="size-4" />
+        <Icon icon={XIcon} class="size-4" />
       </button>
     {/snippet}
   </TooltipSimple>

@@ -28,16 +28,17 @@
   import { i18n } from "$lib/i18n";
   import { resolveBinding } from "$lib/keybindings";
   import KeyChord from "./KeyChord.svelte";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import MoonIcon from "@lucide/svelte/icons/moon";
-  import PowerOffIcon from "@lucide/svelte/icons/power-off";
-  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import MoonIcon from "@hugeicons/core-free-icons/MoonIcon";
+  import PowerOffIcon from "@hugeicons/core-free-icons/PowerOffIcon";
+  import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
   import { Button } from "$lib/components/ui/button";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import FileIcon from "@lucide/svelte/icons/file";
-  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+  import FileIcon from "@hugeicons/core-free-icons/File01Icon";
+  import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
+  import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import LauncherMenu from "./LauncherMenu.svelte";
   import TabRenameDialog from "./TabRenameDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -530,7 +531,7 @@
                         aria-label={i18n.t("tab.scrollLeft")}
                         onclick={() => scrollStripByStep(stripEl(g.group.id), "start")}
                       >
-                        <ChevronLeftIcon class={icon.action} />
+                        <Icon icon={ChevronLeftIcon} class={icon.action} />
                       </button>
                     {/if}
                     <div
@@ -593,7 +594,7 @@
                             {/snippet}
                           </TooltipSimple>
                         {:else if t.kind === "file"}
-                          <FileIcon class={cn(icon.decorative, "shrink-0")} />
+                          <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0")} />
                           <TooltipSimple title={t.path}>
                             {#snippet children(tp)}
                               <span
@@ -615,7 +616,7 @@
                             </TooltipSimple>
                           {/if}
                         {:else}
-                          <GitCommitIcon class={cn(icon.decorative, "shrink-0")} />
+                          <Icon icon={GitCommitIcon} class={cn(icon.decorative, "shrink-0")} />
                           <TooltipSimple title={t.subject}>
                             {#snippet children(tp)}
                               <span
@@ -699,7 +700,7 @@
                         aria-label={i18n.t("tab.scrollRight")}
                         onclick={() => scrollStripByStep(stripEl(g.group.id), "end")}
                       >
-                        <ChevronRightIcon class={icon.action} />
+                        <Icon icon={ChevronRightIcon} class={icon.action} />
                       </button>
                     {/if}
                   </div>
@@ -727,7 +728,7 @@
                                  replays the stored snapshot and respawns the
                                  shell at the tab's cwd. -->
                             <div class="flex h-full flex-col items-center justify-center gap-2">
-                              <MoonIcon class="size-5 text-muted-foreground/60" />
+                              <Icon icon={MoonIcon} class="size-5 text-muted-foreground/60" />
                               <span class={cn(text.meta)}>{i18n.t("terminal.asleep")}</span>
                               <Button
                                 variant="outline"
@@ -748,7 +749,7 @@
                               <div
                                 class="absolute inset-x-1 top-1 z-10 flex items-center gap-1.5 rounded-md border border-border/60 bg-card/95 px-2 py-1 shadow-sm supports-backdrop-filter:backdrop-blur-xs"
                               >
-                                <PowerOffIcon class="size-3.5 shrink-0 text-muted-foreground/70" />
+                                <Icon icon={PowerOffIcon} class="size-3.5 shrink-0 text-muted-foreground/70" />
                                 <span class={cn("min-w-0 flex-1 truncate", text.meta)}>
                                   {i18n.t("terminal.exitedNotice")}
                                 </span>
@@ -758,7 +759,7 @@
                                   class="h-6 shrink-0 gap-1 px-2"
                                   onclick={() => void terminals.restartTab(t.id)}
                                 >
-                                  <RotateCcwIcon class="size-3" />
+                                  <Icon icon={RotateCcwIcon} class="size-3" />
                                   {i18n.t("terminal.restart")}
                                 </Button>
                                 <Button
@@ -863,7 +864,7 @@
               )}
               onclick={() => app.openTerminal()}
             >
-              <PlusIcon class={icon.button} />
+              <Icon icon={PlusIcon} class={icon.button} />
               {i18n.t("terminal.newTerminal")}
             </button>
             {#if activeRepoIsGit}
@@ -874,7 +875,7 @@
                 )}
                 onclick={() => (projects.newWorktreeOpen = true)}
               >
-                <GitBranchIcon class={icon.button} />
+                <Icon icon={GitBranchIcon} class={icon.button} />
                 {i18n.t("newWorktree.title")}
               </button>
             {:else}
@@ -888,7 +889,7 @@
                     )}
                     disabled
                   >
-                    <GitBranchIcon class={icon.button} />
+                    <Icon icon={GitBranchIcon} class={icon.button} />
                     {i18n.t("newWorktree.title")}
                   </button>
                 {/snippet}

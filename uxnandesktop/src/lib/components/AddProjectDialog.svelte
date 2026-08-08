@@ -13,8 +13,9 @@
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { DirEntry } from "$lib/types";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import FolderGitIcon from "@hugeicons/core-free-icons/FolderGitTwoIcon";
 
   let {
     open = $bindable(false),
@@ -144,9 +145,9 @@
                  itself must not capture clicks (that would double-toggle). -->
             <Checkbox checked={selected.has(entry.path)} tabindex={-1} class="pointer-events-none" />
             {#if entry.isRepo}
-              <FolderGitIcon class={cn(icon.button, "shrink-0 text-primary")} />
+              <Icon icon={FolderGitIcon} class={cn(icon.button, "shrink-0 text-primary")} />
             {:else}
-              <FolderIcon class={cn(icon.button, "shrink-0 text-muted-foreground/80")} />
+              <Icon icon={FolderIcon} class={cn(icon.button, "shrink-0 text-muted-foreground/80")} />
             {/if}
             <span class={cn(text.body, "min-w-0 flex-1 truncate")}>{entry.name}</span>
             {#if entry.isRepo}
@@ -161,7 +162,7 @@
       </div>
     {:else}
       <div class="flex flex-col items-center gap-2.5 px-4 py-10 text-center">
-        <FolderIcon class="size-6 text-muted-foreground/40" />
+        <Icon icon={FolderIcon} class="size-6 text-muted-foreground/40" />
         <p class={text.meta}>{i18n.t("addProject.noSubfolders")}</p>
       </div>
     {/if}

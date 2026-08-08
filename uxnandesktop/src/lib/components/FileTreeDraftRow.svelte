@@ -8,8 +8,9 @@
   import { icon } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import TreeInlineInput from "./TreeInlineInput.svelte";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import FileIcon from "@lucide/svelte/icons/file";
+  import { Icon } from "$lib/components/ui/icon";
+  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+  import FileIcon from "@hugeicons/core-free-icons/File01Icon";
 
   let {
     kind,
@@ -28,9 +29,9 @@
 {#snippet leadingIcon()}
   <span class="w-3 shrink-0"></span>
   {#if kind === "folder"}
-    <FolderIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+    <Icon icon={FolderIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
   {:else}
-    <FileIcon class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
+    <Icon icon={FileIcon} class={cn(icon.decorative, "shrink-0 text-muted-foreground")} />
   {/if}
 {/snippet}
 

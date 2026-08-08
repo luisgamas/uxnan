@@ -12,8 +12,9 @@
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
-  import FileWarningIcon from "@lucide/svelte/icons/triangle-alert";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import { Icon } from "$lib/components/ui/icon";
+  import FileWarningIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
 
   let {
     tab,
@@ -88,7 +89,7 @@
 
     <div class="flex flex-col gap-3 py-1">
       <div class="relative">
-        <PencilIcon
+        <Icon icon={PencilIcon}
           class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
         />
         <Input
@@ -108,7 +109,7 @@
             text.body,
           )}
         >
-          <FileWarningIcon class="mt-px size-4 shrink-0" />
+          <Icon icon={FileWarningIcon} class="mt-px size-4 shrink-0" />
           <span>
             {newExt
               ? i18n.t("tab.extChangeWarning", { old: oldExt || "—", new: newExt })

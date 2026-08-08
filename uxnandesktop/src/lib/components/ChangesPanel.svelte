@@ -17,20 +17,21 @@
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import VirtualList from "./VirtualList.svelte";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import CloudDownloadIcon from "@lucide/svelte/icons/cloud-download";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import MinusIcon from "@lucide/svelte/icons/minus";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import Undo2Icon from "@lucide/svelte/icons/undo-2";
-  import GitCommitIcon from "@lucide/svelte/icons/git-commit-horizontal";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
-  import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
-  import XIcon from "@lucide/svelte/icons/x";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import UsersIcon from "@lucide/svelte/icons/users";
-  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import { Icon } from "$lib/components/ui/icon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import CloudDownloadIcon from "@hugeicons/core-free-icons/CloudDownloadIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import Undo2Icon from "@hugeicons/core-free-icons/ArrowTurnBackwardIcon";
+  import GitCommitIcon from "@hugeicons/core-free-icons/GitCommitHorizontalIcon";
+  import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+  import ArrowUpIcon from "@hugeicons/core-free-icons/ArrowUp01Icon";
+  import ArrowDownIcon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+  import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+  import UsersIcon from "@hugeicons/core-free-icons/UserMultipleIcon";
+  import Trash2Icon from "@hugeicons/core-free-icons/Delete02Icon";
 
   type Area = "staged" | "changes";
 
@@ -191,7 +192,7 @@
               askDiscard(f);
             }}
           >
-            <Undo2Icon class={icon.button} />
+            <Icon icon={Undo2Icon} class={icon.button} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -212,7 +213,7 @@
               {#if git.busyAction?.kind === "unstage" && git.busyAction.file === f.path}
                 <Spinner aria-label={i18n.t("common.loading")} />
               {:else}
-                <MinusIcon class={icon.button} />
+                <Icon icon={MinusIcon} class={icon.button} />
               {/if}
             </Button>
           {/snippet}
@@ -234,7 +235,7 @@
               {#if git.busyAction?.kind === "stage" && git.busyAction.file === f.path}
                 <Spinner aria-label={i18n.t("common.loading")} />
               {:else}
-                <PlusIcon class={icon.button} />
+                <Icon icon={PlusIcon} class={icon.button} />
               {/if}
             </Button>
           {/snippet}
@@ -286,7 +287,7 @@
       <TooltipSimple title={i18n.t("common.close")}>
         {#snippet children(tp)}
           <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
-            <XIcon class={icon.action} />
+            <Icon icon={XIcon} class={icon.action} />
           </Button>
         {/snippet}
       </TooltipSimple>
@@ -300,7 +301,7 @@
         <TooltipSimple title={i18n.t("rightPanel.search")}>
           {#snippet children(tp)}
             <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
-              <SearchIcon class={icon.action} />
+              <Icon icon={SearchIcon} class={icon.action} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -313,7 +314,7 @@
               class={iconButton.xs}
               onclick={() => void git.refresh()}
             >
-              <RefreshCwIcon class={cn(icon.action, git.loading && "animate-spin")} />
+              <Icon icon={RefreshCwIcon} class={cn(icon.action, git.loading && "animate-spin")} />
             </Button>
           {/snippet}
         </TooltipSimple>
@@ -330,7 +331,7 @@
               {#if git.fetching}
                 <Spinner aria-label={i18n.t("common.loading")} />
               {:else}
-                <CloudDownloadIcon class={icon.action} />
+                <Icon icon={CloudDownloadIcon} class={icon.action} />
               {/if}
             </Button>
           {/snippet}
@@ -379,7 +380,7 @@
                 {#if git.aiGenerating}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <SparklesIcon data-icon="inline-start" />
+                  <Icon icon={SparklesIcon} data-icon="inline-start" />
                 {/if}
                 {git.aiGenerating ? i18n.t("rightPanel.generating") : i18n.t("rightPanel.generateAi")}
               </Button>
@@ -402,7 +403,7 @@
             text.meta,
           )}
         >
-          <ChevronDownIcon
+          <Icon icon={ChevronDownIcon}
             class={cn(icon.button, "transition-transform", optionsOpen && "rotate-180")}
           />
           {i18n.t("rightPanel.commitOptions")}
@@ -422,7 +423,7 @@
           <!-- Co-authors → Co-authored-by trailers. -->
           <div class="flex flex-col gap-1">
             <span class={cn("flex items-center gap-1.5", text.meta)}>
-              <UsersIcon class={icon.decorative} />
+              <Icon icon={UsersIcon} class={icon.decorative} />
               {i18n.t("rightPanel.coAuthors")}
             </span>
             {#each git.coAuthors as coAuthor, i (i)}
@@ -443,7 +444,7 @@
                       class={iconButton.action}
                       onclick={() => removeCoAuthor(i)}
                     >
-                      <Trash2Icon class={icon.button} />
+                      <Icon icon={Trash2Icon} class={icon.button} />
                     </Button>
                   {/snippet}
                 </TooltipSimple>
@@ -455,7 +456,7 @@
               class={cn("h-6 self-start", text.body)}
               onclick={addCoAuthor}
             >
-              <PlusIcon data-icon="inline-start" />
+              <Icon icon={PlusIcon} data-icon="inline-start" />
               {i18n.t("rightPanel.addCoAuthor")}
             </Button>
           </div>
@@ -487,7 +488,7 @@
         {#if git.committing}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
         {:else}
-          <GitCommitIcon data-icon="inline-start" />
+          <Icon icon={GitCommitIcon} data-icon="inline-start" />
         {/if}
         {git.committing
           ? i18n.t("rightPanel.committing")
@@ -511,7 +512,7 @@
                 {#if git.syncingAction === "pull"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <ArrowDownIcon data-icon="inline-start" />
+                  <Icon icon={ArrowDownIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("rightPanel.pull")}
                 {#if git.behind > 0}<span class={text.indicator}>{git.behind}</span>{/if}
@@ -531,7 +532,7 @@
                 {#if git.syncingAction === "push"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {:else}
-                  <ArrowUpIcon data-icon="inline-start" />
+                  <Icon icon={ArrowUpIcon} data-icon="inline-start" />
                 {/if}
                 {i18n.t("rightPanel.push")}
                 {#if git.ahead > 0}<span class={text.indicator}>{git.ahead}</span>{/if}

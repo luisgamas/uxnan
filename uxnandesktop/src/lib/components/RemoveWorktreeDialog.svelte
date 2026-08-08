@@ -25,9 +25,10 @@
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { removalDefaults, type RemovalWarning } from "$lib/worktree-removal";
-  import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
-  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import { Icon } from "$lib/components/ui/icon";
+  import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
+  import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
 
   let {
     open = $bindable(false),
@@ -129,9 +130,9 @@
         )}
       >
         {#if defaults.verdict === "done"}
-          <CircleCheckIcon class={cn(icon.button, "text-sky-500")} />
+          <Icon icon={CircleCheckIcon} class={cn(icon.button, "text-sky-500")} />
         {:else}
-          <TriangleAlertIcon class={cn(icon.button, "text-destructive")} />
+          <Icon icon={TriangleAlertIcon} class={cn(icon.button, "text-destructive")} />
         {/if}
       </div>
       <div class="flex min-w-0 flex-1 flex-col gap-2">
@@ -209,7 +210,7 @@
           text.body,
         )}
       >
-        <ChevronRightIcon
+        <Icon icon={ChevronRightIcon}
           class={cn(icon.decorative, "shrink-0 transition-transform", advancedOpen && "rotate-90")}
         />
         {i18n.t("worktree.advanced")}

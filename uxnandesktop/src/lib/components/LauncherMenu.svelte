@@ -15,11 +15,12 @@
   import { i18n } from "$lib/i18n";
   import type { RepoData } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
-  import GitBranchPlusIcon from "@lucide/svelte/icons/git-branch-plus";
-  import GlobeIcon from "@lucide/svelte/icons/globe";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import { Icon } from "$lib/components/ui/icon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
+  import GitBranchPlusIcon from "@hugeicons/core-free-icons/GitBranchPlusIcon";
+  import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
+  import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
 
   let {
     repo,
@@ -75,7 +76,7 @@
         onclick={(e: MouseEvent) => e.stopPropagation()}
         {...props}
       >
-        <PlusIcon class={icon.action} />
+        <Icon icon={PlusIcon} class={icon.action} />
       </Button>
     {/snippet}
   </DropdownMenu.Trigger>
@@ -88,12 +89,12 @@
           {i18n.t("launcher.sectionTerminals")}
         </DropdownMenu.GroupHeading>
         <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path)}>
-          <TerminalIcon class={icon.button} />
+          <Icon icon={TerminalIcon} class={icon.button} />
           {i18n.t("terminal.newDefault")}
         </DropdownMenu.Item>
         {#each profiles as p (p.id)}
           <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path, p.id)}>
-            <TerminalIcon class={icon.button} />
+            <Icon icon={TerminalIcon} class={icon.button} />
             {p.name.trim() || i18n.t("terminal.unnamedProfile")}
           </DropdownMenu.Item>
         {/each}
@@ -121,7 +122,7 @@
             {i18n.t("launcher.sectionBrowser")}
           </DropdownMenu.GroupHeading>
           <DropdownMenu.Item class={text.menu} onclick={() => app.openBrowser()}>
-            <GlobeIcon class={icon.button} />
+            <Icon icon={GlobeIcon} class={icon.button} />
             {i18n.t("launcher.browser")}
           </DropdownMenu.Item>
         </DropdownMenu.Group>
@@ -134,7 +135,7 @@
             {i18n.t("launcher.sectionWorktree")}
           </DropdownMenu.GroupHeading>
           <DropdownMenu.Item class={text.menu} onclick={onNewWorktree}>
-            <GitBranchPlusIcon class={icon.button} />
+            <Icon icon={GitBranchPlusIcon} class={icon.button} />
             {i18n.t("project.newWorktree")}
           </DropdownMenu.Item>
         </DropdownMenu.Group>
@@ -142,7 +143,7 @@
 
       <DropdownMenu.Separator />
       <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
-        <SettingsIcon class={icon.button} />
+        <Icon icon={SettingsIcon} class={icon.button} />
         {i18n.t("agent.configure")}
       </DropdownMenu.Item>
     {:else}
@@ -152,12 +153,12 @@
           {targetLabel(t)}
         </DropdownMenu.GroupHeading>
         <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path)}>
-          <TerminalIcon class={icon.button} />
+          <Icon icon={TerminalIcon} class={icon.button} />
           {i18n.t("terminal.newDefault")}
         </DropdownMenu.Item>
         {#each profiles as p (p.id)}
           <DropdownMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(t.path, p.id)}>
-            <TerminalIcon class={icon.button} />
+            <Icon icon={TerminalIcon} class={icon.button} />
             {p.name.trim() || i18n.t("terminal.unnamedProfile")}
           </DropdownMenu.Item>
         {/each}
@@ -173,19 +174,19 @@
 
     {#if browserEnabled}
       <DropdownMenu.Item class={text.menu} onclick={() => app.openBrowser()}>
-        <GlobeIcon class={icon.button} />
+        <Icon icon={GlobeIcon} class={icon.button} />
         {i18n.t("launcher.browser")}
       </DropdownMenu.Item>
     {/if}
     {#if onNewWorktree}
       <DropdownMenu.Item class={text.menu} onclick={onNewWorktree}>
-        <GitBranchPlusIcon class={icon.button} />
+        <Icon icon={GitBranchPlusIcon} class={icon.button} />
         {i18n.t("project.newWorktree")}
       </DropdownMenu.Item>
     {/if}
     <DropdownMenu.Separator />
     <DropdownMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
-      <SettingsIcon class={icon.button} />
+      <Icon icon={SettingsIcon} class={icon.button} />
       {i18n.t("agent.configure")}
     </DropdownMenu.Item>
     {/if}

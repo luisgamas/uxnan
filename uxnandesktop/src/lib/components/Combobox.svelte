@@ -29,8 +29,9 @@
   import { Button } from "$lib/components/ui/button";
   import { cn } from "$lib/utils";
   import { text } from "$lib/design";
-  import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
-  import CheckIcon from "@lucide/svelte/icons/check";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
+  import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 
   let {
     value,
@@ -94,7 +95,7 @@
             <span class="truncate">{current?.label ?? placeholder}</span>
           </span>
         {/if}
-        <ChevronsUpDownIcon class="ml-1 shrink-0 opacity-50" />
+        <Icon icon={ChevronsUpDownIcon} class="ml-1 shrink-0 opacity-50" />
       </Button>
     {/snippet}
   </Popover.Trigger>
@@ -119,7 +120,7 @@
                     <span class={cn("shrink-0 truncate", text.meta)}>{item.meta}</span>
                   {/if}
                   {#if value === item.value}
-                    <CheckIcon class="size-3.5 shrink-0 text-primary" />
+                    <Icon icon={CheckIcon} class="size-3.5 shrink-0 text-primary" />
                   {/if}
                 </Command.Item>
               {/each}

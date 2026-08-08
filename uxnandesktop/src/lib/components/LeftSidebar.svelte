@@ -17,18 +17,19 @@
   import { CLOSABLE_LANE, isStaticSortMode, type AttentionClass } from "$lib/sidebar-sort";
   import type { ReviewGroup } from "$lib/sidebar-review";
   import type { SidebarGroupBy, SortMode } from "$lib/types";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import { divider, icon, iconButton, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { formatChord, resolveBinding } from "$lib/keybindings";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
-  import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import TerminalIcon from "@lucide/svelte/icons/terminal";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+  import FolderPlusIcon from "@hugeicons/core-free-icons/FolderAddIcon";
+  import ArrowUpDownIcon from "@hugeicons/core-free-icons/ArrowUpDownIcon";
+  import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+  import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+  import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
 
   // The five sort modes offered for each axis (projects and worktrees). "manual"
   // and the two "name" modes don't drift over time; "recent"/"attention" do (they
@@ -189,7 +190,7 @@
           class={cn(navBase, navIdle)}
           onclick={() => (projects.paletteOpen = true)}
         >
-          <SearchIcon class={icon.button} />
+          <Icon icon={SearchIcon} class={icon.button} />
           <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
           {#if searchBinding}
             <KeyChord chord={searchBinding} />
@@ -240,7 +241,7 @@
           class={iconButton.xs}
           onclick={() => (projects.pickerOpen = true)}
         >
-          <FolderPlusIcon class={icon.action} />
+          <Icon icon={FolderPlusIcon} class={icon.action} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -253,7 +254,7 @@
           class={iconButton.xs}
           onclick={() => void projects.init()}
         >
-          <RefreshCwIcon class={icon.action} />
+          <Icon icon={RefreshCwIcon} class={icon.action} />
         </Button>
       {/snippet}
     </TooltipSimple>
@@ -263,7 +264,7 @@
           <TooltipSimple title={i18n.t("sidebar.sort")}>
             {#snippet children(tp)}
               <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} {...props}>
-                <ArrowUpDownIcon class={icon.action} />
+                <Icon icon={ArrowUpDownIcon} class={icon.action} />
               </Button>
             {/snippet}
           </TooltipSimple>
@@ -309,7 +310,7 @@
           <TooltipSimple title={i18n.t("terminal.newTerminal")}>
             {#snippet children(tp)}
               <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} {...props}>
-                <PlusIcon class={icon.action} />
+                <Icon icon={PlusIcon} class={icon.action} />
               </Button>
             {/snippet}
           </TooltipSimple>
@@ -317,7 +318,7 @@
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" class="min-w-48">
         <DropdownMenu.Item class={text.menu} onclick={() => app.openTerminal()}>
-          <TerminalIcon class={icon.button} />
+          <Icon icon={TerminalIcon} class={icon.button} />
           {i18n.t("terminal.newDefault")}
         </DropdownMenu.Item>
         {#if app.terminalProfiles.length > 0}
@@ -325,7 +326,7 @@
           <DropdownMenu.Label class={text.menuLabel}>{i18n.t("terminal.chooseProfile")}</DropdownMenu.Label>
           {#each app.terminalProfiles as p (p.id)}
             <DropdownMenu.Item class={text.menu} onclick={() => app.openTerminal({ profileId: p.id })}>
-              <TerminalIcon class={icon.button} />
+              <Icon icon={TerminalIcon} class={icon.button} />
               {profileLabel(p.name)}
             </DropdownMenu.Item>
           {/each}
@@ -344,7 +345,7 @@
         </p>
         {#if !projects.query}
           <Button variant="outline" size="sm" onclick={() => (projects.pickerOpen = true)}>
-            <FolderPlusIcon data-icon="inline-start" />
+            <Icon icon={FolderPlusIcon} data-icon="inline-start" />
             {i18n.t("sidebar.addRepo")}
             {#if addBinding}
               <KeyChord class="ml-1" chord={addBinding} />
@@ -372,7 +373,7 @@
                   class="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
                   onclick={() => projects.toggleLane(lane.attention)}
                 >
-                  <ChevronRightIcon
+                  <Icon icon={ChevronRightIcon}
                     class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
                   />
                   <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
@@ -424,7 +425,7 @@
                 class="flex w-full items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
                 onclick={() => projects.toggleReviewLane(lane.group)}
               >
-                <ChevronRightIcon
+                <Icon icon={ChevronRightIcon}
                   class={cn(
                     "size-3 shrink-0 text-muted-foreground/70 transition-transform",
                     !projects.isReviewLaneCollapsed(lane.group) && "rotate-90",

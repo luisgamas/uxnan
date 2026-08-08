@@ -11,7 +11,8 @@
   import { cn } from "$lib/utils";
   import { i18n } from "$lib/i18n";
   import type { AgentModel } from "$lib/types";
-  import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
+  import { Icon } from "$lib/components/ui/icon";
+  import ChevronsUpDownIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
 
   let {
     models,
@@ -76,7 +77,7 @@
         <span class="truncate">
           {loading ? i18n.t("settings.aiCommitModelLoading") : label}
         </span>
-        <ChevronsUpDownIcon class="ml-1 shrink-0 opacity-50" />
+        <Icon icon={ChevronsUpDownIcon} class="ml-1 shrink-0 opacity-50" />
       </Button>
     {/snippet}
   </Popover.Trigger>
