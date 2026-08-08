@@ -157,7 +157,7 @@ Abre los Pull Requests, Issues y Actions de un proyecto en una vista enfocada qu
 <td width="46%" valign="top">
 
 ### Mira a los subagentes trabajar bajo su padre
-Un subagente del Task tool de Claude Code (o una sesión hija de OpenCode) aparece en vivo como una fila anidada bajo el agente que lo generó, y el padre no marca "Listo" mientras un hijo sigue trabajando.
+Un subagente de Claude Code, Codex, Grok u OpenCode aparece en vivo como una fila anidada bajo el agente que lo generó —con su tipo y en qué está trabajando—, y el padre no marca "Listo" mientras un hijo sigue trabajando.
 
 [Hooks de agentes y estados precisos →](uxnandesktop/docs/agent-hooks.md)
 
