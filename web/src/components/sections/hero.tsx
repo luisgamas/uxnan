@@ -1,4 +1,6 @@
-import { Download, Star } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
+import StarIcon from "@hugeicons/core-free-icons/StarIcon";
 import { DownloadButton } from "@/components/download-button";
 import { DesktopWindow } from "@/components/mockups/desktop";
 import { Phone, PhoneConversations } from "@/components/mockups/phone";
@@ -40,12 +42,12 @@ export async function Hero() {
         {stats ? (
           <p className="mt-3.5 flex items-center justify-center gap-4 text-[12.5px] text-faint">
             <span className="inline-flex items-center gap-1.5">
-              <Star className="size-3.5 text-amber" />
+              <HugeiconsIcon icon={StarIcon} className="size-3.5 text-amber" />
               <span className="text-muted">{formatCount(stats.stars)}</span>
               stars
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Download className="size-3.5" />
+              <HugeiconsIcon icon={DownloadIcon} className="size-3.5" />
               <span className="text-muted">{formatCount(stats.downloads)}</span>
               downloads
             </span>

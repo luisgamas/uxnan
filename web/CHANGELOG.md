@@ -7,6 +7,28 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The site draws Hugeicons, the same set as the desktop app.** All 33 glyphs
+  across 61 render sites move off `lucide-react` and onto
+  [`@hugeicons/core-free-icons`](https://www.npmjs.com/package/@hugeicons/core-free-icons)
+  (MIT), one glyph per subpath. Every pair the desktop already chose is reused
+  verbatim, so the interface visuals stop drawing a different icon set from the
+  product they recreate — most visibly in the desktop window's agent list, whose
+  done / blocked / waiting glyphs are now literally the ones
+  `AgentStatusIndicator.svelte` draws.
+
+  Seven glyphs had no counterpart in that mapping and were chosen here: a real
+  pull-request glyph for the "1 ready" line (the desktop's `git-pull-request`
+  pair is the GitHub mark, because there it stands in for the brand), a mug for
+  Buy Me a Coffee, stacked coins for Tokens, a 2×2 grid for Activity, plus the
+  laptop, mic and overflow glyphs the phone screens use.
+
+  Drawn through upstream's `HugeiconsIcon` rather than a primitive of our own —
+  it is a plain `createElement` tree, so unlike the Svelte component the desktop
+  had to replace, it renders during the static export. Verified in the built
+  `out/index.html`: 88 pre-rendered `<svg>`, none of them empty. The icon
+  package is pinned exactly, matching the desktop, so the drawn art cannot
+  drift away from the app's on an unrelated install.
+
 - **The agent section shows the whole catalog, not seven names.** Two rows of
   tiles now — same compact shape as before, mark on the left and name on the
   right: the **22 agents that report precise state** (working / blocked / waiting /
