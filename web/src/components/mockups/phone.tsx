@@ -1,27 +1,26 @@
-import {
-  ArrowLeft,
-  Check,
-  CircleDashed,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Coins,
-  Copy,
-  Folder,
-  GitBranch,
-  LayoutGrid,
-  Laptop,
-  ListFilter,
-  Mic,
-  MoreVertical,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
-  Sparkles,
-  SquarePen,
-  X,
-} from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
+import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+import CircleDashedIcon from "@hugeicons/core-free-icons/CircleDashedIcon";
+import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
+import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+import CoinsIcon from "@hugeicons/core-free-icons/Coins01Icon";
+import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
+import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import LayoutGridIcon from "@hugeicons/core-free-icons/Grid2X2Icon";
+import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
+import ListFilterIcon from "@hugeicons/core-free-icons/FilterIcon";
+import MicIcon from "@hugeicons/core-free-icons/Mic01Icon";
+import MoreVerticalIcon from "@hugeicons/core-free-icons/MoreVerticalIcon";
+import PencilIcon from "@hugeicons/core-free-icons/PencilIcon";
+import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+import SparklesIcon from "@hugeicons/core-free-icons/SparklesIcon";
+import SquarePenIcon from "@hugeicons/core-free-icons/Edit02Icon";
+import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 import { AGENT_ICON, AGENTS } from "@/lib/site";
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -205,18 +204,18 @@ export function PhoneConversations() {
     <>
       <div className="flex items-center gap-[6px] px-[10px] pt-[4px] pb-[8px]">
         <RoundBtn>
-          <ArrowLeft className="size-[11px]" />
+          <HugeiconsIcon icon={ArrowLeftIcon} className="size-[11px]" />
         </RoundBtn>
         <span className="truncate text-[12px] font-medium">DESKTOP-4RO7…</span>
         <span className="ml-auto flex items-center gap-[5px]">
           <RoundBtn>
-            <Search className="size-[10px]" />
+            <HugeiconsIcon icon={SearchIcon} className="size-[10px]" />
           </RoundBtn>
           <RoundBtn>
-            <ListFilter className="size-[10px]" />
+            <HugeiconsIcon icon={ListFilterIcon} className="size-[10px]" />
           </RoundBtn>
           <RoundBtn>
-            <MoreVertical className="size-[10px]" />
+            <HugeiconsIcon icon={MoreVerticalIcon} className="size-[10px]" />
           </RoundBtn>
         </span>
       </div>
@@ -226,13 +225,13 @@ export function PhoneConversations() {
           className="flex h-[21px] items-center gap-[4px] rounded-[8px] px-[8px] text-[7.5px]"
           style={{ border: `1px solid ${M3.hairline}` }}
         >
-          Agent <ChevronDown className="size-[7px]" />
+          Agent <HugeiconsIcon icon={ChevronDownIcon} className="size-[7px]" />
         </span>
         <span
           className="flex h-[21px] items-center gap-[4px] rounded-[8px] px-[9px] text-[7.5px] font-medium"
           style={{ background: M3.mint, color: M3.onMint }}
         >
-          <Check className="size-[7px]" /> All
+          <HugeiconsIcon icon={CheckIcon} className="size-[7px]" /> All
         </span>
         <span
           className="flex h-[21px] shrink-0 items-center gap-[4px] rounded-[8px] px-[8px] text-[7.5px]"
@@ -288,7 +287,7 @@ export function PhoneConversations() {
           className="flex h-[30px] items-center gap-[6px] rounded-[11px] px-[12px] text-[9px] font-medium"
           style={{ background: M3.periwinkle, color: M3.onPeriwinkle }}
         >
-          <SquarePen className="size-[11px]" /> New conversation
+          <HugeiconsIcon icon={SquarePenIcon} className="size-[11px]" /> New conversation
         </span>
       </div>
     </>
@@ -308,7 +307,7 @@ export function PhoneConversation() {
     <>
       <div className="flex items-center gap-[5px] px-[9px] pt-[4px] pb-[8px]">
         <RoundBtn>
-          <ArrowLeft className="size-[11px]" />
+          <HugeiconsIcon icon={ArrowLeftIcon} className="size-[11px]" />
         </RoundBtn>
 
         {/* the agent / model chip the app puts in the app bar */}
@@ -316,19 +315,19 @@ export function PhoneConversation() {
           className="flex h-[23px] min-w-0 flex-1 items-center gap-[4px] rounded-full px-[8px] text-[8.5px]"
           style={{ background: M3.container }}
         >
-          <Sparkles className="size-[9px] shrink-0" />
+          <HugeiconsIcon icon={SparklesIcon} className="size-[9px] shrink-0" />
           <span className="truncate">claude/opus-5</span>
-          <ChevronDown className="ml-auto size-[8px] shrink-0" />
+          <HugeiconsIcon icon={ChevronDownIcon} className="ml-auto size-[8px] shrink-0" />
         </span>
 
         <RoundBtn>
-          <Folder className="size-[10px]" />
+          <HugeiconsIcon icon={FolderIcon} className="size-[10px]" />
         </RoundBtn>
         <RoundBtn>
-          <GitBranch className="size-[10px]" />
+          <HugeiconsIcon icon={GitBranchIcon} className="size-[10px]" />
         </RoundBtn>
         <RoundBtn>
-          <MoreVertical className="size-[10px]" />
+          <HugeiconsIcon icon={MoreVerticalIcon} className="size-[10px]" />
         </RoundBtn>
       </div>
 
@@ -377,7 +376,7 @@ export function PhoneConversation() {
           className="mt-[10px] flex items-center gap-[5px] text-[8.5px]"
           style={{ color: M3.onSurfaceVar }}
         >
-          <Copy className="size-[9px]" />
+          <HugeiconsIcon icon={CopyIcon} className="size-[9px]" />
           Copy response
         </div>
       </div>
@@ -388,13 +387,13 @@ export function PhoneConversation() {
           className="grid size-[21px] place-items-center rounded-full"
           style={{ background: M3.container }}
         >
-          <ChevronRight className="size-[10px]" />
+          <HugeiconsIcon icon={ChevronRightIcon} className="size-[10px]" />
         </span>
         <span
           className="ml-auto flex items-center gap-[4px] rounded-full px-[8px] py-[3px] text-[8px]"
           style={{ background: M3.container, color: M3.onSurfaceVar }}
         >
-          <CircleDashed className="size-[8px]" /> 17.9k
+          <HugeiconsIcon icon={CircleDashedIcon} className="size-[8px]" /> 17.9k
         </span>
         <span
           className="grid size-[21px] place-items-center rounded-full border-[1.5px] text-[7.5px] font-medium"
@@ -410,11 +409,11 @@ export function PhoneConversation() {
           className="flex h-[29px] items-center gap-[8px] rounded-full px-[10px]"
           style={{ background: M3.container }}
         >
-          <Plus className="size-[12px] shrink-0" />
+          <HugeiconsIcon icon={PlusIcon} className="size-[12px] shrink-0" />
           <span className="truncate text-[9px]" style={{ color: M3.outline }}>
             Message…
           </span>
-          <Mic
+          <HugeiconsIcon icon={MicIcon}
             className="ml-auto size-[11px] shrink-0"
             style={{ color: M3.onSurfaceVar }}
           />
@@ -432,7 +431,7 @@ export function PhoneNewConversation() {
     <>
       <div className="flex items-center px-[10px] pt-[4px] pb-[10px]">
         <RoundBtn>
-          <X className="size-[11px]" />
+          <HugeiconsIcon icon={XIcon} className="size-[11px]" />
         </RoundBtn>
         <span className="ml-auto text-[9px]" style={{ color: M3.outline }}>
           Start conversation
@@ -453,7 +452,7 @@ export function PhoneNewConversation() {
             className="grid size-[23px] shrink-0 place-items-center rounded-[7px]"
             style={{ background: M3.mint }}
           >
-            <Folder className="size-[12px]" style={{ color: M3.onMint }} />
+            <HugeiconsIcon icon={FolderIcon} className="size-[12px]" style={{ color: M3.onMint }} />
           </span>
           <div className="min-w-0">
             <div className="text-[9px]">GitHub</div>
@@ -464,7 +463,7 @@ export function PhoneNewConversation() {
               C:\Users\dev\Documents\GitHub
             </div>
           </div>
-          <ChevronRight
+          <HugeiconsIcon icon={ChevronRightIcon}
             className="ml-auto size-[11px] shrink-0"
             style={{ color: M3.outline }}
           />
@@ -524,7 +523,7 @@ export function PhoneProfile() {
     <>
       <div className="flex items-center gap-[7px] px-[10px] pt-[4px] pb-[10px]">
         <RoundBtn>
-          <ArrowLeft className="size-[11px]" />
+          <HugeiconsIcon icon={ArrowLeftIcon} className="size-[11px]" />
         </RoundBtn>
         <span className="text-[13px]">Profile</span>
       </div>
@@ -553,7 +552,7 @@ export function PhoneProfile() {
               1 online now
             </div>
           </div>
-          <Pencil
+          <HugeiconsIcon icon={PencilIcon}
             className="ml-auto size-[10px] shrink-0"
             style={{ color: M3.onSurfaceVar }}
           />
@@ -565,7 +564,7 @@ export function PhoneProfile() {
             className="ml-auto grid size-[21px] place-items-center rounded-full"
             style={{ background: M3.mint }}
           >
-            <RefreshCw className="size-[10px]" style={{ color: M3.onMint }} />
+            <HugeiconsIcon icon={RefreshCwIcon} className="size-[10px]" style={{ color: M3.onMint }} />
           </span>
         </div>
 
@@ -597,13 +596,13 @@ export function PhoneProfile() {
             className="flex flex-1 items-center justify-center gap-[4px] rounded-full font-medium"
             style={{ background: M3.mint, color: M3.onMint }}
           >
-            <LayoutGrid className="size-[8px]" /> Activity
+            <HugeiconsIcon icon={LayoutGridIcon} className="size-[8px]" /> Activity
           </span>
           <span
             className="flex flex-1 items-center justify-center gap-[4px]"
             style={{ color: M3.onSurfaceVar }}
           >
-            <Coins className="size-[8px]" /> Tokens
+            <HugeiconsIcon icon={CoinsIcon} className="size-[8px]" /> Tokens
           </span>
         </div>
 
@@ -611,9 +610,9 @@ export function PhoneProfile() {
           className="mb-[7px] flex h-[18px] w-[74px] items-center justify-between rounded-full px-[7px] text-[8px]"
           style={{ background: M3.container }}
         >
-          <ChevronLeft className="size-[8px]" style={{ color: M3.onSurfaceVar }} />
+          <HugeiconsIcon icon={ChevronLeftIcon} className="size-[8px]" style={{ color: M3.onSurfaceVar }} />
           2026
-          <ChevronRight className="size-[8px]" style={{ color: M3.onSurfaceVar }} />
+          <HugeiconsIcon icon={ChevronRightIcon} className="size-[8px]" style={{ color: M3.onSurfaceVar }} />
         </div>
 
         <div className="grid grid-cols-[repeat(13,1fr)] gap-[2.5px]">
@@ -654,7 +653,7 @@ export function PhoneDevices() {
               className="grid size-[25px] shrink-0 place-items-center rounded-[8px]"
               style={{ background: M3.mint }}
             >
-              <Laptop className="size-[12px]" style={{ color: M3.onMint }} />
+              <HugeiconsIcon icon={LaptopIcon} className="size-[12px]" style={{ color: M3.onMint }} />
             </span>
             <div className="min-w-0">
               <div className="truncate text-[9.5px]">DESKTOP-4RO76Q2</div>
@@ -662,7 +661,7 @@ export function PhoneDevices() {
                 Last seen 13:00
               </div>
             </div>
-            <MoreVertical
+            <HugeiconsIcon icon={MoreVerticalIcon}
               className="ml-auto size-[10px] shrink-0"
               style={{ color: M3.onSurfaceVar }}
             />
@@ -695,7 +694,7 @@ export function PhoneDevices() {
             className="grid size-[25px] shrink-0 place-items-center rounded-[8px] bg-white"
             style={{ border: `1px solid ${M3.hairline}` }}
           >
-            <Laptop className="size-[12px]" style={{ color: M3.onSurfaceVar }} />
+            <HugeiconsIcon icon={LaptopIcon} className="size-[12px]" style={{ color: M3.onSurfaceVar }} />
           </span>
           <div className="min-w-0">
             <div className="truncate text-[9.5px]">MBP-DEV</div>

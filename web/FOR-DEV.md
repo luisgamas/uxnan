@@ -15,7 +15,7 @@ the previous site is what `uxnan.pages.dev` serves until this lands on `main`.
 
 The site is one route (`/`) that runs hero → agents → parallel worktrees →
 mobile → measured footprint → open source → call to action. It is a Next.js 15
-static export (React 19, Tailwind v4, `lucide-react`), self-hosting Geist and
+static export (React 19, Tailwind v4, Hugeicons), self-hosting Geist and
 JetBrains Mono through `next/font`.
 
 What works today:

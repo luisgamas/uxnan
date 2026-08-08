@@ -1,4 +1,7 @@
-import { Check, GitBranch, GitPullRequest } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
 import { Reveal } from "@/components/reveal";
 import { AGENT_ICON, INVERT_ON_DARK } from "@/lib/site";
 
@@ -61,7 +64,7 @@ export function Parallel() {
           <ul className="mt-8 flex flex-col gap-3.5">
             {POINTS.map((p) => (
               <li key={p} className="flex gap-3 text-[14.5px] text-muted">
-                <Check className="mt-[3px] size-4 shrink-0 text-live" />
+                <HugeiconsIcon icon={CheckIcon} className="mt-[3px] size-4 shrink-0 text-live" />
                 <span>{p}</span>
               </li>
             ))}
@@ -71,11 +74,11 @@ export function Parallel() {
         <Reveal delay={100}>
           <div className="tile overflow-hidden">
             <div className="flex items-center gap-2 border-b border-line px-4 py-3 text-[12px] text-dim">
-              <GitBranch className="size-3.5" />
+              <HugeiconsIcon icon={GitBranchIcon} className="size-3.5" />
               <span className="text-fg">uxnan</span>
               <span className="text-faint">· 3 active worktrees</span>
               <span className="ml-auto flex items-center gap-1.5 text-[11px]">
-                <GitPullRequest className="size-3.5" /> 1 ready
+                <HugeiconsIcon icon={GitPullRequestIcon} className="size-3.5" /> 1 ready
               </span>
             </div>
 

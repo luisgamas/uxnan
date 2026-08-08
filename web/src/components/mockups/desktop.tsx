@@ -1,19 +1,18 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleCheck,
-  CirclePause,
-  Folder,
-  GitBranch,
-  MessageCircleQuestionMark,
-  Minus,
-  Plus,
-  RefreshCw,
-  Search,
-  Square,
-  SquareTerminal,
-  X,
-} from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
+import CircleCheckIcon from "@hugeicons/core-free-icons/CircleCheckIcon";
+import CirclePauseIcon from "@hugeicons/core-free-icons/PauseCircleIcon";
+import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
+import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
+import MessageCircleQuestionMarkIcon from "@hugeicons/core-free-icons/ChatQuestionIcon";
+import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
+import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
+import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
+import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
+import SquareTerminalIcon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
+import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
 import { AGENT_ICON, CLAUDE_TERMINAL_ICON, INVERT_ON_DARK } from "@/lib/site";
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -151,12 +150,12 @@ function Dot({ tone = "live" }: { tone?: Tone }) {
   if (tone === "live") return <Comet />;
   if (tone === "waiting")
     return (
-      <MessageCircleQuestionMark className="size-[9px] shrink-0 text-orange" />
+      <HugeiconsIcon icon={MessageCircleQuestionMarkIcon} className="size-[9px] shrink-0 text-orange" />
     );
   if (tone === "blocked")
-    return <CirclePause className="size-[9px] shrink-0 text-amber" />;
+    return <HugeiconsIcon icon={CirclePauseIcon} className="size-[9px] shrink-0 text-amber" />;
   if (tone === "done")
-    return <CircleCheck className="size-[9px] shrink-0 text-brand-lit" />;
+    return <HugeiconsIcon icon={CircleCheckIcon} className="size-[9px] shrink-0 text-brand-lit" />;
   return <span className={`size-[5px] shrink-0 rounded-full ${DOT[tone]}`} />;
 }
 
@@ -207,16 +206,16 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
             >
               <Dot tone={a.tone} />
               <span className="max-w-[110px] truncate">{a.name}</span>
-              <X className="size-3 opacity-40" />
+              <HugeiconsIcon icon={XIcon} className="size-3 opacity-40" />
             </div>
           ))}
-          <Plus className="size-3.5 shrink-0 text-faint" />
+          <HugeiconsIcon icon={PlusIcon} className="size-3.5 shrink-0 text-faint" />
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-3 text-faint">
-          <Minus className="size-3.5" />
-          <Square className="size-[11px]" />
-          <X className="size-3.5" />
+          <HugeiconsIcon icon={MinusIcon} className="size-3.5" />
+          <HugeiconsIcon icon={SquareIcon} className="size-[11px]" />
+          <HugeiconsIcon icon={XIcon} className="size-3.5" />
         </div>
       </div>
 
@@ -224,7 +223,7 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
         {/* ── Project rail with the live agent view ──────────────────── */}
         <aside className="hidden w-[212px] shrink-0 flex-col border-r border-line bg-panel/60 p-2.5 md:flex">
           <div className="flex items-center gap-2 rounded-md border border-line bg-ink px-2 py-1.5 text-[10.5px] text-faint">
-            <Search className="size-3" />
+            <HugeiconsIcon icon={SearchIcon} className="size-3" />
             <span className="truncate">Search a project…</span>
             <kbd className="ml-auto shrink-0 rounded border border-line px-1 text-[9px] whitespace-nowrap text-faint">
               Ctrl P
@@ -236,17 +235,17 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
               PROJECTS (8)
             </span>
             <span className="ml-auto flex items-center gap-1.5 text-faint">
-              <RefreshCw className="size-2.5" />
-              <Plus className="size-2.5" />
+              <HugeiconsIcon icon={RefreshCwIcon} className="size-2.5" />
+              <HugeiconsIcon icon={PlusIcon} className="size-2.5" />
             </span>
           </div>
 
           {/* the open project */}
           <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-fg">
-            <Folder className="size-3 shrink-0 opacity-70" />
+            <HugeiconsIcon icon={FolderIcon} className="size-3 shrink-0 opacity-70" />
             <span className="truncate text-[10.5px]">uxnan</span>
             <span className="ml-auto flex items-center gap-1 text-[9px] text-dim">
-              <SquareTerminal className="size-2.5" />4
+              <HugeiconsIcon icon={SquareTerminalIcon} className="size-2.5" />4
             </span>
           </div>
 
@@ -256,13 +255,13 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
               <Dot />
               <span className="text-[10.5px] text-fg">main</span>
               <span className="ml-auto flex items-center gap-1 text-[9px] text-dim">
-                <SquareTerminal className="size-2.5" />4
+                <HugeiconsIcon icon={SquareTerminalIcon} className="size-2.5" />4
               </span>
             </div>
             <div className="mb-1 px-1 pl-[13px] text-[9px] text-faint">uxnan</div>
 
             <div className="flex items-center gap-1 px-1 py-1 text-[8.5px] tracking-[0.14em] text-faint">
-              <ChevronDown className="size-2.5" />
+              <HugeiconsIcon icon={ChevronDownIcon} className="size-2.5" />
               AGENTS {AGENTS_RUNNING.length}
             </div>
 
@@ -306,7 +305,7 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
             ))}
 
             <div className="mt-1.5 flex items-center gap-1.5 border-t border-line px-1 pt-1.5">
-              <GitBranch className="size-2.5 shrink-0 text-faint" />
+              <HugeiconsIcon icon={GitBranchIcon} className="size-2.5 shrink-0 text-faint" />
               <div className="min-w-0">
                 <div className="truncate text-[10px] leading-tight text-dim">
                   feat/branding
@@ -324,7 +323,7 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
                 key={p}
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 text-dim"
               >
-                <Folder className="size-3 shrink-0 opacity-60" />
+                <HugeiconsIcon icon={FolderIcon} className="size-3 shrink-0 opacity-60" />
                 <span className="truncate text-[10.5px]">{p}</span>
               </div>
             ))}
@@ -429,8 +428,8 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
           <div className="flex items-center gap-1.5 px-2.5 py-2 text-[9px] tracking-[0.14em] text-faint">
             UXNAN
             <span className="ml-auto flex items-center gap-1.5">
-              <Search className="size-2.5" />
-              <RefreshCw className="size-2.5" />
+              <HugeiconsIcon icon={SearchIcon} className="size-2.5" />
+              <HugeiconsIcon icon={RefreshCwIcon} className="size-2.5" />
             </span>
           </div>
 
@@ -442,8 +441,8 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
               >
                 {t.dir ? (
                   <>
-                    <ChevronRight className="size-2.5 text-faint" />
-                    <Folder className="size-3 opacity-70" />
+                    <HugeiconsIcon icon={ChevronRightIcon} className="size-2.5 text-faint" />
+                    <HugeiconsIcon icon={FolderIcon} className="size-3 opacity-70" />
                   </>
                 ) : (
                   <span className="ml-[18px]" />
@@ -455,10 +454,10 @@ export function DesktopWindow({ className = "" }: { className?: string }) {
 
           <div className="mt-auto border-t border-line px-2.5 py-2 text-[9.5px] text-faint">
             <div className="flex items-center gap-1.5">
-              <GitBranch className="size-2.5" />
+              <HugeiconsIcon icon={GitBranchIcon} className="size-2.5" />
               <span>uxnan / main</span>
               <span className="ml-auto flex items-center gap-1">
-                <SquareTerminal className="size-2.5" />4
+                <HugeiconsIcon icon={SquareTerminalIcon} className="size-2.5" />4
               </span>
             </div>
           </div>

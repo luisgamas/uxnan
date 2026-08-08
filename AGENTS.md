@@ -199,6 +199,13 @@ If it affects contracts in `shared/`, all consuming components must be updated i
   a mobile screen changes shape, `web/src/components/mockups/` is part of that
   change set. Phone screens are drawn once at a canonical size and scaled by the
   frame — never re-size their contents to fit (`web/docs/design.md`).
+- **Icons are Hugeicons, the same set `uxnandesktop/` draws**, imported one glyph
+  per subpath. The site uses upstream's `@hugeicons/react`; the desktop needs its
+  own primitive because the *Svelte* component is broken for its call sites — do
+  not "align" one onto the other. Where a mockup recreates a screen, take the
+  glyph the app takes (the agent-state icons are `AgentStatusIndicator.svelte`'s),
+  and keep `@hugeicons/core-free-icons` pinned exactly in **both** `package.json`
+  files so the art cannot drift between app and site (`web/docs/design.md` §7).
 - **Agent marks live once, in `assets/agents/`** — the root READMEs render those
   files directly and the site syncs them into `web/public/agents/` before dev and
   build (`web/scripts/sync-agent-marks.mjs`; the synced copy is git-ignored).
