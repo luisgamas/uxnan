@@ -70,7 +70,8 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `onboarding/`, `pairing/`; `conversation/files/` owns the capability-based
   source, Markdown, image, SVG, PDF and Git-diff viewer described in
   [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
-  the flat GoRouter table. `presentation/theme/` holds the design tokens.
+  the flat GoRouter table. `presentation/theme/` holds the design tokens —
+  including `icons.dart`, the `UxIcons` catalogue every glyph is named in.
 
 The home screen (`presentation/screens/devices/my_devices_screen.dart`) is the
 **overview**. Its bar carries the product's identity rather than the screen's —

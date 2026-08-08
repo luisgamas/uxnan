@@ -8,6 +8,7 @@ import 'package:uxnan/presentation/screens/onboarding/install_step_page.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_background.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_page_layout.dart';
 import 'package:uxnan/presentation/screens/onboarding/welcome_page.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
@@ -144,7 +145,7 @@ class _PairPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return OnboardingPageLayout(
-      icon: Icons.qr_code_scanner_rounded,
+      icon: UxIcons.qrCodeScanner,
       title: l10n.onboardingPairTitle,
       body: l10n.onboardingPairBody,
       top: const FloatingAgents(
@@ -177,7 +178,7 @@ class _BottomControls extends StatelessWidget {
     final primary = isLast
         ? NeButton.icon(
             onPressed: onScan,
-            icon: Icons.qr_code_scanner_rounded,
+            icon: UxIcons.qrCodeScanner,
             label: l10n.actionScanQr,
           )
         : NeButton(onPressed: onNext, label: l10n.onboardingNext);

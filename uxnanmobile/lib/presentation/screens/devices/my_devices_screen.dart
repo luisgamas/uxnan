@@ -1,5 +1,4 @@
 import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -13,6 +12,7 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
@@ -22,6 +22,7 @@ import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/transport_badge.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The app's home: the list of paired PCs (trusted bridges). The app keeps one
 /// active connection at a time; tapping a PC opens its threads and "Connect"
@@ -166,7 +167,7 @@ class MyDevicesScreen extends ConsumerWidget {
         // offering the QR scanner or the manual host+code flow.
         IconSurfaceMenu<_PairAction>(
           tooltip: l10n.actionPairDevice,
-          icon: Icons.add_link_rounded,
+          icon: UxIcons.addLink,
           onSelected: (action) {
             switch (action) {
               case _PairAction.scanQr:
@@ -187,7 +188,7 @@ class MyDevicesScreen extends ConsumerWidget {
           ],
         ),
         IconSurface(
-          icon: Icons.settings_outlined,
+          icon: UxIcons.settings,
           tooltip: l10n.settingsTitle,
           onPressed: () => context.push(AppRoutes.settings),
         ),
@@ -444,9 +445,7 @@ class _DeviceCard extends StatelessWidget {
             runSpacing: UxnanSpacing.sm,
             children: [
               NeBadge(
-                icon: isConnected
-                    ? Icons.wifi_tethering_rounded
-                    : Icons.cloud_off_outlined,
+                icon: isConnected ? UxIcons.wifiTethering : UxIcons.cloudOff,
                 // Status and network path are one fact seen from two sides:
                 // the live path when there is one, otherwise what the
                 // connection is doing.
@@ -552,7 +551,7 @@ class _DeviceWorkingBadge extends ConsumerWidget {
     final working = ref.watch(deviceWorkingCountProvider(deviceId));
     if (working == 0) return const SizedBox.shrink();
     return NeBadge(
-      icon: Icons.smart_toy_outlined,
+      icon: UxIcons.smartToy,
       label: AppLocalizations.of(context).homeDeviceWorking(working),
       tone: NeBadgeTone.live,
     );
@@ -611,8 +610,8 @@ class _PcAvatar extends StatelessWidget {
               borderRadius: const BorderRadius.all(UxnanRadius.lg),
               border: Border.all(color: colors.outline),
             ),
-            child: Icon(
-              Icons.laptop_mac_rounded,
+            child: UxIcon(
+              UxIcons.laptopMac,
               size: 22,
               color: active ? UxnanColors.connected : colors.onSurfaceVariant,
             ),
@@ -723,10 +722,8 @@ class _RevealableAddressState extends State<_RevealableAddress> {
                 // Decorative affordance; the Semantics label above already
                 // announces the reveal/hide action.
                 ExcludeSemantics(
-                  child: Icon(
-                    _revealed
-                        ? Icons.visibility_off_rounded
-                        : Icons.visibility_rounded,
+                  child: UxIcon(
+                    _revealed ? UxIcons.visibilityOff : UxIcons.visibility,
                     size: 13,
                     color: colors.onSurfaceVariant,
                   ),
@@ -833,7 +830,7 @@ class _PairEmptyState extends StatelessWidget {
             const SizedBox(height: UxnanSpacing.xl),
             FilledButton.icon(
               onPressed: () => context.push(AppRoutes.onboarding),
-              icon: const Icon(Icons.qr_code_scanner),
+              icon: const UxIcon(UxIcons.qrCodeScanner),
               label: Text(l10n.actionPairDevice),
             ),
           ],
@@ -979,7 +976,7 @@ class _OverviewHeadline extends ConsumerWidget {
             children: [
               NeBadge(
                 label: l10n.profileActiveSessions(online),
-                icon: Icons.podcasts_rounded,
+                icon: UxIcons.podcasts,
                 tone: online > 0 ? NeBadgeTone.live : NeBadgeTone.neutral,
               ),
               if (since != null)

@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
@@ -11,10 +10,12 @@ import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
 import 'package:uxnan/presentation/screens/profile/profile_backup_actions.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Aggregate activity across every paired PC: identity header, headline stats,
 /// a GitHub-style contribution heatmap and a per-agent breakdown — all derived
@@ -138,7 +139,7 @@ class _StatsHeader extends ConsumerWidget {
           )
         else
           IconButton.filledTonal(
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const UxIcon(UxIcons.refresh),
             tooltip: l10n.profileStatsRefreshAction,
             // Nothing to fetch without a live PC; the cached stats stay shown.
             onPressed: connected
@@ -173,7 +174,7 @@ class _ProfileMenu extends ConsumerWidget {
 
     return IconSurfaceMenu<_ProfileAction>(
       tooltip: l10n.profileMenuTooltip,
-      icon: Icons.more_vert_rounded,
+      icon: UxIcons.moreVert,
       onSelected: (action) {
         if (action == _ProfileAction.edit) {
           EditProfileSheet.show(context);

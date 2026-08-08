@@ -11,6 +11,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
@@ -20,6 +21,7 @@ import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Wire ids of agents hidden from the new-conversation picker even when the
 /// connected bridge advertises them via `agent/list`. The bridge is the sole
@@ -213,7 +215,7 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
       // M3 full-screen dialog: keep variable-length headlines in the content
       // area and reserve the top bar for dismissal + the affirmative action.
       leading: IconSurface(
-        icon: Icons.close_rounded,
+        icon: UxIcons.close,
         tooltip: l10n.actionCancel,
         onPressed: () => Navigator.of(context).maybePop(),
       ),
@@ -368,8 +370,8 @@ class _WorkingDirCard extends StatelessWidget {
               color: colors.secondaryContainer,
               borderRadius: const BorderRadius.all(UxnanRadius.md),
             ),
-            child: Icon(
-              Icons.folder_outlined,
+            child: UxIcon(
+              UxIcons.folder,
               color: colors.onSecondaryContainer,
             ),
           ),
@@ -396,8 +398,8 @@ class _WorkingDirCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: UxnanSpacing.sm),
-          Icon(
-            Icons.chevron_right_rounded,
+          UxIcon(
+            UxIcons.chevronRight,
             color: colors.onSurfaceVariant,
           ),
         ],
@@ -444,8 +446,8 @@ class _WorktreeCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.account_tree_outlined,
+              UxIcon(
+                UxIcons.accountTree,
                 size: 20,
                 color: colors.onSurfaceVariant,
               ),
@@ -593,8 +595,8 @@ class _AgentCard extends ConsumerWidget {
                       ),
                     )
                   else if (selected)
-                    Icon(
-                      Icons.check_circle_rounded,
+                    UxIcon(
+                      UxIcons.checkCircle,
                       color: foreground,
                     ),
                 ],
@@ -644,19 +646,18 @@ class _AgentCard extends ConsumerWidget {
 }
 
 /// The agent's capabilities as (icon, label) pairs, in a stable order.
-List<(IconData, String)> _agentCapabilities(
+List<(UxIconData, String)> _agentCapabilities(
   AgentDescriptor agent,
   AppLocalizations l10n,
 ) {
   final c = agent.capabilities;
   return [
-    if (c.streaming) (Icons.bolt_outlined, l10n.newThreadCapStreaming),
-    if (c.planMode) (Icons.checklist_rtl_outlined, l10n.newThreadCapPlan),
-    if (c.approvals) (Icons.verified_user_outlined, l10n.newThreadCapApprovals),
-    if (c.autonomous)
-      (Icons.auto_awesome_outlined, l10n.newThreadCapAutonomous),
-    if (c.forking) (Icons.call_split_rounded, l10n.newThreadCapForking),
-    if (c.images) (Icons.image_outlined, l10n.newThreadCapImages),
+    if (c.streaming) (UxIcons.bolt, l10n.newThreadCapStreaming),
+    if (c.planMode) (UxIcons.checklistRtl, l10n.newThreadCapPlan),
+    if (c.approvals) (UxIcons.verifiedUser, l10n.newThreadCapApprovals),
+    if (c.autonomous) (UxIcons.autoAwesome, l10n.newThreadCapAutonomous),
+    if (c.forking) (UxIcons.callSplit, l10n.newThreadCapForking),
+    if (c.images) (UxIcons.image, l10n.newThreadCapImages),
   ];
 }
 
@@ -681,7 +682,7 @@ class _CheckSignInButton extends StatelessWidget {
       ),
       icon: checking
           ? PolygonLoader(size: 14, color: colors.error)
-          : const Icon(Icons.login_rounded, size: 16),
+          : const UxIcon(UxIcons.login, size: 16),
       label: Text(l10n.agentCheckSignIn),
     );
   }
@@ -695,7 +696,7 @@ class _CapabilityChip extends StatelessWidget {
     required this.foreground,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String label;
   final Color background;
   final Color foreground;
@@ -715,7 +716,7 @@ class _CapabilityChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: foreground),
+          UxIcon(icon, size: 16, color: foreground),
           const SizedBox(width: UxnanSpacing.xs),
           Text(
             label,
@@ -744,8 +745,8 @@ class _AgentLeading extends StatelessWidget {
         color: colors.surfaceContainerHigh,
         borderRadius: const BorderRadius.all(UxnanRadius.md),
       ),
-      child: Icon(
-        Icons.smart_toy_outlined,
+      child: UxIcon(
+        UxIcons.smartToy,
         size: 20,
         color: AgentVisuals.colorFor(agent),
       ),
@@ -810,8 +811,8 @@ class _ModelField extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.auto_awesome_outlined,
+              UxIcon(
+                UxIcons.autoAwesome,
                 size: 18,
                 color: colors.onSurfaceVariant,
               ),
@@ -829,8 +830,8 @@ class _ModelField extends StatelessWidget {
               if (loading)
                 const PolygonLoader(size: 16)
               else if (enabled && agentId != null)
-                Icon(
-                  Icons.unfold_more_rounded,
+                UxIcon(
+                  UxIcons.unfoldMore,
                   size: 20,
                   color: colors.onSurfaceVariant,
                 ),

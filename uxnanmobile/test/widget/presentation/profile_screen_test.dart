@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +11,8 @@ import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 /// A metrics controller that skips the real `metrics/get` fetch (which would
 /// leave a pending request-timeout timer) and yields no cached snapshots.
@@ -155,7 +156,7 @@ void main() {
 
       // Backup lives in the app-bar overflow menu now (it is an action taken
       // once in a while, not information worth permanent screen space).
-      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.tap(findUxIcon(UxIcons.moreVert));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Export'));
       await tester.pumpAndSettle();
@@ -217,7 +218,10 @@ void main() {
       expect(controller.builds, greaterThanOrEqualTo(1));
       final afterOpen = controller.builds;
 
-      final refresh = find.widgetWithIcon(IconButton, Icons.refresh_rounded);
+      final refresh = find.ancestor(
+        of: findUxIcon(UxIcons.refresh),
+        matching: find.byType(IconButton),
+      );
       await tester.ensureVisible(refresh.first);
       await tester.tap(refresh.first);
       await tester.pumpAndSettle();
@@ -258,7 +262,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_vert_rounded));
+      await tester.tap(findUxIcon(UxIcons.moreVert));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Export'));
       await tester.pumpAndSettle();

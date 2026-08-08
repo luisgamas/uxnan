@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 
@@ -188,7 +189,7 @@ class NeScaffold extends StatelessWidget {
     final lead = leading ??
         (automaticBackButton && canPop
             ? IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               )

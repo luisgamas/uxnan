@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,10 +15,12 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The threads of a connected PC (spec 02a §5.4.2). Lists the active bridge's
 /// threads with per-agent filter chips, and opens a thread's conversation.
@@ -195,7 +196,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         // New conversations only make sense against the live PC.
         onPressed: connectedHere ? _newConversation : null,
-        icon: const Icon(Icons.add_comment_outlined),
+        icon: const UxIcon(UxIcons.addComment),
         label: Text(l10n.newThreadAction),
         backgroundColor: connectedHere
             ? null
@@ -405,7 +406,7 @@ class _ScopeSelector extends StatelessWidget {
           checked: scope == _ThreadScope.agent,
           child: Row(
             children: [
-              const Icon(Icons.person_outline, size: 18),
+              const UxIcon(UxIcons.person, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadsFilterByAgent),
             ],
@@ -416,7 +417,7 @@ class _ScopeSelector extends StatelessWidget {
           checked: scope == _ThreadScope.project,
           child: Row(
             children: [
-              const Icon(Icons.folder_outlined, size: 18),
+              const UxIcon(UxIcons.folder, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadsFilterByProject),
             ],
@@ -433,7 +434,7 @@ class _ScopeSelector extends StatelessWidget {
     final isAgent = scope == _ThreadScope.agent;
     final label =
         isAgent ? l10n.threadsFilterByAgent : l10n.threadsFilterByProject;
-    final icon = isAgent ? Icons.person_outline : Icons.folder_outlined;
+    final icon = isAgent ? UxIcons.person : UxIcons.folder;
     return Padding(
       padding: const EdgeInsets.only(right: UxnanSpacing.sm),
       child: ActionChip(
@@ -442,11 +443,11 @@ class _ScopeSelector extends StatelessWidget {
         label: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16),
+            UxIcon(icon, size: 16),
             const SizedBox(width: UxnanSpacing.xs),
             Text(label),
             const SizedBox(width: UxnanSpacing.xs),
-            const Icon(Icons.arrow_drop_down_rounded, size: 18),
+            const UxIcon(UxIcons.arrowDropDown, size: 18),
           ],
         ),
       ),
@@ -531,7 +532,7 @@ class _ProjectFilterBar {
             label: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.folder_outlined, size: 16),
+                const UxIcon(UxIcons.folder, size: 16),
                 const SizedBox(width: UxnanSpacing.xs),
                 Text(project.label),
               ],
@@ -570,8 +571,8 @@ class _OfflineBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.cloud_off_outlined,
+          UxIcon(
+            UxIcons.cloudOff,
             size: 18,
             color: colors.onSurfaceVariant,
           ),
@@ -634,8 +635,8 @@ class _UpdateBanner extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.system_update_outlined,
+              UxIcon(
+                UxIcons.systemUpdate,
                 size: 18,
                 color: colors.onPrimaryContainer,
               ),
@@ -777,8 +778,8 @@ class _BridgeUpdateBanner extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.dns_outlined,
+                UxIcon(
+                  UxIcons.dns,
                   size: 18,
                   color: colors.onTertiaryContainer,
                 ),
@@ -796,7 +797,7 @@ class _BridgeUpdateBanner extends ConsumerWidget {
                   onPressed: () => ref
                       .read(bridgeUpdateDismissalProvider.notifier)
                       .dismiss(latest),
-                  icon: const Icon(Icons.close_rounded, size: 18),
+                  icon: const UxIcon(UxIcons.close, size: 18),
                   color: colors.onTertiaryContainer,
                   tooltip: l10n.bridgeUpdateDismiss,
                   visualDensity: VisualDensity.compact,
@@ -833,8 +834,8 @@ class _EmptyThreads extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.forum_outlined,
+            UxIcon(
+              UxIcons.forum,
               size: 48,
               color: colors.onSurfaceVariant,
               semanticLabel: 'Threads',

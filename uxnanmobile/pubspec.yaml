@@ -42,6 +42,7 @@ dependencies:
   flutter_svg: ^2.0.10 # SVG rendering (agent logos)
   go_router: ^14.0.0 # declarative navigation
   highlight: ^0.7.0 # parser used to build selectable highlighted source spans
+  hugeicons: ^1.1.7
   image_picker: ^1.1.2 # composer attach: pick image from gallery/camera
   in_app_update_flutter: ^3.0.0 # in-app update: Play flexible (Android) + StoreKit (iOS)
   intl: any # i18n + date formatting (pinned by flutter_localizations)

@@ -4,8 +4,10 @@ import 'package:uxnan/domain/value_objects/profile_avatar.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A bottom sheet to customize the profile: a display name and an avatar
 /// (a picked image or one of the preset icons). Changes are applied on Save.
@@ -84,7 +86,7 @@ class _EditProfileSheetState extends ConsumerState<EditProfileSheet> {
               Center(
                 child: FilledButton.tonalIcon(
                   onPressed: _picking ? null : _pickImage,
-                  icon: const Icon(Icons.image_outlined, size: 18),
+                  icon: const UxIcon(UxIcons.image, size: 18),
                   label: Text(l10n.profileChoosePhoto),
                 ),
               ),
@@ -152,7 +154,7 @@ class _IconOption extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final bool selected;
   final VoidCallback onTap;
 
@@ -174,7 +176,7 @@ class _IconOption extends StatelessWidget {
             width: selected ? 2 : 1,
           ),
         ),
-        child: Icon(
+        child: UxIcon(
           icon,
           size: 22,
           color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,

@@ -11,16 +11,18 @@ import 'package:uxnan/presentation/screens/settings/sections/metrics_usage_secti
 import 'package:uxnan/presentation/screens/settings/sections/notifications_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/source_control_section_screen.dart';
 import 'package:uxnan/presentation/screens/settings/sections/updates_section_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A single settings section reachable from the landing list.
 typedef _Section = ({
-  IconData icon,
+  UxIconData icon,
   String title,
   String subtitle,
   void Function(BuildContext context) open,
@@ -40,19 +42,19 @@ class SettingsScreen extends ConsumerWidget {
 
     final general = <_Section>[
       (
-        icon: Icons.palette_outlined,
+        icon: UxIcons.palette,
         title: l10n.settingsPersonalizationTitle,
         subtitle: l10n.settingsPersonalizationSubtitle,
         open: PersonalizationScreen.push,
       ),
       (
-        icon: Icons.notifications_outlined,
+        icon: UxIcons.notifications,
         title: l10n.settingsNotificationsSection,
         subtitle: l10n.settingsNotificationsNavSubtitle,
         open: NotificationsSectionScreen.push,
       ),
       (
-        icon: Icons.data_usage_rounded,
+        icon: UxIcons.dataUsage,
         title: l10n.settingsUsageSection,
         subtitle: l10n.settingsUsageNavSubtitle,
         open: MetricsUsageSettingsScreen.push,
@@ -61,13 +63,13 @@ class SettingsScreen extends ConsumerWidget {
 
     final workspace = <_Section>[
       (
-        icon: Icons.forum_outlined,
+        icon: UxIcons.forum,
         title: l10n.settingsConversationSection,
         subtitle: l10n.settingsConversationNavSubtitle,
         open: ConversationSectionScreen.push,
       ),
       (
-        icon: Icons.commit_rounded,
+        icon: UxIcons.commit,
         title: l10n.settingsGitSection,
         subtitle: l10n.settingsGitNavSubtitle,
         open: SourceControlSectionScreen.push,
@@ -76,13 +78,13 @@ class SettingsScreen extends ConsumerWidget {
 
     final system = <_Section>[
       (
-        icon: Icons.system_update_outlined,
+        icon: UxIcons.systemUpdate,
         title: l10n.settingsUpdatesSection,
         subtitle: l10n.settingsUpdatesNavSubtitle,
         open: UpdatesSectionScreen.push,
       ),
       (
-        icon: Icons.info_outline_rounded,
+        icon: UxIcons.info,
         title: l10n.settingsAboutTitle,
         subtitle: l10n.settingsAboutSubtitle,
         open: AboutSectionScreen.push,
@@ -158,7 +160,7 @@ class _ProfileHeaderCard extends ConsumerWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+            UxIcon(UxIcons.chevronRight, color: colors.onSurfaceVariant),
           ],
         ),
       ),

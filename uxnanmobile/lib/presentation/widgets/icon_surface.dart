@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Neural Expressive **Icon Surface**: a circular [UxnanSize.iconSurface]
 /// action on a neutral `surfaceContainerHigh` surface with a 48 dp touch
@@ -20,7 +22,7 @@ class IconSurface extends StatefulWidget {
   });
 
   /// The glyph, drawn at [UxnanSize.iconSurfaceGlyph].
-  final IconData icon;
+  final UxIconData icon;
 
   /// Tooltip + accessibility semantic label (required for icon-only buttons).
   final String tooltip;
@@ -88,7 +90,7 @@ class _IconSurfaceState extends State<IconSurface>
                   child: SizedBox(
                     width: UxnanSize.iconSurface,
                     height: UxnanSize.iconSurface,
-                    child: Icon(
+                    child: UxIcon(
                       widget.icon,
                       size: UxnanSize.iconSurfaceGlyph,
                       semanticLabel: widget.tooltip,
@@ -126,7 +128,7 @@ class IconSurfaceMenu<T> extends StatelessWidget {
   });
 
   /// The glyph shown on the surface.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Tooltip + accessibility label.
   final String tooltip;

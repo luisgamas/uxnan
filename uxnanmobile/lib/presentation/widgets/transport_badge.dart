@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A small pill that labels the network path a live connection is using —
 /// LAN, Tailscale, a direct address, or the relay — following the same
@@ -41,7 +43,7 @@ class TransportBadge extends StatelessWidget {
         dense: dense,
         background: background,
         foreground: foreground,
-        leading: Icon(icon, size: dense ? 11 : 13, color: foreground),
+        leading: UxIcon(icon, size: dense ? 11 : 13, color: foreground),
         label: label,
       );
     }
@@ -57,16 +59,8 @@ class TransportBadge extends StatelessWidget {
     );
   }
 
-  (IconData, String) _labelFor(NetworkKind kind, AppLocalizations l10n) {
-    final icon = switch (kind) {
-      NetworkKind.lan => Icons.router_rounded,
-      NetworkKind.tailscale => Icons.shield_rounded,
-      NetworkKind.direct => Icons.link_rounded,
-      NetworkKind.relay => Icons.cloud_outlined,
-      NetworkKind.unknown => Icons.help_outline_rounded,
-    };
-    return (icon, networkKindLabel(kind, l10n));
-  }
+  (UxIconData, String) _labelFor(NetworkKind kind, AppLocalizations l10n) =>
+      (networkKindIcon(kind), networkKindLabel(kind, l10n));
 
   (Color, Color) _colorsFor(NetworkKind kind, ColorScheme colors) {
     return switch (kind) {
@@ -152,3 +146,15 @@ String networkKindLabel(NetworkKind kind, AppLocalizations l10n) {
     NetworkKind.unknown => '',
   };
 }
+
+/// The glyph for a network path, shared by the badge and any surface that shows
+/// the path on its own (the device card's connection badge). A LAN, a Tailscale
+/// tunnel and the relay are different journeys, and one generic aerial for all
+/// three told the reader nothing they did not already know.
+UxIconData networkKindIcon(NetworkKind kind) => switch (kind) {
+      NetworkKind.lan => UxIcons.router,
+      NetworkKind.tailscale => UxIcons.shield,
+      NetworkKind.direct => UxIcons.link,
+      NetworkKind.relay => UxIcons.cloud,
+      NetworkKind.unknown => UxIcons.help,
+    };

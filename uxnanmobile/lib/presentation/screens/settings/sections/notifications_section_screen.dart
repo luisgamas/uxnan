@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -51,7 +52,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
-                      icon: Icons.check_circle_outline_rounded,
+                      icon: UxIcons.checkCircle,
                       title: l10n.settingsTurnCompletedTitle,
                       subtitle: l10n.settingsTurnCompletedSubtitle,
                       value: prefs.turnCompleted,
@@ -60,7 +61,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
                     ),
                   _ => NeSwitchTile(
                       position: pos,
-                      icon: Icons.error_outline_rounded,
+                      icon: UxIcons.error,
                       title: l10n.settingsTurnErrorTitle,
                       subtitle: l10n.settingsTurnErrorSubtitle,
                       value: prefs.turnError,

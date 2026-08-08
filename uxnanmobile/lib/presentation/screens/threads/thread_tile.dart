@@ -12,11 +12,13 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A per-thread action chosen from the long-press menu.
 enum _ThreadAction { rename, copyId, archive, unarchive, delete }
@@ -373,29 +375,29 @@ Future<void> showThreadActions(
             ),
             const Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.edit_outlined),
+              leading: const UxIcon(UxIcons.edit),
               title: Text(l10n.threadActionRename),
               onTap: () => Navigator.pop(context, _ThreadAction.rename),
             ),
             ListTile(
-              leading: const Icon(Icons.content_copy_outlined),
+              leading: const UxIcon(UxIcons.contentCopy),
               title: Text(l10n.threadActionCopyId),
               onTap: () => Navigator.pop(context, _ThreadAction.copyId),
             ),
             if (isArchived)
               ListTile(
-                leading: const Icon(Icons.unarchive_outlined),
+                leading: const UxIcon(UxIcons.unarchive),
                 title: Text(l10n.threadActionUnarchive),
                 onTap: () => Navigator.pop(context, _ThreadAction.unarchive),
               )
             else
               ListTile(
-                leading: const Icon(Icons.archive_outlined),
+                leading: const UxIcon(UxIcons.archive),
                 title: Text(l10n.threadActionArchive),
                 onTap: () => Navigator.pop(context, _ThreadAction.archive),
               ),
             ListTile(
-              leading: Icon(Icons.delete_outline, color: colors.error),
+              leading: UxIcon(UxIcons.delete, color: colors.error),
               title: Text(
                 l10n.threadActionDelete,
                 style: TextStyle(color: colors.error),
@@ -515,8 +517,8 @@ class _AgentAvatar extends StatelessWidget {
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         border: Border.all(color: colors.outline),
       ),
-      child: Icon(
-        Icons.smart_toy_outlined,
+      child: UxIcon(
+        UxIcons.smartToy,
         size: size * 0.5,
         color: AgentVisuals.colorFor(agent),
       ),

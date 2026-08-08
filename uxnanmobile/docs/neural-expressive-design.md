@@ -386,6 +386,23 @@ Center:  empty (no title on the main screen) or active conversation title
 Right:   [Temporary Chats Icon]  [Avatar/Profile 40 dp]
 ```
 
+#### The icon set
+
+Glyphs come from the free **stroke-rounded [Hugeicons](https://hugeicons.com)**
+(MIT) — the same set `uxnandesktop` and the website draw, so a concept looks the
+same wherever you meet it. They stroke at **1.5** where Material stroked at 2:
+deliberately lighter at the 13–24 dp sizes this UI uses.
+
+Every glyph is named in the `UxIcons` catalogue and drawn through the `UxIcon`
+primitive; nothing else touches the package. Two consequences worth knowing:
+
+- **A size means what it always meant.** Hugeicons paints its artwork edge to
+  edge, so the same nominal size inks ~15% larger than the Material glyph it
+  replaced. `UxIcon` corrects that and keeps the widget's own footprint at the
+  full size, so the sizes throughout this guide still hold.
+- **There are no filled variants.** A distinction that relied on outline-vs-fill
+  (Material's check-circle) cannot be drawn; use tone or a different glyph.
+
 #### Icon Surfaces in a Transparent AppBar
 
 When the AppBar is transparent, **all action buttons must have a solid surface**.

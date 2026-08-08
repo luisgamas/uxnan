@@ -3,9 +3,11 @@ import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The name/icon color for a file or folder by its [GitFileStatus].
 ///
@@ -35,87 +37,87 @@ Color gitStatusColor(GitFileStatus? status, ColorScheme colors) {
 /// Returns the icon for a directory or file extension (best-effort). The file
 /// type is communicated by the glyph; the git state is communicated by the
 /// glyph + name colour (see [gitStatusColor]).
-({IconData icon}) fileTypeVisuals({
+({UxIconData icon}) fileTypeVisuals({
   required String name,
   required FileEntryType type,
 }) {
   if (type == FileEntryType.dir) {
-    return (icon: Icons.folder_outlined);
+    return (icon: UxIcons.folder);
   }
   final lower = name.toLowerCase();
 
   // 1. Well-known filenames (checked before extensions). `readme`/`license`
   //    keep their distinctive glyphs; the rest get a sensible category icon.
   if (lower == 'readme' || lower.startsWith('readme.')) {
-    return (icon: Icons.menu_book_outlined);
+    return (icon: UxIcons.menuBook);
   }
   if (lower == 'license' ||
       lower == 'licence' ||
       lower.startsWith('license.') ||
       lower.startsWith('licence.') ||
       lower == 'copying') {
-    return (icon: Icons.gavel_outlined);
+    return (icon: UxIcons.gavel);
   }
   if (lower == 'dockerfile' || lower.startsWith('dockerfile.')) {
-    return (icon: Icons.inventory_2_outlined);
+    return (icon: UxIcons.inventory2);
   }
   if (lower == 'makefile' ||
       lower == 'gnumakefile' ||
       lower == 'cmakelists.txt') {
-    return (icon: Icons.build_outlined);
+    return (icon: UxIcons.build);
   }
   if (lower == '.gitignore' ||
       lower == '.gitattributes' ||
       lower == '.dockerignore' ||
       lower == '.editorconfig' ||
       lower == '.npmignore') {
-    return (icon: Icons.settings_outlined);
+    return (icon: UxIcons.settings);
   }
   if (lower == '.env' || lower.startsWith('.env.')) {
-    return (icon: Icons.key_outlined);
+    return (icon: UxIcons.key);
   }
 
   // 2. Extension families.
   if (_hasExt(lower, _markdownExts)) {
-    return (icon: Icons.description_outlined);
+    return (icon: UxIcons.description);
   }
   if (_hasExt(lower, _imageExts)) {
-    return (icon: Icons.image_outlined);
+    return (icon: UxIcons.image);
   }
   if (lower.endsWith('.pdf')) {
-    return (icon: Icons.picture_as_pdf_outlined);
+    return (icon: UxIcons.pictureAsPdf);
   }
   if (_hasExt(lower, _archiveExts)) {
-    return (icon: Icons.folder_zip_outlined);
+    return (icon: UxIcons.folderZip);
   }
   if (_hasExt(lower, _dataExts)) {
-    return (icon: Icons.data_object_rounded);
+    return (icon: UxIcons.dataObject);
   }
   if (_hasExt(lower, _sheetExts)) {
-    return (icon: Icons.table_chart_outlined);
+    return (icon: UxIcons.tableChart);
   }
   if (_hasExt(lower, _shellExts)) {
-    return (icon: Icons.terminal_rounded);
+    return (icon: UxIcons.terminal);
   }
   if (_hasExt(lower, _fontExts)) {
-    return (icon: Icons.font_download_outlined);
+    return (icon: UxIcons.fontDownload);
   }
   if (_hasExt(lower, _audioExts)) {
-    return (icon: Icons.audiotrack_outlined);
+    return (icon: UxIcons.audiotrack);
   }
   if (_hasExt(lower, _videoExts)) {
-    return (icon: Icons.movie_outlined);
+    return (icon: UxIcons.movie);
   }
   if (lower.endsWith('.lock')) {
-    return (icon: Icons.lock_outline);
+    return (icon: UxIcons.lock);
   }
   if (_hasExt(lower, _codeExts)) {
-    return (icon: Icons.code_rounded);
+    return (icon: UxIcons.code);
   }
   if (lower.endsWith('.txt') || lower.endsWith('.log')) {
-    return (icon: Icons.notes_rounded);
+    return (icon: UxIcons.notes);
   }
-  return (icon: Icons.insert_drive_file_outlined);
+  return (icon: UxIcons.insertDriveFile);
 }
 
 /// True when [lower] (already lower-cased) ends with any extension in [exts].
@@ -260,7 +262,7 @@ class FileTreeTile extends StatelessWidget {
               SizedBox(width: indent),
               // The leading glyph communicates the file *type*; its colour
               // communicates the git state.
-              Icon(
+              UxIcon(
                 typeVisuals.icon,
                 size: 20,
                 color: iconColor,
@@ -300,10 +302,8 @@ class FileTreeTile extends StatelessWidget {
                 ),
               ),
               if (isDir)
-                Icon(
-                  node.expanded
-                      ? Icons.expand_more_rounded
-                      : Icons.chevron_right_rounded,
+                UxIcon(
+                  node.expanded ? UxIcons.expandMore : UxIcons.chevronRight,
                   size: 20,
                   color: colors.onSurfaceVariant,
                 )

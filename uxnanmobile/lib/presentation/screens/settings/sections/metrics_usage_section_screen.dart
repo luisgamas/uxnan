@@ -4,6 +4,7 @@ import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -70,7 +71,7 @@ class _ClockToggle extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final value = ref.watch(usageClock24hProvider);
     return NeSwitchTile(
-      icon: Icons.schedule_rounded,
+      icon: UxIcons.schedule,
       title: l10n.usageClock24hTitle,
       subtitle: l10n.usageClock24hSubtitle,
       value: value,

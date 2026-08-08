@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A horizontally scrolling strip of inline-base64 image thumbnails.
 ///
@@ -128,15 +129,15 @@ class _ThumbState extends State<_Thumb> {
         color: colors.surfaceContainerHighest,
         alignment: Alignment.center,
         child: bytes == null
-            ? Icon(Icons.image_outlined, color: colors.onSurfaceVariant)
+            ? UxIcon(UxIcons.image, color: colors.onSurfaceVariant)
             : Image.memory(
                 bytes,
                 width: widget.size,
                 height: widget.size,
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
-                errorBuilder: (context, _, __) => Icon(
-                  Icons.broken_image_outlined,
+                errorBuilder: (context, _, __) => UxIcon(
+                  UxIcons.brokenImage,
                   color: colors.onSurfaceVariant,
                 ),
               ),
@@ -179,8 +180,8 @@ class _ThumbState extends State<_Thumb> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.close_rounded,
+                  child: UxIcon(
+                    UxIcons.close,
                     size: 16,
                     color: colors.onSurface,
                   ),

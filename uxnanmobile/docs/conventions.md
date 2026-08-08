@@ -42,6 +42,19 @@ spec, the spec wins.
   `live` for the one solid `tertiary` fill, reserved for what is true right now). Cards use
   `surfaceContainer`, **never** `surfaceContainerHighest` — that tone is reserved
   for input fills / active chips (NE §2.4).
+- **Icons come from the catalogue, never from the package.** `UxIcons`
+  (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and
+  `UxIcon` (`presentation/widgets/ux_icon.dart`) is the only widget that talks
+  to `hugeicons`. Never write `HugeIcons.strokeRounded…` in a screen and never
+  use Flutter's `Icon`: choosing a glyph is a design decision, and the
+  catalogue is where those are reviewed and changed once instead of per call
+  site. A glyph that is missing gets **added to the catalogue first** — and its
+  name verified against the package, because the Hugeicons *website* also lists
+  Pro icons that the Flutter package does not ship.
+  `UxIcon` restores the two things `HugeIcon` lacks: a `semanticLabel`, and
+  sizing inherited from the ambient `IconTheme`. Colour needs no help.
+  In tests, `find.byIcon` cannot see these at all (it takes an `IconData`) —
+  use `findUxIcon(UxIcons.x)` from `test/support/ux_icon_finder.dart`.
 - **Two menu triggers, one menu.** `IconSurfaceMenu` for **chrome** (an app-bar
   action over transparent chrome — it wears the filled circle so the glyph is
   legible over scrolling content) and `NeMenuButton` for **in-content** triggers

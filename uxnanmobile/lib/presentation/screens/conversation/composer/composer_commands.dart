@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 
 /// What a `/` palette entry does when picked.
 enum ComposerCommandKind {
@@ -35,7 +35,7 @@ class ComposerCommand {
   final String id;
 
   /// Leading glyph in the palette row.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Display name.
   final String label;
@@ -59,7 +59,7 @@ List<ComposerCommand> composerCommands(
     [
       ComposerCommand(
         id: 'files',
-        icon: Icons.alternate_email_rounded,
+        icon: UxIcons.alternateEmail,
         label: l10n.composerCmdFilesLabel,
         description: l10n.composerCmdFilesDesc,
         kind: ComposerCommandKind.startFileMention,
@@ -67,7 +67,7 @@ List<ComposerCommand> composerCommands(
       for (final t in templates)
         ComposerCommand(
           id: t.id,
-          icon: Icons.notes_rounded,
+          icon: UxIcons.notes,
           label: t.label,
           description: t.body,
           kind: ComposerCommandKind.insertTemplate,
@@ -109,7 +109,7 @@ List<ComposerCommand> agentComposerCommands(List<AgentCommand> commands) => [
         if (c.headlessSupported)
           ComposerCommand(
             id: c.name,
-            icon: Icons.terminal_rounded,
+            icon: UxIcons.terminal,
             label: '/${c.name}',
             description: c.description ??
                 (c.argumentHint != null ? 'args: ${c.argumentHint}' : ''),

@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,12 +9,14 @@ import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_tree_tile.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen workspace file browser for the active thread's `cwd`.
 ///
@@ -232,7 +233,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
@@ -250,7 +251,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 // expanded, so the bar stays clean on a fresh (flat) listing.
                 if (anyExpanded)
                   IconSurface(
-                    icon: Icons.unfold_less_rounded,
+                    icon: UxIcons.unfoldLess,
                     tooltip: l10n.fileBrowserCollapseAll,
                     onPressed: () => ref
                         .read(fileBrowserManagerProvider)
@@ -264,7 +265,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 // now pull-to-refresh only — matches the threads list.
                 IconSurfaceMenu<void>(
                   tooltip: l10n.threadsMore,
-                  icon: Icons.more_vert_rounded,
+                  icon: UxIcons.moreVert,
                   constraints: const BoxConstraints(minWidth: 240),
                   itemBuilder: (_) => [
                     CheckedPopupMenuItem<void>(
@@ -274,7 +275,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           .set(value: !showExtension),
                       child: Row(
                         children: [
-                          const Icon(Icons.text_fields_rounded, size: 18),
+                          const UxIcon(UxIcons.textFields, size: 18),
                           const SizedBox(width: UxnanSpacing.sm),
                           Text(l10n.fileBrowserShowExtensions),
                         ],
@@ -287,7 +288,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           .set(value: !showHidden),
                       child: Row(
                         children: [
-                          const Icon(Icons.visibility_outlined, size: 18),
+                          const UxIcon(UxIcons.visibility, size: 18),
                           const SizedBox(width: UxnanSpacing.sm),
                           Text(l10n.fileBrowserShowHidden),
                         ],
@@ -300,7 +301,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           .set(value: !showDetails),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline_rounded, size: 18),
+                          const UxIcon(UxIcons.info, size: 18),
                           const SizedBox(width: UxnanSpacing.sm),
                           Text(l10n.fileBrowserShowDetails),
                         ],
@@ -313,7 +314,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           .set(value: !compact),
                       child: Row(
                         children: [
-                          const Icon(Icons.density_small_rounded, size: 18),
+                          const UxIcon(UxIcons.densitySmall, size: 18),
                           const SizedBox(width: UxnanSpacing.sm),
                           Text(l10n.fileBrowserCompactRows),
                         ],
@@ -485,8 +486,20 @@ class _FileSearchAnchor extends ConsumerWidget {
     return SearchAnchor(
       isFullScreen: true,
       viewHintText: l10n.fileBrowserSearchHint,
+      // The full-screen view draws its own back arrow from Flutter's Material
+      // set unless one is supplied (see `thread_list_controls.dart`).
+      viewLeading: IconButton(
+        icon: const UxIcon(UxIcons.arrowBack),
+        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      // Flutter also puts a Material ✕ in the view's trailing slot. Dropping it
+      // is deliberate rather than re-skinned: clearing needs the anchor's own
+      // SearchController, which would make three widgets stateful for one
+      // glyph, and the view is one tap from closing anyway.
+      viewTrailing: const [],
       builder: (context, controller) => IconSurface(
-        icon: Icons.search_rounded,
+        icon: UxIcons.search,
         tooltip: l10n.fileBrowserSearch,
         onPressed: controller.openView,
       ),
@@ -534,7 +547,7 @@ class _FileSearchResultTile extends StatelessWidget {
       type: match.type,
     );
     return ListTile(
-      leading: Icon(visuals.icon, color: colors.onSurfaceVariant),
+      leading: UxIcon(visuals.icon, color: colors.onSurfaceVariant),
       title: Text(
         _basename(match.path),
         maxLines: 1,
@@ -647,8 +660,8 @@ class _StatusBar extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.folder_outlined,
+                  UxIcon(
+                    UxIcons.folder,
                     size: 20,
                     color: colors.onSurfaceVariant,
                   ),
@@ -670,8 +683,8 @@ class _StatusBar extends ConsumerWidget {
                           const SizedBox(height: UxnanSpacing.xs),
                           Row(
                             children: [
-                              const Icon(
-                                Icons.account_tree_outlined,
+                              const UxIcon(
+                                UxIcons.accountTree,
                                 size: 14,
                                 color: UxnanColors.success,
                               ),
@@ -711,7 +724,7 @@ class _StatusBar extends ConsumerWidget {
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   IconSurface(
-                    icon: Icons.content_copy_outlined,
+                    icon: UxIcons.contentCopy,
                     tooltip: l10n.fileBrowserCopyPath,
                     background: colors.surfaceContainerHighest,
                     onPressed: () async {
@@ -749,8 +762,8 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.folder_off_outlined,
+          UxIcon(
+            UxIcons.folderOff,
             size: 40,
             color: colors.onSurfaceVariant,
           ),
@@ -784,7 +797,7 @@ class _ErrorBody extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 40, color: colors.error),
+          UxIcon(UxIcons.error, size: 40, color: colors.error),
           const SizedBox(height: UxnanSpacing.md),
           Text(
             l10n.fileBrowserLoadFailed,

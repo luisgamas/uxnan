@@ -6,10 +6,12 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/theme_export.dart';
 import 'package:uxnan/presentation/screens/settings/theme_sheets.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/color_picker.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen editor for a [CustomTheme]. Drives every public Material 3
 /// color role for both brightnesses, with import/export as JSON via the
@@ -240,19 +242,19 @@ class _CustomThemeEditorScreenState
         // you already have a theme open; importing JSON belongs to the
         // library manager, not the per-theme editor.
         IconSurface(
-          icon: Icons.check_rounded,
+          icon: UxIcons.check,
           tooltip: l10n.customThemeEditorSave,
           background: colors.secondaryContainer,
           foreground: colors.onSecondaryContainer,
           onPressed: _save,
         ),
         IconSurface(
-          icon: Icons.upload_file_outlined,
+          icon: UxIcons.uploadFile,
           tooltip: l10n.customThemeEditorExport,
           onPressed: _exportSheet,
         ),
         IconSurfaceMenu<_EditorMenuAction>(
-          icon: Icons.more_vert_rounded,
+          icon: UxIcons.moreVert,
           tooltip: l10n.customThemeEditorTitle,
           onSelected: (action) => switch (action) {
             _EditorMenuAction.resetBrightness => _resetBrightness(),
@@ -262,7 +264,7 @@ class _CustomThemeEditorScreenState
             PopupMenuItem(
               value: _EditorMenuAction.resetBrightness,
               child: ListTile(
-                leading: const Icon(Icons.refresh_rounded),
+                leading: const UxIcon(UxIcons.refresh),
                 title: Text(l10n.customThemeEditorResetBrightness),
                 contentPadding: EdgeInsets.zero,
               ),
@@ -270,7 +272,7 @@ class _CustomThemeEditorScreenState
             PopupMenuItem(
               value: _EditorMenuAction.deriveFromSeed,
               child: ListTile(
-                leading: const Icon(Icons.auto_awesome_outlined),
+                leading: const UxIcon(UxIcons.autoAwesome),
                 title: Text(l10n.customThemeEditorDeriveFromSeed),
                 contentPadding: EdgeInsets.zero,
               ),
@@ -391,12 +393,12 @@ class _BrightnessTabs extends StatelessWidget {
         segments: [
           ButtonSegment(
             value: Brightness.light,
-            icon: const Icon(Icons.light_mode_outlined),
+            icon: const UxIcon(UxIcons.lightMode),
             label: Text(lightLabel),
           ),
           ButtonSegment(
             value: Brightness.dark,
-            icon: const Icon(Icons.dark_mode_outlined),
+            icon: const UxIcon(UxIcons.darkMode),
             label: Text(darkLabel),
           ),
         ],
@@ -891,8 +893,8 @@ class _SingleSideNotice extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                isLight ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+              UxIcon(
+                isLight ? UxIcons.lightMode : UxIcons.darkMode,
                 size: 18,
                 color: colors.onSurfaceVariant,
               ),
@@ -910,7 +912,7 @@ class _SingleSideNotice extends StatelessWidget {
           const SizedBox(height: UxnanSpacing.md),
           FilledButton.tonalIcon(
             onPressed: onAddOtherSide,
-            icon: const Icon(Icons.add_rounded),
+            icon: const UxIcon(UxIcons.add),
             label: Text(addLabel),
           ),
         ],

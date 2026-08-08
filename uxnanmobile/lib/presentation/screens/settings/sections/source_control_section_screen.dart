@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -47,7 +48,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
-                      icon: Icons.arrow_upward_rounded,
+                      icon: UxIcons.arrowUpward,
                       title: l10n.settingsConfirmPushTitle,
                       subtitle: l10n.settingsConfirmPushSubtitle,
                       value: ref.watch(confirmBeforePushProvider),
@@ -57,7 +58,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
                     ),
                   _ => NeSwitchTile(
                       position: pos,
-                      icon: Icons.merge_rounded,
+                      icon: UxIcons.merge,
                       title: l10n.settingsConfirmPrTitle,
                       subtitle: l10n.settingsConfirmPrSubtitle,
                       value: ref.watch(confirmBeforePrProvider),

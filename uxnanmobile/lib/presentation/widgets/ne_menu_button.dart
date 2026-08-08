@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Minimum width every floating menu opens at.
 ///
@@ -24,7 +26,7 @@ class NeMenuButton<T> extends StatelessWidget {
   const NeMenuButton({
     required this.itemBuilder,
     required this.tooltip,
-    this.icon = Icons.more_vert_rounded,
+    this.icon = UxIcons.moreVert,
     this.onSelected,
     this.enabled = true,
     super.key,
@@ -37,7 +39,7 @@ class NeMenuButton<T> extends StatelessWidget {
   final String tooltip;
 
   /// The trigger glyph.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Called with the chosen value. Optional: entries may carry their own
   /// `onTap` instead (what the `void`-typed menus do).
@@ -51,7 +53,8 @@ class NeMenuButton<T> extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return PopupMenuButton<T>(
       tooltip: tooltip,
-      icon: Icon(icon, color: colors.onSurfaceVariant, semanticLabel: tooltip),
+      icon:
+          UxIcon(icon, color: colors.onSurfaceVariant, semanticLabel: tooltip),
       enabled: enabled,
       constraints: kNeMenuConstraints,
       position: PopupMenuPosition.under,

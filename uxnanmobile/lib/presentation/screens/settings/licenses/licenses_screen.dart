@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/licenses_provider.dart';
 import 'package:uxnan/presentation/screens/settings/licenses/license_detail_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
@@ -73,7 +74,7 @@ class LicensesScreen extends ConsumerWidget {
                     final entry = entries[i];
                     return NeNavTile(
                       position: pos,
-                      icon: Icons.inventory_2_outlined,
+                      icon: UxIcons.inventory2,
                       title: entry.packageName,
                       subtitle: l10n.licenseCountLabel(entry.licenseCount),
                       onTap: () => LicenseDetailScreen.push(context, entry),

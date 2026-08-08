@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -15,8 +14,10 @@ import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_viewer_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_preview_media.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/markdown_blocks.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/uxnan_theme.dart';
 import 'package:uxnan/presentation/widgets/highlighted_source.dart';
+import '../../support/ux_icon_finder.dart';
 
 /// A repository of common markdown strings used by the viewer's preview
 /// tests. The original regression was triggered by an empty-ish file
@@ -397,7 +398,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SelectableText), findsOneWidget);
-    expect(find.byIcon(Icons.content_copy_outlined), findsNothing);
+    expect(findUxIcon(UxIcons.contentCopy), findsNothing);
     await manager.dispose();
   });
 
@@ -516,7 +517,7 @@ void main() {
       find.byType(WorkspaceVectorImage),
     );
     expect(badge.height, 20);
-    expect(find.byIcon(Icons.broken_image_outlined), findsNothing);
+    expect(findUxIcon(UxIcons.brokenImage), findsNothing);
     await manager.dispose();
   });
 
@@ -549,7 +550,7 @@ void main() {
 
       // The shield's slot is 20dp tall, so the padded placeholder column used
       // to overflow it by 20 pixels; the compact glyph fits.
-      expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+      expect(findUxIcon(UxIcons.brokenImage), findsOneWidget);
       expect(
         capturedErrors,
         isEmpty,
@@ -632,8 +633,8 @@ void main() {}
     await tester.pump();
 
     // A checked box is visually distinct from an empty one.
-    expect(find.byIcon(Icons.check_box_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.check_box_outline_blank_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.checkBox), findsOneWidget);
+    expect(findUxIcon(UxIcons.checkBoxOutlineBlank), findsOneWidget);
     // The HTML table became a real table rather than a run of loose lines.
     expect(find.byType(Table), findsOneWidget);
     // The fence is highlighted and scrolls instead of being clipped.
@@ -680,7 +681,7 @@ void main() {}
       expect(find.byType(MarkdownAlertCard), findsOneWidget);
       expect(find.byType(MarkdownDetailsTile), findsOneWidget);
       expect(find.byType(Table), findsOneWidget);
-      expect(find.byIcon(Icons.check_box_rounded), findsOneWidget);
+      expect(findUxIcon(UxIcons.checkBox), findsOneWidget);
 
       expect(
         captured,
@@ -710,13 +711,13 @@ void main() {}
     await tester.pump();
 
     expect(find.byType(WorkspaceVectorImage), findsOneWidget);
-    expect(find.byIcon(Icons.code_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.code), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.code_rounded));
+    await tester.tap(findUxIcon(UxIcons.code));
     await tester.pump();
 
     expect(find.byType(SelectableText), findsOneWidget);
-    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+    expect(findUxIcon(UxIcons.edit), findsOneWidget);
     await manager.dispose();
   });
 }

@@ -4,11 +4,13 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/theme_manager_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// User-selectable theme mode (System / Light / Dark).
 ///
@@ -190,7 +192,7 @@ class _CustomThemeCard extends ConsumerWidget {
       itemBuilder: (context, i, pos) => switch (i) {
         0 => NeSwitchTile(
             position: pos,
-            icon: Icons.palette_outlined,
+            icon: UxIcons.palette,
             title: l10n.personalizationUseCustomThemeLabel,
             subtitle: l10n.personalizationUseCustomThemeSubtitle,
             value: useCustom,
@@ -198,7 +200,7 @@ class _CustomThemeCard extends ConsumerWidget {
           ),
         _ => NeNavTile(
             position: pos,
-            icon: Icons.collections_bookmark_outlined,
+            icon: UxIcons.collectionsBookmark,
             title: l10n.personalizationCustomThemesHeader,
             subtitle: activeTheme != null
                 ? activeTheme.name
@@ -289,8 +291,8 @@ class _LanguageSelector extends StatelessWidget {
               ? RadioListTile<String?>(
                   value: null,
                   title: Text(l10n.languageSystemDefault),
-                  secondary: Icon(
-                    Icons.smartphone_outlined,
+                  secondary: UxIcon(
+                    UxIcons.smartphone,
                     color: colors.onSurfaceVariant,
                   ),
                 )

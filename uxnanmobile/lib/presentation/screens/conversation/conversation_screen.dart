@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +40,7 @@ import 'package:uxnan/presentation/screens/conversation/session_environment.dart
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
@@ -52,6 +52,7 @@ import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
 import 'package:uxnan/presentation/widgets/ne_pill_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// How many images one turn may carry. Attachments travel inline (base64) on
 /// `turn/send`, so the queue is bounded rather than left to the picker.
@@ -980,7 +981,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                             onPressed: () => ref
                                 .read(threadManagerProvider)
                                 .loadMoreHistory(),
-                            icon: const Icon(Icons.history_rounded, size: 18),
+                            icon: const UxIcon(UxIcons.history, size: 18),
                             label: Text(l10n.conversationLoadEarlier),
                           ),
                         ),
@@ -1287,7 +1288,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
@@ -1298,12 +1299,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               ),
               actions: [
                 IconSurface(
-                  icon: Icons.folder_open_rounded,
+                  icon: UxIcons.folderOpen,
                   tooltip: l10n.fileBrowserOpenTooltip,
                   onPressed: connectedHere ? () => _openFileBrowser(cwd) : null,
                 ),
                 IconSurface(
-                  icon: Icons.commit_rounded,
+                  icon: UxIcons.commit,
                   tooltip: gitBranch != null
                       ? '${l10n.environmentGit} · $gitBranch'
                       : l10n.environmentCommitOrPush,
@@ -1355,8 +1356,8 @@ class _ModelPill extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.auto_awesome_outlined,
+                  UxIcon(
+                    UxIcons.autoAwesome,
                     size: 16,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1368,8 +1369,8 @@ class _ModelPill extends StatelessWidget {
                       style: textTheme.titleSmall,
                     ),
                   ),
-                  Icon(
-                    Icons.arrow_drop_down_rounded,
+                  UxIcon(
+                    UxIcons.arrowDropDown,
                     size: 18,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1455,8 +1456,8 @@ class _TokenChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.donut_large_outlined,
+              UxIcon(
+                UxIcons.donutLarge,
                 size: 13,
                 color: colors.onSurfaceVariant,
               ),
@@ -1644,8 +1645,8 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.forum_outlined,
+            UxIcon(
+              UxIcons.forum,
               size: 48,
               color: colors.onSurfaceVariant,
               semanticLabel: 'Conversation',
@@ -1686,14 +1687,14 @@ class _ConversationMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return IconSurfaceMenu<void>(
       tooltip: l10n.threadsMore,
-      icon: Icons.more_vert_rounded,
+      icon: UxIcons.moreVert,
       constraints: const BoxConstraints(minWidth: 220),
       itemBuilder: (context) => [
         PopupMenuItem<void>(
           onTap: onRename,
           child: Row(
             children: [
-              const Icon(Icons.edit_outlined, size: 18),
+              const UxIcon(UxIcons.edit, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionRename),
             ],
@@ -1703,7 +1704,7 @@ class _ConversationMenu extends StatelessWidget {
           onTap: onSessionInfo,
           child: Row(
             children: [
-              const Icon(Icons.badge_outlined, size: 18),
+              const UxIcon(UxIcons.badge, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionSessionInfo),
             ],
@@ -1713,7 +1714,7 @@ class _ConversationMenu extends StatelessWidget {
           onTap: onFork,
           child: Row(
             children: [
-              const Icon(Icons.call_split_rounded, size: 18),
+              const UxIcon(UxIcons.callSplit, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionFork),
             ],
@@ -1772,7 +1773,7 @@ class _ShortcutSlot extends StatelessWidget {
     final child = switch (slot) {
       _ComposerShortcut.jumpToBottom => NeCircularButton(
           key: const ValueKey('shortcut-jump'),
-          icon: Icons.keyboard_arrow_down_rounded,
+          icon: UxIcons.keyboardArrowDown,
           tooltip: l10n.conversationScrollToBottom,
           onTap: onJumpToBottom,
         ),
@@ -1785,7 +1786,7 @@ class _ShortcutSlot extends StatelessWidget {
           children: [
             if (draftCount > 0)
               NePillButton(
-                icon: Icons.edit_note_rounded,
+                icon: UxIcons.editNote,
                 label: l10n.rescuedDraftsAction(draftCount),
                 selected: draftsOpen,
                 onTap: onToggleDrafts,
@@ -1794,7 +1795,7 @@ class _ShortcutSlot extends StatelessWidget {
               const SizedBox(width: UxnanSpacing.sm),
             if (canQueue)
               NePillButton(
-                icon: Icons.playlist_add_rounded,
+                icon: UxIcons.playlistAdd,
                 label: l10n.composerQueueMessage,
                 emphasized: true,
                 onTap: onQueueMessage,
@@ -1866,8 +1867,8 @@ class _QueuePausedBanner extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.pause_circle_outline_rounded,
+              UxIcon(
+                UxIcons.pauseCircle,
                 size: 18,
                 color: colors.onSurfaceVariant,
               ),
@@ -1948,8 +1949,8 @@ class _SessionInfoSheet extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.terminal_rounded,
+                UxIcon(
+                  UxIcons.terminal,
                   size: 16,
                   color: colors.onSurfaceVariant,
                 ),
@@ -2021,7 +2022,7 @@ class _IdRow extends StatelessWidget {
         ),
         const SizedBox(width: UxnanSpacing.sm),
         IconSurface(
-          icon: Icons.content_copy_outlined,
+          icon: UxIcons.contentCopy,
           tooltip: MaterialLocalizations.of(context).copyButtonLabel,
           onPressed: hasValue
               ? () async {
@@ -2070,8 +2071,8 @@ class _CwdMissingBanner extends StatelessWidget {
           padding: const EdgeInsets.all(UxnanSpacing.sm),
           child: Row(
             children: [
-              Icon(
-                Icons.folder_off_outlined,
+              UxIcon(
+                UxIcons.folderOff,
                 size: 20,
                 color: colors.onErrorContainer,
               ),
@@ -2125,8 +2126,8 @@ class _AutonomousBanner extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.auto_awesome_outlined,
+              UxIcon(
+                UxIcons.autoAwesome,
                 size: 20,
                 color: colors.onSecondaryContainer,
               ),
@@ -2141,7 +2142,7 @@ class _AutonomousBanner extends StatelessWidget {
               ),
               const SizedBox(width: UxnanSpacing.xs),
               IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
+                icon: const UxIcon(UxIcons.close, size: 18),
                 color: colors.onSecondaryContainer,
                 visualDensity: VisualDensity.compact,
                 tooltip: l10n.conversationAutonomousModeDismiss,
@@ -2195,8 +2196,8 @@ class _LoginRequiredBanner extends ConsumerWidget {
               if (loginInProgress)
                 PolygonLoader(color: colors.onErrorContainer)
               else
-                Icon(
-                  Icons.login_rounded,
+                UxIcon(
+                  UxIcons.login,
                   size: 20,
                   color: colors.onErrorContainer,
                 ),

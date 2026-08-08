@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/settings/custom_theme_editor_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 Widget _wrap(CustomTheme initial) {
   return ProviderScope(
@@ -88,12 +90,12 @@ void main() {
 
     // Save (check) is the primary action; Export sits next to it; Import is
     // gone (it belongs to the library manager, not the per-theme editor).
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.upload_file_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.download_outlined), findsNothing);
+    expect(findUxIcon(UxIcons.check), findsOneWidget);
+    expect(findUxIcon(UxIcons.uploadFile), findsOneWidget);
+    expect(findUxIcon(UxIcons.download), findsNothing);
 
     // Reset / derive moved into the overflow menu.
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(findUxIcon(UxIcons.moreVert));
     await tester.pumpAndSettle();
     expect(find.text('Reset brightness'), findsOneWidget);
     expect(find.text('Derive from seed'), findsOneWidget);

@@ -7,12 +7,14 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_commit_detail_screen.dart';
 import 'package:uxnan/presentation/screens/conversation/git/widgets/commit_ref_chip.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen commit history for the workspace's git repo — a single, clean,
 /// flat list (no card chrome — matches the file browser's surface). The app
@@ -264,7 +266,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       sliver = SliverFillRemaining(
         hasScrollBody: false,
         child: _CenteredState(
-          icon: Icons.error_outline_rounded,
+          icon: UxIcons.error,
           iconColor: colors.error,
           title: l10n.gitHistoryErrorTitle,
           action: FilledButton.tonal(
@@ -277,7 +279,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       sliver = SliverFillRemaining(
         hasScrollBody: false,
         child: _CenteredState(
-          icon: Icons.history_toggle_off_rounded,
+          icon: UxIcons.historyToggleOff,
           iconColor: colors.onSurfaceVariant,
           title: l10n.gitHistoryEmpty,
           body: l10n.gitHistoryEmptyBody,
@@ -293,7 +295,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
       onRefresh: _initialLoading ? null : _refresh,
       floatingActionButton: _showBackToTop
           ? NeCircularButton(
-              icon: Icons.keyboard_arrow_up_rounded,
+              icon: UxIcons.keyboardArrowUp,
               tooltip: l10n.gitHistoryBackToTop,
               onTap: _backToTop,
             )
@@ -306,9 +308,7 @@ class _GitHistoryScreenState extends ConsumerState<GitHistoryScreen> {
           _CommitSearchAnchor(commits: _commits, onSelect: _openDetails),
         if (hasContent)
           IconSurface(
-            icon: _showGraph
-                ? Icons.account_tree_rounded
-                : Icons.account_tree_outlined,
+            icon: _showGraph ? UxIcons.accountTree : UxIcons.accountTree,
             tooltip: _showGraph
                 ? l10n.gitHistoryHideGraph
                 : l10n.gitHistoryShowGraph,
@@ -401,14 +401,14 @@ class _HistoryOverflowMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return IconSurfaceMenu<void>(
       tooltip: l10n.threadsMore,
-      icon: Icons.more_vert_rounded,
+      icon: UxIcons.moreVert,
       constraints: const BoxConstraints(minWidth: 220),
       itemBuilder: (_) => [
         if (onPickBranch != null)
           PopupMenuItem(
             onTap: onPickBranch,
             child: _HistoryMenuRow(
-              icon: Icons.alt_route_rounded,
+              icon: UxIcons.altRoute,
               label: l10n.gitHistoryViewBranch,
               selected: viewingRef,
             ),
@@ -417,9 +417,7 @@ class _HistoryOverflowMenu extends StatelessWidget {
           PopupMenuItem(
             onTap: onToggleDensity,
             child: _HistoryMenuRow(
-              icon: compact
-                  ? Icons.density_medium_rounded
-                  : Icons.density_small_rounded,
+              icon: compact ? UxIcons.densityMedium : UxIcons.densitySmall,
               label:
                   compact ? l10n.gitHistoryComfortable : l10n.gitHistoryCompact,
               selected: compact,
@@ -437,7 +435,7 @@ class _HistoryMenuRow extends StatelessWidget {
     required this.selected,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String label;
   final bool selected;
 
@@ -446,11 +444,10 @@ class _HistoryMenuRow extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
-        Icon(icon, size: 20, color: colors.onSurfaceVariant),
+        UxIcon(icon, size: 20, color: colors.onSurfaceVariant),
         const SizedBox(width: UxnanSpacing.md),
         Expanded(child: Text(label)),
-        if (selected)
-          Icon(Icons.check_rounded, size: 18, color: colors.primary),
+        if (selected) UxIcon(UxIcons.check, size: 18, color: colors.primary),
       ],
     );
   }
@@ -477,8 +474,20 @@ class _CommitSearchAnchor extends StatelessWidget {
     return SearchAnchor(
       isFullScreen: true,
       viewHintText: l10n.gitHistorySearchHint,
+      // The full-screen view draws its own back arrow from Flutter's Material
+      // set unless one is supplied (see `thread_list_controls.dart`).
+      viewLeading: IconButton(
+        icon: const UxIcon(UxIcons.arrowBack),
+        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      // Flutter also puts a Material ✕ in the view's trailing slot. Dropping it
+      // is deliberate rather than re-skinned: clearing needs the anchor's own
+      // SearchController, which would make three widgets stateful for one
+      // glyph, and the view is one tap from closing anyway.
+      viewTrailing: const [],
       builder: (context, controller) => IconSurface(
-        icon: Icons.search_rounded,
+        icon: UxIcons.search,
         tooltip: l10n.gitHistorySearch,
         onPressed: controller.openView,
       ),
@@ -666,8 +675,8 @@ class _CommitGraphRow extends StatelessWidget {
                     child: Row(
                       children: [
                         if (row.commit.isMerge) ...[
-                          Icon(
-                            Icons.merge_rounded,
+                          UxIcon(
+                            UxIcons.merge,
                             size: 14,
                             color: colors.onSurfaceVariant,
                           ),
@@ -887,7 +896,7 @@ class _PageFooter extends StatelessWidget {
             ? PolygonLoader(size: 22, color: colors.primary)
             : TextButton.icon(
                 onPressed: onLoadMore,
-                icon: const Icon(Icons.expand_more_rounded, size: 18),
+                icon: const UxIcon(UxIcons.expandMore, size: 18),
                 label: Text(l10n.gitHistoryLoadMore),
               ),
       ),
@@ -906,7 +915,7 @@ class _CenteredState extends StatelessWidget {
     this.action,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final Color iconColor;
   final String title;
   final String? body;
@@ -924,7 +933,7 @@ class _CenteredState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 56, color: iconColor),
+          UxIcon(icon, size: 56, color: iconColor),
           const SizedBox(height: UxnanSpacing.lg),
           Text(
             title,
@@ -989,8 +998,8 @@ class _ViewingRefBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.alt_route_rounded,
+            UxIcon(
+              UxIcons.altRoute,
               size: 16,
               color: colors.onSecondaryContainer,
             ),
@@ -1007,7 +1016,7 @@ class _ViewingRefBanner extends StatelessWidget {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.close_rounded, size: 18),
+              icon: const UxIcon(UxIcons.close, size: 18),
               visualDensity: VisualDensity.compact,
               color: colors.onSecondaryContainer,
               tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
@@ -1061,7 +1070,7 @@ class _BranchPickerSheet extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: UxnanSpacing.lg),
                 children: [
                   _RefTile(
-                    icon: Icons.my_location_rounded,
+                    icon: UxIcons.myLocation,
                     label: l10n.gitHistoryHeadOption,
                     selected: selectedRef == null,
                     onTap: () =>
@@ -1071,7 +1080,7 @@ class _BranchPickerSheet extends StatelessWidget {
                     _SectionLabel(label: l10n.gitHistoryLocalSection),
                   for (final b in branches.local)
                     _RefTile(
-                      icon: Icons.call_split_rounded,
+                      icon: UxIcons.callSplit,
                       label: b,
                       trailing: b == branches.current
                           ? Text(
@@ -1088,7 +1097,7 @@ class _BranchPickerSheet extends StatelessWidget {
                     _SectionLabel(label: l10n.gitHistoryRemoteSection),
                   for (final b in branches.remote)
                     _RefTile(
-                      icon: Icons.cloud_outlined,
+                      icon: UxIcons.cloud,
                       label: b,
                       selected: selectedRef == b,
                       onTap: () => Navigator.of(context).pop(_RefChoice(b)),
@@ -1140,7 +1149,7 @@ class _RefTile extends StatelessWidget {
     this.trailing,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -1151,7 +1160,7 @@ class _RefTile extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return ListTile(
-      leading: Icon(
+      leading: UxIcon(
         icon,
         color: selected ? colors.primary : colors.onSurfaceVariant,
       ),
@@ -1164,9 +1173,8 @@ class _RefTile extends StatelessWidget {
           fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
-      trailing: selected
-          ? Icon(Icons.check_rounded, color: colors.primary)
-          : trailing,
+      trailing:
+          selected ? UxIcon(UxIcons.check, color: colors.primary) : trailing,
       onTap: onTap,
     );
   }

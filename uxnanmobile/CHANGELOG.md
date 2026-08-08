@@ -6,6 +6,57 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the app draws Hugeicons, like the desktop and the website
+
+Mobile was the last surface still on Material Icons. It now uses the same free
+**stroke-rounded Hugeicons** set the desktop app and the website draw, so a
+concept looks the same wherever you meet it.
+
+The official Flutter package is not a drop-in, and the differences shaped the
+migration: its icons are SVG path data (`List<List<dynamic>>`), not `IconData`
+with a code point. So `find.byIcon` cannot see them, `IconData` fields had to
+become `UxIconData`, and `HugeIcon` — which has no `semanticLabel` and sizes
+itself to a hard-coded 24 — is never used directly.
+
+Two pieces carry all of it. **`UxIcon`** is the only widget that talks to the
+package, restoring the semantic label an icon-only control is required to have
+and the sizing an ambient `IconTheme` is supposed to give it. **`UxIcons`** is a
+catalogue naming all 173 glyphs for what they MEAN, so choosing one stays a
+design decision made in one reviewable file rather than a constant pasted across
+sixty; tests match on those constants through `findUxIcon`.
+
+Six icons changed **meaning**, not just style, because Material never had the
+glyph and the app had been borrowing a metaphor: branches and routes were a
+call-split arrow and now are **GitBranch**; commits, merges and diffs are
+**GitCommit**, **GitMerge** and **GitCompare**; an agent was a toy robot and is
+now **Robot01**; the terminal is **ComputerTerminal01**.
+
+Icons arrive at the size the layout expects. Hugeicons paints its artwork edge
+to edge, so at the same nominal `size` a glyph inked **~15% larger** than the
+Material one it replaced — measured from pixels: Material inks 0.750 of its box
+(the 18-in-24 live area), Hugeicons 0.862. `UxIcon` corrects that with one
+factor, and keeps the widget's own footprint at the full size so nothing
+reflows. A test reads the pixels back at four sizes, so a package upgrade that
+changes the viewBox cannot slip through.
+
+Each network path now shows its own glyph on the device card — router for LAN, a
+shield for Tailscale, a link for direct, a cloud for the relay — through the
+same mapping the transport badge uses. One generic aerial for all four told the
+reader nothing.
+
+Flutter's full-screen `SearchAnchor` draws its own back arrow from the Material
+set unless one is supplied; the three search views now supply ours. It was the
+one place a Material glyph survived, because the framework builds it rather
+than us.
+
+Comparing the packages' path data — rather than trusting their names — caught
+three more: `arrow_back` and `arrow_downward` were landing on the *chevron*
+variant (one V-shaped stroke, no shaft) instead of a real arrow, and
+`block` was rendering a plain ✕ rather than the circle-with-slash it means. The
+free set is stroke-only, so Material's outline-vs-filled check-circle
+distinction collapses to one glyph; nothing else was lost.
+
+
 ### Changed — the home screen is a real overview, not a list with a title
 
 The first screen was a list of paired PCs under a "Devices" title, with the

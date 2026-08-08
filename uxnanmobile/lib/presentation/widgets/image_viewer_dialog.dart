@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 import 'package:uxnan/presentation/widgets/zoomable_media.dart';
 
 /// Opens the sent [images] full size, starting at [initialIndex].
@@ -78,8 +79,8 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
               return ZoomableMedia(
                 child: Center(
                   child: bytes == null
-                      ? Icon(
-                          Icons.broken_image_outlined,
+                      ? UxIcon(
+                          UxIcons.brokenImage,
                           color: colors.onSurfaceVariant,
                         )
                       : Image.memory(bytes, fit: BoxFit.contain),
@@ -94,7 +95,7 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
               child: IconButton.filledTonal(
                 tooltip: materialL10n.closeButtonTooltip,
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
+                icon: const UxIcon(UxIcons.close),
               ),
             ),
           ),

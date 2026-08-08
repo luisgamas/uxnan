@@ -10,6 +10,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_diff_view.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
@@ -17,6 +18,7 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/measure_size.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen Material 3 source-control surface for a thread's workspace.
 ///
@@ -198,7 +200,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.undo_rounded),
+        icon: const UxIcon(UxIcons.undo),
         title: Text(l10n.gitUndoCommitConfirmTitle),
         content: Text(l10n.gitUndoCommitConfirmBody),
         actions: [
@@ -232,7 +234,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.history_rounded),
+        icon: const UxIcon(UxIcons.history),
         title: Text(l10n.gitRevertConfirmTitle),
         content: Text(l10n.gitRevertConfirmBody),
         actions: [
@@ -268,7 +270,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.folder_delete_outlined),
+        icon: const UxIcon(UxIcons.folderDelete),
         title: Text(l10n.gitRemoveWorktreeConfirmTitle),
         content: Text(l10n.gitRemoveWorktreeConfirmBody),
         actions: [
@@ -299,7 +301,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
       final force = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.warning_amber_rounded),
+          icon: const UxIcon(UxIcons.warningAmber),
           title: Text(l10n.gitRemoveWorktreeForceTitle),
           content: Text(l10n.gitRemoveWorktreeForceBody),
           actions: [
@@ -439,7 +441,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.delete_outline_rounded),
+        icon: const UxIcon(UxIcons.delete),
         title: Text(l10n.gitDeleteBranchConfirmTitle),
         content: Text(l10n.gitDeleteBranchConfirmBody(branch)),
         actions: [
@@ -464,7 +466,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
       final force = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          icon: const Icon(Icons.warning_amber_rounded),
+          icon: const UxIcon(UxIcons.warningAmber),
           title: Text(l10n.gitDeleteBranchForceTitle),
           content: Text(l10n.gitDeleteBranchForceBody(branch)),
           actions: [
@@ -507,7 +509,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     return showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.alt_route_rounded),
+        icon: const UxIcon(UxIcons.altRoute),
         title: Text(l10n.gitSwitchCarryTitle),
         content: Text(l10n.gitSwitchCarryBody(target, current)),
         actions: [
@@ -556,7 +558,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
     return showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded),
+        icon: const UxIcon(UxIcons.warningAmber),
         title: Text(l10n.gitDiscardConfirmTitle),
         content: Text(l10n.gitDiscardConfirmBody(count)),
         actions: [
@@ -893,7 +895,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
@@ -912,16 +914,14 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                   Badge.count(
                     count: state.behind,
                     child: IconSurface(
-                      icon: Icons.download_rounded,
+                      icon: UxIcons.download,
                       tooltip: '${l10n.gitPull} (${state.behind})',
                       onPressed: _busy ? null : () => _pull(state),
                     ),
                   ),
                 if (files.isNotEmpty)
                   IconSurface(
-                    icon: allExpanded
-                        ? Icons.unfold_less_rounded
-                        : Icons.unfold_more_rounded,
+                    icon: allExpanded ? UxIcons.unfoldLess : UxIcons.unfoldMore,
                     tooltip:
                         allExpanded ? l10n.gitCollapseAll : l10n.gitExpandAll,
                     onPressed: () => setState(() {
@@ -934,7 +934,7 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                   ),
                 if (state != null)
                   IconSurface(
-                    icon: Icons.history_rounded,
+                    icon: UxIcons.history,
                     tooltip: l10n.gitHistoryButton,
                     onPressed: _busy
                         ? null
@@ -1015,32 +1015,32 @@ class _OverflowMenu extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return IconSurfaceMenu<void>(
       tooltip: l10n.threadsMore,
-      icon: Icons.more_vert_rounded,
+      icon: UxIcons.moreVert,
       constraints: const BoxConstraints(minWidth: 220),
       itemBuilder: (_) => [
         PopupMenuItem(
           enabled: !busy,
           onTap: onSwitchBranch,
           child: _MenuRow(
-            icon: Icons.swap_horiz_rounded,
+            icon: UxIcons.swapHoriz,
             label: l10n.gitSwitchBranch,
           ),
         ),
         PopupMenuItem(
           enabled: !busy,
           onTap: onNewBranch,
-          child: _MenuRow(icon: Icons.add_rounded, label: l10n.gitNewBranch),
+          child: _MenuRow(icon: UxIcons.add, label: l10n.gitNewBranch),
         ),
         PopupMenuItem(
           enabled: !busy,
           onTap: onCreatePr,
-          child: _MenuRow(icon: Icons.merge_rounded, label: l10n.gitCreatePr),
+          child: _MenuRow(icon: UxIcons.merge, label: l10n.gitCreatePr),
         ),
         PopupMenuItem(
           enabled: !busy,
           onTap: onRevert,
           child: _MenuRow(
-            icon: Icons.history_rounded,
+            icon: UxIcons.history,
             label: l10n.gitRevertLast,
           ),
         ),
@@ -1049,7 +1049,7 @@ class _OverflowMenu extends StatelessWidget {
             enabled: !busy,
             onTap: onRemoveWorktree,
             child: _MenuRow(
-              icon: Icons.folder_delete_outlined,
+              icon: UxIcons.folderDelete,
               label: l10n.gitRemoveWorktree,
               color: colors.error,
             ),
@@ -1059,7 +1059,7 @@ class _OverflowMenu extends StatelessWidget {
             enabled: !busy,
             onTap: onDiscardAll,
             child: _MenuRow(
-              icon: Icons.delete_outline_rounded,
+              icon: UxIcons.delete,
               label: l10n.gitDiscardAll,
               color: colors.error,
             ),
@@ -1071,7 +1071,7 @@ class _OverflowMenu extends StatelessWidget {
 
 class _MenuRow extends StatelessWidget {
   const _MenuRow({required this.icon, required this.label, this.color});
-  final IconData icon;
+  final UxIconData icon;
   final String label;
   final Color? color;
 
@@ -1079,7 +1079,7 @@ class _MenuRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: color),
+        UxIcon(icon, size: 20, color: color),
         const SizedBox(width: UxnanSpacing.md),
         Text(label, style: TextStyle(color: color)),
       ],
@@ -1113,8 +1113,8 @@ class _BranchSummary extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.account_tree_outlined,
+                UxIcon(
+                  UxIcons.accountTree,
                   size: 18,
                   color: colors.onSurfaceVariant,
                 ),
@@ -1128,13 +1128,13 @@ class _BranchSummary extends StatelessWidget {
                 ),
                 if (state.ahead > 0)
                   _Counter(
-                    icon: Icons.arrow_upward_rounded,
+                    icon: UxIcons.arrowUpward,
                     value: state.ahead,
                   ),
                 if (state.behind > 0) ...[
                   const SizedBox(width: UxnanSpacing.sm),
                   _Counter(
-                    icon: Icons.arrow_downward_rounded,
+                    icon: UxIcons.arrowDownward,
                     value: state.behind,
                   ),
                 ],
@@ -1152,10 +1152,8 @@ class _BranchSummary extends StatelessWidget {
             const SizedBox(height: UxnanSpacing.sm),
             Row(
               children: [
-                Icon(
-                  state.isDirty
-                      ? Icons.pending_outlined
-                      : Icons.check_circle_outline,
+                UxIcon(
+                  state.isDirty ? UxIcons.pending : UxIcons.checkCircle,
                   size: 15,
                   color:
                       state.isDirty ? UxnanColors.warning : UxnanColors.success,
@@ -1186,7 +1184,7 @@ class _BranchSummary extends StatelessWidget {
 
 class _Counter extends StatelessWidget {
   const _Counter({required this.icon, required this.value});
-  final IconData icon;
+  final UxIconData icon;
   final int value;
 
   @override
@@ -1195,7 +1193,7 @@ class _Counter extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: colors.onSurfaceVariant),
+        UxIcon(icon, size: 14, color: colors.onSurfaceVariant),
         Text(
           '$value',
           style: UxnanTypography.codeSmall.copyWith(
@@ -1258,8 +1256,8 @@ class _SelectionBar extends StatelessWidget {
           // contextual to the row).
           TextButton.icon(
             onPressed: none ? null : onDiscardSelected,
-            icon: Icon(
-              Icons.delete_outline_rounded,
+            icon: UxIcon(
+              UxIcons.delete,
               size: 18,
               color: none ? null : colors.error,
             ),
@@ -1331,7 +1329,7 @@ class _FileCard extends StatelessWidget {
                     value: selected,
                     onChanged: (v) => onSelectedChanged(v ?? false),
                   ),
-                  Icon(icon, size: 18, color: color, semanticLabel: label),
+                  UxIcon(icon, size: 18, color: color, semanticLabel: label),
                   const SizedBox(width: UxnanSpacing.sm),
                   Expanded(
                     child: Column(
@@ -1377,14 +1375,12 @@ class _FileCard extends StatelessWidget {
                     ),
                   ],
                   IconSurface(
-                    icon: Icons.undo_rounded,
+                    icon: UxIcons.undo,
                     tooltip: l10n.gitDiscard,
                     onPressed: onDiscard,
                   ),
                   IconSurface(
-                    icon: expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
+                    icon: expanded ? UxIcons.expandLess : UxIcons.expandMore,
                     tooltip: l10n.gitActionsTitle,
                     onPressed: () => onExpandedChanged(!expanded),
                   ),
@@ -1552,15 +1548,15 @@ class _CommitBarState extends State<_CommitBar> {
                         // undo-last-commit once committed (push mode).
                         if (pushMode)
                           IconSurface(
-                            icon: Icons.undo_rounded,
+                            icon: UxIcons.undo,
                             tooltip: l10n.gitUndoCommit,
                             onPressed: busy ? null : onUndoCommit,
                           )
                         else
                           IconSurface(
                             icon: showDetails
-                                ? Icons.expand_more_rounded
-                                : Icons.notes_rounded,
+                                ? UxIcons.expandMore
+                                : UxIcons.notes,
                             tooltip: l10n.gitCommitDescriptionLabel,
                             selected: showDetails,
                             onPressed: canCommit ? onToggleDetails : null,
@@ -1569,7 +1565,7 @@ class _CommitBarState extends State<_CommitBar> {
                         // Primary: commit while dirty; push once committed.
                         if (pushMode)
                           _PrimaryActionButton(
-                            icon: Icons.arrow_upward_rounded,
+                            icon: UxIcons.arrowUpward,
                             tooltip: '${l10n.gitPushButton} (${state.ahead})',
                             busy: busy,
                             // Push is badged with the number of commits ahead.
@@ -1583,7 +1579,7 @@ class _CommitBarState extends State<_CommitBar> {
                           )
                         else
                           _PrimaryActionButton(
-                            icon: Icons.check_rounded,
+                            icon: UxIcons.check,
                             tooltip: l10n.gitCommitButton,
                             busy: busy,
                             onPressed: canCommit ? onCommit : null,
@@ -1702,8 +1698,8 @@ class _CleanState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xxl),
       child: Column(
         children: [
-          const Icon(
-            Icons.check_circle_outline,
+          const UxIcon(
+            UxIcons.checkCircle,
             size: 40,
             color: UxnanColors.success,
           ),
@@ -1739,7 +1735,7 @@ class _NoRepository extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.source_outlined, size: 40, color: colors.onSurfaceVariant),
+          UxIcon(UxIcons.source, size: 40, color: colors.onSurfaceVariant),
           const SizedBox(height: UxnanSpacing.md),
           Text(l10n.gitNoRepository, style: textTheme.titleSmall),
           const SizedBox(height: UxnanSpacing.xs),
@@ -1756,33 +1752,33 @@ class _NoRepository extends StatelessWidget {
   }
 }
 
-(IconData, Color, String) _statusVisuals(
+(UxIconData, Color, String) _statusVisuals(
   GitFileStatus status,
   AppLocalizations l10n,
 ) {
   return switch (status) {
     GitFileStatus.added => (
-        Icons.add_circle_outline,
+        UxIcons.addCircle,
         UxnanColors.gitAdded,
         l10n.gitStatusAdded,
       ),
     GitFileStatus.modified => (
-        Icons.edit_outlined,
+        UxIcons.edit,
         UxnanColors.gitModified,
         l10n.gitStatusModified,
       ),
     GitFileStatus.deleted => (
-        Icons.remove_circle_outline,
+        UxIcons.removeCircle,
         UxnanColors.gitDeleted,
         l10n.gitStatusDeleted,
       ),
     GitFileStatus.renamed => (
-        Icons.drive_file_rename_outline,
+        UxIcons.driveFileRename,
         UxnanColors.gitUntracked,
         l10n.gitStatusRenamed,
       ),
     GitFileStatus.untracked => (
-        Icons.fiber_new_outlined,
+        UxIcons.fiberNew,
         UxnanColors.gitUntracked,
         l10n.gitStatusUntracked,
       ),
@@ -1877,7 +1873,7 @@ class _BranchPickerState extends State<_BranchPicker> {
           // Current branch — leading check + bodyMedium title. Disabled because
           // switching to the branch you're already on is a no-op.
           _BranchPickerRow(
-            leading: Icon(Icons.check_rounded, color: colors.primary),
+            leading: UxIcon(UxIcons.check, color: colors.primary),
             title: Text(widget.current),
             subtitle: Text(l10n.gitSwitchBranchCurrent(widget.current)),
             enabled: false,
@@ -1887,8 +1883,8 @@ class _BranchPickerState extends State<_BranchPicker> {
             Divider(height: 1, color: colors.outlineVariant),
           for (final branch in _others)
             _BranchPickerRow(
-              leading: Icon(
-                Icons.account_tree_outlined,
+              leading: UxIcon(
+                UxIcons.accountTree,
                 color: colors.onSurfaceVariant,
               ),
               title: Text(branch, overflow: TextOverflow.ellipsis),
@@ -1906,7 +1902,7 @@ class _BranchPickerState extends State<_BranchPicker> {
                           child: PolygonLoader(size: 20),
                         )
                       : IconSurface(
-                          icon: Icons.delete_outline_rounded,
+                          icon: UxIcons.delete,
                           tooltip: l10n.gitDeleteBranch,
                           background: colors.surfaceContainerHigh,
                           foreground: colors.error,
@@ -2094,7 +2090,7 @@ class _PrDialogState extends State<_PrDialog> {
         // action, content centred at 560 dp scrolling under the top veil —
         // same chrome as the new-conversation dialog.
         leading: IconSurface(
-          icon: Icons.close_rounded,
+          icon: UxIcons.close,
           tooltip: l10n.gitCancel,
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -2132,15 +2128,15 @@ class _PrDialogState extends State<_PrDialog> {
                       const SizedBox(height: UxnanSpacing.lg),
                       _BranchField(
                         label: l10n.gitPrHeadLabel,
-                        icon: Icons.upload_rounded,
+                        icon: UxIcons.upload,
                         value: _head,
                         options: _headOptions,
                         onChanged: (v) => setState(() => _head = v),
                       ),
                       const SizedBox(height: UxnanSpacing.sm),
                       Center(
-                        child: Icon(
-                          Icons.arrow_downward_rounded,
+                        child: UxIcon(
+                          UxIcons.arrowDownward,
                           size: 18,
                           color: colors.onSurfaceVariant,
                         ),
@@ -2148,7 +2144,7 @@ class _PrDialogState extends State<_PrDialog> {
                       const SizedBox(height: UxnanSpacing.sm),
                       _BranchField(
                         label: l10n.gitPrBaseLabel,
-                        icon: Icons.flag_outlined,
+                        icon: UxIcons.flag,
                         value: _base,
                         options: _baseOptions,
                         onChanged: (v) => setState(() => _base = v),
@@ -2156,8 +2152,8 @@ class _PrDialogState extends State<_PrDialog> {
                       const SizedBox(height: UxnanSpacing.md),
                       Row(
                         children: [
-                          Icon(
-                            Icons.info_outline_rounded,
+                          UxIcon(
+                            UxIcons.info,
                             size: 16,
                             color: colors.onSurfaceVariant,
                           ),
@@ -2210,7 +2206,7 @@ class _BranchField extends StatelessWidget {
   });
 
   final String label;
-  final IconData icon;
+  final UxIconData icon;
   final String? value;
   final List<String> options;
   final ValueChanged<String?> onChanged;
@@ -2223,7 +2219,7 @@ class _BranchField extends StatelessWidget {
         onChanged: onChanged,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon),
+          prefixIcon: UxIcon(icon),
           border: const OutlineInputBorder(),
         ),
       );
@@ -2233,7 +2229,7 @@ class _BranchField extends StatelessWidget {
       isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon),
+        prefixIcon: UxIcon(icon),
         border: const OutlineInputBorder(),
       ),
       items: [
@@ -2276,10 +2272,8 @@ class _NeCheckbox extends StatelessWidget {
     final isMixed = value == null;
     return _NeSelectionSurface(
       icon: isMixed
-          ? Icons.remove_rounded
-          : (isOn
-              ? Icons.check_rounded
-              : Icons.check_box_outline_blank_rounded),
+          ? UxIcons.remove
+          : (isOn ? UxIcons.check : UxIcons.checkBoxOutlineBlank),
       tooltip: isMixed ? 'Mixed' : (isOn ? 'Selected' : 'Not selected'),
       selected: isOn || isMixed,
       // When off, force the empty-box glyph in onSurfaceVariant.
@@ -2301,7 +2295,7 @@ class _NeSelectionSurface extends StatelessWidget {
     required this.onPressed,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String tooltip;
   final bool selected;
   final Color foreground;
@@ -2329,7 +2323,8 @@ class _NeSelectionSurface extends StatelessWidget {
               width: 24,
               height: 24,
               child: Center(
-                child: Icon(icon, size: 18, color: fg, semanticLabel: tooltip),
+                child:
+                    UxIcon(icon, size: 18, color: fg, semanticLabel: tooltip),
               ),
             ),
           ),
@@ -2352,7 +2347,7 @@ class _PrimaryActionButton extends StatelessWidget {
     this.badge,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String tooltip;
   final bool busy;
   final VoidCallback? onPressed;
@@ -2369,7 +2364,7 @@ class _PrimaryActionButton extends StatelessWidget {
         enabled ? colors.onPrimary : colors.onPrimary.withValues(alpha: 0.5);
     final spinner = busy
         ? PolygonLoader(size: 16, color: foreground)
-        : Icon(icon, size: 20, color: foreground);
+        : UxIcon(icon, size: 20, color: foreground);
     return Tooltip(
       message: tooltip,
       child: GestureDetector(

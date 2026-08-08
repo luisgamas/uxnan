@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
@@ -24,10 +23,12 @@ import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a single [MessageContent] block. The enclosing bubble provides the
 /// background; this widget renders the block's body.
@@ -74,15 +75,15 @@ class MessageContentView extends StatelessWidget {
       final DiffContent c => _DiffBlock(content: c),
       final ImageContent c => _ImageBlock(content: c),
       final ToolUseContent c =>
-        _Placeholder(icon: Icons.build_outlined, label: 'Tool · ${c.toolName}'),
+        _Placeholder(icon: UxIcons.build, label: 'Tool · ${c.toolName}'),
       final MermaidContent _ =>
-        const _Placeholder(icon: Icons.account_tree_outlined, label: 'Diagram'),
+        const _Placeholder(icon: UxIcons.accountTree, label: 'Diagram'),
       final ApprovalContent c => _ApprovalCard(content: c, threadId: threadId),
       final QuestionContent c => _QuestionCard(content: c, threadId: threadId),
       final PlanContent c => _PlanCard(content: c),
       final SubagentContent c => _SubagentCard(content: c),
       final UnknownContent c =>
-        _Placeholder(icon: Icons.widgets_outlined, label: c.type),
+        _Placeholder(icon: UxIcons.widgets, label: c.type),
     };
   }
 }
@@ -142,8 +143,8 @@ class _CompactionMarker extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.compress_rounded,
+                    UxIcon(
+                      UxIcons.compress,
                       size: 18,
                       color: colors.onSurfaceVariant,
                     ),
@@ -253,12 +254,12 @@ class _ApprovalCard extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(
+                UxIcon(
                   resolved
                       ? (response!.decision == ApprovalDecision.reject
-                          ? Icons.cancel_rounded
-                          : Icons.verified_user_outlined)
-                      : Icons.shield_outlined,
+                          ? UxIcons.cancel
+                          : UxIcons.verifiedUser)
+                      : UxIcons.shield,
                   size: 16,
                   color: riskColor,
                 ),
@@ -348,7 +349,7 @@ class _ApprovalActions extends StatelessWidget {
         if (failed) ...[
           Row(
             children: [
-              Icon(Icons.error_outline_rounded, size: 14, color: colors.error),
+              UxIcon(UxIcons.error, size: 14, color: colors.error),
               const SizedBox(width: UxnanSpacing.xs),
               Expanded(
                 child: Text(
@@ -419,8 +420,8 @@ class _ApprovalResolved extends StatelessWidget {
     };
     return Row(
       children: [
-        Icon(
-          approved ? Icons.check_circle_rounded : Icons.cancel_rounded,
+        UxIcon(
+          approved ? UxIcons.checkCircle : UxIcons.cancel,
           size: 18,
           color: color,
         ),
@@ -614,8 +615,8 @@ class _QuestionCardState extends ConsumerState<_QuestionCard> {
           children: [
             Row(
               children: [
-                Icon(
-                  resolved ? Icons.check_circle_rounded : Icons.quiz_outlined,
+                UxIcon(
+                  resolved ? UxIcons.checkCircle : UxIcons.quiz,
                   size: 16,
                   color: accent,
                 ),
@@ -764,12 +765,10 @@ class _QuestionOptionRow extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final accent = colors.primary;
     final icon = multiple
-        ? (selected
-            ? Icons.check_box_rounded
-            : Icons.check_box_outline_blank_rounded)
+        ? (selected ? UxIcons.checkBox : UxIcons.checkBoxOutlineBlank)
         : (selected
-            ? Icons.radio_button_checked_rounded
-            : Icons.radio_button_unchecked_rounded);
+            ? UxIcons.radioButtonChecked
+            : UxIcons.radioButtonUnchecked);
     final hasDescription =
         option.description != null && option.description!.isNotEmpty;
 
@@ -796,7 +795,7 @@ class _QuestionOptionRow extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 1),
-                child: Icon(
+                child: UxIcon(
                   icon,
                   size: 18,
                   color: selected ? accent : colors.onSurfaceVariant,
@@ -872,8 +871,8 @@ class _QuestionChosenSummary extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.check_rounded,
+                const UxIcon(
+                  UxIcons.check,
                   size: 13,
                   color: UxnanColors.success,
                 ),
@@ -923,7 +922,7 @@ class _QuestionActions extends StatelessWidget {
         if (failed) ...[
           Row(
             children: [
-              Icon(Icons.error_outline_rounded, size: 14, color: colors.error),
+              UxIcon(UxIcons.error, size: 14, color: colors.error),
               const SizedBox(width: UxnanSpacing.xs),
               Expanded(
                 child: Text(
@@ -974,8 +973,8 @@ class _QuestionResolved extends StatelessWidget {
     if (answeredAtMs == null) return const SizedBox.shrink();
     return Row(
       children: [
-        const Icon(
-          Icons.check_circle_rounded,
+        const UxIcon(
+          UxIcons.checkCircle,
           size: 16,
           color: UxnanColors.success,
         ),
@@ -1028,7 +1027,7 @@ class _ImageBlock extends StatelessWidget {
     final data = content.base64Data;
     if (data == null) {
       return _Placeholder(
-        icon: Icons.image_outlined,
+        icon: UxIcons.image,
         label: content.path ?? 'Image',
       );
     }
@@ -1041,7 +1040,7 @@ class _ImageBlock extends StatelessWidget {
           fit: BoxFit.contain,
           gaplessPlayback: true,
           errorBuilder: (context, _, __) => _Placeholder(
-            icon: Icons.broken_image_outlined,
+            icon: UxIcons.brokenImage,
             label: content.mimeType,
           ),
         ),
@@ -1130,8 +1129,8 @@ class _PlanCardState extends State<_PlanCard> {
               padding: const EdgeInsets.all(UxnanSpacing.md),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.checklist_rounded,
+                  UxIcon(
+                    UxIcons.checklist,
                     size: 16,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1151,10 +1150,8 @@ class _PlanCardState extends State<_PlanCard> {
                     ),
                     const SizedBox(width: UxnanSpacing.xs),
                   ],
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
+                  UxIcon(
+                    _expanded ? UxIcons.expandLess : UxIcons.expandMore,
                     size: 18,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1291,21 +1288,21 @@ class _PlanStepIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, color) = switch (status) {
       PlanStepStatus.pending => (
-          Icons.radio_button_unchecked,
+          UxIcons.radioButtonUnchecked,
           Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       PlanStepStatus.inProgress => (
-          Icons.autorenew_rounded,
+          UxIcons.autorenew,
           UxnanColors.connecting,
         ),
       PlanStepStatus.completed => (
-          Icons.check_circle_rounded,
+          UxIcons.checkCircle,
           UxnanColors.success,
         ),
     };
     return Padding(
       padding: const EdgeInsets.only(top: 2),
-      child: Icon(icon, size: 16, color: color),
+      child: UxIcon(icon, size: 16, color: color),
     );
   }
 }
@@ -1349,8 +1346,8 @@ class _SubagentCardState extends State<_SubagentCard> {
               padding: const EdgeInsets.all(UxnanSpacing.md),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.account_tree_rounded,
+                  UxIcon(
+                    UxIcons.accountTree,
                     size: 16,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1383,10 +1380,8 @@ class _SubagentCardState extends State<_SubagentCard> {
                     ),
                   if (hasActions) _CountBadge(count: actions.length),
                   const SizedBox(width: 2),
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
+                  UxIcon(
+                    _expanded ? UxIcons.expandLess : UxIcons.expandMore,
                     size: 18,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1439,7 +1434,7 @@ class _SubagentActionRow extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(
+            child: UxIcon(
               _subagentActionIcon(action.kind),
               size: 15,
               color: colors.onSurfaceVariant,
@@ -1455,12 +1450,12 @@ class _SubagentActionRow extends StatelessWidget {
   }
 }
 
-IconData _subagentActionIcon(SubagentActionKind kind) => switch (kind) {
-      SubagentActionKind.tool => Icons.build_outlined,
-      SubagentActionKind.edit => Icons.edit_outlined,
-      SubagentActionKind.command => Icons.terminal_rounded,
-      SubagentActionKind.message => Icons.chat_bubble_outline,
-      SubagentActionKind.unknown => Icons.bolt_outlined,
+UxIconData _subagentActionIcon(SubagentActionKind kind) => switch (kind) {
+      SubagentActionKind.tool => UxIcons.build,
+      SubagentActionKind.edit => UxIcons.edit,
+      SubagentActionKind.command => UxIcons.terminal,
+      SubagentActionKind.message => UxIcons.chatBubble,
+      SubagentActionKind.unknown => UxIcons.bolt,
     };
 
 class _TextBlock extends StatelessWidget {
@@ -1524,7 +1519,7 @@ class _CodeBlock extends StatelessWidget {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: 'Copy',
-                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  icon: const UxIcon(UxIcons.copy, size: 16),
                   onPressed: () =>
                       Clipboard.setData(ClipboardData(text: content.code)),
                 ),
@@ -1556,14 +1551,14 @@ class _CommandCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final (icon, color) = switch (content.status) {
       CommandStatus.running => (
-          Icons.autorenew_rounded,
+          UxIcons.autorenew,
           UxnanColors.connecting,
         ),
       CommandStatus.completed => (
-          Icons.check_circle_outline,
+          UxIcons.checkCircle,
           UxnanColors.success,
         ),
-      CommandStatus.error => (Icons.error_outline, UxnanColors.error),
+      CommandStatus.error => (UxIcons.error, UxnanColors.error),
     };
 
     return DecoratedBox(
@@ -1579,7 +1574,7 @@ class _CommandCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, size: 16, color: color),
+                UxIcon(icon, size: 16, color: color),
                 const SizedBox(width: UxnanSpacing.sm),
                 Expanded(
                   child: Text(
@@ -1610,16 +1605,10 @@ class _SystemBanner extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final (icon, color) = switch (content.kind) {
-      SystemContentKind.info => (Icons.info_outline, UxnanColors.gitUntracked),
-      SystemContentKind.warning => (
-          Icons.warning_amber_rounded,
-          UxnanColors.warning
-        ),
-      SystemContentKind.error => (Icons.error_outline, UxnanColors.error),
-      SystemContentKind.debug => (
-          Icons.bug_report_outlined,
-          colors.onSurfaceVariant
-        ),
+      SystemContentKind.info => (UxIcons.info, UxnanColors.gitUntracked),
+      SystemContentKind.warning => (UxIcons.warningAmber, UxnanColors.warning),
+      SystemContentKind.error => (UxIcons.error, UxnanColors.error),
+      SystemContentKind.debug => (UxIcons.bugReport, colors.onSurfaceVariant),
     };
     // A failed turn may carry no error text from the bridge; show a localized
     // fallback so the banner is never blank.
@@ -1631,7 +1620,7 @@ class _SystemBanner extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: color),
+        UxIcon(icon, size: 16, color: color),
         const SizedBox(width: UxnanSpacing.sm),
         Expanded(
           child: Text(
@@ -1664,7 +1653,7 @@ class _DiffBlock extends StatelessWidget {
             padding: const EdgeInsets.all(UxnanSpacing.sm),
             child: Row(
               children: [
-                const Icon(Icons.difference_outlined, size: 16),
+                const UxIcon(UxIcons.difference, size: 16),
                 const SizedBox(width: UxnanSpacing.sm),
                 Expanded(
                   child: Text(
@@ -1755,7 +1744,7 @@ Color _diffLineColor(String line) {
 
 class _Placeholder extends StatelessWidget {
   const _Placeholder({required this.icon, required this.label});
-  final IconData icon;
+  final UxIconData icon;
   final String label;
 
   @override
@@ -1772,7 +1761,7 @@ class _Placeholder extends StatelessWidget {
         padding: const EdgeInsets.all(UxnanSpacing.md),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: colors.onSurfaceVariant),
+            UxIcon(icon, size: 18, color: colors.onSurfaceVariant),
             const SizedBox(width: UxnanSpacing.sm),
             Flexible(
               child: Text(
@@ -2040,8 +2029,8 @@ class _PreviousResponsesSection extends StatelessWidget {
                   AnimatedRotation(
                     turns: expanded ? 0.5 : 0,
                     duration: duration,
-                    child: Icon(
-                      Icons.expand_more_rounded,
+                    child: UxIcon(
+                      UxIcons.expandMore,
                       size: 18,
                       color: colors.onSurfaceVariant,
                     ),
@@ -2266,7 +2255,7 @@ class _ResponseActions extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
         onPressed: () => _copy(context),
-        icon: const Icon(Icons.copy_rounded, size: 16),
+        icon: const UxIcon(UxIcons.copy, size: 16),
         label: Text(l10n.conversationCopyResponse),
         style: TextButton.styleFrom(
           foregroundColor: colors.onSurfaceVariant,
@@ -2327,7 +2316,7 @@ class _ThinkingSection extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
     return _AgentProcessDisclosure(
-      icon: Icons.psychology_outlined,
+      icon: UxIcons.psychology,
       title: l10n.conversationThinking,
       expanded: expanded,
       onToggle: onToggle,
@@ -2361,7 +2350,7 @@ class _WorkLogSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return _AgentProcessDisclosure(
-      icon: Icons.terminal_rounded,
+      icon: UxIcons.terminal,
       title: l10n.conversationWorkLog,
       count: items.length,
       collapsedSummary: _workLogSummary(items.last),
@@ -2401,7 +2390,7 @@ class _AgentProcessDisclosure extends StatelessWidget {
     this.collapsedSummary,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String title;
   final int? count;
   final String? collapsedSummary;
@@ -2443,7 +2432,7 @@ class _AgentProcessDisclosure extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(icon, size: 16, color: colors.onSurfaceVariant),
+                    UxIcon(icon, size: 16, color: colors.onSurfaceVariant),
                     const SizedBox(width: UxnanSpacing.sm),
                     Text(
                       title,
@@ -2470,10 +2459,8 @@ class _AgentProcessDisclosure extends StatelessWidget {
                     ] else
                       const Spacer(),
                     const SizedBox(width: UxnanSpacing.xs),
-                    Icon(
-                      expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
+                    UxIcon(
+                      expanded ? UxIcons.expandLess : UxIcons.expandMore,
                       size: 18,
                       color: colors.onSurfaceVariant,
                     ),
@@ -2517,14 +2504,14 @@ class _WorkLogRow extends StatelessWidget {
       case final CommandExecutionContent command:
         final (icon, color) = switch (command.status) {
           CommandStatus.running => (
-              Icons.autorenew_rounded,
+              UxIcons.autorenew,
               UxnanColors.connecting,
             ),
           CommandStatus.completed => (
-              Icons.check_circle_outline,
+              UxIcons.checkCircle,
               UxnanColors.success,
             ),
-          CommandStatus.error => (Icons.error_outline, UxnanColors.error),
+          CommandStatus.error => (UxIcons.error, UxnanColors.error),
         };
         final hasOutput = command.output != null && command.output!.isNotEmpty;
         return Column(
@@ -2535,7 +2522,7 @@ class _WorkLogRow extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Icon(icon, size: 14, color: color),
+                  child: UxIcon(icon, size: 14, color: color),
                 ),
                 const SizedBox(width: UxnanSpacing.sm),
                 Expanded(
@@ -2567,8 +2554,8 @@ class _WorkLogRow extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Icon(
-                tool.isError ? Icons.error_outline : Icons.build_outlined,
+              child: UxIcon(
+                tool.isError ? UxIcons.error : UxIcons.build,
                 size: 14,
                 color:
                     tool.isError ? UxnanColors.error : colors.onSurfaceVariant,
@@ -2642,8 +2629,8 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.difference_outlined,
+                    UxIcon(
+                      UxIcons.difference,
                       size: 16,
                       color: colors.onSurfaceVariant,
                     ),
@@ -2657,10 +2644,8 @@ class _ChangedFilesSectionState extends State<_ChangedFilesSection> {
                     const Spacer(),
                     _DiffCounts(additions: additions, deletions: deletions),
                     const SizedBox(width: UxnanSpacing.sm),
-                    Icon(
-                      _expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
+                    UxIcon(
+                      _expanded ? UxIcons.expandLess : UxIcons.expandMore,
                       size: 18,
                       color: colors.onSurfaceVariant,
                     ),
@@ -2724,8 +2709,8 @@ class _ChangedFileRowState extends State<_ChangedFileRow> {
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.insert_drive_file_outlined,
+                UxIcon(
+                  UxIcons.insertDriveFile,
                   size: 14,
                   color: colors.onSurfaceVariant,
                 ),

@@ -6,9 +6,11 @@ import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/screens/settings/licenses/licenses_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The public source repository for the project.
 const String _kSourceRepoUrl = 'https://sink.gamas.workers.dev/uxnan-repo';
@@ -59,18 +61,18 @@ class AboutSectionScreen extends ConsumerWidget {
               ),
               NeSectionHeader(label: l10n.aboutDeveloperSection),
               NeNavTile(
-                icon: Icons.code_rounded,
+                icon: UxIcons.code,
                 title: l10n.aboutSourceCodeTitle,
                 subtitle: l10n.aboutSourceCodeSubtitle,
-                trailing: Icon(
-                  Icons.open_in_new_rounded,
+                trailing: UxIcon(
+                  UxIcons.openInNew,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 onTap: () => _open(_kSourceRepoUrl),
               ),
               NeSectionHeader(label: l10n.aboutLegalSection),
               NeNavTile(
-                icon: Icons.description_outlined,
+                icon: UxIcons.description,
                 title: l10n.settingsLicensesTitle,
                 subtitle: l10n.settingsLicensesSubtitle,
                 onTap: () => LicensesScreen.push(context),

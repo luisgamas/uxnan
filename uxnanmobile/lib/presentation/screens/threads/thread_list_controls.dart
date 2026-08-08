@@ -3,9 +3,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Shared ordering, search and density controls for the active and archived
 /// thread lists, so both screens behave identically.
@@ -87,8 +89,8 @@ class AgentChipAvatar extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final logo = AgentVisuals.logoFor(agent);
     if (logo == null) {
-      return Icon(
-        Icons.smart_toy_outlined,
+      return UxIcon(
+        UxIcons.smartToy,
         size: size,
         color: AgentVisuals.colorFor(agent),
       );
@@ -125,8 +127,22 @@ class ThreadSearchAnchor extends StatelessWidget {
     return SearchAnchor(
       isFullScreen: true,
       viewHintText: l10n.threadsSearchHint,
+      // The full-screen view draws its own back arrow and clear button from
+      // Flutter's Material set unless they are supplied — the one place in the
+      // app where a Material glyph survived the icon migration, because it is
+      // built inside the framework rather than by us.
+      viewLeading: IconButton(
+        icon: const UxIcon(UxIcons.arrowBack),
+        tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      // Flutter also puts a Material ✕ in the view's trailing slot. Dropping it
+      // is deliberate rather than re-skinned: clearing needs the anchor's own
+      // SearchController, which would make three widgets stateful for one
+      // glyph, and the view is one tap from closing anyway.
+      viewTrailing: const [],
       builder: (context, controller) => IconSurface(
-        icon: Icons.search_rounded,
+        icon: UxIcons.search,
         tooltip: l10n.threadsSearch,
         onPressed: controller.openView,
       ),
@@ -213,7 +229,7 @@ class ThreadSortMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return IconSurfaceMenu<ThreadSort>(
       tooltip: l10n.threadsSortBy,
-      icon: Icons.sort_rounded,
+      icon: UxIcons.sort,
       // No `initialValue`: it would tint the active item's background with
       // square corners (overflowing the rounded menu). The active ordering is
       // already shown by the CheckedPopupMenuItem's check, like the more menu.
@@ -269,7 +285,7 @@ class ThreadMoreMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return IconSurfaceMenu<_MoreAction>(
       tooltip: l10n.threadsMore,
-      icon: Icons.more_vert_rounded,
+      icon: UxIcons.moreVert,
       onSelected: (action) {
         switch (action) {
           case _MoreAction.compact:
@@ -289,7 +305,7 @@ class ThreadMoreMenu extends StatelessWidget {
             value: _MoreAction.archived,
             child: Row(
               children: [
-                const Icon(Icons.archive_outlined, size: 20),
+                const UxIcon(UxIcons.archive, size: 20),
                 const SizedBox(width: UxnanSpacing.md),
                 Text(l10n.archivedTitle),
               ],

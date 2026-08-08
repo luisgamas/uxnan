@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Neural Expressive building blocks for settings-style screens: a quiet
 /// section label, a one-line hint, and dynamic-corner toggle / navigation rows.
@@ -90,7 +92,7 @@ class NeSwitchTile extends StatelessWidget {
   final CardGroupPosition position;
 
   /// Leading icon.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Primary label.
   final String title;
@@ -112,7 +114,7 @@ class NeSwitchTile extends StatelessWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: SwitchListTile(
-        secondary: Icon(icon, color: colors.onSurfaceVariant),
+        secondary: UxIcon(icon, color: colors.onSurfaceVariant),
         title: Text(title),
         subtitle: Text(subtitle),
         value: value,
@@ -141,7 +143,7 @@ class NeNavTile extends StatelessWidget {
   final CardGroupPosition position;
 
   /// Leading icon.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Primary label.
   final String title;
@@ -164,11 +166,11 @@ class NeNavTile extends StatelessWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(icon, color: colors.onSurfaceVariant),
+        leading: UxIcon(icon, color: colors.onSurfaceVariant),
         title: Text(title),
         subtitle: Text(subtitle),
         trailing: trailing ??
-            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+            UxIcon(UxIcons.chevronRight, color: colors.onSurfaceVariant),
       ),
     );
   }

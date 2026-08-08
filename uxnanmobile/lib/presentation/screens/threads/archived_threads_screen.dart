@@ -8,8 +8,10 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The archived threads of a paired PC. Archived threads are hidden from the
 /// main threads list but never deleted; from here the user can reopen them,
@@ -104,8 +106,8 @@ class _EmptyArchived extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.inventory_2_outlined,
+            UxIcon(
+              UxIcons.inventory2,
               size: 48,
               color: colors.onSurfaceVariant,
               semanticLabel: 'Archived',

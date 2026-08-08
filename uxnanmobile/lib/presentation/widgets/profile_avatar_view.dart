@@ -1,25 +1,26 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/profile_avatar.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The curated set of preset avatar icons, keyed by the string stored on
-/// [ProfileAvatar.icon]. All values are `const IconData` so icon tree-shaking
-/// still works (a dynamic `IconData(codePoint)` would break release builds).
-const Map<String, IconData> kProfileAvatarIcons = {
-  'person': Icons.person_rounded,
-  'face': Icons.face_rounded,
-  'astro': Icons.rocket_launch_rounded,
-  'bolt': Icons.bolt_rounded,
-  'star': Icons.star_rounded,
-  'robot': Icons.smart_toy_rounded,
-  'code': Icons.code_rounded,
-  'terminal': Icons.terminal_rounded,
-  'pets': Icons.pets_rounded,
-  'bug': Icons.bug_report_rounded,
-  'memory': Icons.memory_rounded,
-  'public': Icons.public_rounded,
+/// [ProfileAvatar.icon]. All values are `const UxIconData` so icon tree-shaking
+/// still works (a dynamic `UxIconData(codePoint)` would break release builds).
+const Map<String, UxIconData> kProfileAvatarIcons = {
+  'person': UxIcons.person,
+  'face': UxIcons.face,
+  'astro': UxIcons.rocketLaunch,
+  'bolt': UxIcons.bolt,
+  'star': UxIcons.star,
+  'robot': UxIcons.smartToy,
+  'code': UxIcons.code,
+  'terminal': UxIcons.terminal,
+  'pets': UxIcons.pets,
+  'bug': UxIcons.bugReport,
+  'memory': UxIcons.memory,
+  'public': UxIcons.public,
 };
 
 /// Renders a [ProfileAvatar] as a circular avatar: the picked image, a preset
@@ -55,8 +56,7 @@ class ProfileAvatarView extends StatelessWidget {
               height: size,
               fit: BoxFit.cover,
               gaplessPlayback: true,
-              errorBuilder: (_, __, ___) =>
-                  _glyph(colors, Icons.person_rounded),
+              errorBuilder: (_, __, ___) => _glyph(colors, UxIcons.person),
             ),
           ),
         );
@@ -64,12 +64,12 @@ class ProfileAvatarView extends StatelessWidget {
     }
 
     final icon = avatar.kind == ProfileAvatarKind.icon
-        ? (kProfileAvatarIcons[avatar.iconKey] ?? Icons.person_rounded)
-        : Icons.person_rounded;
+        ? (kProfileAvatarIcons[avatar.iconKey] ?? UxIcons.person)
+        : UxIcons.person;
     return _glyph(colors, icon);
   }
 
-  Widget _glyph(ColorScheme colors, IconData icon) {
+  Widget _glyph(ColorScheme colors, UxIconData icon) {
     return Container(
       width: size,
       height: size,
@@ -78,7 +78,7 @@ class ProfileAvatarView extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: colors.outline),
       ),
-      child: Icon(icon, size: size * 0.5, color: colors.onSurfaceVariant),
+      child: UxIcon(icon, size: size * 0.5, color: colors.onSurfaceVariant),
     );
   }
 

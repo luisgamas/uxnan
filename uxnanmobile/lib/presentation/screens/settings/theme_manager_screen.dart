@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,11 +9,13 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/custom_theme_editor_screen.dart';
 import 'package:uxnan/presentation/screens/settings/theme_export.dart';
 import 'package:uxnan/presentation/screens/settings/theme_sheets.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/color_picker.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen library manager for the user's [CustomTheme]s.
 ///
@@ -364,7 +365,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
           : l10n.themeManagerTitle,
       leading: _selectionMode
           ? IconSurface(
-              icon: Icons.close_rounded,
+              icon: UxIcons.close,
               tooltip: l10n.themeManagerExitSelection,
               onPressed: _clearSelection,
             )
@@ -372,36 +373,36 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
       actions: _selectionMode
           ? [
               IconSurface(
-                icon: Icons.select_all_rounded,
+                icon: UxIcons.selectAll,
                 tooltip: l10n.themeManagerSelectAll,
                 onPressed: () => setState(
                   () => _selected.addAll(library.map((t) => t.id)),
                 ),
               ),
               IconSurface(
-                icon: Icons.ios_share_rounded,
+                icon: UxIcons.iosShare,
                 tooltip: l10n.personalizationCustomThemeExport,
                 onPressed: _exportSelected,
               ),
               IconSurface(
-                icon: Icons.delete_outline_rounded,
+                icon: UxIcons.delete,
                 tooltip: l10n.personalizationCustomThemeDelete,
                 onPressed: _deleteSelected,
               ),
             ]
           : [
               IconSurface(
-                icon: Icons.add_rounded,
+                icon: UxIcons.add,
                 tooltip: l10n.personalizationCustomThemeAuthor,
                 onPressed: _newTheme,
               ),
               IconSurface(
-                icon: Icons.file_download_outlined,
+                icon: UxIcons.fileDownload,
                 tooltip: l10n.personalizationCustomThemesImportAction,
                 onPressed: _import,
               ),
               IconSurfaceMenu<_ManagerAction>(
-                icon: Icons.more_vert_rounded,
+                icon: UxIcons.moreVert,
                 tooltip: l10n.themeManagerTitle,
                 onSelected: (action) => switch (action) {
                   _ManagerAction.exportAll => _exportAll(),
@@ -411,7 +412,7 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
                   PopupMenuItem(
                     value: _ManagerAction.exportAll,
                     child: ListTile(
-                      leading: const Icon(Icons.upload_file_outlined),
+                      leading: const UxIcon(UxIcons.uploadFile),
                       title: Text(
                         l10n.personalizationCustomThemesExportAllAction,
                       ),
@@ -421,8 +422,8 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
                   PopupMenuItem(
                     value: _ManagerAction.reset,
                     child: ListTile(
-                      leading: Icon(
-                        Icons.restart_alt_rounded,
+                      leading: UxIcon(
+                        UxIcons.restartAlt,
                         color: Theme.of(ctx).colorScheme.error,
                       ),
                       title: Text(l10n.personalizationCustomThemesResetAction),
@@ -733,8 +734,8 @@ class _CardMenu extends StatelessWidget {
       // The menu sits over the preview's own colors (the dark side for a dual
       // theme). A fixed neutral grey reads on both light and dark surfaces —
       // the app's `onSurface` would vanish into the dark preview in light mode.
-      icon: const Icon(
-        Icons.more_vert_rounded,
+      icon: const UxIcon(
+        UxIcons.moreVert,
         size: 18,
         color: Color(0xFF9AA0A6),
       ),
@@ -747,7 +748,7 @@ class _CardMenu extends StatelessWidget {
         PopupMenuItem(
           value: _CardAction.edit,
           child: ListTile(
-            leading: const Icon(Icons.edit_outlined),
+            leading: const UxIcon(UxIcons.edit),
             title: Text(l10n.personalizationCustomThemeEdit),
             contentPadding: EdgeInsets.zero,
           ),
@@ -755,7 +756,7 @@ class _CardMenu extends StatelessWidget {
         PopupMenuItem(
           value: _CardAction.export,
           child: ListTile(
-            leading: const Icon(Icons.upload_file_outlined),
+            leading: const UxIcon(UxIcons.uploadFile),
             title: Text(l10n.personalizationCustomThemeExport),
             contentPadding: EdgeInsets.zero,
           ),
@@ -764,8 +765,8 @@ class _CardMenu extends StatelessWidget {
           value: _CardAction.delete,
           enabled: !isBuiltIn,
           child: ListTile(
-            leading: Icon(
-              Icons.delete_outline_rounded,
+            leading: UxIcon(
+              UxIcons.delete,
               color: isBuiltIn
                   ? colors.onSurfaceVariant.withValues(alpha: 0.38)
                   : colors.error,
@@ -801,8 +802,8 @@ class _SelectionDot extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: colors.primary, width: 2),
       ),
-      child: Icon(
-        selected ? Icons.check_rounded : Icons.circle_outlined,
+      child: UxIcon(
+        selected ? UxIcons.check : UxIcons.circle,
         size: 18,
         color: selected ? colors.onPrimary : Colors.transparent,
       ),
@@ -865,8 +866,8 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.palette_outlined,
+            UxIcon(
+              UxIcons.palette,
               size: 40,
               color: colors.onSurfaceVariant,
             ),

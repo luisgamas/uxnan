@@ -1,7 +1,7 @@
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_suggestion.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 
 void main() {
   group('detectComposerTrigger', () {
@@ -137,14 +137,14 @@ void main() {
     const commands = [
       ComposerCommand(
         id: 'files',
-        icon: IconData(0),
+        icon: UxIcons.code,
         label: 'Attach file or folder',
         description: '',
         kind: ComposerCommandKind.startFileMention,
       ),
       ComposerCommand(
         id: 'review',
-        icon: IconData(0),
+        icon: UxIcons.code,
         label: 'Review',
         description: '',
         kind: ComposerCommandKind.insertTemplate,

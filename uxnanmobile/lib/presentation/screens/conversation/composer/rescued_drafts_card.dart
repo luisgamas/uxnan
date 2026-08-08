@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_palette_card.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Drafts the composer was holding when a queued message was pulled back to be
 /// edited.
@@ -48,8 +50,8 @@ class RescuedDraftsCard extends StatelessWidget {
           ? IconButton(
               onPressed: () => _confirmClearAll(context),
               tooltip: l10n.rescuedDraftsClearAll,
-              icon: Icon(
-                Icons.delete_sweep_outlined,
+              icon: UxIcon(
+                UxIcons.deleteSweep,
                 size: 20,
                 color: colors.onSurfaceVariant,
               ),
@@ -146,8 +148,8 @@ class _RescuedDraftRow extends StatelessWidget {
                 onPressed: onDismiss,
                 tooltip: l10n.rescuedDraftDiscard,
                 visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  Icons.delete_outline_rounded,
+                icon: UxIcon(
+                  UxIcons.delete,
                   size: 20,
                   color: colors.onSurfaceVariant,
                 ),

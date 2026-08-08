@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/application/managers/file_browser_manager.dart';
@@ -21,8 +20,10 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_submit
 import 'package:uxnan/presentation/screens/conversation/composer/mention_suggestion.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/mention_text_controller.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Side of a pending-attachment thumbnail inside the pill. Deliberately
 /// smaller than the sent-message strip so queuing an image grows the composer
@@ -875,8 +876,8 @@ class _FileRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              isDir ? Icons.folder_rounded : Icons.insert_drive_file_outlined,
+            UxIcon(
+              isDir ? UxIcons.folder : UxIcons.insertDriveFile,
               size: 18,
               color: entry.ignored
                   ? colors.onSurfaceVariant.withValues(alpha: 0.6)
@@ -897,8 +898,8 @@ class _FileRow extends StatelessWidget {
               ),
             ),
             if (isDir)
-              Icon(
-                Icons.chevron_right_rounded,
+              UxIcon(
+                UxIcons.chevronRight,
                 size: 18,
                 color: colors.onSurfaceVariant,
               ),
@@ -935,8 +936,8 @@ class _MatchRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              isDir ? Icons.folder_rounded : Icons.insert_drive_file_outlined,
+            UxIcon(
+              isDir ? UxIcons.folder : UxIcons.insertDriveFile,
               size: 18,
               color: isDir ? colors.primary : colors.onSurfaceVariant,
             ),
@@ -965,8 +966,8 @@ class _MatchRow extends StatelessWidget {
               ),
             ),
             if (isDir)
-              Icon(
-                Icons.chevron_right_rounded,
+              UxIcon(
+                UxIcons.chevronRight,
                 size: 18,
                 color: colors.onSurfaceVariant,
               ),
@@ -1006,7 +1007,7 @@ class _CommandRow extends StatelessWidget {
                   color: colors.surfaceContainerHighest,
                   borderRadius: const BorderRadius.all(UxnanRadius.md),
                 ),
-                child: Icon(
+                child: UxIcon(
                   command.icon,
                   size: 20,
                   color: colors.onSurfaceVariant,
@@ -1104,14 +1105,14 @@ class _ComposerActions extends StatelessWidget {
           backgroundColor: colors.error,
           foregroundColor: colors.onError,
         ),
-        icon: const Icon(Icons.stop_rounded),
+        icon: const UxIcon(UxIcons.stop),
       );
     } else if (hasText) {
       primary = IconButton.filled(
         key: const ValueKey('send'),
         tooltip: l10n.composerSend,
         onPressed: onSend,
-        icon: const Icon(Icons.arrow_upward_rounded),
+        icon: const UxIcon(UxIcons.arrowUpward),
       );
     } else {
       primary = const SizedBox.shrink(key: ValueKey('empty-primary'));
@@ -1127,8 +1128,8 @@ class _ComposerActions extends StatelessWidget {
               foregroundColor: colors.onErrorContainer,
             )
           : null,
-      icon: Icon(
-        listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+      icon: UxIcon(
+        listening ? UxIcons.mic : UxIcons.micNone,
         color: listening ? colors.onErrorContainer : colors.onSurfaceVariant,
       ),
       onPressed: onVoice,

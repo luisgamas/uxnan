@@ -5,11 +5,13 @@ import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The Updates settings section: the installed version, the live update state
 /// with an in-section download → install flow (no silent install), and a
@@ -77,8 +79,8 @@ class _CurrentVersionCard extends ConsumerWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(
-          Icons.info_outline_rounded,
+        leading: UxIcon(
+          UxIcons.info,
           color: colors.onSurfaceVariant,
         ),
         title: Text(l10n.updateCurrentVersionTitle),
@@ -114,8 +116,8 @@ class _UpdateStateCard extends ConsumerWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(
-          Icons.system_update_outlined,
+        leading: UxIcon(
+          UxIcons.systemUpdate,
           color: colors.onSurfaceVariant,
         ),
         title: Text(l10n.updateCheckTitle),

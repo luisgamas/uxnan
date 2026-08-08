@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Neural Expressive **primary / secondary action button** — the single
 /// canonical CTA used across onboarding, manual pairing and the camera
@@ -43,7 +45,7 @@ class NeButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   /// Optional leading glyph.
-  final IconData? icon;
+  final UxIconData? icon;
 
   final bool _outlined;
 
@@ -54,7 +56,9 @@ class NeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     const shape = StadiumBorder();
     const padding = EdgeInsets.symmetric(horizontal: 24);
-    final iconWidget = icon == null ? null : Icon(icon, size: 20);
+    // A public field cannot be promoted by a null check, so bind it once.
+    final icon = this.icon;
+    final iconWidget = icon == null ? null : UxIcon(icon, size: 20);
 
     final Widget button;
     if (_outlined) {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// How loud a [NeBadge] is. The tone carries the meaning: reach for the
 /// loudest one the fact actually deserves, and no louder.
@@ -43,7 +45,7 @@ class NeBadge extends StatelessWidget {
   final String label;
 
   /// Optional leading glyph, drawn at 13 dp to sit on the text's own line.
-  final IconData? icon;
+  final UxIconData? icon;
 
   /// How loud this badge is; see [NeBadgeTone].
   final NeBadgeTone tone;
@@ -51,6 +53,8 @@ class NeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    // A public field cannot be promoted by a null check, so bind it once.
+    final icon = this.icon;
     final textTheme = Theme.of(context).textTheme;
 
     final (background, foreground) = switch (tone) {
@@ -80,7 +84,7 @@ class NeBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 13, color: foreground),
+            UxIcon(icon, size: 13, color: foreground),
             const SizedBox(width: UxnanSpacing.xs),
           ],
           Text(

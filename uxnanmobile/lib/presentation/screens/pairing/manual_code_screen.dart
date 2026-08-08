@@ -11,6 +11,7 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/pairing/bridge_discovery_sheet.dart';
 import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart'
     show QrScannerScreen;
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
@@ -18,6 +19,7 @@ import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Pair with the bridge by typing its host + a short pairing code — the
 /// no-camera alternative to [QrScannerScreen]. Resolves the code against the
@@ -154,8 +156,8 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                             borderRadius:
                                 const BorderRadius.all(UxnanRadius.xl),
                           ),
-                          child: Icon(
-                            Icons.vpn_key_rounded,
+                          child: UxIcon(
+                            UxIcons.vpnKey,
                             size: 38,
                             color: colors.onPrimaryContainer,
                             semanticLabel: l10n.manualCodeTitle,
@@ -187,8 +189,8 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.wifi_find_rounded,
+                            UxIcon(
+                              UxIcons.wifiFind,
                               color: colors.primary,
                               semanticLabel: l10n.manualCodeBrowse,
                             ),
@@ -211,8 +213,8 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                                 ],
                               ),
                             ),
-                            Icon(
-                              Icons.chevron_right_rounded,
+                            UxIcon(
+                              UxIcons.chevronRight,
                               color: colors.onSurfaceVariant,
                             ),
                           ],
@@ -241,7 +243,7 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                             _FilledField(
                               controller: _host,
                               enabled: !_connecting,
-                              icon: Icons.dns_rounded,
+                              icon: UxIcons.dns,
                               label: l10n.manualCodeHostLabel,
                               hint: l10n.manualCodeHostHint,
                               keyboardType: TextInputType.url,
@@ -251,7 +253,7 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                             _FilledField(
                               controller: _code,
                               enabled: !_connecting,
-                              icon: Icons.key_rounded,
+                              icon: UxIcons.key,
                               label: l10n.manualCodeCodeLabel,
                               hint: l10n.manualCodeCodeHint,
                               textCapitalization: TextCapitalization.characters,
@@ -269,8 +271,8 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.error_outline_rounded,
+                            UxIcon(
+                              UxIcons.error,
                               color: colors.error,
                               size: 20,
                               semanticLabel: 'Error',
@@ -329,7 +331,7 @@ class _ManualCodeScreenState extends ConsumerState<ManualCodeScreen> {
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
@@ -365,7 +367,7 @@ class _FilledField extends StatelessWidget {
 
   final TextEditingController controller;
   final bool enabled;
-  final IconData icon;
+  final UxIconData icon;
   final String label;
   final String hint;
   final TextInputType? keyboardType;
@@ -387,7 +389,7 @@ class _FilledField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: colors.onSurfaceVariant),
+        prefixIcon: UxIcon(icon, color: colors.onSurfaceVariant),
         filled: true,
         fillColor: colors.surfaceContainerHighest,
         // Borderless filled field with a soft rounded shape; the focused

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Shared visual scaffold for an onboarding page: a hero icon, a headline, an
 /// optional body and an optional extra [child] (e.g. a feature list or command
@@ -16,7 +18,7 @@ class OnboardingPageLayout extends StatelessWidget {
   });
 
   /// The hero icon for the page.
-  final IconData icon;
+  final UxIconData icon;
 
   /// The page headline.
   final String title;
@@ -66,7 +68,7 @@ class OnboardingPageLayout extends StatelessWidget {
                       color: colors.primaryContainer,
                       borderRadius: const BorderRadius.all(UxnanRadius.xl),
                     ),
-                    child: Icon(
+                    child: UxIcon(
                       icon,
                       size: 38,
                       color: colors.onPrimaryContainer,

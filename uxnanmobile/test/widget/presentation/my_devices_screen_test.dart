@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,9 +12,11 @@ import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
+import '../../support/ux_icon_finder.dart';
 
 /// The relay host every [_device] advertises, so a test can drive the relay
 /// network-kind badge by passing `connectedEndpoint: kRelayUrl`.
@@ -111,7 +112,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(findUxIcon(UxIcons.moreVert));
     await tester.pumpAndSettle();
     expect(find.text('Remove device'), findsOneWidget);
 
@@ -235,14 +236,14 @@ void main() {
     await tester.pump();
 
     // Hidden by default: the "reveal" affordance is shown.
-    expect(find.byIcon(Icons.visibility_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.visibility_off_rounded), findsNothing);
+    expect(findUxIcon(UxIcons.visibility), findsOneWidget);
+    expect(findUxIcon(UxIcons.visibilityOff), findsNothing);
 
     // Tapping the address reveals it (affordance flips to "hide") without
     // navigating away — the screen (and its card) are still on screen.
-    await tester.tap(find.byIcon(Icons.visibility_rounded));
+    await tester.tap(findUxIcon(UxIcons.visibility));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.visibility_off_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.visibilityOff), findsOneWidget);
     expect(find.text('My Mac'), findsOneWidget);
   });
 
@@ -256,8 +257,8 @@ void main() {
     // The bar carries the product's identity, not the screen's: the mark on
     // the left, the avatar on the right.
     expect(find.byType(ProfileAvatarView), findsOneWidget);
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.hub_outlined), findsNothing);
+    expect(findUxIcon(UxIcons.settings), findsOneWidget);
+    expect(findUxIcon(UxIcons.hub), findsNothing);
   });
 
   // The two widths a Pixel 10 Pro XL actually reports (1344 × 2992 px at
@@ -353,9 +354,10 @@ void main() {
       expect(find.text('Welcome back'), findsOneWidget);
       expect(find.text('Jorge'), findsOneWidget);
       // The headline is the screen's heading, so the bar carries the brand and
-      // the avatar instead of a title and a person glyph.
+      // the avatar instead of a title and a separate profile action. (Asserting
+      // the absence of a person glyph would not say that: the default avatar
+      // draws one itself.)
       expect(find.text('Devices'), findsNothing);
-      expect(find.byIcon(Icons.person_outline_rounded), findsNothing);
       expect(find.byType(ProfileAvatarView), findsOneWidget);
     });
 
