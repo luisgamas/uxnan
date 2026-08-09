@@ -7,6 +7,7 @@ import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/threads/workspace_git_indicators.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
@@ -188,6 +189,12 @@ class WorkspaceGroupRow extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    // Git after the count, which anchors the line, and
+                    // before the agent marks: it is the only thing here that
+                    // changes on its own, so it earns the eye before identity
+                    // does.
+                    if (group.path != null)
+                      WorkspaceGitIndicators(cwd: group.path!),
                     if (!expanded && agents.isNotEmpty) ...[
                       const SizedBox(width: UxnanSpacing.sm),
                       _AgentMarks(agents: agents),

@@ -6,6 +6,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — a folder says what its working tree is doing
+
+Each folder row now reports what the desktop's sidebar reports: uncommitted
+work, and how far it has drifted from its remote (`↑ahead`, `↓behind`). No new
+contract was needed — `git/status` already returned all of it; what was missing
+was a per-folder provider instead of a single stream for the open conversation.
+
+The rules are about **cost**, not appearance. Fifteen folders on screen is
+fifteen round trips to a PC that may be behind a relay, from a phone on a
+battery. So: only while connected to that PC; only for folders whose indicators
+are actually on screen (a collapsed folder draws none, so nothing is watched and
+nothing is fetched); and at most one request per folder per 15 s. The refresh
+that matters arrives on the existing `git/status` bus after a commit, push or
+pull — the producer is already holding the new status, so re-asking the bridge
+would be a round trip to learn nothing.
+
+A zero is never drawn and the row caps at three signals; the breakdown — branch,
+upstream, `+additions −deletions`, file count — is one long-press away. With no
+answer the row draws **nothing**, never "clean": a folder we could not reach
+reported as clean is a lie that looks exactly like good news. A folder on a PC
+that went offline keeps its last known state, dimmed.
+
 ### Added — every screen the plan will not reach now arrives like the rest
 
 The seven navigable screens no remaining phase names: the commit detail, and

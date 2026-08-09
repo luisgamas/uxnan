@@ -118,6 +118,18 @@
   "spacesOther": "Other spaces",
   "spacesNoFolder": "No folder",
   "spacesNewConversationHere": "New conversation here",
+  "workspaceDirty": "{count, plural, =1{1 uncommitted file} other{{count} uncommitted files}}",
+  "@workspaceDirty": {"placeholders": {"count": {"type": "int"}}},
+  "workspaceAhead": "{count, plural, =1{1 commit to push} other{{count} commits to push}}",
+  "@workspaceAhead": {"placeholders": {"count": {"type": "int"}}},
+  "workspaceBehind": "{count, plural, =1{1 commit to pull} other{{count} commits to pull}}",
+  "@workspaceBehind": {"placeholders": {"count": {"type": "int"}}},
+  "workspaceUpstream": "Tracking {branch}",
+  "@workspaceUpstream": {"placeholders": {"branch": {"type": "String"}}},
+  "workspaceGitUnavailable": "Git state unavailable",
+  "workspaceGitStale": "Last known state",
+  "workspaceNoUpstream": "No upstream branch",
+  "workspaceClean": "No uncommitted changes",
   "spacesWorkspaceCount": "{count, plural, =1{1 folder} other{{count} folders}}",
   "@spacesWorkspaceCount": {
     "placeholders": { "count": { "type": "int" } }

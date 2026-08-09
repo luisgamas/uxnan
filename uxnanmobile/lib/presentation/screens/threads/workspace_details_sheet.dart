@@ -5,6 +5,7 @@ import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
+import 'package:uxnan/presentation/providers/workspace_git_provider.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -101,6 +102,10 @@ class _WorkspaceDetails extends ConsumerWidget {
                   ),
                 ),
               ],
+              if (path != null && path.isNotEmpty) ...[
+                const SizedBox(height: UxnanSpacing.md),
+                _GitDetail(cwd: path),
+              ],
               const SizedBox(height: UxnanSpacing.md),
               Text(l10n.spacesConversations, style: textTheme.bodySmall),
               const SizedBox(height: UxnanSpacing.xs),
@@ -138,6 +143,86 @@ class _WorkspaceDetails extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The full git picture for a folder — the half the row deliberately leaves
+/// out.
+///
+/// The row carries at most three signals because it has to stay scannable;
+/// everything that did not fit lands here, where there is room to spell it: the
+/// branch, what it tracks, and the size of the uncommitted work.
+class _GitDetail extends ConsumerWidget {
+  const _GitDetail({required this.cwd});
+
+  final String cwd;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final value = ref.watch(workspaceGitProvider(cwd)).value;
+    final git = value?.git;
+    if (git == null || git.branch.isEmpty) {
+      return Text(
+        l10n.workspaceGitUnavailable,
+        style: textTheme.bodySmall,
+      );
+    }
+
+    final totals = git.diffTotals;
+    final lines = <String>[
+      if (git.upstream != null && git.upstream!.isNotEmpty)
+        l10n.workspaceUpstream(git.upstream!)
+      else
+        l10n.workspaceNoUpstream,
+      if (git.changedFiles.isNotEmpty)
+        l10n.workspaceDirty(git.changedFiles.length)
+      else if (!git.isDirty)
+        l10n.workspaceClean,
+      if (git.ahead > 0) l10n.workspaceAhead(git.ahead),
+      if (git.behind > 0) l10n.workspaceBehind(git.behind),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            UxIcon(
+              UxIcons.altRoute,
+              size: UxnanSize.iconContentSmall,
+              color: colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: UxnanSpacing.xs),
+            Flexible(
+              child: Text(
+                git.branch,
+                style: textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (value!.stale) ...[
+              const SizedBox(width: UxnanSpacing.sm),
+              Text(l10n.workspaceGitStale, style: textTheme.bodySmall),
+            ],
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(lines.join(' · '), style: textTheme.bodySmall),
+        if (totals.additions > 0 || totals.deletions > 0) ...[
+          const SizedBox(height: 2),
+          Text(
+            '+${totals.additions} −${totals.deletions}',
+            style: UxnanTypography.codeSmall.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

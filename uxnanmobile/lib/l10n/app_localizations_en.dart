@@ -242,6 +242,56 @@ class AppLocalizationsEn extends AppLocalizations {
   String get spacesNewConversationHere => 'New conversation here';
 
   @override
+  String workspaceDirty(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count uncommitted files',
+      one: '1 uncommitted file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceAhead(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commits to push',
+      one: '1 commit to push',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceBehind(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commits to pull',
+      one: '1 commit to pull',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceUpstream(String branch) {
+    return 'Tracking $branch';
+  }
+
+  @override
+  String get workspaceGitUnavailable => 'Git state unavailable';
+
+  @override
+  String get workspaceGitStale => 'Last known state';
+
+  @override
+  String get workspaceNoUpstream => 'No upstream branch';
+
+  @override
+  String get workspaceClean => 'No uncommitted changes';
+
+  @override
   String spacesWorkspaceCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

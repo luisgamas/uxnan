@@ -292,6 +292,26 @@ shipping.
       needs a new relay+bridge+shared contract (the relay has no route to
       reach an unpaired bridge on the phone's behalf today). Not started.
 
+- [ ] **`git/statusBatch(cwds[])`, if the per-folder git turns out to cost
+      too much.** The folder list asks `git/status` once per visible folder;
+      fifteen folders on screen is fifteen requests. It is bounded already
+      (connected PC only, visible folders only, one per folder per 15 s, and
+      the real refresh arrives on the status bus rather than by polling), so
+      this is deliberately **not** built yet — measure on a real PC with many
+      folders first. If it does bite, one batched method replaces N round
+      trips without changing anything in the UI: `workspaceGitProvider` is the
+      only caller. Written down so the option is remembered, not so it is
+      implemented on spec.
+
+- [ ] **Pull-request indicators (number, checks, merged / integrated /
+      abandoned).** `uxnandesktop` derives these from `gh` running locally;
+      the bridge can only **create** PRs (`git/createPr`) and has no way to
+      query them. Showing them on the phone needs a new `shared/` + `bridge/`
+      method (and `gh` present on the PC) — not another provider on mobile.
+      **Not scheduled in any phase**, and left out of the folder-git work on
+      purpose: inventing a PR state the bridge cannot report would be worse
+      than not showing one.
+
 ## App+bridge seams (need a live bridge to finish/verify)
 
 - [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**

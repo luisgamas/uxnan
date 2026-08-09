@@ -150,6 +150,16 @@ happening*; the archive answers *which one was it*, and a search field with a
 date sort answers that better than a hierarchy you have to expand — grouping
 would put a navigation step in front of a lookup.
 
+Each folder's **git state** comes from `workspaceGitProvider`
+(`presentation/providers/workspace_git_provider.dart`), a per-cwd
+`git/status`. Its rules are about cost: only while connected to that PC, only
+while the indicators are on screen (`autoDispose` — a collapsed folder draws
+none, so nothing is watched and nothing is fetched), and at most one request per
+folder per `kWorkspaceGitThrottle` (15 s). The refresh that matters arrives on
+`gitStatusBusProvider` after a commit, push or pull, so the poll is the slow
+safety net rather than the mechanism. The row omits zeros, caps at three
+signals, and draws nothing at all when it has no answer — never "clean".
+
 A thread row reads state → agent → text (`thread_tile.dart`), mirroring
 `uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a
 step larger, then the title over its second line.

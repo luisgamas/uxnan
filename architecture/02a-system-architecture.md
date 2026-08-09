@@ -985,6 +985,17 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > reinicio requeriria que el bridge lo dijera — una notificacion
 > `stream/thread/state` o un campo en `thread/list` — y esta anotado como
 > trabajo debido en `uxnanmobile/FOR-DEV.md`, no implementado.
+>
+> **Los indicadores de git de cada carpeta** (sin confirmar, ↑adelante /
+> ↓atras) salen de `git/status` por cwd, que ya existia — no hizo falta
+> contrato nuevo. Las reglas son de **coste**, no de dibujo: solo con el PC
+> conectado, solo para carpetas visibles (`autoDispose`: una carpeta plegada no
+> dibuja indicadores, luego nadie observa el provider, luego no se pide), y con
+> un throttle de 15 s. El refresco real llega por el bus de `git/status` tras
+> un commit/push/pull, sin viaje de ida y vuelta. Un cero no se dibuja jamas y
+> la fila corta a tres senales; el desglose (rama, upstream, +/−) vive en la
+> hoja de pulsacion larga. Sin respuesta la fila no dibuja nada — nunca
+> "limpio", que seria una mentira con aspecto de buena noticia.
 
 ```
 lib/presentation/

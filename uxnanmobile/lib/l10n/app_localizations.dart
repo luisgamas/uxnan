@@ -494,6 +494,54 @@ abstract class AppLocalizations {
   /// **'New conversation here'**
   String get spacesNewConversationHere;
 
+  /// No description provided for @workspaceDirty.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 uncommitted file} other{{count} uncommitted files}}'**
+  String workspaceDirty(int count);
+
+  /// No description provided for @workspaceAhead.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 commit to push} other{{count} commits to push}}'**
+  String workspaceAhead(int count);
+
+  /// No description provided for @workspaceBehind.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 commit to pull} other{{count} commits to pull}}'**
+  String workspaceBehind(int count);
+
+  /// No description provided for @workspaceUpstream.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracking {branch}'**
+  String workspaceUpstream(String branch);
+
+  /// No description provided for @workspaceGitUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Git state unavailable'**
+  String get workspaceGitUnavailable;
+
+  /// No description provided for @workspaceGitStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Last known state'**
+  String get workspaceGitStale;
+
+  /// No description provided for @workspaceNoUpstream.
+  ///
+  /// In en, this message translates to:
+  /// **'No upstream branch'**
+  String get workspaceNoUpstream;
+
+  /// No description provided for @workspaceClean.
+  ///
+  /// In en, this message translates to:
+  /// **'No uncommitted changes'**
+  String get workspaceClean;
+
   /// No description provided for @spacesWorkspaceCount.
   ///
   /// In en, this message translates to:

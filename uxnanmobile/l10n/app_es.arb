@@ -85,6 +85,14 @@
   "spacesOther": "Otros espacios",
   "spacesNoFolder": "Sin carpeta",
   "spacesNewConversationHere": "Nueva conversación aquí",
+  "workspaceDirty": "{count, plural, =1{1 archivo sin confirmar} other{{count} archivos sin confirmar}}",
+  "workspaceAhead": "{count, plural, =1{1 commit por subir} other{{count} commits por subir}}",
+  "workspaceBehind": "{count, plural, =1{1 commit por bajar} other{{count} commits por bajar}}",
+  "workspaceUpstream": "Siguiendo a {branch}",
+  "workspaceGitUnavailable": "Estado de git no disponible",
+  "workspaceGitStale": "Último estado conocido",
+  "workspaceNoUpstream": "Sin rama remota",
+  "workspaceClean": "Sin cambios sin confirmar",
   "spacesWorkspaceCount": "{count, plural, =1{1 carpeta} other{{count} carpetas}}",
   "@spacesWorkspaceCount": {
     "placeholders": { "count": { "type": "int" } }
