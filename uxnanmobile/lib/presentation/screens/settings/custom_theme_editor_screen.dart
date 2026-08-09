@@ -10,6 +10,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/color_picker.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -290,7 +291,7 @@ class _CustomThemeEditorScreenState
             UxnanSpacing.xl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               _NameField(
                 controller: _nameController,
                 label: l10n.customThemeEditorName,
@@ -325,7 +326,7 @@ class _CustomThemeEditorScreenState
                 colors: _activeColors,
                 onChanged: _setActiveColors,
               ),
-            ],
+            ]),
           ),
         ),
       ],

@@ -7,6 +7,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -69,11 +70,14 @@ class PromptTemplatesScreen extends ConsumerWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 3),
               itemBuilder: (context, index) {
                 final template = templates[index];
-                return _TemplateCard(
-                  template: template,
-                  position: _positionFor(index, templates.length),
-                  onEdit: () => _edit(context, ref, existing: template),
-                  onDelete: () => _confirmDelete(context, library, template),
+                return NeEntranceRow(
+                  index: index,
+                  child: _TemplateCard(
+                    template: template,
+                    position: _positionFor(index, templates.length),
+                    onEdit: () => _edit(context, ref, existing: template),
+                    onDelete: () => _confirmDelete(context, library, template),
+                  ),
                 );
               },
             ),

@@ -12,6 +12,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -113,12 +114,15 @@ class _GitCommitDetailScreenState extends ConsumerState<GitCommitDetailScreen> {
     if (commit != null) {
       slivers.add(
         SliverToBoxAdapter(
-          child: _Header(
-            commit: commit,
-            onCopySha: () => _copy(commit.sha, l10n.gitHistoryCopiedSha),
-            onCopyMessage: () => _copy(
-              '${commit.messageTitle}\n\n${commit.messageBody}'.trim(),
-              l10n.gitHistoryCopiedMessage,
+          child: NeEntranceRow(
+            index: 0,
+            child: _Header(
+              commit: commit,
+              onCopySha: () => _copy(commit.sha, l10n.gitHistoryCopiedSha),
+              onCopyMessage: () => _copy(
+                '${commit.messageTitle}\n\n${commit.messageBody}'.trim(),
+                l10n.gitHistoryCopiedMessage,
+              ),
             ),
           ),
         ),
@@ -149,10 +153,13 @@ class _GitCommitDetailScreenState extends ConsumerState<GitCommitDetailScreen> {
     } else if (details != null) {
       slivers.add(
         SliverToBoxAdapter(
-          child: _FilesSection(
-            files: details.files,
-            diffByPath: _splitDiffByPath(details.diff),
-            diffTruncated: details.diffTruncated,
+          child: NeEntranceRow(
+            index: 1,
+            child: _FilesSection(
+              files: details.files,
+              diffByPath: _splitDiffByPath(details.diff),
+              diffTruncated: details.diffTruncated,
+            ),
           ),
         ),
       );

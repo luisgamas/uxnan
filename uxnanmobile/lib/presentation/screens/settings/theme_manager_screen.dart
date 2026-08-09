@@ -13,6 +13,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/color_picker.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -461,18 +462,21 @@ class _ThemeManagerScreenState extends ConsumerState<ThemeManagerScreen> {
               itemCount: library.length,
               itemBuilder: (context, i) {
                 final theme = library[i];
-                return _ThemeCard(
-                  theme: theme,
-                  isActive: useCustom && theme.id == activeId,
-                  selectionMode: _selectionMode,
-                  isSelected: _selected.contains(theme.id),
-                  onTap: () =>
-                      _selectionMode ? _toggle(theme.id) : _activate(theme),
-                  onLongPress: () => _enterSelection(theme.id),
-                  onEdit: () =>
-                      CustomThemeEditorScreen.push(context, initial: theme),
-                  onExport: () => _exportOne(theme),
-                  onDelete: () => _deleteOne(theme),
+                return NeEntranceRow(
+                  index: i,
+                  child: _ThemeCard(
+                    theme: theme,
+                    isActive: useCustom && theme.id == activeId,
+                    selectionMode: _selectionMode,
+                    isSelected: _selected.contains(theme.id),
+                    onTap: () =>
+                        _selectionMode ? _toggle(theme.id) : _activate(theme),
+                    onLongPress: () => _enterSelection(theme.id),
+                    onEdit: () =>
+                        CustomThemeEditorScreen.push(context, initial: theme),
+                    onExport: () => _exportOne(theme),
+                    onDelete: () => _deleteOne(theme),
+                  ),
                 );
               },
             ),

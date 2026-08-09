@@ -7,6 +7,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
@@ -72,12 +73,15 @@ class LicensesScreen extends ConsumerWidget {
                   count: entries.length,
                   itemBuilder: (context, i, pos) {
                     final entry = entries[i];
-                    return NeNavTile(
-                      position: pos,
-                      icon: UxIcons.inventory2,
-                      title: entry.packageName,
-                      subtitle: l10n.licenseCountLabel(entry.licenseCount),
-                      onTap: () => LicenseDetailScreen.push(context, entry),
+                    return NeEntranceRow(
+                      index: i,
+                      child: NeNavTile(
+                        position: pos,
+                        icon: UxIcons.inventory2,
+                        title: entry.packageName,
+                        subtitle: l10n.licenseCountLabel(entry.licenseCount),
+                        onTap: () => LicenseDetailScreen.push(context, entry),
+                      ),
                     );
                   },
                 ),

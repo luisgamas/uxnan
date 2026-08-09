@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — every screen the plan will not reach now arrives like the rest
+
+The seven navigable screens no remaining phase names: the commit detail, and
+Settings' deep screens — personalization, the custom-theme editor, the theme
+manager, prompt templates and both licence screens. Their lists, grids and
+sections rise into place like everywhere else.
+
+That closes the gap for good. What is left without an entrance is left on
+purpose and each has a reason: the **QR scanner** (a live camera preview, where
+a fade reads as the camera failing), the **onboarding backdrop** (it is the
+backdrop), and the floating agent marks (already animated). Every other screen
+either has one or is named by a phase that will bring it under the same rule.
+
 ### Added — onboarding and the archive arrive like everything else
 
 The last two screens with no motion. The archive's list rises row by row like
