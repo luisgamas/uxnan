@@ -421,7 +421,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
     if (target == null) return;
 
-    if (MediaQuery.of(context).disableAnimations) {
+    if (MediaQuery.disableAnimationsOf(context)) {
       _scroll.jumpTo(target);
       return;
     }

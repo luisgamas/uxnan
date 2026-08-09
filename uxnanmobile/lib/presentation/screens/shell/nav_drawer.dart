@@ -235,45 +235,28 @@ class _ProfileFooter extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
     final name = ref.watch(profileNameProvider) ?? l10n.profileDisplayName;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UxnanSpacing.sm,
-        vertical: UxnanSpacing.xs,
+    // `ListTile`, not a hand-rolled Material + InkWell: M3 already specifies
+    // this row — ink, minimum height, leading/trailing slots, the disabled and
+    // selected states, and the semantics that make it announce as one thing.
+    // Rebuilding that by hand gets the look and loses the rest.
+    return ListTile(
+      leading: ProfileAvatarView(
+        avatar: ref.watch(profileAvatarProvider),
+        size: UxnanSize.iconSurface,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: () => context.go(AppRoutes.home),
-              borderRadius: const BorderRadius.all(UxnanRadius.lg),
-              child: Padding(
-                padding: const EdgeInsets.all(UxnanSpacing.sm),
-                child: Row(
-                  children: [
-                    ProfileAvatarView(
-                      avatar: ref.watch(profileAvatarProvider),
-                      size: UxnanSize.iconSurface,
-                    ),
-                    const SizedBox(width: UxnanSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          IconSurface(
-            icon: UxIcons.settings,
-            tooltip: l10n.settingsTitle,
-            onPressed: () => context.push(AppRoutes.settings),
-          ),
-        ],
+      title: Text(
+        name,
+        style: textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      // Returns the CONTENT pane to the overview rather than opening a screen.
+      // In a layout with no back stack this is the "home" affordance.
+      onTap: () => context.go(AppRoutes.home),
+      trailing: IconSurface(
+        icon: UxIcons.settings,
+        tooltip: l10n.settingsTitle,
+        onPressed: () => context.push(AppRoutes.settings),
       ),
     );
   }

@@ -61,11 +61,22 @@ class AppShell extends ConsumerWidget {
         final breakpoint = UxnanBreakpoint.fromWidth(constraints.maxWidth);
         if (!breakpoint.usesPermanentPane) return child;
 
-        return TwoPaneScaffold(
-          pane: NavDrawer(
-            deviceId: ref.watch(shellDeviceProvider(threadIdOf(location))),
+        return PopScope(
+          // With a drawer up, back must empty the CONTENT, not the app. A deep
+          // link (a push notification) arrives with nothing behind it, so the
+          // route stack cannot pop — and without this the first back press on
+          // a tablet closes an app that is visibly full of your work.
+          canPop: location == AppRoutes.home,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop || location == AppRoutes.home) return;
+            context.go(AppRoutes.home);
+          },
+          child: TwoPaneScaffold(
+            pane: NavDrawer(
+              deviceId: ref.watch(shellDeviceProvider(threadIdOf(location))),
+            ),
+            detail: child,
           ),
-          detail: child,
         );
       },
     );

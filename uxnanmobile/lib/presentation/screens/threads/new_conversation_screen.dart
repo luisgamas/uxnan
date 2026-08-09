@@ -557,7 +557,7 @@ class _AgentCard extends ConsumerWidget {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final caps = _agentCapabilities(agent, l10n);
     final auth = ref.watch(authStatusProvider(agent.agentId));
     final requiresLogin =

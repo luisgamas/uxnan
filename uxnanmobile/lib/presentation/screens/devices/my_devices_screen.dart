@@ -678,7 +678,7 @@ class _RevealableAddressState extends State<_RevealableAddress> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final label = _revealed ? l10n.deviceAddressHide : l10n.deviceAddressReveal;
 
     return Semantics(

@@ -71,6 +71,31 @@ spec, the spec wins.
   two type scales at once and its density jumped from screen to screen, and
   nobody had planned that either.
 
+- **Reach for the Material widget before building the row.** `ListTile` already
+  specifies a list row — ink, minimum height, leading/trailing slots, disabled
+  and selected states, and the semantics that make it announce as one thing;
+  the button family already specifies a button. A hand-rolled `Material` +
+  `InkWell` gets the look and silently drops the rest, and it is the shape this
+  codebase reaches for by reflex. Build one only when the M3 widget's own
+  metrics are the thing in the way (a two-line dense row inside a menu, a
+  lazily-built tree), and say so at the site.
+
+  Where a component genuinely does not fit, that is worth a sentence too:
+  `NavigationDrawer` models **N fixed destinations with one selected**, and its
+  own scrollable would nest inside the spaces tree's. The permanent drawer is
+  therefore a `Material` holding three zones, not a `NavigationDrawer`.
+
+- **Read `MediaQuery` by the property you need**, never `MediaQuery.of(context)`.
+  `of` subscribes the widget to EVERY change — the keyboard opening, a rotation,
+  a text-scale change — so a widget that only cares about `disableAnimations`
+  rebuilds on every keystroke that moves the view insets.
+  `MediaQuery.disableAnimationsOf`, `.sizeOf`, `.paddingOf`, `.viewInsetsOf`,
+  `.textScalerOf` each subscribe to one thing.
+
+  And **a widget inside a pane must not measure the window at all**: use a
+  `LayoutBuilder`. With a 320 dp drawer taken out of a 1280 dp window, the
+  content has ~955 dp, and centring against 1280 puts the text off to one side.
+
 - **Icons come from the catalogue, never from the package.** `UxIcons`
   (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and
   `UxIcon` (`presentation/widgets/ux_icon.dart`) is the only widget that talks

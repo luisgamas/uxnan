@@ -70,8 +70,34 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `onboarding/`, `pairing/`; `conversation/files/` owns the capability-based
   source, Markdown, image, SVG, PDF and Git-diff viewer described in
   [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
-  the flat GoRouter table. `presentation/theme/` holds the design tokens —
-  including `icons.dart`, the `UxIcons` catalogue every glyph is named in.
+  the flat GoRouter table, wrapped in a single `ShellRoute`.
+  `presentation/theme/` holds the design tokens — including `icons.dart`, the
+  `UxIcons` catalogue every glyph is named in.
+
+**Wide windows get a permanent drawer, and only that changes.** `AppShell`
+(`presentation/screens/shell/app_shell.dart`) is the `ShellRoute` builder: on
+compact and medium it returns the routed screen *literally*, so the phone's
+screen stack and back behaviour are untouched; on expanded and above it puts
+that screen in `TwoPaneScaffold`'s content pane beside `NavDrawer`. Pairing and
+onboarding are never wrapped — there is nothing to navigate to yet, and a drawer
+there would offer to switch to a PC you are in the middle of adding.
+
+The route table itself does not change. A second navigator, or a branch per
+pane, would give tablets their own navigation model, and every deep link, push
+notification and `context.go` would have to work in both.
+
+`NavDrawer` is **three zones and nothing else**: the PC (with a real `switchMac`
+behind the switcher, and the pairing call to action in its place when nothing is
+paired), the spaces tree via `ThreadsScreen(embedded: true)`, and the profile row
+that returns the content pane to the overview. It is a `Material` rather than a
+`NavigationDrawer`: that component models N fixed destinations with one
+selected, and its own scrollable would nest inside the tree's.
+
+Which PC it shows comes from `shellDeviceProvider`, resolved by how much each
+source knows — the open conversation's thread, then the last list visited
+(persisted through `ThreadListPreferencesStore`), then the connected PC. A deep
+link into `/conversation/:id` has no list behind it, and without this the drawer
+is blank in exactly the case a tablet user meets first.
 
 The home screen (`presentation/screens/devices/my_devices_screen.dart`) is the
 **overview**. Its bar carries the product's identity rather than the screen's —

@@ -151,7 +151,7 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final message = widget.message;
     // The BRIDGE owns the queue, so its state is what decides whether this is a
     // waiting message — not the locally-cached delivery state, which can lag a

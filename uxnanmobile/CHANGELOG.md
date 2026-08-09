@@ -6,6 +6,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — a permanent drawer on wide windows
+
+On expanded windows and above (≥ 840 dp) the app stops being a stack of screens:
+a permanent drawer holds the PC and its work, and the routed screen becomes the
+pane beside it. **On a phone nothing changes** — the shell returns the screen
+literally, so the existing stack and its back behaviour are untouched.
+
+The route table stays flat; one `ShellRoute` wraps it and decides where a screen
+renders. No second navigator and no branch per pane: a separate navigation model
+for tablets would mean every deep link and push notification had to work twice.
+
+The drawer is **three zones and nothing else** — the PC, its work, you. Zone 1
+switches PCs with a real connection attempt (and its failure snackbar), and
+*becomes* the pairing call to action when nothing is paired. Zone 2 is the
+spaces tree unchanged, through a new `embedded` mode that drops the app bar,
+the pull-to-refresh and the extended FAB. Zone 3 returns the content pane to the
+overview — the "home" affordance of a layout with no back stack.
+
+Which PC it shows is resolved by how much each source knows: the open
+conversation's thread, then the last list visited (persisted), then the
+connected PC. Without that, a push notification opening `/conversation/:id`
+leaves the drawer blank.
+
+Back with a drawer up empties the **content**, not the app: a deep link arrives
+with nothing behind it, so without this the first back press closes an app
+visibly full of your work.
+
+### Fixed — MediaQuery is read by the property, not wholesale
+
+Six widgets read `MediaQuery.of(context)` to get one field. That subscribes them
+to every change — the keyboard opening, a rotation, a text-scale change — so a
+bubble that only cares whether animations are disabled rebuilt on every keystroke
+that moved the view insets. They now use `MediaQuery.disableAnimationsOf` /
+`.sizeOf`, which subscribe to one thing each.
+
+The conversation also measures its reading width from a `LayoutBuilder` rather
+than the window: inside the drawer's content pane those differ by 320 dp, and
+measuring the window would centre the text against space it does not own.
+
 ### Changed — every level of the list has its own ordering
 
 The list grew a third level when worktrees started sitting under their project,
