@@ -23,9 +23,17 @@ The **archive gets fewer on purpose** (`created` and `name`): archived work is
 finished by definition, so "needs attention" and "recent activity" would both
 sort by a value that can no longer change.
 
-The project group only appears in the menu when there is a project to order, so
-a PC whose folders never group is not offered a control that moves nothing it
-can see. Items with nothing to sort on sink to a **stable** alphabetical tail
+**The menu asks in two steps.** Every ordering for every level at once was
+seventeen entries — a list that ran off the bottom of a phone, which is not a
+menu. It now offers the levels first, then that level's orderings, in the same
+place so the second step does not read as a different control opening
+elsewhere. The first step is not a bare router either: each level shows what it
+is currently sorted by, which answers the question this menu usually gets asked
+without drilling in at all. With only one level to order — the archive — the
+choosing step is skipped, because a menu of one is not a choice.
+
+The project level only appears when there is a project to order, so a PC whose
+folders never group is not offered a control that moves nothing it can see. Items with nothing to sort on sink to a **stable** alphabetical tail
 rather than reshuffling on every rebuild.
 
 ### Added — worktrees sit under the repository they belong to

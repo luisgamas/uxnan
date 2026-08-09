@@ -115,6 +115,30 @@ class _IconSurfaceState extends State<IconSurface>
 /// round surface. This drives [showMenu] from an [IconSurface] tap instead, so
 /// the ripple is clipped to the circle (and the M3E press-scale spring plays),
 /// staying coherent with the standalone bar actions.
+/// Where a menu opened from the widget at [context] should appear: a
+/// zero-height anchor at its bottom edge, so the menu drops under it exactly
+/// as `PopupMenuPosition.under` would.
+///
+/// Shared so a menu that opens a SECOND menu — the sort menu drilling into one
+/// level — can put it in the same place as the first, instead of jumping.
+RelativeRect menuPositionUnder(BuildContext context) {
+  final button = context.findRenderObject()! as RenderBox;
+  final overlay =
+      Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+  final bottomLeft = button.localToGlobal(
+    button.size.bottomLeft(Offset.zero),
+    ancestor: overlay,
+  );
+  final bottomRight = button.localToGlobal(
+    button.size.bottomRight(Offset.zero),
+    ancestor: overlay,
+  );
+  return RelativeRect.fromRect(
+    Rect.fromPoints(bottomLeft, bottomRight),
+    Offset.zero & overlay.size,
+  );
+}
+
 class IconSurfaceMenu<T> extends StatelessWidget {
   /// Creates an [IconSurfaceMenu].
   const IconSurfaceMenu({
@@ -148,23 +172,7 @@ class IconSurfaceMenu<T> extends StatelessWidget {
   final BoxConstraints? constraints;
 
   Future<void> _open(BuildContext context) async {
-    final button = context.findRenderObject()! as RenderBox;
-    final overlay =
-        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
-    final bottomLeft = button.localToGlobal(
-      button.size.bottomLeft(Offset.zero),
-      ancestor: overlay,
-    );
-    final bottomRight = button.localToGlobal(
-      button.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-    // A zero-height anchor at the button's bottom edge → menu opens under it,
-    // matching PopupMenuPosition.under.
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(bottomLeft, bottomRight),
-      Offset.zero & overlay.size,
-    );
+    final position = menuPositionUnder(context);
     final items = itemBuilder(context);
     if (items.isEmpty) return;
     final selected = await showMenu<T>(

@@ -163,6 +163,13 @@ top-level ones: `buildWorkspaceTree` takes a comparator instead of sorting them
 itself, which is what previously put them out of the menu's reach. Without one
 it still leads with the main worktree.
 
+The menu itself asks in **two steps** — levels, then that level's orderings —
+because offering all of them at once was seventeen entries and ran off the
+screen. Both steps open at the same anchor (`menuPositionUnder`), so the second
+does not read as a different control; the first shows each level's current
+ordering so the common question is answered without drilling in; and a screen
+with one level to order skips straight to its orderings.
+
 Only the agent ordering is persisted; the other two are in memory, because they
 are usually changed to answer a question rather than set once as a preference.
 The archive offers a **reduced** set (`kArchiveSorts`: created and name):

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
@@ -323,14 +325,20 @@ class SortChoice {
   final ListSort value;
 }
 
-/// The ordering menu, one headed group per level of the list.
+/// The ordering menu: pick a level, then pick its ordering.
 ///
-/// The list has three axes now — which project comes first, which worktree
-/// inside it, and which agent inside that — and they answer different
-/// questions. One flat menu mixing them would make the reader work out which
-/// of their rows each entry moves. A level with nothing to order is simply not
-/// shown: the archive has only agents, and a PC whose folders never group has
-/// no project row to sort.
+/// **Two steps, not one list.** The list has three levels now, and offering
+/// every ordering for every level at once was seventeen entries — a menu that
+/// ran off the bottom of a phone, which is not a menu. Each level opens its
+/// own short list in the same place the first one was, so the second step
+/// never feels like a different control.
+///
+/// The first step is not a bare router: each level shows **what it is ordered
+/// by right now**, so the common question ("how is this sorted?") is answered
+/// without drilling in at all.
+///
+/// A level with nothing to order is not shown: the archive has only agents,
+/// and a PC whose folders never group has no project row to sort.
 class ThreadSortMenu extends StatelessWidget {
   /// Creates a [ThreadSortMenu].
   const ThreadSortMenu({
@@ -346,7 +354,7 @@ class ThreadSortMenu extends StatelessWidget {
   final ListSort? projectSort;
 
   /// The current worktree ordering, or null on a screen with no worktrees
-  /// (the archive), which then shows only the agent group.
+  /// (the archive), which then goes straight to the agent orderings.
   final ListSort? worktreeSort;
 
   /// The current agent ordering.
@@ -355,63 +363,102 @@ class ThreadSortMenu extends StatelessWidget {
   /// Which orderings to offer. The archive offers fewer — see [kArchiveSorts].
   final List<ListSort> options;
 
-  /// Called when the user picks any of them.
+  /// Called when the user picks an ordering for a level.
   final ValueChanged<SortChoice> onChanged;
+
+  static String _labelFor(AppLocalizations l10n, ListSort sort) =>
+      switch (sort) {
+        ListSort.status => l10n.sortByAttention,
+        ListSort.activity => l10n.sortByActivity,
+        ListSort.created => l10n.threadsSortCreated,
+        ListSort.name => l10n.threadsSortName,
+      };
+
+  Future<void> _open(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    final levels = <(SortLevel, String, ListSort)>[
+      if (projectSort != null)
+        (SortLevel.projects, l10n.sortProjectsHeader, projectSort!),
+      if (worktreeSort != null)
+        (SortLevel.worktrees, l10n.sortFoldersHeader, worktreeSort!),
+      (SortLevel.agents, l10n.sortConversationsHeader, agentSort),
+    ];
+
+    // One level to order is not a choice — go straight to its orderings rather
+    // than making the reader tap through a menu of one.
+    final level =
+        levels.length == 1 ? levels.single : await _pickLevel(context, levels);
+    if (level == null || !context.mounted) return;
+
+    final sort = await _pickSort(context, level.$3);
+    if (sort == null) return;
+    onChanged(SortChoice(level.$1, sort));
+  }
+
+  Future<(SortLevel, String, ListSort)?> _pickLevel(
+    BuildContext context,
+    List<(SortLevel, String, ListSort)> levels,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return showMenu<(SortLevel, String, ListSort)>(
+      context: context,
+      position: menuPositionUnder(context),
+      constraints: kNeMenuConstraints,
+      items: [
+        for (final level in levels)
+          PopupMenuItem<(SortLevel, String, ListSort)>(
+            value: level,
+            child: Row(
+              children: [
+                Expanded(child: Text(level.$2)),
+                const SizedBox(width: UxnanSpacing.md),
+                // What it is sorted by, right here: the question this menu
+                // usually gets asked, answered before any drilling.
+                Text(
+                  _labelFor(l10n, level.$3),
+                  style: textTheme.bodySmall,
+                ),
+                const SizedBox(width: UxnanSpacing.xs),
+                UxIcon(
+                  UxIcons.chevronRight,
+                  size: UxnanSize.iconContentSmall,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<ListSort?> _pickSort(BuildContext context, ListSort current) {
+    final l10n = AppLocalizations.of(context);
+    return showMenu<ListSort>(
+      context: context,
+      // The same place the first step was, so the second does not read as a
+      // different control opening somewhere else.
+      position: menuPositionUnder(context),
+      constraints: kNeMenuConstraints,
+      items: [
+        for (final sort in options)
+          CheckedPopupMenuItem<ListSort>(
+            value: sort,
+            checked: current == sort,
+            child: Text(_labelFor(l10n, sort)),
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
-    final colors = Theme.of(context).colorScheme;
-
-    String labelFor(ListSort sort) => switch (sort) {
-          ListSort.status => l10n.sortByAttention,
-          ListSort.activity => l10n.sortByActivity,
-          ListSort.created => l10n.threadsSortCreated,
-          ListSort.name => l10n.threadsSortName,
-        };
-
-    PopupMenuEntry<SortChoice> header(String text) => PopupMenuItem<SortChoice>(
-          enabled: false,
-          height: 32,
-          child: Text(
-            text,
-            style: textTheme.bodySmall?.copyWith(color: colors.primary),
-          ),
-        );
-
-    List<PopupMenuEntry<SortChoice>> group(
-      String title,
-      SortLevel level,
-      ListSort current,
-    ) =>
-        [
-          header(title),
-          for (final sort in options)
-            CheckedPopupMenuItem<SortChoice>(
-              value: SortChoice(level, sort),
-              checked: current == sort,
-              child: Text(labelFor(sort)),
-            ),
-        ];
-
-    final projects = projectSort;
-    final worktrees = worktreeSort;
-    return IconSurfaceMenu<SortChoice>(
-      tooltip: l10n.threadsSortBy,
+    return IconSurface(
       icon: UxIcons.sort,
-      constraints: kNeMenuConstraints,
-      onSelected: onChanged,
-      itemBuilder: (context) => [
-        if (projects != null)
-          ...group(l10n.sortProjectsHeader, SortLevel.projects, projects),
-        if (worktrees != null) ...[
-          if (projects != null) const PopupMenuDivider(),
-          ...group(l10n.sortFoldersHeader, SortLevel.worktrees, worktrees),
-        ],
-        if (projects != null || worktrees != null) const PopupMenuDivider(),
-        ...group(l10n.sortConversationsHeader, SortLevel.agents, agentSort),
-      ],
+      tooltip: l10n.threadsSortBy,
+      onPressed: () => unawaited(_open(context)),
     );
   }
 }
