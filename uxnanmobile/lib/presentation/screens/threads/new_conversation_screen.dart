@@ -43,14 +43,19 @@ const Set<String> _hiddenAgentIds = {
 /// actions in the compact top bar. Resolves with the new thread id (or null).
 class NewConversationScreen extends ConsumerStatefulWidget {
   /// Creates a [NewConversationScreen].
-  const NewConversationScreen({super.key});
+  const NewConversationScreen({this.initialCwd, super.key});
+
+  /// Folder to start in, when the screen was opened from somewhere that
+  /// already knows one — a project's "+" in the spaces list. Null opens on the
+  /// bridge's first root, as before.
+  final String? initialCwd;
 
   /// Pushes the screen as a full-screen dialog; resolves with the thread id.
-  static Future<String?> show(BuildContext context) {
+  static Future<String?> show(BuildContext context, {String? initialCwd}) {
     return Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
         fullscreenDialog: true,
-        builder: (_) => const NewConversationScreen(),
+        builder: (_) => NewConversationScreen(initialCwd: initialCwd),
       ),
     );
   }
@@ -65,6 +70,15 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
   final TextEditingController _worktreeBranch = TextEditingController();
   Project? _project;
   AgentDescriptor? _agent;
+
+  @override
+  void initState() {
+    super.initState();
+    // Opened from a project: start in ITS folder rather than the bridge's
+    // first root, which is almost never the one you meant.
+    _browsedCwd = widget.initialCwd;
+  }
+
   bool _modelTouched = false;
   bool _starting = false;
 

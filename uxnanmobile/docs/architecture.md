@@ -117,6 +117,21 @@ known:
 The status dot on the machine glyph carries the same three states, so the card
 is readable before any of its text is.
 
+A PC's conversations are grouped **project → folder → conversation**, inferred
+by `groupThreadsByWorkspace`
+(`application/services/workspace_grouping.dart`) — a pure function over
+`threadsProvider` + `projectsProvider`, so the whole inference is testable and
+so the `git/worktrees` contract can replace it without touching the UI. A
+conversation matches the **longest** project root containing its `cwd`, on
+folder boundaries, with paths normalised for Windows separators and casing.
+Whatever matches nothing — a thread with no `cwd`, and a sibling **worktree** —
+groups under `kOtherProjectId` rather than disappearing.
+
+`ThreadsScreen` flattens that tree into typed rows (`_ProjectRow`,
+`_WorkspaceRow`, `_ThreadRow`) so the sliver stays lazy. Project collapse is
+persisted as the set of **closed** ids (`collapsedProjectsProvider`), so a
+project seen for the first time is open; folder collapse is per-session.
+
 A thread row reads state → agent → text (`thread_tile.dart`), mirroring
 `uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a
 step larger, then the title over its second line.

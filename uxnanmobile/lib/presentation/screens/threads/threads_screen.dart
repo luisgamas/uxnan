@@ -3,20 +3,26 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
+import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
+import 'package:uxnan/presentation/screens/threads/workspace_details_sheet.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -36,34 +42,18 @@ class ThreadsScreen extends ConsumerStatefulWidget {
 }
 
 class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
-  /// Which dimension the chip bar filters on. The scope selector on the left
-  /// of the bar switches between agent and project; the filter chips to the
-  /// right of it change to match. One scope is active at a time — switching
-  /// clears the other filter so the state stays consistent.
-  _ThreadScope _scope = _ThreadScope.agent;
-
-  /// The selected agent filter; null means "all agents".
+  /// The selected agent filter; null means "all agents". In-memory: a filter
+  /// is a thing you do for a minute, not a setting.
   AgentId? _agentFilter;
 
-  /// The selected project filter (a project key — `projectId` or `cwd`); null
-  /// means "all projects". In-memory, like the agent filter. Only consulted
-  /// while [_scope] is [_ThreadScope.project].
-  String? _projectFilter;
+  /// The selected state filter; null means "any state". Project filtering is
+  /// gone — the list IS grouped by project now, so a chip for it would filter
+  /// the thing the screen already shows you.
+  _StateFilter? _stateFilter;
 
-  /// Switches the active scope. Clears the other dimension's filter so the
-  /// two stay independent — a previously-selected project filter has no
-  /// meaning under the agent scope and vice versa.
-  void _setScope(_ThreadScope scope) {
-    if (scope == _scope) return;
-    setState(() {
-      _scope = scope;
-      if (scope == _ThreadScope.agent) {
-        _projectFilter = null;
-      } else {
-        _agentFilter = null;
-      }
-    });
-  }
+  /// Folders the user has closed, by workspace key. In-memory on purpose:
+  /// unlike a project, a folder is closed to get it out of the way right now.
+  final Set<String> _closedWorkspaces = {};
 
   @override
   void initState() {
@@ -115,8 +105,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     }
   }
 
-  Future<void> _newConversation() async {
-    final threadId = await NewConversationScreen.show(context);
+  Future<void> _newConversation({String? cwd}) async {
+    final threadId = await NewConversationScreen.show(context, initialCwd: cwd);
     if (threadId == null || !mounted) return;
     await ref
         .read(threadManagerProvider)
@@ -154,20 +144,31 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             widget.deviceId;
 
     final agents = _agentsPresent(threads);
-    // Project chips are computed only when the project scope is active.
-    final projects = _scope == _ThreadScope.project
-        ? _projectsPresent(threads)
-        : const <_ProjectChip>[];
-    // Only the active scope's filter is consulted; the other dimension's
-    // filter is cleared on scope change so the two stay independent.
     final filtered = threads.where((t) {
-      if (_scope == _ThreadScope.agent) {
-        return _agentFilter == null ||
-            AgentIdParsing.fromWireId(t.agentId) == _agentFilter;
+      if (_agentFilter != null &&
+          AgentIdParsing.fromWireId(t.agentId) != _agentFilter) {
+        return false;
       }
-      return _projectFilter == null || _projectKeyOf(t) == _projectFilter;
+      final stateFilter = _stateFilter;
+      if (stateFilter == null) return true;
+      final status = ref.watch(agentRunStatusProvider(t.id));
+      return switch (stateFilter) {
+        _StateFilter.working => status.state == AgentRunState.working,
+        _StateFilter.waiting => status.state == AgentRunState.waiting,
+        _StateFilter.unread => ref.watch(unreadForProvider(t.id)),
+      };
     }).toList();
+    // Sorted BEFORE grouping: the grouping keeps the order it is given, so one
+    // sort decides the order inside every folder.
     final visible = sortThreads(filtered, sort);
+    final groups = groupThreadsByWorkspace(
+      threads: visible,
+      projects: ref.watch(projectsProvider).value ?? const [],
+    );
+    final collapsed = ref.watch(collapsedProjectsProvider);
+    // A live search opens everything, so a match is never hidden behind a
+    // closed project — without touching what the user chose to close.
+    final rows = _flatten(groups, collapsed: collapsed);
 
     final l10n = AppLocalizations.of(context);
 
@@ -209,35 +210,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         // Bridge-update notice: the paired PC's bridge reports it's outdated
         // (`bridge/status.updateAvailable`). Informational + dismissible.
         const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
-        // Filter bar: a scope selector on the left (Agent / Project) and the
-        // matching chip bar to the right. The scope is always visible; the
-        // chip bar only appears when there's more than one option to choose
-        // from in the active scope (multiple agents or multiple projects).
-        if (agents.length > 1 || projects.length > 1)
-          SliverToBoxAdapter(
-            child: _FilterBar(
-              scope: _scope,
-              onScopeChanged: _setScope,
-              // Each bar's chips are spread into the parent ListView so the
-              // whole bar scrolls as one unit (nesting a horizontal ListView
-              // inside another would give the inner one unbounded width).
-              chips: _scope == _ThreadScope.agent && agents.length > 1
-                  ? _AgentFilterBar(
-                      agents: agents,
-                      selected: _agentFilter,
-                      onSelected: (agent) =>
-                          setState(() => _agentFilter = agent),
-                    ).chips(l10n)
-                  : _scope == _ThreadScope.project && projects.length > 1
-                      ? _ProjectFilterBar(
-                          projects: projects,
-                          selected: _projectFilter,
-                          onSelected: (key) =>
-                              setState(() => _projectFilter = key),
-                        ).chips(l10n)
-                      : const <Widget>[],
-            ),
+        // One bar: which agent, and what state. Filtering by project is gone —
+        // the list is grouped by project now, so a chip for it would filter the
+        // very thing the screen is showing.
+        SliverToBoxAdapter(
+          child: _FilterBar(
+            agents: agents,
+            agentFilter: _agentFilter,
+            stateFilter: _stateFilter,
+            onAgent: (agent) => setState(() => _agentFilter = agent),
+            onState: (state) => setState(() => _stateFilter = state),
           ),
+        ),
         if (!connectedHere)
           SliverToBoxAdapter(
             child: _OfflineBanner(
@@ -245,10 +229,19 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               onConnect: _connectHere,
             ),
           ),
-        if (visible.isEmpty)
-          const SliverFillRemaining(
+        if (rows.isEmpty)
+          SliverFillRemaining(
             hasScrollBody: false,
-            child: _EmptyThreads(),
+            // Nothing at all, or nothing that survived the filters: two very
+            // different dead ends, and only one of them has a way out.
+            child: threads.isEmpty
+                ? const _EmptyThreads()
+                : _NoMatches(
+                    onClear: () => setState(() {
+                      _agentFilter = null;
+                      _stateFilter = null;
+                    }),
+                  ),
           )
         else
           SliverPadding(
@@ -256,22 +249,102 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               UxnanSpacing.lg,
               UxnanSpacing.sm,
               UxnanSpacing.lg,
-              UxnanSpacing.lg,
+              UxnanSpacing.xxl,
             ),
-            sliver: SliverList.separated(
-              itemCount: visible.length,
-              separatorBuilder: (_, __) => SizedBox(
-                height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
-              ),
-              itemBuilder: (context, index) => ThreadTile(
-                key: ValueKey('thread-${visible[index].id}'),
-                thread: visible[index],
+            // Flattened rather than nested so the list stays lazy: a PC with
+            // two hundred conversations builds the handful on screen, not the
+            // whole tree.
+            sliver: SliverList.builder(
+              itemCount: rows.length,
+              itemBuilder: (context, index) => _buildRow(
+                context,
+                rows[index],
                 compact: compact,
               ),
             ),
           ),
       ],
     );
+  }
+
+  /// Turns the tree into the flat run of rows the sliver builds from.
+  ///
+  /// Flat, not nested: a nested tree would build every conversation the moment
+  /// the screen appears, and this list is the one place a PC with hundreds of
+  /// them has to stay responsive.
+  List<_SpaceRow> _flatten(
+    List<ProjectGroup> groups, {
+    required Set<String> collapsed,
+  }) {
+    final rows = <_SpaceRow>[];
+    for (final project in groups) {
+      final open = !collapsed.contains(project.id);
+      rows.add(_ProjectRow(project, expanded: open));
+      if (!open) continue;
+      for (final workspace in project.workspaces) {
+        // A folder with no name of its own (a thread with no cwd) has nothing
+        // to head; its conversations stand directly under the project.
+        final headed = workspace.key.isNotEmpty;
+        final shown = !_closedWorkspaces.contains(workspace.key);
+        if (headed) {
+          rows.add(_WorkspaceRow(workspace, project, expanded: shown));
+        }
+        if (headed && !shown) continue;
+        for (final thread in workspace.threads) {
+          rows.add(_ThreadRow(thread, indented: headed));
+        }
+      }
+    }
+    return rows;
+  }
+
+  Widget _buildRow(
+    BuildContext context,
+    _SpaceRow row, {
+    required bool compact,
+  }) {
+    switch (row) {
+      case _ProjectRow(:final group, :final expanded):
+        return ProjectGroupHeader(
+          key: ValueKey('project-${group.id}'),
+          group: group,
+          expanded: expanded,
+          onToggle: () =>
+              ref.read(collapsedProjectsProvider.notifier).toggle(group.id),
+          onNewConversation: () => _newConversation(cwd: group.cwd),
+        );
+      case _WorkspaceRow(:final group, :final project, :final expanded):
+        return SpaceGuide(
+          child: WorkspaceGroupRow(
+            key: ValueKey('workspace-${group.key}'),
+            group: group,
+            expanded: expanded,
+            onToggle: () => setState(() {
+              if (!_closedWorkspaces.remove(group.key)) {
+                _closedWorkspaces.add(group.key);
+              }
+            }),
+            onDetails: () => showWorkspaceDetails(
+              context,
+              group,
+              fullPath: group.threads.first.cwd ?? project.cwd,
+              onOpenThread: (id) => context.push(AppRoutes.conversation(id)),
+            ),
+          ),
+        );
+      case _ThreadRow(:final thread, :final indented):
+        final tile = Padding(
+          padding: EdgeInsets.only(
+            bottom: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
+          ),
+          child: ThreadTile(
+            key: ValueKey('thread-${thread.id}'),
+            thread: thread,
+            compact: compact,
+          ),
+        );
+        return indented ? SpaceGuide(child: tile) : tile;
+    }
   }
 
   List<AgentId> _agentsPresent(List<Thread> threads) {
@@ -281,73 +354,86 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     }
     return seen.toList();
   }
-
-  /// A thread's project identity: its `projectId` when set, else its `cwd`
-  /// (the folder is the user-facing "project"). Empty when neither is known —
-  /// such threads only appear under the "All" chip.
-  String _projectKeyOf(Thread thread) {
-    final projectId = thread.projectId;
-    if (projectId != null && projectId.isNotEmpty) return projectId;
-    return thread.cwd ?? '';
-  }
-
-  /// The distinct projects present in [threads], each as a `(key, label)`
-  /// where the label is the folder basename (falling back to the key).
-  /// Sorted alphabetically by label.
-  List<_ProjectChip> _projectsPresent(List<Thread> threads) {
-    final byKey = <String, String>{};
-    for (final thread in threads) {
-      final key = _projectKeyOf(thread);
-      if (key.isEmpty) continue;
-      final cwd = thread.cwd;
-      final label = (cwd != null && cwd.isNotEmpty)
-          ? cwd.split(RegExp(r'[\\/]')).last
-          : key;
-      byKey.putIfAbsent(key, () => label);
-    }
-    final chips = byKey.entries
-        .map((e) => _ProjectChip(key: e.key, label: e.value))
-        .toList()
-      ..sort(
-        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
-      );
-    return chips;
-  }
 }
 
-/// A distinct project present in the list: its filter [key] (`projectId` or
-/// `cwd`) and the human [label] shown on the chip (the folder basename).
-class _ProjectChip {
-  const _ProjectChip({required this.key, required this.label});
-  final String key;
-  final String label;
-}
+/// Filters left nothing. Distinct from an empty PC: there IS work here, it is
+/// just hidden, so the way out is a button rather than an explanation.
+class _NoMatches extends StatelessWidget {
+  const _NoMatches({required this.onClear});
 
-/// Which dimension the filter bar is currently scoping on. The selector on the
-/// left of the bar switches between these; the chip bar to the right of it
-/// changes to match.
-enum _ThreadScope { agent, project }
-
-/// The full filter bar: a scope selector on the left (Agent / Project) and the
-/// matching chip bar to the right. The scope is always visible; the chip bar
-/// is passed in as a list of widgets (or empty when the active scope has only
-/// one option to pick from, in which case the bar collapses to just the
-/// selector). The whole bar is a single horizontal scroller — nesting another
-/// horizontal `ListView` inside this one would give the inner viewport an
-/// unbounded width.
-class _FilterBar extends StatelessWidget {
-  const _FilterBar({
-    required this.scope,
-    required this.onScopeChanged,
-    this.chips = const [],
-  });
-
-  final _ThreadScope scope;
-  final ValueChanged<_ThreadScope> onScopeChanged;
-  final List<Widget> chips;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(UxnanSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(l10n.spacesNoMatch, style: textTheme.bodyMedium),
+            const SizedBox(height: UxnanSpacing.md),
+            FilledButton.tonal(
+              onPressed: onClear,
+              child: Text(l10n.spacesClearFilters),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Which state a state chip filters on.
+enum _StateFilter { working, waiting, unread }
+
+/// A row in the flattened spaces list.
+sealed class _SpaceRow {
+  const _SpaceRow();
+}
+
+class _ProjectRow extends _SpaceRow {
+  const _ProjectRow(this.group, {required this.expanded});
+  final ProjectGroup group;
+  final bool expanded;
+}
+
+class _WorkspaceRow extends _SpaceRow {
+  const _WorkspaceRow(this.group, this.project, {required this.expanded});
+  final WorkspaceGroup group;
+  final ProjectGroup project;
+  final bool expanded;
+}
+
+class _ThreadRow extends _SpaceRow {
+  const _ThreadRow(this.thread, {required this.indented});
+  final Thread thread;
+  final bool indented;
+}
+
+/// Which agent, and what state. Two dimensions that compose — unlike the old
+/// agent/project scopes, which were exclusive because filtering by project
+/// meant something the grouping now says better.
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({
+    required this.agents,
+    required this.agentFilter,
+    required this.stateFilter,
+    required this.onAgent,
+    required this.onState,
+  });
+
+  final List<AgentId> agents;
+  final AgentId? agentFilter;
+  final _StateFilter? stateFilter;
+  final ValueChanged<AgentId?> onAgent;
+  final ValueChanged<_StateFilter?> onState;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SizedBox(
       height: 52,
       child: ListView(
@@ -357,191 +443,39 @@ class _FilterBar extends StatelessWidget {
           vertical: UxnanSpacing.sm,
         ),
         children: [
-          _ScopeSelector(scope: scope, onChanged: onScopeChanged),
-          ...chips,
+          // State first: "who is waiting on me" is the question that brings
+          // someone to this screen; "which agent" is how they narrow it after.
+          for (final state in _StateFilter.values)
+            Padding(
+              padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+              child: FilterChip(
+                label: Text(
+                  switch (state) {
+                    _StateFilter.working => l10n.filterStateWorking,
+                    _StateFilter.waiting => l10n.filterStateWaiting,
+                    _StateFilter.unread => l10n.filterStateUnread,
+                  },
+                ),
+                selected: stateFilter == state,
+                onSelected: (on) => onState(on ? state : null),
+              ),
+            ),
+          if (agents.length > 1) ...[
+            const SizedBox(width: UxnanSpacing.sm),
+            for (final agent in agents)
+              Padding(
+                padding: const EdgeInsets.only(right: UxnanSpacing.sm),
+                child: FilterChip(
+                  avatar: AgentLogo(agent: agent, size: 16),
+                  label: Text(AgentVisuals.labelFor(agent)),
+                  selected: agentFilter == agent,
+                  onSelected: (on) => onAgent(on ? agent : null),
+                ),
+              ),
+          ],
         ],
       ),
     );
-  }
-}
-
-/// A chip-styled menu trigger on the left of the filter bar that shows the
-/// active scope (Agent / Project) and opens a small popup to switch between
-/// them. Same visual language as the filter chips to its right.
-class _ScopeSelector extends StatelessWidget {
-  const _ScopeSelector({required this.scope, required this.onChanged});
-
-  final _ThreadScope scope;
-  final ValueChanged<_ThreadScope> onChanged;
-
-  /// Opens the scope picker anchored under the chip. We drive the menu from
-  /// the chip's own `onPressed` (via [showMenu]) rather than wrapping it in a
-  /// `PopupMenuButton`: a bare `ActionChip` with `onPressed: null` is rendered
-  /// in Flutter's *disabled* visual state (`isEnabled = onPressed != null`),
-  /// which is the washed-out grey look we want to avoid. Keeping `onPressed`
-  /// non-null makes the chip read as a live, tappable control.
-  Future<void> _openMenu(BuildContext context, AppLocalizations l10n) async {
-    final button = context.findRenderObject()! as RenderBox;
-    final overlay =
-        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(
-          Offset(0, button.size.height),
-          ancestor: overlay,
-        ),
-        button.localToGlobal(
-          button.size.bottomRight(Offset.zero),
-          ancestor: overlay,
-        ),
-      ),
-      Offset.zero & overlay.size,
-    );
-    final selected = await showMenu<_ThreadScope>(
-      context: context,
-      position: position,
-      items: [
-        CheckedPopupMenuItem<_ThreadScope>(
-          value: _ThreadScope.agent,
-          checked: scope == _ThreadScope.agent,
-          child: Row(
-            children: [
-              const UxIcon(UxIcons.person, size: 18),
-              const SizedBox(width: UxnanSpacing.sm),
-              Text(l10n.threadsFilterByAgent),
-            ],
-          ),
-        ),
-        CheckedPopupMenuItem<_ThreadScope>(
-          value: _ThreadScope.project,
-          checked: scope == _ThreadScope.project,
-          child: Row(
-            children: [
-              const UxIcon(UxIcons.folder, size: 18),
-              const SizedBox(width: UxnanSpacing.sm),
-              Text(l10n.threadsFilterByProject),
-            ],
-          ),
-        ),
-      ],
-    );
-    if (selected != null) onChanged(selected);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final isAgent = scope == _ThreadScope.agent;
-    final label =
-        isAgent ? l10n.threadsFilterByAgent : l10n.threadsFilterByProject;
-    final icon = isAgent ? UxIcons.person : UxIcons.folder;
-    return Padding(
-      padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-      child: ActionChip(
-        tooltip: l10n.threadsFilterScopeTooltip,
-        onPressed: () => _openMenu(context, l10n),
-        label: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            UxIcon(icon, size: 16),
-            const SizedBox(width: UxnanSpacing.xs),
-            Text(label),
-            const SizedBox(width: UxnanSpacing.xs),
-            const UxIcon(UxIcons.arrowDropDown, size: 18),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AgentFilterBar {
-  const _AgentFilterBar({
-    required this.agents,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<AgentId> agents;
-  final AgentId? selected;
-  final ValueChanged<AgentId?> onSelected;
-
-  /// Builds the horizontal list of chips for the agent scope. The caller is
-  /// responsible for placing these in a horizontally-scrolling container
-  /// (the [_FilterBar]'s `ListView`).
-  List<Widget> chips(AppLocalizations l10n) {
-    return [
-      Padding(
-        padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-        child: ChoiceChip(
-          label: Text(l10n.threadsFilterAll),
-          selected: selected == null,
-          onSelected: (_) => onSelected(null),
-        ),
-      ),
-      for (final agent in agents)
-        Padding(
-          padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-          child: ChoiceChip(
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AgentChipAvatar(agent: agent),
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(AgentVisuals.labelFor(agent)),
-              ],
-            ),
-            selected: selected == agent,
-            onSelected: (_) => onSelected(agent),
-          ),
-        ),
-    ];
-  }
-}
-
-/// Horizontal chips that scope the list to one project (working folder).
-/// Mirrors [_AgentFilterBar]; shown only when the PC hosts more than one
-/// project.
-class _ProjectFilterBar {
-  const _ProjectFilterBar({
-    required this.projects,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<_ProjectChip> projects;
-  final String? selected;
-  final ValueChanged<String?> onSelected;
-
-  /// Builds the horizontal list of chips for the project scope. The caller is
-  /// responsible for placing these in a horizontally-scrolling container.
-  List<Widget> chips(AppLocalizations l10n) {
-    return [
-      Padding(
-        padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-        child: ChoiceChip(
-          label: Text(l10n.threadsFilterAll),
-          selected: selected == null,
-          onSelected: (_) => onSelected(null),
-        ),
-      ),
-      for (final project in projects)
-        Padding(
-          padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-          child: ChoiceChip(
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const UxIcon(UxIcons.folder, size: 16),
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(project.label),
-              ],
-            ),
-            selected: selected == project.key,
-            onSelected: (_) => onSelected(project.key),
-          ),
-        ),
-    ];
   }
 }
 

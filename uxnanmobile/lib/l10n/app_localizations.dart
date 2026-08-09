@@ -452,6 +452,90 @@ abstract class AppLocalizations {
   /// **'{count} online now'**
   String profileActiveSessions(int count);
 
+  /// No description provided for @spacesOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other spaces'**
+  String get spacesOther;
+
+  /// No description provided for @spacesNoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'No folder'**
+  String get spacesNoFolder;
+
+  /// No description provided for @spacesNewConversationHere.
+  ///
+  /// In en, this message translates to:
+  /// **'New conversation here'**
+  String get spacesNewConversationHere;
+
+  /// No description provided for @spacesWorkspaceCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 folder} other{{count} folders}}'**
+  String spacesWorkspaceCount(int count);
+
+  /// No description provided for @spacesDetailsPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Path'**
+  String get spacesDetailsPath;
+
+  /// No description provided for @spacesCopyPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy path'**
+  String get spacesCopyPath;
+
+  /// No description provided for @spacesConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get spacesConversations;
+
+  /// No description provided for @spacesNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No space matches these filters'**
+  String get spacesNoMatch;
+
+  /// No description provided for @spacesClearFilters.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear filters'**
+  String get spacesClearFilters;
+
+  /// No description provided for @filterByState.
+  ///
+  /// In en, this message translates to:
+  /// **'State'**
+  String get filterByState;
+
+  /// No description provided for @filterStateWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get filterStateWorking;
+
+  /// No description provided for @filterStateWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for you'**
+  String get filterStateWaiting;
+
+  /// No description provided for @filterStateUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Unread'**
+  String get filterStateUnread;
+
+  /// No description provided for @sortByActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent activity'**
+  String get sortByActivity;
+
   /// No description provided for @agentStateWorking.
   ///
   /// In en, this message translates to:
@@ -1213,12 +1297,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Name'**
   String get threadsSortName;
-
-  /// No description provided for @threadsSortFolder.
-  ///
-  /// In en, this message translates to:
-  /// **'Folder'**
-  String get threadsSortFolder;
 
   /// No description provided for @threadsCompact.
   ///

@@ -1400,6 +1400,39 @@ class ThreadDensityCompact extends Notifier<bool> {
   }
 }
 
+/// Which project groups the user has collapsed in the spaces list.
+///
+/// Stores what is CLOSED, not what is open: a project the user has never
+/// touched should come back the way they left the screen — visible.
+class CollapsedProjects extends Notifier<Set<String>> {
+  @override
+  Set<String> build() {
+    unawaited(_hydrate());
+    return const {};
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(threadListPreferencesStoreProvider)
+        .readCollapsedProjects();
+    if (stored.isNotEmpty) state = stored;
+  }
+
+  /// Opens a closed project, or closes an open one.
+  Future<void> toggle(String projectId) async {
+    final next = {...state};
+    if (!next.remove(projectId)) next.add(projectId);
+    state = next;
+    await ref
+        .read(threadListPreferencesStoreProvider)
+        .writeCollapsedProjects(next);
+  }
+}
+
+/// The collapsed project ids (persisted).
+final collapsedProjectsProvider =
+    NotifierProvider<CollapsedProjects, Set<String>>(CollapsedProjects.new);
+
 /// Whether the thread list uses the compact density (persisted toggle).
 final threadDensityCompactProvider =
     NotifierProvider<ThreadDensityCompact, bool>(ThreadDensityCompact.new);

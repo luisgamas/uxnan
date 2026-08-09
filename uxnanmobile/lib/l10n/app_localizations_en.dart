@@ -213,6 +213,56 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get spacesOther => 'Other spaces';
+
+  @override
+  String get spacesNoFolder => 'No folder';
+
+  @override
+  String get spacesNewConversationHere => 'New conversation here';
+
+  @override
+  String spacesWorkspaceCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count folders',
+      one: '1 folder',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spacesDetailsPath => 'Path';
+
+  @override
+  String get spacesCopyPath => 'Copy path';
+
+  @override
+  String get spacesConversations => 'Conversations';
+
+  @override
+  String get spacesNoMatch => 'No space matches these filters';
+
+  @override
+  String get spacesClearFilters => 'Clear filters';
+
+  @override
+  String get filterByState => 'State';
+
+  @override
+  String get filterStateWorking => 'Working';
+
+  @override
+  String get filterStateWaiting => 'Waiting for you';
+
+  @override
+  String get filterStateUnread => 'Unread';
+
+  @override
+  String get sortByActivity => 'Recent activity';
+
+  @override
   String get agentStateWorking => 'Working';
 
   @override
@@ -645,9 +695,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get threadsSortName => 'Name';
-
-  @override
-  String get threadsSortFolder => 'Folder';
 
   @override
   String get threadsCompact => 'Compact list';

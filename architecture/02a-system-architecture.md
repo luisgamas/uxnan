@@ -953,6 +953,14 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 
 #### 5.4.2 Pantallas principales
 
+> **La lista de conversaciones esta agrupada por proyecto y carpeta**, como la
+> barra lateral de `uxnandesktop`. La jerarquia se **infiere** en el cliente
+> (`groupThreadsByWorkspace`) a partir de `thread/list` + `project/list`: un
+> thread cuelga de la raiz mas larga que contiene su `cwd`. Lo que no encaja en
+> ninguna raiz — un thread sin `cwd`, y un **worktree** hermano del repo — cae
+> en un grupo "Otros espacios" en vez de desaparecer. Cerrar ese hueco exige que
+> el bridge exponga los worktrees (`git/worktrees`), que hoy no existe.
+
 > **El estado del agente en la lista es DERIVADO, no reportado.** La fila de
 > conversacion muestra los mismos cinco estados que la barra lateral de
 > `uxnandesktop` (working / waiting / blocked / done / idle), pero el bridge no

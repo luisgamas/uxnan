@@ -20,8 +20,9 @@ enum ThreadSort {
   /// Alphabetical by title.
   name,
 
-  /// Grouped alphabetically by working folder (cwd).
-  folder,
+  /// Most recently active first — the order that matters once the list is
+  /// grouped, because it answers "what moved" rather than "what exists".
+  activity,
 }
 
 /// Returns a new list ordered by [sort]. For [ThreadSort.created], threads
@@ -42,14 +43,16 @@ List<Thread> sortThreads(List<Thread> threads, ThreadSort sort) {
       list.sort(
         (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
       );
-    case ThreadSort.folder:
+    case ThreadSort.activity:
+      // Threads that have never moved sink, ordered by title, so the top of a
+      // group is always the thing that changed most recently.
       list.sort((a, b) {
-        final cmp = (a.cwd ?? '').toLowerCase().compareTo(
-              (b.cwd ?? '').toLowerCase(),
-            );
-        return cmp != 0
-            ? cmp
-            : a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        final aa = a.lastActivity;
+        final bb = b.lastActivity;
+        if (aa == null && bb == null) return a.title.compareTo(b.title);
+        if (aa == null) return 1;
+        if (bb == null) return -1;
+        return bb.compareTo(aa);
       });
   }
   return list;
@@ -246,9 +249,9 @@ class ThreadSortMenu extends StatelessWidget {
           child: Text(l10n.threadsSortName),
         ),
         CheckedPopupMenuItem(
-          value: ThreadSort.folder,
-          checked: sort == ThreadSort.folder,
-          child: Text(l10n.threadsSortFolder),
+          value: ThreadSort.activity,
+          checked: sort == ThreadSort.activity,
+          child: Text(l10n.sortByActivity),
         ),
       ],
     );

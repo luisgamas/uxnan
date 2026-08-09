@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
@@ -33,7 +34,11 @@ Thread _thread(
       projectId: projectId,
     );
 
-Widget _wrap({required List<Thread> threads}) {
+Widget _wrap({
+  required List<Thread> threads,
+  Map<String, ThreadActivity> activity = const {},
+  List<Project> projects = const [],
+}) {
   final router = GoRouter(
     routes: [
       GoRoute(
@@ -48,6 +53,9 @@ Widget _wrap({required List<Thread> threads}) {
       // database, and pulling the real one in leaves drift timers pending.
       threadPreviewProvider.overrideWith((ref, key) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
+      // The list is grouped by project now, so the screen reads the bridge's
+      // roots. Feeding them keeps the real request (and its transport) out.
+      projectsProvider.overrideWith((ref) async => projects),
       // A held queue is one of the things that blocks a thread, so the
       // queue stream is part of the row's state too.
       threadQueuesProvider.overrideWith(
@@ -59,9 +67,7 @@ Widget _wrap({required List<Thread> threads}) {
       awaitingInputProvider.overrideWith(
         (ref) => Stream.value(const <String, Set<String>>{}),
       ),
-      threadActivityProvider.overrideWith(
-        (ref) => Stream.value(const <String, ThreadActivity>{}),
-      ),
+      threadActivityProvider.overrideWith((ref) => Stream.value(activity)),
       unreadThreadsProvider.overrideWith(
         (ref) => Stream.value(const <String>{}),
       ),
@@ -97,10 +103,13 @@ void main() {
 
     expect(find.text('Fix the login bug'), findsOneWidget);
     expect(find.text('Add dark mode'), findsOneWidget);
-    // Two distinct agents → an "All" chip plus one per agent.
-    expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsOneWidget);
+    // One chip per agent. No "All": a FilterChip toggles off, and "all" is
+    // simply none of them selected — a chip for it would be a second way to
+    // express the same state.
+    expect(find.widgetWithText(FilterChip, 'Codex'), findsOneWidget);
+    expect(find.widgetWithText(FilterChip, 'Claude Code'), findsOneWidget);
+    // …and the state chips, which are the question that brings you here.
+    expect(find.widgetWithText(FilterChip, 'Waiting for you'), findsOneWidget);
   });
 
   testWidgets('filters threads when an agent chip is selected', (tester) async {
@@ -114,8 +123,8 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Codex'));
-    await tester.pump();
+    await tester.tap(find.widgetWithText(FilterChip, 'Codex'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Fix the login bug'), findsOneWidget);
     expect(find.text('Add dark mode'), findsNothing);
@@ -146,7 +155,7 @@ void main() {
     expect(find.text('th-9'), findsOneWidget);
   });
 
-  testWidgets('shows the scope selector with Agent as the default scope',
+  testWidgets('a state chip narrows the list and clears by tapping again',
       (tester) async {
     await tester.pumpWidget(
       _wrap(
@@ -154,95 +163,41 @@ void main() {
           _thread('a', 'Fix the login bug', 'codex'),
           _thread('b', 'Add dark mode', 'claude-code'),
         ],
+        activity: const {'a': ThreadActivity.running},
       ),
     );
     await tester.pump();
-
-    // The scope selector is an ActionChip on the left of the filter bar
-    // (a menu trigger, not a toggle). The default scope is Agent, so it
-    // shows the "Agent" label.
-    expect(find.widgetWithText(ActionChip, 'Agent'), findsOneWidget);
-    // The agent filter chips are to its right.
-    expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsOneWidget);
-  });
-
-  testWidgets('switching to Project scope swaps agent chips for project chips',
-      (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex', cwd: '/home/me/app'),
-          _thread('b', 'Add dark mode', 'claude-code', cwd: '/home/me/lib'),
-          _thread('c', 'Refactor utils', 'codex', cwd: '/home/me/app'),
-        ],
-      ),
-    );
     await tester.pump();
 
-    // Pre-condition: agent scope is active → agent chips are visible.
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsOneWidget);
-    // No project chips yet.
-    expect(find.widgetWithText(ChoiceChip, 'app'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'lib'), findsNothing);
-
-    // Tap the scope selector → menu opens with both options.
-    await tester.tap(find.widgetWithText(ActionChip, 'Agent'));
-    await tester.pumpAndSettle();
-    // The popup menu items reuse the same labels.
-    expect(find.text('Agent'), findsNWidgets(2)); // selector + menu item
-    expect(find.text('Project'), findsOneWidget);
-
-    // Pick "Project" → the selector label flips, the agent chips disappear,
-    // and the project chips appear (one per distinct cwd).
-    await tester.tap(
-      find.text('Project').last,
-      warnIfMissed: false,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.widgetWithText(ActionChip, 'Project'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'app'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'lib'), findsOneWidget);
-    // "All" is still present (it's the reset chip in the project bar too).
-    expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
-  });
-
-  testWidgets(
-      "switching scope clears the other dimension's filter so the two stay "
-      'independent', (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex', cwd: '/home/me/app'),
-          _thread('b', 'Add dark mode', 'claude-code', cwd: '/home/me/lib'),
-        ],
-      ),
-    );
-    await tester.pump();
-
-    // Filter to Codex.
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Codex'));
-    await tester.pump();
+    // `pumpAndSettle` would hang here: a working agent draws the app's looping
+    // loader, which never settles by design.
+    await tester.tap(find.widgetWithText(FilterChip, 'Working'));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Fix the login bug'), findsOneWidget);
     expect(find.text('Add dark mode'), findsNothing);
 
-    // Switch to Project scope → the agent filter is cleared so all threads
-    // show again (no project filter selected yet → "All" project).
-    await tester.tap(find.widgetWithText(ActionChip, 'Agent'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.text('Project').last,
-      warnIfMissed: false,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Fix the login bug'), findsOneWidget);
+    // Toggling the same chip is how you get back to everything.
+    await tester.tap(find.widgetWithText(FilterChip, 'Working'));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Add dark mode'), findsOneWidget);
+  });
+
+  testWidgets('filtering everything away offers a way back', (tester) async {
+    await tester.pumpWidget(
+      _wrap(threads: [_thread('a', 'Fix the login bug', 'codex')]),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(FilterChip, 'Waiting for you'));
+    await tester.pumpAndSettle();
+    // An empty PC and a filtered-out list are different dead ends; only this
+    // one has a button.
+    expect(find.text('No space matches these filters'), findsOneWidget);
+
+    await tester.tap(find.text('Clear filters'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fix the login bug'), findsOneWidget);
   });
 
   testWidgets('a row reads state, then who, then what', (tester) async {
@@ -287,5 +242,113 @@ void main() {
       expect(decoration.border, isNull);
       expect(decoration.boxShadow, anyOf(isNull, isEmpty));
     }
+  });
+
+  group('the hierarchy', () {
+    Thread inFolder(String id, String title, String cwd) => Thread(
+          id: id,
+          title: title,
+          agentId: 'claude-code',
+          syncState: ThreadSyncState.synced,
+          status: ThreadStatus.active,
+          cwd: cwd,
+        );
+
+    testWidgets('a project heads its folders, which head their conversations',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
+          threads: [
+            inFolder('a', 'Fix login', '/dev/uxnan/app'),
+            inFolder('b', 'Dark mode', '/dev/uxnan/web'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('uxnan'), findsOneWidget);
+      expect(find.text('app'), findsOneWidget);
+      expect(find.text('web'), findsOneWidget);
+      expect(find.text('Fix login'), findsOneWidget);
+    });
+
+    testWidgets('closing a project hides its contents but not its state',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
+          threads: [inFolder('a', 'Fix login', '/dev/uxnan/app')],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('uxnan'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Fix login'), findsNothing);
+      expect(find.text('app'), findsNothing);
+      // A closed project still reports what is happening inside it — otherwise
+      // closing one hides the very thing the screen exists for.
+      expect(find.byType(AgentStatusIndicator), findsWidgets);
+    });
+
+    testWidgets('closing a folder hides only its own conversations',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
+          threads: [
+            inFolder('a', 'Fix login', '/dev/uxnan/app'),
+            inFolder('b', 'Dark mode', '/dev/uxnan/web'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('app'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Fix login'), findsNothing);
+      expect(find.text('Dark mode'), findsOneWidget);
+    });
+
+    testWidgets('long-pressing a folder opens its details with the full path',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
+          threads: [inFolder('a', 'Fix login', '/dev/uxnan/app')],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.longPress(find.text('app'));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // The row is one line by design; the path it cannot show lives here.
+      expect(find.text('/dev/uxnan/app'), findsOneWidget);
+      expect(find.text('Copy path'), findsOneWidget);
+    });
+
+    testWidgets('work outside every root still appears, in its own group',
+        (tester) async {
+      // A sibling worktree matches no configured root. It must not vanish.
+      await tester.pumpWidget(
+        _wrap(
+          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
+          threads: [inFolder('a', 'On a branch', '/dev/uxnan--feature')],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Other spaces'), findsOneWidget);
+      expect(find.text('On a branch'), findsOneWidget);
+    });
   });
 }
