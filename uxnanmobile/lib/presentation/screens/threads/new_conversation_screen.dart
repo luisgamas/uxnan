@@ -275,7 +275,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                         l10n.newThreadTitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: textTheme.headlineSmall,
+                        // A full-screen dialog's title IS that screen's
+                        // headline, so it takes the headline rung, not the
+                        // region rung below it.
+                        style: textTheme.headlineMedium,
                       ),
                     ),
                     _SectionHeader(label: l10n.newThreadWorkingDir),

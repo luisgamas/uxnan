@@ -221,34 +221,57 @@ ecosystem. Its three axes of variation:
 | `labelLarge` | 14 sp | 500 | Button text |
 | `labelMedium` | 12 sp | 500 | Chip labels, badges |
 
-##### What uxnan actually ships (and where it stops)
+##### What uxnan actually ships
 
 The table above is the M3 Expressive **reference** scale. uxnan draws a phone
-app, not an editorial page, and ships a **compressed** version of it — the hero
-is 32 sp, not 57. Only these rungs are defined in `UxnanTypography` and wired
-into the theme:
+app, not an editorial page, so it ships a **compressed** version of it — the
+hero is 32 sp, not 57 — and every one of the fifteen slots is set:
 
 | Slot | Size | Weight | What it is for |
 |:---|:---:|:---:|:---|
-| `displayLarge` | 32 | 700 | The one headline on a screen (the home greeting) |
-| `headlineMedium` | 20 | 600 | The quiet half of that headline; a screen's own title |
-| `titleMedium` | 16 | 600 | **The title of a group** — a folder heading conversations, a section heading a list |
+| `displayLarge` | 32 | 700 | The single hero a screen is allowed (the home greeting) |
+| `displayMedium` | 28 | 700 | A hero on a surface that is not a whole screen |
+| `displaySmall` | 24 | 700 | A number or short phrase carrying a whole card |
+| `headlineLarge` | 22 | 600 | The top of a screen with no display hero (a commit subject) |
+| `headlineMedium` | 20 | 600 | A screen's own title; the quiet half of a two-line greeting |
+| `headlineSmall` | 18 | 600 | A major region inside a screen |
+| `titleLarge` | 18 | 600 | A card or panel that owns its area |
+| `titleMedium` | 16 | 600 | **A group** — a folder over its conversations, a section over its rows |
 | `titleSmall` | 14 | 500 | A single row's name |
-| `bodyMedium` | 14 | 400 | Body text, and a group's supporting line |
-| `bodySmall` | 12 | 400 | A row's supporting line; metadata |
+| `bodyLarge` | 16 | 400 | Long-form reading: the body of an answer |
+| `bodyMedium` | 14 | 400 | Body text; a **group's** supporting line |
+| `bodySmall` | 12 | 400 | A **row's** supporting line. Carries `onSurfaceVariant` itself |
+| `labelLarge` | 14 | 500 | Button and pill text |
+| `labelMedium` | 12 | 500 | Chips, badges, tabs |
+| `labelSmall` | 11 | 500 | Overline, a counter on a glyph. Muted by default |
 
-Two things follow, and both have bitten this app:
+Two styles sit outside the ladder because they are not rungs of it:
+`UxnanTypography.barTitle` (20/w400 — a top bar's title, pinned so completing
+the scale cannot restyle every bar at once) and `menuItem` (15/w500 — a floating
+menu is a decision surface over everything else, so it earns more presence than
+the control it was opened from).
 
-- **Every other slot falls back to Material's defaults** (`titleLarge` 22/400,
-  `labelMedium` 12/500, …). They still render in Inter — `ThemeData.fontFamily`
-  applies to the whole theme — but at Material's sizes and weights, not this
-  scale's. So a screen built from undefined slots quietly follows a *different*
-  ladder than one built from defined ones. Before reaching for a slot that is
-  not in the table above, check what it actually resolves to.
+Three rules follow, and each of them has already been broken once here:
+
+- **Never leave a slot null.** A null slot is not unused — Material fills it
+  from *its* scale (`titleLarge` 22/w400, `headlineSmall` 24/w400, …), so the
+  screens that reach for it follow a different ladder than the screens that do
+  not. That is what made the app's density jump from screen to screen.
+  `test/widget/presentation/type_scale_test.dart` fails if a rung goes missing,
+  stops descending, or stops being compressed.
 - **Levels must step.** A group and the rows inside it may not share a style: a
   folder took `titleSmall` and so did the conversations under it, and the screen
   read as a flat list of equals. Each level goes one rung down — 16/600 over
   14/500, and 14/400 over 12/400 for their supporting lines.
+- **`headlineX` says what a REGION is about; `titleX` names an OBJECT** you can
+  act on. `titleLarge` and `headlineSmall` share metrics on purpose: they sit at
+  the same level of the page and differ in role, not in size. Pick by meaning —
+  the difference shows up the day one of them moves.
+
+Markdown is the one place that needs six strictly descending steps, which the UI
+scale does not have to spare; `theme/markdown.dart` therefore maps h1–h4 onto
+rungs and gives h5/h6 an explicit size (20 → 18 → 16 → 14 → 13 → 12). That is
+the only sanctioned literal.
 
 ---
 

@@ -6,6 +6,43 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the app follows one type scale instead of two
+
+`TextTheme` has fifteen slots and this theme defined five. That is not the same
+as leaving ten unused: an unset slot falls back to **Material's own** value —
+`titleLarge` 22/w400, `headlineSmall` 24/w400, `labelMedium` 12/w500 — which
+belongs to M3's uncompressed reference scale, not to the compressed one this app
+draws (a 32 sp hero, not 57). Around ninety call sites across thirty-four files
+were reaching for those ten slots, so which ladder a screen followed depended on
+which slots it happened to use. That is why density jumped between screens, and
+why the home overview read as enormous beside the conversation list.
+
+All fifteen are now set, and the middle is filled rather than the top lowered:
+28, 24 and 22 above the existing 20, and 18 for a region or a card between it
+and 16. Nothing that was already right moved.
+
+What the completed scale would have changed on its own, and did not:
+
+- **Top bars.** Six screens spelled their title `titleLarge.copyWith(fontSize:
+  20)`, which rendered correctly only while `titleLarge` was undefined and
+  resolved to Material's regular weight. Defining it would have emboldened every
+  bar in the app at once. They now share `UxnanTypography.barTitle` (20/w400) —
+  the reviewed style, in one place, unaffected by the ladder around it.
+- **Markdown headings.** They need six strictly descending steps; the UI scale
+  does not have six to spare, and two of its rungs share metrics on purpose. The
+  ramp is remapped to 20/18/16/14/13/12.
+- **Two heroes.** A full-screen dialog's title and a commit's subject both read
+  `headlineSmall` when that meant 24; they take a headline rung rather than
+  shrink to 18.
+
+Raised where a title heads something rather than names a row: settings section
+headers, a PC's name on its card, and every empty state — those sat at 14 under
+a 48 dp glyph, which is what an empty screen says at all.
+
+`test/widget/presentation/type_scale_test.dart` fails if a rung goes missing,
+stops descending, stops being compressed, or lets a group and its rows share a
+style.
+
 ### Added — the new-conversation button steps aside while you scroll
 
 A FAB sits over the bottom-right of the list, which on a phone is exactly where

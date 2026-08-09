@@ -903,9 +903,9 @@ class _GitScreenState extends ConsumerState<GitScreen> {
                 l10n.gitActionsTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: UxnanTypography.barTitle.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
               actions: [
                 // Pull only surfaces when the remote is ahead, badged with the
@@ -1704,7 +1704,7 @@ class _CleanState extends StatelessWidget {
             color: UxnanColors.success,
           ),
           const SizedBox(height: UxnanSpacing.sm),
-          Text(l10n.gitCleanState, style: textTheme.titleSmall),
+          Text(l10n.gitCleanState, style: textTheme.titleMedium),
           const SizedBox(height: UxnanSpacing.xs),
           Text(
             l10n.gitNothingToCommit,
@@ -1737,7 +1737,7 @@ class _NoRepository extends StatelessWidget {
         children: [
           UxIcon(UxIcons.source, size: 40, color: colors.onSurfaceVariant),
           const SizedBox(height: UxnanSpacing.md),
-          Text(l10n.gitNoRepository, style: textTheme.titleSmall),
+          Text(l10n.gitNoRepository, style: textTheme.titleMedium),
           const SizedBox(height: UxnanSpacing.xs),
           Text(
             l10n.gitNoRepositoryBody,

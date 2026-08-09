@@ -858,7 +858,7 @@ class _BinaryState extends StatelessWidget {
                   color: colors.onSurfaceVariant,
                 ),
                 const SizedBox(height: UxnanSpacing.md),
-                Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
+                Text(l10n.fileViewerBinaryTitle, style: textTheme.titleMedium),
                 const SizedBox(height: UxnanSpacing.xs),
                 Text(
                   l10n.fileViewerBinaryBody,

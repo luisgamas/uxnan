@@ -1652,7 +1652,7 @@ class _EmptyState extends StatelessWidget {
               semanticLabel: 'Conversation',
             ),
             const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.conversationEmpty, style: textTheme.titleSmall),
+            Text(l10n.conversationEmpty, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.xs),
             Text(
               l10n.conversationEmptyBody,

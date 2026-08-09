@@ -117,7 +117,7 @@ class _EmptyArchived extends StatelessWidget {
               semanticLabel: 'Archived',
             ),
             const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.archivedEmpty, style: textTheme.titleSmall),
+            Text(l10n.archivedEmpty, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.xs),
             Text(
               l10n.archivedEmptyBody,

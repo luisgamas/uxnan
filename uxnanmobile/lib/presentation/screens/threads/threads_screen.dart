@@ -646,7 +646,7 @@ class _EmptyThreads extends StatelessWidget {
               semanticLabel: 'Threads',
             ),
             const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.threadsEmpty, style: textTheme.titleSmall),
+            Text(l10n.threadsEmpty, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.xs),
             Text(
               l10n.threadsEmptyBody,

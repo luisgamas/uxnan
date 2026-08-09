@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_scroll_aware_fab.dart';
 
@@ -219,7 +220,6 @@ class _NeScaffoldState extends State<NeScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     final canPop = ModalRoute.of(context)?.canPop ?? false;
     final lead = widget.leading ??
         (widget.automaticBackButton && canPop
@@ -289,7 +289,9 @@ class _NeScaffoldState extends State<NeScaffold> {
                             widget.title!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                            style: UxnanTypography.barTitle.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           )),
                 actions: widget.actions,
               ),

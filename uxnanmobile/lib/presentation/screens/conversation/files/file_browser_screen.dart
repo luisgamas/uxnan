@@ -241,9 +241,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 l10n.fileBrowserTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: UxnanTypography.barTitle.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
               actions: [
                 _FileSearchAnchor(cwd: widget.cwd, onSelect: _openSearchResult),
@@ -768,7 +768,7 @@ class _EmptyState extends StatelessWidget {
             color: colors.onSurfaceVariant,
           ),
           const SizedBox(height: UxnanSpacing.sm),
-          Text(l10n.fileBrowserEmptyTitle, style: textTheme.titleSmall),
+          Text(l10n.fileBrowserEmptyTitle, style: textTheme.titleMedium),
           const SizedBox(height: UxnanSpacing.xs),
           Text(
             message,

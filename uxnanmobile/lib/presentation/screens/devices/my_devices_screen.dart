@@ -384,7 +384,7 @@ class _DeviceCard extends StatelessWidget {
                   children: [
                     Text(
                       device.displayName,
-                      style: textTheme.titleSmall,
+                      style: textTheme.titleMedium,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),

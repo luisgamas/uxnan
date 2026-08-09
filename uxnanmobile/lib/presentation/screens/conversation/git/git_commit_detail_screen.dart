@@ -200,7 +200,9 @@ class _Header extends StatelessWidget {
             children: [
               SelectableText(
                 commit.messageTitle,
-                style: textTheme.headlineSmall
+                // The subject is what this screen is about — everything else
+                // on it describes this one line.
+                style: textTheme.headlineLarge
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               if (commit.refs.isNotEmpty) ...[
@@ -698,7 +700,11 @@ class _InlineError extends StatelessWidget {
         children: [
           UxIcon(UxIcons.error, size: 48, color: colors.error),
           const SizedBox(height: UxnanSpacing.md),
-          Text(title, style: textTheme.titleSmall, textAlign: TextAlign.center),
+          Text(
+            title,
+            style: textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: UxnanSpacing.md),
           FilledButton.tonal(onPressed: onRetry, child: Text(retryLabel)),
         ],

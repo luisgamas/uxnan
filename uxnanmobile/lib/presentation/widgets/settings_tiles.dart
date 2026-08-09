@@ -36,9 +36,10 @@ class NeSectionHeader extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: textTheme.titleSmall?.copyWith(
+        // A section heads a group, so it takes the group rung — the same
+        // one a folder takes over its conversations.
+        style: textTheme.titleMedium?.copyWith(
           color: colors.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
         ),
       ),

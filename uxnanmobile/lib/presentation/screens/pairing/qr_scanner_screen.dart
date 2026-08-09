@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/pairing/update_prompt_dialog.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
@@ -177,7 +178,6 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
     final body = switch (_access) {
       _CameraAccess.checking => const Center(
           child: PolygonLoader(size: 36),
@@ -221,7 +221,9 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
                 l10n.qrScannerTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: UxnanTypography.barTitle.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ),

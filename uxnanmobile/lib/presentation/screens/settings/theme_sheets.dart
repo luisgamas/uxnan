@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
@@ -361,7 +362,9 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                 widget.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: UxnanTypography.barTitle.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ),
