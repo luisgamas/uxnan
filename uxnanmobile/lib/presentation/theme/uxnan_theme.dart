@@ -140,6 +140,8 @@ TextTheme _buildTextTheme(ColorScheme colorScheme) {
         UxnanTypography.displayLarge.copyWith(color: colorScheme.onSurface),
     headlineMedium:
         UxnanTypography.headlineMedium.copyWith(color: colorScheme.onSurface),
+    titleMedium:
+        UxnanTypography.titleMedium.copyWith(color: colorScheme.onSurface),
     titleSmall:
         UxnanTypography.titleSmall.copyWith(color: colorScheme.onSurface),
     bodyMedium:

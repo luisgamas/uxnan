@@ -64,10 +64,34 @@ class UxnanSize {
   /// just under it so a content glyph never out-weighs the text it labels.
   static const double iconContent = 20;
 
+  /// The glyph that *identifies* a row — the folder a group of conversations
+  /// lives in. Material's own default, and the one place in content where a
+  /// glyph is allowed to lead rather than accompany.
+  static const double iconContentLarge = 24;
+
   /// The subordinate glyph on the same row: a state mark beside an identity
   /// mark, a chevron beside a name. Small enough to read as secondary, large
   /// enough to still be a shape rather than a dot.
-  static const double iconContentSmall = 16;
+  static const double iconContentSmall = 18;
+
+  /// The **S** step of the guide's button hierarchy (§4.5: XS 32 / S 40 /
+  /// M 48 / L 56) — a row-level action that has to look pressable without
+  /// out-ranking the row it sits on. Still inside a [minTouchTarget].
+  static const double buttonSmall = 40;
+
+  /// Stroke weight every [UxIcon] draws at unless it asks for another.
+  ///
+  /// Hugeicons authors its artwork at 1.5 on a 24-unit grid, against Material's
+  /// 2 — and `UxIcon`'s optical scale then shrinks the artwork inside its box,
+  /// which thins that stroke a further ~13%. Compounded, glyphs arrived about a
+  /// third lighter than the Material ones this app was drawn around, and read
+  /// as faint. This restores the weight without touching the sizes: 2 on the
+  /// grid, drawn at ~1.74 after the optical scale — heavier than the vendor
+  /// default, just under Material.
+  ///
+  /// `uxnandesktop` keeps the vendor's 1.5: it draws smaller glyphs on a
+  /// monitor an arm and a half away, where the lighter stroke is correct.
+  static const double iconStroke = 2;
 
   /// Diameter of the shared floating conversation/history scroll shortcut.
   static const double floatingScrollShortcut = 52;

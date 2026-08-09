@@ -29,6 +29,22 @@ class UxnanTypography {
     fontWeight: FontWeight.w600,
   );
 
+  /// The title of a **group** — a folder heading the conversations inside it,
+  /// a section heading a list.
+  ///
+  /// The rung between [headlineMedium] (a screen's own headline) and
+  /// [titleSmall] (a single row). Without it a folder and the conversations it
+  /// contains were drawn identically, and a screen made of rows had no
+  /// hierarchy at all: everything was 14 or 12.
+  ///
+  /// Material's default for this slot is 16/w500; uxnan takes the weight up a
+  /// step, because here it is doing real structural work.
+  static const TextStyle titleMedium = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+  );
+
   /// Small title style.
   static const TextStyle titleSmall = TextStyle(
     fontFamily: fontFamily,

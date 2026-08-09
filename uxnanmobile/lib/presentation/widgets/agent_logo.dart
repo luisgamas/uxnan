@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -19,12 +20,18 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// falls back to the app's generic agent glyph.
 class AgentLogo extends StatelessWidget {
   /// Creates an [AgentLogo] for [agent].
-  const AgentLogo({required this.agent, this.size = 18, this.color, super.key});
+  const AgentLogo({
+    required this.agent,
+    this.size = UxnanSize.iconContentSmall,
+    this.color,
+    super.key,
+  });
 
   /// The agent whose mark to draw.
   final AgentId agent;
 
-  /// Side length of the mark.
+  /// Side length of the mark. Defaults to the subordinate content size: in a
+  /// row the mark accompanies a name, it does not lead it.
   final double size;
 
   /// Tint applied to monochrome marks; defaults to the ambient icon colour.

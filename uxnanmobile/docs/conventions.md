@@ -37,13 +37,16 @@ spec, the spec wins.
   settings rows, dynamic 24/4 corners + 3 dp gap), `ConnectedButtonGroup` (the
   M3E replacement for `SegmentedButton`), the `settings_tiles.dart` rows
   (`NeSectionHeader` / `NeSectionHint` / `NeSwitchTile` / `NeNavTile`), plus
-  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`, `NeBadge` (read-only
+  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`, `NeScrollAwareFab`
+  (a FAB that steps aside while the list moves — see NE §"FAB and FAB Menu" for
+  which FABs may take it and which must not), `NeBadge` (read-only
   status pill — `neutral` for a plain fact, `secondary` for supporting metadata,
   `live` for the one solid `tertiary` fill, reserved for what is true right now). Cards use
   `surfaceContainer`, **never** `surfaceContainerHighest` — that tone is reserved
   for input fills / active chips (NE §2.4).
 - **Agent marks: bare in rows, framed only as objects.** `AgentLogo` draws the
-  mark alone for dense surfaces (thread rows, and the space rows to come);
+  mark alone for dense surfaces (thread rows, and the folder rows that head
+  them);
   `AgentLogoChip` frames it where an agent is a thing you pick or admire (the
   onboarding hero, the agent picker). Neither carries a border or a shadow —
   framing made the frame the thing you noticed, and a shadowed tile inside a
@@ -59,6 +62,12 @@ spec, the spec wins.
   Pro icons that the Flutter package does not ship.
   `UxIcon` restores the two things `HugeIcon` lacks: a `semanticLabel`, and
   sizing inherited from the ambient `IconTheme`. Colour needs no help.
+  It also fixes the weight: Hugeicons authors a 1.5 stroke against Material's 2
+  and `UxIcon`'s optical scale thinned that further, so glyphs read faint. They
+  draw at `UxnanSize.iconStroke` unless a call site says otherwise. **Sizes come
+  from tokens too** — `iconContentLarge` / `iconContent` / `iconContentSmall`
+  for glyphs inside content, `iconSurfaceGlyph` for chrome (NE §4.2). A literal
+  dp in a screen is how they drifted between 13 and 18 last time.
   In tests, `find.byIcon` cannot see these at all (it takes an `IconData`) —
   use `findUxIcon(UxIcons.x)` from `test/support/ux_icon_finder.dart`.
 - **Two menu triggers, one menu.** `IconSurfaceMenu` for **chrome** (an app-bar

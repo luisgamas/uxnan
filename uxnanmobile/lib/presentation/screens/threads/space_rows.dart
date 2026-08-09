@@ -164,10 +164,7 @@ class WorkspaceGroupRow extends ConsumerWidget {
                           padding: const EdgeInsets.only(
                             right: UxnanSpacing.xs,
                           ),
-                          child: AgentLogo(
-                            agent: agent,
-                            size: UxnanSize.iconContentSmall,
-                          ),
+                          child: AgentLogo(agent: agent),
                         ),
                       if (agents.length > 3)
                         Text(

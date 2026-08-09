@@ -6,6 +6,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — glyphs stroke at the weight the app was drawn around, and a group outranks its rows
+
+Two things made the conversation list read thinner and flatter than the rest of
+the app. Both were app-wide, not screen-deep.
+
+**The icons were about a third too light.** Hugeicons authors its artwork at a
+1.5 stroke where Material drew 2, and `UxIcon`'s optical scale — which keeps a
+given size inking what it always inked — shrinks the artwork inside its box and
+thinned that stroke a further ~13% as a side effect. Compounded, every glyph in
+the app arrived far lighter than the Material one it replaced. `UxIcon` now
+draws at `UxnanSize.iconStroke` (2 on the grid, ~1.74 after the scale), and a
+test pins it. `uxnandesktop` keeps the vendor's 1.5: it draws smaller glyphs at
+monitor distance, where the lighter stroke is correct.
+
+**A folder and the conversations inside it were drawn identically** — both
+`titleSmall`, 14/w500 — so a screen made entirely of rows had no hierarchy to
+read. The theme had no rung between a screen's headline (20) and a single row
+(14) to reach for, which is how it happened. `titleMedium` (16/w600) now exists
+and is what a *group* is titled with; supporting lines step in parallel
+(14/w400 under a group, 12/w400 under a row).
+
+Content glyph sizes move with it: the folder that identifies a row takes the new
+`iconContentLarge` (24), subordinate marks — the chevron, the state indicator —
+go 16 → 18, and a folder's **+** is now an S button (40) rather than XS (32).
+`docs/neural-expressive-design.md` records the scale the app actually ships, and
+warns that the ten type slots it leaves undefined silently follow Material's
+ladder instead of this one.
+
 ### Changed — a PC's conversations are grouped by the folder they run in
 
 The screen was a flat list of every conversation on a PC. It now groups them by

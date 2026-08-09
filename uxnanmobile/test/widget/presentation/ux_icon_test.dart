@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hugeicons/hugeicons.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// [UxIcon] must ink the same fraction of its box as the Material icon it
@@ -74,12 +76,43 @@ Future<void> main() async {
         UxIcon(UxIcons.folder, size: size, color: Colors.black),
         size,
       );
+      // Tolerance covers the stroke, not slop. This measures the ink's
+      // BOUNDING BOX, and half of `UxnanSize.iconStroke` hangs outside the
+      // artwork's own edge on each side — a fixed dp overhang, so it costs
+      // proportionally more of a small box (~0.03 at 16 dp, ~0.02 at 24 dp)
+      // than a large one. What the constant guards is the ~0.15 error it was
+      // written for; 0.04 still catches that an order of magnitude over.
       expect(
         ours,
-        closeTo(material, 0.03),
+        closeTo(material, 0.04),
         reason: 'at ${size}dp: Material inks $material, UxIcon inks $ours',
       );
     }
+  });
+
+  testWidgets('strokes at the app weight, not the vendor default',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Center(child: UxIcon(UxIcons.folder, size: 24))),
+    );
+
+    // Hugeicons authors at 1.5 and the optical scale thins that further, which
+    // is how the app's glyphs ended up reading faint against the Material ones
+    // they replaced. The weight is a decision, so it is pinned here.
+    expect(
+      tester.widget<HugeIcon>(find.byType(HugeIcon)).strokeWidth,
+      UxnanSize.iconStroke,
+    );
+  });
+
+  testWidgets('lets a caller overrule the stroke', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Center(child: UxIcon(UxIcons.folder, size: 24, strokeWidth: 1.5)),
+      ),
+    );
+
+    expect(tester.widget<HugeIcon>(find.byType(HugeIcon)).strokeWidth, 1.5);
   });
 
   testWidgets('occupies its full nominal size, so nothing reflows',

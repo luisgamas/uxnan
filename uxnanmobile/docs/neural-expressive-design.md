@@ -210,6 +210,35 @@ ecosystem. Its three axes of variation:
 | `labelLarge` | 14 sp | 500 | Button text |
 | `labelMedium` | 12 sp | 500 | Chip labels, badges |
 
+##### What uxnan actually ships (and where it stops)
+
+The table above is the M3 Expressive **reference** scale. uxnan draws a phone
+app, not an editorial page, and ships a **compressed** version of it — the hero
+is 32 sp, not 57. Only these rungs are defined in `UxnanTypography` and wired
+into the theme:
+
+| Slot | Size | Weight | What it is for |
+|:---|:---:|:---:|:---|
+| `displayLarge` | 32 | 700 | The one headline on a screen (the home greeting) |
+| `headlineMedium` | 20 | 600 | The quiet half of that headline; a screen's own title |
+| `titleMedium` | 16 | 600 | **The title of a group** — a folder heading conversations, a section heading a list |
+| `titleSmall` | 14 | 500 | A single row's name |
+| `bodyMedium` | 14 | 400 | Body text, and a group's supporting line |
+| `bodySmall` | 12 | 400 | A row's supporting line; metadata |
+
+Two things follow, and both have bitten this app:
+
+- **Every other slot falls back to Material's defaults** (`titleLarge` 22/400,
+  `labelMedium` 12/500, …). They still render in Inter — `ThemeData.fontFamily`
+  applies to the whole theme — but at Material's sizes and weights, not this
+  scale's. So a screen built from undefined slots quietly follows a *different*
+  ladder than one built from defined ones. Before reaching for a slot that is
+  not in the table above, check what it actually resolves to.
+- **Levels must step.** A group and the rows inside it may not share a style: a
+  folder took `titleSmall` and so did the conversations under it, and the screen
+  read as a flat list of equals. Each level goes one rung down — 16/600 over
+  14/500, and 14/400 over 12/400 for their supporting lines.
+
 ---
 
 ### 2.4 HCT Color System
@@ -395,18 +424,27 @@ the app. Two tokens close it:
 
 | Token | dp | Use |
 |:---|:---:|:---|
-| `UxnanSize.iconContent` | 20 | A row's own glyph: an agent's mark, a folder, an action on a list row. Just under Material's 24 dp default, so it never out-weighs the text it labels. |
-| `UxnanSize.iconContentSmall` | 16 | The subordinate glyph on the same row: a state mark beside an identity mark, a chevron beside a name. Secondary, but still a shape rather than a dot. |
+| `UxnanSize.iconContentLarge` | 24 | The glyph that *identifies* a row — the folder a group of conversations lives in. Material's own default, and the one place in content where a glyph leads rather than accompanies. |
+| `UxnanSize.iconContent` | 20 | A row's own glyph: an agent's mark, an action on a list row. |
+| `UxnanSize.iconContentSmall` | 18 | The subordinate glyph on the same row: a state mark beside an identity mark, a chevron beside a name. Secondary, but still a shape rather than a dot. |
 
-A row-level action (a "+" on a folder) is an **XS button** from §4.5 — 32 dp of
+A row-level action (a "+" on a folder) is an **S button** from §4.5 — 40 dp of
 surface around an `iconContent` glyph, with the usual 48 dp touch target.
+
+**Stroke: `UxnanSize.iconStroke` = 2**, which every `UxIcon` draws at unless it
+asks otherwise. Hugeicons authors at 1.5 on a 24-unit grid and the optical scale
+below thins that a further ~13%, so glyphs arrived about a third lighter than
+the Material ones this app was drawn around and read as faint. `uxnandesktop`
+keeps the vendor's 1.5 — it draws smaller glyphs on a monitor an arm and a half
+away, where the lighter stroke is right.
 
 #### The icon set
 
 Glyphs come from the free **stroke-rounded [Hugeicons](https://hugeicons.com)**
 (MIT) — the same set `uxnandesktop` and the website draw, so a concept looks the
-same wherever you meet it. They stroke at **1.5** where Material stroked at 2:
-deliberately lighter at the 13–24 dp sizes this UI uses.
+same wherever you meet it. They author at a **1.5** stroke where Material drew
+2; this app redraws them at `UxnanSize.iconStroke` (above), because at phone
+sizes and phone distance the vendor weight reads faint.
 
 Every glyph is named in the `UxIcons` catalogue and drawn through the `UxIcon`
 primitive; nothing else touches the package. Two consequences worth knowing:
@@ -748,7 +786,6 @@ slightly along the collision axis. This requires coordinated animation with `spa
   circular `surfaceContainerHighest` control with `onSurfaceVariant` glyph,
   subtle `outlineVariant` edge and low elevation. They stay bottom-centered and
   avoid the more prominent brand/secondary tones reserved for primary actions.
-
 #### Button Hierarchy by Size
 
 | Size | Height | Use |

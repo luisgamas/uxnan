@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// The app's icon. Draws a [UxIcons] glyph, and is the only place that talks to
 /// the Hugeicons package.
@@ -43,9 +44,10 @@ class UxIcon extends StatelessWidget {
   /// is not read twice.
   final String? semanticLabel;
 
-  /// Overrides the glyph's own stroke weight. Hugeicons strokes at 1.5 —
-  /// lighter than Material's 2, deliberately, at the sizes this app uses;
-  /// raise it only where a glyph must hold its own against heavier neighbours.
+  /// Overrides the stroke weight; defaults to [UxnanSize.iconStroke].
+  ///
+  /// Lower it for a glyph that should recede, raise it for one that must hold
+  /// its own against heavier neighbours.
   final double? strokeWidth;
 
   /// Fraction of its box a glyph is drawn at, so a given `size` inks the same
@@ -73,7 +75,7 @@ class UxIcon extends StatelessWidget {
           icon: icon,
           size: box * _opticalScale,
           color: color,
-          strokeWidth: strokeWidth,
+          strokeWidth: strokeWidth ?? UxnanSize.iconStroke,
         ),
       ),
     );
