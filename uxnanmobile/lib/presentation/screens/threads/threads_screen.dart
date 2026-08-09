@@ -134,11 +134,17 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
       groupThreadsByWorkspace(
         threads: sortThreads(threads, sort),
         projects: ref.watch(projectsProvider).value ?? const [],
+        // Empty on a bridge without `git/worktrees`, which is exactly the
+        // fallback: no table, no repository nodes, the flat list as before.
+        repos: ref.watch(workspaceRepoTableProvider).value ?? const {},
       ),
       spaceSort,
     );
     final collapsed = ref.watch(collapsedProjectsProvider);
-    final rows = _flatten(groups, collapsed: collapsed);
+    final rows = _flatten(
+      buildWorkspaceTree(groups),
+      collapsed: collapsed,
+    );
 
     final l10n = AppLocalizations.of(context);
 
@@ -278,19 +284,38 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
   /// the screen appears, and this list is the one place a PC with hundreds of
   /// them has to stay responsive.
   List<_SpaceRow> _flatten(
-    List<WorkspaceGroup> groups, {
+    List<WorkspaceTreeNode> nodes, {
     required Set<String> collapsed,
   }) {
     final rows = <_SpaceRow>[];
-    for (final group in groups) {
+
+    void addWorkspace(WorkspaceGroup group, {required int depth}) {
       // A conversation with no folder of its own has nothing to head; it
       // stands on its own rather than under an empty heading.
       final headed = group.key.isNotEmpty;
       final open = !collapsed.contains(group.key);
-      if (headed) rows.add(_WorkspaceRow(group, expanded: open));
-      if (headed && !open) continue;
+      if (headed) {
+        rows.add(_WorkspaceRow(group, expanded: open, depth: depth));
+      }
+      if (headed && !open) return;
       for (final thread in group.threads) {
-        rows.add(_ThreadRow(thread, indented: headed));
+        rows.add(
+          _ThreadRow(thread, depth: headed ? depth + 1 : depth),
+        );
+      }
+    }
+
+    for (final node in nodes) {
+      switch (node) {
+        case LoneWorkspace(:final workspace):
+          addWorkspace(workspace, depth: 0);
+        case RepoWithWorktrees(:final repo):
+          final open = !collapsed.contains(repo.key);
+          rows.add(_RepoRow(repo, expanded: open));
+          if (!open) continue;
+          for (final workspace in repo.workspaces) {
+            addWorkspace(workspace, depth: 1);
+          }
       }
     }
     return rows;
@@ -302,25 +327,36 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     required bool compact,
   }) {
     switch (row) {
-      case _WorkspaceRow(:final group, :final expanded):
-        return WorkspaceGroupRow(
-          key: ValueKey('workspace-${group.key}'),
-          group: group,
+      case _RepoRow(:final repo, :final expanded):
+        return RepoGroupRow(
+          key: ValueKey('repo-${repo.key}'),
+          repo: repo,
           expanded: expanded,
           onToggle: () =>
-              ref.read(collapsedProjectsProvider.notifier).toggle(group.key),
-          onDetails: () => showWorkspaceDetails(
-            context,
-            group,
-            fullPath: group.path,
-            onOpenThread: (id) => context.push(AppRoutes.conversation(id)),
-          ),
-          onNewConversation: () => _newConversation(cwd: group.path),
+              ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
         );
-      case _ThreadRow(:final thread, :final indented):
+      case _WorkspaceRow(:final group, :final expanded, :final depth):
+        return Padding(
+          padding: EdgeInsets.only(left: depth * kSpaceIndent),
+          child: WorkspaceGroupRow(
+            key: ValueKey('workspace-${group.key}'),
+            group: group,
+            expanded: expanded,
+            onToggle: () =>
+                ref.read(collapsedProjectsProvider.notifier).toggle(group.key),
+            onDetails: () => showWorkspaceDetails(
+              context,
+              group,
+              fullPath: group.path,
+              onOpenThread: (id) => context.push(AppRoutes.conversation(id)),
+            ),
+            onNewConversation: () => _newConversation(cwd: group.path),
+          ),
+        );
+      case _ThreadRow(:final thread, :final depth):
         return Padding(
           padding: EdgeInsets.only(
-            left: indented ? kSpaceIndent : 0,
+            left: depth * kSpaceIndent,
             bottom: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
           ),
           child: ThreadTile(
@@ -338,16 +374,23 @@ sealed class _SpaceRow {
   const _SpaceRow();
 }
 
-class _WorkspaceRow extends _SpaceRow {
-  const _WorkspaceRow(this.group, {required this.expanded});
-  final WorkspaceGroup group;
+class _RepoRow extends _SpaceRow {
+  const _RepoRow(this.repo, {required this.expanded});
+  final RepoGroup repo;
   final bool expanded;
 }
 
+class _WorkspaceRow extends _SpaceRow {
+  const _WorkspaceRow(this.group, {required this.expanded, this.depth = 0});
+  final WorkspaceGroup group;
+  final bool expanded;
+  final int depth;
+}
+
 class _ThreadRow extends _SpaceRow {
-  const _ThreadRow(this.thread, {required this.indented});
+  const _ThreadRow(this.thread, {required this.depth});
   final Thread thread;
-  final bool indented;
+  final int depth;
 }
 
 /// Shown above the list when we are NOT connected to this PC: the threads are a

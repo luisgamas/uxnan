@@ -274,6 +274,10 @@ class UxIcons {
   /// Replaces `UxIcons.folderZip`.
   static const UxIconData folderZip = HugeIcons.strokeRoundedFolderZip;
 
+  /// A git repository heading its worktrees. Distinct from [folder] on
+  /// purpose: the two sit on adjacent rows and mean different things.
+  static const UxIconData repository = HugeIcons.strokeRoundedGitBranch;
+
   /// Replaces `UxIcons.fontDownload`.
   static const UxIconData fontDownload = HugeIcons.strokeRoundedTextFont;
 

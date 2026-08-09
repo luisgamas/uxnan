@@ -125,10 +125,18 @@ touching the UI. Paths are matched after normalising separators and case; the
 path shown and copied is the one that was reported. Configured roots contribute
 their name only.
 
-There is deliberately **no project level**: the bridge reports flat roots and
-nothing about worktrees, so a project heading would sit over one folder plus an
-"other" bucket holding most of the work. It returns when the bridge can say
-which folders are worktrees of which repository.
+A **repository level** sits above the folders when the bridge can prove one:
+`git/worktrees` (`workspaceRepoTableProvider`, asked once per configured root)
+says which folders are worktrees of which repository. It is never inferred from
+path prefixes — worktrees are siblings on disk, so a shared prefix says nothing,
+and inferring it is what sank the first attempt at this level.
+
+`buildWorkspaceTree` then applies the two rules that keep it honest: a
+repository node appears only when it relates **two or more** folders (a heading
+over one folder is chrome, not structure), and a folder that relates to nothing
+stays where it is rather than being swept into an "other" bucket. On a bridge
+without the method the table is empty and the list is exactly the flat one it
+was before.
 
 `ThreadsScreen` flattens the folders into typed rows (`_WorkspaceRow`,
 `_ThreadRow`) so the sliver stays lazy. Folder collapse is persisted as the set

@@ -6,6 +6,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — worktrees sit under the repository they belong to
+
+The repository level is back, and this time it is real. `git/worktrees` tells
+the phone which folders are worktrees of which repository, so they now sit under
+it. It is never inferred from path prefixes — worktrees are **siblings** on
+disk, so a shared prefix says nothing, and inferring it is what sank the first
+attempt at this level.
+
+Two rules keep it from repeating that failure: a repository node appears only
+when it relates **two or more** folders (a heading over a single folder is
+chrome, not structure), and a folder that relates to nothing stays exactly where
+it is — there is no "other" bucket. The repository row carries no "+" of its
+own, because a new conversation happens in a *folder*, and a repository with
+three worktrees cannot answer which.
+
+**An older bridge changes nothing.** It answers "method not found", the table
+arrives empty, and the list is literally the flat one it was before — no error,
+no guess. Eight tests cover the shapes, including that a shared path prefix is
+still not a relationship.
+
 ### Added — a folder says what its working tree is doing
 
 Each folder row now reports what the desktop's sidebar reports: uncommitted

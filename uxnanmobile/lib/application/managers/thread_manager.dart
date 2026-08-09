@@ -26,6 +26,7 @@ import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/repositories/i_message_repository.dart';
 import 'package:uxnan/domain/repositories/i_thread_repository.dart';
+import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
@@ -360,6 +361,29 @@ class ThreadManager {
       for (final raw in result)
         if (raw is Map) Project.fromJson(raw.cast<String, dynamic>()),
     ];
+  }
+
+  /// Asks the bridge which folders are worktrees of the repository at [cwd].
+  ///
+  /// Returns an empty list when the bridge does not know the method — a bridge
+  /// older than this feature answers "method not found", and the caller's job
+  /// is then to leave the folder list flat rather than guess a hierarchy from
+  /// path prefixes. Guessing is precisely what this method exists to stop:
+  /// worktrees are siblings, so a prefix says nothing.
+  Future<List<GitWorktreeEntry>> loadWorktrees(String cwd) async {
+    try {
+      final response = await _sendRequest('git/worktrees', {'cwd': cwd});
+      final result = response.result;
+      final entries = result is Map ? result['worktrees'] : null;
+      if (entries is! List) return const [];
+      return [
+        for (final raw in entries)
+          if (raw is Map)
+            GitWorktreeEntry.fromJson(raw.cast<String, dynamic>()),
+      ];
+    } on Object {
+      return const [];
+    }
   }
 
   /// Loads the bridge's agent list (`agent/list`).

@@ -1,5 +1,6 @@
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
+import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 
 /// One working folder, with the conversations that run in it.
 class WorkspaceGroup {
@@ -9,6 +10,8 @@ class WorkspaceGroup {
     required this.label,
     required this.threads,
     this.path,
+    this.repoKey,
+    this.repoLabel,
   });
 
   /// The normalized absolute path, and this group's identity.
@@ -23,6 +26,66 @@ class WorkspaceGroup {
   /// The path as it was actually reported, for display and copying. The [key]
   /// is folded for matching and is not what a user should ever read.
   final String? path;
+
+  /// The normalized path of the repository's MAIN worktree, when the bridge
+  /// told us — `git/worktrees`, never a path prefix, because worktrees are
+  /// siblings and a prefix would be a guess dressed as a fact.
+  ///
+  /// Null on an older bridge, and null for a folder that is not in a
+  /// repository. Both mean the same thing to the UI: this folder stands alone.
+  final String? repoKey;
+
+  /// What to call that repository.
+  final String? repoLabel;
+}
+
+/// A repository and the worktrees of it that hold conversations.
+///
+/// Only ever built when the relationship is **real and worth drawing**: two or
+/// more folders proven by `git/worktrees` to belong to one repository. A repo
+/// with a single folder is returned as a plain [WorkspaceGroup], because a
+/// heading over one row is not structure — it is an extra tap and a line of
+/// chrome, which is exactly what the first attempt at this got wrong.
+class RepoGroup {
+  /// Creates a [RepoGroup].
+  const RepoGroup({
+    required this.key,
+    required this.label,
+    required this.workspaces,
+  });
+
+  /// Normalized path of the repository's main worktree.
+  final String key;
+
+  /// What to call it.
+  final String label;
+
+  /// Its folders, main worktree first when it is among them.
+  final List<WorkspaceGroup> workspaces;
+}
+
+/// One row of the folder list: either a lone folder, or a repository with the
+/// worktrees under it.
+sealed class WorkspaceTreeNode {
+  const WorkspaceTreeNode();
+}
+
+/// A folder that belongs to no drawable repository group.
+class LoneWorkspace extends WorkspaceTreeNode {
+  /// Creates a [LoneWorkspace].
+  const LoneWorkspace(this.workspace);
+
+  /// The folder.
+  final WorkspaceGroup workspace;
+}
+
+/// A repository with two or more of its worktrees.
+class RepoWithWorktrees extends WorkspaceTreeNode {
+  /// Creates a [RepoWithWorktrees].
+  const RepoWithWorktrees(this.repo);
+
+  /// The repository and its folders.
+  final RepoGroup repo;
 }
 
 /// Normalizes a path so two spellings of the same folder are one key.
@@ -64,6 +127,7 @@ String workspaceLabel(String path) {
 List<WorkspaceGroup> groupThreadsByWorkspace({
   required List<Thread> threads,
   required List<Project> projects,
+  Map<String, WorkspaceRepo> repos = const {},
 }) {
   final names = {
     for (final project in projects)
@@ -96,7 +160,99 @@ List<WorkspaceGroup> groupThreadsByWorkspace({
           final paths? when paths.isNotEmpty => paths.first,
           _ => null,
         },
+        repoKey: repos[entry.key]?.key,
+        repoLabel: repos[entry.key]?.label,
         threads: entry.value,
       ),
   ];
+}
+
+/// Which repository a folder belongs to, as reported by `git/worktrees`.
+class WorkspaceRepo {
+  /// Creates a [WorkspaceRepo].
+  const WorkspaceRepo({required this.key, required this.label});
+
+  /// Normalized path of the repository's main worktree.
+  final String key;
+
+  /// What to call it.
+  final String label;
+}
+
+/// Builds the folder-to-repository table from `git/worktrees` replies.
+///
+/// [replies] maps the folder that was ASKED to the worktree list it returned.
+/// Every entry of a reply belongs to the repository whose main worktree that
+/// reply names, so one call teaches us about every sibling at once — which is
+/// why the caller asks once per configured root rather than once per folder.
+Map<String, WorkspaceRepo> buildWorkspaceRepoTable(
+  Map<String, List<GitWorktreeEntry>> replies,
+) {
+  final table = <String, WorkspaceRepo>{};
+  for (final entries in replies.values) {
+    if (entries.length < 2) continue; // nothing to relate
+    final main = entries.firstWhere(
+      (e) => e.isMain,
+      orElse: () => entries.first,
+    );
+    if (main.path.isEmpty) continue;
+    final repo = WorkspaceRepo(
+      key: normalizeWorkspacePath(main.path),
+      label: workspaceLabel(main.path),
+    );
+    for (final entry in entries) {
+      if (entry.path.isEmpty) continue;
+      table[normalizeWorkspacePath(entry.path)] = repo;
+    }
+  }
+  return table;
+}
+
+/// Arranges [groups] into the list the screen draws: a repository with two or
+/// more of its folders becomes one node; everything else stays a lone folder.
+///
+/// The threshold is the whole point. The first attempt at a project level drew
+/// a heading over a SINGLE folder plus a bucket named "other" holding most of
+/// the real work, and it earned its removal. A group appears here only when it
+/// relates folders that genuinely belong together, and a folder that relates
+/// to nothing is never swept into a bucket — it simply stays where it is.
+List<WorkspaceTreeNode> buildWorkspaceTree(List<WorkspaceGroup> groups) {
+  final byRepo = <String, List<WorkspaceGroup>>{};
+  final lone = <WorkspaceGroup>[];
+  for (final group in groups) {
+    final repo = group.repoKey;
+    if (repo == null) {
+      lone.add(group);
+    } else {
+      (byRepo[repo] ??= []).add(group);
+    }
+  }
+
+  final nodes = <WorkspaceTreeNode>[];
+  for (final entry in byRepo.entries) {
+    final members = entry.value;
+    if (members.length < 2) {
+      // Proven to be in a repository, but the only folder of it we can see.
+      // A heading over one row is chrome, not structure.
+      lone.addAll(members);
+      continue;
+    }
+    // Main worktree first: it is the one a person thinks of as "the repo".
+    members.sort((a, b) {
+      final aMain = a.key == entry.key ? 0 : 1;
+      final bMain = b.key == entry.key ? 0 : 1;
+      return aMain != bMain ? aMain - bMain : a.label.compareTo(b.label);
+    });
+    nodes.add(
+      RepoWithWorktrees(
+        RepoGroup(
+          key: entry.key,
+          label: members.first.repoLabel ?? members.first.label,
+          workspaces: members,
+        ),
+      ),
+    );
+  }
+  nodes.addAll(lone.map(LoneWorkspace.new));
+  return nodes;
 }

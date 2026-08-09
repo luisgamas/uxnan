@@ -4,11 +4,13 @@ import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
+import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 
 /// The whole project → workspace hierarchy is inferred from paths, so these
 /// cases are the awkward real ones: Windows separators, casing, nested roots,
 /// and the worktree layout that deliberately does NOT resolve yet.
 void main() {
+  _worktreeTests();
   Thread thread(String id, {String? cwd}) => Thread(
         id: id,
         title: id,
@@ -118,5 +120,143 @@ void main() {
     );
 
     expect(groups.single.threads.map((t) => t.id), ['third', 'first']);
+  });
+}
+
+/// The worktree hierarchy, which the phone is now TOLD rather than inferring.
+///
+/// The whole point of the `git/worktrees` contract is that a worktree is a
+/// SIBLING on disk — `/dev/app` and `/dev/app-feature` share a prefix with
+/// every other folder in `/dev` and nothing else. So these cases pin two
+/// things: that a real relationship is drawn, and that a missing one is never
+/// invented.
+void _worktreeTests() {
+  Thread thread(String id, {String? cwd}) => Thread(
+        id: id,
+        title: id,
+        agentId: 'claude-code',
+        syncState: ThreadSyncState.synced,
+        status: ThreadStatus.active,
+        cwd: cwd,
+      );
+
+  GitWorktreeEntry wt(String path, {bool main = false, String? branch}) =>
+      GitWorktreeEntry(path: path, isMain: main, branch: branch);
+
+  test('a reply relates every sibling it names', () {
+    final table = buildWorkspaceRepoTable({
+      '/dev/app': [
+        wt('/dev/app', main: true, branch: 'main'),
+        wt('/dev/app-feature', branch: 'feature'),
+      ],
+    });
+
+    expect(table['/dev/app']!.key, '/dev/app');
+    expect(table['/dev/app-feature']!.key, '/dev/app');
+    expect(table['/dev/app-feature']!.label, 'app');
+  });
+
+  test('a repository with one worktree relates nothing', () {
+    // Nothing to draw a heading over, so no table entry and no group later.
+    final table = buildWorkspaceRepoTable({
+      '/dev/solo': [wt('/dev/solo', main: true, branch: 'main')],
+    });
+    expect(table, isEmpty);
+  });
+
+  test('paths are matched folded, like everywhere else', () {
+    final table = buildWorkspaceRepoTable({
+      r'C:\Dev\App': [
+        wt(r'C:\Dev\App', main: true),
+        wt(r'C:\Dev\App-feature'),
+      ],
+    });
+    expect(table[normalizeWorkspacePath('c:/dev/app-feature/')], isNotNull);
+  });
+
+  test('two folders of one repo become a repository node', () {
+    final groups = groupThreadsByWorkspace(
+      threads: [
+        thread('t1', cwd: '/dev/app'),
+        thread('t2', cwd: '/dev/app-feature'),
+      ],
+      projects: const [],
+      repos: buildWorkspaceRepoTable({
+        '/dev/app': [wt('/dev/app', main: true), wt('/dev/app-feature')],
+      }),
+    );
+    final tree = buildWorkspaceTree(groups);
+
+    expect(tree, hasLength(1));
+    final node = tree.single as RepoWithWorktrees;
+    expect(node.repo.label, 'app');
+    expect(node.repo.workspaces, hasLength(2));
+    // The main worktree leads: it is the one a person calls "the repo".
+    expect(node.repo.workspaces.first.key, '/dev/app');
+  });
+
+  test('a folder alone in its repo stays a lone row, not a heading over one',
+      () {
+    // This is the shape that got the first project level removed: a heading
+    // over a single folder is chrome, not structure.
+    final groups = groupThreadsByWorkspace(
+      threads: [thread('t1', cwd: '/dev/app')],
+      projects: const [],
+      repos: buildWorkspaceRepoTable({
+        '/dev/app': [wt('/dev/app', main: true), wt('/dev/app-feature')],
+      }),
+    );
+    final tree = buildWorkspaceTree(groups);
+
+    expect(tree.single, isA<LoneWorkspace>());
+  });
+
+  test('unrelated folders are never swept into a bucket', () {
+    final groups = groupThreadsByWorkspace(
+      threads: [
+        thread('t1', cwd: '/dev/app'),
+        thread('t2', cwd: '/dev/app-feature'),
+        thread('t3', cwd: '/elsewhere/notes'),
+      ],
+      projects: const [],
+      repos: buildWorkspaceRepoTable({
+        '/dev/app': [wt('/dev/app', main: true), wt('/dev/app-feature')],
+      }),
+    );
+    final tree = buildWorkspaceTree(groups);
+
+    expect(tree.whereType<RepoWithWorktrees>(), hasLength(1));
+    final lone = tree.whereType<LoneWorkspace>().toList();
+    expect(lone, hasLength(1));
+    expect(lone.single.workspace.key, '/elsewhere/notes');
+  });
+
+  test('without a table the list is exactly what it was before', () {
+    // An older bridge answers "method not found", loadWorktrees returns [], the
+    // table is empty — and nothing about the flat list may change.
+    final groups = groupThreadsByWorkspace(
+      threads: [
+        thread('t1', cwd: '/dev/app'),
+        thread('t2', cwd: '/dev/app-feature'),
+      ],
+      projects: const [],
+    );
+    final tree = buildWorkspaceTree(groups);
+
+    expect(tree.whereType<RepoWithWorktrees>(), isEmpty);
+    expect(tree, hasLength(2));
+  });
+
+  test('a shared path prefix is NOT a relationship', () {
+    // `/dev/app` and `/dev/other` share `/dev`. Before the contract this was
+    // the only signal available, and it was wrong; it must stay unused.
+    final groups = groupThreadsByWorkspace(
+      threads: [
+        thread('t1', cwd: '/dev/app'),
+        thread('t2', cwd: '/dev/other'),
+      ],
+      projects: const [],
+    );
+    expect(buildWorkspaceTree(groups).whereType<RepoWithWorktrees>(), isEmpty);
   });
 }

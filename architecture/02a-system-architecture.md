@@ -963,6 +963,16 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > proyecto vuelve significando lo mismo que en desktop. Las raices configuradas
 > aportan su **nombre**, nada mas.
 >
+> **La jerarquia de worktrees SI se dibuja, cuando el bridge la reporta.**
+> `git/worktrees` (§5.8.6) dice que carpetas son worktrees de que repositorio,
+> y solo entonces aparece un nivel de repositorio sobre ellas. Nunca se deduce
+> de prefijos de ruta: los worktrees son **hermanos** en disco, asi que un
+> prefijo comun no dice nada. Y solo se dibuja cuando relaciona **dos o mas**
+> carpetas — un encabezado sobre una sola carpeta es cromo, no estructura, que
+> es exactamente lo que hundio el primer intento. Una carpeta que no se
+> relaciona con nada se queda donde esta; no hay cajon "otros". Con un bridge
+> anterior la tabla llega vacia y la lista es literalmente la de antes.
+>
 > La fila de carpeta lleva **dos lineas, y la segunda cambia con el pliegue**:
 > abierta dice solo cuantas conversaciones contiene, porque cada una lleva su
 > propia marca de agente y su propio estado una fila mas abajo; cerrada anade
@@ -1773,6 +1783,18 @@ async function handleGitPull({ cwd, branch }) { ... }
 async function handleGitCheckout({ cwd, branch }) { ... }
 async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
+async function handleGitWorktrees({ cwd }) { ... }
+  // git worktree list --porcelain, parseado (parseWorktreePorcelain).
+  // Devuelve { worktrees: [{ path, branch?, isMain, isLocked? }] }, el
+  //   principal primero — que es lo UNICO que lo distingue: `isMain` es
+  //   posicional, git no lo marca.
+  // Fuera de un repositorio devuelve [] en vez de lanzar: se pregunta por raiz
+  //   configurada, y una raiz que no es repo es un caso normal, no un error.
+  // Existe porque los worktrees son HERMANOS en disco (`repo` y
+  //   `../repo-feature` no comparten relacion de ruta), asi que el cliente no
+  //   puede deducir la jerarquia y hay que decirsela. El movil lo usa para
+  //   agrupar carpetas bajo su repositorio; un bridge anterior responde
+  //   "metodo desconocido" y la lista se queda plana.
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
 async function handleGitLog({ cwd, limit, cursor, ref }) {
   // git log <ref|HEAD> --date-order --format=...%x1e --decorate=full -z

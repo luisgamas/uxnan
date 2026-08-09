@@ -11,6 +11,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
@@ -37,6 +38,7 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
+import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/profile_avatar.dart';
@@ -882,6 +884,35 @@ final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
 final projectsProvider = FutureProvider<List<Project>>((ref) {
   ref.watch(connectedDeviceProvider);
   return ref.watch(threadManagerProvider).loadProjects();
+});
+
+/// Which folders are worktrees of which repository, asked once per configured
+/// root (`git/worktrees`).
+///
+/// One call per root, not per folder: a single reply names every sibling of
+/// that repository at once, so asking each folder separately would be the same
+/// answer fetched N times.
+///
+/// **An older bridge does not have the method** and answers "method not
+/// found"; [ThreadManager.loadWorktrees] turns that into an empty list, this
+/// table stays empty, and the folder list falls back to exactly the flat
+/// behaviour it had before — no error, no guess. That is the whole
+/// compatibility story, and it is why the hierarchy is never inferred from
+/// path prefixes: worktrees are siblings on disk, so a prefix would be a guess
+/// wearing the clothes of a fact.
+final workspaceRepoTableProvider = FutureProvider<Map<String, WorkspaceRepo>>((
+  ref,
+) async {
+  ref.watch(connectedDeviceProvider);
+  final projects = await ref.watch(projectsProvider.future);
+  if (projects.isEmpty) return const {};
+  final manager = ref.watch(threadManagerProvider);
+  final replies = <String, List<GitWorktreeEntry>>{};
+  for (final project in projects) {
+    if (project.cwd.isEmpty) continue;
+    replies[project.cwd] = await manager.loadWorktrees(project.cwd);
+  }
+  return buildWorkspaceRepoTable(replies);
 });
 
 /// Navigates the bridge's browse roots (`workspace/browseDirs`) for the

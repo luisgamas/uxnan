@@ -192,7 +192,8 @@ class WorkspaceGroupRow extends ConsumerWidget {
                     // Git after the count, which anchors the line, and
                     // before the agent marks: it is the only thing here that
                     // changes on its own, so it earns the eye before identity
-                    // does.
+                    // does — but it must not push the row's own size around,
+                    // hence the fixed slot the count yields into.
                     if (group.path != null)
                       WorkspaceGitIndicators(cwd: group.path!),
                     if (!expanded && agents.isNotEmpty) ...[
@@ -301,6 +302,107 @@ class _UnreadDot extends StatelessWidget {
       width: 8,
       height: 8,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+/// A repository heading the worktrees of it that hold conversations.
+///
+/// **Only drawn when the relationship is real.** The first attempt at this
+/// level put a heading over a single folder and swept everything else into a
+/// bucket named "other", and it earned its removal: the phone was inferring a
+/// hierarchy from path prefixes, and worktrees are siblings, so the prefixes
+/// said nothing. This row exists again because `git/worktrees` now *tells* us,
+/// and `buildWorkspaceTree` only builds one when two or more folders genuinely
+/// belong together.
+///
+/// It carries no "+" of its own. A new conversation happens in a **folder**,
+/// and a repository with three worktrees cannot answer which — the button
+/// belongs one level down, where the question has an answer.
+class RepoGroupRow extends ConsumerWidget {
+  /// Creates a [RepoGroupRow].
+  const RepoGroupRow({
+    required this.repo,
+    required this.expanded,
+    required this.onToggle,
+    super.key,
+  });
+
+  /// The repository being headed.
+  final RepoGroup repo;
+
+  /// Whether its folders are showing.
+  final bool expanded;
+
+  /// Opens or closes it.
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final threads = [for (final w in repo.workspaces) ...w.threads];
+
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      label: repo.label,
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: const BorderRadius.all(UxnanRadius.lg),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UxnanSpacing.sm,
+            vertical: UxnanSpacing.xs,
+          ),
+          child: Row(
+            children: [
+              AnimatedRotation(
+                turns: expanded ? 0.25 : 0,
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                child: UxIcon(
+                  UxIcons.chevronRight,
+                  size: UxnanSize.iconContentSmall,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              UxIcon(
+                UxIcons.repository,
+                size: UxnanSize.iconContentLarge,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Expanded(
+                child: Text(
+                  repo.label,
+                  // A rung above the folders under it, which take titleMedium.
+                  style: textTheme.titleLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: UxnanSpacing.sm),
+              Text(
+                l10n.spacesWorkspaceCount(repo.workspaces.length),
+                style: textTheme.bodySmall,
+              ),
+              const SizedBox(width: UxnanSpacing.xs),
+              // Closed, it still reports what is happening inside — the same
+              // rule the folder row follows, for the same reason.
+              if (!expanded)
+                AgentStatusIndicator(
+                  status: aggregateStatus(ref, threads),
+                  size: UxnanSize.iconContentSmall,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
