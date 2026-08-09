@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — onboarding and the archive arrive like everything else
+
+The last two screens with no motion. The archive's list rises row by row like
+the active one.
+
+Onboarding is a `PageView`, and there the one-frame window lands exactly where
+it should without a rule of its own: at launch only page 0 is built, so its
+hero, title and body rise in; every later page is built as you swipe to it — a
+frame long past the window — so it arrives on the PageView's own slide, and no
+rise fights that slide sideways. A test measures the assumption underneath
+(that a `PageView` builds only the visible page) rather than trusting it.
+
+### Changed — the archive stays a flat list, deliberately
+
+It was the one screen the folder grouping did not reach, and it should not: the
+active list groups because the question there is *where work is happening*,
+while the archive answers *which one was it* — a retrieval question that a
+search field and a date sort answer better than a hierarchy you have to expand.
+Grouping would add a navigation step to a lookup. Recorded so the inconsistency
+reads as a decision rather than as something missed.
+
 ### Added — profile, settings and manual pairing arrive like the rest of the app
 
 The entrance now reaches the three screens that had **no motion at all**:

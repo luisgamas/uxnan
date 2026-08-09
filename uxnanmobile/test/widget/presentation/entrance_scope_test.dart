@@ -130,6 +130,47 @@ Future<void> main() async {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('in a PageView only the page you land on rises', (tester) async {
+    // The onboarding flow leans on this: page 0 has nothing to move it, so it
+    // rises; every later page arrives on the PageView's own slide, and a rise
+    // fighting that slide sideways would look wrong. It holds only because a
+    // PageView builds just the visible page — assumption, so: measured.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NeEntranceScope(
+            child: PageView(
+              children: [
+                for (var page = 0; page < 3; page++)
+                  Column(
+                    children: NeEntranceScope.stagger([
+                      Text('page $page a'),
+                      Text('page $page b'),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(NeEnterTransition), findsNWidgets(2));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(PageView), const Offset(-800, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('page 1 a'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('page 1 a'),
+        matching: find.byType(NeEnterTransition),
+      ),
+      findsNothing,
+      reason: 'the second page rose as well as slid',
+    );
+  });
+
   testWidgets('reduced motion is honoured', (tester) async {
     await tester.pumpWidget(
       MediaQuery(

@@ -69,9 +69,7 @@ spec, the spec wins.
 
   This exists because the alternative was found the expensive way: the app ran
   two type scales at once and its density jumped from screen to screen, and
-  nobody had planned that either. Screens no phase currently names —
-  `onboarding/`, `archived_threads_screen.dart` — are the ones to watch: they
-  will not be swept up by anything unless a change happens to land in them.
+  nobody had planned that either.
 
 - **Icons come from the catalogue, never from the package.** `UxIcons`
   (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and

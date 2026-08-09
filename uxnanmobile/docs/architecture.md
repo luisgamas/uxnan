@@ -144,6 +144,12 @@ state among them on the first line. Folding must not hide what the screen exists
 to surface. The count yields before the marks do, so a long translation
 ellipsizes instead of overflowing the row.
 
+The **archive** (`archived_threads_screen.dart`) stays a flat list on purpose.
+The active list groups because the question it answers is *where work is
+happening*; the archive answers *which one was it*, and a search field with a
+date sort answers that better than a hierarchy you have to expand — grouping
+would put a navigation step in front of a lookup.
+
 A thread row reads state → agent → text (`thread_tile.dart`), mirroring
 `uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a
 step larger, then the title over its second line.

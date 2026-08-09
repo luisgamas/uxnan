@@ -10,6 +10,7 @@ import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -84,10 +85,13 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
               separatorBuilder: (_, __) => SizedBox(
                 height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
               ),
-              itemBuilder: (context, index) => ThreadTile(
-                key: ValueKey('thread-${visible[index].id}'),
-                thread: visible[index],
-                compact: compact,
+              itemBuilder: (context, index) => NeEntranceRow(
+                index: index,
+                child: ThreadTile(
+                  key: ValueKey('thread-${visible[index].id}'),
+                  thread: visible[index],
+                  compact: compact,
+                ),
               ),
             ),
           ),
