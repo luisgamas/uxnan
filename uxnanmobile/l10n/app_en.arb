@@ -108,6 +108,7 @@
     "description": "How many live sessions the phone currently holds.",
     "placeholders": { "count": { "type": "int" } }
   },
+  "sortProjectsHeader": "Projects",
   "sortFoldersHeader": "Folders",
   "sortConversationsHeader": "Conversations",
   "sortByAttention": "Needs attention",

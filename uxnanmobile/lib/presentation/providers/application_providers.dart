@@ -56,7 +56,7 @@ import 'package:uxnan/presentation/providers/rail_anchors.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
     show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
-    show SpaceSort, ThreadSort;
+    show ListSort;
 import 'package:uxnan/presentation/theme/uxnan_theme.dart' show ThemeSource;
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
@@ -1405,23 +1405,23 @@ final showClaudeLatestModelsProvider =
 
 /// The thread-list ordering. Persisted; defaults to newest-created first.
 /// Shared by the active and archived lists so the choice carries across both.
-class ThreadSortSetting extends Notifier<ThreadSort> {
+class ThreadSortSetting extends Notifier<ListSort> {
   @override
-  ThreadSort build() {
+  ListSort build() {
     unawaited(_hydrate());
-    return ThreadSort.created;
+    return ListSort.created;
   }
 
   Future<void> _hydrate() async {
     final stored =
         await ref.read(threadListPreferencesStoreProvider).readSort();
     if (stored == null) return;
-    final match = ThreadSort.values.where((s) => s.name == stored);
+    final match = ListSort.values.where((s) => s.name == stored);
     if (match.isNotEmpty && match.first != state) state = match.first;
   }
 
   /// Persists and applies the thread-list ordering.
-  Future<void> set(ThreadSort value) async {
+  Future<void> set(ListSort value) async {
     if (value == state) return;
     state = value;
     await ref.read(threadListPreferencesStoreProvider).writeSort(value.name);
@@ -1430,7 +1430,7 @@ class ThreadSortSetting extends Notifier<ThreadSort> {
 
 /// The thread-list ordering (persisted, shared across active + archived lists).
 final threadSortProvider =
-    NotifierProvider<ThreadSortSetting, ThreadSort>(ThreadSortSetting.new);
+    NotifierProvider<ThreadSortSetting, ListSort>(ThreadSortSetting.new);
 
 /// Whether the thread list uses the compact (single-line) density. Persisted;
 /// defaults to the full tile.
@@ -1457,21 +1457,35 @@ class ThreadDensityCompact extends Notifier<bool> {
   }
 }
 
-/// How the folders in the spaces list are ordered. In-memory: unlike the
-/// conversation ordering, this one is usually changed to answer a question
-/// ("what needs me?") rather than set once as a preference.
-final spaceSortProvider =
-    NotifierProvider<SpaceSortSetting, SpaceSort>(SpaceSortSetting.new);
+/// How the **worktrees** are ordered. In-memory: unlike the agent ordering,
+/// this one is usually changed to answer a question ("what needs me?") rather
+/// than set once as a preference.
+final worktreeSortProvider =
+    NotifierProvider<WorktreeSortSetting, ListSort>(WorktreeSortSetting.new);
 
-/// Holds the folder ordering.
-class SpaceSortSetting extends Notifier<SpaceSort> {
+/// Holds the worktree ordering.
+class WorktreeSortSetting extends Notifier<ListSort> {
   @override
-  SpaceSort build() => SpaceSort.attention;
+  ListSort build() => ListSort.status;
 
-  /// Applies a folder ordering. A method rather than a setter, to match the
+  /// Applies a worktree ordering. A method rather than a setter, to match the
   /// `.set(value)` shape every other ordering notifier here uses.
   // ignore: use_setters_to_change_properties
-  void set(SpaceSort value) => state = value;
+  void set(ListSort value) => state = value;
+}
+
+/// How the **projects** (repositories) are ordered, on the same terms.
+final projectSortProvider =
+    NotifierProvider<ProjectSortSetting, ListSort>(ProjectSortSetting.new);
+
+/// Holds the project ordering.
+class ProjectSortSetting extends Notifier<ListSort> {
+  @override
+  ListSort build() => ListSort.status;
+
+  /// Applies a project ordering.
+  // ignore: use_setters_to_change_properties
+  void set(ListSort value) => state = value;
 }
 
 /// Which folder groups the user has collapsed in the spaces list.

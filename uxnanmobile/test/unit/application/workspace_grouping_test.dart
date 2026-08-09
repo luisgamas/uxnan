@@ -11,6 +11,7 @@ import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 /// and the worktree layout that deliberately does NOT resolve yet.
 void main() {
   _worktreeTests();
+  _worktreeOrderingTests();
   Thread thread(String id, {String? cwd}) => Thread(
         id: id,
         title: id,
@@ -258,5 +259,67 @@ void _worktreeTests() {
       projects: const [],
     );
     expect(buildWorkspaceTree(groups).whereType<RepoWithWorktrees>(), isEmpty);
+  });
+}
+
+/// The ordering of worktrees INSIDE a project — the one list the sort menu
+/// could not reach, because the tree sorted them itself.
+void _worktreeOrderingTests() {
+  Thread thread(String id, {String? cwd}) => Thread(
+        id: id,
+        title: id,
+        agentId: 'claude-code',
+        syncState: ThreadSyncState.synced,
+        status: ThreadStatus.active,
+        cwd: cwd,
+      );
+
+  GitWorktreeEntry wt(String path, {bool main = false}) =>
+      GitWorktreeEntry(path: path, isMain: main);
+
+  List<WorkspaceGroup> repoOf(List<String> folders) => groupThreadsByWorkspace(
+        threads: [
+          for (var i = 0; i < folders.length; i++)
+            thread('t$i', cwd: folders[i]),
+        ],
+        projects: const [],
+        repos: buildWorkspaceRepoTable({
+          folders.first: [
+            for (var i = 0; i < folders.length; i++)
+              wt(folders[i], main: i == 0),
+          ],
+        }),
+      );
+
+  test('without a comparator the main worktree still leads', () {
+    final tree = buildWorkspaceTree(
+      repoOf(['/dev/app', '/dev/app-zebra', '/dev/app-alpha']),
+    );
+    final repo = tree.whereType<RepoWithWorktrees>().single;
+    expect(repo.repo.workspaces.first.key, '/dev/app');
+  });
+
+  test('a comparator decides the order inside the project', () {
+    final tree = buildWorkspaceTree(
+      repoOf(['/dev/app', '/dev/app-zebra', '/dev/app-alpha']),
+      orderWorkspaces: (a, b) => a.label.compareTo(b.label),
+    );
+    final repo = tree.whereType<RepoWithWorktrees>().single;
+    expect(
+      repo.repo.workspaces.map((w) => w.label).toList(),
+      ['app', 'app-alpha', 'app-zebra'],
+      reason: 'the project ignored the ordering it was handed',
+    );
+  });
+
+  test('the comparator can put the main worktree last', () {
+    // Proves the tree is not silently re-applying its own main-first rule on
+    // top of what the caller asked for.
+    final tree = buildWorkspaceTree(
+      repoOf(['/dev/app', '/dev/app-alpha']),
+      orderWorkspaces: (a, b) => b.label.compareTo(a.label),
+    );
+    final repo = tree.whereType<RepoWithWorktrees>().single;
+    expect(repo.repo.workspaces.last.key, '/dev/app');
   });
 }

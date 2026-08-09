@@ -452,6 +452,12 @@ abstract class AppLocalizations {
   /// **'{count} online now'**
   String profileActiveSessions(int count);
 
+  /// No description provided for @sortProjectsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Projects'**
+  String get sortProjectsHeader;
+
   /// No description provided for @sortFoldersHeader.
   ///
   /// In en, this message translates to:

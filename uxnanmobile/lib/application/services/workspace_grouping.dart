@@ -216,7 +216,10 @@ Map<String, WorkspaceRepo> buildWorkspaceRepoTable(
 /// the real work, and it earned its removal. A group appears here only when it
 /// relates folders that genuinely belong together, and a folder that relates
 /// to nothing is never swept into a bucket — it simply stays where it is.
-List<WorkspaceTreeNode> buildWorkspaceTree(List<WorkspaceGroup> groups) {
+List<WorkspaceTreeNode> buildWorkspaceTree(
+  List<WorkspaceGroup> groups, {
+  int Function(WorkspaceGroup, WorkspaceGroup)? orderWorkspaces,
+}) {
   final byRepo = <String, List<WorkspaceGroup>>{};
   final lone = <WorkspaceGroup>[];
   for (final group in groups) {
@@ -237,12 +240,19 @@ List<WorkspaceTreeNode> buildWorkspaceTree(List<WorkspaceGroup> groups) {
       lone.addAll(members);
       continue;
     }
-    // Main worktree first: it is the one a person thinks of as "the repo".
-    members.sort((a, b) {
-      final aMain = a.key == entry.key ? 0 : 1;
-      final bMain = b.key == entry.key ? 0 : 1;
-      return aMain != bMain ? aMain - bMain : a.label.compareTo(b.label);
-    });
+    // Ordered like every other level — the folders inside a project were the
+    // one list the sort menu could not reach, because this sorted them itself.
+    // Without a comparator the main worktree still leads: it is the one a
+    // person thinks of as "the repo".
+    if (orderWorkspaces != null) {
+      members.sort(orderWorkspaces);
+    } else {
+      members.sort((a, b) {
+        final aMain = a.key == entry.key ? 0 : 1;
+        final bMain = b.key == entry.key ? 0 : 1;
+        return aMain != bMain ? aMain - bMain : a.label.compareTo(b.label);
+      });
+    }
     nodes.add(
       RepoWithWorktrees(
         RepoGroup(

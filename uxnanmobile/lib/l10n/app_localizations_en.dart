@@ -213,6 +213,9 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get sortProjectsHeader => 'Projects';
+
+  @override
   String get sortFoldersHeader => 'Folders';
 
   @override

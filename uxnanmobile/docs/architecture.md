@@ -146,9 +146,28 @@ was before.
 `ThreadsScreen` flattens the folders into typed rows (`_WorkspaceRow`,
 `_ThreadRow`) so the sliver stays lazy. Folder collapse is persisted as the set
 of **closed** keys (`collapsedProjectsProvider`), so a folder seen for the first
-time is open. Two orderings apply independently: `spaceSortProvider` for the
-folders (attention / activity / name) and `threadSortProvider` for the
-conversations inside them.
+time is open. **Three orderings apply independently**, one per level of the tree:
+`projectSortProvider`, `worktreeSortProvider` and `threadSortProvider`. All
+three take the same `ListSort` — one enum rather than three near-identical ones,
+which would drift apart the first time one of them gained an option:
+
+| | Meaning |
+|---|---|
+| `status` | What wants you first: waiting, then blocked, then working. Ties break on recent activity — what you were most likely looking at. |
+| `activity` | What moved last. |
+| `created` | Newest first. A folder has no creation date of its own (the bridge reports a path, not a history), so `workspaceCreatedAt` stands in with the **oldest conversation inside it**: when work there began. |
+| `name` | Alphabetical. |
+
+The worktrees **inside** a project are ordered by the same setting as the
+top-level ones: `buildWorkspaceTree` takes a comparator instead of sorting them
+itself, which is what previously put them out of the menu's reach. Without one
+it still leads with the main worktree.
+
+Only the agent ordering is persisted; the other two are in memory, because they
+are usually changed to answer a question rather than set once as a preference.
+The archive offers a **reduced** set (`kArchiveSorts`: created and name):
+archived work is finished by definition, so `status` and `activity` would sort
+by a value that can no longer change.
 
 A folder row is two lines whose **second one changes with the fold**: open, just
 the conversation count, since every conversation carries its own agent mark and

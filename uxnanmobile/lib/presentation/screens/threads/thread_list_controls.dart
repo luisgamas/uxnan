@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
@@ -7,66 +8,138 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Shared ordering, search and density controls for the active and archived
 /// thread lists, so both screens behave identically.
 
-/// How a threads list is ordered. [created] (newest first) is the default.
-/// How the folders themselves are ordered.
-enum SpaceSort {
-  /// Alphabetical — the order that stays put while you work.
-  name,
-
-  /// The folder that moved most recently first.
-  activity,
-
+/// How any level of the threads list is ordered.
+///
+/// One enum for all three — projects, worktrees and agents want the same four
+/// answers, and three near-identical enums would drift apart the first time one
+/// of them gained an option.
+///
+/// The names are stable: [ThreadSortSetting] persists the choice by `.name`, so
+/// renaming a value silently resets everyone's preference to the default.
+enum ListSort {
   /// Whatever wants you first: waiting, then blocked, then working. The order
   /// you want when you open the app to find out what happened.
-  attention,
-}
+  status,
 
-enum ThreadSort {
-  /// Newest created first (the default).
+  /// What moved most recently.
+  activity,
+
+  /// Newest first.
   created,
 
-  /// Alphabetical by title.
+  /// Alphabetical — the order that stays put while you work.
   name,
-
-  /// Most recently active first — the order that matters once the list is
-  /// grouped, because it answers "what moved" rather than "what exists".
-  activity,
 }
 
-/// Returns a new list ordered by [sort]. For [ThreadSort.created], threads
-/// without a known `createdAt` sink to the bottom (ordered by title).
-List<Thread> sortThreads(List<Thread> threads, ThreadSort sort) {
+/// The orderings offered for **agents** (conversations).
+///
+/// All four: an agent has a real creation date and a real state of its own.
+const List<ListSort> kAgentSorts = ListSort.values;
+
+/// The orderings offered for **projects and worktrees**.
+///
+/// Also all four, but `created` means something derived — see
+/// [workspaceCreatedAt]: a folder has no creation date of its own, so the
+/// oldest agent inside it stands in for "when you started working here".
+const List<ListSort> kGroupSorts = ListSort.values;
+
+/// The orderings offered in the **archive**.
+///
+/// No `status` and no `activity`: archived work is finished by definition, so
+/// both would sort by a value that can no longer change. What is left is how
+/// you actually look something up — when it was, or what it was called.
+const List<ListSort> kArchiveSorts = [ListSort.created, ListSort.name];
+
+/// When work in [group] began: the oldest agent in it.
+///
+/// A folder has no creation date — the bridge reports a path, not a history —
+/// so this stands in for one, and it is the honest reading: the folder became
+/// interesting when the first conversation started there.
+DateTime? workspaceCreatedAt(WorkspaceGroup group) {
+  DateTime? oldest;
+  for (final thread in group.threads) {
+    final created = thread.createdAt;
+    if (created == null) continue;
+    if (oldest == null || created.isBefore(oldest)) oldest = created;
+  }
+  return oldest;
+}
+
+/// The most recent activity anywhere in [group].
+DateTime? workspaceLastActivity(WorkspaceGroup group) {
+  DateTime? newest;
+  for (final thread in group.threads) {
+    final at = thread.lastActivity;
+    if (at == null) continue;
+    if (newest == null || at.isAfter(newest)) newest = at;
+  }
+  return newest;
+}
+
+/// Orders by [newest] descending, sinking unknowns to the bottom where they are
+/// ordered by [label] so the tail never shuffles between rebuilds.
+int compareByDate(DateTime? a, DateTime? b, String aLabel, String bLabel) {
+  if (a == null && b == null) {
+    return aLabel.toLowerCase().compareTo(bLabel.toLowerCase());
+  }
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return b.compareTo(a);
+}
+
+/// Returns a new list ordered by [sort].
+///
+/// Threads with nothing to sort on (no `createdAt`, never active, no state)
+/// sink to the bottom ordered by title, so the tail of a list is stable rather
+/// than reshuffling on every rebuild.
+List<Thread> sortThreads(
+  List<Thread> threads,
+  ListSort sort, {
+  int Function(Thread)? statusRank,
+}) {
   final list = [...threads];
   switch (sort) {
-    case ThreadSort.created:
-      list.sort((a, b) {
-        final ac = a.createdAt;
-        final bc = b.createdAt;
-        if (ac == null && bc == null) return a.title.compareTo(b.title);
-        if (ac == null) return 1;
-        if (bc == null) return -1;
-        return bc.compareTo(ac);
-      });
-    case ThreadSort.name:
+    case ListSort.created:
+      list.sort(
+        (a, b) => compareByDate(a.createdAt, b.createdAt, a.title, b.title),
+      );
+    case ListSort.name:
       list.sort(
         (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
       );
-    case ThreadSort.activity:
-      // Threads that have never moved sink, ordered by title, so the top of a
-      // group is always the thing that changed most recently.
-      list.sort((a, b) {
-        final aa = a.lastActivity;
-        final bb = b.lastActivity;
-        if (aa == null && bb == null) return a.title.compareTo(b.title);
-        if (aa == null) return 1;
-        if (bb == null) return -1;
-        return bb.compareTo(aa);
-      });
+    case ListSort.activity:
+      list.sort(
+        (a, b) =>
+            compareByDate(a.lastActivity, b.lastActivity, a.title, b.title),
+      );
+    case ListSort.status:
+      // Needs the derived run state, which lives behind a provider — so the
+      // caller supplies the rank rather than this function reaching for one.
+      // With no ranker (the archive), state is meaningless and activity is the
+      // sensible stand-in.
+      if (statusRank == null) {
+        list.sort(
+          (a, b) =>
+              compareByDate(a.lastActivity, b.lastActivity, a.title, b.title),
+        );
+      } else {
+        list.sort((a, b) {
+          final byState = statusRank(a).compareTo(statusRank(b));
+          if (byState != 0) return byState;
+          return compareByDate(
+            a.lastActivity,
+            b.lastActivity,
+            a.title,
+            b.title,
+          );
+        });
+      }
   }
   return list;
 }
@@ -226,53 +299,63 @@ class _SearchResultTile extends StatelessWidget {
 }
 
 /// App-bar sort control: an M3 menu with a check on the active [sort].
-/// One value the sort menu can return: either an ordering for the folders or
-/// one for the conversations inside them.
-sealed class SortChoice {
-  const SortChoice();
+/// Which level of the list a sort choice moves.
+enum SortLevel {
+  /// The repositories that head worktrees.
+  projects,
+
+  /// The worktrees / folders that head agents.
+  worktrees,
+
+  /// The agents themselves.
+  agents,
 }
 
-/// Order the folders.
-class SpaceSortChoice extends SortChoice {
-  /// Creates a [SpaceSortChoice].
-  const SpaceSortChoice(this.value);
+/// One value the sort menu can return: an ordering, and which level it orders.
+class SortChoice {
+  /// Creates a [SortChoice].
+  const SortChoice(this.level, this.value);
 
-  /// The chosen folder ordering.
-  final SpaceSort value;
+  /// Which level this orders.
+  final SortLevel level;
+
+  /// The chosen ordering.
+  final ListSort value;
 }
 
-/// Order the conversations inside each folder.
-class ThreadSortChoice extends SortChoice {
-  /// Creates a [ThreadSortChoice].
-  const ThreadSortChoice(this.value);
-
-  /// The chosen conversation ordering.
-  final ThreadSort value;
-}
-
-/// The ordering menu, in two headed groups.
+/// The ordering menu, one headed group per level of the list.
 ///
-/// The list has two axes now — which folder comes first, and which conversation
-/// comes first inside it — and they answer different questions. One flat menu
-/// mixing them would make the reader work out which of their rows each entry
-/// moves.
+/// The list has three axes now — which project comes first, which worktree
+/// inside it, and which agent inside that — and they answer different
+/// questions. One flat menu mixing them would make the reader work out which
+/// of their rows each entry moves. A level with nothing to order is simply not
+/// shown: the archive has only agents, and a PC whose folders never group has
+/// no project row to sort.
 class ThreadSortMenu extends StatelessWidget {
   /// Creates a [ThreadSortMenu].
   const ThreadSortMenu({
-    required this.threadSort,
+    required this.agentSort,
     required this.onChanged,
-    this.spaceSort,
+    this.projectSort,
+    this.worktreeSort,
+    this.options = kAgentSorts,
     super.key,
   });
 
-  /// The current folder ordering, or null on a screen with no folders (the
-  /// archived list), which then shows only the conversation group.
-  final SpaceSort? spaceSort;
+  /// The current project ordering, or null when no projects are drawn.
+  final ListSort? projectSort;
 
-  /// The current conversation ordering.
-  final ThreadSort threadSort;
+  /// The current worktree ordering, or null on a screen with no worktrees
+  /// (the archive), which then shows only the agent group.
+  final ListSort? worktreeSort;
 
-  /// Called when the user picks either ordering.
+  /// The current agent ordering.
+  final ListSort agentSort;
+
+  /// Which orderings to offer. The archive offers fewer — see [kArchiveSorts].
+  final List<ListSort> options;
+
+  /// Called when the user picks any of them.
   final ValueChanged<SortChoice> onChanged;
 
   @override
@@ -280,6 +363,13 @@ class ThreadSortMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
+
+    String labelFor(ListSort sort) => switch (sort) {
+          ListSort.status => l10n.sortByAttention,
+          ListSort.activity => l10n.sortByActivity,
+          ListSort.created => l10n.threadsSortCreated,
+          ListSort.name => l10n.threadsSortName,
+        };
 
     PopupMenuEntry<SortChoice> header(String text) => PopupMenuItem<SortChoice>(
           enabled: false,
@@ -290,49 +380,37 @@ class ThreadSortMenu extends StatelessWidget {
           ),
         );
 
+    List<PopupMenuEntry<SortChoice>> group(
+      String title,
+      SortLevel level,
+      ListSort current,
+    ) =>
+        [
+          header(title),
+          for (final sort in options)
+            CheckedPopupMenuItem<SortChoice>(
+              value: SortChoice(level, sort),
+              checked: current == sort,
+              child: Text(labelFor(sort)),
+            ),
+        ];
+
+    final projects = projectSort;
+    final worktrees = worktreeSort;
     return IconSurfaceMenu<SortChoice>(
       tooltip: l10n.threadsSortBy,
       icon: UxIcons.sort,
-      // No `initialValue`: it would tint the active item's background with
-      // square corners (overflowing the rounded menu). The active ordering is
-      // already shown by the CheckedPopupMenuItem's check.
+      constraints: kNeMenuConstraints,
       onSelected: onChanged,
       itemBuilder: (context) => [
-        if (spaceSort != null) ...[
-          header(l10n.sortFoldersHeader),
-          CheckedPopupMenuItem(
-            value: const SpaceSortChoice(SpaceSort.attention),
-            checked: spaceSort == SpaceSort.attention,
-            child: Text(l10n.sortByAttention),
-          ),
-          CheckedPopupMenuItem(
-            value: const SpaceSortChoice(SpaceSort.activity),
-            checked: spaceSort == SpaceSort.activity,
-            child: Text(l10n.sortByActivity),
-          ),
-          CheckedPopupMenuItem(
-            value: const SpaceSortChoice(SpaceSort.name),
-            checked: spaceSort == SpaceSort.name,
-            child: Text(l10n.threadsSortName),
-          ),
-          const PopupMenuDivider(),
-          header(l10n.sortConversationsHeader),
+        if (projects != null)
+          ...group(l10n.sortProjectsHeader, SortLevel.projects, projects),
+        if (worktrees != null) ...[
+          if (projects != null) const PopupMenuDivider(),
+          ...group(l10n.sortFoldersHeader, SortLevel.worktrees, worktrees),
         ],
-        CheckedPopupMenuItem(
-          value: const ThreadSortChoice(ThreadSort.created),
-          checked: threadSort == ThreadSort.created,
-          child: Text(l10n.threadsSortCreated),
-        ),
-        CheckedPopupMenuItem(
-          value: const ThreadSortChoice(ThreadSort.activity),
-          checked: threadSort == ThreadSort.activity,
-          child: Text(l10n.sortByActivity),
-        ),
-        CheckedPopupMenuItem(
-          value: const ThreadSortChoice(ThreadSort.name),
-          checked: threadSort == ThreadSort.name,
-          child: Text(l10n.threadsSortName),
-        ),
+        if (projects != null || worktrees != null) const PopupMenuDivider(),
+        ...group(l10n.sortConversationsHeader, SortLevel.agents, agentSort),
       ],
     );
   }

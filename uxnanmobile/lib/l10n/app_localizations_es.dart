@@ -214,6 +214,9 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String get sortProjectsHeader => 'Proyectos';
+
+  @override
   String get sortFoldersHeader => 'Carpetas';
 
   @override

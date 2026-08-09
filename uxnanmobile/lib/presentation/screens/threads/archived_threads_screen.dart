@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -52,13 +54,15 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
           onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          // No folder group here: the archive is a flat list.
-          threadSort: sort,
-          onChanged: (choice) {
-            if (choice is ThreadSortChoice) {
-              ref.read(threadSortProvider.notifier).set(choice.value);
-            }
-          },
+          // No project or worktree group: the archive is a flat list. And
+          // fewer orderings — see [kArchiveSorts]: archived work is finished by
+          // definition, so "needs attention" and "recent activity" would sort
+          // by a value that can no longer change.
+          agentSort: sort,
+          options: kArchiveSorts,
+          onChanged: (choice) => unawaited(
+            ref.read(threadSortProvider.notifier).set(choice.value),
+          ),
         ),
         ThreadMoreMenu(
           compact: compact,

@@ -6,6 +6,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — every level of the list has its own ordering
+
+The list grew a third level when worktrees started sitting under their project,
+and the sort menu only had two — so the **worktrees inside a project could not
+be ordered at all**: `buildWorkspaceTree` sorted them itself, out of reach of
+any setting. It now takes a comparator, and the menu has a group per level.
+
+All three take the same four orderings — `status`, `activity`, `created`,
+`name` — from one shared `ListSort` rather than three near-identical enums that
+would drift apart the first time one of them gained an option. `created` for a
+project or a folder is derived, since the bridge reports a path and not a
+history: it is the oldest conversation inside, which is when work there began.
+
+The **archive gets fewer on purpose** (`created` and `name`): archived work is
+finished by definition, so "needs attention" and "recent activity" would both
+sort by a value that can no longer change.
+
+The project group only appears in the menu when there is a project to order, so
+a PC whose folders never group is not offered a control that moves nothing it
+can see. Items with nothing to sort on sink to a **stable** alphabetical tail
+rather than reshuffling on every rebuild.
+
 ### Added — worktrees sit under the repository they belong to
 
 The repository level is back, and this time it is real. `git/worktrees` tells

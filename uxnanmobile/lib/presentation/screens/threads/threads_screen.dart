@@ -10,6 +10,7 @@ import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
@@ -127,22 +128,30 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
 
-    final spaceSort = ref.watch(spaceSortProvider);
+    final worktreeSort = ref.watch(worktreeSortProvider);
+    final projectSort = ref.watch(projectSortProvider);
     // Conversations are sorted BEFORE grouping — the grouping keeps the order
     // it is given, so one setting decides the order inside every folder.
-    final groups = _sortSpaces(
-      groupThreadsByWorkspace(
-        threads: sortThreads(threads, sort),
-        projects: ref.watch(projectsProvider).value ?? const [],
-        // Empty on a bridge without `git/worktrees`, which is exactly the
-        // fallback: no table, no repository nodes, the flat list as before.
-        repos: ref.watch(workspaceRepoTableProvider).value ?? const {},
-      ),
-      spaceSort,
+    final groups = groupThreadsByWorkspace(
+      threads: sortThreads(threads, sort, statusRank: _threadRank),
+      projects: ref.watch(projectsProvider).value ?? const [],
+      // Empty on a bridge without `git/worktrees`, which is exactly the
+      // fallback: no table, no repository nodes, the flat list as before.
+      repos: ref.watch(workspaceRepoTableProvider).value ?? const {},
     );
     final collapsed = ref.watch(collapsedProjectsProvider);
+    // Each level is ordered by its OWN setting, including the worktrees inside
+    // a project — the one list the menu could not reach while the tree sorted
+    // them itself.
     final rows = _flatten(
-      buildWorkspaceTree(groups),
+      _sortNodes(
+        buildWorkspaceTree(
+          groups,
+          orderWorkspaces: (a, b) => _compareGroups(a, b, worktreeSort),
+        ),
+        projectSort,
+        worktreeSort,
+      ),
       collapsed: collapsed,
     );
 
@@ -158,13 +167,23 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
           onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          spaceSort: spaceSort,
-          threadSort: sort,
-          onChanged: (choice) => switch (choice) {
-            SpaceSortChoice(:final value) =>
-              ref.read(spaceSortProvider.notifier).set(value),
-            ThreadSortChoice(:final value) =>
-              ref.read(threadSortProvider.notifier).set(value),
+          // The project group only appears when there IS one to order — a PC
+          // whose folders never group would otherwise get a menu entry that
+          // moves nothing it can see.
+          projectSort: rows.any((r) => r is _RepoRow) ? projectSort : null,
+          worktreeSort: worktreeSort,
+          agentSort: sort,
+          onChanged: (choice) {
+            switch (choice.level) {
+              case SortLevel.projects:
+                ref.read(projectSortProvider.notifier).set(choice.value);
+              case SortLevel.worktrees:
+                ref.read(worktreeSortProvider.notifier).set(choice.value);
+              case SortLevel.agents:
+                unawaited(
+                  ref.read(threadSortProvider.notifier).set(choice.value),
+                );
+            }
           },
         ),
         ThreadMoreMenu(
@@ -229,54 +248,140 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     );
   }
 
-  /// Orders the folders. Attention first by default: the reason to open this
-  /// screen is usually "what happened", not "what exists".
-  List<WorkspaceGroup> _sortSpaces(
-    List<WorkspaceGroup> groups,
-    SpaceSort sort,
+  /// Orders the top level: projects by their own setting, lone worktrees by
+  /// the worktree setting, and the two interleaved so the list reads as one.
+  ///
+  /// A project and a lone worktree are peers on screen even though they are
+  /// different things, so they cannot be sorted into two blocks — that would
+  /// put every project above every folder regardless of what either setting
+  /// says.
+  List<WorkspaceTreeNode> _sortNodes(
+    List<WorkspaceTreeNode> nodes,
+    ListSort projectSort,
+    ListSort worktreeSort,
   ) {
-    final list = [...groups];
-    switch (sort) {
-      case SpaceSort.name:
-        list.sort(
-          (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
-        );
-      case SpaceSort.activity:
-        list.sort((a, b) => _lastMoved(b).compareTo(_lastMoved(a)));
-      case SpaceSort.attention:
-        list.sort((a, b) {
-          final byState = _attentionRank(ref, a).compareTo(
-            _attentionRank(ref, b),
-          );
-          // Within the same urgency, the one that moved last is the one you
-          // were most likely looking at.
-          return byState != 0
-              ? byState
-              : _lastMoved(b).compareTo(_lastMoved(a));
-        });
-    }
+    final list = [...nodes]..sort((a, b) {
+        final sort = a is RepoWithWorktrees && b is RepoWithWorktrees
+            ? projectSort
+            : worktreeSort;
+        return _compareNodes(a, b, sort);
+      });
     return list;
   }
 
-  static DateTime _lastMoved(WorkspaceGroup group) {
+  int _compareNodes(WorkspaceTreeNode a, WorkspaceTreeNode b, ListSort sort) {
+    return switch (sort) {
+      ListSort.name =>
+        _nodeLabel(a).toLowerCase().compareTo(_nodeLabel(b).toLowerCase()),
+      ListSort.activity => compareByDate(
+          _nodeActivity(a),
+          _nodeActivity(b),
+          _nodeLabel(a),
+          _nodeLabel(b),
+        ),
+      ListSort.created => compareByDate(
+          _nodeCreated(a),
+          _nodeCreated(b),
+          _nodeLabel(a),
+          _nodeLabel(b),
+        ),
+      ListSort.status => () {
+          final byState = _nodeRank(a).compareTo(_nodeRank(b));
+          // Within the same urgency, what moved last is what you were most
+          // likely looking at.
+          return byState != 0
+              ? byState
+              : compareByDate(
+                  _nodeActivity(a),
+                  _nodeActivity(b),
+                  _nodeLabel(a),
+                  _nodeLabel(b),
+                );
+        }(),
+    };
+  }
+
+  int _compareGroups(WorkspaceGroup a, WorkspaceGroup b, ListSort sort) {
+    return switch (sort) {
+      ListSort.name => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+      ListSort.activity => compareByDate(
+          workspaceLastActivity(a),
+          workspaceLastActivity(b),
+          a.label,
+          b.label,
+        ),
+      ListSort.created => compareByDate(
+          workspaceCreatedAt(a),
+          workspaceCreatedAt(b),
+          a.label,
+          b.label,
+        ),
+      ListSort.status => () {
+          final byState = _groupRank(a).compareTo(_groupRank(b));
+          return byState != 0
+              ? byState
+              : compareByDate(
+                  workspaceLastActivity(a),
+                  workspaceLastActivity(b),
+                  a.label,
+                  b.label,
+                );
+        }(),
+    };
+  }
+
+  List<WorkspaceGroup> _workspacesOf(WorkspaceTreeNode node) => switch (node) {
+        LoneWorkspace(:final workspace) => [workspace],
+        RepoWithWorktrees(:final repo) => repo.workspaces,
+      };
+
+  String _nodeLabel(WorkspaceTreeNode node) => switch (node) {
+        LoneWorkspace(:final workspace) => workspace.label,
+        RepoWithWorktrees(:final repo) => repo.label,
+      };
+
+  DateTime? _nodeActivity(WorkspaceTreeNode node) {
     DateTime? newest;
-    for (final thread in group.threads) {
-      final at = thread.lastActivity;
+    for (final group in _workspacesOf(node)) {
+      final at = workspaceLastActivity(group);
       if (at == null) continue;
       if (newest == null || at.isAfter(newest)) newest = at;
     }
-    return newest ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return newest;
   }
 
-  static int _attentionRank(WidgetRef ref, WorkspaceGroup group) {
-    return switch (aggregateStatus(ref, group.threads).state) {
-      AgentRunState.waiting => 0,
-      AgentRunState.blocked => 1,
-      AgentRunState.working => 2,
-      AgentRunState.done => 3,
-      AgentRunState.idle => 4,
-    };
+  DateTime? _nodeCreated(WorkspaceTreeNode node) {
+    DateTime? oldest;
+    for (final group in _workspacesOf(node)) {
+      final at = workspaceCreatedAt(group);
+      if (at == null) continue;
+      if (oldest == null || at.isBefore(oldest)) oldest = at;
+    }
+    return oldest;
   }
+
+  int _nodeRank(WorkspaceTreeNode node) {
+    var best = 5;
+    for (final group in _workspacesOf(node)) {
+      final rank = _groupRank(group);
+      if (rank < best) best = rank;
+    }
+    return best;
+  }
+
+  int _groupRank(WorkspaceGroup group) =>
+      _rankOf(aggregateStatus(ref, group.threads).state);
+
+  int _threadRank(Thread thread) =>
+      _rankOf(ref.watch(agentRunStatusProvider(thread.id)).state);
+
+  static int _rankOf(AgentRunState state) => switch (state) {
+        AgentRunState.waiting => 0,
+        AgentRunState.blocked => 1,
+        AgentRunState.working => 2,
+        AgentRunState.done => 3,
+        AgentRunState.idle => 4,
+      };
 
   /// Turns the folders into the flat run of rows the sliver builds from.
   ///

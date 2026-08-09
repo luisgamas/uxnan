@@ -978,6 +978,17 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > relaciona con nada se queda donde esta; no hay cajon "otros". Con un bridge
 > anterior la tabla llega vacia y la lista es literalmente la de antes.
 >
+> **Cada nivel tiene su propio orden**: proyectos, worktrees y conversaciones,
+> los tres con las mismas cuatro opciones (`ListSort`: estado, actividad,
+> creacion, nombre). Los worktrees **dentro** de un proyecto se ordenan con el
+> mismo ajuste que los de primer nivel — `buildWorkspaceTree` recibe el
+> comparador en vez de ordenarlos por su cuenta, que es lo que antes los dejaba
+> fuera del alcance del menu. `created` de una carpeta es derivado: el bridge
+> reporta una ruta, no una historia, asi que vale la conversacion mas antigua
+> dentro. El archivo ofrece menos (`created` y `name`): el trabajo archivado
+> esta terminado por definicion, asi que estado y actividad ordenarian por un
+> valor que ya no puede cambiar.
+>
 > La fila de carpeta lleva **dos lineas, y la segunda cambia con el pliegue**:
 > abierta dice solo cuantas conversaciones contiene, porque cada una lleva su
 > propia marca de agente y su propio estado una fila mas abajo; cerrada anade
