@@ -9,6 +9,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -42,7 +43,7 @@ class UpdatesSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               NeSectionHeader(
                 label: l10n.settingsUpdatesVersionGroup,
                 first: true,
@@ -52,7 +53,7 @@ class UpdatesSectionScreen extends ConsumerWidget {
               const _UpdateStateCard(),
               NeSectionHeader(label: l10n.updateIntervalSectionTitle),
               const _IntervalSelector(),
-            ],
+            ]),
           ),
         ),
       ],

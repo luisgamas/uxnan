@@ -49,6 +49,16 @@ class NeEntranceScope extends StatefulWidget {
     return step * steps;
   }
 
+  /// Wraps each of [children] in a [NeEntranceRow], so a fixed list staggers
+  /// without every call site counting indices by hand.
+  ///
+  /// For a `SliverList.list` or a `Column`. A lazily-built list passes its own
+  /// index to [NeEntranceRow] instead — there is no list to map.
+  static List<Widget> stagger(List<Widget> children) => [
+        for (var i = 0; i < children.length; i++)
+          NeEntranceRow(index: i, child: children[i]),
+      ];
+
   @override
   State<NeEntranceScope> createState() => _NeEntranceScopeState();
 }

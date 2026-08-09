@@ -678,11 +678,12 @@ class _PreviewPanel extends StatelessWidget {
             ),
             Text(
               'Aa',
-              style: TextStyle(
-                color: colors.onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              // A specimen of the theme being previewed, so it takes a rung of
+              // the scale rather than a size of its own.
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
           ],
         ),

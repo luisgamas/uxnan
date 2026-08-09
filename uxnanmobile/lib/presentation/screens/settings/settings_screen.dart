@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
@@ -102,7 +103,7 @@ class SettingsScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               const _ProfileHeaderCard(),
               NeSectionHeader(label: l10n.settingsGeneralSection, first: true),
               _SectionGroup(sections: general),
@@ -110,7 +111,7 @@ class SettingsScreen extends ConsumerWidget {
               _SectionGroup(sections: workspace),
               NeSectionHeader(label: l10n.settingsSystemSection),
               _SectionGroup(sections: system),
-            ],
+            ]),
           ),
         ),
       ],

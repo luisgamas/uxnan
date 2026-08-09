@@ -158,81 +158,79 @@ class MyDevicesScreen extends ConsumerWidget {
             ? 2
             : 1;
 
-    return NeEntranceScope(
-      child: NeScaffold(
-        // The bar carries the product's identity, not the screen's: the mark
-        // on the left, your avatar on the right (NE §4.2 keeps the main
-        // screen's bar title empty; this screen's heading is the headline
-        // below).
-        titleWidget: const _BrandMark(),
-        actions: [
-          // Pair another PC: an M3 popup (matching the threads sort/more menus)
-          // offering the QR scanner or the manual host+code flow.
-          IconSurfaceMenu<_PairAction>(
-            tooltip: l10n.actionPairDevice,
-            icon: UxIcons.addLink,
-            onSelected: (action) {
-              switch (action) {
-                case _PairAction.scanQr:
-                  context.push(AppRoutes.pairing);
-                case _PairAction.enterCode:
-                  context.push(AppRoutes.manualPairing);
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: _PairAction.scanQr,
-                child: Text(l10n.actionScanQr),
-              ),
-              PopupMenuItem(
-                value: _PairAction.enterCode,
-                child: Text(l10n.actionEnterCode),
-              ),
-            ],
-          ),
-          IconSurface(
-            icon: UxIcons.settings,
-            tooltip: l10n.settingsTitle,
-            onPressed: () => context.push(AppRoutes.settings),
-          ),
-          _ProfileAvatarAction(
-            onPressed: () => context.push(AppRoutes.profile),
-          ),
-        ],
-        slivers: [
-          if (devices.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: _PairEmptyState(),
-            )
-          else ...[
-            const SliverToBoxAdapter(child: _OverviewHeadline()),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.lg,
-                0,
-                UxnanSpacing.lg,
-                UxnanSpacing.lg,
-              ),
-              sliver: _DeviceCardList(
-                devices: devices,
-                columns: columns,
-                connectedId: connectedId,
-                connectingId: connectingId,
-                networkKind: networkKind,
-                connectedEndpoint: connectedEndpoint,
-                onStats: (device) =>
-                    context.push(AppRoutes.deviceStats(device.macDeviceId)),
-                onOpen: (device) => _open(context, device),
-                onConnect: (device) => _connect(ref, context, device),
-                onRename: (device) => _rename(ref, context, device),
-                onVerify: (device) => _verify(ref, context, device),
-                onRemove: (device) => _remove(ref, context, device),
-              ),
+    return NeScaffold(
+      // The bar carries the product's identity, not the screen's: the mark
+      // on the left, your avatar on the right (NE §4.2 keeps the main
+      // screen's bar title empty; this screen's heading is the headline
+      // below).
+      titleWidget: const _BrandMark(),
+      actions: [
+        // Pair another PC: an M3 popup (matching the threads sort/more menus)
+        // offering the QR scanner or the manual host+code flow.
+        IconSurfaceMenu<_PairAction>(
+          tooltip: l10n.actionPairDevice,
+          icon: UxIcons.addLink,
+          onSelected: (action) {
+            switch (action) {
+              case _PairAction.scanQr:
+                context.push(AppRoutes.pairing);
+              case _PairAction.enterCode:
+                context.push(AppRoutes.manualPairing);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: _PairAction.scanQr,
+              child: Text(l10n.actionScanQr),
+            ),
+            PopupMenuItem(
+              value: _PairAction.enterCode,
+              child: Text(l10n.actionEnterCode),
             ),
           ],
+        ),
+        IconSurface(
+          icon: UxIcons.settings,
+          tooltip: l10n.settingsTitle,
+          onPressed: () => context.push(AppRoutes.settings),
+        ),
+        _ProfileAvatarAction(
+          onPressed: () => context.push(AppRoutes.profile),
+        ),
+      ],
+      slivers: [
+        if (devices.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _PairEmptyState(),
+          )
+        else ...[
+          const SliverToBoxAdapter(child: _OverviewHeadline()),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              0,
+              UxnanSpacing.lg,
+              UxnanSpacing.lg,
+            ),
+            sliver: _DeviceCardList(
+              devices: devices,
+              columns: columns,
+              connectedId: connectedId,
+              connectingId: connectingId,
+              networkKind: networkKind,
+              connectedEndpoint: connectedEndpoint,
+              onStats: (device) =>
+                  context.push(AppRoutes.deviceStats(device.macDeviceId)),
+              onOpen: (device) => _open(context, device),
+              onConnect: (device) => _connect(ref, context, device),
+              onRename: (device) => _rename(ref, context, device),
+              onVerify: (device) => _verify(ref, context, device),
+              onRemove: (device) => _remove(ref, context, device),
+            ),
+          ),
         ],
-      ),
+      ],
     );
   }
 }

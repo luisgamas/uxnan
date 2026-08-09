@@ -142,87 +142,84 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
 
     final l10n = AppLocalizations.of(context);
 
-    return NeEntranceScope(
-      child: NeScaffold(
-        title: _title(devices),
-        onRefresh: _refresh,
-        actions: [
-          // Search all of this PC's threads (ignores the agent filter).
-          ThreadSearchAnchor(
-            threads: threads,
-            onSelect: (id) => context.push(AppRoutes.conversation(id)),
-          ),
-          ThreadSortMenu(
-            spaceSort: spaceSort,
-            threadSort: sort,
-            onChanged: (choice) => switch (choice) {
-              SpaceSortChoice(:final value) =>
-                ref.read(spaceSortProvider.notifier).set(value),
-              ThreadSortChoice(:final value) =>
-                ref.read(threadSortProvider.notifier).set(value),
-            },
-          ),
-          ThreadMoreMenu(
-            compact: compact,
-            onCompactChanged: (value) => ref
-                .read(threadDensityCompactProvider.notifier)
-                .set(value: value),
-            onArchived: () =>
-                context.push(AppRoutes.deviceArchived(widget.deviceId)),
-          ),
-        ],
-        // The list is long and the button covers its bottom-right corner, which
-        // is where the rows you are scrolling toward arrive.
-        hideFabOnScroll: true,
-        floatingActionButton: FloatingActionButton.extended(
-          // New conversations only make sense against the live PC.
-          onPressed: connectedHere ? _newConversation : null,
-          icon: const UxIcon(UxIcons.addComment),
-          label: Text(l10n.newThreadAction),
-          backgroundColor: connectedHere
-              ? null
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
+    return NeScaffold(
+      title: _title(devices),
+      onRefresh: _refresh,
+      actions: [
+        // Search all of this PC's threads (ignores the agent filter).
+        ThreadSearchAnchor(
+          threads: threads,
+          onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
-        slivers: [
-          // App-update notice (Play In-App Update on Android / App Store on iOS).
-          // Renders nothing unless an update is available and undismissed.
-          const SliverToBoxAdapter(child: _UpdateBanner()),
-          // Bridge-update notice: the paired PC's bridge reports it's outdated
-          // (`bridge/status.updateAvailable`). Informational + dismissible.
-          const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
-          if (!connectedHere)
-            SliverToBoxAdapter(
-              child: _OfflineBanner(
-                connecting: connectingHere,
-                onConnect: _connectHere,
-              ),
-            ),
-          if (rows.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyThreads(),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(
-                UxnanSpacing.lg,
-                UxnanSpacing.sm,
-                UxnanSpacing.lg,
-                UxnanSpacing.xxl,
-              ),
-              // Flattened rather than nested so the list stays lazy: a PC with
-              // two hundred conversations builds the handful on screen, not the
-              // whole tree.
-              sliver: SliverList.builder(
-                itemCount: rows.length,
-                itemBuilder: (context, index) => NeEntranceRow(
-                  index: index,
-                  child: _buildRow(context, rows[index], compact: compact),
-                ),
-              ),
-            ),
-        ],
+        ThreadSortMenu(
+          spaceSort: spaceSort,
+          threadSort: sort,
+          onChanged: (choice) => switch (choice) {
+            SpaceSortChoice(:final value) =>
+              ref.read(spaceSortProvider.notifier).set(value),
+            ThreadSortChoice(:final value) =>
+              ref.read(threadSortProvider.notifier).set(value),
+          },
+        ),
+        ThreadMoreMenu(
+          compact: compact,
+          onCompactChanged: (value) =>
+              ref.read(threadDensityCompactProvider.notifier).set(value: value),
+          onArchived: () =>
+              context.push(AppRoutes.deviceArchived(widget.deviceId)),
+        ),
+      ],
+      // The list is long and the button covers its bottom-right corner, which
+      // is where the rows you are scrolling toward arrive.
+      hideFabOnScroll: true,
+      floatingActionButton: FloatingActionButton.extended(
+        // New conversations only make sense against the live PC.
+        onPressed: connectedHere ? _newConversation : null,
+        icon: const UxIcon(UxIcons.addComment),
+        label: Text(l10n.newThreadAction),
+        backgroundColor: connectedHere
+            ? null
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
+      slivers: [
+        // App-update notice (Play In-App Update on Android / App Store on iOS).
+        // Renders nothing unless an update is available and undismissed.
+        const SliverToBoxAdapter(child: _UpdateBanner()),
+        // Bridge-update notice: the paired PC's bridge reports it's outdated
+        // (`bridge/status.updateAvailable`). Informational + dismissible.
+        const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
+        if (!connectedHere)
+          SliverToBoxAdapter(
+            child: _OfflineBanner(
+              connecting: connectingHere,
+              onConnect: _connectHere,
+            ),
+          ),
+        if (rows.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _EmptyThreads(),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.lg,
+              UxnanSpacing.sm,
+              UxnanSpacing.lg,
+              UxnanSpacing.xxl,
+            ),
+            // Flattened rather than nested so the list stays lazy: a PC with
+            // two hundred conversations builds the handful on screen, not the
+            // whole tree.
+            sliver: SliverList.builder(
+              itemCount: rows.length,
+              itemBuilder: (context, index) => NeEntranceRow(
+                index: index,
+                child: _buildRow(context, rows[index], compact: compact),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
+import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// A staggered list is easy to write and easy to get wrong in exactly one way:
 /// a lazy `SliverList` builds row 30 when you scroll to it, so a naive
@@ -100,6 +101,32 @@ Future<void> main() async {
   testWidgets('without a scope nothing animates at all', (tester) async {
     await tester.pumpWidget(host(withScope: false));
     expect(find.byType(NeEnterTransition), findsNothing);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('every NeScaffold is a scope, with nothing to wire up',
+      (tester) async {
+    // Screens do not wrap themselves: a row inside any NeScaffold can ask for
+    // an entrance and get one. If this stops being true, every list in the app
+    // silently stops animating and nothing else fails.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NeScaffold(
+          title: 'Anything',
+          slivers: [
+            SliverList.builder(
+              itemCount: 5,
+              itemBuilder: (context, index) => NeEntranceRow(
+                index: index,
+                child: SizedBox(height: 80, child: Text('row $index')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.byType(NeEnterTransition), findsWidgets);
     await tester.pumpAndSettle();
   });
 

@@ -14,6 +14,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
@@ -93,18 +94,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               constraints: const BoxConstraints(
                 maxWidth: UxnanSpacing.maxContentWidth,
               ),
+              // Staggered by BLOCK, not by widget: the spacers between them
+              // are not things that arrive, and the stats grid is one object
+              // even though it draws several tiles.
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const _StatsHeader(),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  MetricsStatGrid(metrics: m),
+                  NeEntranceRow(
+                    index: 0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _StatsHeader(),
+                        const SizedBox(height: UxnanSpacing.sm),
+                        MetricsStatGrid(metrics: m),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: UxnanSpacing.xl),
-                  Text(l10n.profileActivity, style: titleStyle),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  AgentActivitySection(firstYear: firstYear),
+                  NeEntranceRow(
+                    index: 1,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(l10n.profileActivity, style: titleStyle),
+                        const SizedBox(height: UxnanSpacing.sm),
+                        AgentActivitySection(firstYear: firstYear),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: UxnanSpacing.xl),
-                  const UsageSection(),
+                  const NeEntranceRow(index: 2, child: UsageSection()),
                 ],
               ),
             ),

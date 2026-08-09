@@ -53,6 +53,26 @@ spec, the spec wins.
   onboarding hero, the agent picker). Neither carries a border or a shadow —
   framing made the frame the thing you noticed, and a shadowed tile inside a
   card reads as the card being elevated when it is not.
+- **A screen you touch leaves with the current design language.** Not a
+  migration to schedule — a condition of the change you are already making. It
+  means three things, all of them cheap once you are in the file:
+  1. **Type from the scale**, and by meaning: `titleMedium` heads a *group*,
+     `titleSmall` names a *row*, `headlineX` says what a *region* is about. No
+     literal `fontSize` (see NE §2.3 → *What uxnan actually ships*).
+  2. **Motion where content arrives.** A list of rows uses `NeEntranceRow`
+     (every `NeScaffold` is already a scope, so there is nothing to wire); a
+     fixed list of children uses `NeEntranceScope.stagger([...])`; a single
+     block — a form — uses one `NeEnterTransition` and no stagger, so nothing
+     delays reaching the field. **Not** a live camera preview, and **not** a
+     scroll affordance.
+  3. **Sizes and spacing from tokens**, never a bare dp.
+
+  This exists because the alternative was found the expensive way: the app ran
+  two type scales at once and its density jumped from screen to screen, and
+  nobody had planned that either. Screens no phase currently names —
+  `onboarding/`, `archived_threads_screen.dart` — are the ones to watch: they
+  will not be swept up by anything unless a change happens to land in them.
+
 - **Icons come from the catalogue, never from the package.** `UxIcons`
   (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and
   `UxIcon` (`presentation/widgets/ux_icon.dart`) is the only widget that talks

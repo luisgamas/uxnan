@@ -6,6 +6,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — profile, settings and manual pairing arrive like the rest of the app
+
+The entrance now reaches the three screens that had **no motion at all**:
+profile (staggered by block — the stats, the activity heatmap, then usage),
+settings and its six section screens (staggered by row), and manual pairing.
+
+Pairing takes a **single** entrance rather than a stagger: it is a form, and a
+form arrives as one thing — staggering it would put a wait between the screen
+opening and the field you came to type in. The **QR scanner is deliberately
+left alone**: it is a live camera preview, and fading one in reads as the
+camera failing.
+
+`NeScaffold` is now itself an entrance scope, so a screen no longer wraps
+anything — a row inside any of them just uses `NeEntranceRow`, and a fixed list
+of children uses `NeEntranceScope.stagger([...])`. The four screens that had
+been wrapping themselves stopped.
+
+`docs/conventions.md` records the standing rule this settles: a screen you touch
+leaves with the current design language — type from the scale and chosen by
+meaning, motion where content arrives, sizes from tokens — and names the screens
+(`onboarding/`, `archived_threads_screen.dart`) that no planned phase will sweep
+up on its own.
+
 ### Added — lists rise into place the first time they fill
 
 The home overview and the conversation list appeared fully formed, which for a

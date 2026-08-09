@@ -8,6 +8,7 @@ import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/screens/settings/licenses/licenses_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -50,7 +51,7 @@ class AboutSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               _AboutHeader(versionLabel: versionLabel),
               const SizedBox(height: UxnanSpacing.lg),
               Text(
@@ -77,7 +78,7 @@ class AboutSectionScreen extends ConsumerWidget {
                 subtitle: l10n.settingsLicensesSubtitle,
                 onTap: () => LicensesScreen.push(context),
               ),
-            ],
+            ]),
           ),
         ),
       ],

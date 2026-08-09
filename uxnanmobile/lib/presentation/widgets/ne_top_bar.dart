@@ -4,6 +4,7 @@ import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_scroll_aware_fab.dart';
 
 /// Neural Expressive top bar (guide §4.1–4.2): a 56 dp **transparent** chrome
@@ -269,34 +270,41 @@ class _NeScaffoldState extends State<NeScaffold> {
           ? fab
           : NeScrollAwareFab(visible: !_scrolling, child: fab),
       floatingActionButtonLocation: widget.floatingActionButtonLocation,
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _onScroll,
-        child: Stack(
-          children: [
-            scroll,
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: NeTopBar(
-                leading: lead,
-                // Compact single-line title (slightly smaller than titleLarge),
-                // truncated with an ellipsis when it doesn't fit.
-                title: widget.titleWidget ??
-                    (widget.title == null
-                        ? null
-                        : Text(
-                            widget.title!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: UxnanTypography.barTitle.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          )),
-                actions: widget.actions,
+      // Every NeScaffold IS an entrance scope. Rows opt in by using
+      // [NeEntranceRow]; a screen that does not simply never asks.
+      // Putting it here rather than at each screen keeps the rule
+      // uniform and spares every list the ceremony of wrapping its
+      // own scaffold.
+      body: NeEntranceScope(
+        child: NotificationListener<ScrollNotification>(
+          onNotification: _onScroll,
+          child: Stack(
+            children: [
+              scroll,
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: NeTopBar(
+                  leading: lead,
+                  // Compact single-line title, truncated with an ellipsis
+                  // when it doesn't fit.
+                  title: widget.titleWidget ??
+                      (widget.title == null
+                          ? null
+                          : Text(
+                              widget.title!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: UxnanTypography.barTitle.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            )),
+                  actions: widget.actions,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

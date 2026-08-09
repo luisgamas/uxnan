@@ -144,6 +144,14 @@ M3E defines two *motion schemes* applicable globally:
 > testable; a wall-clock window cannot be (a widget test runs a hundred frames
 > in less real time than any window worth having).
 >
+> **Every `NeScaffold` is a scope**, so a screen wires nothing up: a lazy list's
+> rows pass their own index to `NeEntranceRow`, and a fixed list of children
+> goes through `NeEntranceScope.stagger([...])`. A single block — a form — takes
+> one `NeEnterTransition` and no stagger, so nothing sits between opening the
+> screen and reaching the field. Two surfaces must **not** take an entrance: a
+> live camera preview (fading one in reads as the camera failing) and a scroll
+> affordance.
+>
 > Two traps, both of which cost a real bug here:
 >
 > - **The decision is made once, per row, at creation.** Asking on every build

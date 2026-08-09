@@ -7,6 +7,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
@@ -44,7 +45,7 @@ class MetricsUsageSettingsScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               NeSectionHeader(label: l10n.settingsMetricsGroup, first: true),
               const _MetricsIntervalSelector(),
               NeSectionHint(text: l10n.metricsRefreshHint),
@@ -54,7 +55,7 @@ class MetricsUsageSettingsScreen extends ConsumerWidget {
               NeSectionHint(text: l10n.usageRefreshHint),
               NeSectionHeader(label: l10n.settingsUsageClockGroup),
               const _ClockToggle(),
-            ],
+            ]),
           ),
         ),
       ],
