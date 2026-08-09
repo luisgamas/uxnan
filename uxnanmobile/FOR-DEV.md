@@ -312,6 +312,18 @@ shipping.
       purpose: inventing a PR state the bridge cannot report would be worse
       than not showing one.
 
+- [ ] **Manual ordering, as a fifth option on each level (OPTIONAL).** The
+      three levels of the threads list — projects, worktrees and agents — offer
+      status / activity / created / name today. A hand-arranged order was asked
+      for and deliberately left out: unlike the other four it is not a
+      comparator but a *stored* per-item position, so it needs somewhere to
+      persist (per PC, since paths mean nothing across machines), a drag mode
+      on a three-level tree, and a rule for where a newly-arrived item lands.
+      It **layers on without rework**: one more value in `ListSort` plus a
+      reorder mode; nothing about the current sorting has to change to make
+      room for it. Marked optional on purpose — the four comparators cover the
+      questions the list is actually asked.
+
 ## App+bridge seams (need a live bridge to finish/verify)
 
 - [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**

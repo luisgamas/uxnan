@@ -23,14 +23,27 @@ The **archive gets fewer on purpose** (`created` and `name`): archived work is
 finished by definition, so "needs attention" and "recent activity" would both
 sort by a value that can no longer change.
 
-**The menu asks in two steps.** Every ordering for every level at once was
-seventeen entries — a list that ran off the bottom of a phone, which is not a
-menu. It now offers the levels first, then that level's orderings, in the same
-place so the second step does not read as a different control opening
-elsewhere. The first step is not a bare router either: each level shows what it
-is currently sorted by, which answers the question this menu usually gets asked
-without drilling in at all. With only one level to order — the archive — the
-choosing step is skipped, because a menu of one is not a choice.
+**The menu cascades.** Every ordering for every level at once was seventeen
+entries — a list that ran off the bottom of a phone, which is not a menu. Tapping
+a level now opens its orderings **beside** the levels instead of replacing them:
+a second `showMenu` pushed over the first without popping it, so nothing closes
+under the next choice and a second level is one tap away. Dismissing the second
+panel is "back", and costs no widget because a route stack already works that
+way.
+
+It is built from the app's own floating menu on purpose. An attempt with
+`MenuAnchor` — the only Flutter widget with a built-in cascade — put a second
+menu *system* in the app bar: a bare overlay beside routed menus, which opened
+and closed differently and swallowed taps between them (with a routed menu up,
+the barrier ate the tap and the sort button never saw it). A test now pins that
+every panel is a routed menu.
+
+Each level shows what it is sorted by on its own row, so the question this menu
+usually gets asked is answered before opening anything — and it updates the
+instant you choose. A `showMenu` builds its items once, so both that subtitle
+and the second panel's tick would otherwise sit on the old value until the whole
+menu was closed and reopened, contradicting the choice just made in it. With
+only one level to order — the archive — there is no cascade at all.
 
 The project level only appears when there is a project to order, so a PC whose
 folders never group is not offered a control that moves nothing it can see. Items with nothing to sort on sink to a **stable** alphabetical tail

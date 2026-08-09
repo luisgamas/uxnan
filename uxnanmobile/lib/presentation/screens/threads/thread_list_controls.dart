@@ -8,6 +8,7 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
@@ -325,20 +326,24 @@ class SortChoice {
   final ListSort value;
 }
 
-/// The ordering menu: pick a level, then pick its ordering.
+/// The ordering menu: a cascade built from the app's own floating menu.
 ///
-/// **Two steps, not one list.** The list has three levels now, and offering
-/// every ordering for every level at once was seventeen entries — a menu that
-/// ran off the bottom of a phone, which is not a menu. Each level opens its
-/// own short list in the same place the first one was, so the second step
-/// never feels like a different control.
+/// **Same machinery as every other menu in the bar.** An earlier attempt used
+/// `MenuAnchor`, the only Flutter widget with a built-in cascade — and that put
+/// two different menu systems in one app bar. `showMenu` is a *route* with a
+/// modal barrier; `MenuAnchor` is a bare overlay. They open differently, close
+/// differently, and interact badly: with the anchor menu up a tap reached the
+/// other button and opened it, but with a routed menu up the barrier swallowed
+/// the tap and the sort button never saw it. Nothing about that was visible in
+/// a test — it only showed up under a thumb.
 ///
-/// The first step is not a bare router: each level shows **what it is ordered
-/// by right now**, so the common question ("how is this sorted?") is answered
-/// without drilling in at all.
+/// So the cascade is built the way routes already work: opening the second
+/// panel **pushes another `showMenu` without popping the first**, so both are
+/// on screen. Dismissing the second returns to the first, which is what "back"
+/// means here and costs no widget at all.
 ///
-/// A level with nothing to order is not shown: the archive has only agents,
-/// and a PC whose folders never group has no project row to sort.
+/// Each level shows what it is sorted by on its own row, so the question this
+/// menu usually gets asked is answered before opening anything.
 class ThreadSortMenu extends StatelessWidget {
   /// Creates a [ThreadSortMenu].
   const ThreadSortMenu({
@@ -354,7 +359,7 @@ class ThreadSortMenu extends StatelessWidget {
   final ListSort? projectSort;
 
   /// The current worktree ordering, or null on a screen with no worktrees
-  /// (the archive), which then goes straight to the agent orderings.
+  /// (the archive), which then offers its orderings directly.
   final ListSort? worktreeSort;
 
   /// The current agent ordering.
@@ -374,72 +379,99 @@ class ThreadSortMenu extends StatelessWidget {
         ListSort.name => l10n.threadsSortName,
       };
 
+  List<(SortLevel, String, ListSort)> _levels(AppLocalizations l10n) => [
+        if (projectSort != null)
+          (SortLevel.projects, l10n.sortProjectsHeader, projectSort!),
+        if (worktreeSort != null)
+          (SortLevel.worktrees, l10n.sortFoldersHeader, worktreeSort!),
+        (SortLevel.agents, l10n.sortConversationsHeader, agentSort),
+      ];
+
   Future<void> _open(BuildContext context) async {
     final l10n = AppLocalizations.of(context);
-    final levels = <(SortLevel, String, ListSort)>[
-      if (projectSort != null)
-        (SortLevel.projects, l10n.sortProjectsHeader, projectSort!),
-      if (worktreeSort != null)
-        (SortLevel.worktrees, l10n.sortFoldersHeader, worktreeSort!),
-      (SortLevel.agents, l10n.sortConversationsHeader, agentSort),
-    ];
+    final levels = _levels(l10n);
+    final anchor = menuPositionUnder(context);
 
-    // One level to order is not a choice — go straight to its orderings rather
-    // than making the reader tap through a menu of one.
-    final level =
-        levels.length == 1 ? levels.single : await _pickLevel(context, levels);
-    if (level == null || !context.mounted) return;
+    // One level to order — the archive — has nothing to cascade into, so its
+    // orderings ARE the menu. A submenu of one is a tap that buys nothing.
+    if (levels.length == 1) {
+      final (level, _, current) = levels.single;
+      final picked = await _showOrderings(context, anchor, current);
+      if (picked != null) onChanged(SortChoice(level, picked));
+      return;
+    }
 
-    final sort = await _pickSort(context, level.$3);
-    if (sort == null) return;
-    onChanged(SortChoice(level.$1, sort));
-  }
+    // A `showMenu` builds its items ONCE, so a row's subtitle would freeze at
+    // whatever it said when the menu opened — pick an ordering in the second
+    // panel and the first still showed the old one until you closed and
+    // reopened. This carries the live values for as long as the menu is up.
+    final live = ValueNotifier<Map<SortLevel, ListSort>>({
+      for (final (level, _, current) in levels) level: current,
+    });
 
-  Future<(SortLevel, String, ListSort)?> _pickLevel(
-    BuildContext context,
-    List<(SortLevel, String, ListSort)> levels,
-  ) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return showMenu<(SortLevel, String, ListSort)>(
+    await showMenu<void>(
       context: context,
-      position: menuPositionUnder(context),
+      position: anchor,
       constraints: kNeMenuConstraints,
       items: [
-        for (final level in levels)
-          PopupMenuItem<(SortLevel, String, ListSort)>(
-            value: level,
-            child: Row(
-              children: [
-                Expanded(child: Text(level.$2)),
-                const SizedBox(width: UxnanSpacing.md),
-                // What it is sorted by, right here: the question this menu
-                // usually gets asked, answered before any drilling.
-                Text(
-                  _labelFor(l10n, level.$3),
-                  style: textTheme.bodySmall,
-                ),
-                const SizedBox(width: UxnanSpacing.xs),
-                UxIcon(
-                  UxIcons.chevronRight,
-                  size: UxnanSize.iconContentSmall,
-                  color: colors.onSurfaceVariant,
-                ),
-              ],
+        for (final (index, entry) in levels.indexed)
+          PopupMenuItem<void>(
+            // NOT a selection — it opens a panel. `enabled: false` is what
+            // stops the route popping out from under the submenu it just
+            // opened; the row carries its own ink and tap instead.
+            enabled: false,
+            padding: EdgeInsets.zero,
+            child: ValueListenableBuilder<Map<SortLevel, ListSort>>(
+              valueListenable: live,
+              builder: (context, current, _) {
+                final sort = current[entry.$1] ?? entry.$3;
+                return _LevelRow(
+                  title: entry.$2,
+                  subtitle: _labelFor(l10n, sort),
+                  onTap: () async {
+                    final picked = await _showOrderings(
+                      context,
+                      // Stepped down and in, so the second panel reads as
+                      // coming OUT OF the row that opened it rather than
+                      // replacing it.
+                      _steppedFrom(anchor, index),
+                      sort,
+                    );
+                    if (picked == null) return;
+                    live.value = {...live.value, entry.$1: picked};
+                    onChanged(SortChoice(entry.$1, picked));
+                  },
+                );
+              },
             ),
           ),
       ],
     );
+    live.dispose();
   }
 
-  Future<ListSort?> _pickSort(BuildContext context, ListSort current) {
+  /// Where a submenu opens: down by the row that spawned it, in by a hair.
+  static RelativeRect _steppedFrom(RelativeRect anchor, int index) {
+    final down = anchor.top + UxnanSize.minTouchTarget * (index + 1);
+    return RelativeRect.fromLTRB(
+      anchor.left + UxnanSpacing.xl,
+      down,
+      anchor.right,
+      anchor.bottom,
+    );
+  }
+
+  /// The second panel. Pushed **without** popping the first, so both are on
+  /// screen; dismissing it returns to the levels, which is "back".
+  Future<ListSort?> _showOrderings(
+    BuildContext context,
+    RelativeRect position,
+    ListSort current,
+  ) {
     final l10n = AppLocalizations.of(context);
     return showMenu<ListSort>(
       context: context,
-      // The same place the first step was, so the second does not read as a
-      // different control opening somewhere else.
-      position: menuPositionUnder(context),
+      position: position,
       constraints: kNeMenuConstraints,
       items: [
         for (final sort in options)
@@ -459,6 +491,66 @@ class ThreadSortMenu extends StatelessWidget {
       icon: UxIcons.sort,
       tooltip: l10n.threadsSortBy,
       onPressed: () => unawaited(_open(context)),
+    );
+  }
+}
+
+/// A level in the first panel: its name, what it is sorted by, and a chevron.
+///
+/// Built by hand rather than as a plain menu item because it must not behave
+/// like one — a selection pops the route, and this row's whole job is to open
+/// a second panel while the first stays put. It borrows the menu item's
+/// metrics so it is indistinguishable from one.
+class _LevelRow extends StatelessWidget {
+  const _LevelRow({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        // `kMinInteractiveDimension` vertical is what a PopupMenuItem uses;
+        // the horizontal inset matches its default so the two panels line up.
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.lg,
+          vertical: UxnanSpacing.sm,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: UxnanTypography.menuItem.copyWith(
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  Text(subtitle, style: textTheme.bodySmall),
+                ],
+              ),
+            ),
+            const SizedBox(width: UxnanSpacing.md),
+            UxIcon(
+              UxIcons.chevronRight,
+              size: UxnanSize.iconContentSmall,
+              color: colors.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
