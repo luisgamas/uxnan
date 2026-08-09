@@ -126,8 +126,13 @@ path shown and copied is the one that was reported. Configured roots contribute
 their name only.
 
 A **repository level** sits above the folders when the bridge can prove one:
-`git/worktrees` (`workspaceRepoTableProvider`, asked once per configured root)
-says which folders are worktrees of which repository. It is never inferred from
+`git/worktrees` (`workspaceRepoTableProvider`) says which folders are worktrees
+of which repository. It asks about the folders **on the list** — the distinct
+`cwd`s of this PC's conversations — not about the bridge's configured roots:
+`workspaceRoots` is optional and frequently empty, since a conversation can be
+started anywhere through the folder picker. One reply names every sibling of its
+repository, so folders already covered are skipped and ten worktrees of one repo
+cost one call. It is never inferred from
 path prefixes — worktrees are siblings on disk, so a shared prefix says nothing,
 and inferring it is what sank the first attempt at this level.
 

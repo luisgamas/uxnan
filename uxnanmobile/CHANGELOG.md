@@ -21,10 +21,19 @@ it is — there is no "other" bucket. The repository row carries no "+" of its
 own, because a new conversation happens in a *folder*, and a repository with
 three worktrees cannot answer which.
 
+The table is built from the folders **on the list** — the distinct `cwd`s of
+this PC's conversations — not from the bridge's configured roots.
+`workspaceRoots` is optional and frequently empty (a conversation can be started
+anywhere through the folder picker), and keying the query on it meant the
+hierarchy silently never appeared for anyone who had not configured one. One
+reply names every sibling of its repository, so ten worktrees of one repo cost
+one call, not ten.
+
 **An older bridge changes nothing.** It answers "method not found", the table
 arrives empty, and the list is literally the flat one it was before — no error,
-no guess. Eight tests cover the shapes, including that a shared path prefix is
-still not a relationship.
+no guess. Nine tests cover the shapes, including that a shared path prefix is
+still not a relationship, and that folders group with no configured roots at
+all.
 
 ### Added — a folder says what its working tree is doing
 

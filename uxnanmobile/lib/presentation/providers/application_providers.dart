@@ -38,7 +38,6 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/domain/value_objects/git/git_action_progress.dart';
 import 'package:uxnan/domain/value_objects/git/git_status_change.dart'
     show GitStatusChange;
-import 'package:uxnan/domain/value_objects/git/git_worktree_entry.dart';
 import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/notification_preferences.dart';
 import 'package:uxnan/domain/value_objects/profile_avatar.dart';
@@ -886,33 +885,60 @@ final projectsProvider = FutureProvider<List<Project>>((ref) {
   return ref.watch(threadManagerProvider).loadProjects();
 });
 
-/// Which folders are worktrees of which repository, asked once per configured
-/// root (`git/worktrees`).
+/// Which folders are worktrees of which repository (`git/worktrees`).
 ///
-/// One call per root, not per folder: a single reply names every sibling of
-/// that repository at once, so asking each folder separately would be the same
-/// answer fetched N times.
+/// Asked about the folders that are actually **on the list** — the distinct
+/// `cwd`s of this PC's conversations — not about the bridge's configured roots.
+/// That distinction is the whole provider: `workspaceRoots` is optional and
+/// frequently empty (a conversation can be started anywhere via the folder
+/// picker), so keying this on `project/list` meant the hierarchy silently never
+/// appeared for anyone who had not configured a root. It did exactly that on
+/// the first machine it met.
+///
+/// One reply names **every** sibling of its repository, so the loop skips any
+/// folder a previous reply already covered: ten worktrees of one repo cost one
+/// call, not ten.
 ///
 /// **An older bridge does not have the method** and answers "method not
 /// found"; [ThreadManager.loadWorktrees] turns that into an empty list, this
 /// table stays empty, and the folder list falls back to exactly the flat
-/// behaviour it had before — no error, no guess. That is the whole
-/// compatibility story, and it is why the hierarchy is never inferred from
-/// path prefixes: worktrees are siblings on disk, so a prefix would be a guess
-/// wearing the clothes of a fact.
+/// behaviour it had before — no error, no guess. That is why the hierarchy is
+/// never inferred from path prefixes: worktrees are siblings on disk, so a
+/// prefix would be a guess wearing the clothes of a fact.
 final workspaceRepoTableProvider = FutureProvider<Map<String, WorkspaceRepo>>((
   ref,
 ) async {
   ref.watch(connectedDeviceProvider);
-  final projects = await ref.watch(projectsProvider.future);
-  if (projects.isEmpty) return const {};
+  // Re-asks only when the SET of folders changes, not on every thread update —
+  // a list that re-queried git each time a turn streamed would be a storm.
+  final folders = ref.watch(workspaceCwdsProvider);
+  if (folders.isEmpty) return const {};
+
   final manager = ref.watch(threadManagerProvider);
-  final replies = <String, List<GitWorktreeEntry>>{};
-  for (final project in projects) {
-    if (project.cwd.isEmpty) continue;
-    replies[project.cwd] = await manager.loadWorktrees(project.cwd);
+  final table = <String, WorkspaceRepo>{};
+  for (final cwd in folders.split('\n')) {
+    if (cwd.isEmpty) continue;
+    if (table.containsKey(normalizeWorkspacePath(cwd))) continue;
+    final entries = await manager.loadWorktrees(cwd);
+    table.addAll(buildWorkspaceRepoTable({cwd: entries}));
   }
-  return buildWorkspaceRepoTable(replies);
+  return table;
+});
+
+/// The distinct folders this PC's conversations run in, sorted and joined.
+///
+/// A `String` on purpose: Riverpod compares with `==`, and a fresh `List` is
+/// never equal to the previous one, so a list-valued provider would re-run
+/// every dependent on every rebuild.
+final workspaceCwdsProvider = Provider<String>((ref) {
+  final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
+  final cwds = <String>{};
+  for (final thread in threads) {
+    final cwd = thread.cwd;
+    if (cwd != null && cwd.isNotEmpty) cwds.add(cwd);
+  }
+  final sorted = cwds.toList()..sort();
+  return sorted.join('\n');
 });
 
 /// Navigates the bridge's browse roots (`workspace/browseDirs`) for the

@@ -965,7 +965,12 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 >
 > **La jerarquia de worktrees SI se dibuja, cuando el bridge la reporta.**
 > `git/worktrees` (§5.8.6) dice que carpetas son worktrees de que repositorio,
-> y solo entonces aparece un nivel de repositorio sobre ellas. Nunca se deduce
+> y solo entonces aparece un nivel de repositorio sobre ellas. Se pregunta por
+> las carpetas **de la lista** (los `cwd` distintos de las conversaciones), no
+> por las raices configuradas: `workspaceRoots` es opcional y suele estar vacio,
+> porque una conversacion puede arrancarse en cualquier carpeta desde el
+> selector. Cada respuesta nombra a todos los hermanos de su repositorio, asi
+> que diez worktrees cuestan una llamada, no diez. Nunca se deduce
 > de prefijos de ruta: los worktrees son **hermanos** en disco, asi que un
 > prefijo comun no dice nada. Y solo se dibuja cuando relaciona **dos o mas**
 > carpetas — un encabezado sobre una sola carpeta es cromo, no estructura, que

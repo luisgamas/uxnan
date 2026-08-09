@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
@@ -12,6 +13,7 @@ import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
+import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
@@ -40,6 +42,7 @@ Widget _wrap({
   required List<Thread> threads,
   Map<String, ThreadActivity> activity = const {},
   List<Project> projects = const [],
+  Map<String, WorkspaceRepo> repos = const {},
 }) {
   final router = GoRouter(
     routes: [
@@ -58,6 +61,11 @@ Widget _wrap({
       // The list is grouped by project now, so the screen reads the bridge's
       // roots. Feeding them keeps the real request (and its transport) out.
       projectsProvider.overrideWith((ref) async => projects),
+      // The screen now asks the bridge which folders are worktrees of which
+      // repository. Left real, that reaches a live ThreadManager and opens the
+      // database. An empty table is also exactly what an older bridge yields,
+      // which is the flat list most of these tests assert.
+      workspaceRepoTableProvider.overrideWith((ref) async => repos),
       // A held queue is one of the things that blocks a thread, so the
       // queue stream is part of the row's state too.
       threadQueuesProvider.overrideWith(
@@ -254,6 +262,35 @@ void main() {
         lessThan(openMarks),
         reason: 'a closed folder summarises its agents, it does not list them',
       );
+    });
+
+    testWidgets('worktrees group even when the bridge has NO configured roots',
+        (tester) async {
+      // The bug this pins, found on the first real machine it met: the table
+      // was built by asking `git/worktrees` once per CONFIGURED ROOT, and
+      // `workspaceRoots` is optional and frequently empty — a conversation can
+      // be started anywhere through the folder picker. With none configured the
+      // provider bailed before asking anything, so the hierarchy silently never
+      // appeared, on a code path with no error to notice.
+      await tester.pumpWidget(
+        _wrap(
+          // No configured roots at all — the shape that broke it.
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app-feature'),
+          ],
+          repos: const {
+            '/dev/app': WorkspaceRepo(key: '/dev/app', label: 'app'),
+            '/dev/app-feature': WorkspaceRepo(key: '/dev/app', label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The repository heads both folders, and both folders are still there.
+      expect(find.byType(RepoGroupRow), findsOneWidget);
+      expect(find.text('app-feature'), findsOneWidget);
     });
 
     testWidgets('long-pressing a folder opens its details with the full path',
