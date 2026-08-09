@@ -18,6 +18,7 @@ import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_badge.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
@@ -157,76 +158,81 @@ class MyDevicesScreen extends ConsumerWidget {
             ? 2
             : 1;
 
-    return NeScaffold(
-      // The bar carries the product's identity, not the screen's: the mark on
-      // the left, your avatar on the right (NE §4.2 keeps the main screen's bar
-      // title empty, and this screen's real heading is the headline below).
-      titleWidget: const _BrandMark(),
-      actions: [
-        // Pair another PC: an M3 popup (matching the threads sort/more menus)
-        // offering the QR scanner or the manual host+code flow.
-        IconSurfaceMenu<_PairAction>(
-          tooltip: l10n.actionPairDevice,
-          icon: UxIcons.addLink,
-          onSelected: (action) {
-            switch (action) {
-              case _PairAction.scanQr:
-                context.push(AppRoutes.pairing);
-              case _PairAction.enterCode:
-                context.push(AppRoutes.manualPairing);
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: _PairAction.scanQr,
-              child: Text(l10n.actionScanQr),
-            ),
-            PopupMenuItem(
-              value: _PairAction.enterCode,
-              child: Text(l10n.actionEnterCode),
-            ),
-          ],
-        ),
-        IconSurface(
-          icon: UxIcons.settings,
-          tooltip: l10n.settingsTitle,
-          onPressed: () => context.push(AppRoutes.settings),
-        ),
-        _ProfileAvatarAction(onPressed: () => context.push(AppRoutes.profile)),
-      ],
-      slivers: [
-        if (devices.isEmpty)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: _PairEmptyState(),
-          )
-        else ...[
-          const SliverToBoxAdapter(child: _OverviewHeadline()),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              0,
-              UxnanSpacing.lg,
-              UxnanSpacing.lg,
-            ),
-            sliver: _DeviceCardList(
-              devices: devices,
-              columns: columns,
-              connectedId: connectedId,
-              connectingId: connectingId,
-              networkKind: networkKind,
-              connectedEndpoint: connectedEndpoint,
-              onStats: (device) =>
-                  context.push(AppRoutes.deviceStats(device.macDeviceId)),
-              onOpen: (device) => _open(context, device),
-              onConnect: (device) => _connect(ref, context, device),
-              onRename: (device) => _rename(ref, context, device),
-              onVerify: (device) => _verify(ref, context, device),
-              onRemove: (device) => _remove(ref, context, device),
-            ),
+    return NeEntranceScope(
+      child: NeScaffold(
+        // The bar carries the product's identity, not the screen's: the mark
+        // on the left, your avatar on the right (NE §4.2 keeps the main
+        // screen's bar title empty; this screen's heading is the headline
+        // below).
+        titleWidget: const _BrandMark(),
+        actions: [
+          // Pair another PC: an M3 popup (matching the threads sort/more menus)
+          // offering the QR scanner or the manual host+code flow.
+          IconSurfaceMenu<_PairAction>(
+            tooltip: l10n.actionPairDevice,
+            icon: UxIcons.addLink,
+            onSelected: (action) {
+              switch (action) {
+                case _PairAction.scanQr:
+                  context.push(AppRoutes.pairing);
+                case _PairAction.enterCode:
+                  context.push(AppRoutes.manualPairing);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _PairAction.scanQr,
+                child: Text(l10n.actionScanQr),
+              ),
+              PopupMenuItem(
+                value: _PairAction.enterCode,
+                child: Text(l10n.actionEnterCode),
+              ),
+            ],
+          ),
+          IconSurface(
+            icon: UxIcons.settings,
+            tooltip: l10n.settingsTitle,
+            onPressed: () => context.push(AppRoutes.settings),
+          ),
+          _ProfileAvatarAction(
+            onPressed: () => context.push(AppRoutes.profile),
           ),
         ],
-      ],
+        slivers: [
+          if (devices.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _PairEmptyState(),
+            )
+          else ...[
+            const SliverToBoxAdapter(child: _OverviewHeadline()),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                UxnanSpacing.lg,
+                0,
+                UxnanSpacing.lg,
+                UxnanSpacing.lg,
+              ),
+              sliver: _DeviceCardList(
+                devices: devices,
+                columns: columns,
+                connectedId: connectedId,
+                connectingId: connectingId,
+                networkKind: networkKind,
+                connectedEndpoint: connectedEndpoint,
+                onStats: (device) =>
+                    context.push(AppRoutes.deviceStats(device.macDeviceId)),
+                onOpen: (device) => _open(context, device),
+                onConnect: (device) => _connect(ref, context, device),
+                onRename: (device) => _rename(ref, context, device),
+                onVerify: (device) => _verify(ref, context, device),
+                onRemove: (device) => _remove(ref, context, device),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -290,7 +296,10 @@ class _DeviceCardList extends StatelessWidget {
       return SliverList.separated(
         itemCount: devices.length,
         separatorBuilder: (_, __) => const SizedBox(height: UxnanSpacing.md),
-        itemBuilder: (context, index) => _card(devices[index]),
+        itemBuilder: (context, index) => NeEntranceRow(
+          index: index,
+          child: _card(devices[index]),
+        ),
       );
     }
 
@@ -300,22 +309,25 @@ class _DeviceCardList extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: UxnanSpacing.md),
       itemBuilder: (context, row) {
         final first = row * columns;
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var column = 0; column < columns; column++) ...[
-                if (column > 0) const SizedBox(width: UxnanSpacing.md),
-                Expanded(
-                  child: first + column < devices.length
-                      ? _card(devices[first + column])
-                      // A trailing gap, not a card: the last row of an odd
-                      // list keeps its sibling at half width instead of
-                      // stretching it across the whole row.
-                      : const SizedBox.shrink(),
-                ),
+        return NeEntranceRow(
+          index: row,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var column = 0; column < columns; column++) ...[
+                  if (column > 0) const SizedBox(width: UxnanSpacing.md),
+                  Expanded(
+                    child: first + column < devices.length
+                        ? _card(devices[first + column])
+                        // A trailing gap, not a card: the last row of an odd
+                        // list keeps its sibling at half width instead of
+                        // stretching it across the whole row.
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },

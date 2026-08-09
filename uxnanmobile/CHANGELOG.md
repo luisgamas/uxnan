@@ -6,6 +6,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — lists rise into place the first time they fill
+
+The home overview and the conversation list appeared fully formed, which for a
+screen whose whole content arrives at once reads as a jump. Their rows now enter
+with a short staggered fade-and-rise, reusing the entrance the conversation
+timeline already had (`NeEnterTransition`, now with a delay) behind
+`NeEntranceScope` / `NeEntranceRow`.
+
+The window is **one frame**, not a duration. A sliver lays out everything the
+viewport needs in a single pass, so "the rows that arrived together" and "the
+rows built in one frame" are the same set — including when the data landed
+asynchronously. Anything built in a later frame is a row you scrolled to, and
+appears at once: what animates is the list arriving, never a row reached under
+your thumb. Frames also make it testable, which a wall-clock window is not.
+
+**Fixed along the way — an entrance was destroying its row's state.**
+`NeEnterTransition` returned its bare child once the animation completed,
+dropping two widgets from above it; Flutter treats that as a different subtree,
+unmounts the child's element and builds a fresh one, so any `State` inside died
+the instant the entrance ended. The new row wrapper had the same flaw in a
+second form (it asked per build, and the window shuts after the first frame).
+Both now keep a fixed shape. In the app this showed as a revealed IP address
+quietly re-hiding itself — caught by an existing test, not by looking.
+
 ### Fixed — the app follows one type scale instead of two
 
 `TextTheme` has fifteen slots and this theme defined five. That is not the same

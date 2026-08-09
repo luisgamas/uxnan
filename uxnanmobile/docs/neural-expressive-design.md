@@ -134,6 +134,27 @@ A spring is defined by two parameters:
 
 M3E defines two *motion schemes* applicable globally:
 
+> **A list arrives once; it does not animate under your thumb.** Rows enter
+> with a short staggered fade-and-rise (`NeEntranceScope` + `NeEntranceRow`,
+> built on `NeEnterTransition`). The window is deliberately **one frame**, not a
+> duration: a sliver lays out everything the viewport needs in a single pass, so
+> "the rows that arrived together" and "the rows built in one frame" are the
+> same set — including when the data landed asynchronously. Anything built in a
+> later frame is a row you scrolled to, and appears at once. Frames also make it
+> testable; a wall-clock window cannot be (a widget test runs a hundred frames
+> in less real time than any window worth having).
+>
+> Two traps, both of which cost a real bug here:
+>
+> - **The decision is made once, per row, at creation.** Asking on every build
+>   means the second build answers "no" and returns the bare child — which
+>   changes the subtree's shape, so Flutter unmounts the row's element and
+>   rebuilds it. Every piece of `State` inside the row dies at that moment.
+> - **An entrance never changes its own shape either.** Returning the bare child
+>   once the animation completes has exactly the same effect. Keep the wrappers
+>   and let them settle at `Opacity(1)`; a settled opacity skips its layer and
+>   costs nothing.
+
 > **A spring is not the answer to every animation.** The springs above model
 > something being *grabbed and released* — a press, a drag, a morph — and their
 > stiffness and overshoot are what give that life. Applied to a surface that

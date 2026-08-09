@@ -37,7 +37,9 @@ spec, the spec wins.
   settings rows, dynamic 24/4 corners + 3 dp gap), `ConnectedButtonGroup` (the
   M3E replacement for `SegmentedButton`), the `settings_tiles.dart` rows
   (`NeSectionHeader` / `NeSectionHint` / `NeSwitchTile` / `NeNavTile`), plus
-  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`, `NeScrollAwareFab`
+  `NeSurface`, `IconSurface`, `NeScaffold` / `NeTopBar`, `NeEntranceScope` /
+  `NeEntranceRow` (a list whose rows rise into place the first time it fills —
+  never on scroll), `NeScrollAwareFab`
   (a FAB that steps aside while the list moves — see NE §"FAB and FAB Menu" for
   which FABs may take it and which must not), `NeBadge` (read-only
   status pill — `neutral` for a plain fact, `secondary` for supporting metadata,
