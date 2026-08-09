@@ -6,52 +6,50 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed — a PC's conversations are grouped by where the work happens
+### Changed — a PC's conversations are grouped by the folder they run in
 
-The screen was a flat list of every conversation on a PC. It is now the
-hierarchy the desktop sidebar shows: **project → folder → conversation**, so
-twenty conversations across four repositories read as four things instead of
-twenty.
+The screen was a flat list of every conversation on a PC. It now groups them by
+the **folder** each one runs in, so twenty conversations across four checkouts
+read as four things instead of twenty.
 
-The grouping is **inferred, not reported**. `groupThreadsByWorkspace` is one
-pure function: a conversation belongs to the project whose configured root its
-folder sits inside — the *longest* matching root, so a monorepo package wins
-over the monorepo. Paths are matched on folder boundaries and normalised for
-Windows separators and casing, because `C:\Dev\App` and `c:/dev/app/` are one
-folder and either can reach us.
+**One level, not two.** The desktop sidebar shows repositories over their
+worktrees because it *knows* which is which; the phone does not — the bridge
+reports a flat list of configured roots and nothing about worktrees, which live
+as siblings of their repository. A project level built on that would have been a
+heading over a single folder, plus a bucket named "other" holding most of the
+real work. The folder is the top of the tree until the bridge can say more
+(`git/worktrees`), at which point a project level can come back meaning what it
+means on the desktop. Configured roots still contribute their **name**, which is
+usually friendlier than a basename.
 
-Two things deliberately do **not** resolve yet, and both are tested so they
-cannot regress quietly: a conversation with no folder, and a git **worktree** —
-which conventionally lives as a sibling of its repository (`…/app` and
-`…/app--branch`) and so matches no root at all. Both land in **Other spaces**
-rather than vanishing. Closing that gap needs the bridge to report worktrees.
+Paths are matched after normalising separators and case, so two spellings of one
+folder are one row however they reached us — while the path shown and copied is
+the one that was actually reported.
 
-Projects open and close, and **what is closed is what persists** — so a project
-that appears later comes back open rather than hidden. A closed project still
-shows the strongest state inside it: hiding that would defeat the reason the
-screen exists. Folders close too, but only for the session: unlike a project, a
-folder is closed to get it out of the way right now.
+A folder row carries its name and, closed, the strongest state inside it —
+hiding that would defeat the reason the screen exists. Its second line says how
+many conversations it holds and which agents are in it. Everything else — the
+full path, the conversations with their states, and the git state that lands
+next — is one **long-press** away; the desktop shows the same on hover, and a
+phone has no hover.
 
-A folder row is deliberately **one line**. Everything else it could say — the
-full path, its conversations and their states, and the git state that lands
-next — is one **long-press** away. The desktop shows the same on hover; a phone
-has no hover, so the gesture carries it.
+Each folder's **+** starts a conversation already in it, rather than in the
+bridge's first root, which was almost never the one you meant.
 
-Filters were rebuilt around the question that brings someone to this screen.
-The agent/project scope selector is gone — the list *is* grouped by project, so
-a chip for it would filter the very thing being shown — and in its place are
-**state chips** (working · waiting for you · unread) that compose with the agent
-chips instead of excluding them. There is no "All" chip: a filter chip toggles
-off, and "all" is simply none selected. Sorting by folder is gone for the same
-reason, replaced by **recent activity**, which answers "what moved" rather than
-"what exists".
-
-Each project's **+** starts a conversation already in its folder, instead of the
-bridge's first root — which was almost never the one you meant.
+The filter chips are gone. With the list grouped and two orderings available
+they were a third way to answer a question the screen now answers by shape. The
+sort menu grew to match: **folders** order by what needs attention, by recent
+activity, or by name — and **conversations** order independently inside them.
+Attention-first is the default, because the reason to open this screen is
+usually "what happened", not "what exists".
 
 The list stays flat internally (a typed row per line) rather than nesting
 widgets, so a PC with hundreds of conversations builds the handful on screen.
 
+Content glyphs got two size tokens (`UxnanSize.iconContent` 20,
+`iconContentSmall` 16). The guide sized chrome and the composer but never these,
+which is how they drifted between 13 and 18 dp across the app; it now has a
+table for them, and for the XS button a row-level action uses.
 
 ### Added — a conversation says what its agent is actually doing
 

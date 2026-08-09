@@ -13,8 +13,10 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
+import '../../support/ux_icon_finder.dart';
 
 Thread _thread(
   String id,
@@ -88,9 +90,8 @@ Widget _wrap({
 }
 
 void main() {
-  testWidgets('renders a tile per thread with agent filter chips', (
-    tester,
-  ) async {
+  testWidgets('renders a tile per conversation, with no filter chips',
+      (tester) async {
     await tester.pumpWidget(
       _wrap(
         threads: [
@@ -99,35 +100,13 @@ void main() {
         ],
       ),
     );
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('Fix the login bug'), findsOneWidget);
     expect(find.text('Add dark mode'), findsOneWidget);
-    // One chip per agent. No "All": a FilterChip toggles off, and "all" is
-    // simply none of them selected — a chip for it would be a second way to
-    // express the same state.
-    expect(find.widgetWithText(FilterChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(FilterChip, 'Claude Code'), findsOneWidget);
-    // …and the state chips, which are the question that brings you here.
-    expect(find.widgetWithText(FilterChip, 'Waiting for you'), findsOneWidget);
-  });
-
-  testWidgets('filters threads when an agent chip is selected', (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex'),
-          _thread('b', 'Add dark mode', 'claude-code'),
-        ],
-      ),
-    );
-    await tester.pump();
-
-    await tester.tap(find.widgetWithText(FilterChip, 'Codex'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Fix the login bug'), findsOneWidget);
-    expect(find.text('Add dark mode'), findsNothing);
+    // The grouping and the two orderings replaced them.
+    expect(find.byType(FilterChip), findsNothing);
   });
 
   testWidgets('shows the empty state when there are no threads', (
@@ -153,51 +132,6 @@ void main() {
     expect(find.text('Delete'), findsOneWidget);
     // The sheet header shows the thread id for reference.
     expect(find.text('th-9'), findsOneWidget);
-  });
-
-  testWidgets('a state chip narrows the list and clears by tapping again',
-      (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex'),
-          _thread('b', 'Add dark mode', 'claude-code'),
-        ],
-        activity: const {'a': ThreadActivity.running},
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    // `pumpAndSettle` would hang here: a working agent draws the app's looping
-    // loader, which never settles by design.
-    await tester.tap(find.widgetWithText(FilterChip, 'Working'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Fix the login bug'), findsOneWidget);
-    expect(find.text('Add dark mode'), findsNothing);
-
-    // Toggling the same chip is how you get back to everything.
-    await tester.tap(find.widgetWithText(FilterChip, 'Working'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Add dark mode'), findsOneWidget);
-  });
-
-  testWidgets('filtering everything away offers a way back', (tester) async {
-    await tester.pumpWidget(
-      _wrap(threads: [_thread('a', 'Fix the login bug', 'codex')]),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    await tester.tap(find.widgetWithText(FilterChip, 'Waiting for you'));
-    await tester.pumpAndSettle();
-    // An empty PC and a filtered-out list are different dead ends; only this
-    // one has a button.
-    expect(find.text('No space matches these filters'), findsOneWidget);
-
-    await tester.tap(find.text('Clear filters'));
-    await tester.pumpAndSettle();
-    expect(find.text('Fix the login bug'), findsOneWidget);
   });
 
   testWidgets('a row reads state, then who, then what', (tester) async {
@@ -244,7 +178,7 @@ void main() {
     }
   });
 
-  group('the hierarchy', () {
+  group('folders', () {
     Thread inFolder(String id, String title, String cwd) => Thread(
           id: id,
           title: title,
@@ -254,57 +188,31 @@ void main() {
           cwd: cwd,
         );
 
-    testWidgets('a project heads its folders, which head their conversations',
+    testWidgets('a folder heads its conversations and counts them',
         (tester) async {
       await tester.pumpWidget(
         _wrap(
-          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
           threads: [
-            inFolder('a', 'Fix login', '/dev/uxnan/app'),
-            inFolder('b', 'Dark mode', '/dev/uxnan/web'),
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Dark mode', '/dev/app'),
+            inFolder('c', 'Docs', '/dev/web'),
           ],
         ),
       );
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('uxnan'), findsOneWidget);
       expect(find.text('app'), findsOneWidget);
       expect(find.text('web'), findsOneWidget);
-      expect(find.text('Fix login'), findsOneWidget);
+      // Second line: how much is in there, without opening it.
+      expect(find.text('2 conversations'), findsOneWidget);
+      expect(find.text('1 conversation'), findsOneWidget);
     });
 
-    testWidgets('closing a project hides its contents but not its state',
+    testWidgets('closing a folder hides its rows but not its state',
         (tester) async {
       await tester.pumpWidget(
-        _wrap(
-          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
-          threads: [inFolder('a', 'Fix login', '/dev/uxnan/app')],
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-
-      await tester.tap(find.text('uxnan'));
-      await tester.pump(const Duration(milliseconds: 300));
-
-      expect(find.text('Fix login'), findsNothing);
-      expect(find.text('app'), findsNothing);
-      // A closed project still reports what is happening inside it — otherwise
-      // closing one hides the very thing the screen exists for.
-      expect(find.byType(AgentStatusIndicator), findsWidgets);
-    });
-
-    testWidgets('closing a folder hides only its own conversations',
-        (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
-          threads: [
-            inFolder('a', 'Fix login', '/dev/uxnan/app'),
-            inFolder('b', 'Dark mode', '/dev/uxnan/web'),
-          ],
-        ),
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
       );
       await tester.pump();
       await tester.pump();
@@ -313,16 +221,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('Fix login'), findsNothing);
-      expect(find.text('Dark mode'), findsOneWidget);
+      // A closed folder still reports what is happening inside it — otherwise
+      // closing one hides the very thing the screen exists for.
+      expect(find.byType(AgentStatusIndicator), findsWidgets);
     });
 
     testWidgets('long-pressing a folder opens its details with the full path',
         (tester) async {
       await tester.pumpWidget(
-        _wrap(
-          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
-          threads: [inFolder('a', 'Fix login', '/dev/uxnan/app')],
-        ),
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
       );
       await tester.pump();
       await tester.pump();
@@ -330,25 +237,37 @@ void main() {
       await tester.longPress(find.text('app'));
       await tester.pump(const Duration(milliseconds: 400));
 
-      // The row is one line by design; the path it cannot show lives here.
-      expect(find.text('/dev/uxnan/app'), findsOneWidget);
+      // The row shows a name; two folders can share one, so the path that
+      // tells them apart lives here.
+      expect(find.text('/dev/app'), findsOneWidget);
       expect(find.text('Copy path'), findsOneWidget);
     });
 
-    testWidgets('work outside every root still appears, in its own group',
-        (tester) async {
-      // A sibling worktree matches no configured root. It must not vanish.
+    testWidgets('a sibling worktree is just another folder', (tester) async {
       await tester.pumpWidget(
         _wrap(
-          projects: const [Project(id: 'p', name: 'uxnan', cwd: '/dev/uxnan')],
-          threads: [inFolder('a', 'On a branch', '/dev/uxnan--feature')],
+          threads: [
+            inFolder('a', 'On main', '/dev/app'),
+            inFolder('b', 'On a branch', '/dev/app--feature'),
+          ],
         ),
       );
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Other spaces'), findsOneWidget);
-      expect(find.text('On a branch'), findsOneWidget);
+      expect(find.text('app'), findsOneWidget);
+      expect(find.text('app--feature'), findsOneWidget);
+    });
+
+    testWidgets('every folder offers to start a conversation in it',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(findUxIcon(UxIcons.add), findsOneWidget);
     });
   });
 }

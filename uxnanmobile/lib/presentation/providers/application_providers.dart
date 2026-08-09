@@ -55,7 +55,7 @@ import 'package:uxnan/presentation/providers/rail_anchors.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
     show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
-    show ThreadSort;
+    show SpaceSort, ThreadSort;
 import 'package:uxnan/presentation/theme/uxnan_theme.dart' show ThemeSource;
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
@@ -1400,7 +1400,24 @@ class ThreadDensityCompact extends Notifier<bool> {
   }
 }
 
-/// Which project groups the user has collapsed in the spaces list.
+/// How the folders in the spaces list are ordered. In-memory: unlike the
+/// conversation ordering, this one is usually changed to answer a question
+/// ("what needs me?") rather than set once as a preference.
+final spaceSortProvider =
+    NotifierProvider<SpaceSortSetting, SpaceSort>(SpaceSortSetting.new);
+
+/// Holds the folder ordering.
+class SpaceSortSetting extends Notifier<SpaceSort> {
+  @override
+  SpaceSort build() => SpaceSort.attention;
+
+  /// Applies a folder ordering. A method rather than a setter, to match the
+  /// `.set(value)` shape every other ordering notifier here uses.
+  // ignore: use_setters_to_change_properties
+  void set(SpaceSort value) => state = value;
+}
+
+/// Which folder groups the user has collapsed in the spaces list.
 ///
 /// Stores what is CLOSED, not what is open: a project the user has never
 /// touched should come back the way they left the screen — visible.

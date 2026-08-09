@@ -20,63 +20,62 @@ void main() {
 
   Project project(String id, String cwd) => Project(id: id, name: id, cwd: cwd);
 
-  test('a thread lands under the root its folder sits in', () {
+  test('conversations in one folder become one group', () {
     final groups = groupThreadsByWorkspace(
-      threads: [thread('t1', cwd: '/dev/app/lib')],
-      projects: [project('app', '/dev/app')],
+      threads: [
+        thread('t1', cwd: '/dev/app'),
+        thread('t2', cwd: '/dev/app'),
+      ],
+      projects: const [],
     );
 
     expect(groups, hasLength(1));
-    expect(groups.single.id, 'app');
-    expect(groups.single.workspaces.single.label, 'lib');
-    expect(groups.single.threads.map((t) => t.id), ['t1']);
+    expect(groups.single.label, 'app');
+    expect(groups.single.threads.map((t) => t.id), ['t1', 't2']);
   });
 
-  test('a root itself is a workspace, not just its children', () {
+  test('a folder that is a configured root takes the project name', () {
+    // Friendlier than the basename, which is often a build-tool artefact.
     final groups = groupThreadsByWorkspace(
-      threads: [thread('t1', cwd: '/dev/app')],
-      projects: [project('app', '/dev/app')],
+      threads: [thread('t1', cwd: '/dev/checkouts/app-main')],
+      projects: [project('uxnan', '/dev/checkouts/app-main')],
     );
 
-    expect(groups.single.workspaces.single.label, 'app');
-  });
-
-  test('nested roots resolve to the closest one, not the first listed', () {
-    // A bridge can be configured with both a parent and a child folder. The
-    // deeper one is the answer; matching the first would file the thread under
-    // a project that merely contains it.
-    final groups = groupThreadsByWorkspace(
-      threads: [thread('t1', cwd: '/dev/mono/packages/api/src')],
-      projects: [
-        project('mono', '/dev/mono'),
-        project('api', '/dev/mono/packages/api'),
-      ],
-    );
-
-    expect(groups.single.id, 'api');
+    expect(groups.single.label, 'uxnan');
   });
 
   test('Windows separators and casing are the same folder', () {
     final groups = groupThreadsByWorkspace(
       threads: [
-        thread('t1', cwd: r'C:\Dev\App\lib'),
-        thread('t2', cwd: 'c:/dev/app/lib/'),
+        thread('t1', cwd: r'C:\Dev\App'),
+        thread('t2', cwd: 'c:/dev/app/'),
       ],
-      projects: [project('app', r'C:\Dev\App')],
+      projects: const [],
     );
 
     expect(
-      groups.single.workspaces,
+      groups,
       hasLength(1),
       reason: 'two spellings of one path must not become two rows',
     );
-    expect(groups.single.workspaces.single.threads, hasLength(2));
+    expect(groups.single.threads, hasLength(2));
   });
 
-  test('a sibling worktree falls to "other" — the known gap', () {
-    // `…/app` and `…/app--branch` are siblings, so the worktree matches no
-    // root. Documented rather than papered over: closing it needs the bridge to
-    // report worktrees (`git/worktrees`).
+  test('the displayed path is the one that was reported, not the folded key',
+      () {
+    // The key is lower-cased for matching; a user must never read that.
+    final groups = groupThreadsByWorkspace(
+      threads: [thread('t1', cwd: r'C:\Dev\App')],
+      projects: const [],
+    );
+
+    expect(groups.single.path, r'C:\Dev\App');
+    expect(groups.single.key, isNot(contains('D')));
+  });
+
+  test('a sibling worktree is simply its own folder', () {
+    // No project level to fall out of: `…/app` and `…/app--feature` are two
+    // folders, which is exactly what the phone can honestly say about them.
     final groups = groupThreadsByWorkspace(
       threads: [
         thread('main', cwd: '/dev/app'),
@@ -85,77 +84,39 @@ void main() {
       projects: [project('app', '/dev/app')],
     );
 
-    expect(groups.map((g) => g.id), ['app', kOtherProjectId]);
-    expect(groups.last.threads.map((t) => t.id), ['wt']);
+    expect(groups.map((g) => g.label), ['app', 'app--feature']);
   });
 
-  test('a prefix that is not a path boundary does not match', () {
-    // `/dev/apples` starts with `/dev/app` as a STRING but is a different
-    // folder; only a `/` boundary counts.
-    final groups = groupThreadsByWorkspace(
-      threads: [thread('t1', cwd: '/dev/apples')],
-      projects: [project('app', '/dev/app')],
-    );
-
-    expect(groups.single.id, kOtherProjectId);
-  });
-
-  test('a thread with no folder still has a home', () {
+  test('a thread with no folder groups on its own', () {
     final groups = groupThreadsByWorkspace(
       threads: [thread('t1')],
-      projects: [project('app', '/dev/app')],
+      projects: const [],
     );
 
-    expect(groups.single.id, kOtherProjectId);
+    expect(groups.single.key, isEmpty);
     expect(groups.single.threads.map((t) => t.id), ['t1']);
   });
 
-  test('a project with no conversations is not drawn at all', () {
+  test('a configured root with no conversations is not drawn', () {
     // The screen lists work, not the bridge's configuration.
     final groups = groupThreadsByWorkspace(
       threads: [thread('t1', cwd: '/dev/app')],
       projects: [project('app', '/dev/app'), project('idle', '/dev/idle')],
     );
 
-    expect(groups.map((g) => g.id), ['app']);
+    expect(groups, hasLength(1));
   });
 
-  test('projects keep the bridge order; "other" always comes last', () {
-    final groups = groupThreadsByWorkspace(
-      threads: [
-        thread('loose', cwd: '/elsewhere'),
-        thread('b', cwd: '/dev/b'),
-        thread('a', cwd: '/dev/a'),
-      ],
-      projects: [project('a', '/dev/a'), project('b', '/dev/b')],
-    );
-
-    expect(groups.map((g) => g.id), ['a', 'b', kOtherProjectId]);
-  });
-
-  test("thread order inside a workspace is the caller's", () {
+  test("thread order inside a folder is the caller's", () {
     // The screen sorts before grouping; grouping must not undo it.
     final groups = groupThreadsByWorkspace(
       threads: [
         thread('third', cwd: '/dev/app'),
         thread('first', cwd: '/dev/app'),
       ],
-      projects: [project('app', '/dev/app')],
-    );
-
-    expect(
-      groups.single.workspaces.single.threads.map((t) => t.id),
-      ['third', 'first'],
-    );
-  });
-
-  test('a thread whose project the bridge no longer lists is still shown', () {
-    // Losing a root from the config must not make conversations disappear.
-    final groups = groupThreadsByWorkspace(
-      threads: [thread('t1', cwd: '/gone/away')],
       projects: const [],
     );
 
-    expect(groups.single.threads.map((t) => t.id), ['t1']);
+    expect(groups.single.threads.map((t) => t.id), ['third', 'first']);
   });
 }

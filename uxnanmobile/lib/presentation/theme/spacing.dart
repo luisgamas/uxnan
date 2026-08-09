@@ -57,6 +57,18 @@ class UxnanSize {
   /// Glyph size inside an [iconSurface].
   static const double iconSurfaceGlyph = 22;
 
+  /// A glyph drawn **inside content** — a row's leading mark, a folder, a
+  /// chevron. The Neural Expressive guide sizes chrome (icon surfaces) and the
+  /// composer, but never said anything about these, which is how they drifted
+  /// between 13 and 18 dp across the app. Material's own default is 24; 20 sits
+  /// just under it so a content glyph never out-weighs the text it labels.
+  static const double iconContent = 20;
+
+  /// The subordinate glyph on the same row: a state mark beside an identity
+  /// mark, a chevron beside a name. Small enough to read as secondary, large
+  /// enough to still be a shape rather than a dot.
+  static const double iconContentSmall = 16;
+
   /// Diameter of the shared floating conversation/history scroll shortcut.
   static const double floatingScrollShortcut = 52;
 

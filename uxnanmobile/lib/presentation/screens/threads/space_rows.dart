@@ -13,20 +13,19 @@ import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// How far a workspace row sits in from its project, and a conversation from
-/// its workspace.
+/// How far a conversation sits in from the folder it belongs to.
 ///
-/// Kept small on purpose. Three levels of nesting on a 390 dp phone can eat a
-/// third of the width before any text starts, so the hierarchy is carried by a
-/// hairline guide and a size step rather than by distance.
-const double kSpaceIndent = UxnanSpacing.md;
+/// Carried by space alone. An earlier version drew a hairline down the left of
+/// every open folder, and it read as a table rule — boxing in the rows it was
+/// only meant to relate.
+const double kSpaceIndent = UxnanSpacing.lg;
 
-/// The strongest state among a set of conversations — what the group as a whole
-/// is doing.
+/// The strongest state among a set of conversations — what the folder as a
+/// whole is doing.
 ///
-/// Priority mirrors the per-thread one: a group with anything waiting is
-/// waiting, and so on down. A group is never quieter than its loudest member,
-/// which is the only way a collapsed row can be trusted.
+/// Priority mirrors the per-thread one: a folder with anything waiting is
+/// waiting, and so on down. A folder is never quieter than its loudest
+/// conversation, which is the only thing that makes a closed one trustworthy.
 AgentRunStatus aggregateStatus(WidgetRef ref, Iterable<Thread> threads) {
   var errored = false;
   AgentRunState? best;
@@ -42,35 +41,38 @@ AgentRunStatus aggregateStatus(WidgetRef ref, Iterable<Thread> threads) {
     errored = errored || status.errored;
     if (best == null || rank[status.state]! < rank[best]!) best = status.state;
   }
-  return (
-    state: best ?? AgentRunState.idle,
-    errored: errored,
-    stale: false,
-  );
+  return (state: best ?? AgentRunState.idle, errored: errored, stale: false);
 }
 
-/// A project: a header that opens and closes, with a summary line that only
-/// appears when it has something to say.
-class ProjectGroupHeader extends ConsumerWidget {
-  /// Creates a [ProjectGroupHeader].
-  const ProjectGroupHeader({
+/// A working folder: the top of the list, and the only grouping the phone can
+/// honestly draw today.
+///
+/// Two lines. The name and what the folder is doing on the first; how many
+/// conversations it holds and which agents are in it on the second.
+class WorkspaceGroupRow extends ConsumerWidget {
+  /// Creates a [WorkspaceGroupRow].
+  const WorkspaceGroupRow({
     required this.group,
     required this.expanded,
     required this.onToggle,
+    required this.onDetails,
     required this.onNewConversation,
     super.key,
   });
 
-  /// The project being headed.
-  final ProjectGroup group;
+  /// The folder being headed.
+  final WorkspaceGroup group;
 
-  /// Whether its contents are showing.
+  /// Whether its conversations are showing.
   final bool expanded;
 
   /// Opens or closes it.
   final VoidCallback onToggle;
 
-  /// Starts a conversation in this project's folder.
+  /// Opens the detail sheet (long press).
+  final VoidCallback onDetails;
+
+  /// Starts a conversation in this folder.
   final VoidCallback onNewConversation;
 
   @override
@@ -78,27 +80,23 @@ class ProjectGroupHeader extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final threads = group.threads.toList();
+    final threads = group.threads;
+    final label = group.label.isEmpty ? l10n.spacesNoFolder : group.label;
     final unread = threads.any((t) => ref.watch(unreadForProvider(t.id)));
-
-    // The summary earns its line only when there is real signal. A project with
-    // one folder and nothing running says nothing a second line could add, and
-    // a screen of empty summaries is how a list stops being scannable.
-    final workspaces = group.workspaces.length;
     final agents = _distinctAgents(threads);
-    final showSummary = workspaces > 1 || agents.length > 1;
 
     return Semantics(
       button: true,
       expanded: expanded,
-      label: group.name.isEmpty ? l10n.spacesOther : group.name,
+      label: label,
       child: InkWell(
         onTap: onToggle,
+        onLongPress: onDetails,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UxnanSpacing.sm,
-            vertical: UxnanSpacing.sm,
+            vertical: UxnanSpacing.xs,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,20 +113,20 @@ class ProjectGroupHeader extends ConsumerWidget {
                     curve: Curves.easeOutCubic,
                     child: UxIcon(
                       UxIcons.chevronRight,
-                      size: 18,
+                      size: UxnanSize.iconContentSmall,
                       color: colors.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: UxnanSpacing.xs),
                   UxIcon(
                     UxIcons.folder,
-                    size: 18,
+                    size: UxnanSize.iconContent,
                     color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: UxnanSpacing.sm),
                   Expanded(
                     child: Text(
-                      group.name.isEmpty ? l10n.spacesOther : group.name,
+                      label,
                       style: textTheme.titleSmall,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -139,47 +137,47 @@ class ProjectGroupHeader extends ConsumerWidget {
                     _UnreadDot(color: colors.primary),
                   ],
                   const SizedBox(width: UxnanSpacing.xs),
-                  // Closed, the header still has to say what is going on
-                  // inside — otherwise closing a project hides the very thing
-                  // you opened the app for.
+                  // Closed, the row still has to report what is happening
+                  // inside it — otherwise closing a folder hides the very
+                  // thing the screen exists to surface.
                   if (!expanded)
-                    AgentStatusIndicator(status: aggregateStatus(ref, threads)),
-                  IconButton(
-                    onPressed: onNewConversation,
-                    icon: const UxIcon(UxIcons.add, size: 20),
-                    tooltip: l10n.spacesNewConversationHere,
-                    visualDensity: VisualDensity.compact,
-                  ),
+                    AgentStatusIndicator(
+                      status: aggregateStatus(ref, threads),
+                      size: UxnanSize.iconContentSmall,
+                    ),
+                  _NewConversationButton(onPressed: onNewConversation),
                 ],
               ),
-              if (showSummary)
-                Padding(
-                  // Lines up under the title, not under the chevron.
-                  padding: const EdgeInsets.only(left: 46, top: 2),
-                  child: Row(
-                    children: [
-                      Text(
-                        l10n.spacesWorkspaceCount(workspaces),
-                        style: textTheme.bodySmall,
-                      ),
-                      if (agents.isNotEmpty) ...[
-                        const SizedBox(width: UxnanSpacing.sm),
-                        for (final agent in agents.take(3))
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              right: UxnanSpacing.xs,
-                            ),
-                            child: AgentLogo(agent: agent, size: 14),
+              // Lines up under the name, not under the chevron.
+              Padding(
+                padding: const EdgeInsets.only(left: 44),
+                child: Row(
+                  children: [
+                    Text(
+                      l10n.spacesConversationCount(threads.length),
+                      style: textTheme.bodySmall,
+                    ),
+                    if (agents.isNotEmpty) ...[
+                      const SizedBox(width: UxnanSpacing.sm),
+                      for (final agent in agents.take(3))
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            right: UxnanSpacing.xs,
                           ),
-                        if (agents.length > 3)
-                          Text(
-                            '+${agents.length - 3}',
-                            style: textTheme.bodySmall,
+                          child: AgentLogo(
+                            agent: agent,
+                            size: UxnanSize.iconContentSmall,
                           ),
-                      ],
+                        ),
+                      if (agents.length > 3)
+                        Text(
+                          '+${agents.length - 3}',
+                          style: textTheme.bodySmall,
+                        ),
                     ],
-                  ),
+                  ],
                 ),
+              ),
             ],
           ),
         ),
@@ -196,119 +194,43 @@ class ProjectGroupHeader extends ConsumerWidget {
   }
 }
 
-/// A working folder: one line of text and nothing else.
-///
-/// Everything a folder could say — its full path, its conversations, its git
-/// state once that lands — lives one long-press away instead of on a second
-/// line. `uxnandesktop` makes the same trade with a hover card; a phone has no
-/// hover, so the gesture is the press.
-class WorkspaceGroupRow extends ConsumerWidget {
-  /// Creates a [WorkspaceGroupRow].
-  const WorkspaceGroupRow({
-    required this.group,
-    required this.expanded,
-    required this.onToggle,
-    required this.onDetails,
-    super.key,
-  });
+/// The row's own action: an **XS button** from the guide's button hierarchy
+/// (§4.5) — 32 dp of surface around a content-sized glyph, inside the usual
+/// 48 dp touch target. Large enough to read as a button rather than a
+/// decorative plus, small enough not to compete with the folder it sits on.
+class _NewConversationButton extends StatelessWidget {
+  const _NewConversationButton({required this.onPressed});
 
-  /// The folder being headed.
-  final WorkspaceGroup group;
-
-  /// Whether its conversations are showing.
-  final bool expanded;
-
-  /// Opens or closes it.
-  final VoidCallback onToggle;
-
-  /// Opens the detail sheet.
-  final VoidCallback onDetails;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final l10n = AppLocalizations.of(context);
-    final label = group.label.isEmpty ? l10n.spacesNoFolder : group.label;
-
-    return InkWell(
-      onTap: onToggle,
-      onLongPress: onDetails,
-      borderRadius: const BorderRadius.all(UxnanRadius.md),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.sm,
-          vertical: UxnanSpacing.xs,
-        ),
-        child: Row(
-          children: [
-            AnimatedRotation(
-              turns: expanded ? 0.25 : 0,
-              duration: MediaQuery.disableAnimationsOf(context)
-                  ? Duration.zero
-                  : const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              child: UxIcon(
-                UxIcons.chevronRight,
-                size: 14,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: UxnanSpacing.xs),
-            // Where the branch name will go once git lands (phase 4); until
-            // then the folder's own name is the most specific thing known.
-            UxIcon(
-              UxIcons.altRoute,
-              size: 14,
-              color: colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: UxnanSpacing.sm),
-            Expanded(
-              child: Text(
-                label,
-                style: textTheme.bodyMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (!expanded) ...[
-              const SizedBox(width: UxnanSpacing.sm),
-              AgentStatusIndicator(
-                status: aggregateStatus(ref, group.threads),
-                size: 12,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The hairline that ties indented rows back to the row they belong to.
-class SpaceGuide extends StatelessWidget {
-  /// Creates a [SpaceGuide] around [child].
-  const SpaceGuide({required this.child, super.key});
-
-  /// The indented content.
-  final Widget child;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(left: kSpaceIndent),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              color: colors.outlineVariant.withValues(alpha: 0.5),
+    final label = AppLocalizations.of(context).spacesNewConversationHere;
+    return Tooltip(
+      message: label,
+      child: SizedBox(
+        width: UxnanSize.minTouchTarget,
+        height: UxnanSize.minTouchTarget,
+        child: Center(
+          child: Material(
+            color: colors.surfaceContainerHigh,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onPressed,
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: UxIcon(
+                  UxIcons.add,
+                  size: UxnanSize.iconContent,
+                  color: colors.onSurfaceVariant,
+                  semanticLabel: label,
+                ),
+              ),
             ),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.only(left: UxnanSpacing.sm),
-          child: child,
         ),
       ),
     );

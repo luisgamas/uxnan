@@ -13,6 +13,19 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// thread lists, so both screens behave identically.
 
 /// How a threads list is ordered. [created] (newest first) is the default.
+/// How the folders themselves are ordered.
+enum SpaceSort {
+  /// Alphabetical — the order that stays put while you work.
+  name,
+
+  /// The folder that moved most recently first.
+  activity,
+
+  /// Whatever wants you first: waiting, then blocked, then working. The order
+  /// you want when you open the app to find out what happened.
+  attention,
+}
+
 enum ThreadSort {
   /// Newest created first (the default).
   created,
@@ -213,45 +226,112 @@ class _SearchResultTile extends StatelessWidget {
 }
 
 /// App-bar sort control: an M3 menu with a check on the active [sort].
+/// One value the sort menu can return: either an ordering for the folders or
+/// one for the conversations inside them.
+sealed class SortChoice {
+  const SortChoice();
+}
+
+/// Order the folders.
+class SpaceSortChoice extends SortChoice {
+  /// Creates a [SpaceSortChoice].
+  const SpaceSortChoice(this.value);
+
+  /// The chosen folder ordering.
+  final SpaceSort value;
+}
+
+/// Order the conversations inside each folder.
+class ThreadSortChoice extends SortChoice {
+  /// Creates a [ThreadSortChoice].
+  const ThreadSortChoice(this.value);
+
+  /// The chosen conversation ordering.
+  final ThreadSort value;
+}
+
+/// The ordering menu, in two headed groups.
+///
+/// The list has two axes now — which folder comes first, and which conversation
+/// comes first inside it — and they answer different questions. One flat menu
+/// mixing them would make the reader work out which of their rows each entry
+/// moves.
 class ThreadSortMenu extends StatelessWidget {
   /// Creates a [ThreadSortMenu].
   const ThreadSortMenu({
-    required this.sort,
+    required this.threadSort,
     required this.onChanged,
+    this.spaceSort,
     super.key,
   });
 
-  /// The current ordering.
-  final ThreadSort sort;
+  /// The current folder ordering, or null on a screen with no folders (the
+  /// archived list), which then shows only the conversation group.
+  final SpaceSort? spaceSort;
 
-  /// Called when the user picks a different ordering.
-  final ValueChanged<ThreadSort> onChanged;
+  /// The current conversation ordering.
+  final ThreadSort threadSort;
+
+  /// Called when the user picks either ordering.
+  final ValueChanged<SortChoice> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return IconSurfaceMenu<ThreadSort>(
+    final textTheme = Theme.of(context).textTheme;
+    final colors = Theme.of(context).colorScheme;
+
+    PopupMenuEntry<SortChoice> header(String text) => PopupMenuItem<SortChoice>(
+          enabled: false,
+          height: 32,
+          child: Text(
+            text,
+            style: textTheme.bodySmall?.copyWith(color: colors.primary),
+          ),
+        );
+
+    return IconSurfaceMenu<SortChoice>(
       tooltip: l10n.threadsSortBy,
       icon: UxIcons.sort,
       // No `initialValue`: it would tint the active item's background with
       // square corners (overflowing the rounded menu). The active ordering is
-      // already shown by the CheckedPopupMenuItem's check, like the more menu.
+      // already shown by the CheckedPopupMenuItem's check.
       onSelected: onChanged,
       itemBuilder: (context) => [
+        if (spaceSort != null) ...[
+          header(l10n.sortFoldersHeader),
+          CheckedPopupMenuItem(
+            value: const SpaceSortChoice(SpaceSort.attention),
+            checked: spaceSort == SpaceSort.attention,
+            child: Text(l10n.sortByAttention),
+          ),
+          CheckedPopupMenuItem(
+            value: const SpaceSortChoice(SpaceSort.activity),
+            checked: spaceSort == SpaceSort.activity,
+            child: Text(l10n.sortByActivity),
+          ),
+          CheckedPopupMenuItem(
+            value: const SpaceSortChoice(SpaceSort.name),
+            checked: spaceSort == SpaceSort.name,
+            child: Text(l10n.threadsSortName),
+          ),
+          const PopupMenuDivider(),
+          header(l10n.sortConversationsHeader),
+        ],
         CheckedPopupMenuItem(
-          value: ThreadSort.created,
-          checked: sort == ThreadSort.created,
+          value: const ThreadSortChoice(ThreadSort.created),
+          checked: threadSort == ThreadSort.created,
           child: Text(l10n.threadsSortCreated),
         ),
         CheckedPopupMenuItem(
-          value: ThreadSort.name,
-          checked: sort == ThreadSort.name,
-          child: Text(l10n.threadsSortName),
+          value: const ThreadSortChoice(ThreadSort.activity),
+          checked: threadSort == ThreadSort.activity,
+          child: Text(l10n.sortByActivity),
         ),
         CheckedPopupMenuItem(
-          value: ThreadSort.activity,
-          checked: sort == ThreadSort.activity,
-          child: Text(l10n.sortByActivity),
+          value: const ThreadSortChoice(ThreadSort.name),
+          checked: threadSort == ThreadSort.name,
+          child: Text(l10n.threadsSortName),
         ),
       ],
     );

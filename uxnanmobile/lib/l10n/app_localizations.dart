@@ -452,6 +452,30 @@ abstract class AppLocalizations {
   /// **'{count} online now'**
   String profileActiveSessions(int count);
 
+  /// No description provided for @sortFoldersHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders'**
+  String get sortFoldersHeader;
+
+  /// No description provided for @sortConversationsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get sortConversationsHeader;
+
+  /// No description provided for @sortByAttention.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs attention'**
+  String get sortByAttention;
+
+  /// No description provided for @spacesConversationCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 conversation} other{{count} conversations}}'**
+  String spacesConversationCount(int count);
+
   /// No description provided for @spacesOther.
   ///
   /// In en, this message translates to:

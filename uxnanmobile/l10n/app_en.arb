@@ -108,6 +108,13 @@
     "description": "How many live sessions the phone currently holds.",
     "placeholders": { "count": { "type": "int" } }
   },
+  "sortFoldersHeader": "Folders",
+  "sortConversationsHeader": "Conversations",
+  "sortByAttention": "Needs attention",
+  "spacesConversationCount": "{count, plural, =1{1 conversation} other{{count} conversations}}",
+  "@spacesConversationCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
   "spacesOther": "Other spaces",
   "spacesNoFolder": "No folder",
   "spacesNewConversationHere": "New conversation here",

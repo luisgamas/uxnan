@@ -75,6 +75,13 @@
     "description": "How many live sessions the phone currently holds.",
     "placeholders": { "count": { "type": "int" } }
   },
+  "sortFoldersHeader": "Carpetas",
+  "sortConversationsHeader": "Conversaciones",
+  "sortByAttention": "Requiere atención",
+  "spacesConversationCount": "{count, plural, =1{1 conversación} other{{count} conversaciones}}",
+  "@spacesConversationCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
   "spacesOther": "Otros espacios",
   "spacesNoFolder": "Sin carpeta",
   "spacesNewConversationHere": "Nueva conversación aquí",

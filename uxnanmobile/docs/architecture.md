@@ -117,20 +117,25 @@ known:
 The status dot on the machine glyph carries the same three states, so the card
 is readable before any of its text is.
 
-A PC's conversations are grouped **project → folder → conversation**, inferred
-by `groupThreadsByWorkspace`
-(`application/services/workspace_grouping.dart`) — a pure function over
-`threadsProvider` + `projectsProvider`, so the whole inference is testable and
-so the `git/worktrees` contract can replace it without touching the UI. A
-conversation matches the **longest** project root containing its `cwd`, on
-folder boundaries, with paths normalised for Windows separators and casing.
-Whatever matches nothing — a thread with no `cwd`, and a sibling **worktree** —
-groups under `kOtherProjectId` rather than disappearing.
+A PC's conversations are grouped by the **folder** they run in, by
+`groupThreadsByWorkspace` (`application/services/workspace_grouping.dart`) — a
+pure function over `threadsProvider` + `projectsProvider`, so the whole
+inference is testable and the `git/worktrees` contract can replace it without
+touching the UI. Paths are matched after normalising separators and case; the
+path shown and copied is the one that was reported. Configured roots contribute
+their name only.
 
-`ThreadsScreen` flattens that tree into typed rows (`_ProjectRow`,
-`_WorkspaceRow`, `_ThreadRow`) so the sliver stays lazy. Project collapse is
-persisted as the set of **closed** ids (`collapsedProjectsProvider`), so a
-project seen for the first time is open; folder collapse is per-session.
+There is deliberately **no project level**: the bridge reports flat roots and
+nothing about worktrees, so a project heading would sit over one folder plus an
+"other" bucket holding most of the work. It returns when the bridge can say
+which folders are worktrees of which repository.
+
+`ThreadsScreen` flattens the folders into typed rows (`_WorkspaceRow`,
+`_ThreadRow`) so the sliver stays lazy. Folder collapse is persisted as the set
+of **closed** keys (`collapsedProjectsProvider`), so a folder seen for the first
+time is open. Two orderings apply independently: `spaceSortProvider` for the
+folders (attention / activity / name) and `threadSortProvider` for the
+conversations inside them.
 
 A thread row reads state → agent → text (`thread_tile.dart`), mirroring
 `uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a

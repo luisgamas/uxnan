@@ -51,9 +51,13 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
           onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          sort: sort,
-          onChanged: (value) =>
-              ref.read(threadSortProvider.notifier).set(value),
+          // No folder group here: the archive is a flat list.
+          threadSort: sort,
+          onChanged: (choice) {
+            if (choice is ThreadSortChoice) {
+              ref.read(threadSortProvider.notifier).set(choice.value);
+            }
+          },
         ),
         ThreadMoreMenu(
           compact: compact,

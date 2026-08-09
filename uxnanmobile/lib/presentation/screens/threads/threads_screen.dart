@@ -6,12 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
-import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
-import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
@@ -22,8 +20,6 @@ import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_details_sheet.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/agent_logo.dart';
-import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -42,19 +38,6 @@ class ThreadsScreen extends ConsumerStatefulWidget {
 }
 
 class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
-  /// The selected agent filter; null means "all agents". In-memory: a filter
-  /// is a thing you do for a minute, not a setting.
-  AgentId? _agentFilter;
-
-  /// The selected state filter; null means "any state". Project filtering is
-  /// gone — the list IS grouped by project now, so a chip for it would filter
-  /// the thing the screen already shows you.
-  _StateFilter? _stateFilter;
-
-  /// Folders the user has closed, by workspace key. In-memory on purpose:
-  /// unlike a project, a folder is closed to get it out of the way right now.
-  final Set<String> _closedWorkspaces = {};
-
   @override
   void initState() {
     super.initState();
@@ -143,31 +126,17 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
 
-    final agents = _agentsPresent(threads);
-    final filtered = threads.where((t) {
-      if (_agentFilter != null &&
-          AgentIdParsing.fromWireId(t.agentId) != _agentFilter) {
-        return false;
-      }
-      final stateFilter = _stateFilter;
-      if (stateFilter == null) return true;
-      final status = ref.watch(agentRunStatusProvider(t.id));
-      return switch (stateFilter) {
-        _StateFilter.working => status.state == AgentRunState.working,
-        _StateFilter.waiting => status.state == AgentRunState.waiting,
-        _StateFilter.unread => ref.watch(unreadForProvider(t.id)),
-      };
-    }).toList();
-    // Sorted BEFORE grouping: the grouping keeps the order it is given, so one
-    // sort decides the order inside every folder.
-    final visible = sortThreads(filtered, sort);
-    final groups = groupThreadsByWorkspace(
-      threads: visible,
-      projects: ref.watch(projectsProvider).value ?? const [],
+    final spaceSort = ref.watch(spaceSortProvider);
+    // Conversations are sorted BEFORE grouping — the grouping keeps the order
+    // it is given, so one setting decides the order inside every folder.
+    final groups = _sortSpaces(
+      groupThreadsByWorkspace(
+        threads: sortThreads(threads, sort),
+        projects: ref.watch(projectsProvider).value ?? const [],
+      ),
+      spaceSort,
     );
     final collapsed = ref.watch(collapsedProjectsProvider);
-    // A live search opens everything, so a match is never hidden behind a
-    // closed project — without touching what the user chose to close.
     final rows = _flatten(groups, collapsed: collapsed);
 
     final l10n = AppLocalizations.of(context);
@@ -182,9 +151,14 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
           onSelect: (id) => context.push(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          sort: sort,
-          onChanged: (value) =>
+          spaceSort: spaceSort,
+          threadSort: sort,
+          onChanged: (choice) => switch (choice) {
+            SpaceSortChoice(:final value) =>
+              ref.read(spaceSortProvider.notifier).set(value),
+            ThreadSortChoice(:final value) =>
               ref.read(threadSortProvider.notifier).set(value),
+          },
         ),
         ThreadMoreMenu(
           compact: compact,
@@ -210,18 +184,6 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         // Bridge-update notice: the paired PC's bridge reports it's outdated
         // (`bridge/status.updateAvailable`). Informational + dismissible.
         const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
-        // One bar: which agent, and what state. Filtering by project is gone —
-        // the list is grouped by project now, so a chip for it would filter the
-        // very thing the screen is showing.
-        SliverToBoxAdapter(
-          child: _FilterBar(
-            agents: agents,
-            agentFilter: _agentFilter,
-            stateFilter: _stateFilter,
-            onAgent: (agent) => setState(() => _agentFilter = agent),
-            onState: (state) => setState(() => _stateFilter = state),
-          ),
-        ),
         if (!connectedHere)
           SliverToBoxAdapter(
             child: _OfflineBanner(
@@ -230,18 +192,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             ),
           ),
         if (rows.isEmpty)
-          SliverFillRemaining(
+          const SliverFillRemaining(
             hasScrollBody: false,
-            // Nothing at all, or nothing that survived the filters: two very
-            // different dead ends, and only one of them has a way out.
-            child: threads.isEmpty
-                ? const _EmptyThreads()
-                : _NoMatches(
-                    onClear: () => setState(() {
-                      _agentFilter = null;
-                      _stateFilter = null;
-                    }),
-                  ),
+            child: _EmptyThreads(),
           )
         else
           SliverPadding(
@@ -267,32 +220,74 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     );
   }
 
-  /// Turns the tree into the flat run of rows the sliver builds from.
+  /// Orders the folders. Attention first by default: the reason to open this
+  /// screen is usually "what happened", not "what exists".
+  List<WorkspaceGroup> _sortSpaces(
+    List<WorkspaceGroup> groups,
+    SpaceSort sort,
+  ) {
+    final list = [...groups];
+    switch (sort) {
+      case SpaceSort.name:
+        list.sort(
+          (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+        );
+      case SpaceSort.activity:
+        list.sort((a, b) => _lastMoved(b).compareTo(_lastMoved(a)));
+      case SpaceSort.attention:
+        list.sort((a, b) {
+          final byState = _attentionRank(ref, a).compareTo(
+            _attentionRank(ref, b),
+          );
+          // Within the same urgency, the one that moved last is the one you
+          // were most likely looking at.
+          return byState != 0
+              ? byState
+              : _lastMoved(b).compareTo(_lastMoved(a));
+        });
+    }
+    return list;
+  }
+
+  static DateTime _lastMoved(WorkspaceGroup group) {
+    DateTime? newest;
+    for (final thread in group.threads) {
+      final at = thread.lastActivity;
+      if (at == null) continue;
+      if (newest == null || at.isAfter(newest)) newest = at;
+    }
+    return newest ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  static int _attentionRank(WidgetRef ref, WorkspaceGroup group) {
+    return switch (aggregateStatus(ref, group.threads).state) {
+      AgentRunState.waiting => 0,
+      AgentRunState.blocked => 1,
+      AgentRunState.working => 2,
+      AgentRunState.done => 3,
+      AgentRunState.idle => 4,
+    };
+  }
+
+  /// Turns the folders into the flat run of rows the sliver builds from.
   ///
   /// Flat, not nested: a nested tree would build every conversation the moment
   /// the screen appears, and this list is the one place a PC with hundreds of
   /// them has to stay responsive.
   List<_SpaceRow> _flatten(
-    List<ProjectGroup> groups, {
+    List<WorkspaceGroup> groups, {
     required Set<String> collapsed,
   }) {
     final rows = <_SpaceRow>[];
-    for (final project in groups) {
-      final open = !collapsed.contains(project.id);
-      rows.add(_ProjectRow(project, expanded: open));
-      if (!open) continue;
-      for (final workspace in project.workspaces) {
-        // A folder with no name of its own (a thread with no cwd) has nothing
-        // to head; its conversations stand directly under the project.
-        final headed = workspace.key.isNotEmpty;
-        final shown = !_closedWorkspaces.contains(workspace.key);
-        if (headed) {
-          rows.add(_WorkspaceRow(workspace, project, expanded: shown));
-        }
-        if (headed && !shown) continue;
-        for (final thread in workspace.threads) {
-          rows.add(_ThreadRow(thread, indented: headed));
-        }
+    for (final group in groups) {
+      // A conversation with no folder of its own has nothing to head; it
+      // stands on its own rather than under an empty heading.
+      final headed = group.key.isNotEmpty;
+      final open = !collapsed.contains(group.key);
+      if (headed) rows.add(_WorkspaceRow(group, expanded: open));
+      if (headed && !open) continue;
+      for (final thread in group.threads) {
+        rows.add(_ThreadRow(thread, indented: headed));
       }
     }
     return rows;
@@ -304,37 +299,25 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     required bool compact,
   }) {
     switch (row) {
-      case _ProjectRow(:final group, :final expanded):
-        return ProjectGroupHeader(
-          key: ValueKey('project-${group.id}'),
+      case _WorkspaceRow(:final group, :final expanded):
+        return WorkspaceGroupRow(
+          key: ValueKey('workspace-${group.key}'),
           group: group,
           expanded: expanded,
           onToggle: () =>
-              ref.read(collapsedProjectsProvider.notifier).toggle(group.id),
-          onNewConversation: () => _newConversation(cwd: group.cwd),
-        );
-      case _WorkspaceRow(:final group, :final project, :final expanded):
-        return SpaceGuide(
-          child: WorkspaceGroupRow(
-            key: ValueKey('workspace-${group.key}'),
-            group: group,
-            expanded: expanded,
-            onToggle: () => setState(() {
-              if (!_closedWorkspaces.remove(group.key)) {
-                _closedWorkspaces.add(group.key);
-              }
-            }),
-            onDetails: () => showWorkspaceDetails(
-              context,
-              group,
-              fullPath: group.threads.first.cwd ?? project.cwd,
-              onOpenThread: (id) => context.push(AppRoutes.conversation(id)),
-            ),
+              ref.read(collapsedProjectsProvider.notifier).toggle(group.key),
+          onDetails: () => showWorkspaceDetails(
+            context,
+            group,
+            fullPath: group.path,
+            onOpenThread: (id) => context.push(AppRoutes.conversation(id)),
           ),
+          onNewConversation: () => _newConversation(cwd: group.path),
         );
       case _ThreadRow(:final thread, :final indented):
-        final tile = Padding(
+        return Padding(
           padding: EdgeInsets.only(
+            left: indented ? kSpaceIndent : 0,
             bottom: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
           ),
           child: ThreadTile(
@@ -343,67 +326,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             compact: compact,
           ),
         );
-        return indented ? SpaceGuide(child: tile) : tile;
     }
   }
-
-  List<AgentId> _agentsPresent(List<Thread> threads) {
-    final seen = <AgentId>{};
-    for (final thread in threads) {
-      seen.add(AgentIdParsing.fromWireId(thread.agentId));
-    }
-    return seen.toList();
-  }
 }
-
-/// Filters left nothing. Distinct from an empty PC: there IS work here, it is
-/// just hidden, so the way out is a button rather than an explanation.
-class _NoMatches extends StatelessWidget {
-  const _NoMatches({required this.onClear});
-
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(UxnanSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(l10n.spacesNoMatch, style: textTheme.bodyMedium),
-            const SizedBox(height: UxnanSpacing.md),
-            FilledButton.tonal(
-              onPressed: onClear,
-              child: Text(l10n.spacesClearFilters),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Which state a state chip filters on.
-enum _StateFilter { working, waiting, unread }
 
 /// A row in the flattened spaces list.
 sealed class _SpaceRow {
   const _SpaceRow();
 }
 
-class _ProjectRow extends _SpaceRow {
-  const _ProjectRow(this.group, {required this.expanded});
-  final ProjectGroup group;
-  final bool expanded;
-}
-
 class _WorkspaceRow extends _SpaceRow {
-  const _WorkspaceRow(this.group, this.project, {required this.expanded});
+  const _WorkspaceRow(this.group, {required this.expanded});
   final WorkspaceGroup group;
-  final ProjectGroup project;
   final bool expanded;
 }
 
@@ -411,72 +345,6 @@ class _ThreadRow extends _SpaceRow {
   const _ThreadRow(this.thread, {required this.indented});
   final Thread thread;
   final bool indented;
-}
-
-/// Which agent, and what state. Two dimensions that compose — unlike the old
-/// agent/project scopes, which were exclusive because filtering by project
-/// meant something the grouping now says better.
-class _FilterBar extends StatelessWidget {
-  const _FilterBar({
-    required this.agents,
-    required this.agentFilter,
-    required this.stateFilter,
-    required this.onAgent,
-    required this.onState,
-  });
-
-  final List<AgentId> agents;
-  final AgentId? agentFilter;
-  final _StateFilter? stateFilter;
-  final ValueChanged<AgentId?> onAgent;
-  final ValueChanged<_StateFilter?> onState;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return SizedBox(
-      height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: UxnanSpacing.sm,
-        ),
-        children: [
-          // State first: "who is waiting on me" is the question that brings
-          // someone to this screen; "which agent" is how they narrow it after.
-          for (final state in _StateFilter.values)
-            Padding(
-              padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-              child: FilterChip(
-                label: Text(
-                  switch (state) {
-                    _StateFilter.working => l10n.filterStateWorking,
-                    _StateFilter.waiting => l10n.filterStateWaiting,
-                    _StateFilter.unread => l10n.filterStateUnread,
-                  },
-                ),
-                selected: stateFilter == state,
-                onSelected: (on) => onState(on ? state : null),
-              ),
-            ),
-          if (agents.length > 1) ...[
-            const SizedBox(width: UxnanSpacing.sm),
-            for (final agent in agents)
-              Padding(
-                padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-                child: FilterChip(
-                  avatar: AgentLogo(agent: agent, size: 16),
-                  label: Text(AgentVisuals.labelFor(agent)),
-                  selected: agentFilter == agent,
-                  onSelected: (on) => onAgent(on ? agent : null),
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
 /// Shown above the list when we are NOT connected to this PC: the threads are a

@@ -213,6 +213,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get sortFoldersHeader => 'Folders';
+
+  @override
+  String get sortConversationsHeader => 'Conversations';
+
+  @override
+  String get sortByAttention => 'Needs attention';
+
+  @override
+  String spacesConversationCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversations',
+      one: '1 conversation',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get spacesOther => 'Other spaces';
 
   @override

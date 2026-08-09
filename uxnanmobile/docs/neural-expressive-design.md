@@ -386,6 +386,21 @@ Center:  empty (no title on the main screen) or active conversation title
 Right:   [Temporary Chats Icon]  [Avatar/Profile 40 dp]
 ```
 
+#### Icon sizes inside content
+
+The tables above size **chrome** — the app-bar Icon Surfaces (44/22) and the
+composer's compact controls (38/24). They say nothing about the glyphs drawn
+inside a row or a card, which is how those drifted between 13 and 18 dp across
+the app. Two tokens close it:
+
+| Token | dp | Use |
+|:---|:---:|:---|
+| `UxnanSize.iconContent` | 20 | A row's own glyph: an agent's mark, a folder, an action on a list row. Just under Material's 24 dp default, so it never out-weighs the text it labels. |
+| `UxnanSize.iconContentSmall` | 16 | The subordinate glyph on the same row: a state mark beside an identity mark, a chevron beside a name. Secondary, but still a shape rather than a dot. |
+
+A row-level action (a "+" on a folder) is an **XS button** from §4.5 — 32 dp of
+surface around an `iconContent` glyph, with the usual 48 dp touch target.
+
 #### The icon set
 
 Glyphs come from the free **stroke-rounded [Hugeicons](https://hugeicons.com)**
