@@ -752,6 +752,18 @@ final threadActivityForProvider =
   return map?[threadId] ?? ThreadActivity.idle;
 });
 
+/// Threads whose agent has asked the user something and is holding the turn,
+/// keyed by thread id.
+final awaitingInputProvider = StreamProvider<Map<String, Set<String>>>(
+  (ref) => ref.watch(threadManagerProvider).awaitingInputStream,
+);
+
+/// Whether this thread's agent is holding a turn on the user's answer.
+final threadAwaitingInputProvider = Provider.family<bool, String>(
+  (ref, threadId) =>
+      ref.watch(awaitingInputProvider).value?[threadId]?.isNotEmpty ?? false,
+);
+
 /// The PC's own non-archived threads, from the local cache — so the overview
 /// can describe a PC that is not connected right now.
 ///

@@ -28,6 +28,18 @@ typedef UxIconData = List<List<dynamic>>;
 class UxIcons {
   const UxIcons._();
 
+  /// Agent state — the agent asked and is holding the turn on your answer.
+  /// Replaces nothing: Material had no glyph for "it needs *you*".
+  static const UxIconData agentWaiting =
+      HugeIcons.strokeRoundedBubbleChatQuestion;
+
+  /// Agent state — held by something that is not your attention (a sign-in, a
+  /// paused queue).
+  static const UxIconData agentBlocked = HugeIcons.strokeRoundedPauseCircle;
+
+  /// Agent state — the turn finished and its reply is unread.
+  static const UxIconData agentDone = HugeIcons.strokeRoundedCheckmarkCircle02;
+
   /// Replaces `UxIcons.accountBalanceWallet`.
   static const UxIconData accountBalanceWallet =
       HugeIcons.strokeRoundedWallet01;

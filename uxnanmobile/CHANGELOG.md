@@ -6,6 +6,56 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — a conversation says what its agent is actually doing
+
+The list showed a spinner or a dot: running, or not. It now shows the same five
+states the desktop sidebar does — **working · waiting for you · blocked · done ·
+idle** — so you can tell from the list which conversation needs you, instead of
+opening three to find out.
+
+The states are the desktop's; **how they are known is not.** The desktop app
+owns the terminals its agents run in and reads a hook server, a terminal title
+and PTY activity. The phone owns none of that, so this is derived from what the
+bridge already sends: turn events, queue state, sign-in status, unread replies,
+and the approval/question blocks the agent emits when it stops to ask.
+
+Those blocks are the interesting half. They arrive for **every** thread, not
+just the open one, so `ThreadManager` now tracks which threads are holding on an
+unanswered question — which is the only reason a list can distinguish "working"
+from "waiting for you" at all. It clears when the user answers or when the turn
+ends, and rebuilds on the next resync, since `turn/list` replays the same
+blocks.
+
+Precedence is the design: **waiting** outranks **working**, because an agent
+that asked and stopped is the one thing worth interrupting someone for, and it
+outranks **blocked** too. A signed-out agent blocks a thread even while idle
+(its next turn cannot run) but not an archived one; a held queue only blocks
+while something is still queued. `errored` and `stale` ride alongside as
+modifiers rather than states, because "the last turn failed" and "it is working
+again" are both true and the row should not have to pick one.
+
+Each state draws a **different shape**, not just a different tint: colour alone
+is not a channel every reader has, and this mark is often the only thing telling
+two identical rows apart. `idle` deliberately keeps a plain dot — it is by far
+the most common state, and a glyph there would be constant noise. A claim that
+has gone quiet for 30 minutes is dimmed rather than dropped: the turn may still
+be alive, and hiding it would be the bigger lie.
+
+The row itself was rebuilt to read the way the desktop's does: **state, then
+who, then what** — the status mark, then the agent's own mark a step larger,
+then the title with its second line beneath. The 44 dp framed avatar is gone: it
+was the loudest thing in a row whose point is the text beside it.
+
+Agent marks lost their border and their drop shadow. `AgentLogo` draws one bare
+for dense rows, and the framed `AgentLogoChip` — still used where an agent is an
+object you pick, the onboarding hero and the picker — is flat now too. The
+shadow was also the reason the thread card looked elevated: the card itself has
+no elevation, and what read as its shadow was the chip's, cast from inside it.
+
+The row's second line follows the state. "Waiting for you" wins over the agent's
+last words; only once nothing is pending does the reply take the line back.
+
+
 ### Changed — the app draws Hugeicons, like the desktop and the website
 
 Mobile was the last surface still on Material Icons. It now uses the same free

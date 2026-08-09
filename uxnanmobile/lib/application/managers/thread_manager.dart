@@ -105,6 +105,17 @@ class ThreadManager {
   /// Per-thread live activity (running/error), surfaced on the thread list so
   /// each card shows whether its conversation is currently working — even when
   /// its screen is closed. Idle threads are absent from the map.
+  /// Threads whose agent has asked the user something and is holding: the
+  /// pending approval / question ids, keyed by thread.
+  ///
+  /// Kept HERE rather than derived from the open conversation because the
+  /// blocks arrive for every thread, not just the one on screen — which is the
+  /// only reason the list can tell "working" from "waiting for you" at all.
+  /// Lost on restart, and rebuilt on the next resync, since `turn/list` replays
+  /// the same blocks.
+  final BehaviorSubject<Map<String, Set<String>>> _awaitingInput =
+      BehaviorSubject<Map<String, Set<String>>>.seeded({});
+
   final BehaviorSubject<Map<String, ThreadActivity>> _activity =
       BehaviorSubject.seeded(const {});
 
@@ -257,6 +268,11 @@ class ThreadManager {
   /// Map of threadId → concrete resolved model id (current value replayed).
   Stream<Map<String, String>> get resolvedModelsStream =>
       _resolvedModels.stream;
+
+  /// Map of threadId → the ids it is waiting on the user to answer. A thread
+  /// absent from the map is not waiting for anyone.
+  Stream<Map<String, Set<String>>> get awaitingInputStream =>
+      _awaitingInput.stream;
 
   /// Map of threadId → live [ThreadActivity] (running/error), for the list.
   /// Idle threads are omitted from the map.
@@ -1557,6 +1573,7 @@ class ThreadManager {
         AppLogger.warn('approval response rejected: ${res.error!.message}');
         return false;
       }
+      _clearAwaitingInput(threadId, approvalId);
       return true;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('approval response failed', error, stackTrace);
@@ -1587,6 +1604,7 @@ class ThreadManager {
         AppLogger.warn('question response rejected: ${res.error!.message}');
         return false;
       }
+      _clearAwaitingInput(threadId, questionId);
       return true;
     } on Object catch (error, stackTrace) {
       AppLogger.warn('question response failed', error, stackTrace);
@@ -1629,6 +1647,7 @@ class ThreadManager {
     await _timeline.close();
     await _resolvedModels.close();
     await _activity.close();
+    await _awaitingInput.close();
     await _unread.close();
     await _queues.close();
     await _turnStateKnown.close();
@@ -1689,6 +1708,7 @@ class ThreadManager {
         }
       case ContentBlockEvent(:final turnId, :final content, :final beforeText):
         _ensureLive(threadId, turnId).addBlock(content, beforeText: beforeText);
+        _noteAwaitingInput(threadId, content);
         if (threadId == _activeThreadId) _rebuildActiveTimeline();
       case TurnCompletedEvent(
           :final turnId,
@@ -1803,6 +1823,8 @@ class ThreadManager {
   }) async {
     final live = _live.remove(threadId);
     _setActivity(threadId, failed ? ThreadActivity.error : ThreadActivity.idle);
+    // A finished turn is holding nothing, whatever it asked along the way.
+    _clearAwaitingInput(threadId);
     if (live == null) return;
     // Reconcile the terminal adapter text with the live buffer without ever
     // deleting prose the user already saw. Most adapters return the complete
@@ -2051,6 +2073,41 @@ class ThreadManager {
       ]);
     }
     _timeline.add(snapshot);
+  }
+
+  /// Records [content] as pending, if it is something the agent is holding
+  /// the turn on.
+  void _noteAwaitingInput(String threadId, MessageContent content) {
+    final id = switch (content) {
+      ApprovalContent(:final request) => request.approvalId,
+      QuestionContent(:final request) => request.questionId,
+      _ => null,
+    };
+    if (id == null) return;
+    final next = {
+      for (final entry in _awaitingInput.value.entries)
+        entry.key: {...entry.value},
+    };
+    (next[threadId] ??= <String>{}).add(id);
+    _awaitingInput.add(next);
+  }
+
+  /// Drops one pending id — answered, or its turn ended. A null [id] drops
+  /// every id the thread was holding.
+  void _clearAwaitingInput(String threadId, [String? id]) {
+    final current = _awaitingInput.value[threadId];
+    if (current == null || (id != null && !current.contains(id))) return;
+    final next = {
+      for (final entry in _awaitingInput.value.entries)
+        entry.key: {...entry.value},
+    };
+    if (id == null) {
+      next.remove(threadId);
+    } else {
+      next[threadId]!.remove(id);
+      if (next[threadId]!.isEmpty) next.remove(threadId);
+    }
+    _awaitingInput.add(next);
   }
 
   void _setActivity(String threadId, ThreadActivity activity) {

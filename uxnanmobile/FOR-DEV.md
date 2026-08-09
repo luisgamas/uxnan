@@ -17,6 +17,19 @@ connected to live bridge data, validated on-device against a real bridge.
 
 **Built (DONE):**
 
+- **Adaptive layout foundations + overview + precise agent state.**
+  `UxnanBreakpoint` implements the guide's five window classes and is the single
+  place a width becomes a layout decision; `NeScaffold` clamps content past
+  840 dp and `TwoPaneScaffold` is ready for the drawer that lands with the
+  large-screen work. The home screen is an **overview** (brand + avatar in the
+  bar, a two-row greeting over live badges, PC cards built from `NeBadge`), and
+  the profile screen no longer duplicates its identity card. The thread row now
+  shows the desktop's five agent states — **derived** from turn events, queue
+  state, sign-in and the pending approval/question blocks, never reported by the
+  bridge (see `architecture/02a` §5.4.2). Icons throughout are Hugeicons via the
+  `UxIcons` catalogue and the `UxIcon` primitive, matching the desktop app and
+  the website.
+
 - **E2EE crypto + secure transport** (X25519 + Ed25519 + HKDF + AES-256-GCM,
   handshake, seq/replay, outbound buffer, reconnect loop).
 - **Pairing & onboarding** — `OnboardingScreen`, `QrScannerScreen`,
@@ -361,3 +374,16 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       the license list actually populates on-device (the provider now surfaces a
       load error with a retry instead of a blank list), navigation into each
       section, and the update download/install states, in the next build.
+- [ ] **Exact `waiting` for threads the phone has never opened.** The list can
+      tell "working" from "waiting for you" because `ThreadManager` records the
+      approval/question blocks it sees. That is exact for a thread the phone has
+      streamed or resynced, and it is **in-memory only**: after a restart, a
+      thread that asked before the app closed reads as `working` until the next
+      `turn/list` resync replays its blocks. It never claims a `waiting` that
+      isn't there, so the failure is silence, not a lie — but a thread that has
+      been holding for hours deserves better than a spinner.
+      Making it exact is a **contract change**, not a client fix: the bridge is
+      the only side that always knows, so it needs to say so — either a
+      `stream/thread/state` notification or a field on `thread/list`. That
+      touches `shared/`, `bridge/` and this app together. Site:
+      `presentation/providers/agent_run_state_provider.dart`.

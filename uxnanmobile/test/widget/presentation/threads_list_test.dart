@@ -7,10 +7,13 @@ import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
+import 'package:uxnan/presentation/widgets/agent_logo.dart';
+import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
 
 Thread _thread(
   String id,
@@ -45,6 +48,17 @@ Widget _wrap({required List<Thread> threads}) {
       // database, and pulling the real one in leaves drift timers pending.
       threadPreviewProvider.overrideWith((ref, key) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
+      // A held queue is one of the things that blocks a thread, so the
+      // queue stream is part of the row's state too.
+      threadQueuesProvider.overrideWith(
+        (ref) => Stream.value(const <String, ThreadQueueState>{}),
+      ),
+      // The row's state now includes "the agent asked and is waiting on
+      // you", which the manager tracks; feed it directly so the real one
+      // (drift, transport, its poll timers) stays out of a widget test.
+      awaitingInputProvider.overrideWith(
+        (ref) => Stream.value(const <String, Set<String>>{}),
+      ),
       threadActivityProvider.overrideWith(
         (ref) => Stream.value(const <String, ThreadActivity>{}),
       ),
@@ -229,5 +243,49 @@ void main() {
 
     expect(find.text('Fix the login bug'), findsOneWidget);
     expect(find.text('Add dark mode'), findsOneWidget);
+  });
+
+  testWidgets('a row reads state, then who, then what', (tester) async {
+    await tester
+        .pumpWidget(_wrap(threads: [_thread('t1', 'Claude', 'Fix it')]));
+    await tester.pumpAndSettle();
+
+    // The order `uxnandesktop` reads in, and the order the eye needs: whether a
+    // row wants you decides whether you read the rest of it.
+    final indicator = tester.getTopLeft(find.byType(AgentStatusIndicator)).dx;
+    final logo = tester.getTopLeft(find.byType(AgentLogo)).dx;
+    final title = tester.getTopLeft(find.text('Claude')).dx;
+    expect(indicator, lessThan(logo));
+    expect(logo, lessThan(title));
+
+    // The mark identifies and the indicator only signals, so the mark is the
+    // larger of the two — and neither is a 44 dp avatar competing with the
+    // text beside it.
+    expect(
+      tester.getSize(find.byType(AgentLogo)).width,
+      greaterThan(tester.getSize(find.byType(AgentStatusIndicator)).width),
+    );
+  });
+
+  testWidgets('agent marks carry no border and no shadow', (tester) async {
+    await tester
+        .pumpWidget(_wrap(threads: [_thread('t1', 'Claude', 'Fix it')]));
+    await tester.pumpAndSettle();
+
+    // A framed, shadowed tile inside a card read as the CARD having a shadow —
+    // which is what it looked like, and why this is asserted rather than
+    // trusted.
+    final boxes = tester.widgetList<Container>(
+      find.descendant(
+        of: find.byType(AgentLogo),
+        matching: find.byType(Container),
+      ),
+    );
+    for (final box in boxes) {
+      final decoration = box.decoration;
+      if (decoration is! BoxDecoration) continue;
+      expect(decoration.border, isNull);
+      expect(decoration.boxShadow, anyOf(isNull, isEmpty));
+    }
   });
 }

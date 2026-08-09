@@ -117,6 +117,23 @@ known:
 The status dot on the machine glyph carries the same three states, so the card
 is readable before any of its text is.
 
+A thread row reads state → agent → text (`thread_tile.dart`), mirroring
+`uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a
+step larger, then the title over its second line.
+
+An agent's state in the thread list is **derived, not reported**:
+`agentRunStatusProvider` (`presentation/providers/agent_run_state_provider.dart`)
+folds turn activity, the pending-question set, sign-in status, queue state and
+unread into one `AgentRunState` plus two modifiers. The desktop's equivalent
+comes from a hook server it owns; nothing in the bridge carries it, so this must
+not be mistaken for a fact the PC sent.
+
+The pending-question set is the piece that makes it useful in a list:
+`ThreadManager.awaitingInputStream` records the approval/question blocks as they
+arrive **for every thread**, not just the open one, and clears them when the user
+answers or the turn ends. It is in-memory only, and rebuilt on resync because
+`turn/list` replays the blocks.
+
 ## Dependency injection / provider graph
 
 Manual Riverpod. Infrastructure is constructed in `infrastructure_providers.dart`

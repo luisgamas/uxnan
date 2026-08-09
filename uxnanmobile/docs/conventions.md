@@ -42,6 +42,12 @@ spec, the spec wins.
   `live` for the one solid `tertiary` fill, reserved for what is true right now). Cards use
   `surfaceContainer`, **never** `surfaceContainerHighest` — that tone is reserved
   for input fills / active chips (NE §2.4).
+- **Agent marks: bare in rows, framed only as objects.** `AgentLogo` draws the
+  mark alone for dense surfaces (thread rows, and the space rows to come);
+  `AgentLogoChip` frames it where an agent is a thing you pick or admire (the
+  onboarding hero, the agent picker). Neither carries a border or a shadow —
+  framing made the frame the thing you noticed, and a shadowed tile inside a
+  card reads as the card being elevated when it is not.
 - **Icons come from the catalogue, never from the package.** `UxIcons`
   (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and
   `UxIcon` (`presentation/widgets/ux_icon.dart`) is the only widget that talks

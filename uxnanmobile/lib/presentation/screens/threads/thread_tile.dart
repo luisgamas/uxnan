@@ -5,16 +5,17 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
-import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
-import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/agent_logo_chip.dart';
+import 'package:uxnan/presentation/widgets/agent_logo.dart';
+import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
@@ -96,17 +97,11 @@ class _ThreadTileState extends ConsumerState<ThreadTile>
     final compact = widget.compact;
     final colors = Theme.of(context).colorScheme;
     final agent = AgentIdParsing.fromWireId(thread.agentId);
-    // Live activity of the conversation (running/error), independent of the
-    // thread's sync status — tracked even while this screen is closed.
-    final activity = ref.watch(threadActivityForProvider(thread.id));
+    // One derived state instead of three raw signals: running/waiting/blocked/
+    // done/idle, tracked even while this screen is closed.
+    final status = ref.watch(agentRunStatusProvider(thread.id));
     // Unread agent reply: tint the tile and emphasize it so it stands out.
     final unread = ref.watch(unreadForProvider(thread.id));
-    // Whether this thread's agent is not signed in on the PC — turns it red.
-    // Cached per agentId; null (offline / older bridge) keeps the normal dot.
-    final requiresLogin =
-        ref.watch(authStatusProvider(thread.agentId)).value?.requiresLogin ??
-            false;
-
     final card = NeCard(
       // An unread reply gently tints the card (primary over the calm base) so
       // it stands out without shouting.
@@ -126,22 +121,35 @@ class _ThreadTileState extends ConsumerState<ThreadTile>
       onLongPress: () =>
           showThreadActions(context, ref, thread, onDelete: _delete),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _AgentAvatar(agent: agent, size: compact ? 34 : 44),
-          SizedBox(width: compact ? UxnanSpacing.sm : UxnanSpacing.md),
+          // State first, then WHO — the order `uxnandesktop` reads in, and the
+          // order the eye needs: whether a row wants you decides whether you
+          // read the rest of it. Both marks sit on the first line's baseline so
+          // a two-line row does not centre them against its own height.
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: AgentStatusIndicator(status: status),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            // A step above the indicator: the mark identifies, the indicator
+            // only signals, so it should not out-shout it.
+            child: AgentLogo(agent: agent),
+          ),
+          const SizedBox(width: UxnanSpacing.sm),
           Expanded(
             child: compact
                 ? _CompactContent(
                     thread: thread,
-                    activity: activity,
+                    status: status,
                     unread: unread,
-                    requiresLogin: requiresLogin,
                   )
                 : _FullContent(
                     thread: thread,
-                    activity: activity,
+                    status: status,
                     unread: unread,
-                    requiresLogin: requiresLogin,
                   ),
           ),
         ],
@@ -198,21 +206,19 @@ class _UnreadDot extends StatelessWidget {
 class _FullContent extends ConsumerWidget {
   const _FullContent({
     required this.thread,
-    required this.activity,
+    required this.status,
     required this.unread,
-    required this.requiresLogin,
   });
   final Thread thread;
-  final ThreadActivity activity;
+  final AgentRunStatus status;
   final bool unread;
-  final bool requiresLogin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final l10n = AppLocalizations.of(context);
-    final responding = activity == ThreadActivity.running;
+    final responding = status.state == AgentRunState.working;
     // The agent's own words take the line the moment it stops talking; while it
     // works, what it is doing matters more than what it last said.
     // Each turn bumps the thread's activity, and that is what gives the preview
@@ -222,14 +228,25 @@ class _FullContent extends ConsumerWidget {
       threadId: thread.id,
       revision: thread.lastActivity?.millisecondsSinceEpoch ?? 0,
     );
-    final preview =
-        responding ? null : ref.watch(threadPreviewProvider(previewKey)).value;
+    final showsPreview = status.state == AgentRunState.done ||
+        status.state == AgentRunState.idle;
+    final preview = showsPreview
+        ? ref.watch(threadPreviewProvider(previewKey)).value
+        : null;
 
-    final secondary = responding
-        ? l10n.threadResponding
-        : (preview != null && preview.isNotEmpty)
+    // What the row says follows what the agent is DOING. "Waiting for you" is
+    // the one worth interrupting someone for, so it wins over the agent's last
+    // words; only once nothing is pending does the reply take the line back.
+    final secondary = switch (status.state) {
+      AgentRunState.waiting => l10n.agentStateWaiting,
+      AgentRunState.blocked => l10n.agentStateBlocked,
+      AgentRunState.working => l10n.threadResponding,
+      AgentRunState.done ||
+      AgentRunState.idle =>
+        (preview != null && preview.isNotEmpty)
             ? preview
-            : _subtitleFor(thread);
+            : _subtitleFor(thread),
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -259,25 +276,14 @@ class _FullContent extends ConsumerWidget {
             ],
           ],
         ),
-        const SizedBox(height: UxnanSpacing.xs),
-        Row(
-          children: [
-            _ActivityIndicator(
-              activity: activity,
-              status: thread.status,
-              requiresLogin: requiresLogin,
-            ),
-            const SizedBox(width: UxnanSpacing.xs),
-            Flexible(
-              child: Text(
-                secondary,
-                style: textTheme.bodySmall?.copyWith(
-                  color: responding ? colors.primary : colors.onSurfaceVariant,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
+        const SizedBox(height: 2),
+        Text(
+          secondary,
+          style: textTheme.bodySmall?.copyWith(
+            color: responding ? colors.primary : colors.onSurfaceVariant,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -289,14 +295,12 @@ class _FullContent extends ConsumerWidget {
 class _CompactContent extends StatelessWidget {
   const _CompactContent({
     required this.thread,
-    required this.activity,
+    required this.status,
     required this.unread,
-    required this.requiresLogin,
   });
   final Thread thread;
-  final ThreadActivity activity;
+  final AgentRunStatus status;
   final bool unread;
-  final bool requiresLogin;
 
   @override
   Widget build(BuildContext context) {
@@ -304,12 +308,6 @@ class _CompactContent extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Row(
       children: [
-        _ActivityIndicator(
-          activity: activity,
-          status: thread.status,
-          requiresLogin: requiresLogin,
-        ),
-        const SizedBox(width: UxnanSpacing.sm),
         Expanded(
           child: Text(
             thread.title,
@@ -496,101 +494,6 @@ Future<bool> _confirmDeleteThread(
     ),
   );
   return confirmed ?? false;
-}
-
-class _AgentAvatar extends StatelessWidget {
-  const _AgentAvatar({required this.agent, this.size = 44});
-  final AgentId agent;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final logo = AgentVisuals.logoFor(agent);
-    if (logo != null) return AgentLogoChip(asset: logo, size: size);
-
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHigh,
-        borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
-      ),
-      child: UxIcon(
-        UxIcons.smartToy,
-        size: size * 0.5,
-        color: AgentVisuals.colorFor(agent),
-      ),
-    );
-  }
-}
-
-/// Leading indicator on the subtitle row: a spinner while the agent is
-/// responding, a red dot on error, a red dot when the agent is not signed in
-/// on the PC, otherwise the thread's sync-status dot.
-class _ActivityIndicator extends StatelessWidget {
-  const _ActivityIndicator({
-    required this.activity,
-    required this.status,
-    required this.requiresLogin,
-  });
-  final ThreadActivity activity;
-  final ThreadStatus status;
-  final bool requiresLogin;
-
-  @override
-  Widget build(BuildContext context) {
-    switch (activity) {
-      case ThreadActivity.running:
-        return PolygonLoader(
-          size: 10,
-          color: Theme.of(context).colorScheme.primary,
-        );
-      case ThreadActivity.error:
-        return const _Dot(color: UxnanColors.error);
-      case ThreadActivity.idle:
-        // Not signed in on the PC: flag the otherwise-active thread red so the
-        // user sees it needs a sign-in before its turns can run.
-        if (requiresLogin && status == ThreadStatus.active) {
-          return Tooltip(
-            message: AppLocalizations.of(context).agentSignInRequired,
-            child: const _Dot(color: UxnanColors.error),
-          );
-        }
-        return _StatusDot(status: status);
-    }
-  }
-}
-
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.status});
-  final ThreadStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (status) {
-      ThreadStatus.active => UxnanColors.connected,
-      ThreadStatus.syncing => UxnanColors.syncing,
-      ThreadStatus.error => UxnanColors.error,
-      ThreadStatus.archived => UxnanColors.onSurfaceMuted,
-    };
-    return _Dot(color: color);
-  }
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot({required this.color});
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-  }
 }
 
 String _relativeTime(DateTime time) {

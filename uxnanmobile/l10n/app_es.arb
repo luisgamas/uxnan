@@ -75,6 +75,12 @@
     "description": "How many live sessions the phone currently holds.",
     "placeholders": { "count": { "type": "int" } }
   },
+  "agentStateWorking": "Trabajando",
+  "agentStateWaiting": "Te espera",
+  "agentStateBlocked": "Bloqueado",
+  "agentStateDone": "Terminó",
+  "agentStateIdle": "En reposo",
+  "agentStateStale": "sin novedades hace rato",
   "homeGreeting": "Hola de nuevo",
   "@homeGreeting": {
     "description": "Overview header greeting when the user has not set a name."

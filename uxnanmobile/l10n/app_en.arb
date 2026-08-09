@@ -108,6 +108,12 @@
     "description": "How many live sessions the phone currently holds.",
     "placeholders": { "count": { "type": "int" } }
   },
+  "agentStateWorking": "Working",
+  "agentStateWaiting": "Waiting for you",
+  "agentStateBlocked": "Blocked",
+  "agentStateDone": "Done",
+  "agentStateIdle": "Idle",
+  "agentStateStale": "no update in a while",
   "homeGreeting": "Welcome back",
   "@homeGreeting": {
     "description": "Overview header greeting when the user has not set a name."

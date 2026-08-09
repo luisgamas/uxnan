@@ -452,6 +452,42 @@ abstract class AppLocalizations {
   /// **'{count} online now'**
   String profileActiveSessions(int count);
 
+  /// No description provided for @agentStateWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get agentStateWorking;
+
+  /// No description provided for @agentStateWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for you'**
+  String get agentStateWaiting;
+
+  /// No description provided for @agentStateBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get agentStateBlocked;
+
+  /// No description provided for @agentStateDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get agentStateDone;
+
+  /// No description provided for @agentStateIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get agentStateIdle;
+
+  /// No description provided for @agentStateStale.
+  ///
+  /// In en, this message translates to:
+  /// **'no update in a while'**
+  String get agentStateStale;
+
   /// Overview header greeting when the user has not set a name.
   ///
   /// In en, this message translates to:

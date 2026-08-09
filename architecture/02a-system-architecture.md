@@ -953,6 +953,21 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 
 #### 5.4.2 Pantallas principales
 
+> **El estado del agente en la lista es DERIVADO, no reportado.** La fila de
+> conversacion muestra los mismos cinco estados que la barra lateral de
+> `uxnandesktop` (working / waiting / blocked / done / idle), pero el bridge no
+> los envia: desktop los arma con su propio hook server sobre las terminales que
+> el mismo lanza, y el telefono no tiene nada de eso. El movil los deriva de lo
+> que el contrato SI da — eventos de turno, estado de la cola, `auth/status`, no
+> leidos, y los bloques `approval`/`question` que el agente emite al detenerse a
+> preguntar. `ThreadManager` registra esos bloques **para todos los threads**,
+> no solo el abierto, que es lo unico que permite distinguir "trabajando" de
+> "te espera" desde una lista. Ese registro es en memoria y se reconstruye en el
+> siguiente resync (`turn/list` reproduce los bloques): un `waiting` exacto tras
+> reinicio requeriria que el bridge lo dijera — una notificacion
+> `stream/thread/state` o un campo en `thread/list` — y esta anotado como
+> trabajo debido en `uxnanmobile/FOR-DEV.md`, no implementado.
+
 ```
 lib/presentation/
 ├── screens/

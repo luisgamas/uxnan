@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
-/// A coding-agent logo on a soft, dark-surface container that lets the logo's
-/// own colors stand out. Monochrome (`currentColor`) logos are tinted to the
-/// on-surface color so they remain visible on the dark theme. Pair with the
-/// asset paths in `AgentLogos`.
+/// A coding-agent logo on a soft container that lets the mark's own colours
+/// stand out, for the surfaces that treat an agent as an OBJECT you pick or
+/// admire — the onboarding hero, the agent picker.
+///
+/// Deliberately flat: no border, no shadow. Framing the mark made it the thing
+/// you noticed instead of the logo, and a bordered, shadowed tile sitting
+/// inside a card read as the card itself having a shadow. In a dense row, use
+/// `AgentLogo`, which draws the mark bare.
+///
+/// Monochrome (`currentColor`) marks are tinted to the on-surface colour so
+/// they stay visible in both themes. Pair with the asset paths in `AgentLogos`.
 class AgentLogoChip extends StatelessWidget {
   /// Creates an [AgentLogoChip] for the SVG at [asset].
   const AgentLogoChip({required this.asset, this.size = 56, super.key});
@@ -27,14 +34,6 @@ class AgentLogoChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
         borderRadius: const BorderRadius.all(UxnanRadius.lg),
-        border: Border.all(color: colors.outline),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: SvgPicture.asset(
         asset,

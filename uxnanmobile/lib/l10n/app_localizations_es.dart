@@ -214,6 +214,24 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String get agentStateWorking => 'Trabajando';
+
+  @override
+  String get agentStateWaiting => 'Te espera';
+
+  @override
+  String get agentStateBlocked => 'Bloqueado';
+
+  @override
+  String get agentStateDone => 'Terminó';
+
+  @override
+  String get agentStateIdle => 'En reposo';
+
+  @override
+  String get agentStateStale => 'sin novedades hace rato';
+
+  @override
   String get homeGreeting => 'Hola de nuevo';
 
   @override

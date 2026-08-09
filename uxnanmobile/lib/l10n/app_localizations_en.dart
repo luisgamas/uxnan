@@ -213,6 +213,24 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get agentStateWorking => 'Working';
+
+  @override
+  String get agentStateWaiting => 'Waiting for you';
+
+  @override
+  String get agentStateBlocked => 'Blocked';
+
+  @override
+  String get agentStateDone => 'Done';
+
+  @override
+  String get agentStateIdle => 'Idle';
+
+  @override
+  String get agentStateStale => 'no update in a while';
+
+  @override
   String get homeGreeting => 'Welcome back';
 
   @override
