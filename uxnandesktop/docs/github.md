@@ -20,6 +20,66 @@ issues, watching CI, and tying both to worktrees — all backed by the local
 Because everything routes through `gh`, **every agent-automatable action has an
 identical manual path** — GitHub keeps working even with zero AI-agent quota.
 
+## Clone and add a project
+
+Open **Add project** from the Projects sidebar. The dialog starts in **Auto** mode,
+where its single input detects any of:
+
+- `owner/repository`;
+- an HTTPS repository URL;
+- an SSH repository URL in either common form.
+
+Explicit local paths keep the folder list visible; a recognized GitHub reference
+replaces that list with the canonical repository and a destination derived from the
+user's home directory. **Local** and **GitHub** tabs can
+force either interpretation when the input is ambiguous. By default the clone goes
+to `<home>/uxnan/<repository>`; Uxnan creates the missing parent folder on first use.
+The destination remains editable, and **Choose folder** opens the operating system's
+native directory picker to select a different parent. **Clone and add** runs
+`gh repo clone`, registers the returned folder through the normal project path, loads
+its worktrees, focuses its primary worktree, and closes the dialog. The button reports
+the cloning and registration phases separately. Clone transfers have a dedicated
+15-minute ceiling; ordinary GitHub reads keep the shorter one-minute request budget.
+Clones retain complete history but use Git's partial-clone object filter, so file
+contents are transferred only when a checkout needs them. This lowers the initial
+download without imposing the history limitations of a shallow clone.
+If cloning fails, Uxnan reports the
+error and leaves any partial destination untouched for inspection or recovery.
+
+In local mode the same input is the folder address field. The list underneath keeps
+repo detection, live refresh, per-row add actions, and multi-project folder selection.
+
+## Create a worktree from the project launcher
+
+The **+** button on a project card is the unified launcher. **New** is the first and
+default tab for git projects, preserving the write-a-name-first worktree flow. It is
+followed by **Worktree**, **PR**, and **Issue**; the tabs replace one source area
+instead of stacking separate forms.
+The Worktree tab searches the project's current worktrees; PR and Issue each load up
+to 50 open items for that project and accept `#42`, `42`, or a full item URL. A URL
+for another repository is rejected before any mutation.
+
+The first New field is also a source-aware entry point. A full PR/issue URL, a
+labeled reference, or simply `#42` / `42` moves to the matching tab and resolves
+that item automatically. Because PRs and issues share GitHub's number space, a
+neutral number is looked up once through the active repository's shared work-item
+endpoint; Uxnan uses the returned type instead of guessing. Within the PR and Issue
+tabs, search matches numbers, titles, authors, branch names, and visible metadata;
+`#42` resolves the exact item, while a lone in-progress `#` keeps the complete list visible.
+
+After an item is selected, naming is automatic and storage details stay out of the
+launcher. Pull requests keep their real head branch; issues use a stable
+`<number>-<title-slug>` branch. The user may select zero or
+more terminals, agents, and the integrated browser: zero creates and focuses only the
+worktree, while any selected actions start after the worktree has been adopted through
+the same state path as manual creation. The item title is saved as the worktree note.
+Its body is never injected into an agent prompt automatically.
+
+PR and issue creation fetch only the requested ref and skip unrelated tags. After
+Git returns the canonical worktree list, Uxnan activates the new workspace and starts
+its selected actions immediately; the new status badge hydrates in the background
+instead of making launch wait for status checks across every existing worktree.
+
 ## The GitHub view (per project)
 
 Open it **per project**, from either entry point — both land in the same view:
@@ -88,7 +148,7 @@ A 4th tab in the right panel (next to Files / Changes / History), scoped to the
 | **This branch's PR** | The PR for the active branch with a colored checks roll-up + quick actions, or a full **create-PR form** (base ← head, title + body, manual or AI-drafted; the head is pinned to this worktree's branch — see *Creating a PR* below). |
 | **Pull requests** | The repo's **5 most recent** PRs, any state, each with its state icon (open / draft / merged / closed) and relative date. |
 | **CI runs** | The repo's **5 most recent** workflow runs — **not** filtered to this branch, so it answers "what has CI been doing" instead of repeating the same handful of runs. |
-| **Issues** | The repo's **5 most recent** issues, any state. Hovering one reveals a **start-work** button that opens the same worktree dialog the section uses (branch name, agent, folder preview). |
+| **Issues** | The repo's **5 most recent** issues, any state. Hovering one reveals a **start-work** button that opens the same automatic-naming + agent dialog the section uses. |
 
 Every row **opens that item's detail inside the app** — the inline GitHub view takes
 over already showing that PR's review, that run's log or that issue's thread. None of
@@ -186,16 +246,17 @@ a plain merge and let `gh` itself reject what isn't allowed.
 - **PR → worktree:** *Check out to worktree* fetches `pull/<n>/head` and adds a
   worktree, so reviewing/running a PR is just another isolated worktree.
 - **Issue → worktree:** *Start work* runs `gh issue develop` and adds a worktree with
-  the linked branch.
+  the linked branch. If GitHub explicitly denies linked-branch creation because the
+  account lacks mutation rights, Uxnan falls back to the same branch locally; other
+  errors still surface.
 
 Both open a **settings + confirmation dialog** (the sibling of the New-worktree dialog),
 so a GitHub-born worktree is set up like any other:
 
 | Field | Behavior |
 |---|---|
-| **Branch name** | Pre-filled with the generic default (`pr-42` / `issue-17`), so Enter reproduces the old one-click behavior. Editable; validated before git sees it. For issues, a one-click **suggestion** offers the GitHub-style slug (`17-fix-the-login`, what `gh issue develop` would pick). |
+| **Naming** | Automatic: the item title becomes the worktree note/card title; a PR keeps its real head branch and an issue uses `<number>-<title-slug>`. |
 | **Launch agent** | Same picker (and same global default) as the New-worktree dialog. **This closed a real gap:** these flows used to bypass `createWorktree`, so a PR/issue worktree arrived with **no agent** — unlike every other worktree. |
-| **Worktree folder** | A live preview of the sibling folder (`<repo>--<branch>`) that will be created. |
 | **Already exists** | Warns when a worktree already sits at that folder (the issue flow reuses it). |
 
 The new worktree is then registered, made the active context and given its agent through

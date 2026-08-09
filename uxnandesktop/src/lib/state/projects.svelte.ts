@@ -10,6 +10,8 @@ import {
   branchIntegrated,
   branchList,
   fsPathExists,
+  githubIssueDevelop,
+  githubPrCheckout,
   ptyWrite,
   repoAdd,
   repoRemove,
@@ -676,11 +678,11 @@ class ProjectsStore {
     }
   }
 
-  async loadWorktrees(repoId: string): Promise<void> {
+  async loadWorktrees(repoId: string, refreshStatus = true): Promise<void> {
     try {
       const list = await worktreeList(repoId);
       this.worktreesByRepo = { ...this.worktreesByRepo, [repoId]: list };
-      await this.refreshStatuses(list.map((w) => w.path));
+      if (refreshStatus) await this.refreshStatuses(list.map((w) => w.path));
     } catch (e) {
       this.error = msg(e);
       toastError(e);
@@ -1106,8 +1108,34 @@ class ProjectsStore {
     }
   }
 
-  /** Take a freshly-created worktree into the UI: refresh its repo's list, make
-   *  it the active context, and launch an agent into it. Shared by
+  /** Materialize a pull request or issue as a worktree and land it through the
+   *  same adoption path as manual creation. Returns the canonical path so a
+   *  launcher can open its selected terminals/agents after creation. */
+  async createGitHubWorktree(
+    repoId: string,
+    kind: "pr" | "issue",
+    number: number,
+    branch: string,
+    agentId?: string | null,
+  ): Promise<string | null> {
+    this.error = null;
+    try {
+      const created =
+        kind === "pr"
+          ? await githubPrCheckout(repoId, String(number), branch)
+          : await githubIssueDevelop(repoId, String(number), branch);
+      await this.adoptWorktree(repoId, created, agentId);
+      return created.path;
+    } catch (e) {
+      this.error = msg(e);
+      return null;
+    }
+  }
+
+  /** Take a freshly-created worktree into the UI: refresh its repo's canonical
+   *  list, make it the active context, and launch an agent into it. Its status
+   *  badge hydrates in the background so unrelated worktrees cannot delay the
+   *  launch. Shared by
    *  [`createWorktree`] and the GitHub PR-checkout / issue-develop flows, which
    *  build their worktree on the backend but must land in exactly the same state
    *  — otherwise a GitHub-created worktree arrives with no agent, unlike every
@@ -1120,8 +1148,9 @@ class ProjectsStore {
     created: WorktreeEntry,
     agentId?: string | null,
   ): Promise<void> {
-    await this.loadWorktrees(repoId);
+    await this.loadWorktrees(repoId, false);
     this.setActiveWorktree(created.path);
+    void this.refreshStatuses([created.path]);
     const agent =
       agentId === undefined
         ? app.defaultAgent()

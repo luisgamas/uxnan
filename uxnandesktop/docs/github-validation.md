@@ -55,6 +55,7 @@ surfaces gh's own `Unknown JSON field` message rather than hanging.
 | Merge policy: repo settings ∩ branch rulesets | **validated (real data)** | `repo-view-merge.json`, `repo-rest.json`, `rules-branches-main.json` (the ruleset really guarding `main`) |
 | Merge state probe (`mergeStateStatus`, head oid) | **validated (real data)** | `pr-merge-state-132.json` → `merge_state_from_json` |
 | Labels / issues list (incl. the honest empty case) | **validated (real data)** | `label-list.json`, `issue-list.json` fixture tests |
+| Neutral work-item kind (`#number` → PR or issue) | **validated (contract shape + faithful stand-in)** | `work_item_kind_from_json` unit test; `github_cli.rs` shared-endpoint argv test; `LauncherDialog.svelte.test.ts` IPC/routing test |
 | Actions run list (incl. in-progress `conclusion: ""`) | **validated (real data)** | `run-list.json` fixture tests |
 | Rate limit / notifications count | **validated (real data)** / numeric parse | `rate-limit.json`; notifications is a `--jq length` numeric |
 | Timeouts, truncated JSON, offline, rate-limited, old gh | **validated (faithful stand-in)** | `github_cli.rs` through real child processes |

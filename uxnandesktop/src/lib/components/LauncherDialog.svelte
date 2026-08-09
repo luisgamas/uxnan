@@ -6,18 +6,23 @@
   // to open there (a terminal / profile, one or several agents, the browser).
   // Everything runs against the chosen target so the workspace linkage
   // (terminals ↔ agents ↔ worktree) is preserved.
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog";
+  import * as Tabs from "$lib/components/ui/tabs";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
   import { Input } from "$lib/components/ui/input";
-  import Combobox, { type ComboGroup, type ComboItem } from "./Combobox.svelte";
+  import type { ComboGroup, ComboItem } from "./Combobox.svelte";
   import MultiSelect from "./MultiSelect.svelte";
   import AgentLogo from "./AgentLogo.svelte";
   import WorktreeCreateFields from "./WorktreeCreateFields.svelte";
+  import GitHubWorkItemPicker from "./GitHubWorkItemPicker.svelte";
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
+  import { parseGitHubWorkItemInput } from "$lib/githubInput";
+  import { githubWorkItemKind } from "$lib/api";
+  import { errorMessage } from "$lib/toast";
   import { cn } from "$lib/utils";
   import { icon, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
@@ -27,11 +32,14 @@
   import GlobeIcon from "@hugeicons/core-free-icons/GlobeIcon";
   import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
   import GitBranchPlusIcon from "@hugeicons/core-free-icons/GitBranchPlusIcon";
+  import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
+  import CircleDotIcon from "@hugeicons/core-free-icons/CircleDotIcon";
   import SettingsIcon from "@hugeicons/core-free-icons/Settings01Icon";
+  import SearchIcon from "@hugeicons/core-free-icons/Search01Icon";
 
   let { repo, open = $bindable(false) }: { repo: RepoData; open?: boolean } = $props();
 
-  const NEW = "__new__";
+  type SourceMode = "worktree" | "new" | "pr" | "issue";
 
   const isGit = $derived(repo.isGit !== false);
   const profiles = $derived(app.terminalProfiles);
@@ -48,8 +56,14 @@
     return [...list].sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
   });
 
+  let sourceMode = $state<SourceMode>("worktree");
+  let previousSourceMode = $state<SourceMode>("worktree");
   let target = $state<string>("");
-  const isNew = $derived(target === NEW);
+  let worktreeQuery = $state("");
+  const isNew = $derived(sourceMode === "new");
+  const githubKind = $derived(sourceMode === "pr" ? "pr" : sourceMode === "issue" ? "issue" : null);
+  const isGitHubSource = $derived(githubKind !== null);
+  const mainPath = $derived(projects.mainWorktree(repo.id)?.path ?? repo.path);
 
   function folderName(path: string): string {
     return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? repo.name;
@@ -58,23 +72,13 @@
     return w.branch ?? folderName(w.path);
   }
 
-  const targetGroups = $derived.by<ComboGroup[]>(() => {
-    const wtItems: ComboItem[] = worktrees.map((w) => ({
-      value: w.path,
-      label: worktreeLabel(w),
-      keywords: [folderName(w.path), w.isMain ? "main" : ""],
-      meta:
-        w.path === projects.activeWorktreePath
-          ? i18n.t("launcher.activeBadge")
-          : w.isMain
-            ? i18n.t("launcher.mainBadge")
-            : undefined,
-    }));
-    const groups: ComboGroup[] = [{ heading: i18n.t("launcher.sectionWorktree"), items: wtItems }];
-    if (isGit) {
-      groups.push({ items: [{ value: NEW, label: i18n.t("launcher.newWorktreeOption") }] });
-    }
-    return groups;
+  const filteredWorktrees = $derived.by(() => {
+    const query = worktreeQuery.trim().toLowerCase();
+    if (!query) return worktrees;
+    return worktrees.filter((worktree) =>
+      [worktreeLabel(worktree), folderName(worktree.path), worktree.path]
+        .some((value) => value.toLowerCase().includes(query)),
+    );
   });
 
   // --- New-worktree fields (only when target = NEW) -------------------------
@@ -96,6 +100,69 @@
    *  sentence and have the branch derived, instead of spelling out a valid ref.
    *  Optional: left empty, the dialog behaves exactly as it always has. */
   let workspaceName = $state("");
+  let githubInitialQuery = $state("");
+  let sourceDetectionTimer: ReturnType<typeof setTimeout> | undefined;
+  let referenceRequest = 0;
+  let referenceResolving = $state(false);
+
+  async function routeWorkspaceReference(value: string, request = ++referenceRequest): Promise<boolean> {
+    const parsed = parseGitHubWorkItemInput(value);
+    if (!parsed) return false;
+    if (!parsed.kind) {
+      referenceResolving = true;
+      projects.error = null;
+      try {
+        const kind = await githubWorkItemKind(mainPath, String(parsed.number));
+        if (request !== referenceRequest || workspaceName.trim() !== value.trim()) return true;
+        githubInitialQuery = value.trim();
+        sourceMode = kind;
+      } catch (error) {
+        if (request === referenceRequest) projects.error = errorMessage(error);
+      } finally {
+        if (request === referenceRequest) referenceResolving = false;
+      }
+      return true;
+    }
+    githubInitialQuery = value.trim();
+    sourceMode = parsed.kind;
+    return true;
+  }
+
+  function detectWorkspaceReference(value: string): void {
+    if (sourceDetectionTimer) clearTimeout(sourceDetectionTimer);
+    const request = ++referenceRequest;
+    referenceResolving = false;
+    sourceDetectionTimer = setTimeout(() => {
+      sourceDetectionTimer = undefined;
+      void routeWorkspaceReference(value, request);
+    }, 300);
+  }
+
+  onDestroy(() => {
+    if (sourceDetectionTimer) clearTimeout(sourceDetectionTimer);
+    referenceRequest += 1;
+  });
+
+  // --- GitHub work-item source ---------------------------------------------
+  let githubNumber = $state<number | null>(null);
+  let githubTitle = $state("");
+  let githubBranch = $state("");
+
+  $effect(() => {
+    const next = sourceMode;
+    if (next === previousSourceMode) return;
+    previousSourceMode = next;
+    referenceRequest += 1;
+    referenceResolving = false;
+    githubNumber = null;
+    githubTitle = "";
+    githubBranch = "";
+    const expectedKind = next === "pr" || next === "issue" ? next : undefined;
+    if (!expectedKind || !parseGitHubWorkItemInput(githubInitialQuery, expectedKind)) {
+      githubInitialQuery = "";
+    }
+    projects.error = null;
+  });
 
   // --- What to open (multi-select) ------------------------------------------
   // Each openable is an id: `term:default`, `term:<profileId>`, `agent:<id>`,
@@ -135,12 +202,16 @@
   });
 
   const canSubmit = $derived(
-    isNew ? wtValid : target.length > 0 && selected.length > 0,
+    isNew
+      ? !referenceResolving && wtValid
+      : isGitHubSource
+        ? githubNumber !== null && githubBranch.trim().length > 0
+        : target.length > 0 && selected.length > 0,
   );
   let busy = $state(false);
 
   const primaryLabel = $derived(
-    isNew
+    isNew || isGitHubSource
       ? selected.length > 0
         ? i18n.t("launcher.createAndOpen")
         : i18n.t("newWorktree.create")
@@ -155,13 +226,26 @@
   // re-run this reset mid-submit — wiping the user's "what to open" picks before
   // they were launched.
   $effect(() => {
-    if (!open) return;
+    if (!open) {
+      referenceRequest += 1;
+      referenceResolving = false;
+      return;
+    }
     untrack(() => {
       const active = projects.activeWorktreePath;
       const belongs = active && worktrees.some((w) => w.path === active);
       target = belongs ? active! : (worktrees[0]?.path ?? repo.path);
+      sourceMode = isGit ? "new" : "worktree";
+      previousSourceMode = sourceMode;
+      worktreeQuery = "";
       selected = [];
       workspaceName = "";
+      githubInitialQuery = "";
+      githubNumber = null;
+      githubTitle = "";
+      githubBranch = "";
+      referenceRequest += 1;
+      referenceResolving = false;
       projects.error = null;
     });
   });
@@ -207,6 +291,17 @@
         // branch (typed straight into Advanced) — repeating it says nothing.
         const typed = workspaceName.trim();
         if (typed && typed !== wtEffectiveBranch) projects.setNote(path, typed);
+      } else if (isGitHubSource && githubKind && githubNumber !== null) {
+        const createdPath = await projects.createGitHubWorktree(
+          repo.id,
+          githubKind,
+          githubNumber,
+          githubBranch.trim(),
+          null,
+        );
+        if (!createdPath) return;
+        path = createdPath;
+        if (githubTitle.trim()) projects.setNote(path, githubTitle.trim());
       }
       runActions(path, actions);
       open = false;
@@ -217,33 +312,68 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[480px]">
+  <Dialog.Content class="sm:max-w-[600px]">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("launcher.dialogTitle", { name: repo.name })}</Dialog.Title>
       <Dialog.Description>{i18n.t("launcher.dialogDesc")}</Dialog.Description>
     </Dialog.Header>
 
-    <div class="uxnan-scroll flex max-h-[62vh] flex-col gap-4 overflow-y-auto py-1">
-      <!-- Where -->
-      <div class="flex flex-col gap-1.5">
-        <span class={cn("font-medium", text.body)}>{i18n.t("launcher.targetLabel")}</span>
-        <Combobox
-          value={target}
-          groups={targetGroups}
-          placeholder={i18n.t("launcher.selectTargetPlaceholder")}
-          searchPlaceholder={i18n.t("launcher.searchWorktrees")}
-          onChange={(v) => (target = v)}
-          contentClass="w-[22rem] max-w-[80vw]"
-        >
-          {#snippet itemPrefix(item)}
-            {#if item.value === NEW}
-              <Icon icon={GitBranchPlusIcon} class={cn(icon.button, "text-primary")} />
+    <div class="uxnan-scroll flex max-h-[64vh] flex-col gap-5 overflow-y-auto py-1">
+      <Tabs.Root bind:value={sourceMode} class="gap-3">
+        <Tabs.List class="h-9 w-full">
+          {#if isGit}
+            <Tabs.Trigger value="new" class={cn("flex-1 rounded-md", sourceMode === "new" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <Icon icon={GitBranchPlusIcon} />{i18n.t("launcher.source.new")}
+            </Tabs.Trigger>
+          {/if}
+          <Tabs.Trigger value="worktree" class={cn("flex-1 rounded-md", sourceMode === "worktree" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            <Icon icon={GitBranchIcon} />{i18n.t("launcher.source.worktree")}
+          </Tabs.Trigger>
+          {#if isGit}
+            <Tabs.Trigger value="pr" class={cn("flex-1 rounded-md", sourceMode === "pr" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <Icon icon={GitPullRequestIcon} />{i18n.t("launcher.source.pr")}
+            </Tabs.Trigger>
+            <Tabs.Trigger value="issue" class={cn("flex-1 rounded-md", sourceMode === "issue" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              <Icon icon={CircleDotIcon} />{i18n.t("launcher.source.issue")}
+            </Tabs.Trigger>
+          {/if}
+        </Tabs.List>
+      </Tabs.Root>
+
+      {#if sourceMode === "worktree"}
+        <div class="flex flex-col gap-2">
+          <div class="relative">
+            <Icon icon={SearchIcon} class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Input class="h-10 pl-9" bind:value={worktreeQuery} placeholder={i18n.t("launcher.searchWorktrees")} autocomplete="off" />
+          </div>
+          <div class="uxnan-scroll max-h-52 min-h-32 overflow-y-auto rounded-lg border border-border/60 bg-background p-1" role="listbox" aria-label={i18n.t("launcher.sectionWorktree")}>
+            {#if filteredWorktrees.length === 0}
+              <div class={cn("flex min-h-28 items-center justify-center", text.meta)}>{i18n.t("launcher.noResults")}</div>
             {:else}
-              <Icon icon={GitBranchIcon} class={cn(icon.button, "text-muted-foreground")} />
+              {#each filteredWorktrees as worktree (worktree.path)}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={target === worktree.path}
+                  class={cn("flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors", target === worktree.path ? "bg-accent text-foreground" : "hover:bg-accent/55")}
+                  onclick={() => (target = worktree.path)}
+                >
+                  <Icon icon={GitBranchIcon} class={cn(icon.button, "shrink-0", target === worktree.path ? "text-primary" : "text-muted-foreground")} />
+                  <span class="min-w-0 flex-1">
+                    <span class={cn("block truncate", text.bodyStrong)}>{worktreeLabel(worktree)}</span>
+                    <span class={cn("block truncate", text.meta)}>{worktree.path}</span>
+                  </span>
+                  {#if worktree.path === projects.activeWorktreePath}
+                    <span class="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{i18n.t("launcher.activeBadge")}</span>
+                  {:else if worktree.isMain}
+                    <span class={cn("shrink-0", text.meta)}>{i18n.t("launcher.mainBadge")}</span>
+                  {/if}
+                </button>
+              {/each}
             {/if}
-          {/snippet}
-        </Combobox>
-      </div>
+          </div>
+        </div>
+      {/if}
 
       <!-- New-worktree extras — the shared creation form (modes / auto-name /
            existing branch / optional custom location), fronted by the name.
@@ -252,7 +382,7 @@
            questions — spelling out a valid ref before you can say what the space
            is for is exactly the chore the dice button exists to dodge. -->
       {#if isNew}
-        <div class="flex flex-col gap-3 rounded-lg border border-border/50 bg-card/40 p-3">
+        <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-1.5">
             <label for="launcher-name" class={cn("font-medium", text.body)}>
               {i18n.t("launcher.nameLabel")}
@@ -262,8 +392,22 @@
               placeholder={i18n.t("launcher.namePlaceholder")}
               bind:value={workspaceName}
               autocomplete="off"
-              onkeydown={(e) => e.key === "Enter" && submit()}
+              oninput={(event) => detectWorkspaceReference(event.currentTarget.value)}
+              onkeydown={(event) => {
+                if (event.key !== "Enter") return;
+                if (sourceDetectionTimer) clearTimeout(sourceDetectionTimer);
+                const parsed = parseGitHubWorkItemInput(workspaceName);
+                if (parsed) {
+                  event.preventDefault();
+                  void routeWorkspaceReference(workspaceName);
+                } else void submit();
+              }}
             />
+            {#if referenceResolving}
+              <span class={cn("flex items-center gap-1.5", text.meta)} aria-live="polite">
+                <Spinner class="size-3" />{i18n.t("launcher.github.resolving")}
+              </span>
+            {/if}
           </div>
           <WorktreeCreateFields
             {repo}
@@ -281,6 +425,20 @@
             bind:canSubmit={wtValid}
             bind:loading={wtLoading}
             onEnter={submit}
+          />
+        </div>
+      {/if}
+
+      {#if isGitHubSource && githubKind}
+        <div class="flex flex-col gap-3">
+          <GitHubWorkItemPicker
+            active={isGitHubSource}
+            repoPath={mainPath}
+            kind={githubKind}
+            initialQuery={githubInitialQuery}
+            bind:number={githubNumber}
+            bind:title={githubTitle}
+            bind:branch={githubBranch}
           />
         </div>
       {/if}

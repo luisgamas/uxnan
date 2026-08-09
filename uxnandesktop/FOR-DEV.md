@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 538 Rust tests (510 unit + 28
+always wins). 544 Rust tests (515 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 926 frontend Vitest tests across two
+probe) + 960 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -60,7 +60,8 @@ started.**
   and the user is guided to a fix (`src/lib/terminal/windowsJunctionGuard.ts`;
   `docs/windows-junctions.md`).
 - **Git worktrees** — per-worktree terminal workspaces, hierarchical Projects
-  tree, in-app directory picker, worktree palette (Ctrl/Cmd+P), WSL repos routed
+  tree, unified local-folder/GitHub-clone project picker, worktree palette
+  (Ctrl/Cmd+P), WSL repos routed
   through `wsl.exe`. **Creation** offers two modes — a **new branch** from a base
   (with a friendly auto-name generator) or **checking out any existing local /
   remote branch** into an isolated worktree — plus an **optional custom location**
@@ -76,7 +77,15 @@ started.**
   touching the folder) and a **custom icon**; branches carry a **per-branch icon**
   (both from a built-in glyph set, a file, a URL, or a git-host account avatar —
   rasterized to an inline PNG via `image_fetch_data_url` / `repo_remote_owner` and
-  persisted in `RepoData.icon` / `branchIcons`).
+  persisted in `RepoData.icon` / `branchIcons`). The project-card **+** launcher
+  also creates from an open pull request or issue, accepts a scoped number or URL,
+  derives the branch from the PR head or issue title, and opens any selected terminals, agents, or browser
+  only after shared worktree adoption succeeds. Clones preserve full history with
+  file objects fetched on demand; targeted item fetches skip tags, and adoption no
+  longer waits for status hydration across unrelated worktrees. The first New
+  field resolves neutral `#<number>` / `<number>` input against the active
+  repository and routes it, URLs, and labeled references to their real source;
+  those lists search consistently across numbers and visible item metadata.
 - **Full git review** — status / diff / stage / commit / push / pull with a 3 s
   focus-paused Tokio watcher, CodeMirror 6 diff viewer, hunk-level staging,
   side-by-side toggle, visual image diffs, and optional AI commit-message
@@ -273,9 +282,8 @@ started.**
   PR/issue **title+description editing** in place (`gh pr/issue edit`) and **reviewer
   requests** (`--add-reviewer`);
   **Actions** logs + re-run/cancel; **worktree-native** `gh pr checkout`
-  / `gh issue develop` — both behind a **settings + confirmation dialog** (editable branch
-  name pre-filled with the generic default, GitHub-slug suggestion for issues, launch-agent
-  picker, folder preview, existing-worktree warning) that adopts the result through the
+  / `gh issue develop` — both behind a compact **agent + confirmation dialog**
+  (automatic item-derived naming, existing-worktree warning) that adopts the result through the
   same path as a hand-made worktree, so it gets its agent like any other; optional
   **AI PR-body drafting** (the `aicommit` one-shot runner) configured in a full
   **AI-PR-authoring settings section** built like Settings → AI commit (enable switch,
@@ -665,10 +673,6 @@ Deferred:
 - [ ] **WSL repos.** A Windows `gh` can't see a `\\wsl.localhost\…` checkout, so GitHub
       features degrade to "not a GitHub repo" there (same class of gap as the WSL2
       hook-loopback limitation). Would need routing `gh` through `wsl.exe`.
-- [ ] **"Clone from GitHub" UI entry.** The backend command + api wrapper exist
-      (`github_clone` / `githubClone`, `gh repo clone`), but no UI surface calls them
-      yet. Wire a small entry (a repo field + destination dir → clone → `repo_add`),
-      e.g. from the Add-project dialog or the GitHub view.
 - [ ] **Eager per-worktree PR badges.** Sidebar PR badges are shown for *visited*
       worktrees (context cache), not eagerly for every worktree (that would poll a PR
       per worktree). A batched/GraphQL "my PRs for these branches" query could fill it.
@@ -1219,7 +1223,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 536 Rust + 926 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 544 Rust + 960 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

@@ -250,11 +250,14 @@ pub async fn current_branch(repo_path: &str) -> Result<String, AppError> {
 }
 
 /// Fetch a refspec from `origin` (e.g. `pull/42/head`) into `FETCH_HEAD`. Used to
-/// materialize a PR's head commit before adding a worktree at it.
+/// materialize a PR's head commit before adding a worktree at it. Targeted
+/// fetches skip tags because neither PR nor issue worktree creation uses them.
 pub async fn fetch(repo_path: &str, refspec: &str) -> Result<(), AppError> {
-    git(repo_path, &["fetch", "origin", refspec])
-        .await
-        .map(|_| ())
+    git(repo_path, &fetch_args(refspec)).await.map(|_| ())
+}
+
+fn fetch_args(refspec: &str) -> [&str; 5] {
+    ["fetch", "--quiet", "--no-tags", "origin", refspec]
 }
 
 /// The diff of the current branch against `base` (`git diff <base>...HEAD`), used
@@ -1560,6 +1563,14 @@ pub async fn image_diff(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn targeted_fetch_is_quiet_and_skips_tags() {
+        assert_eq!(
+            fetch_args("pull/42/head"),
+            ["fetch", "--quiet", "--no-tags", "origin", "pull/42/head"]
+        );
+    }
 
     #[test]
     fn parses_porcelain_with_main_and_worktrees() {
