@@ -560,6 +560,24 @@ abstract class AppLocalizations {
   /// **'Path'**
   String get spacesDetailsPath;
 
+  /// No description provided for @drawerSwitchDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch PC'**
+  String get drawerSwitchDevice;
+
+  /// No description provided for @drawerNoDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'No PC paired yet'**
+  String get drawerNoDevices;
+
+  /// No description provided for @drawerBackToOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to overview'**
+  String get drawerBackToOverview;
+
   /// No description provided for @spacesCopyPath.
   ///
   /// In en, this message translates to:

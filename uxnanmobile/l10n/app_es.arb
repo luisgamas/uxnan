@@ -99,6 +99,9 @@
     "placeholders": { "count": { "type": "int" } }
   },
   "spacesDetailsPath": "Ruta",
+  "drawerSwitchDevice": "Cambiar de PC",
+  "drawerNoDevices": "Aún no hay ningún PC emparejado",
+  "drawerBackToOverview": "Volver al resumen",
   "spacesCopyPath": "Copiar ruta",
   "spacesConversations": "Conversaciones",
   "spacesNoMatch": "Ningún espacio coincide con estos filtros",

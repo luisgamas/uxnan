@@ -8,6 +8,7 @@ import 'package:uxnan/presentation/screens/pairing/qr_scanner_screen.dart';
 import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
+import 'package:uxnan/presentation/screens/shell/app_shell.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 
@@ -63,63 +64,75 @@ class AppRoutes {
 
 /// Provides the app's [GoRouter] instance.
 ///
-/// All screens are flat top-level routes in a single navigator, so `push`
-/// builds a linear back stack (devices → threads → conversation) and both the
-/// AppBar back button and the OS back gesture pop one screen consistently. A
-/// shell (sidebar/chrome) will return as a `StatefulShellRoute` when those
-/// surfaces land. Keeping routing in this provider — never in `main.dart` —
-/// follows the project's navigation convention.
+/// The route table stays **flat**: every screen is a top-level route in one
+/// navigator, so `push` builds a linear back stack (devices → threads →
+/// conversation) and both the AppBar back button and the OS back gesture pop
+/// one screen consistently.
+///
+/// A single [ShellRoute] wraps all of them in [AppShell]. That is deliberately
+/// the *only* structural change for wide windows: the same routes render in the
+/// same order, and the shell decides whether the screen is the whole window or
+/// the pane beside a drawer. Anything else — a second navigator, a branch per
+/// pane — would give tablets their own navigation model to keep in step with
+/// the phone's, and every deep link and push notification would have to work in
+/// both. Keeping routing in this provider — never in `main.dart` — follows the
+/// project's navigation convention.
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.home,
     routes: [
-      GoRoute(
-        path: AppRoutes.home,
-        builder: (context, state) => const MyDevicesScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.deviceThreadsPattern,
-        builder: (context, state) => ThreadsScreen(
-          deviceId: state.pathParameters['deviceId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.deviceArchivedPattern,
-        builder: (context, state) => ArchivedThreadsScreen(
-          deviceId: state.pathParameters['deviceId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.deviceStatsPattern,
-        builder: (context, state) => PcDetailsScreen(
-          deviceId: state.pathParameters['deviceId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.onboarding,
-        builder: (context, state) => const OnboardingScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.pairing,
-        builder: (context, state) => const QrScannerScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.manualPairing,
-        builder: (context, state) => const ManualCodeScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.settings,
-        builder: (context, state) => const SettingsScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.profile,
-        builder: (context, state) => const ProfileScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.conversationPattern,
-        builder: (context, state) => ConversationScreen(
-          threadId: state.pathParameters['threadId']!,
-        ),
+      ShellRoute(
+        builder: (context, state, child) => AppShell(child: child),
+        routes: [
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) => const MyDevicesScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.deviceThreadsPattern,
+            builder: (context, state) => ThreadsScreen(
+              deviceId: state.pathParameters['deviceId']!,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.deviceArchivedPattern,
+            builder: (context, state) => ArchivedThreadsScreen(
+              deviceId: state.pathParameters['deviceId']!,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.deviceStatsPattern,
+            builder: (context, state) => PcDetailsScreen(
+              deviceId: state.pathParameters['deviceId']!,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.onboarding,
+            builder: (context, state) => const OnboardingScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.pairing,
+            builder: (context, state) => const QrScannerScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.manualPairing,
+            builder: (context, state) => const ManualCodeScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.settings,
+            builder: (context, state) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.profile,
+            builder: (context, state) => const ProfileScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.conversationPattern,
+            builder: (context, state) => ConversationScreen(
+              threadId: state.pathParameters['threadId']!,
+            ),
+          ),
+        ],
       ),
     ],
   );

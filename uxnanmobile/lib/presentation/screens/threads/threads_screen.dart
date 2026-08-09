@@ -12,6 +12,7 @@ import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
@@ -30,10 +31,24 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// threads with per-agent filter chips, and opens a thread's conversation.
 class ThreadsScreen extends ConsumerStatefulWidget {
   /// Creates a [ThreadsScreen] for the device with [deviceId].
-  const ThreadsScreen({required this.deviceId, super.key});
+  const ThreadsScreen({
+    required this.deviceId,
+    this.embedded = false,
+    super.key,
+  });
 
   /// The PC whose threads are shown (used for the title).
   final String deviceId;
+
+  /// Whether this is the **content** of a surface that already provides its
+  /// own chrome — the permanent drawer's middle zone.
+  ///
+  /// Embedded it drops the app bar (the drawer has its own header above it),
+  /// the pull-to-refresh (a drawer is not a page you pull) and the extended
+  /// FAB (which would float over a 320 dp column). The list itself, its
+  /// controls and every behaviour around them are identical: this is one
+  /// screen shown two ways, not two screens to keep in step.
+  final bool embedded;
 
   @override
   ConsumerState<ThreadsScreen> createState() => _ThreadsScreenState();
@@ -45,7 +60,18 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     super.initState();
     // Pull this PC's threads on open so they get tagged with the device and the
     // list reflects the connected bridge.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refresh();
+      // Remembered for the permanent drawer, which on a cold start or a deep
+      // link has no route to read the PC from — see [shellDeviceProvider].
+      // Not recorded when this list IS the drawer's own content: that would be
+      // the drawer telling itself what it already decided.
+      if (!widget.embedded) {
+        unawaited(
+          ref.read(lastVisitedDeviceProvider.notifier).visited(widget.deviceId),
+        );
+      }
+    });
   }
 
   /// Whether the live session is actually connected to THIS PC (not merely some
@@ -156,44 +182,93 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     );
 
     final l10n = AppLocalizations.of(context);
+    final actions = [
+      // Search all of this PC's threads (ignores the agent filter).
+      ThreadSearchAnchor(
+        threads: threads,
+        onSelect: (id) => context.push(AppRoutes.conversation(id)),
+      ),
+      ThreadSortMenu(
+        // The project group only appears when there IS one to order — a PC
+        // whose folders never group would otherwise get a menu entry that
+        // moves nothing it can see.
+        projectSort: rows.any((r) => r is _RepoRow) ? projectSort : null,
+        worktreeSort: worktreeSort,
+        agentSort: sort,
+        onChanged: (choice) {
+          switch (choice.level) {
+            case SortLevel.projects:
+              ref.read(projectSortProvider.notifier).set(choice.value);
+            case SortLevel.worktrees:
+              ref.read(worktreeSortProvider.notifier).set(choice.value);
+            case SortLevel.agents:
+              unawaited(
+                ref.read(threadSortProvider.notifier).set(choice.value),
+              );
+          }
+        },
+      ),
+      ThreadMoreMenu(
+        compact: compact,
+        onCompactChanged: (value) =>
+            ref.read(threadDensityCompactProvider.notifier).set(value: value),
+        onArchived: () =>
+            context.push(AppRoutes.deviceArchived(widget.deviceId)),
+      ),
+    ];
+
+    final slivers = <Widget>[
+      // App-update notice (Play In-App Update on Android / App Store on iOS).
+      // Renders nothing unless an update is available and undismissed.
+      const SliverToBoxAdapter(child: _UpdateBanner()),
+      // Bridge-update notice: the paired PC's bridge reports it's outdated
+      // (`bridge/status.updateAvailable`). Informational + dismissible.
+      const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
+      if (!connectedHere)
+        SliverToBoxAdapter(
+          child: _OfflineBanner(
+            connecting: connectingHere,
+            onConnect: _connectHere,
+          ),
+        ),
+      if (rows.isEmpty)
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: _EmptyThreads(),
+        )
+      else
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            widget.embedded ? UxnanSpacing.sm : UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            widget.embedded ? UxnanSpacing.sm : UxnanSpacing.lg,
+            UxnanSpacing.xxl,
+          ),
+          // Flattened rather than nested so the list stays lazy: a PC with
+          // two hundred conversations builds the handful on screen, not the
+          // whole tree.
+          sliver: SliverList.builder(
+            itemCount: rows.length,
+            itemBuilder: (context, index) => NeEntranceRow(
+              index: index,
+              child: _buildRow(context, rows[index], compact: compact),
+            ),
+          ),
+        ),
+    ];
+
+    if (widget.embedded) {
+      return _EmbeddedSpaces(
+        actions: actions,
+        slivers: slivers,
+        onNewConversation: connectedHere ? _newConversation : null,
+      );
+    }
 
     return NeScaffold(
       title: _title(devices),
       onRefresh: _refresh,
-      actions: [
-        // Search all of this PC's threads (ignores the agent filter).
-        ThreadSearchAnchor(
-          threads: threads,
-          onSelect: (id) => context.push(AppRoutes.conversation(id)),
-        ),
-        ThreadSortMenu(
-          // The project group only appears when there IS one to order — a PC
-          // whose folders never group would otherwise get a menu entry that
-          // moves nothing it can see.
-          projectSort: rows.any((r) => r is _RepoRow) ? projectSort : null,
-          worktreeSort: worktreeSort,
-          agentSort: sort,
-          onChanged: (choice) {
-            switch (choice.level) {
-              case SortLevel.projects:
-                ref.read(projectSortProvider.notifier).set(choice.value);
-              case SortLevel.worktrees:
-                ref.read(worktreeSortProvider.notifier).set(choice.value);
-              case SortLevel.agents:
-                unawaited(
-                  ref.read(threadSortProvider.notifier).set(choice.value),
-                );
-            }
-          },
-        ),
-        ThreadMoreMenu(
-          compact: compact,
-          onCompactChanged: (value) =>
-              ref.read(threadDensityCompactProvider.notifier).set(value: value),
-          onArchived: () =>
-              context.push(AppRoutes.deviceArchived(widget.deviceId)),
-        ),
-      ],
+      actions: actions,
       // The list is long and the button covers its bottom-right corner, which
       // is where the rows you are scrolling toward arrive.
       hideFabOnScroll: true,
@@ -206,45 +281,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
             ? null
             : Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      slivers: [
-        // App-update notice (Play In-App Update on Android / App Store on iOS).
-        // Renders nothing unless an update is available and undismissed.
-        const SliverToBoxAdapter(child: _UpdateBanner()),
-        // Bridge-update notice: the paired PC's bridge reports it's outdated
-        // (`bridge/status.updateAvailable`). Informational + dismissible.
-        const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
-        if (!connectedHere)
-          SliverToBoxAdapter(
-            child: _OfflineBanner(
-              connecting: connectingHere,
-              onConnect: _connectHere,
-            ),
-          ),
-        if (rows.isEmpty)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: _EmptyThreads(),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.lg,
-              UxnanSpacing.xxl,
-            ),
-            // Flattened rather than nested so the list stays lazy: a PC with
-            // two hundred conversations builds the handful on screen, not the
-            // whole tree.
-            sliver: SliverList.builder(
-              itemCount: rows.length,
-              itemBuilder: (context, index) => NeEntranceRow(
-                index: index,
-                child: _buildRow(context, rows[index], compact: compact),
-              ),
-            ),
-          ),
-      ],
+      slivers: slivers,
     );
   }
 
@@ -805,6 +842,68 @@ class _EmptyThreads extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The spaces tree as the **content** of the permanent drawer's middle zone.
+///
+/// The same list, its controls and its behaviours — only the chrome differs.
+/// A drawer already has a header above and a profile row below, so the app bar
+/// would be a third; and an extended FAB floating over a 320 dp column would
+/// cover the very rows it sits on. The action that FAB carries moves to a plain
+/// button under the list, where it cannot obscure anything.
+class _EmbeddedSpaces extends StatelessWidget {
+  const _EmbeddedSpaces({
+    required this.actions,
+    required this.slivers,
+    required this.onNewConversation,
+  });
+
+  final List<Widget> actions;
+  final List<Widget> slivers;
+
+  /// Null when this PC is not the connected one — a new conversation only
+  /// makes sense against a live bridge.
+  final VoidCallback? onNewConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    // The list rises into place here exactly as it does full-screen; the scope
+    // comes free from NeScaffold there and has to be declared here.
+    return NeEntranceScope(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UxnanSpacing.sm,
+              vertical: UxnanSpacing.xs,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: actions,
+            ),
+          ),
+          Expanded(child: CustomScrollView(slivers: slivers)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UxnanSpacing.md,
+              0,
+              UxnanSpacing.md,
+              UxnanSpacing.sm,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: onNewConversation,
+                icon: const UxIcon(UxIcons.addComment),
+                label: Text(l10n.newThreadAction),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

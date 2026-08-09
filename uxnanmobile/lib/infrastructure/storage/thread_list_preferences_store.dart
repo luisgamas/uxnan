@@ -17,6 +17,7 @@ class ThreadListPreferencesStore {
   static const String _sortKey = 'uxnan.threads.sort';
   static const String _compactKey = 'uxnan.threads.compact';
   static const String _collapsedKey = 'uxnan.threads.collapsedProjects';
+  static const String _lastDeviceKey = 'uxnan.threads.lastDevice';
 
   /// The persisted sort mode name, or `null` if never set (keep the default).
   Future<String?> readSort() async {
@@ -58,5 +59,23 @@ class ThreadListPreferencesStore {
   Future<void> writeCollapsedProjects(Set<String> ids) async {
     final prefs = await _prefs;
     await prefs.setStringList(_collapsedKey, ids.toList());
+  }
+
+  /// The PC whose list was last on screen, or `null` if there has not been one.
+  ///
+  /// Only the permanent drawer needs this, and only as a **fallback**: it asks
+  /// the open conversation which PC it belongs to first. This answers the case
+  /// that has no conversation to ask — a cold start, or a window wide enough
+  /// for a drawer before anything has been opened — where the alternative is a
+  /// drawer that is simply blank.
+  Future<String?> readLastVisitedDevice() async {
+    final prefs = await _prefs;
+    return prefs.getString(_lastDeviceKey);
+  }
+
+  /// Persists the PC whose list was last on screen.
+  Future<void> writeLastVisitedDevice(String deviceId) async {
+    final prefs = await _prefs;
+    await prefs.setString(_lastDeviceKey, deviceId);
   }
 }

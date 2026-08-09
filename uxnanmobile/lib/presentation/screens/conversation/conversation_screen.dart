@@ -750,8 +750,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   /// Horizontal inset that centers the conversation content within
-  /// [UxnanSpacing.maxContentWidth] on wide screens (tablets), falling back to
-  /// the normal gutter on phones.
+  /// [UxnanSpacing.maxContentWidth] on wide surfaces, falling back to the
+  /// normal gutter on narrow ones.
+  ///
+  /// [width] is the width of **this surface**, not the window: inside the
+  /// shell's content pane those differ by the whole drawer.
   double _horizontalInset(double width) {
     final inset = (width - UxnanSpacing.maxContentWidth) / 2;
     return inset > UxnanSpacing.lg ? inset : UxnanSpacing.lg;
@@ -783,6 +786,14 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   Widget build(BuildContext context) {
+    // The conversation is not always the window: inside the shell's content
+    // pane it has the window MINUS a 320 dp drawer. Measuring the window would
+    // center the text against space it does not own — off to one side, with
+    // the rail hanging in the middle of nothing.
+    return LayoutBuilder(builder: _buildWithin);
+  }
+
+  Widget _buildWithin(BuildContext context, BoxConstraints constraints) {
     final l10n = AppLocalizations.of(context);
     final timelineAsync = ref.watch(activeTimelineProvider);
     final thread = ref.watch(threadByIdProvider(widget.threadId));
@@ -847,7 +858,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     _userMessageKeys.removeWhere(
       (id, _) => !railAnchors.tickForId.containsKey(id),
     );
-    final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
+    final contentInset = _horizontalInset(constraints.maxWidth);
     final running = connectedHere && activity == ThreadActivity.running;
 
     // The "+" is reserved for immediate media actions. Persistent turn

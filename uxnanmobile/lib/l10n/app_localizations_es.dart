@@ -310,6 +310,15 @@ class AppLocalizationsEs extends AppLocalizations {
   String get spacesDetailsPath => 'Ruta';
 
   @override
+  String get drawerSwitchDevice => 'Cambiar de PC';
+
+  @override
+  String get drawerNoDevices => 'Aún no hay ningún PC emparejado';
+
+  @override
+  String get drawerBackToOverview => 'Volver al resumen';
+
+  @override
   String get spacesCopyPath => 'Copiar ruta';
 
   @override

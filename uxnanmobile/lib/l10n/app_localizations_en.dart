@@ -309,6 +309,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get spacesDetailsPath => 'Path';
 
   @override
+  String get drawerSwitchDevice => 'Switch PC';
+
+  @override
+  String get drawerNoDevices => 'No PC paired yet';
+
+  @override
+  String get drawerBackToOverview => 'Back to overview';
+
+  @override
   String get spacesCopyPath => 'Copy path';
 
   @override

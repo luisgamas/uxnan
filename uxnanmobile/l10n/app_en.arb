@@ -136,6 +136,9 @@
     "placeholders": { "count": { "type": "int" } }
   },
   "spacesDetailsPath": "Path",
+  "drawerSwitchDevice": "Switch PC",
+  "drawerNoDevices": "No PC paired yet",
+  "drawerBackToOverview": "Back to overview",
   "spacesCopyPath": "Copy path",
   "spacesConversations": "Conversations",
   "spacesNoMatch": "No space matches these filters",
