@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `git/worktrees`
+
+Which directories are worktrees of the repository at a `cwd`:
+`{ worktrees: [{ path, branch?, isMain, isLocked? }] }`, main worktree first.
+
+It exists because a repository's worktrees are **siblings on disk** — a
+checkout of `repo` at `../repo-feature` is a peer directory with no path
+relationship to its main worktree — so a client cannot infer the hierarchy and
+has to be told. Any client that guessed from path prefixes was guessing.
+
+`METHOD_NAMES` is now **70** entries.
+
 ## [0.0.13-alpha.20260804] - 2026-08-04
 
 ### Added — a conversation gets a real name, not its opening words

@@ -100,14 +100,14 @@ Toda la comunicacion entre la app movil y el bridge usa **JSON-RPC 2.0** sobre W
 ### 1.2 Metodos JSON-RPC completos
 
 > **Lista canonica:** la fuente de verdad en TypeScript es
-> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 69 entradas).
+> `../../shared/src/jsonrpc/method-registry.ts` (`METHOD_NAMES`, 70 entradas).
 > El telefono mantiene una copia Dart sincronizada a mano
 > (`uxnanmobile/lib/domain/value_objects/...`); el bridge y el relay consumen
 > el paquete compartido directamente. Los nombres siguen la convencion
 > `domain/action` (lowercase) en singular para acciones discretas
 > (`git/commit`) y plural para lecturas (`git/branches`).
 >
-> **Total: 69 metodos request/response** + 12 notificaciones de streaming
+> **Total: 70 metodos request/response** + 12 notificaciones de streaming
 > (ver §1.4). El bridge tambien expone el endpoint HTTP local
 > `GET /pair/resolve?code=<code>` para manual-code pairing (ver
 > `02a` §5.5.3) — fuera del canal JSON-RPC, vive en su `http.Server`.
@@ -205,6 +205,7 @@ git/switchBranch        -> cambiar de rama (con auto-stash)
 git/revert              -> revertir el ultimo commit (git revert, preserva historia)
 git/deleteBranch        -> eliminar rama (refusa unmerged salvo force)
 git/removeWorktree      -> eliminar worktree (refusa dirty salvo force)
+git/worktrees          -> worktrees del repo en { cwd }: { worktrees: [{ path, branch?, isMain, isLocked? }] }. Los worktrees son HERMANOS en disco, asi que el cliente no puede deducir la jerarquia por prefijos de ruta: hay que decirsela. Un bridge anterior responde "metodo desconocido" y el movil deja la lista plana.
 git/log                -> historial de commits (paginado por cursor; parents[] para la vista gráfico; refs[] = decoración HEAD/ramas/tags por commit, vía `--decorate=full`)
 git/commitShow         -> detalle completo de un commit { sha }: metadata (incl. refs[]), files[] (status + oldPath en renames + additions/deletions por archivo) y diff unificado completo (capado ~400 KB → diffTruncated)
 ```
