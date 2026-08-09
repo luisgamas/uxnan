@@ -134,6 +134,17 @@ A spring is defined by two parameters:
 
 M3E defines two *motion schemes* applicable globally:
 
+> **A spring is not the answer to every animation.** The springs above model
+> something being *grabbed and released* — a press, a drag, a morph — and their
+> stiffness and overshoot are what give that life. Applied to a surface that
+> merely arrives or leaves, the same values read as a snap followed by a bounce
+> off a wall. For revealing and hiding, use the duration-and-curve tokens in
+> `UxnanMotion` (`presentation/theme/motion.dart`): `reveal` = 220 ms
+> `easeOutCubic`, decelerating and **without overshoot**, and `swap` = 180 ms
+> for one surface replacing another in the same slot. Those are the composer
+> control ribbon's values, the smoothest motion in the app; matching them is
+> how a reveal elsewhere ends up feeling the same.
+
 - **Expressive (recommended):** Springs with slight overshoot. For hero moments, FABs,
   main-screen transitions. It is Gemini's default scheme.
 - **Standard:** Springs with critical damping, no bounce. For high-information-density
@@ -786,6 +797,19 @@ slightly along the collision axis. This requires coordinated animation with `spa
   circular `surfaceContainerHighest` control with `onSurfaceVariant` glyph,
   subtle `outlineVariant` edge and low elevation. They stay bottom-centered and
   avoid the more prominent brand/secondary tones reserved for primary actions.
+- **A FAB over a long list steps aside while the list moves.** It covers the
+  bottom-right corner, which is where the rows being scrolled toward arrive;
+  while you are scrolling you are reading, not acting. `NeScrollAwareFab`
+  slides, fades and shrinks it out on `ScrollStartNotification` and brings it
+  back on
+  `ScrollEndNotification` — the scroll's own end, not a timer, so the wait is
+  exactly as long as the scroll is, fling included. It stops taking taps while
+  it is gone; an invisible button that still swallows them is worse than none.
+  Opt in with `NeScaffold(hideFabOnScroll: true)`.
+- **The scroll shortcuts above must NOT opt in.** They are affordances *for*
+  scrolling: hiding them during a scroll removes them at the only moment they
+  are wanted. Ask which of the two a FAB is before wiring it.
+
 #### Button Hierarchy by Size
 
 | Size | Height | Use |

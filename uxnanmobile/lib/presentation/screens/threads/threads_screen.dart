@@ -168,6 +168,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               context.push(AppRoutes.deviceArchived(widget.deviceId)),
         ),
       ],
+      // The list is long and the button covers its bottom-right corner, which
+      // is where the rows you are scrolling toward arrive.
+      hideFabOnScroll: true,
       floatingActionButton: FloatingActionButton.extended(
         // New conversations only make sense against the live PC.
         onPressed: connectedHere ? _newConversation : null,

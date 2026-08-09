@@ -6,6 +6,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the new-conversation button steps aside while you scroll
+
+A FAB sits over the bottom-right of the list, which on a phone is exactly where
+the rows you are scrolling toward arrive. While you are scrolling you are
+reading, not acting, so it now shrinks away and returns the moment the list
+settles — on the scroll's own end, not on a timer, so the wait is as long as the
+scroll is and no longer, fling included. It stops accepting taps while it is
+gone.
+
+Opt-in per screen (`NeScaffold(hideFabOnScroll: true)`), because a FAB that is a
+*scroll affordance* rather than an action — the conversation history's
+back-to-top — exists precisely for the moment this would hide it.
+
+The motion is the composer control ribbon's, now shared as `UxnanMotion.reveal`
+(220 ms `easeOutCubic`) instead of living as loose numbers inside that one
+widget. The app's spring tokens model a *press* — stiff, with a little
+overshoot — and reused for something leaving the screen they read as a snap and
+a bounce; the design guide now says so next to the spring table.
+
 ### Fixed — glyphs stroke at the weight the app was drawn around, and a group outranks its rows
 
 Two things made the conversation list read thinner and flatter than the rest of

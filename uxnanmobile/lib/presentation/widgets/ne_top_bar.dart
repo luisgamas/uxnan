@@ -3,6 +3,7 @@ import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_scroll_aware_fab.dart';
 
 /// Neural Expressive top bar (guide §4.1–4.2): a 56 dp **transparent** chrome
 /// layer with a vertical *scroll veil* (surface → transparent) so content
@@ -119,7 +120,7 @@ class NeComposerVeil extends StatelessWidget {
 /// top spacer so the first content clears the bar. The standard chrome for
 /// list/detail screens, matching the conversation's transparent-bar treatment.
 /// A back [IconSurface] is added automatically on pushed routes.
-class NeScaffold extends StatelessWidget {
+class NeScaffold extends StatefulWidget {
   /// Creates a [NeScaffold].
   const NeScaffold({
     required this.slivers,
@@ -129,6 +130,7 @@ class NeScaffold extends StatelessWidget {
     this.actions = const [],
     this.floatingActionButton,
     this.floatingActionButtonLocation,
+    this.hideFabOnScroll = false,
     this.scrollController,
     this.onRefresh,
     this.automaticBackButton = true,
@@ -160,6 +162,15 @@ class NeScaffold extends StatelessWidget {
   /// for bottom-centered floating scroll shortcuts.
   final FloatingActionButtonLocation? floatingActionButtonLocation;
 
+  /// Whether the [floatingActionButton] hides while the content is scrolling
+  /// and returns when it settles (see [NeScrollAwareFab]).
+  ///
+  /// **Opt-in, not the default.** A FAB that is an *action* on the list should
+  /// take this; one that is a *scroll affordance* — the conversation history's
+  /// back-to-top — must not, since it exists precisely for the moment this
+  /// would hide it.
+  final bool hideFabOnScroll;
+
   /// Optional scroll controller for the content.
   final ScrollController? scrollController;
 
@@ -183,11 +194,35 @@ class NeScaffold extends StatelessWidget {
   final bool constrainContent;
 
   @override
+  State<NeScaffold> createState() => _NeScaffoldState();
+}
+
+class _NeScaffoldState extends State<NeScaffold> {
+  bool _scrolling = false;
+
+  /// Only the scroll view this scaffold owns may hide the button. A sheet or a
+  /// menu opened from the screen scrolls inside its own overlay, and its
+  /// notifications bubble through here on their way up — reacting to those
+  /// would blink the FAB every time a menu moved.
+  bool _isOwnScroll(ScrollNotification n) => n.depth == 0;
+
+  bool _onScroll(ScrollNotification notification) {
+    if (!widget.hideFabOnScroll || !_isOwnScroll(notification)) return false;
+    final scrolling = switch (notification) {
+      ScrollStartNotification() => true,
+      ScrollEndNotification() => false,
+      _ => _scrolling,
+    };
+    if (scrolling != _scrolling) setState(() => _scrolling = scrolling);
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final canPop = ModalRoute.of(context)?.canPop ?? false;
-    final lead = leading ??
-        (automaticBackButton && canPop
+    final lead = widget.leading ??
+        (widget.automaticBackButton && canPop
             ? IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
@@ -200,13 +235,13 @@ class NeScaffold extends StatelessWidget {
     // here (see [TwoPaneScaffold]).
     Widget scroll = LayoutBuilder(
       builder: (context, constraints) {
-        final inset = constrainContent
+        final inset = widget.constrainContent
             ? UxnanBreakpoint.fromWidth(constraints.maxWidth)
                 .horizontalInsetFor(constraints.maxWidth)
             : 0.0;
         final padding = EdgeInsets.symmetric(horizontal: inset);
         return CustomScrollView(
-          controller: scrollController,
+          controller: widget.scrollController,
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
           ),
@@ -214,7 +249,7 @@ class NeScaffold extends StatelessWidget {
             SliverToBoxAdapter(
               child: SizedBox(height: NeTopBar.preferredHeight(context)),
             ),
-            for (final sliver in slivers)
+            for (final sliver in widget.slivers)
               if (inset > 0)
                 SliverPadding(padding: padding, sliver: sliver)
               else
@@ -223,38 +258,44 @@ class NeScaffold extends StatelessWidget {
         );
       },
     );
-    final onRefresh = this.onRefresh;
+    final onRefresh = widget.onRefresh;
     if (onRefresh != null) {
       scroll = RefreshIndicator(onRefresh: onRefresh, child: scroll);
     }
 
+    final fab = widget.floatingActionButton;
     return Scaffold(
-      floatingActionButton: floatingActionButton,
-      floatingActionButtonLocation: floatingActionButtonLocation,
-      body: Stack(
-        children: [
-          scroll,
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: NeTopBar(
-              leading: lead,
-              // Compact single-line title (slightly smaller than titleLarge),
-              // truncated with an ellipsis when it doesn't fit.
-              title: titleWidget ??
-                  (title == null
-                      ? null
-                      : Text(
-                          title!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.titleLarge?.copyWith(fontSize: 20),
-                        )),
-              actions: actions,
+      floatingActionButton: fab == null || !widget.hideFabOnScroll
+          ? fab
+          : NeScrollAwareFab(visible: !_scrolling, child: fab),
+      floatingActionButtonLocation: widget.floatingActionButtonLocation,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: Stack(
+          children: [
+            scroll,
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: NeTopBar(
+                leading: lead,
+                // Compact single-line title (slightly smaller than titleLarge),
+                // truncated with an ellipsis when it doesn't fit.
+                title: widget.titleWidget ??
+                    (widget.title == null
+                        ? null
+                        : Text(
+                            widget.title!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                          )),
+                actions: widget.actions,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
