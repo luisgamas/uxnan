@@ -137,6 +137,13 @@ time is open. Two orderings apply independently: `spaceSortProvider` for the
 folders (attention / activity / name) and `threadSortProvider` for the
 conversations inside them.
 
+A folder row is two lines whose **second one changes with the fold**: open, just
+the conversation count, since every conversation carries its own agent mark and
+state one row below; closed, the agents inside it as well, plus the strongest
+state among them on the first line. Folding must not hide what the screen exists
+to surface. The count yields before the marks do, so a long translation
+ellipsizes instead of overflowing the row.
+
 A thread row reads state → agent → text (`thread_tile.dart`), mirroring
 `uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a
 step larger, then the title over its second line.

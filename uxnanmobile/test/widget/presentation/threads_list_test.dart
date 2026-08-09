@@ -226,6 +226,36 @@ void main() {
       expect(find.byType(AgentStatusIndicator), findsWidgets);
     });
 
+    testWidgets('a folder shows its agents only while it is closed',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Open, each conversation carries its own mark one row below, so
+      // repeating them on the header would say the same thing twice.
+      final openMarks = find.byType(AgentLogo).evaluate().length;
+
+      await tester.tap(find.text('app'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Closed, that evidence is gone and the header has to stand in for it.
+      expect(find.text('Fix login'), findsNothing);
+      expect(find.byType(AgentLogo), findsWidgets);
+      expect(
+        find.byType(AgentLogo).evaluate().length,
+        lessThan(openMarks),
+        reason: 'a closed folder summarises its agents, it does not list them',
+      );
+    });
+
     testWidgets('long-pressing a folder opens its details with the full path',
         (tester) async {
       await tester.pumpWidget(

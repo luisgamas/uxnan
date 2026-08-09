@@ -55,8 +55,10 @@ folder are one row however they reached us — while the path shown and copied i
 the one that was actually reported.
 
 A folder row carries its name and, closed, the strongest state inside it —
-hiding that would defeat the reason the screen exists. Its second line says how
-many conversations it holds and which agents are in it. Everything else — the
+hiding that would defeat the reason the screen exists. Its second line answers
+what the fold hides: open, just how many conversations it holds, since each one
+carries its own agent mark and state a row below; closed, the agents inside it
+as well, because that evidence is gone. Everything else — the
 full path, the conversations with their states, and the git state that lands
 next — is one **long-press** away; the desktop shows the same on hover, and a
 phone has no hover.

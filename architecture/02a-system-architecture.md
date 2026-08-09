@@ -962,6 +962,14 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > que el bridge pueda decir mas (`git/worktrees`), momento en el que un nivel de
 > proyecto vuelve significando lo mismo que en desktop. Las raices configuradas
 > aportan su **nombre**, nada mas.
+>
+> La fila de carpeta lleva **dos lineas, y la segunda cambia con el pliegue**:
+> abierta dice solo cuantas conversaciones contiene, porque cada una lleva su
+> propia marca de agente y su propio estado una fila mas abajo; cerrada anade
+> las marcas de los agentes que hay dentro y, en la primera linea, el estado mas
+> urgente de todos ellos — esa evidencia desaparece al plegar y la cabecera
+> tiene que suplirla. Es el mismo canje que hace la vista de agentes de
+> `uxnandesktop`.
 
 > **El estado del agente en la lista es DERIVADO, no reportado.** La fila de
 > conversacion muestra los mismos cinco estados que la barra lateral de

@@ -20,6 +20,14 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// only meant to relate.
 const double kSpaceIndent = UxnanSpacing.lg;
 
+/// Where a folder's second line starts: under its **name**, not under the
+/// chevron. Derived from the glyphs that precede the name rather than typed as
+/// a number, so resizing either one keeps the two lines aligned.
+const double _kSecondLineIndent = UxnanSize.iconContentSmall +
+    UxnanSpacing.xs +
+    UxnanSize.iconContentLarge +
+    UxnanSpacing.sm;
+
 /// The strongest state among a set of conversations — what the folder as a
 /// whole is doing.
 ///
@@ -47,8 +55,16 @@ AgentRunStatus aggregateStatus(WidgetRef ref, Iterable<Thread> threads) {
 /// A working folder: the top of the list, and the only grouping the phone can
 /// honestly draw today.
 ///
-/// Two lines. The name and what the folder is doing on the first; how many
-/// conversations it holds and which agents are in it on the second.
+/// Two lines, and the second one changes with the fold — the same trade
+/// `uxnandesktop` makes in its agent view.
+///
+/// **Open**, the conversations below speak for themselves: each carries its own
+/// agent mark and its own state, so repeating them on the header would say the
+/// same thing twice. The line keeps only the count.
+///
+/// **Closed**, that evidence is gone, so the header has to stand in for it: the
+/// count plus the marks of the agents inside, and — on the first line — the
+/// strongest state among them.
 class WorkspaceGroupRow extends ConsumerWidget {
   /// Creates a [WorkspaceGroupRow].
   const WorkspaceGroupRow({
@@ -120,14 +136,17 @@ class WorkspaceGroupRow extends ConsumerWidget {
                   const SizedBox(width: UxnanSpacing.xs),
                   UxIcon(
                     UxIcons.folder,
-                    size: UxnanSize.iconContent,
+                    size: UxnanSize.iconContentLarge,
                     color: colors.onSurfaceVariant,
                   ),
                   const SizedBox(width: UxnanSpacing.sm),
                   Expanded(
                     child: Text(
                       label,
-                      style: textTheme.titleSmall,
+                      // One rung above the conversations it heads (they take
+                      // titleSmall), so the fold reads as structure rather
+                      // than as a list of equals.
+                      style: textTheme.titleMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -148,29 +167,30 @@ class WorkspaceGroupRow extends ConsumerWidget {
                   _NewConversationButton(onPressed: onNewConversation),
                 ],
               ),
-              // Lines up under the name, not under the chevron.
               Padding(
-                padding: const EdgeInsets.only(left: 44),
+                padding: const EdgeInsets.only(left: _kSecondLineIndent),
                 child: Row(
                   children: [
-                    Text(
-                      l10n.spacesConversationCount(threads.length),
-                      style: textTheme.bodySmall,
+                    // Yields first: a long count string ellipsizes instead of
+                    // pushing the marks off the row. The marks are bounded (at
+                    // most three plus an overflow count), so what is left of
+                    // the line always fits them.
+                    Flexible(
+                      child: Text(
+                        l10n.spacesConversationCount(threads.length),
+                        // A step below the name and a step above a
+                        // conversation's own second line, so the two levels
+                        // stay parallel instead of collapsing into one size.
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    if (agents.isNotEmpty) ...[
+                    if (!expanded && agents.isNotEmpty) ...[
                       const SizedBox(width: UxnanSpacing.sm),
-                      for (final agent in agents.take(3))
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            right: UxnanSpacing.xs,
-                          ),
-                          child: AgentLogo(agent: agent),
-                        ),
-                      if (agents.length > 3)
-                        Text(
-                          '+${agents.length - 3}',
-                          style: textTheme.bodySmall,
-                        ),
+                      _AgentMarks(agents: agents),
                     ],
                   ],
                 ),
@@ -191,8 +211,37 @@ class WorkspaceGroupRow extends ConsumerWidget {
   }
 }
 
-/// The row's own action: an **XS button** from the guide's button hierarchy
-/// (§4.5) — 32 dp of surface around a content-sized glyph, inside the usual
+/// Which agents are working in a closed folder, as a bounded strip.
+///
+/// Capped at three plus a count: past that the marks stop being recognisable
+/// and start being texture, and the row has a name to protect.
+class _AgentMarks extends StatelessWidget {
+  const _AgentMarks({required this.agents});
+
+  final List<AgentId> agents;
+
+  static const int _max = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final agent in agents.take(_max))
+          Padding(
+            padding: const EdgeInsets.only(right: UxnanSpacing.xs),
+            child: AgentLogo(agent: agent),
+          ),
+        if (agents.length > _max)
+          Text('+${agents.length - _max}', style: textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+/// The row's own action: an **S button** from the guide's button hierarchy
+/// (§4.5) — 40 dp of surface around a content-sized glyph, inside the usual
 /// 48 dp touch target. Large enough to read as a button rather than a
 /// decorative plus, small enough not to compete with the folder it sits on.
 class _NewConversationButton extends StatelessWidget {
@@ -217,8 +266,8 @@ class _NewConversationButton extends StatelessWidget {
               customBorder: const CircleBorder(),
               onTap: onPressed,
               child: SizedBox(
-                width: 32,
-                height: 32,
+                width: UxnanSize.buttonSmall,
+                height: UxnanSize.buttonSmall,
                 child: UxIcon(
                   UxIcons.add,
                   size: UxnanSize.iconContent,
