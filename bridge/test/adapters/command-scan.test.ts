@@ -38,21 +38,6 @@ test('scanCustomCommands parses markdown front-matter (description + argument-hi
   await rmrf(dir);
 });
 
-test('scanCustomCommands parses a TOML command (multiline prompt + description)', async () => {
-  const dir = await tempDir();
-  await writeFile(
-    join(dir, 'plan.toml'),
-    'description = "Draft a plan"\nprompt = """\nPlan the work for {{args}}.\n"""\n',
-  );
-  const source: CustomCommandSource = { dirs: [dir], ext: '.toml', format: 'toml' };
-  const commands = await scanCustomCommands(source);
-  assert.equal(commands.length, 1);
-  assert.equal(commands[0]!.name, 'plan');
-  assert.equal(commands[0]!.description, 'Draft a plan');
-  assert.equal(commands[0]!.source, 'custom');
-  await rmrf(dir);
-});
-
 test('scanCustomCommands de-dupes by name: a project-scoped file shadows the user-level one', async () => {
   const projectDir = await tempDir();
   const userDir = await tempDir();
@@ -90,14 +75,11 @@ test('expandCustomCommand substitutes $ARGUMENTS / {{args}} / positional $1', as
     join(dir, 'fix.md'),
     '---\ndescription: fix\n---\nFix $1 then review $ARGUMENTS.',
   );
-  await writeFile(join(dir, 'greet.toml'), 'prompt = "Hi {{args}}"');
   const md: CustomCommandSource = { dirs: [dir], ext: '.md', format: 'markdown' };
-  const toml: CustomCommandSource = { dirs: [dir], ext: '.toml', format: 'toml' };
   assert.equal(
     await expandCustomCommand(md, 'fix', 'auth.ts high'),
     'Fix auth.ts then review auth.ts high.',
   );
-  assert.equal(await expandCustomCommand(toml, 'greet', 'there'), 'Hi there');
   await rmrf(dir);
 });
 

@@ -13,7 +13,6 @@ import 'package:uxnan/domain/entities/auth_status.dart';
 import 'package:uxnan/domain/entities/message.dart';
 import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
-import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
@@ -243,13 +242,7 @@ class ThreadManager {
   }
 
   /// Reactive list of threads.
-  Stream<List<Thread>> get threadsStream =>
-      _threadRepository.watchThreads().map(
-            (threads) => [
-              for (final thread in threads)
-                if (isMobileAgentSupported(thread.agentId)) thread,
-            ],
-          );
+  Stream<List<Thread>> get threadsStream => _threadRepository.watchThreads();
 
   /// The active thread's timeline (current value replayed on listen).
   Stream<TurnTimelineSnapshot> get timelineStream => _timeline.stream;
@@ -317,7 +310,6 @@ class ThreadManager {
         // Tag each synced thread with the PC it came from so the list can be
         // scoped to the selected device.
         final thread = _parseThread(raw.cast<String, dynamic>());
-        if (!isMobileAgentSupported(thread.agentId)) continue;
         await _threadRepository.saveThread(
           deviceId != null ? thread.copyWith(deviceId: deviceId) : thread,
         );
@@ -355,11 +347,7 @@ class ThreadManager {
     return [
       for (final raw in agents)
         if (raw is Map) AgentDescriptor.fromJson(raw.cast<String, dynamic>()),
-    ]
-        .where(
-          (agent) => !agent.deprecated && isMobileAgentSupported(agent.agentId),
-        )
-        .toList();
+    ].where((agent) => !agent.deprecated).toList();
   }
 
   /// Changes the model a thread's agent uses (`thread/setModel`) and mirrors it
@@ -703,8 +691,6 @@ class ThreadManager {
   /// while the screen was closed keeps rendering and updating live), then
   /// re-syncs the thread from the bridge to recover anything missed.
   Future<void> selectThread(String threadId) async {
-    final selected = await _threadRepository.getThread(threadId);
-    if (selected != null && !isMobileAgentSupported(selected.agentId)) return;
     _activeThreadId = threadId;
     markRead(threadId); // opening the conversation clears its unread flag
     _activePersisted = const [];

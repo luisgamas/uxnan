@@ -34,7 +34,7 @@ El bridge gestiona todas las operaciones criticas de la conexion movil-PC:
 - **Handshake E2EE**: Establece la sesion cifrada end-to-end con el telefono. El relay nunca ve contenido en texto claro.
 - **Pairing por QR**: Genera el payload de pairing que el telefono escanea para iniciar la conexion segura.
 - **Ruteo JSON-RPC**: Recibe metodos JSON-RPC del movil y los enruta al handler correspondiente (Git, workspace, threads, agentes).
-- **Agent adapters**: Interactua con los CLI de agentes AI (Claude Code, Codex CLI, OpenCode, Gemini CLI, Aider, pi-agent) a traves de adaptadores que implementan `IAgentAdapter`.
+- **Agent adapters**: Interactua con los CLI de agentes AI soportados a traves de adaptadores que implementan `IAgentAdapter`.
 - **Operaciones Git**: Ejecuta comandos Git localmente via `child_process` (status, diff, commit, push, pull, worktrees).
 - **Gestion de workspace**: Lectura de archivos, listado de directorios, checkpoints, aplicacion de patches.
 

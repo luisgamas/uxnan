@@ -64,8 +64,6 @@
 //! - **Kilo Code** — its config is JSONC; parsing it with a JSON reader would
 //!   throw away the user's comments on write.
 //!
-//! **Gemini CLI** is discontinued upstream, so it is no longer offered (its
-//! `config_path` arm is kept so a stale entry can still be undone).
 //! See `FOR-DEV.md` → *Integrated developer browser*.
 
 use std::collections::HashSet;
@@ -174,7 +172,6 @@ fn config_path(agent: &str, home: &Path) -> Option<PathBuf> {
     match agent {
         "claude" => Some(home.join(".claude.json")),
         "codex" => Some(home.join(".codex").join("config.toml")),
-        "gemini" => Some(home.join(".gemini").join("settings.json")),
         "opencode" => Some(home.join(".config").join("opencode").join("opencode.json")),
         "grok" => Some(home.join(".grok").join("config.toml")),
         // Qwen Code descends from the Gemini CLI and kept its settings file.
@@ -203,13 +200,6 @@ fn json_entry(agent: &str, endpoint: &str) -> Option<(Vec<&'static str>, Value)>
         "claude" => Some((
             vec!["mcpServers", SERVER_NAME],
             json!({ "type": "http", "url": endpoint, "headers": { "Authorization": bearer_dollar } }),
-        )),
-        // `trust: true` bypasses Gemini's per-tool-call confirmation for this
-        // server (the one prompt our injection would otherwise trigger). Safe here:
-        // it's our own loopback server, gated by the per-launch `UXNAN_MCP_TOKEN`.
-        "gemini" => Some((
-            vec!["mcpServers", SERVER_NAME],
-            json!({ "httpUrl": endpoint, "trust": true, "headers": { "Authorization": bearer_dollar } }),
         )),
         // MiMo Code is a fork of OpenCode, config shape included.
         "opencode" | "mimo" => Some((
@@ -628,16 +618,6 @@ mod tests {
     }
 
     #[test]
-    fn gemini_entry_marks_the_server_trusted() {
-        // `trust: true` is what suppresses Gemini's per-tool-call confirmation.
-        let (_, entry) = json_entry("gemini", "http://x/mcp").unwrap();
-        assert_eq!(entry["trust"], json!(true));
-        // Other agents don't carry a `trust` flag (it's Gemini-specific).
-        let (_, claude) = json_entry("claude", "http://x/mcp").unwrap();
-        assert!(claude.get("trust").is_none());
-    }
-
-    #[test]
     fn toml_codex_inserts_and_removes_without_clobbering() {
         let existing = "model = \"o3\"\n\n[some.other]\nk = 1\n";
         let with = toml_mcp("codex", existing, Some("http://127.0.0.1:9/mcp"));
@@ -669,10 +649,6 @@ mod tests {
         assert_eq!(
             config_path("codex", home).unwrap(),
             home.join(".codex").join("config.toml")
-        );
-        assert_eq!(
-            config_path("gemini", home).unwrap(),
-            home.join(".gemini").join("settings.json")
         );
         assert_eq!(
             config_path("opencode", home).unwrap(),

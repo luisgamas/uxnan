@@ -71,7 +71,7 @@ fn looks_like_script(token: &str) -> bool {
 
 /// How strongly a path/exe token identifies the agent command `cmd`, or `None`.
 /// Ranked so a **more specific** match always outranks a looser one: an exact
-/// token beats a `cmd-…`/`cmd_…` variant (e.g. `gemini-cli` for `gemini`), which
+/// token beats a `cmd-…`/`cmd_…` variant (e.g. `cursor-agent` for `cursor`), which
 /// beats a bare substring (4+ chars, for `@scope/codex` package folders). Longer
 /// commands outrank shorter ones within a tier, so a specific brand (`openclaude`)
 /// wins over a base one it contains (`claude`).
@@ -289,7 +289,6 @@ mod tests {
         [
             "claude",
             "codex",
-            "gemini",
             "opencode",
             "pi",
             "agy",
@@ -319,8 +318,7 @@ mod tests {
 
     #[test]
     fn matches_exact_and_suffix_variants() {
-        assert!(token_matches("gemini", "gemini"));
-        assert!(token_matches("gemini-cli", "gemini")); // node-shim package folder
+        assert!(token_matches("cursor-agent", "cursor"));
         assert!(token_matches("pi", "pi"));
         assert!(token_matches("pi-cli", "pi"));
         assert!(token_matches("opencode", "opencode"));
@@ -388,10 +386,10 @@ mod tests {
     #[test]
     fn prompt_text_and_flags_do_not_identify_the_agent() {
         // A user prompt mentioning other agents must not change identity.
-        let t = agent_tokens("codex", &argv(&["codex", "compare gemini and zero output"]));
+        let t = agent_tokens("codex", &argv(&["codex", "compare alpha and zero output"]));
         assert_eq!(best_command(&t, &catalog()).unwrap().0, "codex");
         // Inline node source (`-e`) has no script entrypoint → no false match.
-        let t = agent_tokens("node", &argv(&["node", "-e", "console.log('gemini')"]));
+        let t = agent_tokens("node", &argv(&["node", "-e", "console.log('alpha')"]));
         assert!(best_command(&t, &catalog()).is_none());
     }
 
@@ -500,7 +498,7 @@ mod tests {
     #[test]
     fn the_foreground_agent_wins_over_a_deeper_one() {
         // Shell → claude (foreground) and, separately, a backgrounded shell that
-        // holds a gemini. The direct child (claude) is the launched agent.
+        // holds another agent. The direct child (claude) is the launched agent.
         let mut procs = HashMap::new();
         procs.insert(100, proc("cmd", &["cmd.exe"], None));
         procs.insert(
@@ -516,7 +514,7 @@ mod tests {
             400,
             proc(
                 "node",
-                &["node", "C:\\a\\@google\\gemini-cli\\index.js"],
+                &["node", "C:\\a\\opencode-ai\\bin\\opencode.js"],
                 Some(300),
             ),
         );

@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the standalone Gemini CLI adapter, resolver, hook reporter, session
+  reader, usage reader, command parser and descriptor. Persisted daemon config
+  drops only the retired `gemini-cli` id while preserving every active agent,
+  including Antigravity and its Gemini-family models.
+
 ## [0.0.18-alpha.20260805] - 2026-08-05
 
 ### Fixed — Grok's token usage actually reaches the phone this time

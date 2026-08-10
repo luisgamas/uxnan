@@ -3,7 +3,7 @@
  * directly with `shell:false` (so the user prompt is never interpolated into a
  * shell — no command injection).
  *
- * Unlike the pi/Gemini/Codex npm CLIs (Node entries behind a `.cmd` shim), `agy`
+ * Unlike the pi/Codex npm CLIs (Node entries behind a `.cmd` shim), `agy`
  * ships as a single native binary (`agy.exe` on Windows, `agy` on POSIX), which
  * spawns directly with `shell:false` on every platform. We resolve a concrete
  * path when we can find one (a configured path, the default install dir, or a

@@ -5,8 +5,7 @@ REM The same job as the Codex hook, but with the agent kind passed as %1 instead
 REM of baked in, so one script serves every CLI whose hook runner executes a
 REM command and pipes it the raw event JSON. Used by Grok, Antigravity and every
 REM declaratively-wired CLI - single native binaries or CLIs with no Node
-REM guarantee, which is why this uses curl rather than the Node relay Claude and
-REM Gemini share.
+REM guarantee, which is why this uses curl rather than Claude's Node relay.
 REM
 REM It is deliberately NOT the Codex hook with an argument bolted on: those exact
 REM bytes are folded into Codex's trusted_hash, so they must not move.

@@ -1309,7 +1309,6 @@ const EXPORT_FIELDS: &[&str] = &[
 const EXPORTABLE_AGENT_IDS: &[&str] = &[
     "claude",
     "codex",
-    "gemini",
     "opencode",
     "pi",
     "agy",

@@ -36,13 +36,12 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   hooks del propio agente lo ejecuta, así que debe funcionar sea cual sea la
   shell del usuario: cmd, PowerShell, PowerShell 7, Git Bash, WSL, bash, zsh,
   fish):
-  - **Claude Code** y **Gemini CLI** — un relay Node sin dependencias
-    (`uxnan-status-relay.cjs`). Ambos *son* programas Node, así que `node` está
-    garantizado; Claude lo invoca en **exec form** (`command:"node", args:[…]`,
-    sin shell) y Gemini como `node "<relay>"`. Se mergea **por evento** en
-    `~/.claude/settings.json` / `~/.gemini/settings.json` preservando los hooks
-    del usuario. El servidor normaliza el evento y, para el `done` de Claude, lee
-    el transcript server-side para el preview.
+  - **Claude Code** — un relay Node sin dependencias
+    (`uxnan-status-relay.cjs`). Claude es un programa Node, así que `node` está
+    garantizado; lo invoca en **exec form** (`command:"node", args:[…]`, sin
+    shell). Se mergea **por evento** en `~/.claude/settings.json` preservando los
+    hooks del usuario. El servidor normaliza el evento y, para `done`, lee el
+    transcript server-side para el preview.
   - **Codex** — un hook `curl` (`uxnan-codex-hook.{sh,cmd}`; Codex es un binario
     Rust sin garantía de Node) en `~/.codex/hooks.json`, **más un `trusted_hash`
     reproducido** en `~/.codex/config.toml` (`codex_trust.rs`): Codex 0.129+
@@ -130,9 +129,9 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   depender del token ni del preflight CORS); (c) el `transcript_path` de un `done`
   de Claude solo se lee si es un `.jsonl` dentro de `~/.claude` (canonicalizado,
   así un `..` no escapa) — nunca un archivo arbitrario que pida el llamante; y
-  (d) las cadenas de comando de los reporters Codex (POSIX) y Gemini **escapan**
-  la ruta del script (comilla simple `'\''` en Codex; `\"` + strip de saltos de
-  línea en Gemini) para que una `'`/`"` en la ruta no rompa el quoting. Toda ruta
+  (d) la cadena de comando del reporter Codex (POSIX) **escapa** la ruta del
+  script (comilla simple `'\''`) para que una `'` en la ruta no rompa el
+  quoting. Toda ruta
   nueva en este servidor debe ir tras **ambos** gates (loopback + token).
 
 - **Captura de sesión del proveedor (resume):** cuando el payload de un evento
@@ -145,7 +144,7 @@ El ADE levanta un **servidor HTTP en localhost** que los agentes pueden usar par
   **sanea como entrada hostil** (longitud acotada, charset conservador, sin `-`
   inicial — el id llega después a una línea de comandos) antes de guardarla en
   `AgentStateEntry.session` (mismo TTL de 7 días). Los reporters incluidos la
-  reenvían ellos mismos: el relay de Claude/Gemini pasa el JSON crudo íntegro,
+  reenvían ellos mismos: el relay de Claude pasa el JSON crudo íntegro,
   el plugin de OpenCode adjunta el `sessionID` de la sesión RAÍZ a cada evento
   de estado (una sesión hija de sub-agente nunca lo pisa), y la extensión de
   Pi reenvía los campos explícitos `session_id`/`session_file` que observa, y el
@@ -573,7 +572,7 @@ El mismo servidor HTTP local (Capa 1) expone tambien un endpoint **`/mcp`**: un 
 
 **Inyeccion por agente (`mcpinject.rs`):** el ADE escribe la config MCP nativa de cada CLI soportado (Claude Code, Codex, OpenCode, Grok) **siempre en su config global de usuario** (`~/.claude.json`, `~/.codex/config.toml`, `~/.config/opencode/opencode.json`, `~/.grok/config.toml`) — nunca en el directorio del proyecto. La config global de usuario **no esta sujeta a la aprobacion por-proyecto** de ningun CLI, asi que no aparece el aviso «¿aprobar este servidor MCP?» y no se crea ningun archivo en la carpeta del usuario (que este veria y borraria). Los agentes tecleados a mano en cualquier carpeta tambien lo descubren (cada CLI lee su config de usuario). Modos en Settings → Browser:
 
-- **`managed`** (default): la escritura global-de-usuario descrita arriba, mas — cuando **`friction_free`** esta activo — la supresion del aviso de confianza de carpeta del CLI para agentes lanzados por la app: Gemini via la variable de entorno `GEMINI_CLI_TRUST_WORKSPACE=true` (robusta entre versiones; una variable desconocida es un no-op, a diferencia de un flag rechazado) y Codex via una semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `config.toml` (respeta una decision explicita del usuario). La entrada de Gemini ademas lleva `trust: true`, que evita su confirmacion por-herramienta.
+- **`managed`** (default): la escritura global-de-usuario descrita arriba, mas — cuando **`friction_free`** esta activo — la supresion del aviso de confianza de carpeta de Codex para agentes lanzados por la app mediante una semilla por-carpeta `[projects."<cwd>"] trust_level = "trusted"` en `config.toml` (respeta una decision explicita del usuario).
 - **`global`**: identica escritura global-de-usuario, pero sin la supresion de confianza (los CLI conservan sus avisos nativos).
 - **`off`**: no inyecta nada (el endpoint `/mcp` sigue disponible para cableado manual desde el snippet copiable de Settings).
 
@@ -772,7 +771,7 @@ agentes** corriendo **o** cuando existe alguna corrida):
   (`resolveTemplate`). Referenciar un paso lo agrega como dependencia automatica.
 - **Interactivo** → output = el `summary` del hook (delgado, puede venir vacio), o el
   **resultado estructurado** que el agente reporte por MCP — posible solo en los
-  agentes inyectables (claude/codex/gemini/opencode). **Headless** → output = **stdout
+  agentes inyectables (claude/codex/opencode). **Headless** → output = **stdout
   completo** (robusto, verificado). Por eso un paso nuevo **defaultea a headless** para
   encadenar. En el editor, un **selector de contexto** lista los pasos previos y sus
   campos (con vista previa del valor capturado) e inserta el token en el cursor.
@@ -825,7 +824,7 @@ agentes** corriendo **o** cuando existe alguna corrida):
   caso comun funcione sin que el usuario conozca la tool, el motor **anexa un
   recordatorio corto al prompt** de un paso interactivo — pero **solo** cuando ese
   paso alimenta a otro *y* el agente realmente tiene la tool (inyeccion MCP activa y
-  es uno de los agentes inyectados: claude/codex/gemini/opencode). Para cualquier
+  es uno de los agentes inyectados: claude/codex/opencode). Para cualquier
   otro agente no se menciona MCP, asi que ningun CLI recibe la instruccion de usar
   una tool que no tiene.
 

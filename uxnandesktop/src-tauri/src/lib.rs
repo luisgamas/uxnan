@@ -158,7 +158,7 @@ pub fn run() {
             match crate::agent_hooks::install_scripts_to(&hooks_dir) {
                 Ok(install) => {
                     // Auto-install the managed hooks for every supported agent
-                    // (Claude Code, Codex, Gemini CLI, OpenCode) so precise states
+                    // (Claude Code, Codex, OpenCode, Pi, Grok, Antigravity, …) so precise states
                     // work out of the box. Idempotent; a failure for one agent does
                     // not abort the others. Skipped when the user opted out.
                     if auto_install_hooks {
@@ -261,7 +261,7 @@ pub fn run() {
                     }
                     let commands = state.agent_commands.read().await.clone();
                     // Refresh WITH command lines — the default refresh only gives
-                    // the exe name (`node`), so node-shim agents (codex/gemini/…)
+                    // the exe name (`node`), so node-shim agents (Codex/Pi/…)
                     // would never match without their `…/agent.js` argument. The
                     // scan is a blocking, syscall-heavy walk of the whole process
                     // table, so run it on a blocking thread (moving `sys` in and

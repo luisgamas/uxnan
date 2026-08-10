@@ -6,7 +6,7 @@
 # command and pipes it the raw event JSON. Used by Grok (`~/.grok/hooks/`),
 # Antigravity (`~/.gemini/config/hooks.json`) and every declaratively-wired CLI —
 # single native binaries or CLIs with no Node guarantee, which is why this uses
-# `curl`, not the Node relay Claude and Gemini share.
+# `curl`, not Claude's Node relay.
 #
 # It is deliberately NOT the Codex hook with an argument bolted on: those exact
 # bytes are folded into Codex's `trusted_hash`, so they must not move.

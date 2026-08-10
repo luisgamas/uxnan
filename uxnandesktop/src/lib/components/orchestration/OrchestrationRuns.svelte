@@ -33,7 +33,7 @@
   });
   // Preferred headless default for examples: the first of these the user has, so
   // an example lands runnable whether they have a paid agent or a free one.
-  const AGENT_PREFERENCE = ["claude", "codex", "opencode", "pi", "gemini"];
+  const AGENT_PREFERENCE = ["claude", "codex", "opencode", "pi", "agy", "grok"];
   const preferredAgent = $derived(
     AGENT_PREFERENCE.find((a) => installedAgents.includes(a)) ?? installedAgents[0] ?? "",
   );

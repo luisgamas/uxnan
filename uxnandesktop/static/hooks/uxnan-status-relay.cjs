@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Uxnan Desktop — agent status relay (Layer 1 hook bridge).
 //
-// One dependency-free Node script shared by the two agents that guarantee `node`
-// on their PATH (they *are* Node programs): Claude Code and Gemini CLI. The
-// agent's own hook runner executes this relay and pipes the provider's hook JSON
+// A dependency-free Node relay for Claude Code, whose own hook runner executes
+// it and pipes the provider's hook JSON
 // to it on stdin. The relay forwards the raw event (plus the agent kind, baked
 // into the invocation by the ADE) to the local hook server; the server turns the
 // event name into a precise lifecycle state (working / waiting / done / blocked)
@@ -13,9 +12,7 @@
 // under cmd, PowerShell, PowerShell 7, Git Bash, WSL, bash, zsh or fish.
 //
 // Fail-open by design: any error (missing env, dead server, bad JSON) is
-// swallowed. Gemini reads its hook's stdout as JSON, so for `--agent gemini` we
-// print a trailing `{}`; Claude treats some events' stdout as context, so we
-// print nothing for it.
+// swallowed. It prints nothing because Claude treats some hook stdout as context.
 //
 // Survives an app restart: the ADE injects UXNAN_HOOK_URL/TOKEN frozen at spawn,
 // and also UXNAN_ENDPOINT_FILE — a file the ADE rewrites every launch with the
@@ -124,12 +121,7 @@ function parseAgent(argv) {
 
 function main() {
   const agentType = parseAgent(process.argv.slice(2));
-  // Gemini parses its hook's stdout as JSON; Claude injects some events' stdout
-  // into context. Only echo an empty object for Gemini.
-  const echoJson = agentType === "gemini";
-  const finish = () => {
-    if (echoJson) process.stdout.write("{}\n");
-  };
+  const finish = () => {};
 
   const candidates = coordCandidates();
   const agentId = process.env.UXNAN_AGENT_ID || "";

@@ -16,13 +16,7 @@
  */
 
 /** A coding CLI whose usage we read from its own stored token. */
-export type UsageProvider =
-  | 'codex'
-  | 'claude'
-  | 'copilot'
-  /** @deprecated Legacy read-only usage source for retired Gemini CLI installs. */
-  | 'gemini'
-  | 'grok';
+export type UsageProvider = 'codex' | 'claude' | 'copilot' | 'grok';
 
 /** Outcome of reading one provider's usage. */
 export type UsageStatus =

@@ -24,10 +24,6 @@ export interface AiCommitAgent {
   name: string;
   /** Logo basename under `static/agents/`. */
   logo: string;
-  /** The CLI is discontinued upstream: never offered in a picker, but still
-   *  listed here so a config that already names it resolves to a real name and
-   *  logo (see {@link aiCommitAgentChoices}) instead of reading as "none". */
-  deprecated?: boolean;
 }
 
 export const AI_COMMIT_AGENTS: AiCommitAgent[] = [
@@ -37,28 +33,14 @@ export const AI_COMMIT_AGENTS: AiCommitAgent[] = [
   { id: "grok", name: "Grok", logo: "grok" },
   // `agy` is the command the backend resolves, not the catalog's display id.
   { id: "agy", name: "Antigravity", logo: "antigravity" },
-  // Gemini CLI is discontinued upstream in favour of Antigravity. The backend
-  // can still drive it, so this stays resolvable — but it is never offered.
-  { id: "gemini", name: "Gemini CLI", logo: "gemini", deprecated: true },
 ];
 
-/** The agents actually offered — the curated list minus the discontinued ones. */
+/** The agents offered for AI commit messages and PR bodies. */
 export function activatableAiCommitAgents(): AiCommitAgent[] {
-  return AI_COMMIT_AGENTS.filter((a) => !a.deprecated);
+  return AI_COMMIT_AGENTS;
 }
 
-/**
- * What a picker should list, given the id currently saved in settings: the
- * offered agents, plus the saved one when it is deprecated.
- *
- * That last part is not politeness. The backend runs whatever id the settings
- * hold — it never consults this list — so dropping a still-configured agent from
- * the picker would leave the field reading "none" while that agent kept writing
- * commit messages. Showing it (flagged) keeps the UI honest and lets the user
- * switch off it deliberately.
- */
-export function aiCommitAgentChoices(currentId?: string | null): AiCommitAgent[] {
-  const offered = activatableAiCommitAgents();
-  const current = AI_COMMIT_AGENTS.find((a) => a.id === currentId);
-  return current?.deprecated ? [...offered, current] : offered;
+/** What a picker should list. The parameter keeps existing call sites simple. */
+export function aiCommitAgentChoices(_currentId?: string | null): AiCommitAgent[] {
+  return activatableAiCommitAgents();
 }

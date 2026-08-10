@@ -31,7 +31,6 @@ export interface CatalogAgent {
 export const AGENT_CATALOG: CatalogAgent[] = [
   { id: "claudecode", name: "Claude Code", command: "claude", logo: "claudecode", favicon: "claude.ai" },
   { id: "codex", name: "Codex", command: "codex", logo: "codex", favicon: "openai.com", mono: true },
-  { id: "gemini", name: "Gemini CLI", command: "gemini", logo: "gemini", favicon: "gemini.google.com" },
   { id: "opencode", name: "OpenCode", command: "opencode", logo: "opencode", favicon: "opencode.ai" },
   { id: "pi", name: "Pi", command: "pi", logo: "pi", favicon: "pi.dev" },
   { id: "antigravity", name: "Antigravity", command: "agy", logo: "antigravity", favicon: "antigravity.google" },

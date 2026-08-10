@@ -2,8 +2,7 @@
 // how each supported CLI reopens a captured session id. Every entry is
 // verified against the CLI's real interface before being wired here; an agent
 // without one returns `null` (its sessions are still captured, but no resume is
-// offered). Two are `null` for a reason, not for want of checking: **Gemini CLI**
-// exposes no session resume and is deprecated anyway, and **Zero** only resumes
+// offered). Zero is intentionally `null`: it only resumes
 // in its headless one-shot mode (`zero exec --resume [id]`) — its interactive
 // TUI, which is what a terminal tab runs, rejects the flag outright. A session that was still live when its tab went away
 // is auto-run on the way back; an exited one is only PRE-TYPED, so a
@@ -62,7 +61,6 @@ const PLACEHOLDER_AGENT = "agent";
 const HOME_DIR_AGENTS: [marker: string, agent: string][] = [
   ["/.codex/", "codex"],
   ["/.claude/", "claude"],
-  ["/.gemini/", "gemini"],
   ["/.grok/", "grok"],
   ["/.pi/", "pi"],
 ];

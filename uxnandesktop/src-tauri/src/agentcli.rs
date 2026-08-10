@@ -1,7 +1,7 @@
 //! Resolution, invocation and model discovery for the coding-agent CLIs uxnan
 //! can drive headlessly — the AI commit-message generator, the orchestration
 //! engine's headless steps and every automation step: **Claude Code, Codex,
-//! Gemini, OpenCode, Pi, Antigravity and Grok** (spec `02c` §4.5, `02f` §3).
+//! OpenCode, Pi, Antigravity, Grok and Zero** (spec `02c` §4.5, `02f` §3).
 //!
 //! npm installs ship each CLI as an entry `*.js` behind a `.cmd`/`.ps1` shim that
 //! can't be spawned shell-free on Windows, so — mirroring the bridge's
@@ -16,9 +16,7 @@ use serde::Serialize;
 
 /// The agent ids that can be driven headlessly, in display order. Antigravity
 /// (`agy`) and Grok ship a single native binary rather than an npm package.
-pub const SUPPORTED: [&str; 8] = [
-    "claude", "codex", "gemini", "opencode", "pi", "agy", "grok", "zero",
-];
+pub const SUPPORTED: [&str; 7] = ["claude", "codex", "opencode", "pi", "agy", "grok", "zero"];
 
 /// How a CLI wants to be handed its prompt.
 ///
@@ -39,8 +37,7 @@ pub enum PromptDelivery {
 
 /// How `agent_id` should receive its prompt. Verified against each CLI rather
 /// than assumed: Claude, Codex, OpenCode and Pi read stdin when their print flag
-/// gets no positional; Grok and Zero take a file; Antigravity and Gemini only
-/// take an argument.
+/// gets no positional; Grok and Zero take a file; Antigravity takes an argument.
 pub const fn prompt_delivery(agent_id: &str) -> PromptDelivery {
     match agent_id.as_bytes() {
         b"claude" | b"codex" | b"opencode" | b"pi" => PromptDelivery::Stdin,
@@ -309,7 +306,6 @@ pub fn resolve(agent_id: &str) -> Option<Resolved> {
     match agent_id {
         "claude" => resolve_claude(),
         "codex" => resolve_node_cli(&["@openai", "codex", "bin", "codex.js"], "codex"),
-        "gemini" => resolve_node_cli(&["@google", "gemini-cli", "bundle", "gemini.js"], "gemini"),
         "opencode" => resolve_opencode(),
         "pi" => resolve_node_cli(
             &["@earendil-works", "pi-coding-agent", "dist", "cli.js"],
@@ -382,13 +378,6 @@ pub fn build_args(
                 a.push("--dangerously-bypass-approvals-and-sandbox".to_string());
             }
             a.extend(model_flag("--model"));
-            positional(&mut a);
-            a
-        }
-        // gemini [-m M] -p <prompt>   (-p consumes the prompt as its value)
-        "gemini" => {
-            let mut a = model_flag("-m");
-            a.push("-p".to_string());
             positional(&mut a);
             a
         }
@@ -474,15 +463,10 @@ pub fn build_args(
 }
 
 /// Statically-known models for agents whose CLI exposes no list command
-/// (Claude and Gemini — both curated tables below). Empty for agents discovered
-/// live (OpenCode, Pi, Codex).
+/// (Claude's curated table below). Empty for agents discovered live.
 pub fn static_models(agent_id: &str) -> Vec<AgentModel> {
     match agent_id {
         "claude" => CLAUDE_MODELS
-            .iter()
-            .map(|(id, name)| AgentModel::new(id, name))
-            .collect(),
-        "gemini" => GEMINI_MODELS
             .iter()
             .map(|(id, name)| AgentModel::new(id, name))
             .collect(),
@@ -521,18 +505,6 @@ const CLAUDE_MODELS: [(&str, &str); 10] = [
     ("claude-sonnet-4-6", "Sonnet 4.6"),
     ("claude-sonnet-4-5", "Sonnet 4.5"),
     ("claude-haiku-4-5", "Haiku 4.5"),
-];
-
-/// Curated Gemini model ids + display names (the CLI has no enumerate command),
-/// mirrored from the bridge's hand-kept table.
-const GEMINI_MODELS: [(&str, &str); 7] = [
-    ("auto", "Auto"),
-    ("gemini-3-pro-preview", "Gemini 3 Pro (Preview)"),
-    ("gemini-3.1-pro-preview", "Gemini 3.1 Pro (Preview)"),
-    ("gemini-2.5-pro", "Gemini 2.5 Pro"),
-    ("gemini-3.5-flash", "Gemini 3.5 Flash"),
-    ("gemini-2.5-flash", "Gemini 2.5 Flash"),
-    ("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite"),
 ];
 
 /// Strip ANSI SGR escape sequences (`ESC [ … m`) from a line.
@@ -722,10 +694,6 @@ mod tests {
             vec!["exec", "--skip-git-repo-check", "hi"]
         );
         assert_eq!(
-            build_args("gemini", "", PromptSource::Argv("hi"), false).unwrap(),
-            vec!["-p", "hi"]
-        );
-        assert_eq!(
             build_args("opencode", "", PromptSource::Argv("hi"), false).unwrap(),
             vec!["run", "hi"]
         );
@@ -829,9 +797,7 @@ Available models:
         for id in ["grok", "zero"] {
             assert_eq!(prompt_delivery(id), PromptDelivery::File, "{id}");
         }
-        for id in ["agy", "gemini"] {
-            assert_eq!(prompt_delivery(id), PromptDelivery::Argv, "{id}");
-        }
+        assert_eq!(prompt_delivery("agy"), PromptDelivery::Argv);
     }
 
     #[test]
@@ -950,11 +916,6 @@ Available models:
             build_args("codex", "gpt-5", PromptSource::Argv("hi"), false).unwrap(),
             vec!["exec", "--skip-git-repo-check", "--model", "gpt-5", "hi"]
         );
-        // Gemini: -m before -p, and -p takes the prompt as its value.
-        assert_eq!(
-            build_args("gemini", "gemini-2.5-pro", PromptSource::Argv("hi"), false).unwrap(),
-            vec!["-m", "gemini-2.5-pro", "-p", "hi"]
-        );
         assert_eq!(
             build_args(
                 "opencode",
@@ -972,7 +933,7 @@ Available models:
     }
 
     #[test]
-    fn static_models_for_claude_and_gemini() {
+    fn static_models_for_claude() {
         let claude = static_models("claude");
         // Exact concrete model ids (no "latest" aliases), newest first — the same
         // order as the bridge's twin list (see the CLAUDE_MODELS doc comment).
@@ -985,7 +946,6 @@ Available models:
         assert!(claude
             .iter()
             .all(|m| !m.id.contains('[') && !m.id.ends_with("-fast")));
-        assert!(static_models("gemini").iter().any(|m| m.id == "auto"));
         // Live-discovered agents have no static list.
         assert!(static_models("opencode").is_empty());
         assert!(static_models("codex").is_empty());

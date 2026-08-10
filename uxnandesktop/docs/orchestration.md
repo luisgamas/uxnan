@@ -93,7 +93,7 @@ the run's shared "blackboard", and detects completion — then opens the next st
 > **Interactive vs Headless — which to use?** Interactive keeps a human-visible agent
 > in the loop and reuses an agent you already launched, but its captured output is only
 > the short hook **summary** — and it's real content *only* when the agent reports via
-> MCP, which just **Claude / Codex / Gemini / OpenCode** can do (with MCP injection on).
+> MCP, which **Claude / Codex / OpenCode** can do (with MCP injection on).
 > An interactive **Pi** or any other agent has no way to hand its answer back, so
 > `{{steps.sX.output}}` from it will be **empty**. Headless is for robust **chaining**:
 > it captures the complete answer and verifies completion by exit code, at the cost of
@@ -188,7 +188,7 @@ To make the common case work without you knowing the tool exists, the ADE **appe
 short nudge to an interactive step's prompt** asking the agent to report its result —
 but **only** when the step's output actually feeds a later step *and* the agent
 genuinely has the tool (MCP injection is on and it's one of the injected agents:
-Claude Code / Codex / Gemini / OpenCode). For any other agent it never mentions MCP,
+Claude Code / Codex / OpenCode). For any other agent it never mentions MCP,
 so no CLI is ever told to use a tool it doesn't have. (Injection is Settings →
 Browser.) For robust chaining regardless, prefer a **headless** step.
 

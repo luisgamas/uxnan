@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the standalone Gemini CLI from the shared `AgentId` and
+  `UsageProvider` contracts. Gemini-family model ids supplied by active agents
+  remain ordinary model data.
+
 ## [0.0.13-alpha.20260804] - 2026-08-04
 
 ### Added — a conversation gets a real name, not its opening words

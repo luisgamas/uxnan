@@ -18,20 +18,12 @@ into Uxnan — only the token the CLI already stored on disk.
 | **Claude Code** | `~/.claude/.credentials.json` | session (5h) / weekly / model-scoped windows, plan, account type |
 | **GitHub Copilot** | `gh auth token` | premium/chat/completions quotas, plan, account type, GitHub login |
 | **Grok** | `~/.grok/auth.json` | credit-usage window, reset, **on-demand / prepaid $**, plan, account type, email |
-| **Gemini CLI** *(deprecated)* | `~/.gemini/oauth_creds.json` | per-model quota (best-effort), email |
 
 A provider that isn't set up, isn't signed in, or errors shows a clear status
 (`Not set up` / `Sign in required` / `Unavailable`) instead of failing the rest —
 each provider is read independently.
 
-### Deprecated, and what's missing
-
-Google discontinued the standalone **Gemini CLI** in favour of Antigravity
-(`agy`), so it is no longer offered in the **Add a provider** picker. It is only
-hidden, not removed: if you activated it before, its tab keeps working and its
-quota keeps refreshing, with a one-line note explaining why it is no longer
-offered. Re-enabling it is one flag — `deprecated` on its entry in
-`src/lib/usageCatalog.ts`.
+### What's missing
 
 **Antigravity is not a provider yet.** Its quota sits behind the same Google Code
 Assist API this reader already speaks, but `agy` keeps its OAuth token in the OS

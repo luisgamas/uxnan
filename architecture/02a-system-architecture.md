@@ -137,7 +137,7 @@ Todos los adaptadores deben implementar la interfaz `IAgentAdapter` en el Bridge
 ```typescript
 interface IAgentAdapter {
   // Identidad
-  readonly agentId: string;          // active: codex | opencode | claude-code | antigravity-cli | pi-agent | zero | grok | custom; gemini-cli is deprecated legacy-only
+  readonly agentId: string;          // codex | opencode | claude-code | antigravity-cli | pi-agent | zero | grok | custom
   readonly displayName: string;
   readonly version: string;
   readonly capabilities: AgentCapabilities;
@@ -244,8 +244,7 @@ interface AgentCapabilities {
 //   ✅ claude-code (`claude -p --output-format stream-json`; --resume; **PreToolUse hook** real approvals)
 //   ✅ codex     (`codex app-server`; long-lived JSON-RPC over stdio; `thread/start`/`turn/start` + every elicitation)
 //   ✅ pi-agent  (`pi -p --mode json`; --session-id; **autonomous=true**: YOLO headless, no pre-tool protocol — see FOR-DEV)
-//   ⛔ gemini-cli (adapter legacy: descriptor deprecated/unavailable; turnos nuevos rechazados)
-//   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; Google's Gemini-CLI successor; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
+//   ✅ antigravity-cli (`agy --conversation <uuid> --add-dir <cwd> -p`; active Google CLI; client-owned --conversation continuity; **autonomous=true**: `--dangerously-skip-permissions`, requestApproval→`--mode plan` read-only; models via `agy models`)
 //   ✅ zero      (`zero acp` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via `zero models list`)
 //   ✅ grok      (`grok agent stdio` ACP JSON-RPC over stdio; session/prompt turns; **session/request_permission real approvals**; plan; models via own discovery)
 ```
@@ -1640,7 +1639,6 @@ bridge/
 │   ├── pairing/pairing-code-service.ts        # GET /pair/resolve?code=
 │   ├── adapters/                   # un adapter + *-tools.ts por agente:
 │   │                               #   opencode(+serve,approval)/claude/codex(+app-server,approval)/pi/antigravity/zero(+acp,approval)/grok(+acp,approval),
-│   │                               #   gemini retained as deprecated legacy source only,
 │   │                               #   echo, process-agent-adapter, content-blocks, run-options,
 │   │                               #   resolve-<agente>, spawn
 │   ├── agents/agent-manager.ts     # orquestacion de turnos/streaming + approvals
@@ -1649,7 +1647,7 @@ bridge/
 │   ├── git/                        # git-runner, git-service
 │   ├── workspace/                  # workspace-service, browse-service, checkpoint-service, path-guard
 │   ├── push/                       # push-service, push-sender (FCM directo)
-│   ├── hooks/                      # claude-approval-hook; gemini hook source deprecated and never installed
+│   ├── hooks/                      # claude-approval-hook
 │   └── handlers/                   # git, workspace, thread-context, project, agent,
 │                                   #   account, notifications, bridge-control, desktop (stub)
 └── scripts/                        # install-service-{macos,windows,linux}
@@ -1902,7 +1900,6 @@ another client attached to the same native session converge into Uxnan.
 | Zero | `~/.local/share/zero/sessions/<sessionId>/events.jsonl` | completed ACP session turns |
 | Grok | `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl` | ACP turns closed by `turn_completed` only |
 | Antigravity | none | unsupported: `agy` has no history/export API and its SQLite step payloads are opaque |
-| Gemini CLI | legacy JSON snapshots only | deprecated compatibility reader; never a new mobile surface |
 
 `IAgentAdapter.nativeSessionId(threadId)` supplies the native identity and
 `AgentManager` persists it through `ThreadStore.setAgentSession`. Reconciliation
@@ -1955,8 +1952,7 @@ ya guardado) y se llama a la **API oficial de uso** de cada proveedor. **Nunca**
 cookies del navegador ni API keys pegadas por el usuario. Proveedores wired:
 **Codex** (`~/.codex/auth.json` → chatgpt backend), **Claude** (`~/.claude/.credentials.json`
 → `api.anthropic.com/api/oauth/usage`), **Copilot** (token de `gh` → `api.github.com`),
-**Gemini legacy** (`~/.gemini/oauth_creds.json` → cloudcode-pa; contrato
-deprecated, nunca solicitado por mobile) y **Grok**
+and **Grok**
 (`~/.grok/auth.json` → cli-chat-proxy). Cada proveedor degrada a un
 `status` (`ok`/`authRequired`/`notInstalled`/`error`); uno lento o roto no tumba a
 los demas.

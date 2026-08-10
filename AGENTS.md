@@ -57,7 +57,7 @@ uxnan/
 ├── web/                           # Marketing website (Next.js 15, static export)
 ├── AGENTS.md                      # This file — the single source of truth
 ├── CLAUDE.md                      # Claude Code entry point — imports this file via `@AGENTS.md`
-├── GEMINI.md                      # Gemini CLI entry point — imports this file via `@AGENTS.md`
+├── GEMINI.md                      # Antigravity compatibility entry point — imports `AGENTS.md`
 └── README.md
 ```
 
@@ -384,7 +384,6 @@ Three audiences, three homes — keep them separate so none of them rots:
   | Agent | Bridge (feeds the phone) | Desktop (feeds AI commit / PR body) |
   |---|---|---|
   | Claude Code | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` |
-  | ~~Gemini CLI~~ | *frozen* — `bridge/src/adapters/gemini-adapter.ts` → `GEMINI_MODELS` | *frozen* — `uxnandesktop/src-tauri/src/agentcli.rs` → `GEMINI_MODELS` |
 
   Edit **both halves in the same change set** (one alone leaves the other app a
   version behind), same ids, labels and order — newest/most capable first.
@@ -397,16 +396,15 @@ Three audiences, three homes — keep them separate so none of them rots:
   [`bridge/docs/agents.md`](bridge/docs/agents.md) and
   [`uxnandesktop/docs/agent-launch.md`](uxnandesktop/docs/agent-launch.md).
 
-- **Gemini CLI is deprecated: do not spend work on it.** Discontinued upstream
-  (its successor is Antigravity, `agy`, which uxnan drives as a real agent and
-  which discovers its own models). Both apps already retire it: the desktop drops
-  it from the AI-commit/PR-body pickers and no longer auto-installs its reporter;
-  mobile has no Gemini enum, visual, provider card or conversation surface; the
-  bridge descriptor is `deprecated:true` and unavailable, rejecting new
-  threads/turns, models and commands. Its tables are **frozen** — don't add
-  models, don't chase upstream changes, don't build against it, and don't extend
-  anything it touches (adapter, hook reporter, catalog entry). It is
-  non-runnable, read-only legacy until a later pass removes it entirely.
+- **The standalone Gemini CLI is intentionally unsupported: do not reintroduce
+  it.** Its adapter, contract id, catalogs, hooks, quota reader and UI surfaces
+  were removed in August 2026. Google's supported integration is Antigravity
+  (`agy`), which discovers its own models. This prohibition does **not** apply to
+  Gemini-family model ids exposed by Antigravity, OpenCode, Pi or another active
+  CLI, nor to Antigravity's own files under `~/.gemini/`. Upgrade-only cleanup
+  may recognize the retired exact ids (`gemini-cli` on the bridge, `gemini` on
+  desktop) solely to remove Uxnan-managed stale configuration; it must never make
+  the CLI runnable again.
 
 #### The docs track the code — re-verify them when the code moves
 
@@ -420,7 +418,7 @@ has bitten us, and where it lives:
   `package.json`, the Tauri/Flutter commands.
 - **Config keys, enum values & identifiers** — fields and defaults in the config
   type (e.g. `daemon-config.ts`), and canonical id unions like `AgentId`
-  (`gemini-cli`/`pi-agent`, *not* `gemini`/`pi`), matched exactly.
+  (`antigravity-cli`/`pi-agent`, *not* `agy`/`pi`), matched exactly.
 - **Env vars, file names & paths** — `UXNAN_HOOK_URL`, `UXNAN_AGENT_ID`,
   `~/.uxnan/daemon-config.json`, `~/.uxnan/checkpoints.json`. Copy them from
   the code, never from memory.

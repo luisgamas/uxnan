@@ -44,16 +44,16 @@ file is optional; create it to override. Defaults live in
 `antigravity-cli`, `pi-agent`, `zero`, `grok`. These are the canonical `AgentId`
 values — note `antigravity-cli` and `pi-agent` (not `antigravity` / `pi`). The
 same id strings are used for `defaultAgent` and `projectAgents[].agentId`.
-`gemini-cli` may still occur in an old config, but it resolves only to an
-unavailable/deprecated descriptor and cannot be selected for new work.
+An old `gemini-cli` default, settings block or project pin is removed when the
+config is loaded.
 
 | Field | Purpose |
 |---|---|
 | `binaryPath` | Absolute path to the agent CLI (else auto-resolved). |
 | `model` | Default model for that agent (an alias like `opus`, or an exact id). |
 | `models` | Extra explicit models to show in the picker, **unioned on top of** the project's built-in (seeded) list — the built-in list is a live code default that stays current with the app automatically, and your entries extend/override it by id (a same-id entry wins its `displayName`; an empty `[]` does **not** clear the baseline). Each entry is a bare id string or `{ id, displayName?, description? }`. For **Claude Code** this pins concrete versions (e.g. `claude-opus-4-7`) next to the auto-updating `fable`/`opus`/`sonnet`/`haiku` aliases — see [agents.md](./agents.md#claude-code-models-latest-aliases--pinned-versions). Currently consumed only by the Claude Code adapter; ignored by active agents that enumerate their own models (OpenCode, Codex, pi, Antigravity, Zero, Grok). |
-| `permissionMode` | Headless fallback posture for adapters that consume this config: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to Claude, Codex, pi and Antigravity. The per-thread `accessMode` is authoritative when the adapter supports it; OpenCode, Zero and Grok use their live protocol permission surfaces instead of this field. Legacy Gemini settings are ignored because its adapter is never started. |
-| `interactiveApprovals` | Opt-in `PreToolUse` approvals for **Claude Code** (default false; requires `lanEnabled`). When true, every tool Claude runs prompts on the phone before execution. The CLI hook permits a 30-minute request, while the bridge's decision countdown is five connected minutes and then denies. It overrides Claude's fallback `permissionMode` while active. Legacy Gemini hook settings are ignored and no hook is installed. |
+| `permissionMode` | Headless fallback posture for adapters that consume this config: `acceptEdits` (default — edits auto-apply), `default` (read-only/no-edit), `bypassPermissions` (full autonomy). Mapped to Claude, Codex, pi and Antigravity. The per-thread `accessMode` is authoritative when the adapter supports it; OpenCode, Zero and Grok use their live protocol permission surfaces instead of this field. |
+| `interactiveApprovals` | Opt-in `PreToolUse` approvals for **Claude Code** (default false; requires `lanEnabled`). When true, every tool Claude runs prompts on the phone before execution. The CLI hook permits a 30-minute request, while the bridge's decision countdown is five connected minutes and then denies. It overrides Claude's fallback `permissionMode` while active. |
 
 ### Per-project agent/model pins (`projectAgents`)
 
@@ -65,7 +65,7 @@ optional default model for it.
 | Field | Purpose |
 |---|---|
 | `cwd` | Absolute project directory the pin applies to (matched by resolved path). |
-| `agentId` | Active agent the project defaults to (`opencode` / `claude-code` / `codex` / `antigravity-cli` / `pi-agent` / `zero` / `grok`). A legacy `gemini-cli` pin is rejected when starting a thread. |
+| `agentId` | Active agent the project defaults to (`opencode` / `claude-code` / `codex` / `antigravity-cli` / `pi-agent` / `zero` / `grok`). |
 | `model` | Optional default model for that agent. |
 
 When the phone starts a thread (`thread/start`) **without** an explicit

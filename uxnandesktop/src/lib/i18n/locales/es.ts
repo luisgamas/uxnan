@@ -1312,8 +1312,6 @@ export const es: Record<MessageKey, string> = {
     "Agrega un bloque `hooks` a `~/.claude/settings.json` que ejecuta el relay de Node incluido en cada evento de Claude (exec-form, así funciona desde cualquier shell). Conserva tus hooks existentes.",
   "hooks.desc.codex":
     "Agrega hooks gestionados a `~/.codex/hooks.json` y registra su hash de confianza en `~/.codex/config.toml` (Codex 0.129+ lo exige), para que Codex reporte estados precisos automáticamente.",
-  "hooks.desc.gemini":
-    "Agrega hooks gestionados a `~/.gemini/settings.json` que ejecutan el relay incluido en cada evento de turno de Gemini. Conserva tus hooks existentes. Descontinuado por Google — se ofrece solo para que puedas desactivar una instalación previa.",
   "hooks.desc.opencode":
     "Instala el plugin de estado del ADE en la configuración de OpenCode para reportar trabajando / esperando / listo / bloqueado, y convierte sus sesiones hijas en filas de subagente.",
   "hooks.desc.pi":
@@ -1513,7 +1511,7 @@ export const es: Record<MessageKey, string> = {
   "orchestration.kindInteractive": "Interactivo",
   "orchestration.kindHeadless": "Headless",
   "orchestration.kindInteractiveHint":
-    "Escribe el prompt en la terminal de un agente vivo. La salida es un resumen corto — el texto completo solo si el agente reporta por MCP (Claude / Codex / Gemini / OpenCode). Para encadenar la salida completa, usa Headless.",
+    "Escribe el prompt en la terminal de un agente vivo. La salida es un resumen corto — el texto completo solo si el agente reporta por MCP (Claude / Codex / OpenCode). Para encadenar la salida completa, usa Headless.",
   "orchestration.kindHeadlessHint":
     "Ejecuta un CLI instalado en modo print dentro de un worktree. El ADE posee el proceso, así que se captura toda la salida y el completado se verifica por el código de salida — ideal para encadenar contexto entre pasos.",
   "orchestration.stepModel": "Modelo",
@@ -1650,7 +1648,7 @@ export const es: Record<MessageKey, string> = {
   "browser.mcpModeOffDesc": "No inyectar nada — cablea un agente a mano con el snippet de abajo.",
   "browser.frictionFree": "Lanzamiento sin fricción",
   "browser.frictionFreeDesc":
-    "Omite el aviso «¿confiar en esta carpeta?» del CLI para los agentes lanzados por la app (Gemini y Codex). Solo en modo Gestionado.",
+    "Omite el aviso «¿confiar en esta carpeta?» en los agentes compatibles lanzados por la app (actualmente Codex). Solo en modo Gestionado.",
   "browser.mcpAgents": "Agentes",
   "browser.mcpAgentsDesc": "Qué agentes reciben las herramientas del navegador automáticamente.",
   "browser.mcpSnippet": "Config manual",

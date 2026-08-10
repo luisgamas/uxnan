@@ -47,7 +47,7 @@ pub fn available_agents() -> Vec<String> {
         .collect()
 }
 
-/// The models offered by `agent_id`: a static set for Claude/Gemini, or a live
+/// The models offered by `agent_id`: a static set for Claude, or a live
 /// query for OpenCode (`opencode models`), Pi (`pi --list-models`) and Codex
 /// (`codex app-server` `model/list`).
 ///
@@ -63,7 +63,7 @@ pub async fn list_models(agent_id: &str) -> Result<Vec<AgentModel>, AppError> {
         )));
     };
     let models = match agent_id {
-        "claude" | "gemini" => agentcli::static_models(agent_id),
+        "claude" => agentcli::static_models(agent_id),
         "opencode" => {
             // stderr included so a broken install's own complaint reaches the user.
             let out = run_list(&resolved, &["models"], false).await?;

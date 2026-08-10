@@ -52,15 +52,14 @@ export interface AgentSettings {
   /**
    * Headless fallback posture for Claude Code, Codex, pi and Antigravity.
    * Per-thread `accessMode` wins where the adapter supports it. Ignored by
-   * OpenCode/Zero/Grok and by the unavailable legacy Gemini adapter.
+   * OpenCode, Zero and Grok.
    */
   permissionMode?: AgentPermissionMode;
   /**
    * Opt-in interactive tool approvals for Claude Code: inject a `PreToolUse`
    * hook so every tool round-trips to the bridge and the user approves/rejects
    * it on the phone (`turn/send { approvalResponse }`). Requires `lanEnabled`
-   * (the hook calls the bridge's local HTTP endpoint). Legacy Gemini values are
-   * accepted when reading old config but ignored; its hook is never installed.
+   * (the hook calls the bridge's local HTTP endpoint).
    */
   interactiveApprovals?: boolean;
 }
@@ -215,7 +214,25 @@ export function mergeAgentModels(
 
 /** Merge a partial (e.g. loaded from disk) over the defaults. */
 export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): DaemonConfig {
-  const merged = { ...DEFAULT_DAEMON_CONFIG, ...(partial ?? {}) };
+  // Treat persisted configuration as untrusted input: older releases could
+  // store the retired `gemini-cli` id even though it is no longer part of the
+  // shared AgentId contract. Normalize only that known tombstone and preserve
+  // every active/custom setting verbatim.
+  const raw = (partial ?? {}) as Omit<
+    Partial<DaemonConfig>,
+    'defaultAgent' | 'agents' | 'projectAgents'
+  > & {
+    defaultAgent?: AgentId | 'gemini-cli';
+    agents?: Record<string, AgentSettings>;
+    projectAgents?: Array<Omit<AgentConfig, 'agentId'> & { agentId: AgentId | 'gemini-cli' }>;
+  };
+  const merged = { ...DEFAULT_DAEMON_CONFIG, ...raw } as DaemonConfig;
+  if ((raw.defaultAgent as string | undefined) === 'gemini-cli') {
+    merged.defaultAgent = DEFAULT_DAEMON_CONFIG.defaultAgent;
+  }
+  merged.projectAgents = (raw.projectAgents ?? DEFAULT_DAEMON_CONFIG.projectAgents).filter(
+    (entry): entry is AgentConfig => (entry.agentId as string) !== 'gemini-cli',
+  );
   // Deep-merge per-agent settings so a partial override (e.g. setting just
   // `permissionMode` for one agent) preserves seeded defaults rather than wiping
   // the whole agents map. `models` is special: the seeded list is a live
@@ -224,18 +241,18 @@ export function resolveDaemonConfig(partial?: Partial<DaemonConfig> | null): Dae
   // automatically — a persisted (possibly stale) `models` never shadows them.
   const ids = new Set<string>([
     ...Object.keys(DEFAULT_DAEMON_CONFIG.agents),
-    ...Object.keys(partial?.agents ?? {}),
+    ...Object.keys(raw.agents ?? {}).filter((id) => id !== 'gemini-cli'),
   ]);
   const agents: Partial<Record<AgentId, AgentSettings>> = {};
   for (const id of ids) {
     const key = id as AgentId;
     const settings: AgentSettings = {
       ...DEFAULT_DAEMON_CONFIG.agents[key],
-      ...(partial?.agents?.[key] ?? {}),
+      ...(raw.agents?.[key] ?? {}),
     };
     const models = mergeAgentModels(
       DEFAULT_DAEMON_CONFIG.agents[key]?.models,
-      partial?.agents?.[key]?.models,
+      raw.agents?.[key]?.models,
     );
     if (models) settings.models = models;
     else delete settings.models;

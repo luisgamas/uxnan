@@ -188,7 +188,7 @@ export interface IAgentAdapter {
    * reachable headless plus user-defined prompt-template commands scanned from
    * disk (optional; adapters with none simply don't implement it). `cwd` is the
    * thread/project directory so project-scoped custom commands (`<cwd>/.claude/
-   * commands`, `<cwd>/.gemini/commands`, …) are discovered alongside user-level
+   * commands`, `<cwd>/.opencode/command`, …) are discovered alongside user-level
    * ones. Discovery only; invocation flows through {@link sendTurn} with {@link
    * SendTurnOptions.command}.
    */
@@ -198,7 +198,7 @@ export interface IAgentAdapter {
    * Resolve a custom prompt-template command to the final prompt text (reads the
    * template file from `cwd`/user config, substitutes arguments). Implemented
    * only by adapters whose commands are prompt templates the bridge expands
-   * itself (Codex/Gemini/OpenCode); adapters whose commands run natively (Claude
+   * itself (Codex/OpenCode); adapters whose commands run natively (Claude
    * Code, ACP agents) leave it unset and receive the composed `/name args` form
    * as {@link SendTurnOptions.text}. Throw if `name` is not a known custom command.
    */

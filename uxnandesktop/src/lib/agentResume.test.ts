@@ -25,7 +25,6 @@ describe("repairedSession", () => {
       ["C:/Users/dev/.claude/projects/x/t.jsonl", "claude"],
       ["/home/dev/.pi/agent/sessions/s.jsonl", "pi"],
       ["/home/dev/.grok/sessions/s.json", "grok"],
-      ["/home/dev/.gemini/tmp/s.json", "gemini"],
     ] as const) {
       expect(repairedSession({ ...poisoned, file }).agent).toBe(agent);
     }
@@ -113,7 +112,7 @@ describe("resumeCommand", () => {
   });
 
   it("returns null for agents without a verified resume entry", () => {
-    expect(resumeCommand({ agent: "gemini", id: "abc", capturedAt: at })).toBeNull();
+    expect(resumeCommand({ agent: "unknown", id: "abc", capturedAt: at })).toBeNull();
     expect(resumeCommand({ agent: "zero", id: "abc", capturedAt: at })).toBeNull();
     expect(resumeCommand({ agent: "", id: "abc", capturedAt: at })).toBeNull();
   });

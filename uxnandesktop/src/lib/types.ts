@@ -103,7 +103,7 @@ export interface QuickCommand {
 // the phone later). Read natively in Rust here via the `usage_read` command.
 
 /** A coding CLI whose usage we read from its own stored token. */
-export type UsageProvider = "codex" | "claude" | "copilot" | "gemini" | "grok";
+export type UsageProvider = "codex" | "claude" | "copilot" | "grok";
 
 /** Outcome of reading one provider's usage. */
 export type UsageStatus = "ok" | "authRequired" | "notInstalled" | "error";
@@ -501,11 +501,11 @@ export interface BrowserSettings {
   /** How the MCP server is injected into agents. Default `managed`. */
   mcpInjection: McpInjection;
   /** Frictionless agent setup. When on (default) and injection is `managed`,
-   *  app-launched agents skip the CLIs' workspace/folder-trust prompt (Gemini via
-   *  `GEMINI_CLI_TRUST_WORKSPACE`, Codex via a per-folder `trust_level` seed).
+   *  app-launched Codex sessions skip its workspace/folder-trust prompt via a
+   *  per-folder `trust_level` seed.
    *  Applies only in `managed` mode. Default on. */
   frictionFree: boolean;
-  /** Agent ids (`claude`/`codex`/`gemini`/`opencode`/`pi`) to skip when injecting
+  /** Agent ids (`claude`/`codex`/`opencode`/`pi`) to skip when injecting
    *  the MCP config. Empty = all supported agents. */
   mcpDisabledAgents: string[];
 }
@@ -582,7 +582,7 @@ export interface UpdateDownloadProgress {
 export interface AiCommitSettings {
   /** Master switch (off by default — the Generate button stays hidden). */
   enabled: boolean;
-  /** Selected agent id: `claude`/`codex`/`gemini`/`opencode`/`pi`, or empty. */
+  /** Selected agent id: `claude`/`codex`/`opencode`/`pi`/`agy`/`grok`, or empty. */
   agentId: string;
   /** Selected model id (as the CLI expects it), or empty to use the CLI default. */
   model: string;
@@ -1040,7 +1040,7 @@ export interface HookServerInfo {
  *  `null` if the install-on-startup step failed. */
 export interface HookInstall {
   dir: string;
-  /** The Node relay shared by Claude Code + Gemini CLI. */
+  /** The Node relay used by Claude Code. */
   statusRelayScript: string;
   /** Codex `curl` hook (POSIX / Windows). */
   codexHookSh: string;
@@ -1060,7 +1060,6 @@ export interface HookInstall {
   /** Where each agent's managed config lives (shown in the UI). */
   claudeSettingsPath: string;
   codexHooksPath: string;
-  geminiSettingsPath: string;
   opencodePluginPath: string;
   piExtensionPath: string;
   grokHooksPath: string;
@@ -1096,7 +1095,6 @@ export interface HookAgentEntry {
  *  startup failed. */
 export interface HookScripts {
   claudeJson: string;
-  geminiJson: string;
   codexJson: string;
   grokJson: string;
   antigravityJson: string;

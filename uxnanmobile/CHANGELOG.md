@@ -6,6 +6,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Removed the Gemini-specific compatibility filters from threads, agents,
+  metrics and provider usage now that the shared/bridge contract no longer
+  exposes the standalone Gemini CLI. Generic unknown/deprecated-agent handling
+  remains unchanged.
+
 ## [0.0.18-alpha.20260805] - 2026-08-05
 
 ### Fixed — the thread row shows the agent's latest reply, not its first

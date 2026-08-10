@@ -19,8 +19,7 @@ optional, self-hosted off-LAN fallback. Background push notifications are sent
 receiving them whether it reached the bridge directly or through a relay.
 
 > **Status:** alpha-functional on the primary path (LAN/Tailscale-direct,
-> bridge-direct push), with **seven active real agents wired** plus one
-> unavailable legacy Gemini descriptor. The detailed breakdown of
+> bridge-direct push), with **seven active real agents wired**. The detailed breakdown of
 > what is built and what remains lives in [`FOR-DEV.md`](FOR-DEV.md); the release
 > history is in [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -124,9 +123,8 @@ the others use their persisted session logs. Antigravity is the explicit gap:
 `agy` exposes neither a readable transcript nor a history export, so no history
 is inferred from its opaque database.
 
-`gemini-cli` remains a deprecated, unavailable descriptor only for legacy
-configuration and history compatibility. The bridge does not resolve or spawn
-it, install its hook, advertise models/commands, or accept new threads/turns.
+The standalone Gemini CLI is intentionally unsupported. Antigravity (`agy`) is
+the active Google integration.
 
 See [`FOR-HUMAN.md`](FOR-HUMAN.md) for the per-agent install / login
 prerequisites, and [`docs/agents.md`](docs/agents.md) for the details.
@@ -204,8 +202,7 @@ Task-focused guides live in [`docs/`](docs/):
   registered handlers; errors map to JSON-RPC error codes (`-32000..-32009` +
   standard).
 - **Agents.** An `IAgentAdapter` per agent (OpenCode / Claude Code / Codex / pi /
-  Antigravity / Zero / Grok, plus a non-runnable deprecated Gemini legacy
-  adapter); `AgentManager` orchestrates streaming and broadcasts `stream/*`
+  Antigravity / Zero / Grok); `AgentManager` orchestrates streaming and broadcasts `stream/*`
   notifications to connected phones.
 - **Push.** `PushService` (persisted by relay `sessionId`) delivers FCM HTTP v1
   directly via `createBridgePushSender` (lazy `firebase-admin`), with the relay

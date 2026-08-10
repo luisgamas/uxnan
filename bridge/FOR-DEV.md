@@ -81,9 +81,8 @@ push validation (FOR-HUMAN).
   `features.midTurnDelivery` + per-agent `AgentCapabilities.steering`, and every
   refusal falls back to the queue, so a message is never lost.
 - **7 active real agents wired** — OpenCode (default), Claude Code, Codex, pi,
-  Antigravity (Google's `agy`), Zero, and Grok. The Gemini CLI adapter remains
-  registered only as unavailable/deprecated legacy and rejects new turns. Each
-  active integration drives its **official local CLI** with
+  Antigravity (Google's `agy`), Zero, and Grok. Each active integration drives
+  its **official local CLI** with
   `shell:false`, parses the native stream, and emits structured
   `stream/content/block` events (command / diff / tool) plus
   `stream/thinking/delta` (reasoning). Most spawn the CLI over stdio; the
@@ -131,7 +130,7 @@ push validation (FOR-HUMAN).
 - **Native-session `turn/list` convergence** for Claude, Codex, OpenCode, pi,
   Zero and Grok. Every idle read merges completed native-only turns into the
   bridge store; OpenCode uses its official local server endpoint and the other
-  agents use their persisted transcripts. Gemini remains legacy-read-only.
+  agents use their persisted transcripts.
 - **Bridge control** — `bridge/status` (real `relayConnected`),
   `bridge/removeTrustedDevice` (revokes + drops session + prunes push
   registration), `bridge/trustedDevices`, `bridge/connectedPhones`,

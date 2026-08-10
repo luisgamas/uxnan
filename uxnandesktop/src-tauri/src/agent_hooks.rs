@@ -9,12 +9,9 @@
 //! bash, zsh, fish, …).
 //!
 //! The reporter differs per agent, chosen for maximum shell-robustness:
-//!   * **Claude Code** and **Gemini CLI** are themselves Node programs, so `node`
-//!     is guaranteed on their PATH. They run a tiny dependency-free relay
-//!     (`uxnan-status-relay.cjs`) — Claude via *exec form* (`command:"node",
-//!     args:[…]`), which bypasses the shell entirely, and Gemini via a
-//!     `node "<relay>"` command. `node "<path>"` resolves identically under every
-//!     shell, so this sidesteps "which shell runs the hook" completely.
+//!   * **Claude Code** runs a tiny dependency-free Node relay
+//!     (`uxnan-status-relay.cjs`) via *exec form* (`command:"node", args:[…]`),
+//!     which bypasses the shell entirely.
 //!   * **Codex** is a Rust binary (no Node guarantee), so it uses a small `curl`
 //!     script (`uxnan-codex-hook.{sh,cmd}`) invoked by Codex's own hook runner
 //!     (`/bin/sh` on POSIX, `cmd` on Windows). Codex 0.129+ additionally gates
@@ -42,7 +39,7 @@ use crate::error::AppError;
 
 // --- Bundled script sources (embedded at compile time) ---------------------
 
-/// The Node relay shared by Claude Code and Gemini CLI (both guarantee `node`).
+/// The Node relay used by Claude Code.
 pub const STATUS_RELAY_SCRIPT: &str = include_str!("../../static/hooks/uxnan-status-relay.cjs");
 /// Codex `curl` hook (POSIX) — invoked by Codex's `/bin/sh` hook runner.
 pub const CODEX_HOOK_SH: &str = include_str!("../../static/hooks/uxnan-codex-hook.sh");
@@ -59,7 +56,7 @@ pub const AMP_STATUS_PLUGIN: &str = include_str!("../../static/hooks/uxnan-amp-s
 /// The generic launcher wrappers (any CLI agent without a native hook surface).
 /// Per-event `curl` reporter with the agent kind passed as an argument — Grok and
 /// Antigravity are single native binaries (Rust / Go) with no Node guarantee, so
-/// they use this rather than the Node relay Claude and Gemini share.
+/// they use this rather than Claude's Node relay.
 pub const EVENT_HOOK_SH: &str = include_str!("../../static/hooks/uxnan-event-hook.sh");
 pub const EVENT_HOOK_CMD: &str = include_str!("../../static/hooks/uxnan-event-hook.cmd");
 
@@ -126,8 +123,7 @@ const AMP_PLUGIN_MARKER: &str = "Uxnan Desktop - Amp status plugin";
 /// Per-hook timeout (seconds) for the node-relay agents; short because the
 /// report is fire-and-forget.
 const RELAY_TIMEOUT_SECS: u32 = 10;
-/// Gemini's hook timeout is expressed in **milliseconds** (unlike Claude/Codex).
-const GEMINI_TIMEOUT_MS: u32 = 10_000;
+const RELAY_TIMEOUT_MS: u32 = 10_000;
 
 /// The agent kinds whose reporter lives in a JSON `hooks` block (so a managed
 /// entry can be matched + swept). OpenCode (a plugin) and Pi (an extension)
@@ -138,7 +134,8 @@ const GEMINI_TIMEOUT_MS: u32 = 10_000;
 pub enum AgentKind {
     Claude,
     Codex,
-    Gemini,
+    /// Upgrade-only matcher for reporter entries written by older releases.
+    RetiredGemini,
     Grok,
     /// Any agent whose managed entry is the shared per-event reporter carrying
     /// its own kind as an argument (`uxnan-event-hook.cmd cursor`). One variant
@@ -163,9 +160,6 @@ const CLAUDE_EVENTS: &[(&str, bool)] = &[
     ("SubagentStart", false),
     ("SubagentStop", false),
 ];
-
-/// Gemini CLI turn events. Gemini has no permission hook, so no `waiting`.
-const GEMINI_EVENTS: &[&str] = &["BeforeAgent", "AfterAgent", "BeforeTool", "AfterTool"];
 
 /// Grok hook events → `hooks` block, same grouped shape as Claude's (Grok loads a
 /// Claude settings file unchanged, so its vocabulary *is* Claude's). `true` =
@@ -294,7 +288,7 @@ fn pi_extension_path() -> Option<PathBuf> {
 pub struct HookInstall {
     /// The directory the ADE writes scripts to.
     pub dir: String,
-    /// The Node relay (Claude Code + Gemini CLI).
+    /// The Node relay used by Claude Code.
     pub status_relay_script: String,
     /// Codex `curl` hook (POSIX).
     pub codex_hook_sh: String,
@@ -317,7 +311,6 @@ pub struct HookInstall {
     /// Where each agent's managed config lives (shown in the UI).
     pub claude_settings_path: String,
     pub codex_hooks_path: String,
-    pub gemini_settings_path: String,
     pub opencode_plugin_path: String,
     pub pi_extension_path: String,
     pub grok_hooks_path: String,
@@ -471,7 +464,6 @@ pub fn install_scripts_to(dir: &Path) -> Result<HookInstall, AppError> {
         browser_shim_cmd: path_str(&browser_cmd),
         claude_settings_path: opt(claude_settings_path()),
         codex_hooks_path: opt(codex_hooks_path()),
-        gemini_settings_path: opt(gemini_settings_path()),
         opencode_plugin_path: opt(opencode_plugin_path()),
         pi_extension_path: opt(pi_extension_path()),
         grok_hooks_path: opt(grok_hooks_path()),
@@ -499,20 +491,6 @@ fn sh_squote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// Escape a path for embedding inside a **double-quoted** shell string. `fwd`
-/// already normalized backslashes to `/`, so only an embedded `"` could break the
-/// quoting — escape it as `\"`. A newline can't appear in a real path and would
-/// corrupt the command, so it's stripped (and logged) defensively.
-fn dquote_path(path: &str) -> String {
-    if path.contains('\n') || path.contains('\r') {
-        eprintln!("[uxnan-desktop] hook reporter path contains a newline; stripping it: {path:?}");
-    }
-    path.chars()
-        .filter(|c| *c != '\n' && *c != '\r')
-        .collect::<String>()
-        .replace('"', "\\\"")
-}
-
 /// The relay command entry for Claude Code — **exec form**: `node` is spawned
 /// directly with args, bypassing the shell so it works from any terminal
 /// (cmd / PowerShell / Git Bash / WSL / …) without depending on one being present.
@@ -522,17 +500,6 @@ fn claude_hook_entry(relay: &str) -> Value {
         "command": "node",
         "args": [fwd(relay), "--agent", "claude"],
         "timeout": RELAY_TIMEOUT_SECS
-    })
-}
-
-/// The relay command entry for Gemini CLI — a `node "<relay>"` command string
-/// (Gemini guarantees `node`, so this resolves under any shell). Timeout is in
-/// milliseconds for Gemini.
-fn gemini_hook_entry(relay: &str) -> Value {
-    json!({
-        "type": "command",
-        "command": format!("node \"{}\" --agent gemini", dquote_path(&fwd(relay))),
-        "timeout": GEMINI_TIMEOUT_MS
     })
 }
 
@@ -673,7 +640,7 @@ fn is_managed_hook(hook: &Value, kind: AgentKind) -> bool {
     let text = fwd(&hook_text(hook));
     // A reporter from an earlier build is ours whatever config it sits in, so it
     // is swept regardless of `kind` — the pre-relay one actively breaks the
-    // current install (see `LEGACY_SCRIPT_FILENAMES`), and Codex/Gemini shared it,
+    // current install (see `LEGACY_REPORTER_STEMS`), and older integrations shared it,
     // so it carries no agent tag to match on.
     if is_legacy_reporter(&text) {
         return true;
@@ -685,7 +652,7 @@ fn is_managed_hook(hook: &Value, kind: AgentKind) -> bool {
             text.contains("uxnan-claude-hook")
                 || (text.contains(STATUS_RELAY_FILENAME) && text.contains("claude"))
         }
-        AgentKind::Gemini => text.contains(STATUS_RELAY_FILENAME) && text.contains("gemini"),
+        AgentKind::RetiredGemini => text.contains(STATUS_RELAY_FILENAME) && text.contains("gemini"),
         // Matched on the reporter + the agent tag, so a moved hooks dir or a
         // switch to/from the 8.3 short form still sweeps the stale entry.
         AgentKind::Grok => {
@@ -754,7 +721,7 @@ fn sweep_foreign_scripts(dir: &Path, keep: &[&Path]) {
 const LEGACY_CLAUDE_MARKER: &str = "__uxnan_managed_hooks__";
 
 // ---------------------------------------------------------------------------
-// Shared JSON `hooks` block merge (Claude / Codex / Gemini)
+// Shared JSON `hooks` block merge (Claude / Codex and compatible agents)
 // ---------------------------------------------------------------------------
 
 /// Merge one managed group into `doc.hooks[event]`, first stripping any prior
@@ -980,52 +947,20 @@ pub fn render_claude_settings_json(relay: &str) -> Result<String, AppError> {
     serde_json::to_string_pretty(&doc["hooks"]).map_err(AppError::Serde)
 }
 
-// ---------------------------------------------------------------------------
-// Gemini CLI
-// ---------------------------------------------------------------------------
-
-pub fn read_gemini_hooks_status() -> AgentHooksStatus {
-    status_from_config(gemini_settings_path(), AgentKind::Gemini, "settings.json")
-}
-
-pub fn install_gemini_hooks(relay: &str) -> Result<AgentHooksStatus, AppError> {
-    let path = gemini_settings_path()
-        .ok_or_else(|| AppError::Invalid("cannot resolve ~/.gemini/settings.json".into()))?;
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut doc = read_hooks_doc(&existing);
-    strip_managed(&mut doc, AgentKind::Gemini);
-    ensure_hooks_object(&mut doc);
-    let entry = gemini_hook_entry(relay);
-    for event in GEMINI_EVENTS {
-        merge_event(&mut doc, event, None, &entry, AgentKind::Gemini);
-    }
-    write_json_atomic(&path, &to_pretty(&doc))?;
-    Ok(read_gemini_hooks_status())
-}
-
-pub fn uninstall_gemini_hooks() -> Result<AgentHooksStatus, AppError> {
-    let path = gemini_settings_path()
-        .ok_or_else(|| AppError::Invalid("cannot resolve ~/.gemini/settings.json".into()))?;
+/// Upgrade-only cleanup for Uxnan-managed Gemini reporter entries. It recognizes
+/// only Uxnan's relay marker and preserves every user-authored hook and setting.
+fn cleanup_retired_gemini_hooks() -> Result<(), AppError> {
+    let Some(path) = gemini_settings_path() else {
+        return Ok(());
+    };
     if let Ok(text) = std::fs::read_to_string(&path) {
-        if contains_managed(&text, AgentKind::Gemini) {
+        if contains_managed(&text, AgentKind::RetiredGemini) {
             let mut doc: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({}));
-            strip_managed(&mut doc, AgentKind::Gemini);
+            strip_managed(&mut doc, AgentKind::RetiredGemini);
             write_json_atomic(&path, &to_pretty(&doc))?;
         }
     }
-    Ok(read_gemini_hooks_status())
-}
-
-/// Render the Gemini `hooks` block the ADE installs (for the Settings "Show config"
-/// affordance), against the given relay path. Mirrors the merge used at install so
-/// what's shown equals what's written into `~/.gemini/settings.json`.
-pub fn render_gemini_settings_json(relay: &str) -> Result<String, AppError> {
-    let mut doc = json!({ "hooks": {} });
-    let entry = gemini_hook_entry(relay);
-    for event in GEMINI_EVENTS {
-        merge_event(&mut doc, event, None, &entry, AgentKind::Gemini);
-    }
-    serde_json::to_string_pretty(&doc["hooks"]).map_err(AppError::Serde)
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1494,7 +1429,7 @@ const TIMEOUT_SECS: HookTimeout = HookTimeout {
 };
 const TIMEOUT_MILLIS: HookTimeout = HookTimeout {
     key: "timeout",
-    value: GEMINI_TIMEOUT_MS,
+    value: RELAY_TIMEOUT_MS,
 };
 /// GitHub Copilot's own spelling (`timeoutSec`), per its hooks reference.
 const TIMEOUT_SEC_KEY: HookTimeout = HookTimeout {
@@ -2416,22 +2351,10 @@ pub fn render_table_agent_config(id: &str, install: &HookInstall) -> Result<Stri
 // ---------------------------------------------------------------------------
 
 /// Every agent the ADE can install a reporter for, in the order Settings lists
-/// them: the six hand-written ones first (each needs machinery of its own — a
+/// them: the hand-written ones first (each needs machinery of its own — a
 /// Node relay, a trust hash, an in-process plugin), then the table.
-///
-/// Gemini CLI is included deliberately even though it is discontinued upstream
-/// and never auto-installed: someone who already has its reporter needs a card
-/// to turn it off.
 pub fn hook_agent_ids() -> Vec<&'static str> {
-    let mut ids = vec![
-        "claude",
-        "codex",
-        "opencode",
-        "pi",
-        "grok",
-        "antigravity",
-        "gemini",
-    ];
+    let mut ids = vec!["claude", "codex", "opencode", "pi", "grok", "antigravity"];
     ids.extend(TABLE_AGENTS.iter().map(|a| a.id));
     ids
 }
@@ -2470,7 +2393,6 @@ fn agent_config_path(id: &str) -> String {
     let path = match id {
         "claude" => claude_settings_path(),
         "codex" => codex_hooks_path(),
-        "gemini" => gemini_settings_path(),
         "opencode" => opencode_plugin_path(),
         "pi" => pi_extension_path(),
         "grok" => grok_hooks_path(),
@@ -2496,7 +2418,6 @@ fn agent_present(id: &str) -> bool {
         "pi" => "pi",
         "grok" => "grok",
         "antigravity" => "agy",
-        "gemini" => "gemini",
         _ => return false,
     };
     crate::which::resolve(command).is_some()
@@ -2507,7 +2428,6 @@ pub fn read_agent_status(id: &str) -> AgentHooksStatus {
     match id {
         "claude" => read_claude_status(),
         "codex" => read_codex_hooks_status(),
-        "gemini" => read_gemini_hooks_status(),
         "opencode" => read_opencode_hooks_status(),
         "pi" => read_pi_hooks_status(),
         "grok" => read_grok_hooks_status(),
@@ -2521,7 +2441,6 @@ pub fn install_agent(id: &str, install: &HookInstall) -> Result<AgentHooksStatus
     match id {
         "claude" => install_claude_hooks(&install.status_relay_script),
         "codex" => install_codex_hooks(install),
-        "gemini" => install_gemini_hooks(&install.status_relay_script),
         "opencode" => install_opencode_hooks(),
         "pi" => install_pi_hooks(),
         "grok" => install_grok_hooks(install),
@@ -2535,7 +2454,6 @@ pub fn uninstall_agent(id: &str) -> Result<AgentHooksStatus, AppError> {
     match id {
         "claude" => uninstall_claude_hooks(),
         "codex" => uninstall_codex_hooks(),
-        "gemini" => uninstall_gemini_hooks(),
         "opencode" => uninstall_opencode_hooks(),
         "pi" => uninstall_pi_hooks(),
         "grok" => uninstall_grok_hooks(),
@@ -2551,7 +2469,6 @@ pub fn render_agent_config(id: &str, install: &HookInstall) -> Result<String, Ap
     match id {
         "claude" => render_claude_settings_json(&install.status_relay_script),
         "codex" => render_codex_hooks_json(install),
-        "gemini" => render_gemini_settings_json(&install.status_relay_script),
         "grok" => render_grok_hooks_json(install),
         "antigravity" => render_antigravity_hooks_json(),
         "opencode" => Ok(OPENCODE_STATUS_PLUGIN.to_string()),
@@ -2579,16 +2496,15 @@ pub fn install_all(install: &HookInstall) {
     log("pi", install_pi_hooks());
     log("grok", install_grok_hooks(install));
     log("antigravity", install_antigravity_hooks());
+    if let Err(e) = cleanup_retired_gemini_hooks() {
+        eprintln!("[uxnan-desktop] retired Gemini hook cleanup failed: {e}");
+    }
     // The declaratively-wired CLIs, but only the ones this machine actually has:
     // see `table_agent_present`. An agent installed later is picked up on the
     // next launch, and its Settings card installs it on demand meanwhile.
     for agent in TABLE_AGENTS.iter().filter(|a| table_agent_present(a)) {
         log(agent.id, install_table_agent(agent.id, install));
     }
-    // Gemini CLI is deliberately absent: it is discontinued upstream, so a fresh
-    // machine never gets its reporter. `install_gemini_hooks` stays wired for the
-    // Settings card, which is still offered to anyone who already has it
-    // installed so they can turn it off.
 }
 
 #[cfg(test)]
@@ -2615,7 +2531,6 @@ mod tests {
             browser_shim_cmd: String::new(),
             claude_settings_path: String::new(),
             codex_hooks_path: String::new(),
-            gemini_settings_path: String::new(),
             opencode_plugin_path: String::new(),
             pi_extension_path: String::new(),
             grok_hooks_path: String::new(),
@@ -3023,19 +2938,16 @@ mod tests {
     }
 
     #[test]
-    fn is_managed_hook_distinguishes_agents() {
+    fn is_managed_hook_identifies_claude_and_retired_gemini_entries() {
         let claude = claude_hook_entry("/x/uxnan-status-relay.cjs");
-        let gemini = gemini_hook_entry("/x/uxnan-status-relay.cjs");
+        let retired = json!({
+            "type": "command",
+            "command": "node /x/uxnan-status-relay.cjs --agent gemini"
+        });
         assert!(is_managed_hook(&claude, AgentKind::Claude));
-        assert!(!is_managed_hook(&claude, AgentKind::Gemini));
-        assert!(is_managed_hook(&gemini, AgentKind::Gemini));
-        assert!(!is_managed_hook(&gemini, AgentKind::Claude));
-    }
-
-    #[test]
-    fn gemini_entry_uses_ms_timeout() {
-        let g = gemini_hook_entry("/x/uxnan-status-relay.cjs");
-        assert_eq!(g["timeout"], json!(GEMINI_TIMEOUT_MS));
+        assert!(!is_managed_hook(&claude, AgentKind::RetiredGemini));
+        assert!(is_managed_hook(&retired, AgentKind::RetiredGemini));
+        assert!(!is_managed_hook(&retired, AgentKind::Claude));
     }
 
     #[test]
@@ -3083,7 +2995,7 @@ mod tests {
         });
         // Swept whatever config it sits in: it carries no agent tag of its own.
         assert!(is_managed_hook(&legacy, AgentKind::Codex));
-        assert!(is_managed_hook(&legacy, AgentKind::Gemini));
+        assert!(is_managed_hook(&legacy, AgentKind::RetiredGemini));
         let mut doc = json!({
             "hooks": {
                 "PostToolUse": [
@@ -3172,16 +3084,6 @@ mod tests {
     }
 
     #[test]
-    fn render_gemini_json_is_valid_and_references_the_relay() {
-        let json = render_gemini_settings_json("/x/uxnan-status-relay.cjs").unwrap();
-        // Valid JSON, carries our relay + a Gemini turn event, tagged gemini.
-        let _: Value = serde_json::from_str(&json).unwrap();
-        assert!(json.contains("uxnan-status-relay.cjs"));
-        assert!(json.contains("gemini"));
-        assert!(json.contains("BeforeAgent"));
-    }
-
-    #[test]
     fn render_codex_json_is_valid_and_has_hooks_and_command() {
         let tmp = std::env::temp_dir().join(format!("uxnan-codexrender-{}", uuid::Uuid::new_v4()));
         let install = install_scripts_to(&tmp).expect("install succeeds");
@@ -3209,32 +3111,5 @@ mod tests {
             r"'/home/o'\''brien/hook.sh'"
         );
         assert_eq!(sh_squote(""), "''");
-    }
-
-    #[test]
-    fn dquote_path_escapes_quote_and_strips_newline() {
-        // A quote-free path is unchanged.
-        assert_eq!(dquote_path("/x/relay.cjs"), "/x/relay.cjs");
-        // An embedded `"` is escaped so it can't break out of the `"…"` string.
-        assert_eq!(dquote_path(r#"/x/we"ird.cjs"#), r#"/x/we\"ird.cjs"#);
-        // Newlines are stripped defensively (they can't be in a real path).
-        assert_eq!(dquote_path("/x/re\nlay.cjs"), "/x/relay.cjs");
-    }
-
-    #[test]
-    fn gemini_entry_escapes_embedded_quote() {
-        // A `"` in the relay path must be escaped so the double-quoted shell
-        // command string stays well-formed.
-        let g = gemini_hook_entry(r#"/x/we"ird/relay.cjs"#);
-        assert_eq!(
-            g["command"].as_str().unwrap(),
-            r#"node "/x/we\"ird/relay.cjs" --agent gemini"#
-        );
-        // A quote-free path is unchanged (aside from forward-slashing).
-        let plain = gemini_hook_entry("/x/relay.cjs");
-        assert_eq!(
-            plain["command"].as_str().unwrap(),
-            r#"node "/x/relay.cjs" --agent gemini"#
-        );
     }
 }

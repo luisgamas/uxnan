@@ -159,17 +159,14 @@ void main() {
     expect(find.text('Check sign-in'), findsNothing);
   });
 
-  testWidgets('deprecated Gemini CLI and the Echo dev agent are hidden', (
-    tester,
-  ) async {
+  testWidgets('the Echo dev agent is hidden', (tester) async {
     tester.view.physicalSize = const Size(1200, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    // The bridge still advertises Gemini and the Echo dev agent, but the
-    // new-conversation picker draws a client-side curtain over both (see
-    // `_hiddenAgentIds`). Only the non-hidden agent must render.
+    // Test overrides may advertise the Echo development adapter, but the
+    // new-conversation picker keeps it behind `_hiddenAgentIds`.
     await tester.pumpWidget(
       _wrap(
         requiresLogin: false,
@@ -177,11 +174,6 @@ void main() {
           AgentDescriptor(
             agentId: 'codex',
             displayName: 'Codex',
-            available: true,
-          ),
-          AgentDescriptor(
-            agentId: 'gemini-cli',
-            displayName: 'Gemini CLI',
             available: true,
           ),
           AgentDescriptor(
@@ -195,7 +187,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Codex'), findsOneWidget);
-    expect(find.text('Gemini CLI'), findsNothing);
     expect(find.text('Echo Agent'), findsNothing);
   });
 }

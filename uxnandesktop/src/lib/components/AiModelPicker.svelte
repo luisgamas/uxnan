@@ -40,7 +40,7 @@
   // shared provider prefix is the *least* distinguishing part — truncating from
   // the right hides the model name. Split it: the last `/` segment is the model
   // (shown prominently), the rest is the provider (shown muted). Ids without a
-  // `/` (Claude/Gemini friendly names) stay as-is with no provider line.
+  // `/` (Claude-friendly names) stay as-is with no provider line.
   const modelName = (s: string) => {
     const i = s.lastIndexOf("/");
     return i >= 0 ? s.slice(i + 1) : s;

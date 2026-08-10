@@ -128,7 +128,7 @@ just download the latest `.dmg`.
 - **"Open Anyway" isn't in System Settings.** — You need to try opening the app
   **first** (double-click → Done); the button only appears after macOS has
   blocked a launch.
-- **CLIs (Claude, Codex, Gemini, `gh`, node, …) show as "not installed"
+- **CLIs (Claude, Codex, Antigravity, `gh`, node, …) show as "not installed"
   although they are.** — Uxnan enriches its `PATH` from your login shell at
   startup so Homebrew / npm / version-manager tools are found even when launched
   from Finder. If something is still missing, make sure it's on your login

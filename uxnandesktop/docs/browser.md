@@ -103,8 +103,8 @@ They map onto the same in-app browser and the same link policy as a clicked link
 The ADE runs a tiny MCP server at **`/mcp`** on the same local hook server the agent
 monitor already uses (`127.0.0.1`, ephemeral port, `Authorization: Bearer <token>`).
 When enabled, the ADE writes the agent CLI's **own user-global** MCP config (in
-`~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
-`~/.config/opencode/opencode.json`) so it finds that server on launch — **never a
+`~/.claude.json`, `~/.codex/config.toml`,
+`~/.config/opencode/opencode.json`, and the other paths below) so it finds that server on launch — **never a
 file in your project folder.** User-global config isn't project-approval-gated, so no
 CLI shows an "approve this MCP server?" prompt. The bearer **token is never written
 to a file** — the config references the `UXNAN_MCP_TOKEN` environment variable, which
@@ -127,7 +127,7 @@ CSRF / DNS-rebinding.
 | --- | --- | --- |
 | **Agent browser MCP** | Master switch for exposing the `browser_*` tools to agents. Off → no MCP config is injected (the `/mcp` endpoint still exists for manual wiring). | On |
 | **Setup mode** | `Managed` registers the server in each CLI's **user-global** config only — never your project folder, so nothing lands in your files and no "approve this MCP server?" prompt appears (hand-typed agents pick it up too). `Global` is the same user-global config but leaves the CLIs' own trust prompts intact. `Off` injects nothing. | Managed |
-| **Frictionless launch** | (Managed only) Skip the CLI's "trust this folder?" prompt for app-launched agents — Gemini via `GEMINI_CLI_TRUST_WORKSPACE`, Codex via a per-folder `trust_level` seed. Turn off to keep the native prompts. | On |
+| **Frictionless launch** | (Managed only) Skip the CLI's "trust this folder?" prompt where supported — currently Codex via a per-folder `trust_level` seed. Turn off to keep the native prompt. | On |
 | **Per-agent** | Toggle injection per agent. | All on |
 | **Copy config** | Copy a ready-to-paste MCP-server config (endpoint + token) to wire an agent by hand — e.g. one the ADE doesn't auto-configure yet. | — |
 
@@ -176,10 +176,8 @@ file the user keeps — so it isn't:
 
 Any of them can still be wired by hand from the copy-paste snippet in Settings.
 
-**Gemini CLI** is no longer configured — Google discontinued it in favour of
-Antigravity — though uxnan still knows its config path, so an entry left behind by
-an earlier version is still cleaned up. Fixing Antigravity needs a change on one
-side or the other; the detail is in [`FOR-DEV.md`](../FOR-DEV.md).
+Antigravity support needs a change on one side or the other; the detail is in
+[`FOR-DEV.md`](../FOR-DEV.md).
 
 ### Adding another agent
 
