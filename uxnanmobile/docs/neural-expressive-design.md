@@ -26,6 +26,7 @@
    - [Cards and Lists](#46-cards-and-lists)
    - [Progress Indicators](#47-progress-indicators)
    - [Inline Voice Interface](#48-inline-voice-interface)
+   - [Picker Sheets](#49-picker-sheets)
 5. [Component Decision Matrix](#5-component-decision-matrix)
 6. [Implementation in Flutter](#6-implementation-in-flutter)
    - [M3E Motion Tokens](#61-m3e-motion-tokens)
@@ -993,6 +994,48 @@ A 64 dp tall **inline pill** is implemented, anchored at the bottom of the scree
 
 Responses spoken by Gemini appear as text in the main space of the screen,
 visible and copyable without closing the voice channel.
+
+---
+
+### 4.9 Picker Sheets
+
+Every "choose one of these" in the app is the **same** bottom sheet. There is
+one composition, and a new picker adopts it rather than inventing a variant —
+two sheets that do the same job in the same app must not be two designs.
+
+Canonical implementations: `model_picker_sheet.dart` (the reference) and
+`workspace_browser_sheet.dart`.
+
+**The composition, top to bottom:**
+
+| Part | Spec |
+| --- | --- |
+| Route | `showModalBottomSheet(isScrollControlled: true, showDragHandle: true)` |
+| Padding | `SafeArea(top: false)` → `EdgeInsets.only(left/right: lg, bottom: lg + viewInsets.bottom)` |
+| Title | `textTheme.titleMedium` in a `Padding(bottom: sm)`; a header action (refresh, up) sits in a `Row` beside it |
+| Search | pill `TextField`: `autofocus`, `isDense`, `prefixIcon: UxIcon(UxIcons.search, size: 20)`, `filled` on `surfaceContainerHighest`, `OutlineInputBorder` at `UxnanRadius.full` with an `outline` side, and the **same border on `enabledBorder`** |
+| Gap | `SizedBox(height: md)` |
+| List | `ConstrainedBox` capped at `(screenHeight − viewInsets.bottom) × 0.5` (`0.45` when the sheet also ends in a button), clamped, over a `ListView.builder(shrinkWrap: true)` |
+| Row | `ListTile(dense: true, shape: RoundedRectangleBorder(UxnanRadius.md))`, title `bodyMedium`, secondary line `UxnanTypography.codeSmall` on `onSurfaceVariant` |
+| Selected row | `selectedTileColor: colors.primaryContainer.withValues(alpha: 0.4)` + a trailing `UxIcon(UxIcons.check, size: 20, color: primary)` |
+| Closing action | optional, after a `SizedBox(height: md)`: `FilledButton` for the affirmative one, `FilledButton.tonal` for an escape hatch (the folder picker's "browse everything") |
+
+**Rules that are easy to get wrong:**
+
+- The search field is a `TextField` styled as above — **never a `SearchBar`**,
+  which brings its own Material-3 elevation, height and shape and reads as a
+  foreign control here.
+- Glyphs come from the catalogue (`UxIcon`/`UxIcons`), never `Icons.*`.
+- Rows are `dense`. A sheet is a list you scan, not a settings screen.
+- The empty state is a single `Text` in a `Padding(all: md)` — no illustration,
+  no card.
+
+**The field that opens one** is a filled tappable surface, not a `ListTile`: a
+`Material(surfaceContainerHighest, UxnanRadius.lg)` + `InkWell`, an 18 dp
+leading glyph, the chosen value in `bodyMedium` — `onSurfaceVariant` while it is
+still the hint — and a trailing `UxIcons.unfoldMore` at 20, replaced by a
+`PolygonLoader(size: 16)` while the choices are still arriving. The
+new-conversation dialog's model field is the reference (`_ModelField`).
 
 ---
 
