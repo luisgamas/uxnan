@@ -44,8 +44,17 @@ therefore finishes on its own, with nobody awake.
   signatures, `latest.json`, and its notes already written. Pressing *Publish* is
   the moment it becomes the default download and the updater starts offering it.
   That is a judgement call, not a build step.
-- **The CHANGELOG.** The tooling never writes your prose. For a stable release,
-  rename `## [Unreleased]` to the version yourself before cutting.
+- **The CHANGELOG.** The tooling never writes your prose. Rename
+  `## [Unreleased]` to the version yourself before cutting a stable desktop
+  build, or any shared / bridge / relay / mobile release. (Desktop *nightlies*
+  deliberately do not convert it — a run of them piles up under `[Unreleased]`
+  and the next stable absorbs the lot.)
+- **Google Play's "what's new", for a mobile release.**
+  `.github/whatsnew/whatsnew-en-US` and `whatsnew-es-ES` must describe *this*
+  version in plain, non-technical language, **≤ 500 characters each**.
+  `release-mobile.yml` fails the release when either is missing, empty, a
+  leftover placeholder, or over the limit — so a stale file does not ship quietly,
+  it stops the cut.
 
 ---
 
@@ -392,19 +401,30 @@ a new one — the base must still move forward, so the next nightly gets a highe
 
 ## Proven, and still to prove
 
-Desktop has been through the whole path for real — cut, tag, build, notes,
-publish, updater manifest — and the defects that found are fixed and pinned by
-tests. The other three components share **all** of that machinery (the same
-planner, the same version arithmetic, the same file writers, the same ordering),
-but their last leg has not been exercised since the automation existed:
+Every component except the relay has now been through the whole path for real,
+and the defects that found are fixed and pinned by tests.
 
 | Component | Exercised | What is still unproven |
 |---|---|---|
-| desktop | ✅ 0.0.29, 0.0.30 and 0.0.31, end to end — the last one cut by the cron, unattended | — |
-| shared | ❌ | that `release-npm.yml` fires from an app-token tag, and that the npm-visibility wait behaves on a real publish |
-| bridge | ❌ | the same, **plus** the shared→bridge ordering, which is the reason this workflow exists |
-| relay | ❌ | the same as shared |
-| mobile | ❌ | that `release-mobile.yml` accepts a pubspec written by `prepare.mjs`, and that the Play build number lands as expected |
+| desktop | ✅ 0.0.29 → 0.0.37, end to end, several cut unattended and landing their own pull request | — |
+| shared | ✅ 0.0.14-alpha.20260810 — tagged, published, `latest` moved | — |
+| bridge | ✅ 0.0.19-alpha.20260810 — **published pinned to the shared cut minutes earlier**, which is the whole reason this is one workflow | — |
+| mobile | ✅ 0.0.19-alpha.20260810+20260810 — pubspec↔tag gate passed on a pubspec `prepare.mjs` wrote, notes gate passed, uploaded to Play open testing | — |
+| relay | ❌ | nothing has changed in `relay/` that reaches a build since the automation existed, so it has never been cut by it |
+
+**The npm-visibility wait ran for real** on that cut, and it is the one thing no
+dry run could have shown: the run tagged shared, waited (`waiting for npm to
+serve @uxnan/shared@0.0.14-alpha.20260810` → `npm serves 0.0.14-alpha.20260810`),
+and only then tagged the bridge. The published bridge resolves
+`"@uxnan/shared": "0.0.14-alpha.20260810"` — the version cut minutes before, not
+the previous one. That is the failure this workflow exists to prevent, and it is
+now observed rather than argued.
+
+**Two steps still belong to a person before a mobile cut**, and both fail the
+release rather than degrade it: `.github/whatsnew/whatsnew-{en-US,es-ES}` must
+describe *this* version in plain language under 500 characters, and the
+`CHANGELOG` heading must be the version being cut. The tooling prints a reminder
+and writes neither — the prose is the part someone is supposed to have read.
 
 One desktop detail is also still unproven: the `notes` job now survives a failed
 macOS leg (`if: always()`), but every run since that fix has been fully green, so
@@ -425,11 +445,12 @@ class, which needs no escaping at any layer, and it was checked against a real
 release before being committed. Anything with the same shape — a guard that only
 runs on the unhappy path, a filter with escapes — deserves the same treatment.
 
-When the next one of those genuinely needs a release, cut it with `dry_run` on
-first and read the plan. The riskiest is **shared + bridge together**: that is
-the first time the npm wait runs for real, and if npm is slow the run fails
-having tagged shared but not bridge — recoverable by re-running the dispatch for
-the bridge alone once `npm view @uxnan/shared version` reports the new version.
+Cut anything unfamiliar with `dry_run` on first and read the plan — that is how
+the shared+bridge+mobile cut was checked before it ran, and the plan showed the
+`waitFor` sitting on the right component. If npm ever is slow enough that the
+wait times out, the run fails having tagged shared but not the bridge:
+recoverable by re-running the dispatch for the bridge alone once
+`npm view @uxnan/shared version` reports the new version.
 
 ## The pieces
 
