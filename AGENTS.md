@@ -550,9 +550,10 @@ If the documentation says one thing but the existing code does another:
 
 Components version **independently** via per-component git tags (`shared-v*`,
 `bridge-v*`, `relay-v*`, `desktop-v*`, `mobile-v*`). Pushing a component tag runs
-that component's `release-*.yml` workflow. The version convention, the release
-matrix, and the full step-by-step are in **[`VERSIONS.md`](VERSIONS.md)**; the
-contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Releases*.
+that component's `release-*.yml` workflow. The version convention, which files
+carry a version, the release matrix and the full step-by-step are in
+**[`docs/releases.md`](docs/releases.md)**; the contributor-facing summary is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) → *Releases*.
 
 > **Do not cut a release by hand.** `npm run release:status` says what genuinely
 > needs one; the **Release — cut versions** workflow (`release.yml`) does the cut —
@@ -577,15 +578,19 @@ contributor-facing summary is in [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Relea
    `package-lock.json`); **desktop:** `tauri.conf.json` + `Cargo.toml` +
    `Cargo.lock` + `package.json` + `package-lock.json` (numeric base); mobile:
    `pubspec.yaml`. Verify each manifest version **equals** its lockfile counterpart.
-   Full per-file list + commands in **`VERSIONS.md`** → *Convention*.
-3. **Update `VERSIONS.md` and validate the deploy** — in the same change set, add or
-   refresh the component's row in the history table, **and confirm the release
-   actually shipped**: the `release-*.yml` run is green and the artifact landed (npm
-   published to the `latest` dist-tag / the Play **open-testing** (beta) build uploaded / the
+   Full per-file list + commands in **`docs/releases.md`** → *Which files carry a
+   version*, whose machine-readable copy is `scripts/release/components.mjs`.
+3. **Validate the deploy** — confirm the release actually shipped: the
+   `release-*.yml` run is green and the artifact landed (npm published to the
+   `latest` dist-tag / the Play **open-testing** (beta) build uploaded / the
    desktop GitHub **Release** draft exists). A red or half-finished release run is
-   **not** a release — fix it before recording the row. (npm's `latest` dist-tag
-   always tracks the newest release; `alpha`/`beta` channels are opt-in, added
-   manually per build — see `VERSIONS.md`.)
+   **not** a release. Then **merge the bump pull request the run opened** — while
+   it sits there the tag is not an ancestor of `main`, which is the state that cut
+   desktop 0.0.34 for nothing. (npm's `latest` dist-tag always tracks the newest
+   release; `alpha`/`beta` channels are opt-in, added manually per build — see
+   `docs/releases.md`.) There is no history file to update: `VERSIONS.md` was
+   removed on 2026-08-10, because git tags and GitHub releases already are that
+   record.
 4. **Mobile — `pubspec.yaml` MUST match the tag (NON-NEGOTIABLE).** Before tagging
    `mobile-v<name>+<build>`, bump `uxnanmobile/pubspec.yaml` `version:` to the same
    `<name>+<build>`, then **commit AND push it** so the **tagged commit** carries the

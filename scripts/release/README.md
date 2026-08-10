@@ -1,8 +1,8 @@
 # Release tooling
 
 Two commands that take the guesswork and the transcription errors out of cutting
-a release. [`VERSIONS.md`](../../VERSIONS.md) remains the source of truth for the
-convention; this is the code that follows it.
+a release. [`docs/releases.md`](../../docs/releases.md) is the source of truth for
+the convention; this is the code that follows it.
 
 Everything here is read-only or writes version files. **Nothing commits, tags or
 pushes** — that stays with a human, and from phase 2 with the release workflow.
@@ -70,23 +70,10 @@ button does, but with `previous_tag_name` pinned to the previous desktop build i
 **either** channel. Left to choose, GitHub reached back to the previous *nightly*
 and re-listed nine pull requests that had already shipped.
 
-`record.mjs` writes the `VERSIONS.md` row — date, the version in its component's
-column, and a summary seeded from the pull request titles in the release
-(`summarizeNotes`, given the generated notes through `--notes-file`). It is
-idempotent on the version, so a retried run cannot record the same release
-twice. The row goes in the **same commit as the version bump**, so it travels in
-the same pull request: merging that is what records the release.
-
-The summary keeps only the **What's Changed** list, drops GitHub's `by @… in …`
-attribution, and drops the release plumbing — `build(release):` names the
-*previous* version and reads, in the row, as if that version shipped inside this
-one. This was a shell pipeline in the workflow until the first unattended run
-recorded "@uxnan-releases[bot] made their first contribution" as one of 0.0.31's
-changes: **New Contributors** is a bullet list too. Moving it here is the point —
-a `grep | sed` in YAML has no tests and fails only in production.
-
-`plan.mjs` and `notes.mjs` print to stdout and change nothing;
-`.github/workflows/release.yml` is what turns their output into commits and tags.
+`record.mjs` used to write a `VERSIONS.md` history row. Both are gone as of
+2026-08-10: the hand-kept table had no readers — versions come from git tags and
+what shipped is a GitHub release — and a second copy maintained by hand is only a
+way to be wrong.
 
 ## What the pieces are
 
@@ -96,15 +83,17 @@ a `grep | sed` in YAML has no tests and fails only in production.
 | `version.mjs` | pure version arithmetic — next version per kind and channel, and the guard against a base that has already shipped |
 | `adapters.mjs` | pure text transforms per file format (`package.json`, both lockfile shapes, `Cargo.toml`, `Cargo.lock`, `pubspec.yaml`) |
 | `bump.mjs` | applies a version to every file, then asserts they all agree |
-| `changes.mjs` | "does this component need a release?" — path diff since its last tag, minus docs |
+| `changes.mjs` | "does this component need a release?" — what changed since its last tag, minus prose, tests and its own version bump |
 | `git.mjs` | the only place that shells out to git |
 | `plan.mjs` | what to cut, in what order — the workflow's decisions |
 | `notes.mjs` | the release body, with the baseline pinned |
-| `record.mjs` | the `VERSIONS.md` history row, written at cut time |
 
 `node --test "scripts/release/*.test.mjs"` (also part of the root `npm test`)
-covers all of it, including the two failures that have actually shipped here: a
-lockfile left behind a manifest, and a desktop base reused across channels.
+covers all of it, including the failures that have actually shipped here: a
+lockfile left behind a manifest, a desktop base reused across channels, and a
+version cut for nothing because the previous release's pull request was still
+open. `changes.test.mjs` drives a real git repository — that last one is a
+question about git's shape, and no stub can pose it.
 
 ## Adding a component, or a file that carries a version
 

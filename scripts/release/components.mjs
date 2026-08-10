@@ -2,7 +2,7 @@
  * The release registry: one place that knows what each component is, where its
  * version lives, and which tag drives it.
  *
- * `VERSIONS.md` describes all of this in prose for humans. This file is the
+ * `docs/releases.md` describes all of this in prose for humans. This file is the
  * machine's copy — when the two disagree, one of them is a bug, and the tests in
  * `components.test.mjs` pin the parts that have burned us before (a version file
  * left out of a bump is invisible until a release ships wrong).

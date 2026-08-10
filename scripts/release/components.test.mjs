@@ -33,7 +33,7 @@ describe('the registry', () => {
   });
 
   it('bumps the lockfile alongside every manifest', () => {
-    // The rule VERSIONS.md states in prose: a manifest without its lock is the
+    // The rule docs/releases.md states in prose: a manifest without its lock is the
     // drift that `--allow-same-version` hides at build time.
     for (const meta of COMPONENTS) {
       const files = meta.versionFiles.map((e) => e.file);
@@ -92,7 +92,7 @@ describe('isNonShipping', () => {
       'uxnandesktop/src/lib/components/FileTreePanel.svelte.test.ts',
       'uxnandesktop/src/lib/agentModel.test.ts',
       'bridge/test/handlers/threads.test.ts',
-      'scripts/release/record.test.mjs',
+      'scripts/release/changes.test.mjs',
       'uxnandesktop/tests/platform-support.json',
       'shared/src/__tests__/validators.spec.ts',
     ]) {

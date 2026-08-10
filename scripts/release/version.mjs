@@ -1,5 +1,5 @@
 /**
- * Version arithmetic for the release convention in `VERSIONS.md`.
+ * Version arithmetic for the release convention in `docs/releases.md`.
  *
  * Everything here is pure: given the tags that already exist and a date, it says
  * what the next version and tag are. No git, no filesystem — so the rules can be

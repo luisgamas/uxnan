@@ -46,7 +46,7 @@ if (versions.size !== 1) {
   console.error(
     "\nX Desktop version files disagree — a version bump left one behind " +
       "(silent drift; the release workflow would mask it). Bump ALL of them to " +
-      "the same numeric base (see VERSIONS.md > Convention):\n",
+      "the same numeric base (see docs/releases.md > The version convention):\n",
   );
   for (const [file, v] of Object.entries(found)) {
     console.error(`  ${v}\t${file}`);
