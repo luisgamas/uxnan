@@ -284,7 +284,7 @@ class MetricsSnapshot extends Equatable {
         directSessions: directSessions,
         byAgent: [
           for (final a in byAgent)
-          AgentUsage(agentId: a.agentId, conversations: a.conversations),
+            AgentUsage(agentId: a.agentId, conversations: a.conversations),
         ],
         totalTokens: totalTokensOf([this]),
         memberSince: memberSince == null
