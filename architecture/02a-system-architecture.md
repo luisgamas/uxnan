@@ -2441,7 +2441,7 @@ para `sessionId="abc"`, `seq=1`, `direction=0x01`, el AAD es
 > `ProtocolConstants` del móvil los espeja.
 >
 > **Consecuencia de release:** bridge y `uxnanmobile` deben publicarse en el
-> mismo ciclo (ver `VERSIONS.md`).
+> mismo ciclo (ver `docs/releases.md`).
 
 **Trusted Reconnect:**
 - Usa `handshakeMode: "trusted_reconnect"`

@@ -198,28 +198,6 @@ jobs:
               continue
             fi
 
-            # The history row travels in the same commit, so the pull request
-            # carries both and the table can never silently fall behind — which
-            # is what happened to 0.0.29. The summary is seeded from the pull
-            # request titles this release contains; enrich it by hand if you
-            # want, but nobody has to remember to add it.
-            #
-            # Summarising is `record.mjs`'s job, not this file's. It was a
-            # `grep | sed | paste` pipeline here and got it wrong on the first
-            # unattended run — "New Contributors" is a bullet list too, so the
-            # release bot's first contribution was recorded as one of 0.0.31's
-            # changes. Tested code cannot fail that way in production only.
-            rm -f history-notes.md
-            if [ "$HAS_APP" = "true" ] || [ -n "${GH_TOKEN:-}" ]; then
-              node scripts/release/notes.mjs "$tag" --repo="$GITHUB_REPOSITORY" > history-notes.md 2>/dev/null || true
-            fi
-            if [ -s history-notes.md ]; then
-              node scripts/release/record.mjs "$id" "$version" --notes-file=history-notes.md
-            else
-              node scripts/release/record.mjs "$id" "$version"
-            fi
-            rm -f history-notes.md
-
             git commit -am "build: prepare $id $version"
             git tag "$tag"
 

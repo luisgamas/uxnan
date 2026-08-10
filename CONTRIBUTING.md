@@ -82,7 +82,7 @@ first re-runs the verification and only builds/publishes if it's green.
 
 Versions follow `0.0.PATCH-alpha.YYYYMMDD` for the npm/mobile alpha line. Desktop
 uses explicit stable/nightly tag forms so its updater channels cannot be mixed;
-see [`VERSIONS.md`](VERSIONS.md).
+see [`docs/releases.md`](docs/releases.md).
 
 ### Non-negotiable rule — mobile release notes
 
