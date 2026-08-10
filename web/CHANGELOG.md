@@ -7,6 +7,16 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The phone in the hero draws Spaces, which is what the app shows now.** It
+  was still the flat list the mobile app shipped with — agent filter chips over
+  conversation cards. The real screen groups work by **project ▸ folder ▸
+  conversation**, so the mockup does too: a repository over the worktrees
+  `git/worktrees` relates to each other, folders carrying their own git signals
+  (uncommitted / ahead / behind, never a zero) and a "+" of their own, a closed
+  folder reporting the agents and the most urgent status inside it, and a lone
+  folder that relates to nothing staying where it is. DOM recreation as always
+  — the JSX changed, not a screenshot.
+
 - **The agent section shows the whole catalog, not seven names.** Two rows of
   tiles now — same compact shape as before, mark on the left and name on the
   right: the **22 agents that report precise state** (working / blocked / waiting /
