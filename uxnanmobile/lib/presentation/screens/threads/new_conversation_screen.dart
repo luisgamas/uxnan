@@ -10,6 +10,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/workspace_browser_sheet.dart';
+import 'package:uxnan/presentation/theme/breakpoints.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
@@ -36,9 +37,10 @@ const Set<String> _hiddenAgentIds = {
   'echo',
 };
 
-/// Full-screen Material 3 dialog to start a new conversation: pick the working
-/// directory, compare the available agents directly, choose an optional model,
-/// and optionally create a worktree. The descriptive headline lives in the
+/// Material 3 dialog to start a new conversation: pick the working directory,
+/// compare the available agents directly, choose an optional model, and
+/// optionally create a worktree. Full-screen on a phone, bounded on a wide
+/// window — see [show]. The descriptive headline lives in the
 /// content area so translated text never competes with the close and start
 /// actions in the compact top bar. Resolves with the new thread id (or null).
 class NewConversationScreen extends ConsumerStatefulWidget {
@@ -50,8 +52,31 @@ class NewConversationScreen extends ConsumerStatefulWidget {
   /// bridge's first root, as before.
   final String? initialCwd;
 
-  /// Pushes the screen as a full-screen dialog; resolves with the thread id.
+  /// Opens the form and resolves with the new thread id.
+  ///
+  /// **Full-screen on a phone, bounded on a wide window.** M3's full-screen
+  /// dialog is a compact-window pattern: past `expanded` the same form stops
+  /// being a screen and becomes a dialog over whatever is there. Spreading a
+  /// three-answer form across 1600 px is not a form, it is a room — the eye
+  /// has to cross the whole monitor between the agent list and the Start
+  /// button, and the drawer it covers stops being a place you are.
+  ///
+  /// The content is identical either way; only its container changes.
   static Future<String?> show(BuildContext context, {String? initialCwd}) {
+    if (UxnanBreakpoint.of(context).usesPermanentPane) {
+      return showDialog<String>(
+        context: context,
+        builder: (_) => Dialog(
+          // Clipped, or the scaffold inside paints its background square over
+          // the dialog's rounded corners.
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
+            child: NewConversationScreen(initialCwd: initialCwd),
+          ),
+        ),
+      );
+    }
     return Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
         fullscreenDialog: true,

@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the new-conversation form is bounded on a wide window
+
+M3's full-screen dialog is a compact-window pattern. On a tablet the form spread
+across the whole width, so the eye had to cross the window between the agent
+list and **Start**, and the drawer it was launched from disappeared entirely.
+
+It is now a dialog of at most 560×720 over whatever is there. **The content is
+byte-for-byte the same** — the agent cards, the working-directory card, the
+worktree toggle, the model field — and a phone still gets the full-screen
+dialog it always had. Only the container changed.
+
 ### Fixed — the back button on a tablet sitting at the overview
 
 The OS back button threw `Null check operator used on a null value` inside
