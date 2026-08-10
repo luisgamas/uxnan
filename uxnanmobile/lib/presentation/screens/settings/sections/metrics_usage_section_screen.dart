@@ -19,7 +19,15 @@ import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 ///   remaining limits are re-read, and how their reset times are formatted.
 class MetricsUsageSettingsScreen extends ConsumerWidget {
   /// Creates the metrics & provider-usage settings screen.
-  const MetricsUsageSettingsScreen({super.key});
+  const MetricsUsageSettingsScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route still open on the
+  /// left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -35,6 +43,7 @@ class MetricsUsageSettingsScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsUsageSection,
       slivers: [
         SliverPadding(

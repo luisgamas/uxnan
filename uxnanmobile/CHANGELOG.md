@@ -6,6 +6,73 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Settings shows a section beside its list on a wide surface
+
+The list stays on the left and the section fills the right, with the open one
+marked — the same `secondaryContainer` the conversation list uses, because it
+is the same question: which of these am I looking at. On a phone nothing
+changes; a section is still a screen you push, and marking a row you cannot see
+behind it would be marking nothing.
+
+There is **no "pick a section" placeholder**. With room for both, a section is
+more useful than an instruction to tap one — and the one that opens is your
+**profile**, which is the row the list is headed by and the one you most likely
+came for.
+
+The profile card behaves like the sections it sits among: it fills the pane and
+is marked while it does, rather than opening a whole new screen. It looks more
+like a section than anything else in that list, and it was the only row that did
+not act like one.
+
+**Settings and profile are destinations, not content**, so on a wide window
+they own it: no drawer beside them. You *went* to them, and the conversation
+list has no bearing on what they show — keeping it up would have put three
+columns on a tablet, one of which could not change anything on screen.
+
+The width that decides the internal split is **the surface's, not the
+window's**. That still matters: these screens are full-window now, but the same
+`TwoPaneScaffold` is used inside the shell's content pane elsewhere, where a
+320 dp drawer is already spent. Below ~840 dp it stays one column, which is
+also what a landscape phone gets.
+
+Each section screen gained an `embedded` mode: it keeps its title, because the
+pane has to say which section it is, and drops the back arrow, because `canPop`
+would answer for the Settings route still open on the left and tapping it would
+leave Settings entirely.
+
+**A section's own children stay in the pane too.** Personalization → custom
+themes, About → licences: those open with `Navigator.of(context).push`, which
+without a navigator in the pane resolves to the one above and takes over the
+whole window, accesses and all. The pane has its own, keyed by section, so the
+left stays the accesses, the right becomes the child, and its back arrow returns
+to the section — and picking a different section starts at its own root rather
+than inheriting where you had wandered in the last one.
+
+### Fixed — the activity heatmap sat against the right edge on a wide screen
+
+A `reverse: true` scroll view anchors its content to the **end** of the axis,
+which is what makes the grid open on the most recent weeks when a year does not
+fit. On a surface wide enough to hold the whole year it did the same thing with
+nothing to scroll: the grid pressed against the right with a gap beside it,
+complete but looking misaligned. It only reverses while the year does not fit.
+
+### Fixed — menu glyphs read as disabled
+
+The drawer menu's icons took the muted `onSurfaceVariant` while the label naming
+the same action took `onSurface`, so the glyph sat a tone below its own label.
+They also used the *subordinate* content size, which at 18 dp beside 15 pt text
+reads as faint rather than as quiet. A menu row's glyph is the row's own mark:
+it takes the row's size and the row's colour. Only a row that is genuinely quiet
+— the back row — stays muted, and it is muted on both.
+
+### Changed — the autonomous-mode banner setting is no longer named after Pi
+
+Settings → Conversation grouped that toggle under **Pi Agent**. Pi was the only
+agent running without per-action approval when it landed; it is not any more,
+and a group named after one agent stops describing itself the day a second one
+behaves the same. It is **Autonomous agents** now — named for the behaviour,
+which is what the setting actually follows.
+
 ### Fixed — a project and its main folder were the same thing to the app
 
 A repository is identified by its main worktree's path, which is **also** the

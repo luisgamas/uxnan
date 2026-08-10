@@ -119,4 +119,39 @@ void main() {
     // The six active days are all on/before Jul 16, so they still paint.
     expect(_paintedCells(tester, scheme), 6);
   });
+
+  testWidgets('centres when the year fits, scrolls when it does not',
+      (tester) async {
+    final today = DateTime.utc(2026, 12, 31);
+
+    // Wide enough for the whole year: a `reverse: true` scroll view anchors
+    // its content to the END of the axis, so the grid used to sit against the
+    // right edge with a gap beside it — complete, but looking misaligned.
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_harness(scheme, const {}, today));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(ActivityHeatmap),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+      reason: 'a grid that fits should not be in a reversed scroll view',
+    );
+
+    // Narrow: reversing is right here, and opening on the most recent weeks is
+    // the reason it exists.
+    tester.view.physicalSize = const Size(390, 900);
+    await tester.pumpWidget(_harness(scheme, const {}, today));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(ActivityHeatmap),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
+  });
 }

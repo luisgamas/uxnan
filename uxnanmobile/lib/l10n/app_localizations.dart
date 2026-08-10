@@ -5174,10 +5174,10 @@ abstract class AppLocalizations {
   /// **'Claude'**
   String get settingsConversationClaudeGroup;
 
-  /// Conversation section sub-group for Pi agent options (the autonomous-mode banner).
+  /// Conversation section sub-group for agents that run without per-action approval — named for the behaviour rather than for one agent, since more than one behaves this way.
   ///
   /// In en, this message translates to:
-  /// **'Pi Agent'**
+  /// **'Autonomous agents'**
   String get settingsConversationPiGroup;
 
   /// Conversation section sub-group for chat behaviour (scroll, templates).

@@ -446,10 +446,16 @@ class _MenuRow extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // A menu row's glyph is the row's OWN mark: it takes the row size
+            // (`iconContentSmall` is the subordinate one, for a mark that
+            // accompanies another) and the row's OWN colour. Muted, it sat a
+            // tone below the label naming the same action, which reads as
+            // disabled rather than as quiet. Only a row that IS quiet — the
+            // back row — keeps the muted tone, and it takes it on both.
             UxIcon(
               icon,
-              size: UxnanSize.iconContentSmall,
-              color: colors.onSurfaceVariant,
+              size: UxnanSize.iconContent,
+              color: muted ? colors.onSurfaceVariant : colors.onSurface,
             ),
             const SizedBox(width: UxnanSpacing.md),
             Expanded(

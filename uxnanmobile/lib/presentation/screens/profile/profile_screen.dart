@@ -23,7 +23,14 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// from the bridge-owned snapshots.
 class ProfileScreen extends ConsumerStatefulWidget {
   /// Creates the [ProfileScreen].
-  const ProfileScreen({super.key});
+  const ProfileScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title but drops the back arrow: `canPop` would
+  /// answer for the Settings route still open on the left, so tapping it would
+  /// leave Settings entirely.
+  final bool embedded;
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
@@ -53,6 +60,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final metricsAsync = ref.watch(profileMetricsProvider);
 
     return NeScaffold(
+      automaticBackButton: !widget.embedded,
       title: l10n.profileTitle,
       actions: const [_ProfileMenu()],
       slivers: metricsAsync.when(

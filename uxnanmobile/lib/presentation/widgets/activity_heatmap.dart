@@ -189,13 +189,26 @@ class _ActivityHeatmapState extends State<ActivityHeatmap> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            reverse: true, // open on the most recent weeks (like GitHub)
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
-              child: Row(mainAxisSize: MainAxisSize.min, children: weeks),
-            ),
+          // A `reverse: true` scroll view anchors its content to the END of
+          // the axis — the right edge — so on a surface wide enough to hold the
+          // whole year the grid sat against the right with a gap beside it,
+          // looking misaligned rather than complete. Reversing is only right
+          // while the year does NOT fit, which is the case it was written for.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final gridWidth = weekCount * _cell + (weekCount - 1) * _gap;
+              final fits = gridWidth <= constraints.maxWidth;
+              final grid = Padding(
+                padding: const EdgeInsets.symmetric(vertical: UxnanSpacing.xs),
+                child: Row(mainAxisSize: MainAxisSize.min, children: weeks),
+              );
+              if (fits) return Center(child: grid);
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true, // open on the most recent weeks (like GitHub)
+                child: grid,
+              );
+            },
           ),
           const SizedBox(height: UxnanSpacing.xs),
           _Legend(

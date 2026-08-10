@@ -2882,7 +2882,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsConversationClaudeGroup => 'Claude';
 
   @override
-  String get settingsConversationPiGroup => 'Pi Agent';
+  String get settingsConversationPiGroup => 'Autonomous agents';
 
   @override
   String get settingsConversationChatGroup => 'Conversation';

@@ -35,13 +35,22 @@ class AppShell extends ConsumerWidget {
 
   /// Routes that must never sit beside a drawer.
   ///
-  /// Onboarding and pairing are the two places where there is nothing to
-  /// navigate *to* yet — a drawer beside them would be furniture around an
-  /// empty room, and in pairing's case it would offer to switch to a PC you
-  /// are in the middle of adding.
+  /// Two different reasons, and both end in the same place:
+  ///
+  /// - **Onboarding and pairing** have nothing to navigate *to* yet. A drawer
+  ///   beside them is furniture around an empty room, and in pairing's case it
+  ///   would offer to switch to a PC you are in the middle of adding.
+  /// - **Settings and profile are destinations, not content.** They are not
+  ///   "what you opened from the list" — you went to them, and the list has no
+  ///   bearing on what they show. Settings splits internally into its own two
+  ///   panes, so leaving the drawer up would put THREE columns on a tablet: a
+  ///   list of conversations that cannot change anything on screen, beside a
+  ///   list of sections, beside a section.
   static bool isFullScreen(String location) =>
       location.startsWith(AppRoutes.onboarding) ||
-      location.startsWith(AppRoutes.pairing);
+      location.startsWith(AppRoutes.pairing) ||
+      location.startsWith(AppRoutes.settings) ||
+      location.startsWith(AppRoutes.profile);
 
   /// The thread being read, if the content pane is a conversation — the
   /// drawer asks it which PC to show.

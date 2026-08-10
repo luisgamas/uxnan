@@ -136,9 +136,14 @@ class NeNavTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.trailing,
+    this.color,
     this.position = CardGroupPosition.single,
     super.key,
   });
+
+  /// Surface tone override — `secondaryContainer` when this row is the one
+  /// filling a pane beside the list. Null keeps the group's own tone.
+  final Color? color;
 
   /// Position within the enclosing group (drives the corner radii).
   final CardGroupPosition position;
@@ -164,7 +169,7 @@ class NeNavTile extends StatelessWidget {
     return ExpressiveCard(
       position: position,
       onTap: onTap,
-      color: colors.surfaceContainer,
+      color: color ?? colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
         leading: UxIcon(icon, color: colors.onSurfaceVariant),

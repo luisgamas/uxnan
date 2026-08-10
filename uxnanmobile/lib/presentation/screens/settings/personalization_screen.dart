@@ -50,7 +50,14 @@ ThemeModeOption _toOption(ThemeMode mode) => switch (mode) {
 /// switch + an entry to the full [ThemeManagerScreen], and the app language.
 class PersonalizationScreen extends ConsumerWidget {
   /// Creates the personalization screen.
-  const PersonalizationScreen({super.key});
+  const PersonalizationScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title but drops the back arrow: there is nothing
+  /// behind it, and `canPop` would answer for the Settings route still open on
+  /// the left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -66,6 +73,7 @@ class PersonalizationScreen extends ConsumerWidget {
     final localeTag = ref.watch(localeSettingProvider)?.languageCode;
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.personalizationTitle,
       slivers: [
         SliverPadding(

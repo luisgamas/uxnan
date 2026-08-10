@@ -965,7 +965,7 @@
   "settingsSystemSection": "Sistema",
   "settingsConversationAgentsGroup": "Agentes",
   "settingsConversationClaudeGroup": "Claude",
-  "settingsConversationPiGroup": "Pi Agent",
+  "settingsConversationPiGroup": "Agentes autónomos",
   "settingsConversationChatGroup": "Conversación",
   "settingsNotificationsEventsGroup": "Eventos del agente",
   "settingsGitConfirmationsGroup": "Confirmaciones",

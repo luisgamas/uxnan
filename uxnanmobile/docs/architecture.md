@@ -78,9 +78,16 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
 (`presentation/screens/shell/app_shell.dart`) is the `ShellRoute` builder: on
 compact and medium it returns the routed screen *literally*, so the phone's
 screen stack and back behaviour are untouched; on expanded and above it puts
-that screen in `TwoPaneScaffold`'s content pane beside `NavDrawer`. Pairing and
-onboarding are never wrapped — there is nothing to navigate to yet, and a drawer
-there would offer to switch to a PC you are in the middle of adding.
+that screen in `TwoPaneScaffold`'s content pane beside `NavDrawer`.
+
+**Destinations are never wrapped.** Onboarding and pairing because there is
+nothing to navigate to yet (and pairing would offer to switch to a PC you are
+mid-way through adding); **settings and profile** because they are somewhere you
+*went*, not something you opened from the list — and Settings splits into its
+own two panes, so a drawer beside it would be a third column showing
+conversations that cannot change anything on that screen. The decision is made
+from the route, not the width, so it holds while a raw-pushed child screen (a
+settings section) is open and across a rotation.
 
 The route table itself does not change. A second navigator, or a branch per
 pane, would give tablets their own navigation model, and every deep link, push

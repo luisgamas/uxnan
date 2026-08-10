@@ -15,7 +15,15 @@ import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 /// persist locally and push to the bridge (`notifications/update`).
 class NotificationsSectionScreen extends ConsumerWidget {
   /// Creates the notifications section screen.
-  const NotificationsSectionScreen({super.key});
+  const NotificationsSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route still open on the
+  /// left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -33,6 +41,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
     final notifications = ref.read(notificationPreferencesProvider.notifier);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsNotificationsSection,
       slivers: [
         SliverPadding(

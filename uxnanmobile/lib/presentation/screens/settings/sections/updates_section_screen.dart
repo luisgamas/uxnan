@@ -19,7 +19,15 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 /// configurable automatic check interval.
 class UpdatesSectionScreen extends ConsumerWidget {
   /// Creates the updates section screen.
-  const UpdatesSectionScreen({super.key});
+  const UpdatesSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route still open on the
+  /// left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -33,6 +41,7 @@ class UpdatesSectionScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsUpdatesSection,
       slivers: [
         SliverPadding(

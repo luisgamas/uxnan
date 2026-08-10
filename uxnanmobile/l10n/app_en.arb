@@ -1719,9 +1719,9 @@
   "@settingsConversationClaudeGroup": {
     "description": "Conversation section sub-group for Claude model-picker options."
   },
-  "settingsConversationPiGroup": "Pi Agent",
+  "settingsConversationPiGroup": "Autonomous agents",
   "@settingsConversationPiGroup": {
-    "description": "Conversation section sub-group for Pi agent options (the autonomous-mode banner)."
+    "description": "Conversation section sub-group for agents that run without per-action approval \u2014 named for the behaviour rather than for one agent, since more than one behaves this way."
   },
   "settingsConversationChatGroup": "Conversation",
   "@settingsConversationChatGroup": {

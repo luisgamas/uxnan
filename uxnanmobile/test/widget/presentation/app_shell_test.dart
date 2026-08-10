@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -93,11 +94,16 @@ Future<void> main() async {
     expect(find.text('routed screen'), findsOneWidget);
   });
 
-  testWidgets('pairing and onboarding never sit beside a drawer',
-      (tester) async {
-    // Nothing to navigate to yet — and in pairing's case a drawer would offer
-    // to switch to a PC you are in the middle of adding.
-    for (final location in [AppRoutes.onboarding, AppRoutes.pairing]) {
+  testWidgets('no destination ever sits beside a drawer', (tester) async {
+    // Settings and profile included: with Settings splitting into its own two
+    // panes, a drawer beside it is a third column showing conversations that
+    // cannot change anything on that screen.
+    for (final location in [
+      AppRoutes.onboarding,
+      AppRoutes.pairing,
+      AppRoutes.settings,
+      AppRoutes.profile,
+    ]) {
       await pump(tester, width: 1280, location: location);
       expect(
         find.byType(TwoPaneScaffold),
@@ -247,6 +253,51 @@ Future<void> main() async {
     );
   });
 
+  testWidgets('a deep raw stack is cleared, not just the top of it',
+      (tester) async {
+    // Git nests: conversation → git → history → commit detail, each a raw
+    // `Navigator.push` landing above the routed page. Popping only the top
+    // would leave the rest covering the pane, so picking another conversation
+    // from the drawer would still look like nothing happened — just one screen
+    // further in.
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final key = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Navigator(
+          key: key,
+          onGenerateRoute: (_) => MaterialPageRoute<void>(
+            builder: (_) => const Text('conversation'),
+          ),
+        ),
+      ),
+    );
+
+    for (final name in ['git', 'history', 'commit']) {
+      unawaited(
+        key.currentState!.push(
+          MaterialPageRoute<void>(builder: (_) => Text(name)),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(key.currentState!.canPop(), isTrue);
+
+    // What `openInPane` does before it navigates.
+    while (key.currentState!.canPop()) {
+      key.currentState!.pop();
+    }
+    await tester.pumpAndSettle();
+
+    expect(key.currentState!.canPop(), isFalse);
+    expect(find.text('conversation'), findsOneWidget);
+    expect(find.text('commit'), findsNothing);
+    expect(find.text('git'), findsNothing);
+  });
+
   test('a conversation belongs to its PC, everything else to the overview', () {
     // What "up" means with nothing to pop. Rotating a tablet with a
     // conversation open is the case that creates it: the wide layout REPLACED
@@ -271,12 +322,34 @@ Future<void> main() async {
     expect(AppShell.threadIdOf('/conversation/'), isNull);
   });
 
-  test('only pairing and onboarding are full-screen', () {
+  test('a destination stays full-screen while its children are open', () {
+    // Settings' sections and profile's sub-screens are raw `Navigator.push`
+    // routes: the LOCATION never changes while they are open. So the shell
+    // must keep answering "full screen" for the whole visit, or a drawer would
+    // reappear underneath a pushed section — and back from there would land on
+    // a layout that was not there when you left it.
+    expect(AppShell.isFullScreen(AppRoutes.settings), isTrue);
+    expect(AppShell.isFullScreen(AppRoutes.profile), isTrue);
+    // Rotation cannot change that answer either: it is decided by the route,
+    // not the width. A section open in landscape is still a section in
+    // portrait, and back still pops the stack that put it there.
+  });
+
+  test('destinations own the window; content shares it with the drawer', () {
+    // Nothing to navigate to yet.
     expect(AppShell.isFullScreen(AppRoutes.onboarding), isTrue);
     expect(AppShell.isFullScreen(AppRoutes.pairing), isTrue);
     expect(AppShell.isFullScreen(AppRoutes.manualPairing), isTrue);
+
+    // Destinations, not content: you WENT to them, and the conversation list
+    // has no bearing on what they show. Settings splits into its own two
+    // panes, so keeping the drawer would put three columns on a tablet.
+    expect(AppShell.isFullScreen(AppRoutes.settings), isTrue);
+    expect(AppShell.isFullScreen(AppRoutes.profile), isTrue);
+
+    // Content: these ARE what you opened from the list, so the list stays.
     expect(AppShell.isFullScreen(AppRoutes.home), isFalse);
     expect(AppShell.isFullScreen('/conversation/x'), isFalse);
-    expect(AppShell.isFullScreen(AppRoutes.settings), isFalse);
+    expect(AppShell.isFullScreen('/device/mac-1/threads'), isFalse);
   });
 }

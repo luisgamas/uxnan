@@ -15,11 +15,19 @@ import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The Conversation settings section, itself grouped into sub-sections:
 /// **Agents** (reasoning visibility + context indicator), **Claude** (model
-/// picker options), **Pi Agent** (autonomous-mode banner) and **Conversation**
-/// (scroll behaviour + prompt templates).
+/// picker options), **Autonomous agents** (the mode banner) and
+/// **Conversation** (scroll behaviour + prompt templates).
 class ConversationSectionScreen extends ConsumerWidget {
   /// Creates the conversation section screen.
-  const ConversationSectionScreen({super.key});
+  const ConversationSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route that is still open
+  /// on the left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -35,6 +43,7 @@ class ConversationSectionScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsConversationSection,
       slivers: [
         SliverPadding(
@@ -87,7 +96,11 @@ class ConversationSectionScreen extends ConsumerWidget {
               ),
               NeSectionHint(text: l10n.settingsClaudeLatestHint),
 
-              // ── Pi Agent ───────────────────────────────────────────────
+              // ── Autonomous agents ──────────────────────────────────────
+              // Named for the BEHAVIOUR, not for one agent: Pi was the only
+              // one running without per-action approval when this landed,
+              // and a group named after it stops describing itself the day
+              // a second one does the same.
               NeSectionHeader(label: l10n.settingsConversationPiGroup),
               NeSwitchTile(
                 icon: UxIcons.campaign,
