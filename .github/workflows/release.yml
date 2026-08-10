@@ -327,9 +327,18 @@ jobs:
             exit 0
           fi
 
+          # Measured, so nobody "simplifies" this back into `|| echo '[]'`:
+          # `gh pr checks --json` exits 0 even with pending or failing checks —
+          # the documented 8-and-1 codes belong to its human-readable mode. With
+          # `|| echo`, a future gh that did return them would append `[]` to the
+          # JSON already on stdout, jq would emit two numbers, every numeric test
+          # would error out as false, and the step would fall through to the
+          # merge. The failure mode is merging a red pull request unattended, so
+          # the fallback assigns instead of appending.
           checks=""
           for attempt in $(seq 1 40); do
-            checks=$(gh pr checks "$PR" --repo "$REPO" --json name,bucket 2>/dev/null || echo '[]')
+            checks=$(gh pr checks "$PR" --repo "$REPO" --json name,bucket 2>/dev/null) || checks=""
+            [ -z "$checks" ] && checks='[]'
             total=$(jq '[.[] | select(.name | startswith("verify"))] | length' <<<"$checks")
             pending=$(jq '[.[] | select(.name | startswith("verify")) | select(.bucket == "pending")] | length' <<<"$checks")
             [ "$total" -gt 0 ] && [ "$pending" -eq 0 ] && break
