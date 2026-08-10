@@ -62,6 +62,9 @@ for (const row of rows) {
   const verdict = row.worthy ? 'YES' : row.files.length ? 'no (nothing ships)' : 'no';
   if (row.worthy) owed += 1;
   const suffix = row.id === 'desktop' ? ` (${channel})` : '';
+  // No inline marker for an unlanded tag: the desktop's is already 41 characters
+  // and anything appended pushes the whole row out of line. The ⚠ block below
+  // says it in full.
   console.log(
     `${pad(row.id, 9)}${pad(row.since ?? '(never released)', 41)}${pad(changed, 7)}${pad(verdict, 17)}${row.worthy ? row.next + suffix : '—'}`,
   );
@@ -70,6 +73,18 @@ for (const row of rows) {
 console.log(
   '\nchanged = files that can affect a build + files that cannot (docs, specs, .github, tests)\n',
 );
+
+// A tag that is not an ancestor of HEAD means its release pull request was never
+// merged: the version shipped, but `main` does not say so. Worth shouting about,
+// because the versions in `main` are what the next contributor reads — and it is
+// what cut 0.0.34 for nothing.
+for (const row of rows.filter((r) => r.since && !r.landed)) {
+  console.log(
+    `⚠  ${row.id}: ${row.since} shipped, but its release pull request is still open —\n` +
+      `   main does not carry that version yet. Merge it. The version files will read as\n` +
+      `   changed until you do; they are counted as bookkeeping, not as work to release.\n`,
+  );
+}
 
 for (const row of rows.filter((r) => r.worthy)) {
   const meta = component(row.id);

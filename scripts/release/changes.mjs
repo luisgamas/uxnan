@@ -9,7 +9,13 @@
  */
 
 import { component, isNonShipping } from './components.mjs';
-import { changedFiles, commitSubjects, latestTag } from './git.mjs';
+import {
+  changedFiles,
+  commitSubjects,
+  isAncestorOfHead,
+  isVersionOnlyDiff,
+  latestTag,
+} from './git.mjs';
 import { highestBase, nextVersion } from './version.mjs';
 import { tagsFor } from './git.mjs';
 
@@ -17,19 +23,38 @@ import { tagsFor } from './git.mjs';
  * @param {string} id component id
  * @param {{cwd?: string, channel?: 'stable'|'nightly', date?: Date}} [options]
  * @returns {{
- *   id: string, since: string|null, files: string[], nonShipping: string[],
- *   substantive: string[], commits: number, worthy: boolean,
- *   shipped: string|null, next: string,
+ *   id: string, since: string|null, landed: boolean, files: string[],
+ *   nonShipping: string[], substantive: string[], commits: number,
+ *   worthy: boolean, shipped: string|null, next: string,
  * }}
+ *
+ * `landed` is false when the last release tag is not an ancestor of HEAD — its
+ * pull request is still open, so `main` does not yet carry that version.
  */
 export function inspect(id, options = {}) {
   const meta = component(id);
   const gitOptions = { cwd: options.cwd };
 
   const since = latestTag(meta.tagPrefixes, gitOptions);
+
+  // Whether that release actually reached `main`. It is not a detail: while its
+  // pull request sits open the tag lives on a branch `main` never absorbed, so
+  // the five version files read as "changed" in *both* directions and each
+  // following cut sees shippable work that does not exist. That is how 0.0.34
+  // came to be — an identical build to 0.0.33 with an empty release body — and
+  // left alone it repeats every night.
+  const landed = isAncestorOfHead(since, gitOptions);
   const files = changedFiles(since, meta.path, gitOptions);
-  const nonShipping = files.filter(isNonShipping);
-  const substantive = files.filter((file) => !isNonShipping(file));
+
+  // Which is why a version file is judged by *what* changed inside it. Only its
+  // version line moved → bookkeeping, whichever direction it moved in. The same
+  // file having also gained a dependency is real work and still counts.
+  const versionFiles = new Set(meta.versionFiles.map((entry) => entry.file));
+  const bookkeeping = (file) =>
+    versionFiles.has(file) && isVersionOnlyDiff(since, file, gitOptions);
+
+  const nonShipping = files.filter((file) => isNonShipping(file) || bookkeeping(file));
+  const substantive = files.filter((file) => !isNonShipping(file) && !bookkeeping(file));
 
   const tags = tagsFor(meta.tagPrefixes, gitOptions);
   const shipped = highestBase(tags);
@@ -43,6 +68,7 @@ export function inspect(id, options = {}) {
   return {
     id,
     since,
+    landed,
     files,
     nonShipping,
     substantive,
