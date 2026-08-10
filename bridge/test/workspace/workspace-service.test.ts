@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { WorkspaceService } from '../../src/index.js';
 import { runGit } from '../../src/git/git-runner.js';
+import { rmrf } from '../helpers/fs.js';
 
 const ws = new WorkspaceService();
 
@@ -27,7 +28,7 @@ test('resolveFileLink keeps files inside the conversation workspace', async () =
 
   const target = await ws.resolveFileLink(root, 'docs/summary.md#L1');
   assert.deepEqual(target, { cwd: root, path: 'docs/summary.md' });
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('resolveFileLink selects a sibling git worktree as the viewer root', async () => {
@@ -52,7 +53,7 @@ test('resolveFileLink selects a sibling git worktree as the viewer root', async 
   const fileUrlTarget = await ws.resolveFileLink(conversation, pathToFileURL(linkedFile).href);
   assert.equal(fileUrlTarget.cwd, linkedWorktree);
   assert.equal(fileUrlTarget.path, relative(linkedWorktree, linkedFile).replaceAll('\\', '/'));
-  await rm(parent, { recursive: true, force: true });
+  await rmrf(parent);
 });
 
 test('resolveFileLink falls back to the containing directory outside a repo', async () => {
@@ -66,7 +67,7 @@ test('resolveFileLink falls back to the containing directory outside a repo', as
   // No git root to anchor to, so the viewer root stays as narrow as possible.
   const target = await ws.resolveFileLink(conversation, join(loose, 'notes.md'));
   assert.deepEqual(target, { cwd: loose, path: 'notes.md' });
-  await rm(parent, { recursive: true, force: true });
+  await rmrf(parent);
 });
 
 test('resolveFileLink resolves an absolute link after the conversation cwd is gone', async () => {
@@ -81,7 +82,7 @@ test('resolveFileLink resolves an absolute link after the conversation cwd is go
   // pruned) while its transcript still cites a file that outlived it.
   const target = await ws.resolveFileLink(conversation, join(worktree, 'resume.md'));
   assert.deepEqual(target, { cwd: worktree, path: 'resume.md' });
-  await rm(parent, { recursive: true, force: true });
+  await rmrf(parent);
 });
 
 test('resolveFileLink denies .git internals in another worktree', async () => {
@@ -99,7 +100,7 @@ test('resolveFileLink denies .git internals in another worktree', async () => {
         error instanceof RpcError && error.code === JsonRpcErrorCode.WorkspaceAccessDenied,
     );
   }
-  await rm(parent, { recursive: true, force: true });
+  await rmrf(parent);
 });
 
 test('resolveFileLink rejects remote, missing, directory, and sensitive targets', async () => {
@@ -125,7 +126,7 @@ test('resolveFileLink rejects remote, missing, directory, and sensitive targets'
     (error: unknown) =>
       error instanceof RpcError && error.code === JsonRpcErrorCode.WorkspaceAccessDenied,
   );
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('readFile returns utf-8 text and binary as base64', async () => {
@@ -138,7 +139,7 @@ test('readFile returns utf-8 text and binary as base64', async () => {
   const bin = await ws.readFile(root, 'blob.bin');
   assert.equal(bin.encoding, 'base64');
   assert.equal(Buffer.from(bin.content, 'base64').length, 5);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('readFile preserves PDF bytes even when its prefix contains no NUL', async () => {
@@ -150,7 +151,7 @@ test('readFile preserves PDF bytes even when its prefix contains no NUL', async 
 
   assert.equal(result.encoding, 'base64');
   assert.deepEqual(Buffer.from(result.content, 'base64'), pdf);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('readImage infers the mime type', async () => {
@@ -160,7 +161,7 @@ test('readImage infers the mime type', async () => {
   assert.equal(img.mimeType, 'image/png');
   assert.ok(img.base64Data.length > 0);
   await assert.rejects(ws.readImage(root, 'pic.txt'), RpcError);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('list excludes .git and sensitive files and sorts dirs first', async () => {
@@ -182,7 +183,7 @@ test('list excludes .git and sensitive files and sorts dirs first', async () => 
   assert.ok((file?.mtime ?? 0) > 0);
   assert.equal(dir?.size, undefined);
   assert.equal(dir?.mtime, undefined);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('list flags git-ignored entries and leaves tracked/clean ones un-flagged', async () => {
@@ -200,7 +201,7 @@ test('list flags git-ignored entries and leaves tracked/clean ones un-flagged', 
   // A normal file and the `.gitignore` itself are not flagged (absent/false).
   assert.ok(!byName.get('kept.txt')?.ignored);
   assert.ok(!byName.get('.gitignore')?.ignored);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('list leaves entries un-flagged outside a git repository', async () => {
@@ -208,7 +209,7 @@ test('list leaves entries un-flagged outside a git repository', async () => {
   await writeFile(join(root, 'a.txt'), 'x');
   const listing = await ws.list(root);
   assert.ok(!listing.entries.find((e) => e.name === 'a.txt')?.ignored);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('applyPatch adds, modifies and deletes files', async () => {
@@ -221,7 +222,7 @@ test('applyPatch adds, modifies and deletes files', async () => {
   assert.deepEqual(result, { success: true, applied: 2 });
   assert.equal((await ws.readFile(root, 'nested/new.txt')).content, 'created');
   await assert.rejects(ws.readFile(root, 'old.txt'), RpcError);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('path traversal, .git and sensitive files are denied', async () => {
@@ -232,7 +233,7 @@ test('path traversal, .git and sensitive files are denied', async () => {
       (err) => err instanceof RpcError && err.code === JsonRpcErrorCode.WorkspaceAccessDenied,
     );
   }
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('searchFiles fuzzy-matches files and their ancestor dirs across the repo', async () => {
@@ -256,7 +257,7 @@ test('searchFiles fuzzy-matches files and their ancestor dirs across the repo', 
   );
   const dirHit = await ws.searchFiles(root, 'presentation');
   assert.ok(dirHit.matches.some((m) => m.path === 'lib/presentation' && m.type === 'dir'));
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('searchFiles respects .gitignore and excludes sensitive files', async () => {
@@ -277,7 +278,7 @@ test('searchFiles respects .gitignore and excludes sensitive files', async () =>
   assert.ok(!paths.includes('build'));
   assert.ok(!paths.includes('secret.txt'));
   assert.ok(!paths.includes('.env'));
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('searchFiles caps results and flags truncation', async () => {
@@ -289,7 +290,7 @@ test('searchFiles caps results and flags truncation', async () => {
   const capped = await ws.searchFiles(root, 'note', 3);
   assert.equal(capped.matches.length, 3);
   assert.ok(capped.truncated);
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });
 
 test('searchFiles works outside a git repo via the walk fallback', async () => {
@@ -298,5 +299,5 @@ test('searchFiles works outside a git repo via the walk fallback', async () => {
   await writeFile(join(root, 'src', 'app.ts'), '1');
   const res = await ws.searchFiles(root, 'app');
   assert.ok(res.matches.some((m) => m.path === 'src/app.ts'));
-  await rm(root, { recursive: true, force: true });
+  await rmrf(root);
 });

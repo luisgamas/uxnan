@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import type { AgentCapabilities, AgentId, SendTurnOptions, TurnList } from '@uxnan/shared';
 import { makeRequest, type Project } from '@uxnan/shared';
 import {
@@ -14,6 +13,7 @@ import {
   startBridge,
   type Bridge,
 } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 /**
  * A controllable in-process agent (no subprocess): `sendTurn` opens a turn but
@@ -112,7 +112,7 @@ test(
     assert.equal(turn.messages.find((m) => m.role === 'assistant')?.content, 'ping pong');
 
     await bridge.stop();
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   },
 );
 
@@ -157,7 +157,7 @@ test(
     );
 
     await bridge.stop();
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   },
 );
 
@@ -203,7 +203,7 @@ test('turn/list reports the in-flight turn as activeTurnId and clears it on comp
   assert.equal((listRes2.result as TurnList).activeTurnId, undefined);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('turn/list reconciles native-only turns even when the bridge store is non-empty', async () => {
@@ -279,7 +279,7 @@ test('turn/list reconciles native-only turns even when the bridge store is non-e
   assert.equal(result.turns[1]?.messages[1]?.content, 'desktop answer');
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('turn/send rejects a message with neither text nor attachments', async () => {
@@ -298,7 +298,7 @@ test('turn/send rejects a message with neither text nor attachments', async () =
   assert.ok('error' in res && res.error.code === -32602);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test(
@@ -343,7 +343,7 @@ test(
     );
 
     await bridge.stop();
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   },
 );
 
@@ -367,7 +367,7 @@ test('turn/send rejects an approvalResponse with an unknown decision', async () 
   assert.ok('error' in res && res.error.code === -32602);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('agent/list reports the registered agents (echo + opencode + claude-code + codex)', async () => {
@@ -380,7 +380,7 @@ test('agent/list reports the registered agents (echo + opencode + claude-code + 
   assert.ok(ids.includes('claude-code'));
   assert.ok(ids.includes('codex'));
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('thread rename/archive/unarchive/delete lifecycle over the router', async () => {
@@ -418,7 +418,7 @@ test('thread rename/archive/unarchive/delete lifecycle over the router', async (
   assert.ok('error' in readRes && readRes.error.code === -32008);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('thread/start uses the per-project agent/model pin when the phone omits them', async () => {
@@ -461,7 +461,7 @@ test('thread/start uses the per-project agent/model pin when the phone omits the
   assert.equal((overrideRes.result as { model?: string }).model, undefined);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('thread/start with an unknown project id is rejected', async () => {
@@ -471,7 +471,7 @@ test('thread/start with an unknown project id is rejected', async () => {
   );
   assert.ok('error' in res);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('thread/start rejects the deprecated Gemini CLI before creating a thread', async () => {
@@ -489,7 +489,7 @@ test('thread/start rejects the deprecated Gemini CLI before creating a thread', 
   assert.match(res.error.message, /deprecated and cannot start new threads/);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('thread/read of an unknown id returns -32008', async () => {
@@ -497,5 +497,5 @@ test('thread/read of an unknown id returns -32008', async () => {
   const res = await bridge.router.dispatch(makeRequest('3', 'thread/read', { threadId: 'nope' }));
   assert.ok('error' in res && res.error.code === -32008);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

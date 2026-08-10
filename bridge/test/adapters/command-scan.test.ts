@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import {
   scanCustomCommands,
   expandCustomCommand,
   substituteArgs,
   type CustomCommandSource,
 } from '../../src/adapters/command-scan.js';
+import { rmrf } from '../helpers/fs.js';
 
 /** Make a unique temp dir and return an absolute path under it. */
 async function tempDir(): Promise<string> {
@@ -34,7 +35,7 @@ test('scanCustomCommands parses markdown front-matter (description + argument-hi
     description: 'Refactor a file',
     argumentHint: '<file>',
   });
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
 
 test('scanCustomCommands parses a TOML command (multiline prompt + description)', async () => {
@@ -49,7 +50,7 @@ test('scanCustomCommands parses a TOML command (multiline prompt + description)'
   assert.equal(commands[0]!.name, 'plan');
   assert.equal(commands[0]!.description, 'Draft a plan');
   assert.equal(commands[0]!.source, 'custom');
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
 
 test('scanCustomCommands de-dupes by name: a project-scoped file shadows the user-level one', async () => {
@@ -69,8 +70,8 @@ test('scanCustomCommands de-dupes by name: a project-scoped file shadows the use
   const commands = await scanCustomCommands(source);
   assert.equal(commands.length, 1);
   assert.equal(commands[0]!.description, 'project deploy');
-  await rm(projectDir, { recursive: true, force: true });
-  await rm(userDir, { recursive: true, force: true });
+  await rmrf(projectDir);
+  await rmrf(userDir);
 });
 
 test('scanCustomCommands skips a missing directory without throwing', async () => {
@@ -97,14 +98,14 @@ test('expandCustomCommand substitutes $ARGUMENTS / {{args}} / positional $1', as
     'Fix auth.ts then review auth.ts high.',
   );
   assert.equal(await expandCustomCommand(toml, 'greet', 'there'), 'Hi there');
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
 
 test('expandCustomCommand throws for an unknown command (caller falls back to native form)', async () => {
   const dir = await tempDir();
   const source: CustomCommandSource = { dirs: [dir], ext: '.md', format: 'markdown' };
   await assert.rejects(() => expandCustomCommand(source, 'nope'), /unknown custom command/);
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
 
 test('substituteArgs: empty args clear placeholders; unknown placeholders are left intact', () => {

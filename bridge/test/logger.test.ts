@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { createFileLogger, logFileFor, redactSecrets } from '../src/index.js';
+import { rmrf } from './helpers/fs.js';
 
 test('redactSecrets masks JWTs, secret key=values and PEM blocks', () => {
   assert.match(redactSecrets('auth aaaaaaaa.bbbbbbbb.cccccccc done'), /\[REDACTED-JWT\]/);
@@ -38,5 +39,5 @@ test('createFileLogger writes a daily-rotated, redacted, level-filtered file', a
   assert.ok(!contents.includes('topsecret'));
   assert.ok(contents.includes('2026-06-06'));
 
-  await rm(dir, { recursive: true, force: true });
+  await rmrf(dir);
 });
