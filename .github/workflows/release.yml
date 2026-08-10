@@ -87,9 +87,10 @@ jobs:
     # A fork running the schedule would tag and push its own main every night.
     if: github.repository == 'luisgamas/uxnan'
     runs-on: ubuntu-latest
-    # The npm-visibility wait can take 30 minutes on its own, and landing the
-    # pull request waits up to 20 more for its checks.
-    timeout-minutes: 90
+    # The npm-visibility wait can take 30 minutes on its own.
+    timeout-minutes: 60
+    outputs:
+      pr: ${{ steps.pr.outputs.number }}
     steps:
       # A token that is not GITHUB_TOKEN, so the tag push actually starts the
       # release build. Absent, the run still does everything else.
@@ -272,33 +273,63 @@ jobs:
           echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
           echo "::notice::Bump PR opened from $branch"
 
-      # Leaving this open is not a neutral state: an unmerged tag is not an
-      # ancestor of `main`, which is what cut desktop 0.0.34 out of nothing. The
-      # tooling no longer mistakes it for work, but `main` still lags — and this
-      # runs at 00:20 local, with nobody awake to press the button.
-      #
+      - name: What happens next
+        if: steps.plan.outputs.count != '0'
+        run: |
+          {
+            echo
+            echo "Each pushed tag triggers its own release workflow. A desktop nightly"
+            echo "publishes itself once built; a stable waits as a draft for a human."
+            echo "The bump pull request merges itself once its \`verify\` checks pass;"
+            echo "if they fail, the \`land\` job leaves it open on purpose and goes red."
+            echo "Re-run just that job once the checks are fixed — it never re-cuts."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Its own job, so a failed landing can be re-run on its own. As one step of the
+  # cut it could not: re-running meant re-running the cut, which would compute a
+  # NEXT version and tag it — burning a number to fix a merge.
+  #
+  # Leaving the pull request open is not a neutral state. An unmerged tag is not
+  # an ancestor of `main`, which is what cut desktop 0.0.34 out of nothing. And
+  # this runs at 00:20 local, with nobody awake to press the button.
+  land:
+    needs: cut
+    if: needs.cut.outputs.pr != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The merge must be authenticated as the app: the ruleset bypass belongs to
+      # `Uxnan Releases`, not to Actions. GITHUB_TOKEN would be refused.
+      - name: Mint a release token
+        id: token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       # It waits for the pull request's OWN gate — the `verify` checks — and not
       # for every check on the commit: the release build reports onto the same
       # SHA (the tag points at it) and a macOS leg is allowed to fail there on
-      # purpose. A red `verify` means `main` itself is red, since this PR adds
-      # nothing but version numbers; it is left unmerged and shouted about.
-      - name: Land it
-        if: steps.plan.outputs.count != '0' && inputs.dry_run != true
+      # purpose. A red `verify` means `main` itself is red, since this pull
+      # request adds nothing but version numbers.
+      - name: Land the bump pull request
         env:
           GH_TOKEN: ${{ steps.token.outputs.token || github.token }}
           HAS_APP: ${{ steps.token.outputs.token != '' }}
-          PR: ${{ steps.pr.outputs.number }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.cut.outputs.pr }}
         run: |
           set -euo pipefail
 
           if [ "$HAS_APP" != "true" ]; then
-            echo "::warning::No app credential, so the bump PR (#$PR) cannot merge itself — the bypass belongs to the app, not to GITHUB_TOKEN. Merge it by hand."
+            echo "::warning::No app credential, so #$PR cannot merge itself — the bypass belongs to the app, not to GITHUB_TOKEN. Merge it by hand."
             exit 0
           fi
 
           checks=""
           for attempt in $(seq 1 40); do
-            checks=$(gh pr checks "$PR" --json name,bucket 2>/dev/null || echo '[]')
+            checks=$(gh pr checks "$PR" --repo "$REPO" --json name,bucket 2>/dev/null || echo '[]')
             total=$(jq '[.[] | select(.name | startswith("verify"))] | length' <<<"$checks")
             pending=$(jq '[.[] | select(.name | startswith("verify")) | select(.bucket == "pending")] | length' <<<"$checks")
             [ "$total" -gt 0 ] && [ "$pending" -eq 0 ] && break
@@ -314,23 +345,21 @@ jobs:
             exit 1
           fi
           if [ "$pending" -gt 0 ]; then
-            echo "::warning::#$PR still had $pending verify check(s) running after 20 minutes — NOT merging. Merge it once they finish."
+            echo "::warning::#$PR still had $pending verify check(s) running after 20 minutes — NOT merging. Re-run this job once they finish."
             exit 0
           fi
           if [ "$total" -eq 0 ]; then
             echo "::notice::#$PR has no verify checks (nothing in it matches a CI path filter) — merging."
           fi
 
-          gh pr merge "$PR" --merge --delete-branch
+          # The REST merge endpoint, deliberately, and not `gh pr merge`. That
+          # one uses GraphQL `mergePullRequest`, which refuses on the pull
+          # request's static state — "the base branch policy prohibits the
+          # merge" — before the actor's ruleset bypass is ever consulted. It is
+          # the same call `gh pr merge --admin` makes; the flag is named for how
+          # a human uses it, but what it selects is this path, and the server
+          # then authorizes against whatever the token's actor may do.
+          branch=$(gh pr view "$PR" --repo "$REPO" --json headRefName --jq '.headRefName')
+          gh api --method PUT "repos/$REPO/pulls/$PR/merge" -f merge_method=merge
+          gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" 2>/dev/null || true
           echo "::notice::#$PR merged; main is level with the tags."
-
-      - name: What happens next
-        if: steps.plan.outputs.count != '0'
-        run: |
-          {
-            echo
-            echo "Each pushed tag triggers its own release workflow. A desktop nightly"
-            echo "publishes itself once built; a stable waits as a draft for a human."
-            echo "The bump pull request merges itself once its \`verify\` checks pass;"
-            echo "if they fail, it is left open on purpose and this run is red."
-          } >> "$GITHUB_STEP_SUMMARY"
