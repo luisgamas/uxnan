@@ -42,9 +42,7 @@ test('parses the main worktree and its linked siblings', () => {
 
 test('only the FIRST entry is the main worktree', () => {
   const entries = parseWorktreePorcelain(
-    ['worktree /a', 'branch refs/heads/x', '', 'worktree /b', 'branch refs/heads/y', ''].join(
-      '\n',
-    ),
+    ['worktree /a', 'branch refs/heads/x', '', 'worktree /b', 'branch refs/heads/y', ''].join('\n'),
   );
   assert.deepEqual(
     entries.map((e) => e.isMain),
@@ -100,9 +98,14 @@ test('a branch name containing a slash survives', () => {
 
 test('a bare repository is still the main entry', () => {
   const entries = parseWorktreePorcelain(
-    ['worktree /home/me/repo.git', 'bare', '', 'worktree /home/me/work', 'branch refs/heads/main', ''].join(
-      '\n',
-    ),
+    [
+      'worktree /home/me/repo.git',
+      'bare',
+      '',
+      'worktree /home/me/work',
+      'branch refs/heads/main',
+      '',
+    ].join('\n'),
   );
   assert.equal(entries.length, 2);
   assert.equal(entries[0]!.isMain, true);

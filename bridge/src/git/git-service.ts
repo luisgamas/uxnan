@@ -84,9 +84,7 @@ export function parseWorktreePorcelain(stdout: string): GitWorktreeEntry[] {
     // whose own name contains `/` (release/1.2) must survive, so only the
     // known prefix is stripped, never everything up to the last slash.
     if (key === 'branch' && value) {
-      current.branch = value.startsWith('refs/heads/')
-        ? value.slice('refs/heads/'.length)
-        : value;
+      current.branch = value.startsWith('refs/heads/') ? value.slice('refs/heads/'.length) : value;
     } else if (key === 'locked') {
       current.isLocked = true;
     }
