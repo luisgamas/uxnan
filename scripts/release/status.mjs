@@ -81,8 +81,9 @@ console.log(
 for (const row of rows.filter((r) => r.since && !r.landed)) {
   console.log(
     `⚠  ${row.id}: ${row.since} shipped, but its release pull request is still open —\n` +
-      `   main does not carry that version yet. Merge it. The version files will read as\n` +
-      `   changed until you do; they are counted as bookkeeping, not as work to release.\n`,
+      `   main does not carry that version yet. It normally merges itself, so if it is\n` +
+      `   still there its checks went red: look at those rather than merging past them.\n` +
+      `   The version files read as changed until it lands; they count as bookkeeping.\n`,
   );
 }
 
