@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+## [0.0.19-alpha.20260810] - 2026-08-10
+
 ### Added — `git/worktrees`
 
 Answers which directories are worktrees of the repository at `cwd`, parsed from
