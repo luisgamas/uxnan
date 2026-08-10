@@ -96,46 +96,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           UxnanSpacing.lg,
           UxnanSpacing.xxl,
         ),
+        // **No second clamp here.** [NeScaffold] already stops every screen's
+        // slivers at the window class's [UxnanBreakpoint.maxContentWidth],
+        // measured from its own constraints (so it is right inside Settings'
+        // pane too). This used to add `maxWidth: UxnanSpacing.maxContentWidth`
+        // on top of that — 760 dp is a typographic line length, correct for the
+        // conversation and the file viewer and wrong for a stats grid, provider
+        // cards and a 53-week heatmap. It left a third of a laptop empty while
+        // the heatmap squeezed inside a paragraph's width.
         sliver: SliverToBoxAdapter(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: UxnanSpacing.maxContentWidth,
+          // Staggered by BLOCK, not by widget: the spacers between them are not
+          // things that arrive, and the stats grid is one object even though it
+          // draws several tiles.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              NeEntranceRow(
+                index: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _StatsHeader(),
+                    const SizedBox(height: UxnanSpacing.sm),
+                    MetricsStatGrid(metrics: m),
+                  ],
+                ),
               ),
-              // Staggered by BLOCK, not by widget: the spacers between them
-              // are not things that arrive, and the stats grid is one object
-              // even though it draws several tiles.
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  NeEntranceRow(
-                    index: 0,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _StatsHeader(),
-                        const SizedBox(height: UxnanSpacing.sm),
-                        MetricsStatGrid(metrics: m),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: UxnanSpacing.xl),
-                  NeEntranceRow(
-                    index: 1,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(l10n.profileActivity, style: titleStyle),
-                        const SizedBox(height: UxnanSpacing.sm),
-                        AgentActivitySection(firstYear: firstYear),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: UxnanSpacing.xl),
-                  const NeEntranceRow(index: 2, child: UsageSection()),
-                ],
+              const SizedBox(height: UxnanSpacing.xl),
+              NeEntranceRow(
+                index: 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l10n.profileActivity, style: titleStyle),
+                    const SizedBox(height: UxnanSpacing.sm),
+                    AgentActivitySection(firstYear: firstYear),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(height: UxnanSpacing.xl),
+              const NeEntranceRow(index: 2, child: UsageSection()),
+            ],
           ),
         ),
       ),

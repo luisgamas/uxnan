@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the profile stopped being clamped to a paragraph's width
+
+`NeScaffold` already stops every screen at its window class's content width
+(840 / 1040 / 1200), measured from its own constraints. The profile added a
+**second, tighter** clamp of 760 dp on top — a typographic line length, right
+for the conversation and the file viewer and wrong for a stats grid, provider
+cards and a 53-week heatmap. A laptop showed a third of its width empty while
+the heatmap squeezed its weeks inside a paragraph.
+
+Removing the extra clamp is the whole fix: 1008 dp on a 1200 dp laptop and
+1168 dp on a 1600 dp monitor, instead of 760 dp everywhere. **A phone renders
+exactly what it did before.**
+
 ### Changed — the new-conversation form is bounded on a wide window
 
 M3's full-screen dialog is a compact-window pattern. On a tablet the form spread

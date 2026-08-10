@@ -10,6 +10,7 @@ import 'package:uxnan/domain/value_objects/metrics_snapshot.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import '../../support/ux_icon_finder.dart';
@@ -283,4 +284,60 @@ void main() {
       );
     },
   );
+
+  group('the profile is a dashboard, not a reading column', () {
+    // It was clamped to 760 dp — a typographic line length, right for the
+    // conversation and the file viewer. Here it left a third of a laptop empty
+    // while the 53-week heatmap squeezed inside it. It takes the window class's
+    // own clamp instead, measured from its OWN constraints (this screen also
+    // fills Settings' right-hand pane, which is ~320 dp narrower than the
+    // window it sits in). NeScaffold owns that clamp for every screen; the
+    // profile's job was simply to stop adding a second, tighter one.
+    Future<double> contentWidth(WidgetTester tester, double width) async {
+      SharedPreferences.setMockInitialValues(const {});
+      tester.view.physicalSize = Size(width, 3200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileMetricsProvider.overrideWith((ref) async => _metrics()),
+            trustedDevicesProvider
+                .overrideWith((ref) => Stream.value(const [])),
+            connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+            activityHeatmapProvider.overrideWith((ref, arg) async => const {}),
+            agentsProvider
+                .overrideWith((ref) async => const <AgentDescriptor>[]),
+            metricsSnapshotsProvider.overrideWith(_NoMetrics.new),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ProfileScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.getSize(find.byType(AgentActivitySection)).width;
+    }
+
+    testWidgets('a phone still fills its width', (tester) async {
+      // 390 minus the section's own lg padding either side.
+      expect(await contentWidth(tester, 390), 358);
+    });
+
+    testWidgets('a laptop gets the large clamp', (tester) async {
+      // NeScaffold insets to large.maxContentWidth (1040), then the section's
+      // own lg padding either side.
+      expect(await contentWidth(tester, 1200), 1008);
+    });
+
+    testWidgets('a monitor still stops it stretching edge to edge',
+        (tester) async {
+      // extraLarge.maxContentWidth (1200) minus the same padding — wider than
+      // a laptop, and still nowhere near the 1600 dp edge.
+      expect(await contentWidth(tester, 1600), 1168);
+    });
+  });
 }
