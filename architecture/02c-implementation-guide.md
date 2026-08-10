@@ -1401,6 +1401,19 @@ trabajo, y tu. Es un `Material`, no un `NavigationDrawer`: ese componente
 modela N destinos fijos con uno seleccionado, y su propio scroll se anidaria
 dentro del arbol de espacios.
 
+**`detail` es SIEMPRE `child`, en toda ruta y todo ancho.** No es una
+preferencia de estilo: `child` no es solo la pantalla, es el `Navigator` que
+`ShellRoute` construye con `shellNavigatorKey`. Sustituirlo por otro widget lo
+desmonta, y `GoRouterDelegate.popRoute` — a donde va el boton atras del sistema
+— recorre cada `ShellRouteMatch` desreferenciando `navigatorKey.currentState!`.
+El resultado es que atras revienta con un null check en **toda** la app.
+
+Ya paso una vez: la raiz ancha dibujaba `ShellWelcome` en lugar de `child`, y el
+boton atras estaba roto todo el tiempo que la vista general estuviera abierta,
+que es justo donde arranca una tablet. Lo que la raiz **muestra** es asunto de
+la ruta (`AppRoutes.home` devuelve la portada en telefono y el panel tranquilo
+junto al drawer), nunca del shell.
+
 ---
 
 ## 4. Plan de pruebas

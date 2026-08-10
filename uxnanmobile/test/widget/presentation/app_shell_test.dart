@@ -73,15 +73,25 @@ Future<void> main() async {
     expect(find.text('routed screen'), findsOneWidget);
   });
 
-  testWidgets('at the root the content pane stays quiet', (tester) async {
-    await pump(tester, width: 1280, location: AppRoutes.home);
-
-    // The drawer is already showing the PCs and their work; repeating the
-    // overview beside it would say the same thing twice and give the eye no
-    // reason to prefer either half.
-    expect(find.byType(NavDrawer), findsOneWidget);
-    expect(find.byType(ShellWelcome), findsOneWidget);
-    expect(find.text('routed screen'), findsNothing);
+  testWidgets('the routed child is never removed from the tree',
+      (tester) async {
+    // `child` is not just the screen — it is the router's own Navigator, the
+    // one carrying `shellNavigatorKey`. The root used to get `ShellWelcome`
+    // here INSTEAD of `child`, which unmounted that navigator; the OS back
+    // button then threw a null check inside `GoRouterDelegate.popRoute`, on a
+    // tablet sitting at the overview, which is where it starts.
+    //
+    // What the root SHOWS is the route's business (`app_router.dart`), and
+    // `shell_back_button_test.dart` pins that end of it.
+    for (final location in [AppRoutes.home, '/conversation/abc']) {
+      await pump(tester, width: 1280, location: location);
+      expect(
+        find.text('routed screen'),
+        findsOneWidget,
+        reason: '$location dropped the router child',
+      );
+      expect(find.byType(NavDrawer), findsOneWidget);
+    }
   });
 
   testWidgets('the welcome pane is a phone screen, not a shell surface',

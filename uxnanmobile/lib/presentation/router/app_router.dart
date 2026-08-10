@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart';
 import 'package:uxnan/presentation/screens/devices/my_devices_screen.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_screen.dart';
@@ -10,6 +11,7 @@ import 'package:uxnan/presentation/screens/profile/pc_details_screen.dart';
 import 'package:uxnan/presentation/screens/profile/profile_screen.dart';
 import 'package:uxnan/presentation/screens/settings/settings_screen.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell.dart';
+import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
 import 'package:uxnan/presentation/screens/threads/archived_threads_screen.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 
@@ -101,7 +103,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: AppRoutes.home,
-            builder: (context, state) => const MyDevicesScreen(),
+            // The root is the one route that renders differently in each
+            // layout. On a phone it IS the overview. Beside a permanent drawer
+            // the drawer already shows your PCs and their work, so repeating
+            // the overview would say the same thing twice and give the eye no
+            // reason to prefer either half — the content pane stays quiet
+            // until something is opened into it.
+            //
+            // This lives HERE, not in the shell, because the shell must never
+            // remove `child` from the tree: `child` is the navigator behind
+            // [shellNavigatorKey], and unmounting it breaks the OS back button
+            // for the whole app (see the note on `detail:` in `AppShell`).
+            builder: (context, state) => context.hasPermanentPane
+                ? const ShellWelcome()
+                : const MyDevicesScreen(),
           ),
           GoRoute(
             path: AppRoutes.deviceThreadsPattern,

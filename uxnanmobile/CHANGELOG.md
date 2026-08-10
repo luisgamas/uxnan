@@ -6,6 +6,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the back button on a tablet sitting at the overview
+
+The OS back button threw `Null check operator used on a null value` inside
+`GoRouterDelegate._findCurrentNavigator`, and went nowhere.
+
+The shell was showing the welcome pane at the root by rendering it **instead of**
+the router's `child` — and that child is not just a screen, it is the navigator
+the whole route table lives in. Unmounting it left `go_router` dereferencing a
+null `navigatorKey.currentState` on every back press, so back was broken for the
+entire app the whole time the overview was open, which is where a tablet starts.
+
+The shell now always renders `child`; **what the root shows is the route's
+business**, and the root route answers it — the overview on a phone, the quiet
+welcome pane beside a drawer. Nothing changes visually.
+
 ### Changed — the file tree measures its own surface, and files stay a stack
 
 The file browser centred its tree against the **window**. Inside the shell's

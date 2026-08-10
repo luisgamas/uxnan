@@ -7,7 +7,6 @@ import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 import 'package:uxnan/presentation/screens/shell/nav_drawer.dart';
-import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 
 /// What wraps every routed screen: nothing on a phone, a permanent drawer on a
@@ -111,11 +110,18 @@ class AppShell extends ConsumerWidget {
             pane: NavDrawer(
               deviceId: ref.watch(shellDeviceProvider(threadIdOf(location))),
             ),
-            // At the root the drawer is already showing your PCs and their
-            // work; repeating the overview beside it would say the same thing
-            // twice and give the eye no reason to prefer either half. So the
-            // right side stays quiet until something is opened into it.
-            detail: location == AppRoutes.home ? const ShellWelcome() : child,
+            // ALWAYS `child`, on every route and every width.
+            //
+            // `child` is not just the screen — it is the router's own
+            // `Navigator`, the one carrying [shellNavigatorKey]. Swapping it
+            // for another widget (the root used to get [ShellWelcome] here)
+            // unmounts that navigator, and `GoRouterDelegate.popRoute` walks
+            // every shell match dereferencing `navigatorKey.currentState!`.
+            // The OS back button then threw a null-check error instead of
+            // going back — on a tablet sitting at the overview, which is where
+            // it starts. What the root shows is the ROUTE's business, and
+            // [AppRoutes.home] answers it (see `app_router.dart`).
+            detail: child,
           ),
         );
       },
