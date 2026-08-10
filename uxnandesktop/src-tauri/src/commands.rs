@@ -2025,6 +2025,17 @@ pub async fn github_repo_context(
     Ok(crate::github::repo_context(&worktree_path).await)
 }
 
+/// Determine whether a project-scoped number belongs to a PR or an issue.
+#[tauri::command]
+pub async fn github_work_item_kind(
+    worktree_path: String,
+    number: String,
+) -> Result<crate::github::WorkItemKind, CommandError> {
+    crate::github::work_item_kind(&worktree_path, &number)
+        .await
+        .map_err(CommandError::from)
+}
+
 /// List PRs for the worktree's repo. `state` is `open|closed|merged|all`.
 #[tauri::command]
 pub async fn github_pr_list(
@@ -2370,7 +2381,9 @@ pub async fn github_pr_add_reviewers(
 }
 
 /// Start work on an issue: create + link a branch (`gh issue develop`) and add it
-/// as a **new worktree**. Returns the new entry.
+/// as a **new worktree**. Repositories where the signed-in account cannot create
+/// linked branches still get a local branch/worktree, so read access is enough to
+/// begin isolated work. Returns the new entry.
 #[tauri::command]
 pub async fn github_issue_develop(
     state: State<'_, AppState>,
@@ -2391,30 +2404,53 @@ pub async fn github_issue_develop(
             is_main: false,
         });
     }
-    // Create the linked branch on the remote. Tolerate an "already exists"/"already
-    // linked" (a re-run) — the branch is materialized below regardless — but surface
-    // any other failure (e.g. no write access) with gh's own message.
-    if let Err(e) = crate::github::issue_develop(&repo_path, &number, &branch).await {
-        let msg = e.to_string().to_lowercase();
-        if !msg.contains("already") {
-            return Err(CommandError::from(e));
+    // Prefer GitHub's linked branch. When the account can read the issue but may
+    // not mutate the repository, fall back to a regular local branch rather than
+    // making the issue launcher unusable. Authentication/network failures still
+    // surface unchanged: only GitHub's explicit authorization failures qualify.
+    let linked = match crate::github::issue_develop(&repo_path, &number, &branch).await {
+        Ok(()) => true,
+        Err(e) => {
+            let message = e.to_string();
+            if message.to_lowercase().contains("already") {
+                true
+            } else if issue_link_permission_denied(&message) {
+                false
+            } else {
+                return Err(CommandError::from(e));
+            }
         }
+    };
+    if linked {
+        // Materialize the linked branch from origin. The explicit refspec creates
+        // the local branch before the worktree checks it out.
+        git::fetch(&repo_path, &format!("{branch}:{branch}"))
+            .await
+            .map_err(CommandError::from)?;
+        git::add_worktree_existing(&repo_path, &branch, &worktree_path)
+            .await
+            .map_err(CommandError::from)?;
+    } else {
+        let base = git::default_base(&repo_path).await;
+        git::add_worktree(&repo_path, &branch, &worktree_path, Some(&base))
+            .await
+            .map_err(CommandError::from)?;
     }
-    // Materialize the branch locally from origin (an explicit `branch:branch`
-    // refspec creates the local branch), then add the worktree. A fetch failure here
-    // means the linked branch wasn't created on the remote.
-    git::fetch(&repo_path, &format!("{branch}:{branch}"))
-        .await
-        .map_err(CommandError::from)?;
-    git::add_worktree_existing(&repo_path, &branch, &worktree_path)
-        .await
-        .map_err(CommandError::from)?;
     Ok(WorktreeEntry {
         path: worktree_path,
         branch: Some(branch),
         head: None,
         is_main: false,
     })
+}
+
+fn issue_link_permission_denied(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("createlinkedbranch")
+        || message.contains("correct permissions")
+        || message.contains("resource not accessible")
+        || message.contains("must have push access")
+        || message.contains("permission denied")
 }
 
 /// List recent workflow runs (optionally for a branch).
@@ -2557,9 +2593,23 @@ pub fn diagnostics_report() -> DiagnosticsReport {
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste, fs_path_exists, pty_submit_payload, read_term_buffers,
-        rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
+        bracketed_paste, fs_path_exists, issue_link_permission_denied, pty_submit_payload,
+        read_term_buffers, rect_on_any_monitor, reorder_by_ids, resting_corner, term_buffers_path,
     };
+
+    #[test]
+    fn issue_link_falls_back_only_for_authorization_failures() {
+        assert!(issue_link_permission_denied(
+            "GraphQL: viewer does not have the correct permissions to execute CreateLinkedBranch"
+        ));
+        assert!(issue_link_permission_denied(
+            "GraphQL: Resource not accessible by integration"
+        ));
+        assert!(!issue_link_permission_denied(
+            "failed to connect to github.com"
+        ));
+        assert!(!issue_link_permission_denied("issue not found"));
+    }
 
     #[test]
     fn a_pet_position_on_an_unplugged_monitor_is_rejected() {

@@ -46,6 +46,20 @@
       }
     },
     {
+      "fn": "work_item_kind",
+      "tauriCommand": "github_work_item_kind",
+      "gh": "gh api --hostname <host> repos/<owner>/<repo>/issues/<number>",
+      "kind": "read",
+      "confirm": "none",
+      "scopes": "repo (read)",
+      "parser": "work_item_kind_from_json",
+      "ui": "project launcher first field: neutral #number routing to PR or Issue",
+      "validation": {
+        "contract": ["src-tauri/src/github.rs"],
+        "fake": ["src-tauri/tests/github_cli.rs"]
+      }
+    },
+    {
       "fn": "pr_branches",
       "tauriCommand": "github_branches",
       "gh": "gh repo view --json defaultBranchRef (plus git branch lists)",

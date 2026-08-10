@@ -21,7 +21,7 @@
 //! polling (ETag/304) is a deferred optimization; today the status layer just calls
 //! `gh` on a throttled, focus-paused interval like the git watcher.
 
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +30,11 @@ use crate::error::AppError;
 /// Hard timeout for any single `gh` invocation. Generous enough for a slow PR diff
 /// / log download, but bounded so the UI can never hang on a stalled call.
 const GH_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Cloning transfers the complete repository and legitimately takes longer than
+/// an API-shaped `gh` request. Keep it bounded, but do not abort healthy clones
+/// on slower links after the regular one-minute request budget.
+const GH_CLONE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// Fields requested from `gh pr view` for a worktree's current-branch PR summary.
 const PR_SUMMARY_FIELDS: &str =
@@ -175,6 +180,14 @@ fn resolve_gh_program() -> std::path::PathBuf {
 /// invocation — a request id, the redacted argv, the exit code and the
 /// duration. Never the token (we don't have it), never stdout, never a body.
 async fn gh_raw(dir: Option<&str>, args: &[&str]) -> Result<std::process::Output, AppError> {
+    gh_raw_with_timeout(dir, args, GH_TIMEOUT).await
+}
+
+async fn gh_raw_with_timeout(
+    dir: Option<&str>,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<std::process::Output, AppError> {
     let id = GH_REQUEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     let mut cmd = crate::winproc::command(resolve_gh_program());
     if let Some(dir) = dir {
@@ -196,7 +209,7 @@ async fn gh_raw(dir: Option<&str>, args: &[&str]) -> Result<std::process::Output
     let argv = redact_args_for_log(args);
     let started = std::time::Instant::now();
     // Hard ceiling so a stalled call can never leave the UI stuck loading.
-    let output = match tokio::time::timeout(GH_TIMEOUT, cmd.output()).await {
+    let output = match tokio::time::timeout(timeout, cmd.output()).await {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
             eprintln!("[uxnan-desktop] gh#{id} {argv} → spawn failed: {e}");
@@ -205,11 +218,11 @@ async fn gh_raw(dir: Option<&str>, args: &[&str]) -> Result<std::process::Output
         Err(_) => {
             eprintln!(
                 "[uxnan-desktop] gh#{id} {argv} → timed out after {}s",
-                GH_TIMEOUT.as_secs()
+                timeout.as_secs()
             );
             return Err(AppError::Github(format!(
                 "gh timed out after {}s",
-                GH_TIMEOUT.as_secs()
+                timeout.as_secs()
             )));
         }
     };
@@ -237,6 +250,19 @@ async fn gh_raw(dir: Option<&str>, args: &[&str]) -> Result<std::process::Output
 /// `dir` scopes repo-relative commands to a worktree.
 async fn gh(dir: Option<&str>, args: &[&str]) -> Result<String, AppError> {
     let output = gh_raw(dir, args).await?;
+    gh_output(output)
+}
+
+async fn gh_with_timeout(
+    dir: Option<&str>,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, AppError> {
+    let output = gh_raw_with_timeout(dir, args, timeout).await?;
+    gh_output(output)
+}
+
+fn gh_output(output: std::process::Output) -> Result<String, AppError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let msg = if stderr.is_empty() {
@@ -530,6 +556,46 @@ pub struct RepoContext {
     pub name_with_owner: String,
     pub branch: Option<String>,
     pub pr: Option<PrSummary>,
+}
+
+/// The kind of numbered work item returned by GitHub's shared issue endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkItemKind {
+    Pr,
+    Issue,
+}
+
+fn work_item_kind_from_json(value: &serde_json::Value) -> WorkItemKind {
+    if value.get("pull_request").is_some() {
+        WorkItemKind::Pr
+    } else {
+        WorkItemKind::Issue
+    }
+}
+
+/// Resolve a project-scoped `#number` without requiring the caller to know
+/// whether GitHub assigned it to a pull request or an issue.
+pub async fn work_item_kind(worktree_path: &str, number: &str) -> Result<WorkItemKind, AppError> {
+    let number = validate_number(number)?;
+    if number == "0" {
+        return Err(AppError::Invalid(
+            "work item number must be positive".into(),
+        ));
+    }
+    let owner = crate::git::remote_owner(worktree_path)
+        .await
+        .ok_or_else(|| AppError::Github("could not resolve the GitHub repository owner".into()))?;
+    let repo = repo_name_from_remote(worktree_path)
+        .await
+        .ok_or_else(|| AppError::Github("could not resolve the GitHub repository name".into()))?;
+    let endpoint = format!("repos/{}/{repo}/issues/{number}", owner.owner);
+    let value = gh_json(
+        Some(worktree_path),
+        &["api", "--hostname", &owner.host, &endpoint],
+    )
+    .await?;
+    Ok(work_item_kind_from_json(&value))
 }
 
 /// A compact PR summary for the worktree card / right-panel tab.
@@ -2222,14 +2288,36 @@ pub async fn notifications_count() -> Result<u64, AppError> {
 // ---------------------------------------------------------------------------
 
 /// Clone a GitHub repo (`gh repo clone <repo> <dest>`) so it can be added as a
-/// project. `repo` may be `owner/name` or a full URL. Returns the destination path.
+/// project. `repo` may be `owner/name` or a full URL. Missing parent directories
+/// are created so the default home/uxnan destination works on first use. The
+/// object filter keeps full history while downloading file contents only when a
+/// checkout needs them. Returns the destination path.
 pub async fn clone(repo: &str, dest: &str) -> Result<String, AppError> {
     let repo = repo.trim();
     if repo.is_empty() {
         return Err(AppError::Invalid("a repo is required".to_string()));
     }
-    gh(None, &["repo", "clone", repo, dest]).await?;
+    prepare_clone_parent(dest)?;
+    gh_with_timeout(None, &clone_args(repo, dest), GH_CLONE_TIMEOUT).await?;
     Ok(dest.to_string())
+}
+
+fn clone_args<'a>(repo: &'a str, dest: &'a str) -> [&'a str; 6] {
+    ["repo", "clone", repo, dest, "--", "--filter=blob:none"]
+}
+
+fn prepare_clone_parent(dest: &str) -> Result<(), AppError> {
+    let destination = Path::new(dest.trim());
+    if destination.as_os_str().is_empty() {
+        return Err(AppError::Invalid("a destination is required".to_string()));
+    }
+    if let Some(parent) = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -2309,6 +2397,33 @@ mod fixture_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clone_parent_is_created_for_a_first_run_destination() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("uxnan").join("sample");
+
+        prepare_clone_parent(destination.to_str().unwrap()).unwrap();
+
+        assert!(root.path().join("uxnan").is_dir());
+        assert!(!destination.exists());
+        assert!(prepare_clone_parent("").is_err());
+    }
+
+    #[test]
+    fn clone_keeps_history_and_defers_file_objects() {
+        assert_eq!(
+            clone_args("owner/sample", "C:/projects/sample"),
+            [
+                "repo",
+                "clone",
+                "owner/sample",
+                "C:/projects/sample",
+                "--",
+                "--filter=blob:none"
+            ]
+        );
+    }
 
     /// A ruleset shaped like the one really guarding `main` on this repo: a
     /// `pull_request` rule that requires a review, demands resolved threads, and
@@ -2698,5 +2813,17 @@ mod tests {
         assert_eq!(c[0].message, "feat: add thing");
         assert_eq!(c[0].author.as_deref(), Some("alice"));
         assert_eq!(c[0].committed_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn work_item_kind_distinguishes_pull_requests_from_issues() {
+        let pull_request = serde_json::json!({
+            "number": 42,
+            "pull_request": { "url": "https://api.github.com/repos/team/sample/pulls/42" }
+        });
+        let issue = serde_json::json!({ "number": 43, "title": "Improve the launcher" });
+
+        assert_eq!(work_item_kind_from_json(&pull_request), WorkItemKind::Pr);
+        assert_eq!(work_item_kind_from_json(&issue), WorkItemKind::Issue);
     }
 }

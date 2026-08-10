@@ -38,11 +38,16 @@
     busy = false,
     /** Tailwind height for the scroll region. */
     listClass = "h-64",
+    /** Hide the built-in address bar when a parent dialog supplies one unified
+     * input for navigation and another source such as a remote repository. */
+    showLocationBar = true,
     /** Primary action (Mod+Enter) — the consumer's footer button. */
     onPrimary,
     /** Bindable out: the dialog-level keydown handler, so the consumer can wire it
      *  onto its `Dialog.Content` and arrows/Enter work no matter what holds focus. */
     keydownHandler = $bindable<((e: KeyboardEvent) => void) | undefined>(undefined),
+    /** Bindable out: lets a parent-owned address field navigate this browser. */
+    navigateHandler = $bindable<((target?: string) => Promise<void>) | undefined>(undefined),
     /** Trailing per-row control (e.g. an "Add" button). */
     rowAction,
     /** Optional informational area rendered under the location bar. */
@@ -53,8 +58,10 @@
     listing?: DirListing | null;
     busy?: boolean;
     listClass?: string;
+    showLocationBar?: boolean;
     onPrimary?: () => void;
     keydownHandler?: ((e: KeyboardEvent) => void) | undefined;
+    navigateHandler?: ((target?: string) => Promise<void>) | undefined;
     rowAction?: Snippet<[DirEntry]>;
     note?: Snippet;
   } = $props();
@@ -202,10 +209,12 @@
     }
   }
   keydownHandler = onDialogKey;
+  navigateHandler = (target?: string) => go(target);
 </script>
 
 <!-- Location bar: parent-up + the current path as an editable field with a leading
      folder glyph (reads like a file-manager address) + a manual refresh. -->
+{#if showLocationBar}
 <div class="flex items-center gap-2 border-b border-border/60 px-4 py-3">
   <TooltipSimple title={i18n.t("picker.parent")}>
     {#snippet children(tp)}
@@ -248,6 +257,7 @@
     {/snippet}
   </TooltipSimple>
 </div>
+{/if}
 
 {@render note?.()}
 

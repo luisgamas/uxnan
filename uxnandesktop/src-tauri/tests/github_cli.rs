@@ -78,6 +78,24 @@ fn use_path(dir: &Path) -> ShimGuard {
     }
 }
 
+/// Put the deterministic `gh` first while retaining the real local `git`
+/// executable for a test that reads a throwaway repository's configured remote.
+fn use_path_with_git(dir: &Path) -> ShimGuard {
+    let lock = PATH_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let original = std::env::var_os("PATH");
+    let mut parts = vec![dir.to_path_buf()];
+    if let Some(path) = &original {
+        parts.extend(std::env::split_paths(path));
+    }
+    std::env::set_var("PATH", std::env::join_paths(parts).expect("paths join"));
+    ShimGuard {
+        original,
+        _lock: lock,
+    }
+}
+
 /// Write a `gh` stand-in into `dir` that records its argv and key env vars,
 /// prints the given stdout/stderr and exits with `code`.
 fn write_shim(dir: &Path, stdout: &str, stderr: &str, code: i32) {
@@ -329,6 +347,35 @@ async fn an_old_gh_rejecting_a_json_field_is_surfaced() {
     let _guard = use_path(&shim);
     let msg = github_err(github::pr_view(&work, "7").await);
     assert!(msg.contains("Unknown JSON field"), "got {msg:?}");
+}
+
+#[tokio::test]
+async fn neutral_work_item_number_resolves_through_the_shared_endpoint() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let shim = tmp.path().join("bin");
+    write_shim(
+        &shim,
+        r#"{"number":42,"pull_request":{"url":"https://api.github.com/repos/team/sample/pulls/42"}}"#,
+        "",
+        0,
+    );
+    let work = tmp.path().join("work");
+    let repository = git2::Repository::init(&work).expect("repository");
+    repository
+        .remote("origin", "https://github.com/team/sample.git")
+        .expect("origin");
+    let _guard = use_path_with_git(&shim);
+
+    let kind = github::work_item_kind(work.to_string_lossy().as_ref(), "42")
+        .await
+        .expect("number resolves");
+
+    assert_eq!(kind, github::WorkItemKind::Pr);
+    let args = std::fs::read_to_string(shim.join("gh-args.txt")).expect("args recorded");
+    assert!(
+        args.contains("api --hostname github.com repos/team/sample/issues/42"),
+        "shared endpoint reached: {args:?}"
+    );
 }
 
 /// `status()` must degrade through its whole chain on an old gh: the `--json`

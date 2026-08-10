@@ -48,8 +48,8 @@
   let listsPath = $state<string | null>(null);
   let listSeq = 0;
 
-  // Worktree-from-issue, using the very dialog the section uses (branch name,
-  // agent, folder preview) — it owns the `gh issue develop` call.
+  // Worktree-from-issue, using the same automatic naming + agent dialog as the
+  // section — it owns the issue-develop call.
   let worktreeDialogOpen = $state(false);
   let worktreeIssueNumber = $state<number | null>(null);
   let worktreeIssueTitle = $state("");

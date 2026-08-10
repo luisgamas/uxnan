@@ -58,10 +58,10 @@ non-interactive env all run for real with no network; and `github_live.rs`
 holds the **supervised live suite** (every test `#[ignore]`, armed only by
 `UXNAN_GH_SANDBOX` naming the allowlisted sandbox — its 3 non-ignored tests
 prove the guard refuses everything else; procedure in
-[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **538 backend tests**
+[`github-sandbox-runbook.md`](github-sandbox-runbook.md)). **544 backend tests**
 in total (plus the 7 ignored live tests and the ignored real-scheduler probe).
 
-The 510 unit tests cover the Serde model shape, persistence round-trip / atomicity /
+The 515 passing unit tests cover the Serde model shape, persistence round-trip / atomicity /
 migration / backups (including a corrupt state file and an obstructed data
 directory failing cleanly instead of panicking), the GitHub layer's parsers —
 including **contract tests that feed them captured real `gh` output** frozen
@@ -158,7 +158,7 @@ classifier), the **GitHub command inventory** check
 **quality matrix** check and the **platform support matrix**
 check (`tests/platform-support.test.mjs` — every platform claim backed by
 evidence that exists, and the announced level gated to it; see
-[`platform-support.md`](platform-support.md)). **926 tests** across both projects,
+[`platform-support.md`](platform-support.md)). **959 tests** across both projects,
 config in `vitest.config.ts` / `vitest.dom.config.ts`.
 
 ### L2 — components (`dom`)
@@ -211,6 +211,16 @@ instead of quietly agreeing with a mock nobody updated.
   "a read is in flight", so every tick unmounted it and took a half-written pull
   request with it — which is why the first assertion is that the digest is *still
   there*, not that it loaded.
+- `DirectoryPicker.svelte.test.ts` — a pasted repository reference derives the
+  destination, calls the real frontend API contract, registers the clone, and
+  focuses the resulting project.
+- `GitHubWorkItemPicker.svelte.test.ts` + `state/projects.svelte.test.ts` — open
+  pull requests are selectable, cross-repository URLs are refused, and PR/issue
+  worktrees both pass through the shared adoption path with readable failures.
+- `LauncherDialog.svelte.test.ts` + `GithubWorktreeDialog.svelte.test.ts` — git
+  projects open on the first, name-first New source tab before Worktree, PR, and
+  Issue; a neutral `#<number>` resolves to its actual item type and source tab;
+  GitHub item flows keep branch naming automatic and hide filesystem storage details.
 - `ThemeSettings.svelte.test.ts` — Settings → Appearance → Terminal's **Bold
   text** switch changes the weight and nothing else (family, size and spacing
   come out untouched), keeps program-bold output heavier than the body weight,

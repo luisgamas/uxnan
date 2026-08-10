@@ -7,6 +7,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Projects can now be cloned and added from the Add project dialog.** Its single
+  input automatically distinguishes local paths from an `owner/repository`
+  reference or GitHub HTTPS/SSH URL, with Local/GitHub tabs for ambiguous input.
+  Clones default to `<home>/uxnan/<repository>` with missing parents created on
+  first use; the destination stays editable and a native folder picker selects an
+  alternative. Then clone, register, and focus
+  the project in one flow. Invalid hosts are rejected locally, progress stays
+  explicit across cloning and registration, and a failed partial clone is never
+  deleted automatically.
+
+- **The project launcher can create a worktree from a pull request or issue.**
+  The project-card `+` dialog now uses New/Worktree/PR/Issue tabs over one source
+  area, keeps New first and selected by default, lists open items, accepts a number or URL,
+  rejects references owned by another repository, derives the worktree branch
+  from the PR head or issue number/title, and then opens any selected terminals, agents, or browser
+  in the adopted worktree. Remote titles become workspace notes; remote bodies
+  are not sent to an agent automatically.
+
+### Fixed
+
+- GitHub-backed project and worktree creation now avoids preventable transfer
+  and UI latency. Repository clones keep full history but defer file objects
+  until checkout, targeted PR/issue fetches skip unrelated tags, and a newly
+  created worktree becomes active without waiting for status checks across the
+  rest of the project. Its own status badge still hydrates in the background.
+- The worktree launcher's first, name-first field now recognizes full PR/issue
+  URLs, labeled references, and neutral `#42` / `42` input. Neutral numbers are
+  resolved once against the active repository and routed to their actual PR or
+  Issue source without requiring a prefix. PR/issue list search now handles exact
+  numbers, hash-prefixed numbers, unfinished `#` input, titles, authors,
+  branches, and metadata without hiding valid matches.
+- GitHub clones now have a dedicated 15-minute transfer timeout instead of the
+  one-minute API-request timeout, so healthy clones are not aborted on slower
+  links or larger repositories.
+- GitHub PR/issue worktrees no longer ask for a redundant branch name or expose
+  their filesystem path. PRs keep their real head branch, issues use a stable
+  number/title slug, and item titles become the descriptive first line on the
+  worktree card. When GitHub explicitly denies linked-branch creation for an
+  issue, Uxnan falls back to an ordinary local branch/worktree; network and
+  authentication failures still surface unchanged.
+
 - **Codex's sub-agents show in the agent view.** Codex 0.147 reports children
   through `SubagentStart` / `SubagentStop` with the same payload Claude Code
   uses (`agent_id`, `agent_type`, `last_assistant_message`) — uxnan simply
