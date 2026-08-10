@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -51,7 +51,7 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
       actions: [
         ThreadSearchAnchor(
           threads: archived,
-          onSelect: (id) => context.push(AppRoutes.conversation(id)),
+          onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
           // No project or worktree group: the archive is a flat list. And

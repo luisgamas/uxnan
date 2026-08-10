@@ -5,6 +5,7 @@ import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 import 'package:uxnan/presentation/screens/shell/nav_drawer.dart';
+import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 
 /// What wraps every routed screen: nothing on a phone, a permanent drawer on a
@@ -75,7 +76,11 @@ class AppShell extends ConsumerWidget {
             pane: NavDrawer(
               deviceId: ref.watch(shellDeviceProvider(threadIdOf(location))),
             ),
-            detail: child,
+            // At the root the drawer is already showing your PCs and their
+            // work; repeating the overview beside it would say the same thing
+            // twice and give the eye no reason to prefer either half. So the
+            // right side stays quiet until something is opened into it.
+            detail: location == AppRoutes.home ? const ShellWelcome() : child,
           ),
         );
       },

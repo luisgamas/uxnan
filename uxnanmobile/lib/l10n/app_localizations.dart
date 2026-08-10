@@ -560,6 +560,30 @@ abstract class AppLocalizations {
   /// **'Path'**
   String get spacesDetailsPath;
 
+  /// No description provided for @shellWelcomeTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'A name with no relation to, or derivation from, any existing product.'**
+  String get shellWelcomeTagline;
+
+  /// No description provided for @shellWelcomeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a conversation from the panel on the left.'**
+  String get shellWelcomeHint;
+
+  /// No description provided for @shellHowToPair.
+  ///
+  /// In en, this message translates to:
+  /// **'How to link a device'**
+  String get shellHowToPair;
+
+  /// No description provided for @drawerDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get drawerDevices;
+
   /// No description provided for @drawerSwitchDevice.
   ///
   /// In en, this message translates to:

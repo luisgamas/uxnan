@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uxnan/presentation/screens/conversation/conversation_screen.dart';
@@ -77,11 +78,25 @@ class AppRoutes {
 /// the phone's, and every deep link and push notification would have to work in
 /// both. Keeping routing in this provider — never in `main.dart` — follows the
 /// project's navigation convention.
+/// The navigator that holds whatever the content pane is showing.
+///
+/// Exposed so [PaneNavigation] can clear it: see the note on the [ShellRoute]
+/// below.
+final GlobalKey<NavigatorState> shellNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'shell');
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: AppRoutes.home,
     routes: [
       ShellRoute(
+        // Keyed so the pane can be EMPTIED from outside it. The conversation
+        // opens its file browser and git screens with a raw `Navigator.push`,
+        // which lands on this navigator, above the routed page — so `go` alone
+        // changes the route underneath and leaves the pushed screen covering
+        // it. Picking another conversation from the drawer then looked like
+        // nothing happened at all.
+        navigatorKey: shellNavigatorKey,
         builder: (context, state, child) => AppShell(child: child),
         routes: [
           GoRoute(

@@ -221,6 +221,11 @@ class _NeScaffoldState extends State<NeScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    // Beside a permanent drawer, "back" from the pane's own first screen has
+    // nowhere to go: nothing was left behind — the drawer never moved, and the
+    // route was REPLACED rather than stacked. A back arrow there points at the
+    // screen you are already looking at. Deeper in (files, git) it still means
+    // what it says, and `canPop` still answers that.
     final canPop = ModalRoute.of(context)?.canPop ?? false;
     final lead = widget.leading ??
         (widget.automaticBackButton && canPop

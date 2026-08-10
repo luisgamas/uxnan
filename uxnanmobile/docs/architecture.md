@@ -93,6 +93,19 @@ that returns the content pane to the overview. It is a `Material` rather than a
 `NavigationDrawer`: that component models N fixed destinations with one
 selected, and its own scrollable would nest inside the tree's.
 
+Navigation inside the shell goes through `context.openInPane` / `closePane`
+(`presentation/router/pane_navigation.dart`), which is where "a tap means two
+different things" is decided instead of at every call site. On a phone it
+pushes and pops. On a wide window it **replaces**: nothing was left behind, so a
+stack there is one the layout gives you no way to see. Because the file browser
+and git screens open with a raw `Navigator.push` — landing above the routed page
+— `openInPane` empties `shellNavigatorKey` before it navigates; without that,
+`go` swapped the page underneath and left them covering it.
+
+A repository's identity is `repoKeyFor(path)`, namespaced away from the folder
+at the same path: collapse state is a set of these strings, and sharing one made
+collapsing the main folder collapse the whole project.
+
 Which PC it shows comes from `shellDeviceProvider`, resolved by how much each
 source knows — the open conversation's thread, then the last list visited
 (persisted through `ThreadListPreferencesStore`), then the connected PC. A deep

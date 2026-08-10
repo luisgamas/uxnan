@@ -6,6 +6,50 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a project and its main folder were the same thing to the app
+
+A repository is identified by its main worktree's path, which is **also** the
+identity of the folder for that worktree. Collapse state is a set of those
+strings, so the two rows shared one: tapping the main folder shut the entire
+project, and keeping a project open with its folders closed was impossible. The
+repository is now `repo:<path>` — two rows on screen need two identities.
+
+### Changed — the wide layout replaces the pane instead of stacking on it
+
+With a permanent drawer nothing is "somewhere you went": the drawer never moves
+and what changes is the contents of a pane. Pushing there built a stack the
+layout gives no way to see — open a conversation, walk into its git screen, pick
+another conversation, and back retraced every screen ever glanced at. Opening
+now **replaces** on wide windows and still pushes on a phone, decided in one
+place rather than at the five call sites that open a conversation.
+
+Two consequences that had to be handled explicitly:
+
+- The file browser and git screens open with a raw `Navigator.push`, landing
+  *above* the routed page — so `go` alone swapped the page underneath and left
+  them covering it. From the file browser, picking another conversation looked
+  like nothing happened. The shell's navigator is keyed and emptied first.
+- "Back" from the pane's own first screen now **closes what is open** rather
+  than popping: nothing was left behind to pop to.
+
+### Changed — the drawer's footer carries the actions the phone keeps in its bar
+
+Tapping the row returns the content pane to the overview and clears the stack
+behind it — the way out of a deep walk without retracing it. Editing your
+profile, settings and pairing moved into a menu beside it, pairing as a submenu
+because it is two ways to do one thing.
+
+The first version navigated while that menu was still open, which left its
+barrier up with nothing to dismiss it: the app froze with a menu on screen and
+no way out. It now records the choice, closes, and only then navigates.
+
+### Fixed — the drawer moved when the *other* pane opened a keyboard
+
+The keyboard consumes the bottom inset for the whole window, so the drawer's
+`SafeArea` shrank and its profile row slid down while you typed in the content
+pane. `maintainBottomViewPadding` keeps it still. A phone never showed this —
+a phone has no drawer beside the keyboard.
+
 ### Added — a permanent drawer on wide windows
 
 On expanded windows and above (≥ 840 dp) the app stops being a stack of screens:

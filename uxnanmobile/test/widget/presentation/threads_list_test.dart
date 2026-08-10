@@ -293,6 +293,88 @@ void main() {
       expect(find.text('app-feature'), findsOneWidget);
     });
 
+    testWidgets('collapsing the main folder does not collapse its project',
+        (tester) async {
+      // Reported from the device: a repository is identified by its main
+      // worktree's path, which is ALSO the identity of the folder for that
+      // worktree. Collapse state is a set of those strings, so the two rows
+      // shared one — tapping the main folder shut the whole project, and
+      // keeping a project open with its folders closed was impossible.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app-feature'),
+          ],
+          repos: {
+            '/dev/app':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+            '/dev/app-feature':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(RepoGroupRow), findsOneWidget);
+      // Two folders under it: the main worktree and its sibling.
+      expect(find.byType(WorkspaceGroupRow), findsNWidgets(2));
+
+      // Collapse the MAIN worktree's folder, which shares a path with the
+      // project heading it.
+      await tester.tap(find.text('app').last);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The project is still open, with both folders still listed.
+      expect(find.byType(RepoGroupRow), findsOneWidget);
+      expect(find.byType(WorkspaceGroupRow), findsNWidgets(2));
+      // And only that folder's conversation went away.
+      expect(find.text('Fix login'), findsNothing);
+      expect(find.text('Ship it'), findsOneWidget);
+    });
+
+    testWidgets('a project moves its count with the fold, like a folder does',
+        (tester) async {
+      // A fixed-width pane cannot keep everything on one row and hope: with
+      // the branch, the count and the agent marks all competing, the line ran
+      // out of room. Open, the folders are right there to be counted and the
+      // count sits quietly on the right; closed, they are gone and it earns a
+      // line of its own.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app-feature'),
+          ],
+          repos: {
+            '/dev/app':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+            '/dev/app-feature':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final repoRow = find.byType(RepoGroupRow);
+      final openHeight = tester.getSize(repoRow).height;
+
+      // Collapse the project itself.
+      await tester
+          .tap(find.descendant(of: repoRow, matching: find.text('app')));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        tester.getSize(find.byType(RepoGroupRow)).height,
+        greaterThan(openHeight),
+        reason: 'closed, the count should take a line of its own',
+      );
+      // And the folders it was counting really are gone.
+      expect(find.byType(WorkspaceGroupRow), findsNothing);
+    });
+
     testWidgets('long-pressing a folder opens its details with the full path',
         (tester) async {
       await tester.pumpWidget(

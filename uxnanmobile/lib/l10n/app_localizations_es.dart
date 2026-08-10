@@ -310,6 +310,20 @@ class AppLocalizationsEs extends AppLocalizations {
   String get spacesDetailsPath => 'Ruta';
 
   @override
+  String get shellWelcomeTagline =>
+      'Un nombre sin relación ni derivación de ningún producto existente.';
+
+  @override
+  String get shellWelcomeHint =>
+      'Abre una conversación desde el panel de la izquierda.';
+
+  @override
+  String get shellHowToPair => 'Cómo enlazar un dispositivo';
+
+  @override
+  String get drawerDevices => 'Dispositivos';
+
+  @override
   String get drawerSwitchDevice => 'Cambiar de PC';
 
   @override

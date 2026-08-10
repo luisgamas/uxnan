@@ -12,6 +12,8 @@ class WorkspaceGroup {
     this.path,
     this.repoKey,
     this.repoLabel,
+    this.branch,
+    this.isMain = false,
   });
 
   /// The normalized absolute path, and this group's identity.
@@ -37,6 +39,12 @@ class WorkspaceGroup {
 
   /// What to call that repository.
   final String? repoLabel;
+
+  /// The branch checked out here, when this folder is a worktree git named.
+  final String? branch;
+
+  /// Whether this folder is its repository's main worktree.
+  final bool isMain;
 }
 
 /// A repository and the worktrees of it that hold conversations.
@@ -162,21 +170,50 @@ List<WorkspaceGroup> groupThreadsByWorkspace({
         },
         repoKey: repos[entry.key]?.key,
         repoLabel: repos[entry.key]?.label,
+        branch: repos[entry.key]?.branch,
+        isMain: repos[entry.key]?.isMain ?? false,
         threads: entry.value,
       ),
   ];
 }
 
+/// The identity of the repository whose main worktree is at [mainPath].
+///
+/// **Namespaced, and that is the whole point.** A repository is identified by
+/// its main worktree's path — which is also, exactly, the identity of the
+/// folder for that worktree. Collapse state is a set of these strings, so
+/// sharing one meant collapsing the main folder collapsed the entire project
+/// and vice versa: you could not keep a project open with its folders shut.
+/// The prefix makes "the repo at X" and "the folder at X" two different
+/// things, because on screen they are two different rows.
+String repoKeyFor(String mainPath) =>
+    'repo:${normalizeWorkspacePath(mainPath)}';
+
 /// Which repository a folder belongs to, as reported by `git/worktrees`.
 class WorkspaceRepo {
   /// Creates a [WorkspaceRepo].
-  const WorkspaceRepo({required this.key, required this.label});
+  const WorkspaceRepo({
+    required this.key,
+    required this.label,
+    this.branch,
+    this.isMain = false,
+  });
 
-  /// Normalized path of the repository's main worktree.
+  /// The repository's identity — see [repoKeyFor].
   final String key;
 
-  /// What to call it.
+  /// What to call the repository.
   final String label;
+
+  /// The branch checked out in **this** folder, when git named one.
+  ///
+  /// Per folder rather than per repository, because the table is keyed by
+  /// folder: that is the whole reason a worktree is worth showing separately.
+  /// Null on a detached HEAD.
+  final String? branch;
+
+  /// Whether **this** folder is the repository's main worktree.
+  final bool isMain;
 }
 
 /// Builds the folder-to-repository table from `git/worktrees` replies.
@@ -196,13 +233,19 @@ Map<String, WorkspaceRepo> buildWorkspaceRepoTable(
       orElse: () => entries.first,
     );
     if (main.path.isEmpty) continue;
-    final repo = WorkspaceRepo(
-      key: normalizeWorkspacePath(main.path),
-      label: workspaceLabel(main.path),
-    );
+    final key = repoKeyFor(main.path);
+    final label = workspaceLabel(main.path);
     for (final entry in entries) {
       if (entry.path.isEmpty) continue;
-      table[normalizeWorkspacePath(entry.path)] = repo;
+      // The branch and the main flag come from the SAME reply that proves the
+      // relationship — they were being discarded, which is why a worktree row
+      // said less here than the identical row on the desktop.
+      table[normalizeWorkspacePath(entry.path)] = WorkspaceRepo(
+        key: key,
+        label: label,
+        branch: entry.branch,
+        isMain: entry.isMain,
+      );
     }
   }
   return table;
@@ -248,8 +291,11 @@ List<WorkspaceTreeNode> buildWorkspaceTree(
       members.sort(orderWorkspaces);
     } else {
       members.sort((a, b) {
-        final aMain = a.key == entry.key ? 0 : 1;
-        final bMain = b.key == entry.key ? 0 : 1;
+        // Compared THROUGH the namespace: the group's key is `repo:<path>`
+        // now, so a bare workspace key can never equal it and every worktree
+        // would look non-main.
+        final aMain = repoKeyFor(a.key) == entry.key ? 0 : 1;
+        final bMain = repoKeyFor(b.key) == entry.key ? 0 : 1;
         return aMain != bMain ? aMain - bMain : a.label.compareTo(b.label);
       });
     }

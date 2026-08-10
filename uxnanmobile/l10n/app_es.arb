@@ -99,6 +99,10 @@
     "placeholders": { "count": { "type": "int" } }
   },
   "spacesDetailsPath": "Ruta",
+  "shellWelcomeTagline": "Un nombre sin relación ni derivación de ningún producto existente.",
+  "shellWelcomeHint": "Abre una conversación desde el panel de la izquierda.",
+  "shellHowToPair": "Cómo enlazar un dispositivo",
+  "drawerDevices": "Dispositivos",
   "drawerSwitchDevice": "Cambiar de PC",
   "drawerNoDevices": "Aún no hay ningún PC emparejado",
   "drawerBackToOverview": "Volver al resumen",

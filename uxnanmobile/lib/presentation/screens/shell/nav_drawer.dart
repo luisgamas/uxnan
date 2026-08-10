@@ -9,11 +9,13 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
 import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
 import 'package:uxnan/presentation/widgets/transport_badge.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -50,6 +52,12 @@ class NavDrawer extends ConsumerWidget {
     return Material(
       color: colors.surface,
       child: SafeArea(
+        // The keyboard belongs to the CONTENT pane, not to this one. Without
+        // this, opening it consumes the bottom inset here too — the system bar
+        // padding drops to zero and the profile row visibly slides down while
+        // you are typing in the other half of the screen. A phone never showed
+        // it because a phone has no drawer beside the keyboard.
+        maintainBottomViewPadding: true,
         child: Column(
           children: [
             _DeviceHeader(device: device, devices: devices),
@@ -175,45 +183,30 @@ class _DeviceHeader extends ConsumerWidget {
               ],
             ),
           ),
-          // Switching PCs, and pairing another — the only two things this zone
-          // does, both of which change WHICH machine the rest of the drawer is
-          // about.
+          // Only when there is somewhere to switch TO. With one PC paired
+          // this is a control whose entire menu is the row beside it.
           if (devices.length > 1)
             IconSurfaceMenu<TrustedDevice>(
-              icon: UxIcons.expandMore,
+              icon: UxIcons.moreVert,
               tooltip: l10n.drawerSwitchDevice,
               onSelected: (target) =>
                   unawaited(_switchTo(context, ref, target)),
               itemBuilder: (context) => [
                 for (final option in devices)
-                  PopupMenuItem<TrustedDevice>(
+                  CheckedPopupMenuItem<TrustedDevice>(
                     value: option,
-                    child: Row(
-                      children: [
-                        _OnlineDot(
-                          online: option.macDeviceId == connected?.macDeviceId,
-                        ),
-                        const SizedBox(width: UxnanSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            option.displayName,
-                            style: UxnanTypography.menuItem.copyWith(
-                              color: colors.onSurface,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                    checked: option.macDeviceId == connected?.macDeviceId,
+                    child: Text(
+                      option.displayName,
+                      style: UxnanTypography.menuItem.copyWith(
+                        color: colors.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
               ],
             ),
-          IconSurface(
-            icon: UxIcons.addLink,
-            tooltip: l10n.actionPairDevice,
-            onPressed: () => context.push(AppRoutes.pairing),
-          ),
         ],
       ),
     );
@@ -250,14 +243,13 @@ class _ProfileFooter extends ConsumerWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      // Returns the CONTENT pane to the overview rather than opening a screen.
-      // In a layout with no back stack this is the "home" affordance.
+      // Empties the content pane, and **clears what was behind it**: `go`
+      // replaces the stack rather than adding to it, so this is the way out of
+      // a deep walk (conversation → files → git) without back then retracing
+      // every screen that walk touched. A permanent drawer makes that stack
+      // invisible, and an invisible stack is one nobody can reason about.
       onTap: () => context.go(AppRoutes.home),
-      trailing: IconSurface(
-        icon: UxIcons.settings,
-        tooltip: l10n.settingsTitle,
-        onPressed: () => context.push(AppRoutes.settings),
-      ),
+      trailing: const _FooterMenu(),
     );
   }
 }
@@ -276,6 +268,201 @@ class _OnlineDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: online ? colors.tertiary : colors.outlineVariant,
         shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+/// The drawer footer's actions: settings, and adding a device.
+///
+/// These are the two the phone keeps in its app bar. On a tablet the content
+/// pane's bar belongs to whatever is open there, so they come down here — as a
+/// MENU rather than two more buttons, because the row already has a job and a
+/// drawer that grows a button per action becomes a toolbar.
+///
+/// Built exactly like the sort menu: a second `showMenu` pushed OVER the first
+/// without popping it, and a back row to leave it. The first attempt navigated
+/// while the outer menu was still open, which left its barrier up with nothing
+/// to dismiss it — the app froze with a menu on screen and no way out.
+class _FooterMenu extends StatelessWidget {
+  const _FooterMenu();
+
+  Future<void> _open(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final anchor = menuPositionUnder(context);
+
+    // Deferred until AFTER the menu has closed. Opening anything from inside an
+    // open menu is what froze it: the barrier stayed up with nothing to
+    // dismiss it.
+    String? route;
+    var editProfile = false;
+
+    await showMenu<void>(
+      context: context,
+      position: anchor,
+      constraints: kNeMenuConstraints,
+      items: [
+        PopupMenuItem<void>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: _MenuRow(
+            icon: UxIcons.edit,
+            label: l10n.profileEditTitle,
+            // The same sheet the profile screen opens. Editing your name or
+            // avatar is a two-field job, and reaching it through a screen you
+            // then have to leave is most of the work.
+            onTap: () {
+              editProfile = true;
+              Navigator.of(context).pop();
+            },
+          ),
+        ),
+        PopupMenuItem<void>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: _MenuRow(
+            icon: UxIcons.settings,
+            label: l10n.settingsTitle,
+            onTap: () {
+              route = AppRoutes.settings;
+              Navigator.of(context).pop();
+            },
+          ),
+        ),
+        PopupMenuItem<void>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: _MenuRow(
+            icon: UxIcons.addLink,
+            label: l10n.drawerDevices,
+            trailing: UxIcon(
+              UxIcons.chevronRight,
+              size: UxnanSize.iconContentSmall,
+              color: colors.onSurfaceVariant,
+            ),
+            onTap: () async {
+              final picked = await _pickPairing(context, anchor, l10n);
+              if (picked == null || !context.mounted) return;
+              route = picked;
+              Navigator.of(context).pop();
+            },
+          ),
+        ),
+      ],
+    );
+
+    if (!context.mounted) return;
+    if (editProfile) {
+      await EditProfileSheet.show(context);
+      return;
+    }
+    final target = route;
+    if (target != null) await context.push(target);
+  }
+
+  /// The two ways to add a device, over the first panel rather than replacing
+  /// it — and with a row back, because a thumb has nowhere to move to.
+  Future<String?> _pickPairing(
+    BuildContext context,
+    RelativeRect anchor,
+    AppLocalizations l10n,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return showMenu<String>(
+      context: context,
+      position: anchor,
+      constraints: kNeMenuConstraints,
+      items: [
+        PopupMenuItem<String>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: _MenuRow(
+            icon: UxIcons.chevronLeft,
+            label: l10n.drawerDevices,
+            muted: true,
+            onTap: () => Navigator.of(context).pop(),
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: AppRoutes.pairing,
+          child: Text(
+            l10n.actionScanQr,
+            style: UxnanTypography.menuItem.copyWith(color: colors.onSurface),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: AppRoutes.manualPairing,
+          child: Text(
+            l10n.manualCodeTitle,
+            style: UxnanTypography.menuItem.copyWith(color: colors.onSurface),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return IconSurface(
+      icon: UxIcons.moreVert,
+      tooltip: l10n.drawerDevices,
+      onPressed: () => unawaited(_open(context)),
+    );
+  }
+}
+
+/// A row inside the footer menu, at the app's menu metrics.
+///
+/// Hand-built rather than a plain item because these must NOT dismiss the menu
+/// themselves: one opens a second panel, another goes back, and the one that
+/// navigates has to let the menu close first.
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.trailing,
+    this.muted = false,
+  });
+
+  final UxIconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Widget? trailing;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UxnanSpacing.lg,
+          vertical: UxnanSpacing.md,
+        ),
+        child: Row(
+          children: [
+            UxIcon(
+              icon,
+              size: UxnanSize.iconContentSmall,
+              color: colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: UxnanSpacing.md),
+            Expanded(
+              child: Text(
+                label,
+                style: UxnanTypography.menuItem.copyWith(
+                  color: muted ? colors.onSurfaceVariant : colors.onSurface,
+                ),
+              ),
+            ),
+            if (trailing != null) trailing!,
+          ],
+        ),
       ),
     );
   }

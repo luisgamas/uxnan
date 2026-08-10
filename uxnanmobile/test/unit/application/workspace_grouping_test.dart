@@ -152,8 +152,12 @@ void _worktreeTests() {
       ],
     });
 
-    expect(table['/dev/app']!.key, '/dev/app');
-    expect(table['/dev/app-feature']!.key, '/dev/app');
+    // Namespaced: a repository and the FOLDER of its main worktree are two
+    // rows on screen, so they cannot share one identity — collapse state is a
+    // set of these strings, and sharing one collapsed both.
+    expect(table['/dev/app']!.key, repoKeyFor('/dev/app'));
+    expect(table['/dev/app-feature']!.key, repoKeyFor('/dev/app'));
+    expect(table['/dev/app']!.key, isNot('/dev/app'));
     expect(table['/dev/app-feature']!.label, 'app');
   });
 
@@ -194,6 +198,7 @@ void _worktreeTests() {
     expect(node.repo.workspaces, hasLength(2));
     // The main worktree leads: it is the one a person calls "the repo".
     expect(node.repo.workspaces.first.key, '/dev/app');
+    expect(node.repo.key, isNot('/dev/app'));
   });
 
   test('a folder alone in its repo stays a lone row, not a heading over one',

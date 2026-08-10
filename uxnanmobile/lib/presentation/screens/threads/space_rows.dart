@@ -248,10 +248,16 @@ class _AgentMarks extends StatelessWidget {
   }
 }
 
-/// The row's own action: an **S button** from the guide's button hierarchy
-/// (§4.5) — 40 dp of surface around a content-sized glyph, inside the usual
-/// 48 dp touch target. Large enough to read as a button rather than a
-/// decorative plus, small enough not to compete with the folder it sits on.
+/// The row's own action: the **S** step of the guide's button hierarchy (§4.5)
+/// — 40 dp of reach around a content-sized glyph, inside the usual 48 dp touch
+/// target.
+///
+/// **No filled surface.** A folder row already carries a chevron, a glyph, a
+/// name, a state mark and a count; a filled circle on top of that is the
+/// heaviest thing in a row where it is the least important, and a list of ten
+/// folders became ten of them. The size and the target are unchanged — only the
+/// fill is gone, so it still reads as pressable without shouting. The ink on
+/// press is what says "button" here, which is enough at this density.
 class _NewConversationButton extends StatelessWidget {
   const _NewConversationButton({required this.onPressed});
 
@@ -268,7 +274,7 @@ class _NewConversationButton extends StatelessWidget {
         height: UxnanSize.minTouchTarget,
         child: Center(
           child: Material(
-            color: colors.surfaceContainerHigh,
+            color: Colors.transparent,
             shape: const CircleBorder(),
             child: InkWell(
               customBorder: const CircleBorder(),
@@ -377,20 +383,41 @@ class RepoGroupRow extends ConsumerWidget {
                 color: colors.onSurfaceVariant,
               ),
               const SizedBox(width: UxnanSpacing.sm),
+              // The count moves with the fold, the same trade the folder row
+              // makes: open, the folders are right there to be counted, so it
+              // sits quietly on the right; closed, they are gone and it earns
+              // a line of its own. A fixed-width pane cannot afford to keep
+              // everything on one row and hope.
               Expanded(
-                child: Text(
-                  repo.label,
-                  // A rung above the folders under it, which take titleMedium.
-                  style: textTheme.titleLarge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      repo.label,
+                      // A rung above the folders under it, which take
+                      // titleMedium.
+                      style: textTheme.titleLarge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (!expanded)
+                      Text(
+                        l10n.spacesWorkspaceCount(repo.workspaces.length),
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(width: UxnanSpacing.sm),
-              Text(
-                l10n.spacesWorkspaceCount(repo.workspaces.length),
-                style: textTheme.bodySmall,
-              ),
+              if (expanded) ...[
+                const SizedBox(width: UxnanSpacing.sm),
+                Text(
+                  l10n.spacesWorkspaceCount(repo.workspaces.length),
+                  style: textTheme.bodySmall,
+                ),
+              ],
               const SizedBox(width: UxnanSpacing.xs),
               // Closed, it still reports what is happening inside — the same
               // rule the folder row follows, for the same reason.

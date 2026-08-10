@@ -309,6 +309,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get spacesDetailsPath => 'Path';
 
   @override
+  String get shellWelcomeTagline =>
+      'A name with no relation to, or derivation from, any existing product.';
+
+  @override
+  String get shellWelcomeHint =>
+      'Open a conversation from the panel on the left.';
+
+  @override
+  String get shellHowToPair => 'How to link a device';
+
+  @override
+  String get drawerDevices => 'Devices';
+
+  @override
   String get drawerSwitchDevice => 'Switch PC';
 
   @override

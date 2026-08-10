@@ -136,6 +136,10 @@
     "placeholders": { "count": { "type": "int" } }
   },
   "spacesDetailsPath": "Path",
+  "shellWelcomeTagline": "A name with no relation to, or derivation from, any existing product.",
+  "shellWelcomeHint": "Open a conversation from the panel on the left.",
+  "shellHowToPair": "How to link a device",
+  "drawerDevices": "Devices",
   "drawerSwitchDevice": "Switch PC",
   "drawerNoDevices": "No PC paired yet",
   "drawerBackToOverview": "Back to overview",

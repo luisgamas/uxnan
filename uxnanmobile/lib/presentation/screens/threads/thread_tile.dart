@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/agent_id.dart';
@@ -12,6 +11,7 @@ import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
@@ -117,7 +117,7 @@ class _ThreadTileState extends ConsumerState<ThreadTile>
               vertical: UxnanSpacing.sm,
             )
           : const EdgeInsets.all(UxnanSpacing.md),
-      onTap: () => context.push(AppRoutes.conversation(thread.id)),
+      onTap: () => context.openInPane(AppRoutes.conversation(thread.id)),
       onLongPress: () =>
           showThreadActions(context, ref, thread, onDelete: _delete),
       child: Row(

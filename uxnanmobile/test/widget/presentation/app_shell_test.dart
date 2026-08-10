@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 import 'package:uxnan/presentation/screens/shell/nav_drawer.dart';
+import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
 
 /// The shell decides, per window width, whether a routed screen IS the window
 /// or sits beside a drawer.
@@ -29,9 +33,13 @@ Future<void> main() async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          // Keeps the drawer's own data out of a test about layout.
+          // Keeps the drawer's own data out of a test about layout. The
+          // conversation route makes the drawer ask which PC the thread runs
+          // on, which reaches the real thread stream (and its database) unless
+          // it is fed here.
           trustedDevicesProvider.overrideWith((ref) => Stream.value(const [])),
           connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+          threadsProvider.overrideWith((ref) => Stream.value(const [])),
         ],
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -57,10 +65,31 @@ Future<void> main() async {
   });
 
   testWidgets('a wide window puts the screen beside a drawer', (tester) async {
-    await pump(tester, width: 1280, location: AppRoutes.home);
+    await pump(tester, width: 1280, location: '/conversation/abc');
 
     expect(find.byType(TwoPaneScaffold), findsOneWidget);
     expect(find.byType(NavDrawer), findsOneWidget);
+    expect(find.text('routed screen'), findsOneWidget);
+  });
+
+  testWidgets('at the root the content pane stays quiet', (tester) async {
+    await pump(tester, width: 1280, location: AppRoutes.home);
+
+    // The drawer is already showing the PCs and their work; repeating the
+    // overview beside it would say the same thing twice and give the eye no
+    // reason to prefer either half.
+    expect(find.byType(NavDrawer), findsOneWidget);
+    expect(find.byType(ShellWelcome), findsOneWidget);
+    expect(find.text('routed screen'), findsNothing);
+  });
+
+  testWidgets('the welcome pane is a phone screen, not a shell surface',
+      (tester) async {
+    // On a phone `/` IS the overview — the welcome exists only because a
+    // drawer is already showing what it would otherwise say.
+    await pump(tester, width: 390, location: AppRoutes.home);
+
+    expect(find.byType(ShellWelcome), findsNothing);
     expect(find.text('routed screen'), findsOneWidget);
   });
 
@@ -77,6 +106,145 @@ Future<void> main() async {
       );
       expect(find.text('routed screen'), findsOneWidget);
     }
+  });
+
+  test('a LayoutBuilder never wraps a ref.listen', () {
+    // Found on a tablet, not here: measuring the pane with a `LayoutBuilder`
+    // moved the conversation's whole build into the LAYOUT phase, and
+    // `ref.listen` asserts it is called during BUILD. Opening any conversation
+    // threw. Subscriptions belong in `build`; only the width comes from the
+    // layout callback.
+    //
+    // Pinned structurally rather than by pumping the whole conversation, which
+    // needs a live session: no `ConsumerStatefulWidget` in the app may call
+    // `ref.listen` from inside a builder that runs during layout.
+    // Synchronous on purpose: `testWidgets` runs in a fake-async zone where a
+    // real I/O future never completes, and the test simply hangs.
+    final source = File(
+      'lib/presentation/screens/conversation/conversation_screen.dart',
+    ).readAsStringSync();
+    final buildIndex = source.indexOf('Widget build(BuildContext context) {');
+    final layoutIndex = source.indexOf('return LayoutBuilder(builder:');
+    final listenIndex = source.indexOf('ref.listen(');
+
+    expect(buildIndex, greaterThan(-1));
+    expect(layoutIndex, greaterThan(-1));
+    expect(
+      listenIndex,
+      allOf(greaterThan(buildIndex), lessThan(layoutIndex)),
+      reason: 'ref.listen moved past the LayoutBuilder — it will throw at '
+          'layout time, and only on the screen that opens a conversation',
+    );
+  });
+
+  testWidgets('a wide window replaces the pane instead of stacking',
+      (tester) async {
+    // Found by walking the app, not here: with a permanent drawer, opening a
+    // conversation, walking into its git screen and then picking ANOTHER
+    // conversation used to push every time. Back then retraced every screen
+    // ever glanced at, in an order matching nothing on screen — a stack the
+    // layout gives you no way to see.
+    late BuildContext captured;
+    Widget probe(double width) {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      return MaterialApp(
+        home: Builder(
+          builder: (context) {
+            captured = context;
+            return const SizedBox.expand();
+          },
+        ),
+      );
+    }
+
+    await tester.pumpWidget(probe(1280));
+    expect(captured.hasPermanentPane, isTrue);
+
+    await tester.pumpWidget(probe(390));
+    await tester.pump();
+    expect(
+      captured.hasPermanentPane,
+      isFalse,
+      reason: 'a phone must still PUSH — there back really is somewhere else',
+    );
+  });
+
+  testWidgets('everything the wide layout added leaves a phone alone',
+      (tester) async {
+    // The whole adaptive layer is opt-in by WIDTH, so the phone's behaviour is
+    // the thing most likely to regress silently: the wide rules are the ones
+    // being edited, and nothing on a phone announces when one leaks in.
+    late BuildContext narrow;
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            narrow = context;
+            return const SizedBox.expand();
+          },
+        ),
+      ),
+    );
+
+    // No pane: so `openInPane` pushes, `closePane` pops, and the shell returns
+    // the screen untouched. Each of those is asserted separately elsewhere;
+    // this pins the ONE condition they all hang from.
+    expect(narrow.hasPermanentPane, isFalse);
+  });
+
+  testWidgets('the drawer does not move when the content pane gets a keyboard',
+      (tester) async {
+    // Reported from a tablet: typing in the conversation made the profile row
+    // slide down. The keyboard consumes the bottom padding for the WHOLE
+    // window, so the drawer's SafeArea shrank even though the keyboard was
+    // over the other half. A phone never showed it because a phone has no
+    // drawer beside the keyboard.
+    Future<double> footerTop({required double keyboard}) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            trustedDevicesProvider
+                .overrideWith((ref) => Stream.value(const [])),
+            connectedDeviceProvider.overrideWith((ref) => Stream.value(null)),
+            threadsProvider.overrideWith((ref) => Stream.value(const [])),
+          ],
+          child: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(1280, 900),
+              padding: const EdgeInsets.only(bottom: 24),
+              viewPadding: const EdgeInsets.only(bottom: 24),
+              viewInsets: EdgeInsets.only(bottom: keyboard),
+            ),
+            child: const MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: AppShell(
+                location: AppRoutes.home,
+                child: Text('routed screen'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return tester.getTopLeft(find.byType(ListTile)).dy;
+    }
+
+    final closed = await footerTop(keyboard: 0);
+    final open = await footerTop(keyboard: 320);
+    expect(
+      open,
+      closed,
+      reason: 'the drawer shifted because the OTHER pane opened a keyboard',
+    );
   });
 
   test('the conversation route names the thread the drawer follows', () {

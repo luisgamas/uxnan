@@ -15,6 +15,7 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
 import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
@@ -23,6 +24,7 @@ import 'package:uxnan/presentation/screens/threads/workspace_details_sheet.dart'
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/ux_icon.dart';
@@ -122,7 +124,9 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     await ref
         .read(threadManagerProvider)
         .loadThreads(deviceId: widget.deviceId);
-    if (mounted) unawaited(context.push(AppRoutes.conversation(threadId)));
+    if (mounted) {
+      context.openInPane(AppRoutes.conversation(threadId));
+    }
   }
 
   String _title(List<TrustedDevice> devices) {
@@ -186,7 +190,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
       // Search all of this PC's threads (ignores the agent filter).
       ThreadSearchAnchor(
         threads: threads,
-        onSelect: (id) => context.push(AppRoutes.conversation(id)),
+        onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
       ),
       ThreadSortMenu(
         // The project group only appears when there IS one to order — a PC
@@ -490,7 +494,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
               context,
               group,
               fullPath: group.path,
-              onOpenThread: (id) => context.push(AppRoutes.conversation(id)),
+              onOpenThread: (id) =>
+                  context.openInPane(AppRoutes.conversation(id)),
             ),
             onNewConversation: () => _newConversation(cwd: group.path),
           ),
@@ -871,6 +876,7 @@ class _EmbeddedSpaces extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     // The list rises into place here exactly as it does full-screen; the scope
     // comes free from NeScaffold there and has to be declared here.
     return NeEntranceScope(
@@ -882,27 +888,25 @@ class _EmbeddedSpaces extends StatelessWidget {
               vertical: UxnanSpacing.xs,
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: actions,
+              children: [
+                // Leads the row, and it is the only PRIMARY-toned control in
+                // the drawer: everything else here finds or reorders what
+                // already exists, and this is the one that makes something.
+                // A full-width button under the list read as the drawer's
+                // conclusion rather than as its main action.
+                IconSurface(
+                  icon: UxIcons.addComment,
+                  tooltip: l10n.newThreadAction,
+                  onPressed: onNewConversation,
+                  background: colors.primaryContainer,
+                  foreground: colors.onPrimaryContainer,
+                ),
+                const Spacer(),
+                ...actions,
+              ],
             ),
           ),
           Expanded(child: CustomScrollView(slivers: slivers)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.md,
-              0,
-              UxnanSpacing.md,
-              UxnanSpacing.sm,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.tonalIcon(
-                onPressed: onNewConversation,
-                icon: const UxIcon(UxIcons.addComment),
-                label: Text(l10n.newThreadAction),
-              ),
-            ),
-          ),
         ],
       ),
     );

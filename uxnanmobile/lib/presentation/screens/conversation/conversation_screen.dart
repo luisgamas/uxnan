@@ -24,6 +24,7 @@ import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
@@ -786,10 +787,38 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Auto-scroll to the bottom on new content while the user is near it; a
+    // just-sent message (with the setting on) forces the jump even from a
+    // manually-scrolled position.
+    ref.listen(activeTimelineProvider, (previous, next) {
+      final snap = next.value;
+      if (snap == null || snap.messages.isEmpty) return;
+      // First real content for this open: restore the saved scroll position
+      // (or the bottom) instead of leaving it at the top.
+      if (!_restoredScroll) {
+        _restoreScroll();
+        return;
+      }
+      // After the initial restore, keep following the bottom on new content
+      // when the user is already near it (or just sent a message).
+      if (_forceScrollOnSend) {
+        _forceScrollOnSend = false;
+        _autoFollow.resume();
+      }
+      if (_autoFollow.shouldFollow) {
+        _scheduleFollowLatest();
+      }
+    });
+
     // The conversation is not always the window: inside the shell's content
     // pane it has the window MINUS a 320 dp drawer. Measuring the window would
-    // center the text against space it does not own — off to one side, with
+    // centre the text against space it does not own — off to one side, with
     // the rail hanging in the middle of nothing.
+    //
+    // Only the WIDTH comes from here. A `LayoutBuilder`'s callback runs during
+    // LAYOUT, not build, so `ref.listen` inside it throws — subscriptions stay
+    // in `build` above, where Riverpod can tie them to this element's
+    // lifetime.
     return LayoutBuilder(builder: _buildWithin);
   }
 
@@ -927,29 +956,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       _refreshGitFor(cwd);
       _checkCwd(cwd);
     }
-
-    // Auto-scroll to the bottom on new content while the user is near it; a
-    // just-sent message (with the setting on) forces the jump even from a
-    // manually-scrolled position.
-    ref.listen(activeTimelineProvider, (previous, next) {
-      final snap = next.value;
-      if (snap == null || snap.messages.isEmpty) return;
-      // First real content for this open: restore the saved scroll position
-      // (or the bottom) instead of leaving it at the top.
-      if (!_restoredScroll) {
-        _restoreScroll();
-        return;
-      }
-      // After the initial restore, keep following the bottom on new content
-      // when the user is already near it (or just sent a message).
-      if (_forceScrollOnSend) {
-        _forceScrollOnSend = false;
-        _autoFollow.resume();
-      }
-      if (_autoFollow.shouldFollow) {
-        _scheduleFollowLatest();
-      }
-    });
 
     final topInset = NeTopBar.preferredHeight(context);
 
@@ -1301,7 +1307,9 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               leading: IconSurface(
                 icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                // Pops on a phone; empties the pane on a wide window, where
+                // there is nothing behind this to pop back to.
+                onPressed: context.closePane,
               ),
               title: _ModelPill(
                 model: environment.modelName,
