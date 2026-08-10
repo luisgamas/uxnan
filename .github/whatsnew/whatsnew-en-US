@@ -1,7 +1,9 @@
-Faster replies. Answers appear smoothly as they are written, already formatted — long ones no longer slow down as they grow.
+Your conversations are now grouped by the folder they run in, with the repository shown above the folders that belong together.
 
-Conversation list: each row shows the start of the agent's latest reply, not always its first.
+Each folder tells you at a glance whether it has uncommitted work, or is ahead of or behind its remote.
 
-Context and usage: Codex, Grok and Zero now report how much context a conversation uses, so their meters and your profile stats work like the other agents'.
+Sort projects, folders and conversations the way you prefer.
 
-Fixes: the queued-message bubble is drawn properly, and the effort menu no longer opens behind the keyboard.
+On tablets and foldables the app uses the whole screen: the list stays beside what you are reading.
+
+A refreshed look throughout. Gemini CLI has been removed; every other agent works as before.

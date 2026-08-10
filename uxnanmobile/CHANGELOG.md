@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.0.19-alpha.20260810+20260810] - 2026-08-10
+
 ### Fixed — the profile stopped being clamped to a paragraph's width
 
 `NeScaffold` already stops every screen at its window class's content width

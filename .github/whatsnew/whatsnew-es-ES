@@ -1,7 +1,9 @@
-Respuestas más rápidas. Aparecen con fluidez mientras se escriben y ya con formato: las largas no se ralentizan al crecer.
+Tus conversaciones se agrupan por la carpeta en la que trabajan, con el repositorio por encima de las carpetas que van juntas.
 
-Conversaciones: cada fila muestra el inicio de la última respuesta del agente, no siempre la primera.
+Cada carpeta indica de un vistazo si tiene cambios sin confirmar o si va por delante o por detrás de su remoto.
 
-Contexto y consumo: Codex, Grok y Zero ya informan cuánto contexto usa la conversación, así que sus medidores y tus estadísticas funcionan como en los demás.
+Ordena proyectos, carpetas y conversaciones como prefieras.
 
-Correcciones: la burbuja de mensajes en cola se dibuja bien y el menú de esfuerzo ya no queda tras el teclado.
+En tablets y plegables la app aprovecha toda la pantalla: la lista se queda junto a lo que estás leyendo.
+
+Nueva imagen en toda la app. Gemini CLI ya no está; el resto de agentes sigue igual.
