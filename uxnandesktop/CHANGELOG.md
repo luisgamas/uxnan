@@ -7,6 +7,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Codex's sub-agents show in the agent view.** Codex 0.147 reports children
+  through `SubagentStart` / `SubagentStop` with the same payload Claude Code
+  uses (`agent_id`, `agent_type`, `last_assistant_message`) — uxnan simply
+  wasn't subscribed to the two events, so a `spawn_agent` run looked like the
+  parent working alone. Verified against a real run. Grok's children are
+  verified too, and OpenCode's re-verified on 1.18.15, which makes four agents
+  that report a roster (Claude Code, Codex, Grok, OpenCode).
+
+- **A sub-agent row now says what the child is doing.** Each running child shows
+  its kind as a chip, plus its task or the tool it is running right now. A
+  finished child's row still disappears; it stays in the parent's count badge.
+  There is deliberately no elapsed time on a child — the shared clock ticks every
+  30 s, so on a child that lives twelve seconds it would sit frozen and then jump.
+
 - **OMP reports precise state too — twenty-one agents.** It ships Pi's agent
   runtime under its own home, so it loads the very same extension; only the kind
   it declares differs. Installing into Pi's directory (which is what happened
@@ -264,6 +278,49 @@ The file-tree toolbar buttons (search, collapse, refresh, close search) and the
 new controls now carry `aria-label`s, so the panel is operable by name.
 
 ### Fixed
+
+- **The "landed" chip appeared on worktrees that had never been touched.** A
+  worktree created from `main` and left alone showed it as soon as `main` moved
+  on, sitting next to genuinely merged branches. Ancestry cannot tell "has
+  landed" from "has not started" — a branch that contributed nothing has all of
+  its commits trivially reachable from the base, so `--is-ancestor` says yes.
+  The previous guard compared the two tips, which only covers the window before
+  the base moves.
+
+  `branch_has_diverged` now asks the branch's **reflog** where it was created and
+  reports it unfinished when it never moved from there. That is the only thing
+  that can decide it: two branches can be the same commit — create one from
+  another's tip and touch neither — while one landed real work and the other
+  never began, so no walk of the commit graph can separate them. Without a
+  reflog (expired, disabled, a fresh clone) it falls back to the shape of the
+  history: a tip sitting on the base's own first-parent chain is an older point
+  of that line, not a contribution to it. When git says nothing, the answer is
+  "unfinished" — under-reporting costs a manual close, over-reporting offers to
+  delete work that never happened.
+
+- **A Grok sub-agent no longer marks its parent "Done" while it is still
+  working.** Grok runs a child in a session of its own, and the child's events
+  come up under the parent's terminal: its `session_end` mapped to `done` on the
+  parent, and no done-gate could help because the child had already finished. Any
+  event carrying a known child's session id is now attributed to that child's row
+  and kept off the parent. The same bug had two more faces: the child's
+  `user_prompt_submit` overwrote the parent's conversation title, and the child's
+  session id landed where the tab's **resume** id belongs — so a restored tab
+  would have come back on the sub-agent's conversation rather than yours. Claude
+  and Codex were never affected: their children's events carry the parent's
+  session id.
+
+- **Grok's sub-agent answer reaches the roster.** Grok's payload is camelCase
+  throughout, so its `lastAssistantMessage` was dropped and the child's row kept
+  showing the task it had been given instead of what it replied.
+
+- **Cursor's reports were being thrown away on Windows.** Its hook payload is
+  prefixed with a UTF-8 **byte-order mark**, which `serde_json` refuses — and the
+  body is parsed leniently, so the failure degraded to "no body", which for a raw
+  provider event means no event name and a silently dropped report. Cursor's cards
+  therefore never moved off the coarse working/idle fallback. The BOM is now
+  stripped before parsing, for any agent that sends one. Found by running the real
+  CLI end to end.
 
 - **A second uxnan window stole the first one's hook reports.** Every window runs
   its own hook server on its own port with its own token, and each terminal is

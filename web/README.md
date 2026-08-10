@@ -24,7 +24,8 @@ the technical detail lives in each component's `README.md` and `docs/`.
 ## Stack
 
 Next.js 15 (App Router) with `output: "export"` — a fully static site, no server
-runtime. React 19, TypeScript, Tailwind CSS v4, `lucide-react` for icons, Geist +
+runtime. React 19, TypeScript, Tailwind CSS v4, Hugeicons for icons — the same
+set the desktop app draws (see [`docs/design.md`](docs/design.md)) — Geist +
 JetBrains Mono self-hosted through `next/font`. No analytics, no third-party
 scripts, no external requests at runtime — the agent marks are the repository's
 own SVGs (see [`docs/design.md`](docs/design.md)).

@@ -1,7 +1,7 @@
 /**
  * Writes a version into every file that carries it, then reads them all back.
  *
- * The read-back is the point. `VERSIONS.md` says "verify each manifest version
+ * The read-back is the point. `docs/releases.md` says "verify each manifest version
  * equals its lockfile counterpart" and asks a human to do it; this does it, and
  * refuses to leave a half-bumped tree behind.
  *

@@ -128,13 +128,60 @@ distinct, precise states** plus a derived idle:
 > `node`-launched agent that process detection can't name. Process detection is only
 > the fallback for agents that report no hook.
 >
-> **Sub-agents.** When an agent spawns children — **Claude Code's Task tool** or
-> **OpenCode's `task`** (which runs as a child session) — they show as **nested
-> rows** under the parent with a count badge (active / total), and the parent won't
-> read "Done" while a child is still working. Children ride the same
-> `SubagentStart` / `SubagentStop` lifecycle (OpenCode's plugin maps its child
-> sessions to it), keyed by the child's id so a background child never flips the
-> parent. Codex / Gemini / Pi have no sub-agent concept.
+> **Sub-agents.** When an agent spawns children they show as **nested rows** under
+> the parent — each with its kind and its task (or the tool it is running, when the
+> CLI reports one) — plus a count badge (active / total) on the parent, which won't
+> read "Done" while a child is still working. A finished child's row disappears
+> (its answer is the parent's business by then) but it stays in the count. Children
+> ride one `SubagentStart` / `SubagentStop` lifecycle, keyed by the child's id so a
+> background child never flips the parent.
+>
+> A child's row carries **no elapsed time**: the app's shared clock ticks every
+> 30 s, which is right for the parent's "4m" and useless for a child that lives
+> twelve seconds — it would sit frozen and then jump.
+>
+> Four wired agents report children, each validated by running it and reading what
+> it emits:
+>
+> | Agent | How it spawns | Child id | Its final answer |
+> |---|---|---|---|
+> | **Claude Code** 2.1.225 | `Agent` tool | `agent_id` | `last_assistant_message` |
+> | **Codex** 0.147.0 | `spawn_agent` tool | `agent_id` | `last_assistant_message` |
+> | **Grok** 0.2.118 | subagent tool | `subagentId` | `lastAssistantMessage` |
+> | **OpenCode** 1.18.15 | `task` tool (a child **session**) | child session id | — |
+>
+> Grok and Cursor spell the events their own way (`subagent_start`,
+> `subagentStart`); every spelling normalizes to the same pair. **Droid** fires
+> `SubagentStop` with no child id at all, so it is registered but its report is
+> ignored rather than turned into a row that names nothing. **Cursor** runs a
+> `Task` sub-agent but, as of 2026.08.04, emits no `subagentStart`/`subagentStop`
+> for it (measured; it matches an open report on Cursor's own forum) — the two
+> events stay registered, ready for the day it does.
+>
+> **Whose event is it?** Grok and OpenCode run a child in a **session of its own**,
+> and its events come up the same pipe under the parent's terminal. Anything
+> carrying a known child's session id is attributed to that child's row and kept
+> off the parent — measured on Grok, whose child emits its own `user_prompt_submit`
+> (which used to overwrite the parent's conversation title) and its own
+> `session_end` (which used to read as the parent being **done** while it was still
+> working, and put the child's session id where the tab's resume id belongs).
+> Claude and Codex need none of this: their children's events carry the *parent's*
+> session id, so a child's tool use is honestly the parent's activity. In practice
+> **Grok** is the one that fills a child's *current tool* — OpenCode's plugin
+> already swallows its children's events inside the CLI, which is the same fix one
+> layer earlier.
+>
+> One consequence worth knowing: Claude and Codex only name a child's task when it
+> **finishes**, so while one runs its row reads `[general-purpose] Sub-agent`. That
+> is deliberate — the task is knowable from the spawning tool call, but pairing it
+> to the child that appears next is guesswork the moment two are spawned at once,
+> and a row that confidently shows the wrong task is worse than one that shows
+> none.
+>
+> **Who has no children to report.** Pi has no sub-agent concept at all. Gemini CLI
+> is deprecated. Antigravity and OMP *do* spawn children, but neither exposes them
+> where we can see: Antigravity's hooks are only its execution loop, and OMP's
+> sub-agents live in its RPC/TUI layer, not in the plugin bus its reporter rides.
 
 These states show up everywhere you track an agent:
 
@@ -239,6 +286,20 @@ description in `en.ts`/`es.ts`. The six above it each needed machinery of their
 own — a Node relay, a trust hash, an in-process plugin, a dot-relative command —
 which is why they are still hand-written.
 
+**Zero is deliberately not wired**, even though it has everything for it: a hooks
+CLI of its own (`zero hooks add … --event`), the events we would want
+(`beforeTool`, `afterTool`, `sessionStart`, `sessionEnd`) and even sub-agent
+events (`specialistStart` / `specialistStop`, its *specialists*). The reason is
+measured, on **Zero 0.6.0 / Windows**: registering **any** hook makes the agent
+refuse every tool with *"blocked by hook … hook timed out before returning a
+verdict"* — and the hook's command is **never executed at all** (a probe that
+only appended a line to a file and printed `{}` left an empty file). Tried in its
+TUI *and* headless (`-p`, `exec`), and with the command as a `.cmd`, as
+`cmd.exe /c …`, and as a bare `curl.exe`; removing the hooks restores the agent
+immediately. Wiring it would break Zero for anyone who has it, so Zero keeps
+reading its state from its own on-disk session (`zero.rs`) until the CLI runs a
+hook it declares. `FOR-DEV.md` tracks it.
+
 The per-agent notes below are what each CLI made us learn the hard way:
 
 - **Grok** gets a file of its own, `~/.grok/hooks/uxnan-status.json`. Grok merges
@@ -309,7 +370,10 @@ The per-agent notes below are what each CLI made us learn the hard way:
   end marker is still recovered on the next install rather than accumulating.
 - **Codex trust.** Codex 0.129+ only runs a hook whose exact identity is trusted;
   the ADE also writes the reproduced `trusted_hash` into `~/.codex/config.toml`,
-  so the hook actually fires (a raw `hooks.json` alone would sit un-run).
+  so the hook actually fires (a raw `hooks.json` alone would sit un-run). The
+  trust is **per event**, keyed by Codex's own snake_case label — so subscribing
+  to a new event means adding it to `codex_trust::CODEX_EVENTS` with that label,
+  never to `hooks.json` alone.
 - **OpenCode / Pi** install a plugin / extension file into the agent's own
   plugin / extension directory (only overwriting a file the ADE itself manages).
 - **Restart the agent afterward** so it re-reads its config (Claude picks up

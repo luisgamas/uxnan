@@ -2,7 +2,7 @@
  * The release registry: one place that knows what each component is, where its
  * version lives, and which tag drives it.
  *
- * `VERSIONS.md` describes all of this in prose for humans. This file is the
+ * `docs/releases.md` describes all of this in prose for humans. This file is the
  * machine's copy — when the two disagree, one of them is a bug, and the tests in
  * `components.test.mjs` pin the parts that have burned us before (a version file
  * left out of a bump is invisible until a release ships wrong).
@@ -91,6 +91,12 @@ export const COMPONENTS = [
     // Both channels share one numeric line: a base must be new against BOTH, or
     // the Windows MSI and the updater cannot see the newer build.
     tagPrefixes: ['desktop-stable-v', 'desktop-nightly-v'],
+    // `uxnandesktop/scripts/` is check, benchmark and release tooling. Tauri
+    // declares no `bundle.resources` and its `beforeBuildCommand` is the Vite
+    // build, so nothing in there reaches an installer. This is deliberately NOT
+    // a global rule: `bridge/package.json` lists `scripts` in its `files`, so
+    // the bridge's scripts folder is published to npm and does ship.
+    nonShipping: [/^uxnandesktop\/scripts\//],
     versionFiles: [
       { file: 'uxnandesktop/src-tauri/tauri.conf.json', adapter: 'json' },
       { file: 'uxnandesktop/src-tauri/Cargo.toml', adapter: 'cargo-toml' },
@@ -120,9 +126,16 @@ export function component(id) {
   return found;
 }
 
-/** True when a changed path cannot affect what a build produces. */
-export function isNonShipping(file) {
-  return NON_SHIPPING.some((rule) => rule.test(file));
+/**
+ * True when a changed path cannot affect what a build produces.
+ *
+ * `meta` adds the component's own exceptions, because "does this ship?" is not
+ * always answerable from the path alone — the same `scripts/` folder is dev
+ * tooling in one component and published files in another.
+ */
+export function isNonShipping(file, meta) {
+  if (NON_SHIPPING.some((rule) => rule.test(file))) return true;
+  return (meta?.nonShipping ?? []).some((rule) => rule.test(file));
 }
 
 /**

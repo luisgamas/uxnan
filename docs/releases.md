@@ -3,9 +3,16 @@
 Everything about cutting and publishing a version of Uxnan: what happens by
 itself, what waits for you, and what to do when something goes wrong.
 
-[`VERSIONS.md`](../VERSIONS.md) stays the source of truth for the **convention**
-(version formats, tag names, which files carry a version). This page is about the
-**machinery** that follows it.
+This page is the whole of it: the **convention** (version formats, tag names,
+which files carry a version) and the **machinery** that follows it.
+
+> **`VERSIONS.md` was removed on 2026-08-10.** It held the convention — which now
+> lives here — and a hand-kept history table of what shipped when. The table had
+> no readers: versions come from git tags, and *what shipped* is a GitHub release
+> with its notes and its installers. Keeping a second copy by hand only created a
+> way to be wrong (it was already forgotten once, for desktop 0.0.29). Every row
+> it ever held is in the repository's history if you need it —
+> `git show <commit>:VERSIONS.md`.
 
 ---
 
@@ -26,9 +33,9 @@ itself, what waits for you, and what to do when something goes wrong.
 
 **Automated.** Working out whether a component genuinely changed, computing the
 next version, writing it into every version-bearing file, proving those files
-agree, adding the `VERSIONS.md` history row, committing, tagging, pushing the
-tag, opening the pull request that brings all of it into `main`, and — for a
-desktop **nightly** — writing the release notes and publishing.
+agree, committing, tagging, pushing the tag, opening the pull request that brings
+all of it into `main`, and — for a desktop **nightly** — writing the release notes
+and publishing.
 
 **Not automated, on purpose.**
 
@@ -38,11 +45,9 @@ desktop **nightly** — writing the release notes and publishing.
   That is a judgement call, not a build step.
 - **Merging the bump pull request.** `main` is protected and stays that way; the
   run opens the PR, you merge it. The tags already point at those commits, so the
-  builds never wait for it.
-- **Enriching the `VERSIONS.md` note.** The row itself is written for you — date,
-  version in its column, and a summary seeded from the pull request titles the
-  release contains. Rewrite that summary if it deserves better prose; nobody has
-  to remember to add the row.
+  builds never wait for it. **Do not leave it open**: while it is, the tag is not
+  an ancestor of `main`, and that state has bitten once — see *When something goes
+  wrong* → *A version was cut for nothing*.
 - **The CHANGELOG.** The tooling never writes your prose. For a stable release,
   rename `## [Unreleased]` to the version yourself before cutting.
 
@@ -132,6 +137,103 @@ version with no build behind it — worse than stopping.
 
 ---
 
+## The version convention
+
+Components version **independently** — each has its own patch — but a shared
+`-alpha.YYYYMMDD` date suffix marks releases cut on the same day, so you can tell
+which versions go together. Base SemVer starts at `0.0.1`: pre-1.0 means
+unstable, and breaking changes are allowed.
+
+| Component | Version form | Tag |
+|---|---|---|
+| shared / bridge / relay | `0.0.PATCH-alpha.YYYYMMDD` | `shared-v*`, `bridge-v*`, `relay-v*` |
+| mobile | `0.0.PATCH-alpha.YYYYMMDD+BUILD` | `mobile-v*` (Play needs a rising integer) |
+| desktop — stable | `0.0.PATCH` | `desktop-stable-v0.0.PATCH` |
+| desktop — nightly | `0.0.PATCH-nightly.YYYYMMDD.N` | `desktop-nightly-v0.0.PATCH-nightly.YYYYMMDD.N` |
+
+`YYYYMMDD` is UTC and orders correctly under SemVer. Desktop's `N` starts at `1`
+and only separates several nightlies cut on the same date.
+
+**The desktop's numeric base must be new against *both* channels.** The Windows
+MSI and Tauri's updater compare only `0.0.PATCH`, so reusing a base does not fail
+— it ships a build nobody can see. A stable therefore takes the next base above
+every nightly too, and going from a higher nightly back to an older stable is a
+downgrade the updater will not perform. The tooling refuses a base that does not
+move past both; do not work around it.
+
+**`web/` is deliberately outside all of this.** It publishes no artifact and has
+no consumers, so it carries no tag: a push to `main` runs `deploy-web.yml`, which
+uploads the static export to Cloudflare Pages. See [`web/docs/deploy.md`](../web/docs/deploy.md).
+
+### Which files carry a version
+
+A release must move **every** file below *and its lockfile*, in the same commit.
+A stale lockfile is silent drift, because the release workflows re-apply the
+version at build time with `--allow-same-version` — which **masks** an un-bumped
+committed lock. That is exactly how `uxnandesktop/package-lock.json` sat at
+`0.0.2` while the app shipped `0.0.4`.
+
+| Component | Files |
+|---|---|
+| shared / bridge / relay | `<component>/package.json` **and the root `package-lock.json`** — use `npm version <v> -w <ws> --no-git-tag-version`, which updates both |
+| desktop | `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` (the `uxnan-desktop` entry), `uxnandesktop/package.json`, `uxnandesktop/package-lock.json` |
+| mobile | `uxnanmobile/pubspec.yaml` (its lock carries no app version) |
+
+Desktop files take the **numeric base only** (`0.0.PATCH`): the Windows MSI
+rejects a non-numeric pre-release id, so the full nightly version rides the tag
+and the compiled-in `UXNAN_VERSION`. Mobile's `pubspec.yaml` must match its tag
+exactly — `release-mobile.yml` fails the release if they disagree.
+
+`scripts/release/components.mjs` is the machine-readable copy of this table, and
+`npm run release:prepare` writes every file then reads them all back to prove
+they agree. When a component gains a file that carries a version, it goes in that
+registry **and** in the table above.
+
+### npm dist-tags
+
+Packages publish to **`latest`**, so `npm install -g uxnan-bridge` and the
+bridge's own update check always resolve the newest release. `alpha`/`beta` are
+opt-in, added by hand per build when wanted:
+`npm dist-tag add uxnan-bridge@<version> beta`.
+
+This was once wrong in a way worth remembering: the workflow published under
+`--tag alpha`, and since npm only sets `latest` on a package's *first* publish,
+`latest` stayed pinned to the oldest build while newer ones hid under `alpha` —
+`npm install` handed you the first version ever released. Fixed in the workflow,
+and the affected packages were moved forward by hand
+(`npm dist-tag add <pkg>@<version> latest`, which needs publish rights and is not
+something CI does). All three now resolve correctly; verify any time with
+`npm view <pkg> dist-tags`.
+
+---
+
+## Cutting one by hand
+
+You should not need this — `release.yml` does all of it, and cutting by hand is
+how the drift above happened. It is here for the case where the workflow cannot
+run at all.
+
+1. **Pre-flight.** The commit you will tag is green on CI, and its `CHANGELOG.md`
+   `[Unreleased]` says what actually ships. `npm run release:status` confirms the
+   component genuinely has something to release.
+2. **Write the version.** `npm run release:prepare -- <component> [--channel=nightly]`
+   computes it, refuses it if the base would not move past every channel, writes
+   every file from the registry, reads them back, and prints the exact commit and
+   tag commands. It never commits, tags or pushes.
+3. **Mobile only, and non-negotiable:** commit **and push** the `pubspec.yaml`
+   bump *before* tagging, so the tagged commit carries the matching version. Also
+   rewrite `.github/whatsnew/whatsnew-en-US` and `whatsnew-es-ES` — a short,
+   non-technical, user-facing summary, **≤ 500 characters each**. The workflow
+   fails the release if either is missing, empty, a leftover placeholder, or over
+   the limit.
+4. **Tag and push**, which is what triggers `release-<component>.yml`. For npm
+   components, respect the ordering in the next section.
+5. **Validate.** A red or half-finished run is not a release. Confirm the artifact
+   landed: `npm view <pkg> dist-tags.latest`, the Play open-testing track, or the
+   desktop GitHub Release.
+
+---
+
 ## Order, and why it is not negotiable
 
 `release-npm.yml` resolves `@uxnan/shared` **from npm at build time**. Tagging
@@ -218,8 +320,18 @@ existing tag is a no-op for git but a real event for Actions — or delete and
 re-push it.
 
 **A release ran but published nothing.** Check whether every component was
-skipped: the summary lists each one and why. "only docs changed" means exactly
-that, and it is the intended behaviour.
+skipped: the summary lists each one and why. "nothing that ships changed" means
+exactly that, and it is the intended behaviour.
+
+**A version was cut for nothing** — identical installers, an empty release body.
+Its predecessor's release pull request was left open. A tag on an unmerged
+`release/…` branch is not an ancestor of `main`, so diffing `main` against it
+reports the version files as changed, and by path a manifest is shippable. This
+cut 0.0.34 out of nothing and would have repeated every night. Two things guard
+it now: a version file is judged by *what* changed inside it (only the version
+line moved → bookkeeping), and `npm run release:status` prints a ⚠ when the last
+tag has not landed on `main`. The fix for the state itself is simply to merge the
+pull request. The wasted version number is not recoverable — bases never repeat.
 
 **npm never served the new shared.** The run fails after tagging shared. Check
 `release-npm.yml`; once it is green and `npm view @uxnan/shared version` reports
@@ -280,5 +392,6 @@ the bridge alone once `npm view @uxnan/shared version` reports the new version.
 | `.github/workflows/release-desktop.yml` | builds installers, writes the body, publishes a nightly |
 | `.github/workflows/release-desktop-manifest.yml` | rolls `latest.json` onto a channel when a release is published |
 | `.github/workflows/release-npm.yml`, `release-mobile.yml` | publish to npm and Play |
-| `scripts/release/` | the decisions: what needs releasing, what version, which files, and the history row ([README](../scripts/release/README.md)) |
-| `VERSIONS.md` | the convention, and the release history |
+| `scripts/release/` | the decisions: what needs releasing, what version, and which files carry it ([README](../scripts/release/README.md)) |
+| `scripts/release/components.mjs` | the registry — the machine's copy of *Which files carry a version* |
+| this page | the convention, and the machinery that follows it |

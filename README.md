@@ -156,7 +156,7 @@ Open a project's Pull Requests, Issues and Actions in a focused view that replac
 <td width="46%" valign="top">
 
 ### Watch subagents work under their parent
-A Claude Code Task-tool subagent (or an OpenCode child session) shows up live as a nested row under the agent that spawned it — and the parent won't read "Done" while a child is still working.
+A subagent from Claude Code, Codex, Grok or OpenCode shows up live as a nested row under the agent that spawned it — with its kind and what it is working on — and the parent won't read "Done" while a child is still working.
 
 [Agent hooks & precise states →](uxnandesktop/docs/agent-hooks.md)
 
