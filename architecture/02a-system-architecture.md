@@ -1023,92 +1023,79 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 > hoja de pulsacion larga. Sin respuesta la fila no dibuja nada — nunca
 > "limpio", que seria una mentira con aspecto de buena noticia.
 
+> **La misma tabla de rutas se dibuja en dos sitios distintos.** A partir de
+> 840 dp de ancho de ventana la app deja de ser una pila de pantallas: una
+> unica `ShellRoute` envuelve las rutas planas y `AppShell` decide si la
+> pantalla enrutada ES la ventana o es el **panel de contenido** junto a un
+> navigation drawer permanente. La tabla no cambia, asi que cada deep link y
+> cada notificacion push siguen funcionando en los dos anchos sin un segundo
+> modelo de navegacion que mantener en paralelo. **El tope son dos paneles**:
+> las divisiones anidadas (ajustes y su seccion) miden sus propias constraints,
+> no la ventana, y una tercera columna en una tablet no le sirve a nadie. Lo
+> que cambia con el ancho es el **significado de un toque** — abrir reemplaza
+> el panel en vez de apilar — y eso vive en `pane_navigation.dart`. El detalle
+> esta en `architecture/02c` §3.3.
+>
+> **`detail` es siempre el `child` del router.** No es estilo: ese `child` es
+> el `Navigator` de la `ShellRoute`, y `GoRouterDelegate.popRoute` — a donde va
+> el boton atras del sistema — lo desreferencia sin comprobar. Sustituirlo por
+> otro widget en alguna ruta rompe el boton atras en TODA la app.
+
 ```
 lib/presentation/
+├── router/
+│   ├── app_router.dart                   # tabla de rutas PLANA + la unica ShellRoute
+│   └── pane_navigation.dart              # openInPane / closePane: que significa un toque
 ├── screens/
 │   ├── shell/
-│   │   ├── app_shell_screen.dart         # scaffold raiz + nav
-│   │   └── session_coordinator_screen.dart
-│   ├── home/
-│   │   ├── home_screen.dart              # estado vacio, banners
-│   │   └── home_view_model.dart
-│   ├── sidebar/
-│   │   ├── sidebar_screen.dart           # lista threads, busqueda, proyectos
-│   │   ├── thread_list_item.dart
-│   │   └── sidebar_view_model.dart
+│   │   ├── app_shell.dart                # builder de la ShellRoute: pantalla o panel
+│   │   ├── app_shell_screen.dart         # TwoPaneScaffold (tambien para splits anidados)
+│   │   ├── nav_drawer.dart               # drawer permanente: PC, su trabajo, y tu
+│   │   └── shell_welcome.dart            # el panel tranquilo, antes de abrir nada
+│   ├── devices/
+│   │   └── my_devices_screen.dart        # portada: identidad, PCs y su trabajo
+│   ├── threads/
+│   │   ├── threads_screen.dart           # Espacios: proyectos > carpetas > conversaciones
+│   │   ├── space_rows.dart               # filas de proyecto y de carpeta
+│   │   ├── thread_tile.dart              # fila de conversacion (estado derivado)
+│   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu en cascada
+│   │   ├── workspace_git_indicators.dart # sin confirmar / adelante / atras por carpeta
+│   │   ├── workspace_details_sheet.dart  # hoja de pulsacion larga: ruta, rama, upstream
+│   │   ├── workspace_browser_sheet.dart  # explorador de carpetas del bridge
+│   │   ├── archived_threads_screen.dart
+│   │   └── new_conversation_screen.dart  # pantalla completa en movil, dialogo en ancho
 │   ├── conversation/
 │   │   ├── conversation_screen.dart      # pantalla de turno activa
-│   │   ├── conversation_view_model.dart
-│   │   ├── timeline/
-│   │   │   ├── timeline_widget.dart
-│   │   │   ├── timeline_reducer.dart
-│   │   │   └── timeline_snapshot.dart
-│   │   ├── messages/
-│   │   │   ├── message_renderer.dart
-│   │   │   ├── markdown_renderer.dart
-│   │   │   ├── mermaid_renderer.dart
-│   │   │   ├── code_block_widget.dart
-│   │   │   ├── command_execution_card.dart
-│   │   │   ├── approval_request_card.dart
-│   │   │   ├── subagent_card.dart
-│   │   │   ├── plan_mode_widget.dart
-│   │   │   └── workspace_preview_widget.dart
-│   │   ├── composer/
-│   │   │   ├── composer_widget.dart
-│   │   │   ├── attachment_picker.dart
-│   │   │   ├── mention_autocomplete.dart
-│   │   │   ├── file_autocomplete.dart
-│   │   │   └── slash_command_menu.dart
-│   │   ├── git/
-│   │   │   ├── git_actions_toolbar.dart
-│   │   │   ├── branch_selector_sheet.dart
-│   │   │   ├── diff_viewer.dart
-│   │   │   ├── revert_sheet.dart
-│   │   │   └── worktree_handoff_overlay.dart
-│   │   └── support/
-│   │       ├── connection_recovery_card.dart
-│   │       ├── error_card.dart
-│   │       ├── status_sheet.dart
-│   │       └── terminal_indicator.dart
+│   │   ├── session_environment.dart
+│   │   ├── messages/                     # render de bloques, markdown, diffs, tarjetas
+│   │   ├── composer/                     # pill flotante, cinta de opciones, adjuntos
+│   │   ├── files/                        # navegador de archivos + visor/editor
+│   │   ├── git/                          # estado, historial, detalle de commit
+│   │   └── support/                      # selector de modelo, recuperacion, errores
 │   ├── onboarding/
-│   │   ├── onboarding_screen.dart
-│   │   ├── welcome_page.dart
-│   │   ├── features_page.dart
-│   │   ├── install_step_page.dart
-│   │   └── command_card_widget.dart
-│   ├── pairing/
-│   │   ├── qr_scanner_screen.dart
-│   │   ├── manual_code_screen.dart
-│   │   ├── pairing_validator.dart
-│   │   └── update_prompt_dialog.dart
-│   ├── devices/
-│   │   ├── my_devices_screen.dart
-│   │   └── device_card.dart
-│   ├── settings/
-│   │   ├── settings_screen.dart
-│   │   ├── connection_settings.dart
-│   │   ├── agent_settings.dart
-│   │   ├── notification_settings.dart
-│   │   └── about_screen.dart
-│   ├── ssh_terminal/
-│   │   ├── terminal_screen.dart
-│   │   ├── connection_editor.dart
-│   │   └── terminal_surface.dart
-│   └── projects/
-│       ├── projects_screen.dart
-│       └── project_editor.dart
-├── widgets/                              # componentes reutilizables
-│   ├── uxnan_button.dart
-│   ├── uxnan_badge.dart
-│   ├── uxnan_card.dart
-│   ├── connection_status_indicator.dart
-│   ├── thread_status_badge.dart
-│   └── adaptive_bottom_sheet.dart
+│   ├── pairing/                          # QR, codigo manual, descubrimiento en LAN
+│   ├── profile/
+│   │   ├── profile_screen.dart           # metricas agregadas + heatmap + uso
+│   │   ├── agent_activity_section.dart
+│   │   ├── usage_section.dart
+│   │   └── pc_details_screen.dart        # ficha por PC
+│   └── settings/
+│       ├── settings_screen.dart          # accesos, y su seccion al lado en ancho
+│       ├── sections/                     # una pantalla por seccion
+│       ├── personalization_screen.dart
+│       ├── theme_manager_screen.dart     # + editor de tema custom
+│       └── licenses/
+├── providers/                            # Riverpod manual (sin codegen)
+├── widgets/                              # primitivas compartidas (NeScaffold, UxIcon, ...)
 └── theme/
     ├── uxnan_theme.dart
+    ├── breakpoints.dart                  # UxnanBreakpoint: la unica frontera responsive
     ├── colors.dart
     ├── typography.dart
-    └── spacing.dart
+    ├── spacing.dart                      # tamanios, radios, y el grosor de trazo de iconos
+    ├── motion.dart                       # muelles M3E + duraciones de entrada
+    ├── icons.dart                        # catalogo UxIcons (Hugeicons)
+    └── markdown.dart
 ```
 
 #### 5.4.3 Navegacion
