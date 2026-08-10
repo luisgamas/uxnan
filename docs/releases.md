@@ -117,11 +117,23 @@ writes commit metadata. What GitHub matches against the bypass list is the
 identity behind the token: `actions/create-github-app-token`, passed to
 `actions/checkout` and to `gh` as `GH_TOKEN`.
 
-The run merges the pull request itself only after its **`verify`** checks pass.
+The `land` job merges the pull request only after its **`verify`** checks pass.
 Deliberately not *every* check on the commit: the release build reports onto the
 same SHA, because the tag points at it, and a macOS leg is allowed to fail there
 on purpose. A red `verify` means `main` itself is red — this pull request adds
-nothing but version numbers — so it is left open and the run goes red with it.
+nothing but version numbers — so it is left open and the job goes red with it.
+**Re-run just that job** once the checks are fixed; it is a separate job for
+exactly that reason, since re-running the cut would compute a *next* version and
+tag it, burning a number to fix a merge.
+
+One implementation detail worth keeping, because it cost a release to find: the
+merge is the **REST** endpoint (`PUT /repos/…/pulls/…/merge`), not `gh pr merge`.
+The latter goes through GraphQL `mergePullRequest`, which refuses on the pull
+request's static state — *"the base branch policy prohibits the merge"* — before
+the actor's bypass is ever consulted; the ruleset never even recorded an
+evaluation. It is the same call `gh pr merge --admin` makes: the flag is named
+for how a human uses it, but what it selects is this path, and the server then
+authorizes against whatever the token's actor is allowed to do.
 
 ### Setting it up (once, in a browser — the API cannot create apps)
 
