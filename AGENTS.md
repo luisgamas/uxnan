@@ -80,7 +80,7 @@ Canonical source for all of them: `https://github.com/luisgamas/skills`.
 | `flutter-init-project` | `uxnanmobile/` | Bootstrap/reset a Flutter project baseline |
 | `flutter-clean-architect` | `uxnanmobile/` | Module/layer structure (domain, infrastructure, presentation) |
 | `flutter-riverpod-expert` | `uxnanmobile/` | Providers, notifiers, auth/router wiring |
-| `flutter-m3-uiux` | `uxnanmobile/` | Theme, design tokens, responsive UI |
+| `flutter-m3-uiux` | `uxnanmobile/` | Theme, design tokens, responsive UI. **One deliberate divergence:** the skill assumes Material icons; this app draws Hugeicons through its own `UxIcon` primitive and `UxIcons` catalogue (see [`uxnanmobile/docs/conventions.md`](uxnanmobile/docs/conventions.md) → *Icons come from the catalogue*) |
 | `svelte-clean-desktop-ui` | `uxnandesktop/` | Token-driven Svelte 5 + shadcn-svelte / Bits UI / Tailwind v4 system — shell layouts, sidebars, panes, settings, cards, menus, tabs, forms, dialogs, compact density, neutral surface layering, DM Sans typography, polished motion — without changing the UI libraries. **One deliberate divergence:** the skill assumes lucide icons; this app draws Hugeicons through its own `Icon` primitive (see [`uxnandesktop/docs/design-tokens.md`](uxnandesktop/docs/design-tokens.md) → *The icon set*) |
 
 **Check before working in a component:** a skill counts as installed if

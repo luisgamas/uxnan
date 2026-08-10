@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
+import '../../support/ux_icon_finder.dart';
 
 void main() {
   testWidgets('uses the shared neutral scroll-shortcut treatment',
@@ -13,7 +16,7 @@ void main() {
         home: Scaffold(
           body: Center(
             child: NeCircularButton(
-              icon: Icons.keyboard_arrow_down_rounded,
+              icon: UxIcons.keyboardArrowDown,
               tooltip: 'Scroll',
               onTap: () {},
             ),
@@ -35,7 +38,7 @@ void main() {
     expect(material.color, scheme.surfaceContainerHighest);
     expect(material.shape, isA<CircleBorder>());
     expect(
-      tester.widget<Icon>(find.byIcon(Icons.keyboard_arrow_down_rounded)).color,
+      tester.widget<UxIcon>(findUxIcon(UxIcons.keyboardArrowDown)).color,
       scheme.onSurfaceVariant,
     );
   });

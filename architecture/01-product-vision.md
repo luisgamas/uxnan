@@ -405,7 +405,7 @@ El MVP debe cumplir los siguientes módulos completos:
 | Fork de threads | Media |
 | Voice input | Baja |
 | Worktrees administrados | Baja |
-| Tablet layout | Baja |
+| Tablet layout | Done |
 | Custom agent adapter | Baja |
 
 ---
@@ -452,6 +452,5 @@ El MVP debe cumplir los siguientes módulos completos:
 - Voice input (STT local o cloud)
 - Plan mode interactivo
 - Subagentes visibles en UI
-- Tablet layout
 - Custom agent adapter (plugin system para el bridge)
 - Self-hosted relay setup wizard en la app *(opcional — la ruta primaria es LAN/Tailscale-direct y no necesita relay; el wizard aplica solo a quien decida self-hostear un relay off-LAN)*

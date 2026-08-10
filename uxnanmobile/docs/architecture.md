@@ -70,21 +70,204 @@ Rule of thumb: `domain` never imports Flutter; `presentation` never reaches into
   `onboarding/`, `pairing/`; `conversation/files/` owns the capability-based
   source, Markdown, image, SVG, PDF and Git-diff viewer described in
   [`file-viewer.md`](file-viewer.md). `presentation/router/app_router.dart` is
-  the flat GoRouter table. `presentation/theme/` holds the design tokens.
+  the flat GoRouter table, wrapped in a single `ShellRoute`.
+  `presentation/theme/` holds the design tokens — including `icons.dart`, the
+  `UxIcons` catalogue every glyph is named in.
 
-The Devices screen keeps connection feedback scoped to the actual PC card:
+**Wide windows get a permanent drawer, and only that changes.** `AppShell`
+(`presentation/screens/shell/app_shell.dart`) is the `ShellRoute` builder: on
+compact and medium it returns the routed screen *literally*, so the phone's
+screen stack and back behaviour are untouched; on expanded and above it puts
+that screen in `TwoPaneScaffold`'s content pane beside `NavDrawer`.
 
-- A live session renders `Connected` plus the classified network badge (`LAN`,
-  `Tailscale`, `Direct`, or `Relay`) derived from the winning endpoint.
-- A PC whose connection attempt is in flight renders one `Detecting…` status.
-  The badge is intentionally hidden until the channel is live because the
-  network path is not known yet.
-- A disconnected PC renders no network badge. Its `Connect` button remains
-  disabled with `Connecting…` only while its own attempt is active.
+**Destinations are never wrapped.** Onboarding and pairing because there is
+nothing to navigate to yet (and pairing would offer to switch to a PC you are
+mid-way through adding); **settings and profile** because they are somewhere you
+*went*, not something you opened from the list — and Settings splits into its
+own two panes, so a drawer beside it would be a third column showing
+conversations that cannot change anything on that screen. The decision is made
+from the route, not the width, so it holds while a raw-pushed child screen (a
+settings section) is open and across a rotation.
 
-This presentation logic lives in `_StatusLine` within
-`presentation/screens/devices/my_devices_screen.dart`; the underlying
-`networkKindProvider` and session streams remain unchanged.
+The route table itself does not change. A second navigator, or a branch per
+pane, would give tablets their own navigation model, and every deep link, push
+notification and `context.go` would have to work in both.
+
+`NavDrawer` is **three zones and nothing else**: the PC (with a real `switchMac`
+behind the switcher, and the pairing call to action in its place when nothing is
+paired), the spaces tree via `ThreadsScreen(embedded: true)`, and the profile row
+that returns the content pane to the overview. It is a `Material` rather than a
+`NavigationDrawer`: that component models N fixed destinations with one
+selected, and its own scrollable would nest inside the tree's.
+
+Navigation inside the shell goes through `context.openInPane` / `closePane`
+(`presentation/router/pane_navigation.dart`), which is where "a tap means two
+different things" is decided instead of at every call site. On a phone it
+pushes and pops. On a wide window it **replaces**: nothing was left behind, so a
+stack there is one the layout gives you no way to see. Because the file browser
+and git screens open with a raw `Navigator.push` — landing above the routed page
+— `openInPane` empties `shellNavigatorKey` before it navigates; without that,
+`go` swapped the page underneath and left them covering it.
+
+**Two panes is the ceiling.** Where a surface already sits beside the drawer,
+or is itself split, the next level down stacks inside its pane through a nested
+`Navigator` rather than becoming a third column — see `docs/conventions.md`.
+Settings uses it for its sections' own children; the conversation's file browser
+and git screens get the same shape from `shellNavigatorKey`, which is why they
+fill the content pane and leave the drawer alone.
+
+A repository's identity is `repoKeyFor(path)`, namespaced away from the folder
+at the same path: collapse state is a set of these strings, and sharing one made
+collapsing the main folder collapse the whole project.
+
+Which PC it shows comes from `shellDeviceProvider`, resolved by how much each
+source knows — the open conversation's thread, then the last list visited
+(persisted through `ThreadListPreferencesStore`), then the connected PC. A deep
+link into `/conversation/:id` has no list behind it, and without this the drawer
+is blank in exactly the case a tablet user meets first.
+
+The home screen (`presentation/screens/devices/my_devices_screen.dart`) is the
+**overview**. Its bar carries the product's identity rather than the screen's —
+`_BrandMark` as the title, a `ProfileAvatarView` action on the right — and its
+heading is `_OverviewHeadline`, a two-row greeting plus a status line that
+simply scrolls away under the pinned bar. Facts come from
+`profileNameProvider`, `trustedDevicesProvider`, `connectedDeviceProvider` and
+`memberSinceProvider`; each is dropped rather than faked when absent.
+`memberSinceProvider` reads the metrics **cache** only — `profileMetricsProvider`
+falls back to aggregating the whole local database, which the app's first screen
+must not trigger.
+
+Each PC card is an identity row (glyph with a status dot · name · address · a
+labelled last-connection line · overflow menu) over a row of `NeBadge`s —
+connection, and a live one when agents are working — with Connect and the
+conversation count on the bottom row. Status and network path share one badge via `networkKindLabel`, the same
+mapping `TransportBadge` uses, so the two cannot drift apart. The counts come
+from the local thread cache (`deviceThreadCountProvider`,
+`deviceWorkingCountProvider`, both on `deviceThreadsProvider`), so they describe
+a PC the phone is not currently connected to. Those providers count only threads **explicitly tagged** with that
+`deviceId`: the threads list deliberately shows untagged legacy threads under
+every PC, and counting them the same way would inflate every card by the same
+threads.
+
+The profile screen carries no identity card — that would duplicate the
+overview's header one screen deeper. Editing the profile and the ledger
+export/import live in its app-bar overflow menu (`profile_backup_actions.dart`),
+disabled while no PC is connected because the bridge is what seals and verifies
+the file.
+
+Connection feedback stays scoped to the actual PC card, and says only what is
+known:
+
+- A live session's connection badge names the classified network path (`LAN`,
+  `Tailscale`, `Direct`, `Relay`) derived from the winning endpoint — falling
+  back to a plain "Connected" when the path is not classified yet, never to an
+  empty badge.
+- A PC whose attempt is in flight reads `Detecting…`. The path is deliberately
+  withheld until the channel is live, because it is not known yet.
+- A disconnected PC reads `Disconnected`, and only its own card's Connect button
+  goes to `Connecting…` while its own attempt runs.
+
+The status dot on the machine glyph carries the same three states, so the card
+is readable before any of its text is.
+
+A PC's conversations are grouped by the **folder** they run in, by
+`groupThreadsByWorkspace` (`application/services/workspace_grouping.dart`) — a
+pure function over `threadsProvider` + `projectsProvider`, so the whole
+inference is testable and the `git/worktrees` contract can replace it without
+touching the UI. Paths are matched after normalising separators and case; the
+path shown and copied is the one that was reported. Configured roots contribute
+their name only.
+
+A **repository level** sits above the folders when the bridge can prove one:
+`git/worktrees` (`workspaceRepoTableProvider`) says which folders are worktrees
+of which repository. It asks about the folders **on the list** — the distinct
+`cwd`s of this PC's conversations — not about the bridge's configured roots:
+`workspaceRoots` is optional and frequently empty, since a conversation can be
+started anywhere through the folder picker. One reply names every sibling of its
+repository, so folders already covered are skipped and ten worktrees of one repo
+cost one call. It is never inferred from
+path prefixes — worktrees are siblings on disk, so a shared prefix says nothing,
+and inferring it is what sank the first attempt at this level.
+
+`buildWorkspaceTree` then applies the two rules that keep it honest: a
+repository node appears only when it relates **two or more** folders (a heading
+over one folder is chrome, not structure), and a folder that relates to nothing
+stays where it is rather than being swept into an "other" bucket. On a bridge
+without the method the table is empty and the list is exactly the flat one it
+was before.
+
+`ThreadsScreen` flattens the folders into typed rows (`_WorkspaceRow`,
+`_ThreadRow`) so the sliver stays lazy. Folder collapse is persisted as the set
+of **closed** keys (`collapsedProjectsProvider`), so a folder seen for the first
+time is open. **Three orderings apply independently**, one per level of the tree:
+`projectSortProvider`, `worktreeSortProvider` and `threadSortProvider`. All
+three take the same `ListSort` — one enum rather than three near-identical ones,
+which would drift apart the first time one of them gained an option:
+
+| | Meaning |
+|---|---|
+| `status` | What wants you first: waiting, then blocked, then working. Ties break on recent activity — what you were most likely looking at. |
+| `activity` | What moved last. |
+| `created` | Newest first. A folder has no creation date of its own (the bridge reports a path, not a history), so `workspaceCreatedAt` stands in with the **oldest conversation inside it**: when work there began. |
+| `name` | Alphabetical. |
+
+The worktrees **inside** a project are ordered by the same setting as the
+top-level ones: `buildWorkspaceTree` takes a comparator instead of sorting them
+itself, which is what previously put them out of the menu's reach. Without one
+it still leads with the main worktree.
+
+The menu itself asks in **two steps** — levels, then that level's orderings —
+because offering all of them at once was seventeen entries and ran off the
+screen. Both steps open at the same anchor (`menuPositionUnder`), so the second
+does not read as a different control; the first shows each level's current
+ordering so the common question is answered without drilling in; and a screen
+with one level to order skips straight to its orderings.
+
+Only the agent ordering is persisted; the other two are in memory, because they
+are usually changed to answer a question rather than set once as a preference.
+The archive offers a **reduced** set (`kArchiveSorts`: created and name):
+archived work is finished by definition, so `status` and `activity` would sort
+by a value that can no longer change.
+
+A folder row is two lines whose **second one changes with the fold**: open, just
+the conversation count, since every conversation carries its own agent mark and
+state one row below; closed, the agents inside it as well, plus the strongest
+state among them on the first line. Folding must not hide what the screen exists
+to surface. The count yields before the marks do, so a long translation
+ellipsizes instead of overflowing the row.
+
+The **archive** (`archived_threads_screen.dart`) stays a flat list on purpose.
+The active list groups because the question it answers is *where work is
+happening*; the archive answers *which one was it*, and a search field with a
+date sort answers that better than a hierarchy you have to expand — grouping
+would put a navigation step in front of a lookup.
+
+Each folder's **git state** comes from `workspaceGitProvider`
+(`presentation/providers/workspace_git_provider.dart`), a per-cwd
+`git/status`. Its rules are about cost: only while connected to that PC, only
+while the indicators are on screen (`autoDispose` — a collapsed folder draws
+none, so nothing is watched and nothing is fetched), and at most one request per
+folder per `kWorkspaceGitThrottle` (15 s). The refresh that matters arrives on
+`gitStatusBusProvider` after a commit, push or pull, so the poll is the slow
+safety net rather than the mechanism. The row omits zeros, caps at three
+signals, and draws nothing at all when it has no answer — never "clean".
+
+A thread row reads state → agent → text (`thread_tile.dart`), mirroring
+`uxnandesktop`'s agent rows: `AgentStatusIndicator`, then a bare `AgentLogo` a
+step larger, then the title over its second line.
+
+An agent's state in the thread list is **derived, not reported**:
+`agentRunStatusProvider` (`presentation/providers/agent_run_state_provider.dart`)
+folds turn activity, the pending-question set, sign-in status, queue state and
+unread into one `AgentRunState` plus two modifiers. The desktop's equivalent
+comes from a hook server it owns; nothing in the bridge carries it, so this must
+not be mistaken for a fact the PC sent.
+
+The pending-question set is the piece that makes it useful in a list:
+`ThreadManager.awaitingInputStream` records the approval/question blocks as they
+arrive **for every thread**, not just the open one, and clears them when the user
+answers or the turn ends. It is in-memory only, and rebuilt on resync because
+`turn/list` replays the blocks.
 
 ## Dependency injection / provider graph
 

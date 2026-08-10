@@ -1152,7 +1152,15 @@ La UI debe adaptarse a:
 - **Telefonos pequenios:** 360dp x 640dp (minimo soportado)
 - **Telefonos estandar:** 390-430dp x 844-932dp (iPhone 14/15, Pixel 7-8)
 - **Telefonos grandes:** 412-480dp x 900-1000dp (Galaxy S24 Ultra)
-- **Tablets (opcional en v1):** layout de dos paneles sidebar + conversacion
+- **Tablets y plegables (implementado):** a partir de **840 dp** de ancho de
+  ventana la app deja de ser una pila de pantallas — un **navigation drawer
+  permanente** (320 dp; 360 en extraLarge) con el PC, su trabajo y tu perfil, y
+  a su lado el panel de contenido. Ver `architecture/02c` §3.3.
+
+  El umbral es 840, no 600: entre 600 y 839 dp la app se comporta como un
+  telefono. Un drawer de 320 dp sobre 700 dp de ventana deja al contenido menos
+  espacio del que tiene un telefono grande, y un `NavigationRail` en su lugar
+  gastaria el 12 % del ancho en iconos de destinos que esta app no tiene.
 
 ---
 

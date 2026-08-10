@@ -9,10 +9,12 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Per-PC metrics: the same activity heatmap, stat tiles and per-agent
 /// breakdown as the profile, but scoped to a single paired PC (its
@@ -150,8 +152,8 @@ class _PcHeader extends StatelessWidget {
               borderRadius: const BorderRadius.all(UxnanRadius.lg),
               border: Border.all(color: colors.outline),
             ),
-            child: Icon(
-              Icons.laptop_mac_rounded,
+            child: UxIcon(
+              UxIcons.laptopMac,
               size: 24,
               color:
                   isConnected ? UxnanColors.connected : colors.onSurfaceVariant,

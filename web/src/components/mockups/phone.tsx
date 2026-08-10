@@ -1,6 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
-import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 import CircleDashedIcon from "@hugeicons/core-free-icons/CircleDashedIcon";
 import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
 import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
@@ -164,9 +163,9 @@ function AgentTile({
   );
 }
 
-/* ── Conversations ─────────────────────────────────────────────────────── */
+/* ── Spaces: projects, folders, conversations ─────────────────────── */
 
-const THREADS = [
+const SPACE_THREADS = [
   {
     title: "Reconnect backoff",
     preview: "The socket now retries with jittered backoff…",
@@ -174,30 +173,100 @@ const THREADS = [
     time: "17:35",
   },
   {
-    title: "Metrics panel v3",
-    preview: "Ported the panel and kept the old route as…",
-    icon: AGENT_ICON.codex,
-    time: "17:34",
-  },
-  {
     title: "Windows CI flake",
     preview: "Three of the five failures share a timeout…",
     icon: AGENT_ICON.opencode,
     time: "17:34",
   },
-  {
-    title: "Release notes for 0.0.19",
-    preview: "Drafted them from the changelog, plain…",
-    icon: AGENT_ICON.pi,
-    time: "17:33",
-  },
-  {
-    title: "Explain the bridge pairing",
-    preview: "It exchanges an X25519 key, then every…",
-    icon: AGENT_ICON.antigravity,
-    time: "17:32",
-  },
 ];
+
+/** One git signal on a folder's second line. Never drawn as a zero. */
+function GitSignal({
+  glyph,
+  count,
+  tone,
+}: {
+  glyph: string;
+  count: number;
+  tone: string;
+}) {
+  return (
+    <span
+      className="flex shrink-0 items-center gap-[1.5px] text-[6.5px]"
+      style={{ color: tone }}
+    >
+      {glyph}
+      {count}
+    </span>
+  );
+}
+
+function FolderRow({
+  name,
+  count,
+  open = false,
+  signals,
+  agents,
+  indent = 12,
+}: {
+  name: string;
+  count: string;
+  open?: boolean;
+  signals?: React.ReactNode;
+  agents?: string[];
+  indent?: number;
+}) {
+  return (
+    <div
+      className="flex flex-col py-[5px]"
+      style={{ paddingLeft: indent, paddingRight: 4 }}
+    >
+      <div className="flex items-center gap-[4px]">
+        <HugeiconsIcon
+          icon={open ? ChevronDownIcon : ChevronRightIcon}
+          className="size-[8px] shrink-0"
+          style={{ color: M3.onSurfaceVar }}
+        />
+        <HugeiconsIcon
+          icon={FolderIcon}
+          className="size-[11px] shrink-0"
+          style={{ color: M3.onSurfaceVar }}
+        />
+        <span className="truncate text-[9px]">{name}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-[4px]">
+          {!open && (
+            <HugeiconsIcon
+              icon={CircleDashedIcon}
+              className="size-[8px]"
+              style={{ color: M3.live }}
+            />
+          )}
+          <HugeiconsIcon
+            icon={PlusIcon}
+            className="size-[9px]"
+            style={{ color: M3.onSurfaceVar }}
+          />
+        </span>
+      </div>
+      <div
+        className="mt-[1px] flex items-center gap-[5px]"
+        style={{ paddingLeft: 23 }}
+      >
+        <span className="truncate text-[7px]" style={{ color: M3.onSurfaceVar }}>
+          {count}
+        </span>
+        {signals}
+        {!open && agents && (
+          <span className="ml-auto flex shrink-0 items-center gap-[2px]">
+            {agents.map((icon) => (
+              <AgentTile key={icon} icon={icon} size={10} />
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function PhoneConversations() {
   return (
@@ -220,66 +289,100 @@ export function PhoneConversations() {
         </span>
       </div>
 
-      <div className="flex gap-[6px] overflow-hidden px-[10px] pb-[9px]">
-        <span
-          className="flex h-[21px] items-center gap-[4px] rounded-[8px] px-[8px] text-[7.5px]"
-          style={{ border: `1px solid ${M3.hairline}` }}
-        >
-          Agent <HugeiconsIcon icon={ChevronDownIcon} className="size-[7px]" />
-        </span>
-        <span
-          className="flex h-[21px] items-center gap-[4px] rounded-[8px] px-[9px] text-[7.5px] font-medium"
-          style={{ background: M3.mint, color: M3.onMint }}
-        >
-          <HugeiconsIcon icon={CheckIcon} className="size-[7px]" /> All
-        </span>
-        <span
-          className="flex h-[21px] shrink-0 items-center gap-[4px] rounded-[8px] px-[8px] text-[7.5px]"
-          style={{ border: `1px solid ${M3.hairline}` }}
-        >
-          <AgentTile icon={AGENT_ICON.grok} size={12} /> Grok
-        </span>
-        <span
-          className="flex h-[21px] shrink-0 items-center gap-[4px] rounded-[8px] px-[8px] text-[7.5px]"
-          style={{ border: `1px solid ${M3.hairline}` }}
-        >
-          <AgentTile icon={AGENT_ICON.zero} size={12} /> Zero
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-[6px] px-[10px]">
-        {THREADS.map((t) => (
-          <div
-            key={t.title}
-            className="flex items-center gap-[8px] rounded-[17px] px-[9px] py-[8px]"
-            style={{ background: M3.container }}
+      <div className="flex flex-col px-[10px]">
+        {/* A repository, drawn only because git/worktrees relates its folders
+            to each other — never guessed from path prefixes. */}
+        <div className="flex items-center gap-[4px] py-[5px]">
+          <HugeiconsIcon
+            icon={ChevronDownIcon}
+            className="size-[8px] shrink-0"
+            style={{ color: M3.onSurfaceVar }}
+          />
+          <HugeiconsIcon
+            icon={GitBranchIcon}
+            className="size-[11px] shrink-0"
+            style={{ color: M3.onSurfaceVar }}
+          />
+          <span className="truncate text-[10px] font-medium">uxnan</span>
+          <span
+            className="ml-auto shrink-0 text-[7px]"
+            style={{ color: M3.onSurfaceVar }}
           >
-            <AgentTile icon={t.icon} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-[6px]">
-                <span className="truncate text-[8.5px]">{t.title}</span>
-                <span
-                  className="ml-auto shrink-0 text-[7px]"
-                  style={{ color: M3.onSurfaceVar }}
-                >
-                  {t.time}
-                </span>
-              </div>
-              <div className="mt-[2px] flex items-center gap-[3px]">
-                <span
-                  className="size-[3.5px] shrink-0 rounded-full"
-                  style={{ background: M3.live }}
-                />
-                <span
-                  className="truncate text-[7px]"
-                  style={{ color: M3.onSurfaceVar }}
-                >
-                  {t.preview}
-                </span>
+            3 folders
+          </span>
+        </div>
+
+        <FolderRow
+          name="uxnan"
+          count="2 conversations"
+          open
+          indent={12}
+          signals={
+            <>
+              <GitSignal glyph="●" count={4} tone={M3.onSurfaceVar} />
+              <GitSignal glyph="↑" count={2} tone={M3.live} />
+            </>
+          }
+        />
+
+        <div className="flex flex-col gap-[5px] pt-[2px] pb-[4px] pl-[24px]">
+          {SPACE_THREADS.map((t) => (
+            <div
+              key={t.title}
+              className="flex items-center gap-[7px] rounded-[15px] px-[8px] py-[7px]"
+              style={{ background: M3.container }}
+            >
+              <AgentTile icon={t.icon} size={16} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-[6px]">
+                  <span className="truncate text-[8px]">{t.title}</span>
+                  <span
+                    className="ml-auto shrink-0 text-[6.5px]"
+                    style={{ color: M3.onSurfaceVar }}
+                  >
+                    {t.time}
+                  </span>
+                </div>
+                <div className="mt-[2px] flex items-center gap-[3px]">
+                  <span
+                    className="size-[3.5px] shrink-0 rounded-full"
+                    style={{ background: M3.live }}
+                  />
+                  <span
+                    className="truncate text-[6.5px]"
+                    style={{ color: M3.onSurfaceVar }}
+                  >
+                    {t.preview}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        {/* Closed: the row still has to report what is inside it, so it adds
+            the agent marks and the most urgent status. */}
+        <FolderRow
+          name="uxnan--pets"
+          count="3 conversations"
+          indent={12}
+          agents={[AGENT_ICON.codex, AGENT_ICON.grok]}
+          signals={<GitSignal glyph="↓" count={1} tone={M3.onSurfaceVar} />}
+        />
+        <FolderRow
+          name="uxnan--hooks"
+          count="1 conversation"
+          indent={12}
+          agents={[AGENT_ICON.pi]}
+        />
+
+        {/* A folder that relates to nothing stays where it is — no "others". */}
+        <FolderRow
+          name="notes"
+          count="2 conversations"
+          indent={0}
+          agents={[AGENT_ICON.antigravity]}
+        />
       </div>
 
       <div className="absolute right-[12px] bottom-[14px]">
@@ -287,7 +390,8 @@ export function PhoneConversations() {
           className="flex h-[30px] items-center gap-[6px] rounded-[11px] px-[12px] text-[9px] font-medium"
           style={{ background: M3.periwinkle, color: M3.onPeriwinkle }}
         >
-          <HugeiconsIcon icon={SquarePenIcon} className="size-[11px]" /> New conversation
+          <HugeiconsIcon icon={SquarePenIcon} className="size-[11px]" /> New
+          conversation
         </span>
       </div>
     </>

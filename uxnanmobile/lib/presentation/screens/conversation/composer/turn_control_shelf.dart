@@ -5,8 +5,10 @@ import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Compact, collapsible turn context above the composer.
 ///
@@ -47,7 +49,7 @@ class TurnControlShelf extends ConsumerWidget {
           key: const ValueKey('turn-controls-toggle'),
           tooltip:
               expanded ? l10n.composerOptionsHide : l10n.composerOptionsShow,
-          icon: Icons.chevron_left_rounded,
+          icon: UxIcons.chevronLeft,
           iconTurns: expanded ? 0 : .5,
           onTap: () => onExpandedChanged(!expanded),
         ),
@@ -146,7 +148,7 @@ class _EnumControl extends ConsumerWidget {
     // PopupMenuButton, whose internal InkWell renders a square ripple — so the
     // press feedback matches the round buttons beside it.
     return _ControlSurface(
-      icon: Icons.psychology_alt_outlined,
+      icon: UxIcons.psychologyAlt,
       tooltip: '${option.label}: $currentLabel',
       onTap: () => _openMenu(context, l10n, ref),
     );
@@ -223,7 +225,7 @@ class _ToggleControl extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _ControlSurface(
-      icon: selected ? Icons.toggle_on_rounded : Icons.toggle_off_outlined,
+      icon: selected ? UxIcons.toggleOn : UxIcons.toggleOff,
       tooltip: option.label,
       selected: selected,
       onTap: () => ref
@@ -245,17 +247,17 @@ class _ApprovalControl extends StatelessWidget {
     final (label, icon, color) = switch (mode) {
       ApprovalMode.requestApproval => (
           l10n.approvalRequestTitle,
-          Icons.pan_tool_outlined,
+          UxIcons.panTool,
           UxnanColors.warning,
         ),
       ApprovalMode.approveForMe => (
           l10n.approvalAutoTitle,
-          Icons.verified_user_outlined,
+          UxIcons.verifiedUser,
           UxnanColors.success,
         ),
       ApprovalMode.fullAccess => (
           l10n.approvalFullTitle,
-          Icons.lock_open_rounded,
+          UxIcons.lockOpen,
           UxnanColors.error,
         ),
     };
@@ -286,7 +288,7 @@ class _ControlSurface extends StatefulWidget {
     super.key,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String tooltip;
   final bool selected;
   final Color? foregroundColor;
@@ -338,7 +340,7 @@ class _ControlSurfaceState extends State<_ControlSurface>
               duration: reduceMotion
                   ? Duration.zero
                   : const Duration(milliseconds: 180),
-              child: Icon(
+              child: UxIcon(
                 widget.icon,
                 size: UxnanSize.compactComposerIcon,
                 color: foreground,

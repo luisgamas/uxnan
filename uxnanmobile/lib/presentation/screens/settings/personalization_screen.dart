@@ -4,11 +4,14 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/theme_manager_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// User-selectable theme mode (System / Light / Dark).
 ///
@@ -47,7 +50,14 @@ ThemeModeOption _toOption(ThemeMode mode) => switch (mode) {
 /// switch + an entry to the full [ThemeManagerScreen], and the app language.
 class PersonalizationScreen extends ConsumerWidget {
   /// Creates the personalization screen.
-  const PersonalizationScreen({super.key});
+  const PersonalizationScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title but drops the back arrow: there is nothing
+  /// behind it, and `canPop` would answer for the Settings route still open on
+  /// the left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -63,6 +73,7 @@ class PersonalizationScreen extends ConsumerWidget {
     final localeTag = ref.watch(localeSettingProvider)?.languageCode;
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.personalizationTitle,
       slivers: [
         SliverPadding(
@@ -73,7 +84,7 @@ class PersonalizationScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               NeSectionHeader(
                 label: l10n.personalizationThemeSection,
                 first: true,
@@ -96,7 +107,7 @@ class PersonalizationScreen extends ConsumerWidget {
                 onChanged: (locale) =>
                     ref.read(localeSettingProvider.notifier).set(locale),
               ),
-            ],
+            ]),
           ),
         ),
       ],
@@ -190,7 +201,7 @@ class _CustomThemeCard extends ConsumerWidget {
       itemBuilder: (context, i, pos) => switch (i) {
         0 => NeSwitchTile(
             position: pos,
-            icon: Icons.palette_outlined,
+            icon: UxIcons.palette,
             title: l10n.personalizationUseCustomThemeLabel,
             subtitle: l10n.personalizationUseCustomThemeSubtitle,
             value: useCustom,
@@ -198,7 +209,7 @@ class _CustomThemeCard extends ConsumerWidget {
           ),
         _ => NeNavTile(
             position: pos,
-            icon: Icons.collections_bookmark_outlined,
+            icon: UxIcons.collectionsBookmark,
             title: l10n.personalizationCustomThemesHeader,
             subtitle: activeTheme != null
                 ? activeTheme.name
@@ -289,8 +300,8 @@ class _LanguageSelector extends StatelessWidget {
               ? RadioListTile<String?>(
                   value: null,
                   title: Text(l10n.languageSystemDefault),
-                  secondary: Icon(
-                    Icons.smartphone_outlined,
+                  secondary: UxIcon(
+                    UxIcons.smartphone,
                     color: colors.onSurfaceVariant,
                   ),
                 )

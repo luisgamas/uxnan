@@ -425,7 +425,7 @@ Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: Valid
 invocar y que el bridge (standalone o embebido) debe implementar.
 
 > **Fuente de verdad:** `shared/src/jsonrpc/methods.ts`
-> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **68
+> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **70
 > entradas**, bloqueadas entre si en build). El bloque de abajo es una copia de
 > lectura: si discrepa del paquete compartido, manda el paquete. La semantica de
 > cada metodo vive en

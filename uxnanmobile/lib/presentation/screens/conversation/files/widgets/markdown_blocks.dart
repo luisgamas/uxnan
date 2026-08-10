@@ -4,8 +4,10 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/highlighted_source.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a fenced code block the way GitHub does: syntax-highlighted, and
 /// horizontally scrollable instead of clipped at the content width.
@@ -87,7 +89,7 @@ class MarkdownAlertCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(_icon, size: UxnanSpacing.lg, color: accent),
+                  UxIcon(_icon, size: UxnanSpacing.lg, color: accent),
                   const SizedBox(width: UxnanSpacing.sm),
                   Text(
                     _title(AppLocalizations.of(context)),
@@ -117,12 +119,12 @@ class MarkdownAlertCard extends StatelessWidget {
         MarkdownAlertKind.caution => colors.error,
       };
 
-  IconData get _icon => switch (kind) {
-        MarkdownAlertKind.note => Icons.info_outline_rounded,
-        MarkdownAlertKind.tip => Icons.lightbulb_outline_rounded,
-        MarkdownAlertKind.important => Icons.campaign_outlined,
-        MarkdownAlertKind.warning => Icons.warning_amber_rounded,
-        MarkdownAlertKind.caution => Icons.report_outlined,
+  UxIconData get _icon => switch (kind) {
+        MarkdownAlertKind.note => UxIcons.info,
+        MarkdownAlertKind.tip => UxIcons.lightbulb,
+        MarkdownAlertKind.important => UxIcons.campaign,
+        MarkdownAlertKind.warning => UxIcons.warningAmber,
+        MarkdownAlertKind.caution => UxIcons.report,
       };
 
   String _title(AppLocalizations l10n) => switch (kind) {
@@ -195,8 +197,8 @@ class _MarkdownDetailsTileState extends State<MarkdownDetailsTile> {
                     AnimatedRotation(
                       turns: _expanded ? 0.25 : 0,
                       duration: const Duration(milliseconds: 150),
-                      child: Icon(
-                        Icons.chevron_right_rounded,
+                      child: UxIcon(
+                        UxIcons.chevronRight,
                         size: UxnanSpacing.xl,
                         color: colors.onSurfaceVariant,
                       ),

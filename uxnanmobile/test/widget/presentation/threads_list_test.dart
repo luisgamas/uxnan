@@ -2,15 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
+import 'package:uxnan/domain/entities/project.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
+import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/widgets/agent_logo.dart';
+import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
+import '../../support/ux_icon_finder.dart';
 
 Thread _thread(
   String id,
@@ -30,7 +40,13 @@ Thread _thread(
       projectId: projectId,
     );
 
-Widget _wrap({required List<Thread> threads}) {
+Widget _wrap({
+  required List<Thread> threads,
+  Map<String, ThreadActivity> activity = const {},
+  List<Project> projects = const [],
+  Map<String, WorkspaceRepo> repos = const {},
+  String? openThread,
+}) {
   final router = GoRouter(
     routes: [
       GoRoute(
@@ -41,13 +57,33 @@ Widget _wrap({required List<Thread> threads}) {
   );
   return ProviderScope(
     overrides: [
+      // Which conversation the content pane holds — only the wide layout has
+      // one, and it is what the open row is marked from.
+      openThreadProvider.overrideWith(() => _FixedOpenThread(openThread)),
       // The row's reply preview reads the message store; a list test has no
       // database, and pulling the real one in leaves drift timers pending.
       threadPreviewProvider.overrideWith((ref, key) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
-      threadActivityProvider.overrideWith(
-        (ref) => Stream.value(const <String, ThreadActivity>{}),
+      // The list is grouped by project now, so the screen reads the bridge's
+      // roots. Feeding them keeps the real request (and its transport) out.
+      projectsProvider.overrideWith((ref) async => projects),
+      // The screen now asks the bridge which folders are worktrees of which
+      // repository. Left real, that reaches a live ThreadManager and opens the
+      // database. An empty table is also exactly what an older bridge yields,
+      // which is the flat list most of these tests assert.
+      workspaceRepoTableProvider.overrideWith((ref) async => repos),
+      // A held queue is one of the things that blocks a thread, so the
+      // queue stream is part of the row's state too.
+      threadQueuesProvider.overrideWith(
+        (ref) => Stream.value(const <String, ThreadQueueState>{}),
       ),
+      // The row's state now includes "the agent asked and is waiting on
+      // you", which the manager tracks; feed it directly so the real one
+      // (drift, transport, its poll timers) stays out of a widget test.
+      awaitingInputProvider.overrideWith(
+        (ref) => Stream.value(const <String, Set<String>>{}),
+      ),
+      threadActivityProvider.overrideWith((ref) => Stream.value(activity)),
       unreadThreadsProvider.overrideWith(
         (ref) => Stream.value(const <String>{}),
       ),
@@ -68,9 +104,8 @@ Widget _wrap({required List<Thread> threads}) {
 }
 
 void main() {
-  testWidgets('renders a tile per thread with agent filter chips', (
-    tester,
-  ) async {
+  testWidgets('renders a tile per conversation, with no filter chips',
+      (tester) async {
     await tester.pumpWidget(
       _wrap(
         threads: [
@@ -79,32 +114,13 @@ void main() {
         ],
       ),
     );
+    await tester.pump();
     await tester.pump();
 
     expect(find.text('Fix the login bug'), findsOneWidget);
     expect(find.text('Add dark mode'), findsOneWidget);
-    // Two distinct agents → an "All" chip plus one per agent.
-    expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsOneWidget);
-  });
-
-  testWidgets('filters threads when an agent chip is selected', (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex'),
-          _thread('b', 'Add dark mode', 'claude-code'),
-        ],
-      ),
-    );
-    await tester.pump();
-
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Codex'));
-    await tester.pump();
-
-    expect(find.text('Fix the login bug'), findsOneWidget);
-    expect(find.text('Add dark mode'), findsNothing);
+    // The grouping and the two orderings replaced them.
+    expect(find.byType(FilterChip), findsNothing);
   });
 
   testWidgets('shows the empty state when there are no threads', (
@@ -132,102 +148,315 @@ void main() {
     expect(find.text('th-9'), findsOneWidget);
   });
 
-  testWidgets('shows the scope selector with Agent as the default scope',
+  testWidgets('a row reads state, then who, then what', (tester) async {
+    await tester
+        .pumpWidget(_wrap(threads: [_thread('t1', 'Claude', 'Fix it')]));
+    await tester.pumpAndSettle();
+
+    // The order `uxnandesktop` reads in, and the order the eye needs: whether a
+    // row wants you decides whether you read the rest of it.
+    final indicator = tester.getTopLeft(find.byType(AgentStatusIndicator)).dx;
+    final logo = tester.getTopLeft(find.byType(AgentLogo)).dx;
+    final title = tester.getTopLeft(find.text('Claude')).dx;
+    expect(indicator, lessThan(logo));
+    expect(logo, lessThan(title));
+
+    // The mark identifies and the indicator only signals, so the mark is the
+    // larger of the two — and neither is a 44 dp avatar competing with the
+    // text beside it.
+    expect(
+      tester.getSize(find.byType(AgentLogo)).width,
+      greaterThan(tester.getSize(find.byType(AgentStatusIndicator)).width),
+    );
+  });
+
+  testWidgets('agent marks carry no border and no shadow', (tester) async {
+    await tester
+        .pumpWidget(_wrap(threads: [_thread('t1', 'Claude', 'Fix it')]));
+    await tester.pumpAndSettle();
+
+    // A framed, shadowed tile inside a card read as the CARD having a shadow —
+    // which is what it looked like, and why this is asserted rather than
+    // trusted.
+    final boxes = tester.widgetList<Container>(
+      find.descendant(
+        of: find.byType(AgentLogo),
+        matching: find.byType(Container),
+      ),
+    );
+    for (final box in boxes) {
+      final decoration = box.decoration;
+      if (decoration is! BoxDecoration) continue;
+      expect(decoration.border, isNull);
+      expect(decoration.boxShadow, anyOf(isNull, isEmpty));
+    }
+  });
+
+  testWidgets('the row you are reading is marked, and only in that layout',
       (tester) async {
+    // Beside a permanent drawer the list never leaves the screen, so a list
+    // that never says which row is open makes you hold the answer in your
+    // head. On a phone the open conversation IS the screen — marking a row you
+    // cannot see while reading it would be marking nothing.
     await tester.pumpWidget(
       _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex'),
-          _thread('b', 'Add dark mode', 'claude-code'),
-        ],
+        threads: [_thread('t1', 'Fix login', 'claude-code')],
+        openThread: 't1',
       ),
     );
     await tester.pump();
 
-    // The scope selector is an ActionChip on the left of the filter bar
-    // (a menu trigger, not a toggle). The default scope is Agent, so it
-    // shows the "Agent" label.
-    expect(find.widgetWithText(ActionChip, 'Agent'), findsOneWidget);
-    // The agent filter chips are to its right.
-    expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsOneWidget);
+    final colors = ThemeData.dark().colorScheme;
+    final card = tester.widget<NeCard>(find.byType(NeCard).first);
+    expect(card.color, isNotNull, reason: 'the open row is not marked at all');
+    expect(
+      card.color,
+      isNot(colors.surfaceContainer),
+      reason: 'the open row looks like every other row',
+    );
   });
 
-  testWidgets('switching to Project scope swaps agent chips for project chips',
-      (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex', cwd: '/home/me/app'),
-          _thread('b', 'Add dark mode', 'claude-code', cwd: '/home/me/lib'),
-          _thread('c', 'Refactor utils', 'codex', cwd: '/home/me/app'),
-        ],
-      ),
-    );
-    await tester.pump();
+  group('folders', () {
+    Thread inFolder(String id, String title, String cwd) => Thread(
+          id: id,
+          title: title,
+          agentId: 'claude-code',
+          syncState: ThreadSyncState.synced,
+          status: ThreadStatus.active,
+          cwd: cwd,
+        );
 
-    // Pre-condition: agent scope is active → agent chips are visible.
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsOneWidget);
-    // No project chips yet.
-    expect(find.widgetWithText(ChoiceChip, 'app'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'lib'), findsNothing);
+    testWidgets('a folder heads its conversations and counts them',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Dark mode', '/dev/app'),
+            inFolder('c', 'Docs', '/dev/web'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    // Tap the scope selector → menu opens with both options.
-    await tester.tap(find.widgetWithText(ActionChip, 'Agent'));
-    await tester.pumpAndSettle();
-    // The popup menu items reuse the same labels.
-    expect(find.text('Agent'), findsNWidgets(2)); // selector + menu item
-    expect(find.text('Project'), findsOneWidget);
+      expect(find.text('app'), findsOneWidget);
+      expect(find.text('web'), findsOneWidget);
+      // Second line: how much is in there, without opening it.
+      expect(find.text('2 conversations'), findsOneWidget);
+      expect(find.text('1 conversation'), findsOneWidget);
+    });
 
-    // Pick "Project" → the selector label flips, the agent chips disappear,
-    // and the project chips appear (one per distinct cwd).
-    await tester.tap(
-      find.text('Project').last,
-      warnIfMissed: false,
-    );
-    await tester.pumpAndSettle();
+    testWidgets('closing a folder hides its rows but not its state',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
+      );
+      await tester.pump();
+      await tester.pump();
 
-    expect(find.widgetWithText(ActionChip, 'Project'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Codex'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Claude Code'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'app'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'lib'), findsOneWidget);
-    // "All" is still present (it's the reset chip in the project bar too).
-    expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
+      await tester.tap(find.text('app'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Fix login'), findsNothing);
+      // A closed folder still reports what is happening inside it — otherwise
+      // closing one hides the very thing the screen exists for.
+      expect(find.byType(AgentStatusIndicator), findsWidgets);
+    });
+
+    testWidgets('a folder shows its agents only while it is closed',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Open, each conversation carries its own mark one row below, so
+      // repeating them on the header would say the same thing twice.
+      final openMarks = find.byType(AgentLogo).evaluate().length;
+
+      await tester.tap(find.text('app'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Closed, that evidence is gone and the header has to stand in for it.
+      expect(find.text('Fix login'), findsNothing);
+      expect(find.byType(AgentLogo), findsWidgets);
+      expect(
+        find.byType(AgentLogo).evaluate().length,
+        lessThan(openMarks),
+        reason: 'a closed folder summarises its agents, it does not list them',
+      );
+    });
+
+    testWidgets('worktrees group even when the bridge has NO configured roots',
+        (tester) async {
+      // The bug this pins, found on the first real machine it met: the table
+      // was built by asking `git/worktrees` once per CONFIGURED ROOT, and
+      // `workspaceRoots` is optional and frequently empty — a conversation can
+      // be started anywhere through the folder picker. With none configured the
+      // provider bailed before asking anything, so the hierarchy silently never
+      // appeared, on a code path with no error to notice.
+      await tester.pumpWidget(
+        _wrap(
+          // No configured roots at all — the shape that broke it.
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app-feature'),
+          ],
+          repos: const {
+            '/dev/app': WorkspaceRepo(key: '/dev/app', label: 'app'),
+            '/dev/app-feature': WorkspaceRepo(key: '/dev/app', label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The repository heads both folders, and both folders are still there.
+      expect(find.byType(RepoGroupRow), findsOneWidget);
+      expect(find.text('app-feature'), findsOneWidget);
+    });
+
+    testWidgets('collapsing the main folder does not collapse its project',
+        (tester) async {
+      // Reported from the device: a repository is identified by its main
+      // worktree's path, which is ALSO the identity of the folder for that
+      // worktree. Collapse state is a set of those strings, so the two rows
+      // shared one — tapping the main folder shut the whole project, and
+      // keeping a project open with its folders closed was impossible.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app-feature'),
+          ],
+          repos: {
+            '/dev/app':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+            '/dev/app-feature':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(RepoGroupRow), findsOneWidget);
+      // Two folders under it: the main worktree and its sibling.
+      expect(find.byType(WorkspaceGroupRow), findsNWidgets(2));
+
+      // Collapse the MAIN worktree's folder, which shares a path with the
+      // project heading it.
+      await tester.tap(find.text('app').last);
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // The project is still open, with both folders still listed.
+      expect(find.byType(RepoGroupRow), findsOneWidget);
+      expect(find.byType(WorkspaceGroupRow), findsNWidgets(2));
+      // And only that folder's conversation went away.
+      expect(find.text('Fix login'), findsNothing);
+      expect(find.text('Ship it'), findsOneWidget);
+    });
+
+    testWidgets('a project moves its count with the fold, like a folder does',
+        (tester) async {
+      // A fixed-width pane cannot keep everything on one row and hope: with
+      // the branch, the count and the agent marks all competing, the line ran
+      // out of room. Open, the folders are right there to be counted and the
+      // count sits quietly on the right; closed, they are gone and it earns a
+      // line of its own.
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'Fix login', '/dev/app'),
+            inFolder('b', 'Ship it', '/dev/app-feature'),
+          ],
+          repos: {
+            '/dev/app':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+            '/dev/app-feature':
+                WorkspaceRepo(key: repoKeyFor('/dev/app'), label: 'app'),
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final repoRow = find.byType(RepoGroupRow);
+      final openHeight = tester.getSize(repoRow).height;
+
+      // Collapse the project itself.
+      await tester
+          .tap(find.descendant(of: repoRow, matching: find.text('app')));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        tester.getSize(find.byType(RepoGroupRow)).height,
+        greaterThan(openHeight),
+        reason: 'closed, the count should take a line of its own',
+      );
+      // And the folders it was counting really are gone.
+      expect(find.byType(WorkspaceGroupRow), findsNothing);
+    });
+
+    testWidgets('long-pressing a folder opens its details with the full path',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      await tester.longPress(find.text('app'));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // The row shows a name; two folders can share one, so the path that
+      // tells them apart lives here.
+      expect(find.text('/dev/app'), findsOneWidget);
+      expect(find.text('Copy path'), findsOneWidget);
+    });
+
+    testWidgets('a sibling worktree is just another folder', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          threads: [
+            inFolder('a', 'On main', '/dev/app'),
+            inFolder('b', 'On a branch', '/dev/app--feature'),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('app'), findsOneWidget);
+      expect(find.text('app--feature'), findsOneWidget);
+    });
+
+    testWidgets('every folder offers to start a conversation in it',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(threads: [inFolder('a', 'Fix login', '/dev/app')]),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(findUxIcon(UxIcons.add), findsOneWidget);
+    });
   });
+}
 
-  testWidgets(
-      "switching scope clears the other dimension's filter so the two stay "
-      'independent', (tester) async {
-    await tester.pumpWidget(
-      _wrap(
-        threads: [
-          _thread('a', 'Fix the login bug', 'codex', cwd: '/home/me/app'),
-          _thread('b', 'Add dark mode', 'claude-code', cwd: '/home/me/lib'),
-        ],
-      ),
-    );
-    await tester.pump();
+/// Pins which conversation the content pane is showing.
+class _FixedOpenThread extends OpenThread {
+  _FixedOpenThread(this.threadId);
 
-    // Filter to Codex.
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Codex'));
-    await tester.pump();
-    expect(find.text('Fix the login bug'), findsOneWidget);
-    expect(find.text('Add dark mode'), findsNothing);
+  final String? threadId;
 
-    // Switch to Project scope → the agent filter is cleared so all threads
-    // show again (no project filter selected yet → "All" project).
-    await tester.tap(find.widgetWithText(ActionChip, 'Agent'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.text('Project').last,
-      warnIfMissed: false,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Fix the login bug'), findsOneWidget);
-    expect(find.text('Add dark mode'), findsOneWidget);
-  });
+  @override
+  String? build() => threadId;
 }

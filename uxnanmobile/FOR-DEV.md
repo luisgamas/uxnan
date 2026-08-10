@@ -17,6 +17,42 @@ connected to live bridge data, validated on-device against a real bridge.
 
 **Built (DONE):**
 
+- **Large screens: one route table, two layouts.** Past 840 dp the app stops
+  being a stack of screens — a **permanent navigation drawer** (the PC, its
+  work, and you) with the routed screen as the content pane beside it. The
+  route table does not change: a single `ShellRoute` wraps the flat routes and
+  `AppShell` decides *where* each screen draws, so every deep link and push
+  notification keeps working at both widths. What changes is the meaning of a
+  tap (`pane_navigation.dart`: opening **replaces** the pane instead of
+  stacking). **Two panes is the ceiling** — Settings splits internally into its
+  own two, and nested splits measure their own constraints rather than the
+  window. Files and git deliberately stay a stack inside the pane: a third
+  column helps nobody on a tablet. The new-conversation form is a full-screen
+  dialog on a phone and a bounded 560×720 one on a wide window.
+
+  `UxnanBreakpoint` implements the guide's five window classes and is the single
+  place a width becomes a layout decision; `NeScaffold` clamps every screen to
+  its class's content width, and `TwoPaneScaffold` serves both the shell and the
+  nested splits.
+
+- **Spaces: projects ▸ worktrees ▸ conversations, with per-folder git.** The
+  conversation list is grouped by the folder work runs in, and a **repository**
+  level appears over folders that `git/worktrees` relates to each other (never
+  guessed from path prefixes — worktrees are siblings on disk). Each level has
+  its own ordering (status / activity / created / name) through a routed
+  cascading menu. Folder rows carry git indicators (uncommitted, ahead, behind)
+  from `git/status` per cwd, throttled and only while visible; the breakdown
+  lives in the long-press sheet.
+
+- **Overview + precise agent state.** The home screen is an **overview** (brand
+  + avatar in the bar, a two-row greeting over live badges, PC cards built from
+  `NeBadge`), and the profile screen no longer duplicates its identity card. The
+  thread row shows the desktop's five agent states — **derived** from turn
+  events, queue state, sign-in and the pending approval/question blocks, never
+  reported by the bridge (see `architecture/02a` §5.4.2). Icons throughout are
+  Hugeicons via the `UxIcons` catalogue and the `UxIcon` primitive, matching the
+  desktop app and the website.
+
 - **E2EE crypto + secure transport** (X25519 + Ed25519 + HKDF + AES-256-GCM,
   handshake, seq/replay, outbound buffer, reconnect loop).
 - **Pairing & onboarding** — `OnboardingScreen`, `QrScannerScreen`,
@@ -279,6 +315,38 @@ shipping.
       needs a new relay+bridge+shared contract (the relay has no route to
       reach an unpaired bridge on the phone's behalf today). Not started.
 
+- [ ] **`git/statusBatch(cwds[])`, if the per-folder git turns out to cost
+      too much.** The folder list asks `git/status` once per visible folder;
+      fifteen folders on screen is fifteen requests. It is bounded already
+      (connected PC only, visible folders only, one per folder per 15 s, and
+      the real refresh arrives on the status bus rather than by polling), so
+      this is deliberately **not** built yet — measure on a real PC with many
+      folders first. If it does bite, one batched method replaces N round
+      trips without changing anything in the UI: `workspaceGitProvider` is the
+      only caller. Written down so the option is remembered, not so it is
+      implemented on spec.
+
+- [ ] **Pull-request indicators (number, checks, merged / integrated /
+      abandoned).** `uxnandesktop` derives these from `gh` running locally;
+      the bridge can only **create** PRs (`git/createPr`) and has no way to
+      query them. Showing them on the phone needs a new `shared/` + `bridge/`
+      method (and `gh` present on the PC) — not another provider on mobile.
+      **Not scheduled in any phase**, and left out of the folder-git work on
+      purpose: inventing a PR state the bridge cannot report would be worse
+      than not showing one.
+
+- [ ] **Manual ordering, as a fifth option on each level (OPTIONAL).** The
+      three levels of the threads list — projects, worktrees and agents — offer
+      status / activity / created / name today. A hand-arranged order was asked
+      for and deliberately left out: unlike the other four it is not a
+      comparator but a *stored* per-item position, so it needs somewhere to
+      persist (per PC, since paths mean nothing across machines), a drag mode
+      on a three-level tree, and a rule for where a newly-arrived item lands.
+      It **layers on without rework**: one more value in `ListSort` plus a
+      reorder mode; nothing about the current sorting has to change to make
+      room for it. Marked optional on purpose — the four comparators cover the
+      questions the list is actually asked.
+
 ## App+bridge seams (need a live bridge to finish/verify)
 
 - [ ] **Access-mode enforcement for non-Claude agents** — Claude and **Codex**
@@ -361,3 +429,16 @@ The following are pending and tracked as assets in `FOR-HUMAN.md`:
       the license list actually populates on-device (the provider now surfaces a
       load error with a retry instead of a blank list), navigation into each
       section, and the update download/install states, in the next build.
+- [ ] **Exact `waiting` for threads the phone has never opened.** The list can
+      tell "working" from "waiting for you" because `ThreadManager` records the
+      approval/question blocks it sees. That is exact for a thread the phone has
+      streamed or resynced, and it is **in-memory only**: after a restart, a
+      thread that asked before the app closed reads as `working` until the next
+      `turn/list` resync replays its blocks. It never claims a `waiting` that
+      isn't there, so the failure is silence, not a lie — but a thread that has
+      been holding for hours deserves better than a spinner.
+      Making it exact is a **contract change**, not a client fix: the bridge is
+      the only side that always knows, so it needs to say so — either a
+      `stream/thread/state` notification or a field on `thread/list`. That
+      touches `shared/`, `bridge/` and this app together. Site:
+      `presentation/providers/agent_run_state_provider.dart`.

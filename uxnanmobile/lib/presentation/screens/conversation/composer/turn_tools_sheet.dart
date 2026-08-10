@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/infrastructure/media/attachment_picker_service.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Compact add-to-turn menu anchored to the composer's "+" action.
 ///
@@ -23,25 +26,26 @@ class TurnToolsMenuButton extends StatelessWidget {
       key: const ValueKey('turn-tools-menu'),
       tooltip: l10n.composerTools,
       position: PopupMenuPosition.over,
+      constraints: kNeMenuConstraints,
       onSelected: onSelected,
       itemBuilder: (context) => [
         PopupMenuItem(
           value: AttachmentSource.gallery,
           child: _MenuAction(
-            icon: Icons.photo_library_outlined,
+            icon: UxIcons.photoLibrary,
             label: l10n.composerAttachGallery,
           ),
         ),
         PopupMenuItem(
           value: AttachmentSource.camera,
           child: _MenuAction(
-            icon: Icons.photo_camera_outlined,
+            icon: UxIcons.photoCamera,
             label: l10n.composerAttachCamera,
           ),
         ),
       ],
-      icon: Icon(
-        Icons.add_rounded,
+      icon: UxIcon(
+        UxIcons.add,
         size: 22,
         color: colors.onSurfaceVariant,
       ),
@@ -52,7 +56,7 @@ class TurnToolsMenuButton extends StatelessWidget {
 class _MenuAction extends StatelessWidget {
   const _MenuAction({required this.icon, required this.label});
 
-  final IconData icon;
+  final UxIconData icon;
   final String label;
 
   @override
@@ -62,7 +66,7 @@ class _MenuAction extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(icon, size: 20, color: colors.onSurfaceVariant),
+        UxIcon(icon, size: 20, color: colors.onSurfaceVariant),
         const SizedBox(width: UxnanSpacing.md),
         Text(label, style: textTheme.bodyMedium),
       ],

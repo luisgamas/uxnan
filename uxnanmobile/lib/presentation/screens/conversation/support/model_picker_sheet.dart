@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/agent_model.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Bottom sheet that lists the models the bridge reports for an agent
 /// (`agent/models`), with a search filter, and resolves with the picked model
@@ -81,7 +83,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                   IconButton(
                     onPressed: () =>
                         ref.invalidate(agentModelsProvider(widget.agentId)),
-                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    icon: const UxIcon(UxIcons.refresh, size: 20),
                     tooltip: l10n.modelPickerRefresh,
                     visualDensity: VisualDensity.compact,
                   ),
@@ -93,7 +95,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                prefixIcon: const UxIcon(UxIcons.search, size: 20),
                 hintText: l10n.modelPickerSearchHint,
                 filled: true,
                 fillColor: colors.surfaceContainerHighest,
@@ -298,7 +300,7 @@ class _ModelTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
       trailing: selected
-          ? Icon(Icons.check_rounded, color: colors.primary, size: 20)
+          ? UxIcon(UxIcons.check, color: colors.primary, size: 20)
           : null,
       onTap: () => Navigator.of(context).pop(model.id),
     );

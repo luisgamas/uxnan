@@ -4,9 +4,10 @@ import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/domain/enums/git_file_status.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_tree_tile.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 
 void main() {
-  IconData iconFor(String name, {FileEntryType type = FileEntryType.file}) =>
+  UxIconData iconFor(String name, {FileEntryType type = FileEntryType.file}) =>
       fileTypeVisuals(name: name, type: type).icon;
 
   /// Pumps a [FileTreeTile] for [node] and returns the style applied to its
@@ -136,36 +137,36 @@ void main() {
     test('directories always get the folder glyph', () {
       expect(
         iconFor('anything', type: FileEntryType.dir),
-        Icons.folder_outlined,
+        UxIcons.folder,
       );
     });
 
     test('well-known filenames win over extensions', () {
-      expect(iconFor('README.md'), Icons.menu_book_outlined);
-      expect(iconFor('LICENSE'), Icons.gavel_outlined);
-      expect(iconFor('Dockerfile'), Icons.inventory_2_outlined);
-      expect(iconFor('Makefile'), Icons.build_outlined);
-      expect(iconFor('.gitignore'), Icons.settings_outlined);
-      expect(iconFor('.env.local'), Icons.key_outlined);
+      expect(iconFor('README.md'), UxIcons.menuBook);
+      expect(iconFor('LICENSE'), UxIcons.gavel);
+      expect(iconFor('Dockerfile'), UxIcons.inventory2);
+      expect(iconFor('Makefile'), UxIcons.build);
+      expect(iconFor('.gitignore'), UxIcons.settings);
+      expect(iconFor('.env.local'), UxIcons.key);
     });
 
     test('source files map to the code glyph', () {
       for (final name in ['main.dart', 'app.tsx', 'server.go', 'lib.rs']) {
-        expect(iconFor(name), Icons.code_rounded, reason: name);
+        expect(iconFor(name), UxIcons.code, reason: name);
       }
     });
 
     test('media, data and archive families get distinct glyphs', () {
-      expect(iconFor('logo.png'), Icons.image_outlined);
-      expect(iconFor('config.json'), Icons.data_object_rounded);
-      expect(iconFor('data.csv'), Icons.table_chart_outlined);
-      expect(iconFor('bundle.tar.gz'), Icons.folder_zip_outlined);
-      expect(iconFor('clip.mp4'), Icons.movie_outlined);
-      expect(iconFor('font.woff2'), Icons.font_download_outlined);
+      expect(iconFor('logo.png'), UxIcons.image);
+      expect(iconFor('config.json'), UxIcons.dataObject);
+      expect(iconFor('data.csv'), UxIcons.tableChart);
+      expect(iconFor('bundle.tar.gz'), UxIcons.folderZip);
+      expect(iconFor('clip.mp4'), UxIcons.movie);
+      expect(iconFor('font.woff2'), UxIcons.fontDownload);
     });
 
     test('unknown extensions fall back to the generic file glyph', () {
-      expect(iconFor('mystery.qzx'), Icons.insert_drive_file_outlined);
+      expect(iconFor('mystery.qzx'), UxIcons.insertDriveFile);
     });
   });
 }

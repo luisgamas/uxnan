@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Added — `git/worktrees`
+
+Answers which directories are worktrees of the repository at `cwd`, parsed from
+`git worktree list --porcelain`. Read-only, so it is not recorded as a git
+action in the profile tally.
+
+Outside a repository it returns an empty list rather than throwing: the caller
+asks once per configured root, and a root that is not a repository is an
+ordinary case, not an error.
+
+The parser is exported and pure (`parseWorktreePorcelain`) so its shapes are
+pinned as text — detached heads, locked worktrees, bare repos and branch names
+containing a slash are all tedious to stage on disk and easy to get subtly
+wrong. `isMain` is **positional**: git marks nothing, it simply prints the main
+worktree first. Ten tests, one of which runs real `git` to prove the text being
+parsed is the text git prints.
+
+The bridge now exposes **70 JSON-RPC methods**.
+
 ### Removed
 
 - Removed the standalone Gemini CLI adapter, resolver, hook reporter, session

@@ -6,10 +6,12 @@ import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/value_objects/provider_usage.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The "Usage & credit" block on the profile: per-provider quota windows, plan
 /// and credit read live from the connected PC (`agent/usageStats`). While
@@ -55,7 +57,7 @@ class UsageSection extends ConsumerWidget {
               )
             else
               IconButton.filledTonal(
-                icon: const Icon(Icons.refresh_rounded),
+                icon: const UxIcon(UxIcons.refresh),
                 tooltip: l10n.usageRefreshAction,
                 onPressed: () =>
                     ref.read(usageStatsProvider.notifier).refresh(),
@@ -128,7 +130,7 @@ class _ProviderUsageCard extends StatelessWidget {
                   height: 24,
                   child: visuals.logo != null
                       ? SvgPicture.asset(visuals.logo!)
-                      : Icon(
+                      : UxIcon(
                           visuals.icon,
                           size: 24,
                           color: colors.onSurfaceVariant,
@@ -183,8 +185,8 @@ class _ProviderUsageCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.account_balance_wallet_outlined,
+                    UxIcon(
+                      UxIcons.accountBalanceWallet,
                       size: 18,
                       color: colors.onSurfaceVariant,
                     ),
@@ -366,7 +368,7 @@ String _creditLine(AppLocalizations l10n, CreditBalance credit) {
   return '${l10n.usageCreditLabel}: $amount · ${credit.period}';
 }
 
-typedef _ProviderVisuals = ({String label, String? logo, IconData icon});
+typedef _ProviderVisuals = ({String label, String? logo, UxIconData icon});
 
 _ProviderVisuals _visualsFor(UsageProvider provider) {
   AgentId? agent;
@@ -388,6 +390,6 @@ _ProviderVisuals _visualsFor(UsageProvider provider) {
   return (
     label: label,
     logo: agent != null ? AgentVisuals.logoFor(agent) : null,
-    icon: Icons.code_rounded,
+    icon: UxIcons.code,
   );
 }

@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/value_objects/prompt_template.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Settings screen that manages the user's `/` command-palette prompt
 /// templates: create, edit, delete and reset to the shipped defaults. Templates
@@ -35,13 +38,13 @@ class PromptTemplatesScreen extends ConsumerWidget {
       // back-to-top affordance.
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _edit(context, ref),
-        icon: const Icon(Icons.note_add_outlined),
+        icon: const UxIcon(UxIcons.noteAdd),
         label: Text(l10n.promptTemplatesAdd),
       ),
       actions: [
         if (templates.isNotEmpty)
           IconSurface(
-            icon: Icons.restart_alt_rounded,
+            icon: UxIcons.restartAlt,
             tooltip: l10n.promptTemplatesReset,
             onPressed: () => _confirmReset(context, library),
           ),
@@ -67,11 +70,14 @@ class PromptTemplatesScreen extends ConsumerWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 3),
               itemBuilder: (context, index) {
                 final template = templates[index];
-                return _TemplateCard(
-                  template: template,
-                  position: _positionFor(index, templates.length),
-                  onEdit: () => _edit(context, ref, existing: template),
-                  onDelete: () => _confirmDelete(context, library, template),
+                return NeEntranceRow(
+                  index: index,
+                  child: _TemplateCard(
+                    template: template,
+                    position: _positionFor(index, templates.length),
+                    onEdit: () => _edit(context, ref, existing: template),
+                    onDelete: () => _confirmDelete(context, library, template),
+                  ),
                 );
               },
             ),
@@ -219,7 +225,7 @@ class _TemplateCard extends StatelessWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline_rounded),
+            icon: const UxIcon(UxIcons.delete),
             tooltip: l10n.promptTemplatesDeleteConfirm,
             color: colors.onSurfaceVariant,
             onPressed: onDelete,
@@ -245,7 +251,7 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notes_rounded, size: 56, color: colors.onSurfaceVariant),
+          UxIcon(UxIcons.notes, size: 56, color: colors.onSurfaceVariant),
           const SizedBox(height: UxnanSpacing.lg),
           Text(
             l10n.promptTemplatesEmpty,
@@ -263,7 +269,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: UxnanSpacing.lg),
           FilledButton.icon(
             onPressed: onAdd,
-            icon: const Icon(Icons.add_rounded),
+            icon: const UxIcon(UxIcons.add),
             label: Text(l10n.promptTemplatesAdd),
           ),
         ],

@@ -6,9 +6,12 @@ import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/screens/settings/licenses/licenses_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The public source repository for the project.
 const String _kSourceRepoUrl = 'https://sink.gamas.workers.dev/uxnan-repo';
@@ -17,7 +20,15 @@ const String _kSourceRepoUrl = 'https://sink.gamas.workers.dev/uxnan-repo';
 /// developer/project info, and links (source code, open-source licenses).
 class AboutSectionScreen extends ConsumerWidget {
   /// Creates the about section screen.
-  const AboutSectionScreen({super.key});
+  const AboutSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route that is still open
+  /// on the left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -38,6 +49,7 @@ class AboutSectionScreen extends ConsumerWidget {
     );
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsAboutTitle,
       slivers: [
         SliverPadding(
@@ -48,7 +60,7 @@ class AboutSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               _AboutHeader(versionLabel: versionLabel),
               const SizedBox(height: UxnanSpacing.lg),
               Text(
@@ -59,23 +71,23 @@ class AboutSectionScreen extends ConsumerWidget {
               ),
               NeSectionHeader(label: l10n.aboutDeveloperSection),
               NeNavTile(
-                icon: Icons.code_rounded,
+                icon: UxIcons.code,
                 title: l10n.aboutSourceCodeTitle,
                 subtitle: l10n.aboutSourceCodeSubtitle,
-                trailing: Icon(
-                  Icons.open_in_new_rounded,
+                trailing: UxIcon(
+                  UxIcons.openInNew,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 onTap: () => _open(_kSourceRepoUrl),
               ),
               NeSectionHeader(label: l10n.aboutLegalSection),
               NeNavTile(
-                icon: Icons.description_outlined,
+                icon: UxIcons.description,
                 title: l10n.settingsLicensesTitle,
                 subtitle: l10n.settingsLicensesSubtitle,
                 onTap: () => LicensesScreen.push(context),
               ),
-            ],
+            ]),
           ),
         ),
       ],

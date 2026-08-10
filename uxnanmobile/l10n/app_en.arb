@@ -98,7 +98,7 @@
     "description": "Profile subtitle: when the user first started using the app.",
     "placeholders": { "date": { "type": "String" } }
   },
-  "profilePairedPcs": "{count} PCs",
+  "profilePairedPcs": "{count, plural, =1{1 PC} other{{count} PCs}}",
   "@profilePairedPcs": {
     "description": "How many PCs are paired, shown in the profile header.",
     "placeholders": { "count": { "type": "int" } }
@@ -106,6 +106,70 @@
   "profileActiveSessions": "{count} online now",
   "@profileActiveSessions": {
     "description": "How many live sessions the phone currently holds.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "sortProjectsHeader": "Projects",
+  "sortFoldersHeader": "Folders",
+  "sortConversationsHeader": "Conversations",
+  "sortByAttention": "Needs attention",
+  "spacesConversationCount": "{count, plural, =1{1 conversation} other{{count} conversations}}",
+  "@spacesConversationCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "spacesOther": "Other spaces",
+  "spacesNoFolder": "No folder",
+  "spacesNewConversationHere": "New conversation here",
+  "workspaceDirty": "{count, plural, =1{1 uncommitted file} other{{count} uncommitted files}}",
+  "@workspaceDirty": {"placeholders": {"count": {"type": "int"}}},
+  "workspaceAhead": "{count, plural, =1{1 commit to push} other{{count} commits to push}}",
+  "@workspaceAhead": {"placeholders": {"count": {"type": "int"}}},
+  "workspaceBehind": "{count, plural, =1{1 commit to pull} other{{count} commits to pull}}",
+  "@workspaceBehind": {"placeholders": {"count": {"type": "int"}}},
+  "workspaceUpstream": "Tracking {branch}",
+  "@workspaceUpstream": {"placeholders": {"branch": {"type": "String"}}},
+  "workspaceGitUnavailable": "Git state unavailable",
+  "workspaceGitStale": "Last known state",
+  "workspaceNoUpstream": "No upstream branch",
+  "workspaceClean": "No uncommitted changes",
+  "spacesWorkspaceCount": "{count, plural, =1{1 folder} other{{count} folders}}",
+  "@spacesWorkspaceCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "spacesDetailsPath": "Path",
+  "shellWelcomeTagline": "A name with no relation to, or derivation from, any existing product.",
+  "shellWelcomeHint": "Open a conversation from the panel on the left.",
+  "shellHowToPair": "How to link a device",
+  "drawerDevices": "Devices",
+  "drawerSwitchDevice": "Switch PC",
+  "drawerNoDevices": "No PC paired yet",
+  "drawerBackToOverview": "Back to overview",
+  "spacesCopyPath": "Copy path",
+  "spacesConversations": "Conversations",
+  "spacesNoMatch": "No space matches these filters",
+  "spacesClearFilters": "Clear filters",
+  "filterByState": "State",
+  "filterStateWorking": "Working",
+  "filterStateWaiting": "Waiting for you",
+  "filterStateUnread": "Unread",
+  "sortByActivity": "Recent activity",
+  "agentStateWorking": "Working",
+  "agentStateWaiting": "Waiting for you",
+  "agentStateBlocked": "Blocked",
+  "agentStateDone": "Done",
+  "agentStateIdle": "Idle",
+  "agentStateStale": "no update in a while",
+  "homeGreeting": "Welcome back",
+  "@homeGreeting": {
+    "description": "Overview header greeting when the user has not set a name."
+  },
+  "homeDeviceWorking": "{count, plural, =1{1 working} other{{count} working}}",
+  "@homeDeviceWorking": {
+    "description": "Device card signal: agents producing a turn on this PC right now.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "homeDeviceThreads": "{count, plural, =1{1 conversation} other{{count} conversations}}",
+  "@homeDeviceThreads": {
+    "description": "Device card signal: conversations known for this PC.",
     "placeholders": { "count": { "type": "int" } }
   },
   "statConversations": "Chats",
@@ -138,13 +202,13 @@
   "metricConversations": "Conversations",
   "metricMessages": "Messages",
   "metricWork": "Work",
+  "profileMenuTooltip": "Profile actions",
   "profileEditTitle": "Edit profile",
   "profileChoosePhoto": "Choose photo",
   "profilePickIcon": "Or pick an icon",
   "profileNameLabel": "Name",
   "profileNameHint": "Your name",
   "profileAgentConversationsLabel": "conversations",
-  "profileBackupTitle": "Backup",
   "profileBackupNote": "Your stats are stored on this phone and on your PC. Without a backup they can be lost if you uninstall the app or switch phones.",
   "profileBackupExport": "Export",
   "profileBackupImport": "Import",
@@ -239,6 +303,14 @@
   "@deviceAddressHide": {
     "description": "Accessibility label / tooltip for the revealed PC address; tapping blurs it again."
   },
+  "deviceLastConnection": "Last connection: {when}",
+  "@deviceLastConnection": {
+    "description": "Device card: when the PC was last reachable.",
+    "placeholders": { "when": { "type": "String" } }
+  },
+  "deviceMenuTooltip": "Device actions",
+  "deviceConnectionLabel": "Connection",
+  "deviceAddressLabel": "Address",
   "deviceNeverConnected": "Never connected",
   "devicePairedLabel": "Paired",
   "deviceRename": "Rename",
@@ -280,7 +352,6 @@
   "threadsSortBy": "Sort by",
   "threadsSortCreated": "Creation date",
   "threadsSortName": "Name",
-  "threadsSortFolder": "Folder",
   "threadsCompact": "Compact list",
   "threadsMore": "More options",
   "threadsSearch": "Search threads",
@@ -1648,9 +1719,9 @@
   "@settingsConversationClaudeGroup": {
     "description": "Conversation section sub-group for Claude model-picker options."
   },
-  "settingsConversationPiGroup": "Pi Agent",
+  "settingsConversationPiGroup": "Autonomous agents",
   "@settingsConversationPiGroup": {
-    "description": "Conversation section sub-group for Pi agent options (the autonomous-mode banner)."
+    "description": "Conversation section sub-group for agents that run without per-action approval \u2014 named for the behaviour rather than for one agent, since more than one behaves this way."
   },
   "settingsConversationChatGroup": "Conversation",
   "@settingsConversationChatGroup": {

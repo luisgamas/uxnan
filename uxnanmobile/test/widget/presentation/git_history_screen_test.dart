@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +10,8 @@ import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_history_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 /// Sample commit list used by the tests below.
 List<GitCommit> _sampleCommits() => [
@@ -267,14 +268,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // Graph is off by default → the toggle shows the outlined tree icon.
-    expect(find.byIcon(Icons.account_tree_outlined), findsOneWidget);
+    expect(findUxIcon(UxIcons.accountTree), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.account_tree_outlined));
+    await tester.tap(findUxIcon(UxIcons.accountTree));
     await tester.pumpAndSettle();
 
     // Graph is on → the toggle shows the filled tree icon and the commits
     // still render (now with the lane gutter).
-    expect(find.byIcon(Icons.account_tree_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.accountTree), findsOneWidget);
     expect(find.text('feat: history view'), findsOneWidget);
   });
 
@@ -297,7 +298,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Enable the graph overlay (gutter + ref chips compete for width here).
-    await tester.tap(find.byIcon(Icons.account_tree_outlined));
+    await tester.tap(findUxIcon(UxIcons.accountTree));
     await tester.pumpAndSettle();
 
     // No RenderFlex overflow was thrown during layout/paint.
@@ -319,14 +320,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(findUxIcon(UxIcons.moreVert));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.density_small_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.densitySmall), findsOneWidget);
     await tester.tap(find.text('Compact view'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(findUxIcon(UxIcons.moreVert));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.density_medium_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.densityMedium), findsOneWidget);
   });
 
   testWidgets('opens the branch picker and switches the viewed ref',
@@ -342,7 +343,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(findUxIcon(UxIcons.moreVert));
     await tester.pumpAndSettle();
     await tester.tap(find.text('View branch or ref'));
     await tester.pumpAndSettle();
@@ -404,7 +405,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Open the full-screen search view from the app-bar search icon.
-    await tester.tap(find.byIcon(Icons.search_rounded));
+    await tester.tap(findUxIcon(UxIcons.search));
     await tester.pumpAndSettle();
 
     // A query that matches nothing shows the empty message (unique to the

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/motion.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 
 /// Hides auxiliary composer chrome by sliding it toward the composer while its
@@ -23,13 +24,13 @@ class ComposerChromeVisibility extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-
     return TweenAnimationBuilder<double>(
       tween: Tween(end: visible ? 1 : 0),
-      duration:
-          reduceMotion ? Duration.zero : const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+      // These values are the app's reveal motion, not this widget's own: they
+      // started here and everything that reveals or hides beside content now
+      // shares them (see [UxnanMotion]).
+      duration: UxnanMotion.revealIn(context),
+      curve: UxnanMotion.revealCurve,
       child: ExcludeSemantics(
         excluding: !visible,
         child: IgnorePointer(ignoring: !visible, child: child),

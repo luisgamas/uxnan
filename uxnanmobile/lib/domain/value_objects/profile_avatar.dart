@@ -22,8 +22,8 @@ class ProfileAvatar extends Equatable {
         imageBase64 = null,
         imageMime = null;
 
-  /// A preset icon identified by [key] (resolved to an `IconData` in the UI —
-  /// kept as a string so no dynamic `IconData` breaks icon tree-shaking).
+  /// A preset icon identified by [key] (resolved to a `UxIconData` glyph in
+  /// the UI — kept as a string so the domain never depends on the icon set).
   const ProfileAvatar.icon(String key)
       : kind = ProfileAvatarKind.icon,
         iconKey = key,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Renders a file's unified git diff with the +/- line coloring matching the
 /// conversation's `GitDiffView` (alpha-tinted backgrounds + the `gitAdded` /
@@ -162,8 +164,8 @@ class _DiffHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.difference_rounded,
+          UxIcon(
+            UxIcons.difference,
             size: 18,
             color: colors.onSurfaceVariant,
           ),

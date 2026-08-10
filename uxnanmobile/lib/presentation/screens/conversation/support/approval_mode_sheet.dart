@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Bottom sheet to choose how the agent's actions are approved (spec 02a —
 /// access modes). Returns the chosen [ApprovalMode] (or null if dismissed).
@@ -47,7 +49,7 @@ class ApprovalModeSheet extends StatelessWidget {
               child: Text(l10n.approvalQuestion, style: textTheme.titleSmall),
             ),
             _ApprovalOption(
-              icon: Icons.pan_tool_outlined,
+              icon: UxIcons.panTool,
               title: l10n.approvalRequestTitle,
               body: l10n.approvalRequestBody,
               selected: current == ApprovalMode.requestApproval,
@@ -55,14 +57,14 @@ class ApprovalModeSheet extends StatelessWidget {
                   Navigator.of(context).pop(ApprovalMode.requestApproval),
             ),
             _ApprovalOption(
-              icon: Icons.verified_user_outlined,
+              icon: UxIcons.verifiedUser,
               title: l10n.approvalAutoTitle,
               body: l10n.approvalAutoBody,
               selected: current == ApprovalMode.approveForMe,
               onTap: () => Navigator.of(context).pop(ApprovalMode.approveForMe),
             ),
             _ApprovalOption(
-              icon: Icons.public_rounded,
+              icon: UxIcons.public,
               title: l10n.approvalFullTitle,
               body: l10n.approvalFullBody,
               selected: current == ApprovalMode.fullAccess,
@@ -84,7 +86,7 @@ class _ApprovalOption extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String title;
   final String body;
   final bool selected;
@@ -110,7 +112,7 @@ class _ApprovalOption extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 22, color: colors.onSurfaceVariant),
+                UxIcon(icon, size: 22, color: colors.onSurfaceVariant),
                 const SizedBox(width: UxnanSpacing.md),
                 Expanded(
                   child: Column(
@@ -129,7 +131,7 @@ class _ApprovalOption extends StatelessWidget {
                 ),
                 if (selected) ...[
                   const SizedBox(width: UxnanSpacing.sm),
-                  Icon(Icons.check_rounded, color: colors.primary),
+                  UxIcon(UxIcons.check, color: colors.primary),
                 ],
               ],
             ),

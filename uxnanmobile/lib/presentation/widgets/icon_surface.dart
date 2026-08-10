@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/motion.dart';
+import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_menu_button.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
-/// Neural Expressive **Icon Surface**: a circular 40 dp action on a neutral
-/// `surfaceContainerHigh` surface with a 48 dp touch target, for app-bar and
-/// drawer actions over transparent chrome (guide §4.2). Press feedback uses the
-/// M3E `spatialFast` spring (scale 1.0 → 0.92).
+/// Neural Expressive **Icon Surface**: a circular [UxnanSize.iconSurface]
+/// action on a neutral `surfaceContainerHigh` surface with a 48 dp touch
+/// target, for app-bar and drawer actions over transparent chrome (guide §4.2).
+/// Press feedback uses the M3E `spatialFast` spring (scale 1.0 → 0.92).
 class IconSurface extends StatefulWidget {
   /// Creates an [IconSurface].
   const IconSurface({
@@ -17,8 +21,8 @@ class IconSurface extends StatefulWidget {
     super.key,
   });
 
-  /// The glyph shown at 20 dp.
-  final IconData icon;
+  /// The glyph, drawn at [UxnanSize.iconSurfaceGlyph].
+  final UxIconData icon;
 
   /// Tooltip + accessibility semantic label (required for icon-only buttons).
   final String tooltip;
@@ -72,10 +76,10 @@ class _IconSurfaceState extends State<IconSurface>
         onTapCancel: enabled ? _release : null,
         child: ScaleTransition(
           scale: _scale,
-          // 48×48 dp touch target wrapping a 40 dp visual circle (a11y).
+          // A 48 dp touch target wrapping the visual circle (a11y).
           child: SizedBox(
-            width: 48,
-            height: 48,
+            width: UxnanSize.minTouchTarget,
+            height: UxnanSize.minTouchTarget,
             child: Center(
               child: Material(
                 color: background,
@@ -84,11 +88,11 @@ class _IconSurfaceState extends State<IconSurface>
                   customBorder: const CircleBorder(),
                   onTap: widget.onPressed,
                   child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(
+                    width: UxnanSize.iconSurface,
+                    height: UxnanSize.iconSurface,
+                    child: UxIcon(
                       widget.icon,
-                      size: 20,
+                      size: UxnanSize.iconSurfaceGlyph,
                       semanticLabel: widget.tooltip,
                       color: enabled
                           ? foreground
@@ -111,6 +115,30 @@ class _IconSurfaceState extends State<IconSurface>
 /// round surface. This drives [showMenu] from an [IconSurface] tap instead, so
 /// the ripple is clipped to the circle (and the M3E press-scale spring plays),
 /// staying coherent with the standalone bar actions.
+/// Where a menu opened from the widget at [context] should appear: a
+/// zero-height anchor at its bottom edge, so the menu drops under it exactly
+/// as `PopupMenuPosition.under` would.
+///
+/// Shared so a menu that opens a SECOND menu — the sort menu drilling into one
+/// level — can put it in the same place as the first, instead of jumping.
+RelativeRect menuPositionUnder(BuildContext context) {
+  final button = context.findRenderObject()! as RenderBox;
+  final overlay =
+      Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+  final bottomLeft = button.localToGlobal(
+    button.size.bottomLeft(Offset.zero),
+    ancestor: overlay,
+  );
+  final bottomRight = button.localToGlobal(
+    button.size.bottomRight(Offset.zero),
+    ancestor: overlay,
+  );
+  return RelativeRect.fromRect(
+    Rect.fromPoints(bottomLeft, bottomRight),
+    Offset.zero & overlay.size,
+  );
+}
+
 class IconSurfaceMenu<T> extends StatelessWidget {
   /// Creates an [IconSurfaceMenu].
   const IconSurfaceMenu({
@@ -124,7 +152,7 @@ class IconSurfaceMenu<T> extends StatelessWidget {
   });
 
   /// The glyph shown on the surface.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Tooltip + accessibility label.
   final String tooltip;
@@ -139,34 +167,19 @@ class IconSurfaceMenu<T> extends StatelessWidget {
   /// When false the surface reads as disabled and won't open.
   final bool enabled;
 
-  /// Optional size constraints for the menu (e.g. a wider `minWidth`).
+  /// Size constraints for the menu; defaults to [kNeMenuConstraints], the
+  /// floor both menu triggers share.
   final BoxConstraints? constraints;
 
   Future<void> _open(BuildContext context) async {
-    final button = context.findRenderObject()! as RenderBox;
-    final overlay =
-        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
-    final bottomLeft = button.localToGlobal(
-      button.size.bottomLeft(Offset.zero),
-      ancestor: overlay,
-    );
-    final bottomRight = button.localToGlobal(
-      button.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-    // A zero-height anchor at the button's bottom edge → menu opens under it,
-    // matching PopupMenuPosition.under.
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(bottomLeft, bottomRight),
-      Offset.zero & overlay.size,
-    );
+    final position = menuPositionUnder(context);
     final items = itemBuilder(context);
     if (items.isEmpty) return;
     final selected = await showMenu<T>(
       context: context,
       position: position,
       items: items,
-      constraints: constraints,
+      constraints: constraints ?? kNeMenuConstraints,
     );
     if (selected != null) onSelected?.call(selected);
   }

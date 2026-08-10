@@ -6,6 +6,10 @@ channel. It is the part of the ecosystem you carry with you: the bridge does the
 work on the PC, and this app is how you watch it, steer it, and review it from
 anywhere.
 
+On a tablet or an unfolded foldable it is not the same screens made wider: past
+840 dp a permanent drawer holds your PCs and their work, and whatever you open
+fills the panel beside it. On a phone nothing changes.
+
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
@@ -192,8 +196,10 @@ connected to live bridge data, validated on-device against a real bridge:
 pairing + E2EE transport, live streaming conversations with structured agent
 turns, a message queue for follow-ups sent while the agent is working, the model
 picker and run-option knobs, context-usage and sign-in indicators, interactive
-approvals, voice and image input, per-PC threads, a full Git screen, and Android
-push.
+approvals, voice and image input, a Spaces list that groups work by project and
+folder with per-folder git indicators, a full Git screen, and Android push. On
+tablets and other large screens the same routes render beside a permanent
+navigation drawer instead of as a stack of screens.
 
 The detailed, always-current feature inventory and what's left (Bug A relink
 latency, OpenCode/pi interactive approvals — a bridge-side gap — the automated

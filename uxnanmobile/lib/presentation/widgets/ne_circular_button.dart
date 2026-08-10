@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Neural Expressive **circular action button** — a neutral floating surface
 /// with a single glyph, used for the floating
@@ -21,7 +23,7 @@ class NeCircularButton extends StatelessWidget {
   });
 
   /// The glyph shown centered in the circle.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Tooltip + accessibility label.
   final String tooltip;
@@ -51,7 +53,7 @@ class NeCircularButton extends StatelessWidget {
           child: SizedBox(
             width: size,
             height: size,
-            child: Icon(
+            child: UxIcon(
               icon,
               color: colors.onSurfaceVariant,
               size: iconSize,

@@ -6,6 +6,7 @@ import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/thread_sync_state.dart';
+import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
@@ -41,6 +42,17 @@ Widget _wrap({required List<Thread> threads}) {
       // database, and pulling the real one in leaves drift timers pending.
       threadPreviewProvider.overrideWith((ref, key) async => null),
       threadsProvider.overrideWith((ref) => Stream.value(threads)),
+      // A held queue is one of the things that blocks a thread, so the
+      // queue stream is part of the row's state too.
+      threadQueuesProvider.overrideWith(
+        (ref) => Stream.value(const <String, ThreadQueueState>{}),
+      ),
+      // The row's state now includes "the agent asked and is waiting on
+      // you", which the manager tracks; feed it directly so the real one
+      // (drift, transport, its poll timers) stays out of a widget test.
+      awaitingInputProvider.overrideWith(
+        (ref) => Stream.value(const <String, Set<String>>{}),
+      ),
       threadActivityProvider.overrideWith(
         (ref) => Stream.value(const <String, ThreadActivity>{}),
       ),

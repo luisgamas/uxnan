@@ -70,6 +70,30 @@ export interface GitWorktreeResult {
   branch: string;
 }
 
+/**
+ * One entry of `git worktree list --porcelain`.
+ *
+ * A repository's worktrees are siblings on disk, not children — a checkout of
+ * `repo` at `../repo-feature` is a peer directory with no path relationship to
+ * its main worktree. That is precisely why a client cannot infer the hierarchy
+ * from paths alone and has to be told.
+ */
+export interface GitWorktreeEntry {
+  /** Absolute path of the worktree. */
+  path: string;
+  /** Checked-out branch; absent when the worktree is in a detached HEAD. */
+  branch?: string;
+  /** Whether this is the repository's main worktree. */
+  isMain: boolean;
+  /** Whether `git worktree lock` has been applied to it. */
+  isLocked?: boolean;
+}
+
+export interface GitWorktreeList {
+  /** The main worktree first, then the linked ones in git's own order. */
+  worktrees: GitWorktreeEntry[];
+}
+
 export interface GitBranchList {
   /** The currently checked-out branch (`HEAD` when detached). */
   current: string;

@@ -8,9 +8,11 @@ import 'package:uxnan/presentation/screens/onboarding/install_step_page.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_background.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_page_layout.dart';
 import 'package:uxnan/presentation/screens/onboarding/welcome_page.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 
 /// Multi-page onboarding flow ending in a CTA to scan the pairing QR.
 class OnboardingScreen extends StatefulWidget {
@@ -50,90 +52,97 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
-      body: Stack(
-        children: [
-          const Positioned.fill(child: OnboardingBackground()),
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: AnimatedOpacity(
-                        opacity: _isLast ? 0 : 1,
-                        duration: const Duration(milliseconds: 200),
-                        child: TextButton(
-                          onPressed:
-                              _isLast ? null : () => _animateTo(_pageCount - 1),
-                          child: Text(l10n.onboardingSkip),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: PageView(
-                        controller: _controller,
-                        onPageChanged: (page) => setState(() => _index = page),
-                        children: [
-                          const WelcomePage(),
-                          const FeaturesPage(),
-                          const InstallStepPage(),
-                          _PairPage(),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        UxnanSpacing.lg,
-                        UxnanSpacing.sm,
-                        UxnanSpacing.lg,
-                        UxnanSpacing.lg,
-                      ),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color:
-                              Theme.of(context).colorScheme.surfaceContainerLow,
-                          borderRadius:
-                              const BorderRadius.all(Radius.circular(32)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            UxnanSpacing.lg,
-                            UxnanSpacing.md,
-                            UxnanSpacing.lg,
-                            UxnanSpacing.sm,
+      // Plain Scaffold, so the scope is declared here: only NeScaffold carries
+      // one for free, and this flow predates it.
+      body: NeEntranceScope(
+        child: Stack(
+          children: [
+            const Positioned.fill(child: OnboardingBackground()),
+            SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Column(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: AnimatedOpacity(
+                          opacity: _isLast ? 0 : 1,
+                          duration: const Duration(milliseconds: 200),
+                          child: TextButton(
+                            onPressed: _isLast
+                                ? null
+                                : () => _animateTo(_pageCount - 1),
+                            child: Text(l10n.onboardingSkip),
                           ),
-                          child: Column(
-                            children: [
-                              _PageDots(count: _pageCount, index: _index),
-                              const SizedBox(height: UxnanSpacing.xl),
-                              _BottomControls(
-                                isFirst: _index == 0,
-                                isLast: _isLast,
-                                onBack: () => _animateTo(_index - 1),
-                                onNext: () => _animateTo(_index + 1),
-                                onScan: _scanQr,
-                              ),
-                              AnimatedOpacity(
-                                opacity: _isLast ? 1 : 0,
-                                duration: const Duration(milliseconds: 200),
-                                child: TextButton(
-                                  onPressed: _isLast ? _enterCode : null,
-                                  child: Text(l10n.actionEnterCode),
+                        ),
+                      ),
+                      Expanded(
+                        child: PageView(
+                          controller: _controller,
+                          onPageChanged: (page) =>
+                              setState(() => _index = page),
+                          children: [
+                            const WelcomePage(),
+                            const FeaturesPage(),
+                            const InstallStepPage(),
+                            _PairPage(),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          UxnanSpacing.lg,
+                          UxnanSpacing.sm,
+                          UxnanSpacing.lg,
+                          UxnanSpacing.lg,
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerLow,
+                            borderRadius:
+                                const BorderRadius.all(Radius.circular(32)),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UxnanSpacing.lg,
+                              UxnanSpacing.md,
+                              UxnanSpacing.lg,
+                              UxnanSpacing.sm,
+                            ),
+                            child: Column(
+                              children: [
+                                _PageDots(count: _pageCount, index: _index),
+                                const SizedBox(height: UxnanSpacing.xl),
+                                _BottomControls(
+                                  isFirst: _index == 0,
+                                  isLast: _isLast,
+                                  onBack: () => _animateTo(_index - 1),
+                                  onNext: () => _animateTo(_index + 1),
+                                  onScan: _scanQr,
                                 ),
-                              ),
-                            ],
+                                AnimatedOpacity(
+                                  opacity: _isLast ? 1 : 0,
+                                  duration: const Duration(milliseconds: 200),
+                                  child: TextButton(
+                                    onPressed: _isLast ? _enterCode : null,
+                                    child: Text(l10n.actionEnterCode),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -144,7 +153,7 @@ class _PairPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return OnboardingPageLayout(
-      icon: Icons.qr_code_scanner_rounded,
+      icon: UxIcons.qrCodeScanner,
       title: l10n.onboardingPairTitle,
       body: l10n.onboardingPairBody,
       top: const FloatingAgents(
@@ -177,7 +186,7 @@ class _BottomControls extends StatelessWidget {
     final primary = isLast
         ? NeButton.icon(
             onPressed: onScan,
-            icon: Icons.qr_code_scanner_rounded,
+            icon: UxIcons.qrCodeScanner,
             label: l10n.actionScanQr,
           )
         : NeButton(onPressed: onNext, label: l10n.onboardingNext);

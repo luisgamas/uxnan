@@ -4,19 +4,30 @@ import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/prompt_templates_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The Conversation settings section, itself grouped into sub-sections:
 /// **Agents** (reasoning visibility + context indicator), **Claude** (model
-/// picker options), **Pi Agent** (autonomous-mode banner) and **Conversation**
-/// (scroll behaviour + prompt templates).
+/// picker options), **Autonomous agents** (the mode banner) and
+/// **Conversation** (scroll behaviour + prompt templates).
 class ConversationSectionScreen extends ConsumerWidget {
   /// Creates the conversation section screen.
-  const ConversationSectionScreen({super.key});
+  const ConversationSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route that is still open
+  /// on the left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -32,6 +43,7 @@ class ConversationSectionScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsConversationSection,
       slivers: [
         SliverPadding(
@@ -42,7 +54,7 @@ class ConversationSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               // ── Agents ─────────────────────────────────────────────────
               NeSectionHeader(
                 label: l10n.settingsConversationAgentsGroup,
@@ -53,7 +65,7 @@ class ConversationSectionScreen extends ConsumerWidget {
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
-                      icon: Icons.psychology_outlined,
+                      icon: UxIcons.psychology,
                       title: l10n.settingsShowThinkingTitle,
                       subtitle: l10n.settingsShowThinkingSubtitle,
                       value: ref.watch(showAgentThinkingProvider),
@@ -74,7 +86,7 @@ class ConversationSectionScreen extends ConsumerWidget {
               // ── Claude ─────────────────────────────────────────────────
               NeSectionHeader(label: l10n.settingsConversationClaudeGroup),
               NeSwitchTile(
-                icon: Icons.auto_awesome_outlined,
+                icon: UxIcons.autoAwesome,
                 title: l10n.settingsClaudeLatestTitle,
                 subtitle: l10n.settingsClaudeLatestSubtitle,
                 value: ref.watch(showClaudeLatestModelsProvider),
@@ -84,10 +96,14 @@ class ConversationSectionScreen extends ConsumerWidget {
               ),
               NeSectionHint(text: l10n.settingsClaudeLatestHint),
 
-              // ── Pi Agent ───────────────────────────────────────────────
+              // ── Autonomous agents ──────────────────────────────────────
+              // Named for the BEHAVIOUR, not for one agent: Pi was the only
+              // one running without per-action approval when this landed,
+              // and a group named after it stops describing itself the day
+              // a second one does the same.
               NeSectionHeader(label: l10n.settingsConversationPiGroup),
               NeSwitchTile(
-                icon: Icons.campaign_outlined,
+                icon: UxIcons.campaign,
                 title: l10n.settingsAutonomousBannerTitle,
                 subtitle: l10n.settingsAutonomousBannerSubtitle,
                 value: ref.watch(showAutonomousBannerProvider),
@@ -104,7 +120,7 @@ class ConversationSectionScreen extends ConsumerWidget {
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
-                      icon: Icons.vertical_align_bottom_rounded,
+                      icon: UxIcons.verticalAlignBottom,
                       title: l10n.settingsScrollOnSendTitle,
                       subtitle: l10n.settingsScrollOnSendSubtitle,
                       value: ref.watch(scrollToBottomOnSendProvider),
@@ -114,14 +130,14 @@ class ConversationSectionScreen extends ConsumerWidget {
                     ),
                   _ => NeNavTile(
                       position: pos,
-                      icon: Icons.notes_rounded,
+                      icon: UxIcons.notes,
                       title: l10n.settingsPromptTemplatesTitle,
                       subtitle: l10n.settingsPromptTemplatesSubtitle,
                       onTap: () => PromptTemplatesScreen.push(context),
                     ),
                 },
               ),
-            ],
+            ]),
           ),
         ),
       ],
@@ -162,8 +178,8 @@ class _ContextIndicatorTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ListTile(
-            leading: Icon(
-              Icons.donut_large_outlined,
+            leading: UxIcon(
+              UxIcons.donutLarge,
               color: colors.onSurfaceVariant,
             ),
             title: Text(l10n.settingsContextIndicatorTitle),

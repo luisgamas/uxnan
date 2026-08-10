@@ -5,18 +5,29 @@ import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/app_info_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The Updates settings section: the installed version, the live update state
 /// with an in-section download → install flow (no silent install), and a
 /// configurable automatic check interval.
 class UpdatesSectionScreen extends ConsumerWidget {
   /// Creates the updates section screen.
-  const UpdatesSectionScreen({super.key});
+  const UpdatesSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route still open on the
+  /// left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -30,6 +41,7 @@ class UpdatesSectionScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsUpdatesSection,
       slivers: [
         SliverPadding(
@@ -40,7 +52,7 @@ class UpdatesSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               NeSectionHeader(
                 label: l10n.settingsUpdatesVersionGroup,
                 first: true,
@@ -50,7 +62,7 @@ class UpdatesSectionScreen extends ConsumerWidget {
               const _UpdateStateCard(),
               NeSectionHeader(label: l10n.updateIntervalSectionTitle),
               const _IntervalSelector(),
-            ],
+            ]),
           ),
         ),
       ],
@@ -77,8 +89,8 @@ class _CurrentVersionCard extends ConsumerWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(
-          Icons.info_outline_rounded,
+        leading: UxIcon(
+          UxIcons.info,
           color: colors.onSurfaceVariant,
         ),
         title: Text(l10n.updateCurrentVersionTitle),
@@ -114,8 +126,8 @@ class _UpdateStateCard extends ConsumerWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(
-          Icons.system_update_outlined,
+        leading: UxIcon(
+          UxIcons.systemUpdate,
           color: colors.onSurfaceVariant,
         ),
         title: Text(l10n.updateCheckTitle),

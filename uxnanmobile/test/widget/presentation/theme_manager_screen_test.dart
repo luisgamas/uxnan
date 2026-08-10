@@ -6,6 +6,8 @@ import 'package:uxnan/domain/value_objects/custom_theme.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/settings/theme_manager_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 Widget _wrap() {
   return const ProviderScope(
@@ -91,7 +93,7 @@ void main() {
     final json = '[${_authored('imp-a', 'ImpA').toJsonString()},'
         '${_authored('imp-b', 'ImpB').toJsonString()}]';
 
-    await tester.tap(find.byIcon(Icons.file_download_outlined));
+    await tester.tap(findUxIcon(UxIcons.fileDownload));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), json);
     await tester.pumpAndSettle(); // let the Import button enable
@@ -124,7 +126,7 @@ void main() {
     final dup = _authored('dup', 'Dup');
     final json = '[${dup.toJsonString()},${dup.toJsonString()}]';
 
-    await tester.tap(find.byIcon(Icons.file_download_outlined));
+    await tester.tap(findUxIcon(UxIcons.fileDownload));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), json);
     await tester.pumpAndSettle(); // let the Import button enable
@@ -155,7 +157,7 @@ void main() {
     // Long-press to select, then delete via the selection app bar.
     await tester.longPress(find.text('Autumn'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+    await tester.tap(findUxIcon(UxIcons.delete));
     await tester.pumpAndSettle();
     // Confirm in the dialog.
     expect(find.text('Delete selected themes?'), findsOneWidget);

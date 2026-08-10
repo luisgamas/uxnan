@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -19,6 +18,7 @@ import 'package:uxnan/presentation/screens/conversation/files/widgets/file_diff_
 import 'package:uxnan/presentation/screens/conversation/files/widgets/file_preview_media.dart';
 import 'package:uxnan/presentation/screens/conversation/files/widgets/markdown_blocks.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/markdown.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
@@ -27,6 +27,7 @@ import 'package:uxnan/presentation/widgets/highlighted_source.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen file viewer for images (including animated GIF and SVG), PDF,
 /// Markdown, syntax-highlighted code/text, git diffs, and binary placeholders.
@@ -276,8 +277,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
               right: 0,
               child: NeTopBar(
                 leading: IconSurface(
-                  icon:
-                      _editing ? Icons.close_rounded : Icons.arrow_back_rounded,
+                  icon: _editing ? UxIcons.close : UxIcons.arrowBack,
                   tooltip: _editing
                       ? MaterialLocalizations.of(context).cancelButtonLabel
                       : MaterialLocalizations.of(context).backButtonTooltip,
@@ -312,7 +312,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                           )
                         else
                           IconSurface(
-                            icon: Icons.check_rounded,
+                            icon: UxIcons.check,
                             tooltip: l10n.fileViewerSave,
                             background: colors.secondaryContainer,
                             foreground: colors.onSecondaryContainer,
@@ -322,9 +322,8 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                     : [
                         if (supportsPreview)
                           IconSurface(
-                            icon: showPreview
-                                ? Icons.code_rounded
-                                : Icons.visibility_outlined,
+                            icon:
+                                showPreview ? UxIcons.code : UxIcons.visibility,
                             tooltip: showPreview
                                 ? l10n.fileViewerViewSource
                                 : l10n.fileViewerViewPreview,
@@ -335,7 +334,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                           ),
                         if (status != null)
                           IconSurface(
-                            icon: Icons.difference_rounded,
+                            icon: UxIcons.difference,
                             tooltip: showDiff
                                 ? l10n.fileViewerHideDiff
                                 : l10n.fileViewerShowDiff,
@@ -346,7 +345,7 @@ class _FileViewerScreenState extends ConsumerState<FileViewerScreen> {
                           ),
                         if (editable)
                           IconSurface(
-                            icon: Icons.edit_outlined,
+                            icon: UxIcons.edit,
                             tooltip: l10n.fileViewerEdit,
                             onPressed: _startEditing,
                           ),
@@ -692,10 +691,8 @@ class _MarkdownBody extends StatelessWidget {
       builders: {'pre': MarkdownCodeBlockBuilder()},
       checkboxBuilder: (checked) => Padding(
         padding: const EdgeInsets.only(right: UxnanSpacing.xs),
-        child: Icon(
-          checked
-              ? Icons.check_box_rounded
-              : Icons.check_box_outline_blank_rounded,
+        child: UxIcon(
+          checked ? UxIcons.checkBox : UxIcons.checkBoxOutlineBlank,
           size: UxnanSpacing.lg,
           color: checked ? colors.primary : colors.onSurfaceVariant,
         ),
@@ -855,13 +852,13 @@ class _BinaryState extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.archive_outlined,
+                UxIcon(
+                  UxIcons.archive,
                   size: 40,
                   color: colors.onSurfaceVariant,
                 ),
                 const SizedBox(height: UxnanSpacing.md),
-                Text(l10n.fileViewerBinaryTitle, style: textTheme.titleSmall),
+                Text(l10n.fileViewerBinaryTitle, style: textTheme.titleMedium),
                 const SizedBox(height: UxnanSpacing.xs),
                 Text(
                   l10n.fileViewerBinaryBody,
@@ -906,7 +903,7 @@ class _ErrorState extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 40, color: colors.error),
+                UxIcon(UxIcons.error, size: 40, color: colors.error),
                 const SizedBox(height: UxnanSpacing.md),
                 Text(
                   l10n.fileViewerLoadFailed,
@@ -924,7 +921,7 @@ class _ErrorState extends StatelessWidget {
                 const SizedBox(height: UxnanSpacing.md),
                 FilledButton.icon(
                   onPressed: onRetry,
-                  icon: const Icon(Icons.refresh_rounded),
+                  icon: const UxIcon(UxIcons.refresh),
                   label: Text(l10n.gitRefresh),
                 ),
               ],

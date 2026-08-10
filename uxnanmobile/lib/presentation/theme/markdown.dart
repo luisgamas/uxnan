@@ -11,12 +11,21 @@ MarkdownStyleSheet uxnanMarkdownStyleSheet(BuildContext context) {
       isDark ? colors.surfaceContainerHighest : colors.surfaceContainerHigh;
   return MarkdownStyleSheet(
     p: textTheme.bodyMedium,
-    h1: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-    h2: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+    // Markdown needs SIX strictly descending steps; the UI scale does not have
+    // six to spare, and two of its rungs deliberately share metrics
+    // (titleLarge / headlineSmall differ in role, not size). So the deepest two
+    // headings take an explicit size — the one place in the app where a
+    // literal is right, because here the ramp itself is the requirement.
+    // 20 → 18 → 16 → 14 → 13 → 12.
+    h1: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+    h2: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
     h3: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
     h4: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-    h5: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-    h6: textTheme.labelMedium?.copyWith(
+    h5: textTheme.bodyMedium?.copyWith(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    ),
+    h6: textTheme.bodySmall?.copyWith(
       color: colors.onSurfaceVariant,
       fontWeight: FontWeight.w600,
     ),

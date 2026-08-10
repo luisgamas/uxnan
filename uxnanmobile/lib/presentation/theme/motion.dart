@@ -57,6 +57,34 @@ class M3ESprings {
       );
 }
 
+/// Duration-and-curve motion, for the things a spring is wrong for.
+///
+/// Springs model something being *grabbed and released* — a press, a drag, a
+/// morph. They are the right tool there and the wrong one for a surface that
+/// simply arrives or leaves: a stiff spring reads as a snap, and the overshoot
+/// that gives a press its life makes a panel look like it bounced off a wall.
+///
+/// The composer's control ribbon has always used these values and is the
+/// smoothest motion in the app; everything that reveals or hides beside content
+/// should match it rather than invent its own.
+class UxnanMotion {
+  const UxnanMotion._();
+
+  /// Something appearing or leaving beside the content — a control strip, a
+  /// banner, a floating button stepping out of the way.
+  static const Duration reveal = Duration(milliseconds: 220);
+
+  /// The curve [reveal] uses: decelerating, and **without overshoot**.
+  static const Curve revealCurve = Curves.easeOutCubic;
+
+  /// One surface being swapped for another in the same slot.
+  static const Duration swap = Duration(milliseconds: 180);
+
+  /// [reveal], or nothing at all when the platform asks for reduced motion.
+  static Duration revealIn(BuildContext context) =>
+      MediaQuery.disableAnimationsOf(context) ? Duration.zero : reveal;
+}
+
 /// Convenience for driving an [AnimationController] with an M3E spring.
 extension SpringAnimate on AnimationController {
   /// Animates [value] toward [target] using [spring]. The controller must be

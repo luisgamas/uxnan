@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/motion.dart';
 
 /// Fades and lifts its child into place the first time it is built.
 ///
@@ -15,7 +18,8 @@ class NeEnterTransition extends StatefulWidget {
   /// Creates a [NeEnterTransition].
   const NeEnterTransition({
     required this.child,
-    this.duration = const Duration(milliseconds: 260),
+    this.duration = UxnanMotion.reveal,
+    this.delay = Duration.zero,
     this.offset = 12,
     super.key,
   });
@@ -25,6 +29,12 @@ class NeEnterTransition extends StatefulWidget {
 
   /// How long the entrance takes.
   final Duration duration;
+
+  /// How long to wait before starting — how a list staggers.
+  ///
+  /// The child is **not drawn** while it waits, so a staggered row does not
+  /// flash at full opacity before its turn.
+  final Duration delay;
 
   /// How far below its resting place the child starts, in logical pixels.
   final double offset;
@@ -47,14 +57,23 @@ class _NeEnterTransitionState extends State<NeEnterTransition>
     curve: Curves.easeOutCubic,
   );
 
+  Timer? _start;
+
   @override
   void initState() {
     super.initState();
-    _controller.forward();
+    if (widget.delay == Duration.zero) {
+      _controller.forward();
+    } else {
+      _start = Timer(widget.delay, () {
+        if (mounted) _controller.forward();
+      });
+    }
   }
 
   @override
   void dispose() {
+    _start?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -67,16 +86,20 @@ class _NeEnterTransitionState extends State<NeEnterTransition>
       // Built once and reused: the child does not depend on the animation, so
       // rebuilding it every frame would be pure waste.
       child: widget.child,
-      builder: (context, child) {
-        if (_controller.isCompleted) return child!;
-        return Opacity(
-          opacity: _fade.value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - _fade.value) * widget.offset),
-            child: child,
-          ),
-        );
-      },
+      // The SHAPE of this subtree never changes — not while animating, not
+      // once finished. Returning the bare child on completion (as this used
+      // to) swaps two widgets out from above it, so Flutter unmounts the
+      // child's element and rebuilds it: any State it held is destroyed the
+      // moment the entrance ends. A settled `Opacity(1)` costs nothing —
+      // it skips its layer — and this widget stops rebuilding anyway once the
+      // controller stops ticking.
+      builder: (context, child) => Opacity(
+        opacity: _fade.value,
+        child: Transform.translate(
+          offset: Offset(0, (1 - _fade.value) * widget.offset),
+          child: child,
+        ),
+      ),
     );
   }
 }

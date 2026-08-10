@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/domain/entities/discovered_bridge.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Modal sheet that browses the LAN for bridges (mDNS `_uxnan._tcp`) and lets
 /// the user pick one — returning its `host:port` so the manual-pairing form can
@@ -49,7 +51,7 @@ class BridgeDiscoverySheet extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.wifi_find_rounded, color: colors.primary, size: 22),
+                UxIcon(UxIcons.wifiFind, color: colors.primary, size: 22),
                 const SizedBox(width: UxnanSpacing.sm),
                 Text(l10n.bridgeDiscoveryTitle, style: textTheme.titleMedium),
               ],
@@ -130,7 +132,7 @@ class _BridgeTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: ListTile(
-        leading: Icon(Icons.dns_rounded, color: colors.primary),
+        leading: UxIcon(UxIcons.dns, color: colors.primary),
         title: Text(bridge.name, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           bridge.deviceId == null
@@ -141,7 +143,7 @@ class _BridgeTile extends StatelessWidget {
           ),
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: const Icon(Icons.chevron_right_rounded),
+        trailing: const UxIcon(UxIcons.chevronRight),
         onTap: onTap,
       ),
     );

@@ -6,6 +6,745 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the profile stopped being clamped to a paragraph's width
+
+`NeScaffold` already stops every screen at its window class's content width
+(840 / 1040 / 1200), measured from its own constraints. The profile added a
+**second, tighter** clamp of 760 dp on top — a typographic line length, right
+for the conversation and the file viewer and wrong for a stats grid, provider
+cards and a 53-week heatmap. A laptop showed a third of its width empty while
+the heatmap squeezed its weeks inside a paragraph.
+
+Removing the extra clamp is the whole fix: 1008 dp on a 1200 dp laptop and
+1168 dp on a 1600 dp monitor, instead of 760 dp everywhere. **A phone renders
+exactly what it did before.**
+
+### Changed — the new-conversation form is bounded on a wide window
+
+M3's full-screen dialog is a compact-window pattern. On a tablet the form spread
+across the whole width, so the eye had to cross the window between the agent
+list and **Start**, and the drawer it was launched from disappeared entirely.
+
+It is now a dialog of at most 560×720 over whatever is there. **The content is
+byte-for-byte the same** — the agent cards, the working-directory card, the
+worktree toggle, the model field — and a phone still gets the full-screen
+dialog it always had. Only the container changed.
+
+### Fixed — the back button on a tablet sitting at the overview
+
+The OS back button threw `Null check operator used on a null value` inside
+`GoRouterDelegate._findCurrentNavigator`, and went nowhere.
+
+The shell was showing the welcome pane at the root by rendering it **instead of**
+the router's `child` — and that child is not just a screen, it is the navigator
+the whole route table lives in. Unmounting it left `go_router` dereferencing a
+null `navigatorKey.currentState` on every back press, so back was broken for the
+entire app the whole time the overview was open, which is where a tablet starts.
+
+The shell now always renders `child`; **what the root shows is the route's
+business**, and the root route answers it — the overview on a phone, the quiet
+welcome pane beside a drawer. Nothing changes visually.
+
+### Changed — the file tree measures its own surface, and files stay a stack
+
+The file browser centred its tree against the **window**. Inside the shell's
+content pane a 320 dp drawer is already spent, so it pushed the tree off to one
+side of the space it actually had. It measures its constraints now, like the
+conversation.
+
+**Files is not becoming two panes**, and neither is git. Two panes is the
+ceiling: beside the drawer, a tree plus a viewer would be a third column, and a
+tablet has no room for three that anyone enjoys using. The browser already
+pushes the viewer inside the content pane, which is the right shape — the drawer
+stays put, and back returns to the tree.
+
+### Added — Settings shows a section beside its list on a wide surface
+
+The list stays on the left and the section fills the right, with the open one
+marked — the same `secondaryContainer` the conversation list uses, because it
+is the same question: which of these am I looking at. On a phone nothing
+changes; a section is still a screen you push, and marking a row you cannot see
+behind it would be marking nothing.
+
+There is **no "pick a section" placeholder**. With room for both, a section is
+more useful than an instruction to tap one — and the one that opens is your
+**profile**, which is the row the list is headed by and the one you most likely
+came for.
+
+The profile card behaves like the sections it sits among: it fills the pane and
+is marked while it does, rather than opening a whole new screen. It looks more
+like a section than anything else in that list, and it was the only row that did
+not act like one.
+
+**Settings and profile are destinations, not content**, so on a wide window
+they own it: no drawer beside them. You *went* to them, and the conversation
+list has no bearing on what they show — keeping it up would have put three
+columns on a tablet, one of which could not change anything on screen.
+
+The width that decides the internal split is **the surface's, not the
+window's**. That still matters: these screens are full-window now, but the same
+`TwoPaneScaffold` is used inside the shell's content pane elsewhere, where a
+320 dp drawer is already spent. Below ~840 dp it stays one column, which is
+also what a landscape phone gets.
+
+Each section screen gained an `embedded` mode: it keeps its title, because the
+pane has to say which section it is, and drops the back arrow, because `canPop`
+would answer for the Settings route still open on the left and tapping it would
+leave Settings entirely.
+
+**A section's own children stay in the pane too.** Personalization → custom
+themes, About → licences: those open with `Navigator.of(context).push`, which
+without a navigator in the pane resolves to the one above and takes over the
+whole window, accesses and all. The pane has its own, keyed by section, so the
+left stays the accesses, the right becomes the child, and its back arrow returns
+to the section — and picking a different section starts at its own root rather
+than inheriting where you had wandered in the last one.
+
+### Fixed — the activity heatmap sat against the right edge on a wide screen
+
+A `reverse: true` scroll view anchors its content to the **end** of the axis,
+which is what makes the grid open on the most recent weeks when a year does not
+fit. On a surface wide enough to hold the whole year it did the same thing with
+nothing to scroll: the grid pressed against the right with a gap beside it,
+complete but looking misaligned. It only reverses while the year does not fit.
+
+### Fixed — menu glyphs read as disabled
+
+The drawer menu's icons took the muted `onSurfaceVariant` while the label naming
+the same action took `onSurface`, so the glyph sat a tone below its own label.
+They also used the *subordinate* content size, which at 18 dp beside 15 pt text
+reads as faint rather than as quiet. A menu row's glyph is the row's own mark:
+it takes the row's size and the row's colour. Only a row that is genuinely quiet
+— the back row — stays muted, and it is muted on both.
+
+### Changed — the autonomous-mode banner setting is no longer named after Pi
+
+Settings → Conversation grouped that toggle under **Pi Agent**. Pi was the only
+agent running without per-action approval when it landed; it is not any more,
+and a group named after one agent stops describing itself the day a second one
+behaves the same. It is **Autonomous agents** now — named for the behaviour,
+which is what the setting actually follows.
+
+### Fixed — a project and its main folder were the same thing to the app
+
+A repository is identified by its main worktree's path, which is **also** the
+identity of the folder for that worktree. Collapse state is a set of those
+strings, so the two rows shared one: tapping the main folder shut the entire
+project, and keeping a project open with its folders closed was impossible. The
+repository is now `repo:<path>` — two rows on screen need two identities.
+
+### Changed — the wide layout replaces the pane instead of stacking on it
+
+With a permanent drawer nothing is "somewhere you went": the drawer never moves
+and what changes is the contents of a pane. Pushing there built a stack the
+layout gives no way to see — open a conversation, walk into its git screen, pick
+another conversation, and back retraced every screen ever glanced at. Opening
+now **replaces** on wide windows and still pushes on a phone, decided in one
+place rather than at the five call sites that open a conversation.
+
+Two consequences that had to be handled explicitly:
+
+- The file browser and git screens open with a raw `Navigator.push`, landing
+  *above* the routed page — so `go` alone swapped the page underneath and left
+  them covering it. From the file browser, picking another conversation looked
+  like nothing happened. The shell's navigator is keyed and emptied first.
+- "Back" from the pane's own first screen now **closes what is open** rather
+  than popping: nothing was left behind to pop to.
+
+### Changed — the drawer's footer carries the actions the phone keeps in its bar
+
+Tapping the row returns the content pane to the overview and clears the stack
+behind it — the way out of a deep walk without retracing it. Editing your
+profile, settings and pairing moved into a menu beside it, pairing as a submenu
+because it is two ways to do one thing.
+
+The first version navigated while that menu was still open, which left its
+barrier up with nothing to dismiss it: the app froze with a menu on screen and
+no way out. It now records the choice, closes, and only then navigates.
+
+### Fixed — the drawer moved when the *other* pane opened a keyboard
+
+The keyboard consumes the bottom inset for the whole window, so the drawer's
+`SafeArea` shrank and its profile row slid down while you typed in the content
+pane. `maintainBottomViewPadding` keeps it still. A phone never showed this —
+a phone has no drawer beside the keyboard.
+
+### Added — the list says which conversation you are reading
+
+Beside a permanent drawer the list never leaves the screen, and one that never
+says which of its rows is open makes you hold the answer in your head. The open
+row takes `secondaryContainer` — M3's own selected-item role, never a coloured
+border, which reads as an error state at this size. Selection outranks the
+unread tint: a conversation you have open cannot meaningfully still be asking
+for attention.
+
+Only in that layout. On a phone the open conversation **is** the screen, so
+marking a row you cannot see while reading it would be marking nothing.
+
+### Fixed — back still works after rotating a tablet into a phone shape
+
+The wide layout replaces routes instead of stacking them, so rotating with a
+conversation open left the narrow layout holding a stack of exactly one page.
+The system gesture would have left the app from a screen you reached by tapping
+into it, and the bar's own arrow did nothing at all — which reads as broken
+rather than as a dead end. Both now walk the hierarchy the phone would have
+built: a conversation belongs to its PC's list, everything else to the overview.
+
+They go through **one** function. Two paths to the same stack is why the first
+attempt fixed the gesture and left the arrow dead.
+
+### Added — a permanent drawer on wide windows
+
+On expanded windows and above (≥ 840 dp) the app stops being a stack of screens:
+a permanent drawer holds the PC and its work, and the routed screen becomes the
+pane beside it. **On a phone nothing changes** — the shell returns the screen
+literally, so the existing stack and its back behaviour are untouched.
+
+The route table stays flat; one `ShellRoute` wraps it and decides where a screen
+renders. No second navigator and no branch per pane: a separate navigation model
+for tablets would mean every deep link and push notification had to work twice.
+
+The drawer is **three zones and nothing else** — the PC, its work, you. Zone 1
+switches PCs with a real connection attempt (and its failure snackbar), and
+*becomes* the pairing call to action when nothing is paired. Zone 2 is the
+spaces tree unchanged, through a new `embedded` mode that drops the app bar,
+the pull-to-refresh and the extended FAB. Zone 3 returns the content pane to the
+overview — the "home" affordance of a layout with no back stack.
+
+Which PC it shows is resolved by how much each source knows: the open
+conversation's thread, then the last list visited (persisted), then the
+connected PC. Without that, a push notification opening `/conversation/:id`
+leaves the drawer blank.
+
+Back with a drawer up empties the **content**, not the app: a deep link arrives
+with nothing behind it, so without this the first back press closes an app
+visibly full of your work.
+
+### Fixed — MediaQuery is read by the property, not wholesale
+
+Six widgets read `MediaQuery.of(context)` to get one field. That subscribes them
+to every change — the keyboard opening, a rotation, a text-scale change — so a
+bubble that only cares whether animations are disabled rebuilt on every keystroke
+that moved the view insets. They now use `MediaQuery.disableAnimationsOf` /
+`.sizeOf`, which subscribe to one thing each.
+
+The conversation also measures its reading width from a `LayoutBuilder` rather
+than the window: inside the drawer's content pane those differ by 320 dp, and
+measuring the window would centre the text against space it does not own.
+
+### Changed — every level of the list has its own ordering
+
+The list grew a third level when worktrees started sitting under their project,
+and the sort menu only had two — so the **worktrees inside a project could not
+be ordered at all**: `buildWorkspaceTree` sorted them itself, out of reach of
+any setting. It now takes a comparator, and the menu has a group per level.
+
+All three take the same four orderings — `status`, `activity`, `created`,
+`name` — from one shared `ListSort` rather than three near-identical enums that
+would drift apart the first time one of them gained an option. `created` for a
+project or a folder is derived, since the bridge reports a path and not a
+history: it is the oldest conversation inside, which is when work there began.
+
+The **archive gets fewer on purpose** (`created` and `name`): archived work is
+finished by definition, so "needs attention" and "recent activity" would both
+sort by a value that can no longer change.
+
+**The menu cascades.** Every ordering for every level at once was seventeen
+entries — a list that ran off the bottom of a phone, which is not a menu. Tapping
+a level now opens its orderings **beside** the levels instead of replacing them:
+a second `showMenu` pushed over the first without popping it, so nothing closes
+under the next choice and a second level is one tap away. Dismissing the second
+panel is "back", and costs no widget because a route stack already works that
+way.
+
+It is built from the app's own floating menu on purpose. An attempt with
+`MenuAnchor` — the only Flutter widget with a built-in cascade — put a second
+menu *system* in the app bar: a bare overlay beside routed menus, which opened
+and closed differently and swallowed taps between them (with a routed menu up,
+the barrier ate the tap and the sort button never saw it). A test now pins that
+every panel is a routed menu.
+
+Each level shows what it is sorted by on its own row, so the question this menu
+usually gets asked is answered before opening anything — and it updates the
+instant you choose. A `showMenu` builds its items once, so both that subtitle
+and the second panel's tick would otherwise sit on the old value until the whole
+menu was closed and reopened, contradicting the choice just made in it. With
+only one level to order — the archive — there is no cascade at all.
+
+The project level only appears when there is a project to order, so a PC whose
+folders never group is not offered a control that moves nothing it can see. Items with nothing to sort on sink to a **stable** alphabetical tail
+rather than reshuffling on every rebuild.
+
+### Added — worktrees sit under the repository they belong to
+
+The repository level is back, and this time it is real. `git/worktrees` tells
+the phone which folders are worktrees of which repository, so they now sit under
+it. It is never inferred from path prefixes — worktrees are **siblings** on
+disk, so a shared prefix says nothing, and inferring it is what sank the first
+attempt at this level.
+
+Two rules keep it from repeating that failure: a repository node appears only
+when it relates **two or more** folders (a heading over a single folder is
+chrome, not structure), and a folder that relates to nothing stays exactly where
+it is — there is no "other" bucket. The repository row carries no "+" of its
+own, because a new conversation happens in a *folder*, and a repository with
+three worktrees cannot answer which.
+
+The table is built from the folders **on the list** — the distinct `cwd`s of
+this PC's conversations — not from the bridge's configured roots.
+`workspaceRoots` is optional and frequently empty (a conversation can be started
+anywhere through the folder picker), and keying the query on it meant the
+hierarchy silently never appeared for anyone who had not configured one. One
+reply names every sibling of its repository, so ten worktrees of one repo cost
+one call, not ten.
+
+**An older bridge changes nothing.** It answers "method not found", the table
+arrives empty, and the list is literally the flat one it was before — no error,
+no guess. Nine tests cover the shapes, including that a shared path prefix is
+still not a relationship, and that folders group with no configured roots at
+all.
+
+### Added — a folder says what its working tree is doing
+
+Each folder row now reports what the desktop's sidebar reports: uncommitted
+work, and how far it has drifted from its remote (`↑ahead`, `↓behind`). No new
+contract was needed — `git/status` already returned all of it; what was missing
+was a per-folder provider instead of a single stream for the open conversation.
+
+The rules are about **cost**, not appearance. Fifteen folders on screen is
+fifteen round trips to a PC that may be behind a relay, from a phone on a
+battery. So: only while connected to that PC; only for folders whose indicators
+are actually on screen (a collapsed folder draws none, so nothing is watched and
+nothing is fetched); and at most one request per folder per 15 s. The refresh
+that matters arrives on the existing `git/status` bus after a commit, push or
+pull — the producer is already holding the new status, so re-asking the bridge
+would be a round trip to learn nothing.
+
+A zero is never drawn and the row caps at three signals; the breakdown — branch,
+upstream, `+additions −deletions`, file count — is one long-press away. With no
+answer the row draws **nothing**, never "clean": a folder we could not reach
+reported as clean is a lie that looks exactly like good news. A folder on a PC
+that went offline keeps its last known state, dimmed.
+
+### Added — every screen the plan will not reach now arrives like the rest
+
+The seven navigable screens no remaining phase names: the commit detail, and
+Settings' deep screens — personalization, the custom-theme editor, the theme
+manager, prompt templates and both licence screens. Their lists, grids and
+sections rise into place like everywhere else.
+
+That closes the gap for good. What is left without an entrance is left on
+purpose and each has a reason: the **QR scanner** (a live camera preview, where
+a fade reads as the camera failing), the **onboarding backdrop** (it is the
+backdrop), and the floating agent marks (already animated). Every other screen
+either has one or is named by a phase that will bring it under the same rule.
+
+### Added — onboarding and the archive arrive like everything else
+
+The last two screens with no motion. The archive's list rises row by row like
+the active one.
+
+Onboarding is a `PageView`, and there the one-frame window lands exactly where
+it should without a rule of its own: at launch only page 0 is built, so its
+hero, title and body rise in; every later page is built as you swipe to it — a
+frame long past the window — so it arrives on the PageView's own slide, and no
+rise fights that slide sideways. A test measures the assumption underneath
+(that a `PageView` builds only the visible page) rather than trusting it.
+
+### Changed — the archive stays a flat list, deliberately
+
+It was the one screen the folder grouping did not reach, and it should not: the
+active list groups because the question there is *where work is happening*,
+while the archive answers *which one was it* — a retrieval question that a
+search field and a date sort answer better than a hierarchy you have to expand.
+Grouping would add a navigation step to a lookup. Recorded so the inconsistency
+reads as a decision rather than as something missed.
+
+### Added — profile, settings and manual pairing arrive like the rest of the app
+
+The entrance now reaches the three screens that had **no motion at all**:
+profile (staggered by block — the stats, the activity heatmap, then usage),
+settings and its six section screens (staggered by row), and manual pairing.
+
+Pairing takes a **single** entrance rather than a stagger: it is a form, and a
+form arrives as one thing — staggering it would put a wait between the screen
+opening and the field you came to type in. The **QR scanner is deliberately
+left alone**: it is a live camera preview, and fading one in reads as the
+camera failing.
+
+`NeScaffold` is now itself an entrance scope, so a screen no longer wraps
+anything — a row inside any of them just uses `NeEntranceRow`, and a fixed list
+of children uses `NeEntranceScope.stagger([...])`. The four screens that had
+been wrapping themselves stopped.
+
+`docs/conventions.md` records the standing rule this settles: a screen you touch
+leaves with the current design language — type from the scale and chosen by
+meaning, motion where content arrives, sizes from tokens — and names the screens
+(`onboarding/`, `archived_threads_screen.dart`) that no planned phase will sweep
+up on its own.
+
+### Added — lists rise into place the first time they fill
+
+The home overview and the conversation list appeared fully formed, which for a
+screen whose whole content arrives at once reads as a jump. Their rows now enter
+with a short staggered fade-and-rise, reusing the entrance the conversation
+timeline already had (`NeEnterTransition`, now with a delay) behind
+`NeEntranceScope` / `NeEntranceRow`.
+
+The window is **one frame**, not a duration. A sliver lays out everything the
+viewport needs in a single pass, so "the rows that arrived together" and "the
+rows built in one frame" are the same set — including when the data landed
+asynchronously. Anything built in a later frame is a row you scrolled to, and
+appears at once: what animates is the list arriving, never a row reached under
+your thumb. Frames also make it testable, which a wall-clock window is not.
+
+**Fixed along the way — an entrance was destroying its row's state.**
+`NeEnterTransition` returned its bare child once the animation completed,
+dropping two widgets from above it; Flutter treats that as a different subtree,
+unmounts the child's element and builds a fresh one, so any `State` inside died
+the instant the entrance ended. The new row wrapper had the same flaw in a
+second form (it asked per build, and the window shuts after the first frame).
+Both now keep a fixed shape. In the app this showed as a revealed IP address
+quietly re-hiding itself — caught by an existing test, not by looking.
+
+### Fixed — the app follows one type scale instead of two
+
+`TextTheme` has fifteen slots and this theme defined five. That is not the same
+as leaving ten unused: an unset slot falls back to **Material's own** value —
+`titleLarge` 22/w400, `headlineSmall` 24/w400, `labelMedium` 12/w500 — which
+belongs to M3's uncompressed reference scale, not to the compressed one this app
+draws (a 32 sp hero, not 57). Around ninety call sites across thirty-four files
+were reaching for those ten slots, so which ladder a screen followed depended on
+which slots it happened to use. That is why density jumped between screens, and
+why the home overview read as enormous beside the conversation list.
+
+All fifteen are now set, and the middle is filled rather than the top lowered:
+28, 24 and 22 above the existing 20, and 18 for a region or a card between it
+and 16. Nothing that was already right moved.
+
+What the completed scale would have changed on its own, and did not:
+
+- **Top bars.** Six screens spelled their title `titleLarge.copyWith(fontSize:
+  20)`, which rendered correctly only while `titleLarge` was undefined and
+  resolved to Material's regular weight. Defining it would have emboldened every
+  bar in the app at once. They now share `UxnanTypography.barTitle` (20/w400) —
+  the reviewed style, in one place, unaffected by the ladder around it.
+- **Markdown headings.** They need six strictly descending steps; the UI scale
+  does not have six to spare, and two of its rungs share metrics on purpose. The
+  ramp is remapped to 20/18/16/14/13/12.
+- **Two heroes.** A full-screen dialog's title and a commit's subject both read
+  `headlineSmall` when that meant 24; they take a headline rung rather than
+  shrink to 18.
+
+Raised where a title heads something rather than names a row: settings section
+headers, a PC's name on its card, and every empty state — those sat at 14 under
+a 48 dp glyph, which is what an empty screen says at all.
+
+`test/widget/presentation/type_scale_test.dart` fails if a rung goes missing,
+stops descending, stops being compressed, or lets a group and its rows share a
+style.
+
+### Added — the new-conversation button steps aside while you scroll
+
+A FAB sits over the bottom-right of the list, which on a phone is exactly where
+the rows you are scrolling toward arrive. While you are scrolling you are
+reading, not acting, so it now shrinks away and returns the moment the list
+settles — on the scroll's own end, not on a timer, so the wait is as long as the
+scroll is and no longer, fling included. It stops accepting taps while it is
+gone.
+
+Opt-in per screen (`NeScaffold(hideFabOnScroll: true)`), because a FAB that is a
+*scroll affordance* rather than an action — the conversation history's
+back-to-top — exists precisely for the moment this would hide it.
+
+The motion is the composer control ribbon's, now shared as `UxnanMotion.reveal`
+(220 ms `easeOutCubic`) instead of living as loose numbers inside that one
+widget. The app's spring tokens model a *press* — stiff, with a little
+overshoot — and reused for something leaving the screen they read as a snap and
+a bounce; the design guide now says so next to the spring table.
+
+### Fixed — glyphs stroke at the weight the app was drawn around, and a group outranks its rows
+
+Two things made the conversation list read thinner and flatter than the rest of
+the app. Both were app-wide, not screen-deep.
+
+**The icons were about a third too light.** Hugeicons authors its artwork at a
+1.5 stroke where Material drew 2, and `UxIcon`'s optical scale — which keeps a
+given size inking what it always inked — shrinks the artwork inside its box and
+thinned that stroke a further ~13% as a side effect. Compounded, every glyph in
+the app arrived far lighter than the Material one it replaced. `UxIcon` now
+draws at `UxnanSize.iconStroke` (2 on the grid, ~1.74 after the scale), and a
+test pins it. `uxnandesktop` keeps the vendor's 1.5: it draws smaller glyphs at
+monitor distance, where the lighter stroke is correct.
+
+**A folder and the conversations inside it were drawn identically** — both
+`titleSmall`, 14/w500 — so a screen made entirely of rows had no hierarchy to
+read. The theme had no rung between a screen's headline (20) and a single row
+(14) to reach for, which is how it happened. `titleMedium` (16/w600) now exists
+and is what a *group* is titled with; supporting lines step in parallel
+(14/w400 under a group, 12/w400 under a row).
+
+Content glyph sizes move with it: the folder that identifies a row takes the new
+`iconContentLarge` (24), subordinate marks — the chevron, the state indicator —
+go 16 → 18, and a folder's **+** is now an S button (40) rather than XS (32).
+`docs/neural-expressive-design.md` records the scale the app actually ships, and
+warns that the ten type slots it leaves undefined silently follow Material's
+ladder instead of this one.
+
+### Changed — a PC's conversations are grouped by the folder they run in
+
+The screen was a flat list of every conversation on a PC. It now groups them by
+the **folder** each one runs in, so twenty conversations across four checkouts
+read as four things instead of twenty.
+
+**One level, not two.** The desktop sidebar shows repositories over their
+worktrees because it *knows* which is which; the phone does not — the bridge
+reports a flat list of configured roots and nothing about worktrees, which live
+as siblings of their repository. A project level built on that would have been a
+heading over a single folder, plus a bucket named "other" holding most of the
+real work. The folder is the top of the tree until the bridge can say more
+(`git/worktrees`), at which point a project level can come back meaning what it
+means on the desktop. Configured roots still contribute their **name**, which is
+usually friendlier than a basename.
+
+Paths are matched after normalising separators and case, so two spellings of one
+folder are one row however they reached us — while the path shown and copied is
+the one that was actually reported.
+
+A folder row carries its name and, closed, the strongest state inside it —
+hiding that would defeat the reason the screen exists. Its second line answers
+what the fold hides: open, just how many conversations it holds, since each one
+carries its own agent mark and state a row below; closed, the agents inside it
+as well, because that evidence is gone. Everything else — the
+full path, the conversations with their states, and the git state that lands
+next — is one **long-press** away; the desktop shows the same on hover, and a
+phone has no hover.
+
+Each folder's **+** starts a conversation already in it, rather than in the
+bridge's first root, which was almost never the one you meant.
+
+The filter chips are gone. With the list grouped and two orderings available
+they were a third way to answer a question the screen now answers by shape. The
+sort menu grew to match: **folders** order by what needs attention, by recent
+activity, or by name — and **conversations** order independently inside them.
+Attention-first is the default, because the reason to open this screen is
+usually "what happened", not "what exists".
+
+The list stays flat internally (a typed row per line) rather than nesting
+widgets, so a PC with hundreds of conversations builds the handful on screen.
+
+Content glyphs got two size tokens (`UxnanSize.iconContent` 20,
+`iconContentSmall` 16). The guide sized chrome and the composer but never these,
+which is how they drifted between 13 and 18 dp across the app; it now has a
+table for them, and for the XS button a row-level action uses.
+
+### Added — a conversation says what its agent is actually doing
+
+The list showed a spinner or a dot: running, or not. It now shows the same five
+states the desktop sidebar does — **working · waiting for you · blocked · done ·
+idle** — so you can tell from the list which conversation needs you, instead of
+opening three to find out.
+
+The states are the desktop's; **how they are known is not.** The desktop app
+owns the terminals its agents run in and reads a hook server, a terminal title
+and PTY activity. The phone owns none of that, so this is derived from what the
+bridge already sends: turn events, queue state, sign-in status, unread replies,
+and the approval/question blocks the agent emits when it stops to ask.
+
+Those blocks are the interesting half. They arrive for **every** thread, not
+just the open one, so `ThreadManager` now tracks which threads are holding on an
+unanswered question — which is the only reason a list can distinguish "working"
+from "waiting for you" at all. It clears when the user answers or when the turn
+ends, and rebuilds on the next resync, since `turn/list` replays the same
+blocks.
+
+Precedence is the design: **waiting** outranks **working**, because an agent
+that asked and stopped is the one thing worth interrupting someone for, and it
+outranks **blocked** too. A signed-out agent blocks a thread even while idle
+(its next turn cannot run) but not an archived one; a held queue only blocks
+while something is still queued. `errored` and `stale` ride alongside as
+modifiers rather than states, because "the last turn failed" and "it is working
+again" are both true and the row should not have to pick one.
+
+Each state draws a **different shape**, not just a different tint: colour alone
+is not a channel every reader has, and this mark is often the only thing telling
+two identical rows apart. `idle` deliberately keeps a plain dot — it is by far
+the most common state, and a glyph there would be constant noise. A claim that
+has gone quiet for 30 minutes is dimmed rather than dropped: the turn may still
+be alive, and hiding it would be the bigger lie.
+
+The row itself was rebuilt to read the way the desktop's does: **state, then
+who, then what** — the status mark, then the agent's own mark a step larger,
+then the title with its second line beneath. The 44 dp framed avatar is gone: it
+was the loudest thing in a row whose point is the text beside it.
+
+Agent marks lost their border and their drop shadow. `AgentLogo` draws one bare
+for dense rows, and the framed `AgentLogoChip` — still used where an agent is an
+object you pick, the onboarding hero and the picker — is flat now too. The
+shadow was also the reason the thread card looked elevated: the card itself has
+no elevation, and what read as its shadow was the chip's, cast from inside it.
+
+The row's second line follows the state. "Waiting for you" wins over the agent's
+last words; only once nothing is pending does the reply take the line back.
+
+
+### Changed — the app draws Hugeicons, like the desktop and the website
+
+Mobile was the last surface still on Material Icons. It now uses the same free
+**stroke-rounded Hugeicons** set the desktop app and the website draw, so a
+concept looks the same wherever you meet it.
+
+The official Flutter package is not a drop-in, and the differences shaped the
+migration: its icons are SVG path data (`List<List<dynamic>>`), not `IconData`
+with a code point. So `find.byIcon` cannot see them, `IconData` fields had to
+become `UxIconData`, and `HugeIcon` — which has no `semanticLabel` and sizes
+itself to a hard-coded 24 — is never used directly.
+
+Two pieces carry all of it. **`UxIcon`** is the only widget that talks to the
+package, restoring the semantic label an icon-only control is required to have
+and the sizing an ambient `IconTheme` is supposed to give it. **`UxIcons`** is a
+catalogue naming all 173 glyphs for what they MEAN, so choosing one stays a
+design decision made in one reviewable file rather than a constant pasted across
+sixty; tests match on those constants through `findUxIcon`.
+
+Six icons changed **meaning**, not just style, because Material never had the
+glyph and the app had been borrowing a metaphor: branches and routes were a
+call-split arrow and now are **GitBranch**; commits, merges and diffs are
+**GitCommit**, **GitMerge** and **GitCompare**; an agent was a toy robot and is
+now **Robot01**; the terminal is **ComputerTerminal01**.
+
+Icons arrive at the size the layout expects. Hugeicons paints its artwork edge
+to edge, so at the same nominal `size` a glyph inked **~15% larger** than the
+Material one it replaced — measured from pixels: Material inks 0.750 of its box
+(the 18-in-24 live area), Hugeicons 0.862. `UxIcon` corrects that with one
+factor, and keeps the widget's own footprint at the full size so nothing
+reflows. A test reads the pixels back at four sizes, so a package upgrade that
+changes the viewBox cannot slip through.
+
+Each network path now shows its own glyph on the device card — router for LAN, a
+shield for Tailscale, a link for direct, a cloud for the relay — through the
+same mapping the transport badge uses. One generic aerial for all four told the
+reader nothing.
+
+Flutter's full-screen `SearchAnchor` draws its own back arrow from the Material
+set unless one is supplied; the three search views now supply ours. It was the
+one place a Material glyph survived, because the framework builds it rather
+than us.
+
+Comparing the packages' path data — rather than trusting their names — caught
+three more: `arrow_back` and `arrow_downward` were landing on the *chevron*
+variant (one V-shaped stroke, no shaft) instead of a real arrow, and
+`block` was rendering a plain ✕ rather than the circle-with-slash it means. The
+free set is stroke-only, so Material's outline-vs-filled check-circle
+distinction collapses to one glyph; nothing else was lost.
+
+
+### Changed — the home screen is a real overview, not a list with a title
+
+The first screen was a list of paired PCs under a "Devices" title, with the
+brand mark pinned in a footer at the bottom.
+
+The bar now carries the **product's** identity rather than the screen's: the
+mark on the left, standing a little taller than the action circles beside it,
+and your avatar on the right (tapping it opens the profile). The footer is
+gone — the logo was spending the bottom of every screen on itself.
+
+Under the bar, the screen opens with a headline in two rows — the constant
+greeting quiet and small, your name below it carrying the weight — over two
+badges: how many machines are reachable, and since when you have been using
+Uxnan. It scrolls away under the pinned bar rather than collapsing into a title;
+the bar already holds the mark and the avatar, and repeating "Welcome back" up
+there would say nothing. Every fragment is dropped rather than faked: without a
+name the greeting becomes the whole headline, and a phone that has never synced
+metrics omits the date badge.
+
+That date is read from the metrics **cache** (`memberSinceProvider`) rather than
+through `profileMetricsProvider` — the latter falls back to aggregating the
+whole local database, which is the right price for the profile screen and far
+too much for one date on the app's first screen.
+
+**Each PC card was rebuilt around a labelled metadata strip**: three
+equal-weight cells — last seen, connection, address — each with a small caption
+over its value, parted by hairlines drawn at a third of the outline tone. A full
+`outlineVariant` rule cut the card in two and fought the calm surface a card is
+supposed to be; the strip needs a seam, not a border. The same facts were there before as
+stacked lines that read like a paragraph; a labelled cell is scannable, so you
+look at the one column you care about instead of reading the card. Status and
+network path now share one cell, because they are one fact seen from two sides:
+the live path (`LAN`, `Tailscale`, `Direct`, `Relay`) when there is one,
+otherwise what the connection is doing. That mapping is shared with the
+transport badge (`networkKindLabel`), so a rename cannot leave the two
+disagreeing. The machine glyph carries a live status dot in its corner, and the
+name's subtitle is what the PC is holding: **agents working right now** and
+**how many conversations** the phone knows for it, both from the local cache so
+they survive having no connection. A count of zero draws nothing.
+
+Only threads explicitly tagged with that PC count. An untagged legacy thread is
+shown under every PC while browsing, which is right, but counting it under every
+PC would inflate each card by the same threads.
+
+**Icon Surfaces are 44 dp now** (22 dp glyph, `UxnanSize.iconSurface`), keeping
+the 48 dp touch target: at the old 40/20 they read as small change beside the
+product mark and gave the thumb less to aim at. The guide now records 44/22 as
+the default and 40/20 as the small variant for dense rows. The overview's avatar
+action matches, so the bar is one rhythm.
+
+**Every floating menu got its type back.** `popupMenuTheme` styled the surface
+but never set `textStyle`, so items fell back to `labelLarge` — a style this
+theme does not define — and rendered in Flutter's default font, a size below the
+surfaces around them. They now use `UxnanTypography.menuItem` (15/w500) and open
+at a shared minimum width, so two entries and six look like the same component.
+
+**`NeMenuButton`** joins `IconSurfaceMenu` as the second and last menu trigger:
+chrome wears the filled circle, in-content triggers do not, and both open the
+identical themed menu.
+
+On windows wide enough for a side pane the cards pair up into two columns of
+equal height. They are laid out as rows of paired cells rather than a
+`SliverGrid`, because a grid needs a fixed extent or aspect ratio and this
+card's height follows text that grows with the user's font scale — the one input
+a fixed extent cannot survive.
+
+### Changed — the profile screen stops repeating itself
+
+Its identity card (avatar, name, member-since, PC count) was a duplicate of the
+overview's header, one screen deeper — so it is gone, and **Edit profile** moved
+into a new overflow menu in the bar.
+
+The **Backup** card went with it: export and import are actions taken once in a
+while, not information worth permanent screen space, so they are menu entries
+too. They stay disabled while no PC is connected — the bridge is what seals and
+verifies the file — with the reason spelled out in the menu instead of left for
+the user to deduce from a greyed row. The note the card carried, about stats
+being lost without a backup, now rides in the export dialog, where it is read at
+the moment it matters.
+
+### Added — the app knows how wide its window is
+
+`UxnanBreakpoint` (`presentation/theme/breakpoints.dart`) implements the five
+window classes the Neural Expressive guide has always specified but the code
+never had: compact / medium / expanded / large / extra-large, each carrying its
+lateral margin, its content clamp and its side-pane width. It is the single
+place that turns a width into a layout decision — no screen compares raw widths
+any more.
+
+`NeScaffold` gained `constrainContent` (on by default): past 840 dp its content
+stops growing and the surplus becomes margin, so a list no longer stretches an
+entire tablet row. It is a **no-op below expanded** — the inset is 0 there — so
+phones render exactly what they rendered before. The chrome is deliberately
+excluded: the top bar still spans the full row, as the conversation's already
+did.
+
+`TwoPaneScaffold` (`presentation/screens/shell/app_shell_screen.dart`, until now
+an unused stub) lays a side pane beside a detail surface on windows that fit
+one, and is a pass-through everywhere else. It resolves its breakpoint from its
+**own constraints** rather than the window, because it is meant to nest: with a
+side pane already taken out, the window's width says nothing about the space a
+split inside the content actually has.
+
+Nothing is wired to a route yet — this is the foundation the adaptive layout is
+built on, landing on its own so it can be verified in isolation.
+
 ### Changed
 
 - Removed the Gemini-specific compatibility filters from threads, agents,

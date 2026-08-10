@@ -4,9 +4,11 @@ import 'package:uxnan/presentation/screens/onboarding/command_card_widget.dart';
 import 'package:uxnan/presentation/screens/onboarding/floating_agents.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_page_layout.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
 import 'package:uxnan/presentation/widgets/ne_surface.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Third onboarding page: how to install the bridge on the PC.
 class InstallStepPage extends StatelessWidget {
@@ -20,7 +22,7 @@ class InstallStepPage extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return OnboardingPageLayout(
-      icon: Icons.terminal_rounded,
+      icon: UxIcons.terminal,
       title: l10n.onboardingInstallTitle,
       body: l10n.onboardingInstallBody,
       top: const FloatingAgents(
@@ -45,8 +47,8 @@ class InstallStepPage extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.folder_open_rounded,
+                UxIcon(
+                  UxIcons.folderOpen,
                   size: 18,
                   color: colorScheme.primary,
                   semanticLabel: 'Root folder',
@@ -66,8 +68,8 @@ class InstallStepPage extends StatelessWidget {
           const SizedBox(height: UxnanSpacing.md),
           Row(
             children: [
-              const Icon(
-                Icons.info_outline_rounded,
+              const UxIcon(
+                UxIcons.info,
                 size: 18,
                 color: UxnanColors.onSurfaceMuted,
                 semanticLabel: 'Info',

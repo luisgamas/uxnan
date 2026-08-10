@@ -16,6 +16,8 @@ class ThreadListPreferencesStore {
 
   static const String _sortKey = 'uxnan.threads.sort';
   static const String _compactKey = 'uxnan.threads.compact';
+  static const String _collapsedKey = 'uxnan.threads.collapsedProjects';
+  static const String _lastDeviceKey = 'uxnan.threads.lastDevice';
 
   /// The persisted sort mode name, or `null` if never set (keep the default).
   Future<String?> readSort() async {
@@ -41,5 +43,39 @@ class ThreadListPreferencesStore {
   Future<void> writeCompact({required bool value}) async {
     final prefs = await _prefs;
     await prefs.setBool(_compactKey, value);
+  }
+
+  /// Project ids the user has collapsed in the spaces list.
+  ///
+  /// The COLLAPSED set is stored rather than the expanded one, so a project the
+  /// user has never touched — including one that appears later — comes back
+  /// open. Storing "expanded" would leave every new project shut.
+  Future<Set<String>> readCollapsedProjects() async {
+    final prefs = await _prefs;
+    return (prefs.getStringList(_collapsedKey) ?? const []).toSet();
+  }
+
+  /// Persists the collapsed set.
+  Future<void> writeCollapsedProjects(Set<String> ids) async {
+    final prefs = await _prefs;
+    await prefs.setStringList(_collapsedKey, ids.toList());
+  }
+
+  /// The PC whose list was last on screen, or `null` if there has not been one.
+  ///
+  /// Only the permanent drawer needs this, and only as a **fallback**: it asks
+  /// the open conversation which PC it belongs to first. This answers the case
+  /// that has no conversation to ask — a cold start, or a window wide enough
+  /// for a drawer before anything has been opened — where the alternative is a
+  /// drawer that is simply blank.
+  Future<String?> readLastVisitedDevice() async {
+    final prefs = await _prefs;
+    return prefs.getString(_lastDeviceKey);
+  }
+
+  /// Persists the PC whose list was last on screen.
+  Future<void> writeLastVisitedDevice(String deviceId) async {
+    final prefs = await _prefs;
+    await prefs.setString(_lastDeviceKey, deviceId);
   }
 }

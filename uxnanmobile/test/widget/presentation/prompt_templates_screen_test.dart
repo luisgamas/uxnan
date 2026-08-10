@@ -1,11 +1,12 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/settings/prompt_templates_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 void main() {
   setUp(() {
@@ -52,7 +53,7 @@ void main() {
 
     expect(find.text('Review'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+    await tester.tap(findUxIcon(UxIcons.delete));
     await tester.pumpAndSettle();
 
     // Confirm in the dialog.

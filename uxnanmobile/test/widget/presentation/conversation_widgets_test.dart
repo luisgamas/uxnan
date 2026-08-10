@@ -22,7 +22,9 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.da
 import 'package:uxnan/presentation/screens/conversation/messages/message_bubble.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import '../../support/ux_icon_finder.dart';
 
 Widget _wrap(Widget child) => ProviderScope(
       child: MaterialApp(
@@ -104,7 +106,7 @@ void main() {
       find.text('Context reduced from 120K to about 42K tokens.'),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.compress_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.compress), findsOneWidget);
   });
 
   testWidgets('waiting assistant turn shows the responding label and loader',
@@ -988,10 +990,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward_rounded), findsNothing);
+    expect(findUxIcon(UxIcons.stop), findsOneWidget);
+    expect(findUxIcon(UxIcons.arrowUpward), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.tap(findUxIcon(UxIcons.stop));
     await tester.pump();
     expect(stops, 1);
   });
@@ -1010,8 +1012,8 @@ void main() {
     await tester.enterText(find.byType(TextField), '  hola  ');
     await tester.pumpAndSettle();
     // Dictation remains available while Send occupies its own primary slot.
-    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    expect(findUxIcon(UxIcons.micNone), findsOneWidget);
+    await tester.tap(findUxIcon(UxIcons.arrowUpward));
     await tester.pump();
 
     expect(sent, 'hola');
@@ -1031,7 +1033,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'hi');
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.tap(findUxIcon(UxIcons.arrowUpward));
     await tester.pump();
 
     expect(sentCount, 0);
@@ -1088,10 +1090,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // Tap the mic → dictation starts (icon flips to the filled, recording mic).
-    await tester.tap(find.byIcon(Icons.mic_none_rounded));
+    await tester.tap(findUxIcon(UxIcons.micNone));
     await tester.pumpAndSettle();
     expect(speech.listening, isTrue);
-    expect(find.byIcon(Icons.mic_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.mic), findsOneWidget);
 
     // A partial result streams into the field…
     speech.emit('hola');
@@ -1103,8 +1105,8 @@ void main() {
     speech.emit('hola mundo', isFinal: true);
     await tester.pumpAndSettle();
     expect(find.text('hola mundo'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.arrowUpward), findsOneWidget);
+    expect(findUxIcon(UxIcons.micNone), findsOneWidget);
   });
 
   testWidgets('ComposerBar warns when voice input is unavailable',
@@ -1124,7 +1126,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.mic_none_rounded));
+    await tester.tap(findUxIcon(UxIcons.micNone));
     await tester.pump();
 
     expect(speech.listening, isFalse);

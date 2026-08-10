@@ -11,6 +11,7 @@ import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/managers/workspace_browser.dart';
 import 'package:uxnan/application/processors/incoming_message_processor.dart';
 import 'package:uxnan/application/services/git_status_bus.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/agent_command.dart';
 import 'package:uxnan/domain/entities/agent_descriptor.dart';
@@ -30,6 +31,7 @@ import 'package:uxnan/domain/enums/context_indicator_mode.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
+import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/enums/usage_refresh_interval.dart';
 import 'package:uxnan/domain/services/pairing_validator.dart';
 import 'package:uxnan/domain/value_objects/custom_theme.dart';
@@ -54,7 +56,7 @@ import 'package:uxnan/presentation/providers/rail_anchors.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart'
     show defaultPromptTemplates;
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart'
-    show ThreadSort;
+    show ListSort;
 import 'package:uxnan/presentation/theme/uxnan_theme.dart' show ThemeSource;
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 
@@ -407,6 +409,27 @@ final profileMetricsProvider =
   return aggregateSnapshots(cache.values);
 });
 
+/// When the user first started using Uxnan, per the bridge-owned ledger —
+/// the earliest date any paired PC reports.
+///
+/// Read straight from the snapshot **cache**, deliberately NOT through
+/// [profileMetricsProvider]: that one falls back to aggregating the whole local
+/// database when the cache is empty, which is the right price for the profile
+/// screen and far too much for one date fragment on the app's first screen.
+/// Null until some PC has reported one — callers drop the fragment rather than
+/// print a placeholder.
+final memberSinceProvider = Provider<DateTime?>((ref) {
+  final cache = ref.watch(metricsSnapshotsProvider).value;
+  if (cache == null || cache.isEmpty) return null;
+  DateTime? earliest;
+  for (final snapshot in cache.values) {
+    final since = snapshot.toProfileMetrics().memberSince;
+    if (since == null) continue;
+    if (earliest == null || since.isBefore(earliest)) earliest = since;
+  }
+  return earliest;
+});
+
 /// Metrics scoped to a single PC (its `macDeviceId`), from the bridge snapshot
 /// cache; falls back to the local drift aggregation when that PC has no cached
 /// snapshot yet.
@@ -730,6 +753,58 @@ final threadActivityForProvider =
   return map?[threadId] ?? ThreadActivity.idle;
 });
 
+/// Threads whose agent has asked the user something and is holding the turn,
+/// keyed by thread id.
+final awaitingInputProvider = StreamProvider<Map<String, Set<String>>>(
+  (ref) => ref.watch(threadManagerProvider).awaitingInputStream,
+);
+
+/// Whether this thread's agent is holding a turn on the user's answer.
+final threadAwaitingInputProvider = Provider.family<bool, String>(
+  (ref, threadId) =>
+      ref.watch(awaitingInputProvider).value?[threadId]?.isNotEmpty ?? false,
+);
+
+/// The PC's own non-archived threads, from the local cache — so the overview
+/// can describe a PC that is not connected right now.
+///
+/// Only threads **explicitly tagged** with [deviceId] count. Untagged legacy
+/// threads (written before the device tag existed, and re-tagged on the next
+/// connected refresh) are deliberately left out: the threads list shows them
+/// under every PC, which is right for browsing and wrong for a count — each one
+/// would be counted once per paired machine.
+final deviceThreadsProvider =
+    Provider.family<List<Thread>, String>((ref, deviceId) {
+  final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
+  return threads
+      .where(
+        (t) => t.deviceId == deviceId && t.status != ThreadStatus.archived,
+      )
+      .toList();
+});
+
+/// How many conversations the phone knows for this PC. See
+/// [deviceThreadsProvider] for what is counted.
+final deviceThreadCountProvider = Provider.family<int, String>(
+  (ref, deviceId) => ref.watch(deviceThreadsProvider(deviceId)).length,
+);
+
+/// How many of this PC's agents are producing a turn **right now**.
+///
+/// Live state, not history: it is the number that makes a device card worth
+/// looking at twice, and it drops back to 0 (and hides its own line) the moment
+/// the turns end.
+final deviceWorkingCountProvider = Provider.family<int, String>(
+  (ref, deviceId) {
+    final activity = ref.watch(threadActivityProvider).value ??
+        const <String, ThreadActivity>{};
+    return ref
+        .watch(deviceThreadsProvider(deviceId))
+        .where((t) => activity[t.id] == ThreadActivity.running)
+        .length;
+  },
+);
+
 /// Map of threadId → its live message queue (the follow-ups sent while a turn
 /// was in flight); threads with nothing waiting are absent.
 final threadQueuesProvider = StreamProvider<Map<String, ThreadQueueState>>(
@@ -808,6 +883,62 @@ final threadByIdProvider = Provider.family<Thread?, String>((ref, threadId) {
 final projectsProvider = FutureProvider<List<Project>>((ref) {
   ref.watch(connectedDeviceProvider);
   return ref.watch(threadManagerProvider).loadProjects();
+});
+
+/// Which folders are worktrees of which repository (`git/worktrees`).
+///
+/// Asked about the folders that are actually **on the list** — the distinct
+/// `cwd`s of this PC's conversations — not about the bridge's configured roots.
+/// That distinction is the whole provider: `workspaceRoots` is optional and
+/// frequently empty (a conversation can be started anywhere via the folder
+/// picker), so keying this on `project/list` meant the hierarchy silently never
+/// appeared for anyone who had not configured a root. It did exactly that on
+/// the first machine it met.
+///
+/// One reply names **every** sibling of its repository, so the loop skips any
+/// folder a previous reply already covered: ten worktrees of one repo cost one
+/// call, not ten.
+///
+/// **An older bridge does not have the method** and answers "method not
+/// found"; [ThreadManager.loadWorktrees] turns that into an empty list, this
+/// table stays empty, and the folder list falls back to exactly the flat
+/// behaviour it had before — no error, no guess. That is why the hierarchy is
+/// never inferred from path prefixes: worktrees are siblings on disk, so a
+/// prefix would be a guess wearing the clothes of a fact.
+final workspaceRepoTableProvider = FutureProvider<Map<String, WorkspaceRepo>>((
+  ref,
+) async {
+  ref.watch(connectedDeviceProvider);
+  // Re-asks only when the SET of folders changes, not on every thread update —
+  // a list that re-queried git each time a turn streamed would be a storm.
+  final folders = ref.watch(workspaceCwdsProvider);
+  if (folders.isEmpty) return const {};
+
+  final manager = ref.watch(threadManagerProvider);
+  final table = <String, WorkspaceRepo>{};
+  for (final cwd in folders.split('\n')) {
+    if (cwd.isEmpty) continue;
+    if (table.containsKey(normalizeWorkspacePath(cwd))) continue;
+    final entries = await manager.loadWorktrees(cwd);
+    table.addAll(buildWorkspaceRepoTable({cwd: entries}));
+  }
+  return table;
+});
+
+/// The distinct folders this PC's conversations run in, sorted and joined.
+///
+/// A `String` on purpose: Riverpod compares with `==`, and a fresh `List` is
+/// never equal to the previous one, so a list-valued provider would re-run
+/// every dependent on every rebuild.
+final workspaceCwdsProvider = Provider<String>((ref) {
+  final threads = ref.watch(threadsProvider).value ?? const <Thread>[];
+  final cwds = <String>{};
+  for (final thread in threads) {
+    final cwd = thread.cwd;
+    if (cwd != null && cwd.isNotEmpty) cwds.add(cwd);
+  }
+  final sorted = cwds.toList()..sort();
+  return sorted.join('\n');
 });
 
 /// Navigates the bridge's browse roots (`workspace/browseDirs`) for the
@@ -1274,23 +1405,23 @@ final showClaudeLatestModelsProvider =
 
 /// The thread-list ordering. Persisted; defaults to newest-created first.
 /// Shared by the active and archived lists so the choice carries across both.
-class ThreadSortSetting extends Notifier<ThreadSort> {
+class ThreadSortSetting extends Notifier<ListSort> {
   @override
-  ThreadSort build() {
+  ListSort build() {
     unawaited(_hydrate());
-    return ThreadSort.created;
+    return ListSort.created;
   }
 
   Future<void> _hydrate() async {
     final stored =
         await ref.read(threadListPreferencesStoreProvider).readSort();
     if (stored == null) return;
-    final match = ThreadSort.values.where((s) => s.name == stored);
+    final match = ListSort.values.where((s) => s.name == stored);
     if (match.isNotEmpty && match.first != state) state = match.first;
   }
 
   /// Persists and applies the thread-list ordering.
-  Future<void> set(ThreadSort value) async {
+  Future<void> set(ListSort value) async {
     if (value == state) return;
     state = value;
     await ref.read(threadListPreferencesStoreProvider).writeSort(value.name);
@@ -1299,7 +1430,7 @@ class ThreadSortSetting extends Notifier<ThreadSort> {
 
 /// The thread-list ordering (persisted, shared across active + archived lists).
 final threadSortProvider =
-    NotifierProvider<ThreadSortSetting, ThreadSort>(ThreadSortSetting.new);
+    NotifierProvider<ThreadSortSetting, ListSort>(ThreadSortSetting.new);
 
 /// Whether the thread list uses the compact (single-line) density. Persisted;
 /// defaults to the full tile.
@@ -1325,6 +1456,70 @@ class ThreadDensityCompact extends Notifier<bool> {
         .writeCompact(value: value);
   }
 }
+
+/// How the **worktrees** are ordered. In-memory: unlike the agent ordering,
+/// this one is usually changed to answer a question ("what needs me?") rather
+/// than set once as a preference.
+final worktreeSortProvider =
+    NotifierProvider<WorktreeSortSetting, ListSort>(WorktreeSortSetting.new);
+
+/// Holds the worktree ordering.
+class WorktreeSortSetting extends Notifier<ListSort> {
+  @override
+  ListSort build() => ListSort.status;
+
+  /// Applies a worktree ordering. A method rather than a setter, to match the
+  /// `.set(value)` shape every other ordering notifier here uses.
+  // ignore: use_setters_to_change_properties
+  void set(ListSort value) => state = value;
+}
+
+/// How the **projects** (repositories) are ordered, on the same terms.
+final projectSortProvider =
+    NotifierProvider<ProjectSortSetting, ListSort>(ProjectSortSetting.new);
+
+/// Holds the project ordering.
+class ProjectSortSetting extends Notifier<ListSort> {
+  @override
+  ListSort build() => ListSort.status;
+
+  /// Applies a project ordering.
+  // ignore: use_setters_to_change_properties
+  void set(ListSort value) => state = value;
+}
+
+/// Which folder groups the user has collapsed in the spaces list.
+///
+/// Stores what is CLOSED, not what is open: a project the user has never
+/// touched should come back the way they left the screen — visible.
+class CollapsedProjects extends Notifier<Set<String>> {
+  @override
+  Set<String> build() {
+    unawaited(_hydrate());
+    return const {};
+  }
+
+  Future<void> _hydrate() async {
+    final stored = await ref
+        .read(threadListPreferencesStoreProvider)
+        .readCollapsedProjects();
+    if (stored.isNotEmpty) state = stored;
+  }
+
+  /// Opens a closed project, or closes an open one.
+  Future<void> toggle(String projectId) async {
+    final next = {...state};
+    if (!next.remove(projectId)) next.add(projectId);
+    state = next;
+    await ref
+        .read(threadListPreferencesStoreProvider)
+        .writeCollapsedProjects(next);
+  }
+}
+
+/// The collapsed project ids (persisted).
+final collapsedProjectsProvider =
+    NotifierProvider<CollapsedProjects, Set<String>>(CollapsedProjects.new);
 
 /// Whether the thread list uses the compact density (persisted toggle).
 final threadDensityCompactProvider =

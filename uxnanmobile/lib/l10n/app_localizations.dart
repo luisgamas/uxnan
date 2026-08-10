@@ -443,7 +443,7 @@ abstract class AppLocalizations {
   /// How many PCs are paired, shown in the profile header.
   ///
   /// In en, this message translates to:
-  /// **'{count} PCs'**
+  /// **'{count, plural, =1{1 PC} other{{count} PCs}}'**
   String profilePairedPcs(int count);
 
   /// How many live sessions the phone currently holds.
@@ -451,6 +451,264 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} online now'**
   String profileActiveSessions(int count);
+
+  /// No description provided for @sortProjectsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Projects'**
+  String get sortProjectsHeader;
+
+  /// No description provided for @sortFoldersHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders'**
+  String get sortFoldersHeader;
+
+  /// No description provided for @sortConversationsHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get sortConversationsHeader;
+
+  /// No description provided for @sortByAttention.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs attention'**
+  String get sortByAttention;
+
+  /// No description provided for @spacesConversationCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 conversation} other{{count} conversations}}'**
+  String spacesConversationCount(int count);
+
+  /// No description provided for @spacesOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other spaces'**
+  String get spacesOther;
+
+  /// No description provided for @spacesNoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'No folder'**
+  String get spacesNoFolder;
+
+  /// No description provided for @spacesNewConversationHere.
+  ///
+  /// In en, this message translates to:
+  /// **'New conversation here'**
+  String get spacesNewConversationHere;
+
+  /// No description provided for @workspaceDirty.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 uncommitted file} other{{count} uncommitted files}}'**
+  String workspaceDirty(int count);
+
+  /// No description provided for @workspaceAhead.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 commit to push} other{{count} commits to push}}'**
+  String workspaceAhead(int count);
+
+  /// No description provided for @workspaceBehind.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 commit to pull} other{{count} commits to pull}}'**
+  String workspaceBehind(int count);
+
+  /// No description provided for @workspaceUpstream.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracking {branch}'**
+  String workspaceUpstream(String branch);
+
+  /// No description provided for @workspaceGitUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Git state unavailable'**
+  String get workspaceGitUnavailable;
+
+  /// No description provided for @workspaceGitStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Last known state'**
+  String get workspaceGitStale;
+
+  /// No description provided for @workspaceNoUpstream.
+  ///
+  /// In en, this message translates to:
+  /// **'No upstream branch'**
+  String get workspaceNoUpstream;
+
+  /// No description provided for @workspaceClean.
+  ///
+  /// In en, this message translates to:
+  /// **'No uncommitted changes'**
+  String get workspaceClean;
+
+  /// No description provided for @spacesWorkspaceCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 folder} other{{count} folders}}'**
+  String spacesWorkspaceCount(int count);
+
+  /// No description provided for @spacesDetailsPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Path'**
+  String get spacesDetailsPath;
+
+  /// No description provided for @shellWelcomeTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'A name with no relation to, or derivation from, any existing product.'**
+  String get shellWelcomeTagline;
+
+  /// No description provided for @shellWelcomeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a conversation from the panel on the left.'**
+  String get shellWelcomeHint;
+
+  /// No description provided for @shellHowToPair.
+  ///
+  /// In en, this message translates to:
+  /// **'How to link a device'**
+  String get shellHowToPair;
+
+  /// No description provided for @drawerDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get drawerDevices;
+
+  /// No description provided for @drawerSwitchDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch PC'**
+  String get drawerSwitchDevice;
+
+  /// No description provided for @drawerNoDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'No PC paired yet'**
+  String get drawerNoDevices;
+
+  /// No description provided for @drawerBackToOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to overview'**
+  String get drawerBackToOverview;
+
+  /// No description provided for @spacesCopyPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy path'**
+  String get spacesCopyPath;
+
+  /// No description provided for @spacesConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations'**
+  String get spacesConversations;
+
+  /// No description provided for @spacesNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'No space matches these filters'**
+  String get spacesNoMatch;
+
+  /// No description provided for @spacesClearFilters.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear filters'**
+  String get spacesClearFilters;
+
+  /// No description provided for @filterByState.
+  ///
+  /// In en, this message translates to:
+  /// **'State'**
+  String get filterByState;
+
+  /// No description provided for @filterStateWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get filterStateWorking;
+
+  /// No description provided for @filterStateWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for you'**
+  String get filterStateWaiting;
+
+  /// No description provided for @filterStateUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Unread'**
+  String get filterStateUnread;
+
+  /// No description provided for @sortByActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent activity'**
+  String get sortByActivity;
+
+  /// No description provided for @agentStateWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get agentStateWorking;
+
+  /// No description provided for @agentStateWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for you'**
+  String get agentStateWaiting;
+
+  /// No description provided for @agentStateBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get agentStateBlocked;
+
+  /// No description provided for @agentStateDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get agentStateDone;
+
+  /// No description provided for @agentStateIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get agentStateIdle;
+
+  /// No description provided for @agentStateStale.
+  ///
+  /// In en, this message translates to:
+  /// **'no update in a while'**
+  String get agentStateStale;
+
+  /// Overview header greeting when the user has not set a name.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back'**
+  String get homeGreeting;
+
+  /// Device card signal: agents producing a turn on this PC right now.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 working} other{{count} working}}'**
+  String homeDeviceWorking(int count);
+
+  /// Device card signal: conversations known for this PC.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 conversation} other{{count} conversations}}'**
+  String homeDeviceThreads(int count);
 
   /// No description provided for @statConversations.
   ///
@@ -584,6 +842,12 @@ abstract class AppLocalizations {
   /// **'Work'**
   String get metricWork;
 
+  /// No description provided for @profileMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile actions'**
+  String get profileMenuTooltip;
+
   /// No description provided for @profileEditTitle.
   ///
   /// In en, this message translates to:
@@ -619,12 +883,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'conversations'**
   String get profileAgentConversationsLabel;
-
-  /// No description provided for @profileBackupTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Backup'**
-  String get profileBackupTitle;
 
   /// No description provided for @profileBackupNote.
   ///
@@ -980,6 +1238,30 @@ abstract class AppLocalizations {
   /// **'Hide address'**
   String get deviceAddressHide;
 
+  /// Device card: when the PC was last reachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Last connection: {when}'**
+  String deviceLastConnection(String when);
+
+  /// No description provided for @deviceMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Device actions'**
+  String get deviceMenuTooltip;
+
+  /// No description provided for @deviceConnectionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get deviceConnectionLabel;
+
+  /// No description provided for @deviceAddressLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get deviceAddressLabel;
+
   /// No description provided for @deviceNeverConnected.
   ///
   /// In en, this message translates to:
@@ -1135,12 +1417,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Name'**
   String get threadsSortName;
-
-  /// No description provided for @threadsSortFolder.
-  ///
-  /// In en, this message translates to:
-  /// **'Folder'**
-  String get threadsSortFolder;
 
   /// No description provided for @threadsCompact.
   ///
@@ -4898,10 +5174,10 @@ abstract class AppLocalizations {
   /// **'Claude'**
   String get settingsConversationClaudeGroup;
 
-  /// Conversation section sub-group for Pi agent options (the autonomous-mode banner).
+  /// Conversation section sub-group for agents that run without per-action approval — named for the behaviour rather than for one agent, since more than one behaves this way.
   ///
   /// In en, this message translates to:
-  /// **'Pi Agent'**
+  /// **'Autonomous agents'**
   String get settingsConversationPiGroup;
 
   /// Conversation section sub-group for chat behaviour (scroll, templates).
