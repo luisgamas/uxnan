@@ -8,9 +8,7 @@ export type AgentId =
   | 'codex'
   | 'opencode'
   | 'claude-code'
-  /** @deprecated The standalone Gemini CLI is retired; use `antigravity-cli`. */
-  | 'gemini-cli'
-  /** Antigravity — Google's `agy` CLI, the successor to the deprecated Gemini CLI. */
+  /** Antigravity — Google's supported `agy` CLI. */
   | 'antigravity-cli'
   | 'pi-agent'
   /** Zero — open-source Go coding agent, driven over the Agent Client Protocol. */
@@ -179,7 +177,7 @@ export interface AgentModel {
  *   (Claude Code's `/compact` sent as the prompt with `--resume`; the commands
  *   ACP agents advertise via `available_commands_update`), and
  * - **custom** user-defined prompt-template commands (`.claude/commands`,
- *   `~/.codex/prompts`, `.gemini/commands`, `.opencode/command`) that the bridge
+ *   `~/.codex/prompts`, `.opencode/command`) that the bridge
  *   expands itself before running a normal turn.
  *
  * The phone is a generic renderer: it lists the advertised commands in its `/`

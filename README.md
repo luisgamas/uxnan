@@ -267,7 +267,7 @@ native progress/final response without losing earlier text (settled progress fol
 under **N previous messages**). You can also review and stage a **Git diff** and
 get a **push notification** the moment an agent finishes — all over the same
 end-to-end encrypted channel the bridge speaks. Mobile offers the seven active
-agents shown above; the retired Gemini CLI has no mobile product surface.
+agents shown above.
 
 **Status: Android is alpha-ready.** iOS is written but not yet shipped — it's
 waiting on Apple developer assets the project doesn't have yet.

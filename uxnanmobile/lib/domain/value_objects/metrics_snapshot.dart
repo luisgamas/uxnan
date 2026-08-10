@@ -1,6 +1,5 @@
 import 'package:equatable/equatable.dart';
 import 'package:uxnan/domain/enums/activity_metric.dart';
-import 'package:uxnan/domain/enums/agent_id.dart';
 import 'package:uxnan/domain/enums/connection_transport.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 
@@ -274,9 +273,7 @@ class MetricsSnapshot extends Equatable {
   /// Maps this single-PC snapshot to a [ProfileMetrics] for the per-PC screen.
   ProfileMetrics toProfileMetrics() => ProfileMetrics(
         conversations: conversations,
-        agentsUsed: byAgent
-            .where((entry) => isMobileAgentSupported(entry.agentId))
-            .length,
+        agentsUsed: byAgent.length,
         modelsUsed: modelsUsed,
         messages: messages,
         gitActions: gitActions,
@@ -287,8 +284,7 @@ class MetricsSnapshot extends Equatable {
         directSessions: directSessions,
         byAgent: [
           for (final a in byAgent)
-            if (isMobileAgentSupported(a.agentId))
-              AgentUsage(agentId: a.agentId, conversations: a.conversations),
+            AgentUsage(agentId: a.agentId, conversations: a.conversations),
         ],
         totalTokens: totalTokensOf([this]),
         memberSince: memberSince == null
@@ -338,7 +334,6 @@ List<MetricsAgentDay> agentBreakdown(
     for (final day in snapshot.byAgentDay) {
       if (dayMs != null && day.day != dayMs) continue;
       for (final e in day.byAgent) {
-        if (!isMobileAgentSupported(e.agentId)) continue;
         ids.add(e.agentId);
         conv[e.agentId] = (conv[e.agentId] ?? 0) + e.conversations;
         msg[e.agentId] = (msg[e.agentId] ?? 0) + e.messages;
@@ -373,7 +368,6 @@ int totalTokensOf(Iterable<MetricsSnapshot> snapshots) {
   for (final snapshot in snapshots) {
     for (final day in snapshot.byAgentDay) {
       for (final e in day.byAgent) {
-        if (!isMobileAgentSupported(e.agentId)) continue;
         total += e.tokens;
       }
     }
@@ -422,7 +416,6 @@ ProfileMetrics aggregateSnapshots(Iterable<MetricsSnapshot> snapshots) {
       memberSince = s.memberSince;
     }
     for (final a in s.byAgent) {
-      if (!isMobileAgentSupported(a.agentId)) continue;
       agents.add(a.agentId);
       byAgent[a.agentId] = (byAgent[a.agentId] ?? 0) + a.conversations;
     }
@@ -497,7 +490,6 @@ Map<DateTime, int> aggregateTokensByDay(
       if (date.year != year) continue;
       var tokens = 0;
       for (final e in day.byAgent) {
-        if (!isMobileAgentSupported(e.agentId)) continue;
         tokens += e.tokens;
       }
       if (tokens == 0) continue;

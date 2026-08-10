@@ -314,10 +314,7 @@ sign in there.
 
 The offered agents are a **curated subset** of the CLIs the backend can drive headlessly
 (`src/lib/aiCommitPresets.ts`): an agent earns a place only once it also answers a model
-list, or its model picker sits empty and the entry looks broken. **Gemini CLI is no longer
-offered** — Google discontinued it in favour of Antigravity — though the backend can still
-run it, so a config that already names it keeps working and shows it flagged as
-discontinued until you pick another.
+list, or its model picker sits empty and the entry looks broken.
 
 Settings persist in `AppSettings.github` (`GithubSettings`); all fields default, so
 older state loads unchanged.

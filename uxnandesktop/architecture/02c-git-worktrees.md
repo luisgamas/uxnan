@@ -460,12 +460,7 @@ Integrada en el panel de cambios (`ChangesPanel.svelte`):
   (`AiCommitSettings`: `agentId`, `model`, idioma, Conventional Commits, cuerpo
   extendido, instrucciones extra), **desactivada por defecto**. Lista de agentes
   soportados en `src/lib/aiCommitPresets.ts`: se ofrecen **Claude Code, Codex,
-  OpenCode, Grok y Antigravity**. La **Gemini CLI ya no se ofrece** (descontinuada
-  aguas arriba en favor de Antigravity); el backend todavía sabe ejecutarla, así
-  que una configuración que ya la nombraba sigue funcionando y la muestra marcada
-  como descontinuada hasta que el usuario elija otro agente — el backend corre el
-  id guardado y nunca consulta esta lista, de modo que ocultarla del todo dejaría
-  el campo diciendo "ninguno" mientras Gemini sigue redactando.
+  OpenCode, Grok y Antigravity**.
 
 ### 4.6 Fuentes de Diff
 

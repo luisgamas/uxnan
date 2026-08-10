@@ -53,15 +53,12 @@
     {
       items: [
         { value: "", label: i18n.t("github.settings.aiNone") },
-        // A discontinued agent is only listed while it is the saved selection —
-        // otherwise the field would read "none" while it kept drafting bodies.
         ...aiCommitAgentChoices(app.settings.github?.aiAgentId).map((a) => ({
           value: a.id,
           label: a.name,
           disabled: aiAgentsInstalled !== null && !aiAgentInstalled(a.id),
-          meta: a.deprecated
-            ? i18n.t("settings.agentDeprecated")
-            : aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
+          meta:
+            aiAgentsInstalled !== null && !aiAgentInstalled(a.id)
               ? i18n.t("settings.agentNotFound")
               : undefined,
         })),

@@ -5,7 +5,7 @@
  * its models ARE the Gemini family ("Gemini 3.5 Flash", "Gemini 3.1 Pro", …) plus
  * a few hosted others. It does NOT speak the generic bridge agent IPC. Each turn
  * spawns `agy … -p <text>` as a one-shot process (the same one-shot pattern as the
- * pi, Claude Code and Gemini adapters) and maps its plain-text stdout onto the
+ * pi and Claude Code adapters) and maps its plain-text stdout onto the
  * bridge's agent events. Validated live against `agy` 1.1.4.
  *
  * Per-turn command shape:
@@ -16,7 +16,7 @@
  * which is why Antigravity was previously deferred, see bridge/FOR-DEV.md):
  *  - `--conversation <uuid>`: session continuity. `agy` accepts a client-owned
  *    UUID, CREATING the conversation on the first turn and RESUMING it on later
- *    ones (verified), so — like the Gemini adapter's `--session-id` — we generate
+ *    ones (verified), so we generate
  *    the id ourselves and never parse `agy`'s logs. Stored per thread in
  *    {@link AntigravityAdapter.nativeSessionId}.
  *  - `--add-dir <cwd>`: workspace targeting. `agy` has NO `-C/--cwd`; without

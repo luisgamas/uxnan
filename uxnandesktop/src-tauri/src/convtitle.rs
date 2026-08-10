@@ -308,6 +308,6 @@ agent: the token expired",
         // An agent whose cheap tier we cannot name falls back to its CLI
         // default rather than guessing an id the CLI would reject.
         assert_eq!(title_model("opencode"), "");
-        assert_eq!(title_model("gemini"), "");
+        assert_eq!(title_model("unknown"), "");
     }
 }

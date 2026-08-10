@@ -83,7 +83,6 @@ const MAX_HOLD_MS = 12000;
 const INJECTABLE_MCP_TYPES: ReadonlySet<string> = new Set([
   "claude",
   "codex",
-  "gemini",
   "opencode",
 ]);
 

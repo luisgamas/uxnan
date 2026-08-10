@@ -504,15 +504,10 @@ pub async fn pty_create(
     // (`UXNAN_BROWSER_URL` + `_TOKEN`), and point `$BROWSER` at the bundled shim so
     // tools that honor it (logins/previews) land in-app too. Honors the user's
     // link policy on arrival (see `browser::route_url`).
-    let (browser_enabled, allow_agents, mcp_enabled, mcp_managed_frictionless) = {
+    let (browser_enabled, allow_agents, mcp_enabled) = {
         let data = state.data.read().await;
         let b = &data.settings.browser;
-        (
-            b.enabled,
-            b.allow_agents,
-            b.mcp_enabled,
-            b.mcp_injection == crate::model::McpInjection::Managed && b.friction_free,
-        )
+        (b.enabled, b.allow_agents, b.mcp_enabled)
     };
     if browser_enabled && allow_agents {
         if let Some(h) = &hook {
@@ -543,14 +538,6 @@ pub async fn pty_create(
                 crate::mcpinject::mcp_endpoint(&h.url),
             ));
             env.push((crate::mcpinject::TOKEN_ENV.to_string(), h.token.clone()));
-        }
-        // Frictionless (managed mode): trust the workspace for Gemini so it doesn't
-        // prompt to trust the folder on launch. A version-robust env var is used
-        // instead of a launch flag on purpose — an unknown env var is a harmless
-        // no-op, whereas newer Gemini rejects the `--skip-trust` flag and would fail
-        // the whole launch. Only a Gemini process reads it; scoped to this terminal.
-        if mcp_managed_frictionless {
-            env.push(("GEMINI_CLI_TRUST_WORKSPACE".to_string(), "true".to_string()));
         }
         crate::mcpinject::prepare(&app, cwd.as_deref().unwrap_or_default()).await;
     }
@@ -681,7 +668,7 @@ fn pty_submit_payload(text: &str) -> String {
 /// Best-effort like `pty_write`: a dead PTY drops it.
 ///
 // FOR-DEV: bracketed paste assumes the agent enabled DECSET 2004 (every modern
-// coding TUI — Claude Code, Codex, Gemini, OpenCode, Pi — does). A multi-line
+// coding TUI — Claude Code, Codex, OpenCode, Pi, Antigravity — does). A multi-line
 // submit into an agent with a *long* post-paste Enter guard may still not fire; if
 // one is found, add a per-agent submit strategy (delay / key) here. See FOR-DEV.md.
 #[tauri::command]
@@ -1771,7 +1758,7 @@ pub async fn ai_commit_agents() -> Result<Vec<String>, CommandError> {
 }
 
 /// The models offered by `agentId` for AI commit messages (static for
-/// Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). Best-effort: an empty
+/// Claude, or a live CLI query for OpenCode/Pi/Codex/Antigravity/Grok). Best-effort: an empty
 /// list just means the user falls back to the CLI's default model.
 #[tauri::command]
 pub async fn ai_commit_models(
@@ -1875,8 +1862,6 @@ pub async fn set_prevent_sleep(
 pub struct HookScripts {
     /// The rendered `hooks` block ready to paste into `~/.claude/settings.json`.
     pub claude_json: String,
-    /// The rendered `hooks` block for `~/.gemini/settings.json`.
-    pub gemini_json: String,
     /// The full `~/.codex/hooks.json` body (the `trusted_hash` in `config.toml` is
     /// auto-managed, so it isn't shown here).
     pub codex_json: String,
@@ -1891,7 +1876,7 @@ pub struct HookScripts {
     pub opencode_plugin_js: String,
     /// The in-process extension source the ADE drops in Pi's `extensions/` dir.
     pub pi_extension_js: String,
-    /// The shell-agnostic relay shared by Codex / Gemini / OpenCode.
+    /// The shell-agnostic relay used by Claude Code.
     pub status_relay_cjs: String,
     pub wrapper_bash: String,
     pub wrapper_powershell: String,
@@ -1982,15 +1967,12 @@ pub async fn get_hook_scripts(
     };
     let claude_json = agent_hooks::render_claude_settings_json(&install.status_relay_script)
         .map_err(CommandError::from)?;
-    let gemini_json = agent_hooks::render_gemini_settings_json(&install.status_relay_script)
-        .map_err(CommandError::from)?;
     let codex_json = agent_hooks::render_codex_hooks_json(&install).map_err(CommandError::from)?;
     let grok_json = agent_hooks::render_grok_hooks_json(&install).map_err(CommandError::from)?;
     let antigravity_json =
         agent_hooks::render_antigravity_hooks_json().map_err(CommandError::from)?;
     Ok(Some(HookScripts {
         claude_json,
-        gemini_json,
         codex_json,
         grok_json,
         antigravity_json,

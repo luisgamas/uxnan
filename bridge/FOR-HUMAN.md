@@ -29,7 +29,7 @@ These are not pending dev work — they're per-machine setup. Full how-to is in
   local CLI** over stdio and uses **your** existing login/billing; it stores no API
   keys. Install + log into each active agent you want (OpenCode, Claude Code,
   Codex, pi, Antigravity, Zero, Grok); a missing/logged-out CLI just shows
-  `available: false`. Gemini CLI is retired and must not be installed for Uxnan.
+  `available: false`.
   Per-agent details
   + overrides: [`docs/agents.md`](docs/agents.md), [`docs/installation.md`](docs/installation.md).
 - **`browseRoots`** — the folder(s) the phone may browse (e.g. your `Documents`).

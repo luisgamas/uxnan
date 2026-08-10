@@ -33,20 +33,9 @@
  *     `message` events with `{ role, content }` payloads.
  *   - **Grok** — `~/.grok/sessions/<encoded-cwd>/<sessionId>/updates.jsonl`; the
  *     persisted ACP `session/update` stream, closed by `turn_completed`.
- *   - **Gemini CLI (deprecated, legacy history reads only)** —
- *     `~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json`;
- *     one JSON object per file with `{ sessionId, projectHash, startTime, lastUpdated,
- *     messages:[{id, timestamp, type:'user'|'gemini'|'info'|'error', content, thoughts?,
- *     toolCalls?}] }`. The filename's `<shortId>` is the FIRST 8 CHARS of the full
- *     UUID session id with dashes stripped (verified against gemini-cli 0.46.0).
- *     Multiple snapshots may exist for the same session id (different CLI invocations
- *     re-using it); the reader merges them, deduplicating by message id. Each
- *     `gemini` message may also carry a `toolCalls: [{ id, name, args, result,
- *     status }]` array with BOTH the arguments AND the result inline.
- *
  * The session id used to locate the file is the agent's NATIVE id (Claude
- * `session_id`, Codex `thread_id`, OpenCode `sessionID`, pi session id, Gemini
- * `session_id`), persisted per thread by the adapters/AgentManager so the file is
+ * `session_id`, Codex `thread_id`, OpenCode `sessionID`, or pi session id),
+ * persisted per thread by the adapters/AgentManager so the file is
  * findable after a restart.
  *
  * Beyond text + thinking, the reader ALSO reconstructs the structured
@@ -71,10 +60,6 @@
  *     with the subsequent `role:'toolResult'` message (by `toolCallId`).
  *     `think` tags embedded in the assistant text are extracted into
  *     `thinking`.
- *   - **Gemini CLI (deprecated legacy reads only)** — the `gemini` messages
- *     already include `toolCalls` with both args and result inline; each one
- *     maps to a structured block.
- *
  * This is a best-effort, READ-ONLY fallback: it never writes, tolerates malformed
  * lines/files, and returns `null` when it cannot produce anything (the caller then
  * keeps the empty store result). Resolved file paths are cached per session id
@@ -94,7 +79,6 @@ import { codexReasoningText, codexItemBlocks, codexFileChanges } from '../adapte
 import { fileChangeBlock, truncateOutput } from '../adapters/content-blocks.js';
 import { opencodeToolBlock } from '../adapters/opencode-tools.js';
 import { piToolBlock, piResultText, type PiToolUse } from '../adapters/pi-tools.js';
-import { geminiToolBlock, isInternalGeminiTool } from '../adapters/gemini-tools.js';
 
 /** Where a thread's on-disk history lives, as known by the bridge. */
 export interface HistorySource {
@@ -127,11 +111,6 @@ interface CacheEntry {
 }
 
 /** A cached list of resolved file paths (or null for an empty prior lookup). */
-interface CacheListEntry {
-  paths: string[] | null;
-  expires: number;
-}
-
 /** A neutral, ordered message extracted from any agent's log. */
 interface RawMessage {
   role: MessageRole;
@@ -159,8 +138,6 @@ export class SessionHistoryReader {
   readonly #now: () => number;
   readonly #ttl: number;
   readonly #cache = new Map<string, CacheEntry>();
-  /** Multi-file cache for agents that may have several snapshot files per session. */
-  readonly #cacheList = new Map<string, CacheListEntry>();
   readonly #openCodeMessages: ((sessionId: string, cwd?: string) => Promise<unknown[]>) | undefined;
 
   constructor(options: SessionHistoryOptions = {}) {
@@ -198,9 +175,6 @@ export class SessionHistoryReader {
           break;
         case 'grok':
           messages = await this.#readGrok(agentSessionId);
-          break;
-        case 'gemini-cli':
-          messages = await this.#readGemini(agentSessionId);
           break;
         default:
           return null;
@@ -616,68 +590,6 @@ export class SessionHistoryReader {
     return out;
   }
 
-  /**
-   * Read a Gemini CLI session. The CLI writes one JSON file per snapshot under
-   * `~/.gemini/tmp/<projectHash>/chats/session-<ts>-<shortId>.json` where
-   * `<shortId>` is the first 8 hex chars of the UUID session id (dashes removed).
-   *
-   * The CLI MAY write multiple snapshots for the same session id (different
-   * invocations / re-opens) so we collect every file whose name ends with the
-   * short id, parse each, keep only the ones whose top-level `sessionId` exactly
-   * matches, and merge messages — deduplicating by message id and sorting by
-   * timestamp. `info` and `error` entries are skipped (they are system/meta
-   * records, not conversation turns). `toolCalls` are ignored for now (the
-   * live adapter path reconstructs structured blocks; the fallback keeps
-   * text + thinking).
-   */
-  async #readGemini(sessionId: string): Promise<RawMessage[] | null> {
-    const tmpRoot = join(this.#home, '.gemini', 'tmp');
-    const shortId = deriveGeminiShortId(sessionId);
-    if (!shortId) return null;
-    const files = await this.#cachedList(`gemini:${sessionId}`, async () =>
-      findGeminiSessionFiles(tmpRoot, shortId),
-    );
-    if (!files || files.length === 0) return null;
-    // Dedup across snapshots by message id; sort by timestamp.
-    const seen = new Set<string>();
-    const out: RawMessage[] = [];
-    for (const file of files) {
-      const obj = await readJsonFile(file);
-      if (!obj || obj['sessionId'] !== sessionId) continue;
-      const msgs = Array.isArray(obj['messages']) ? (obj['messages'] as unknown[]) : [];
-      for (const item of msgs) {
-        const rec = asRecord(item);
-        if (!rec) continue;
-        const id = typeof rec['id'] === 'string' ? rec['id'] : undefined;
-        if (!id || seen.has(id)) continue;
-        const text = extractGeminiContent(rec);
-        if (!text) continue;
-        // Map Gemini's `gemini` type to assistant; skip `info`/`error`.
-        const type = rec['type'];
-        let role: MessageRole;
-        if (type === 'gemini') role = 'assistant';
-        else if (type === 'user') role = 'user';
-        else continue;
-        const thinking = role === 'assistant' ? extractGeminiThinking(rec) : undefined;
-        // Each `gemini` message may carry a `toolCalls` array; map each call
-        // (whose result is inlined in the same entry) to a structured block.
-        const blocks = role === 'assistant' ? extractGeminiBlocks(rec) : [];
-        const raw: RawMessage = {
-          role,
-          text,
-          createdAt: parseTime(rec['timestamp']),
-        };
-        if (thinking) raw.thinking = thinking;
-        if (blocks.length > 0) raw.blocks = blocks;
-        seen.add(id);
-        out.push(raw);
-      }
-    }
-    if (out.length === 0) return null;
-    out.sort((a, b) => a.createdAt - b.createdAt);
-    return out;
-  }
-
   // --- Path cache (TTL) -------------------------------------------------------
 
   async #cached(key: string, resolve: () => Promise<string | null>): Promise<string | null> {
@@ -687,24 +599,6 @@ export class SessionHistoryReader {
     const path = await resolve();
     this.#cache.set(key, { path, expires: now + this.#ttl });
     return path;
-  }
-
-  /**
-   * Like {@link #cached} but for a list of paths (used by agents that may
-   * produce several snapshot files per session, e.g. Gemini CLI). `null` is
-   * cached as an explicit "found nothing" marker, so repeated lookups within
-   * the TTL don't re-scan the directory tree.
-   */
-  async #cachedList(
-    key: string,
-    resolve: () => Promise<string[] | null>,
-  ): Promise<string[] | null> {
-    const now = this.#now();
-    const hit = this.#cacheList.get(key);
-    if (hit && hit.expires > now) return hit.paths;
-    const paths = await resolve();
-    this.#cacheList.set(key, { paths, expires: now + this.#ttl });
-    return paths;
   }
 }
 
@@ -857,130 +751,6 @@ function acpContentText(value: unknown): string {
   if (typeof value === 'string') return value;
   const content = asRecord(value);
   return content?.['type'] === 'text' && typeof content['text'] === 'string' ? content['text'] : '';
-}
-
-// --- Gemini content extraction ----------------------------------------------
-
-/**
- * Derive the 8-char short id the Gemini CLI uses in its session file name
- * (`session-<ts>-<shortId>.json`) from a full UUID session id — strip the
- * dashes and take the first 8 hex chars. Returns `null` when the input does
- * not look like a UUID (so a non-Gemini-style session id short-circuits to
- * "not found" instead of producing a wrong suffix).
- */
-function deriveGeminiShortId(sessionId: string): string | null {
-  const stripped = sessionId.replace(/-/g, '');
-  // RFC 4122 lowercase hex: 8-4-4-4-12 → 32 hex chars after stripping dashes.
-  if (stripped.length !== 32 || !/^[0-9a-f]{32}$/.test(stripped)) return null;
-  return stripped.slice(0, 8);
-}
-
-/**
- * Walk `~/.gemini/tmp` for files under any `<hash>/chats/session-*-<shortId>.json`.
- * Returns every match — Gemini may write several snapshots per session id.
- */
-async function findGeminiSessionFiles(tmpRoot: string, shortId: string): Promise<string[] | null> {
-  const suffix = `-${shortId}.json`;
-  const hashDirs = await safeReaddirTyped(tmpRoot);
-  if (hashDirs.length === 0) return null;
-  const out: string[] = [];
-  for (const hashDir of hashDirs) {
-    if (!hashDir.isDirectory()) continue;
-    const chatsDir = join(tmpRoot, hashDir.name, 'chats');
-    const files = await safeReaddirTyped(chatsDir);
-    for (const f of files) {
-      if (f.isFile() && f.name.startsWith('session-') && f.name.endsWith(suffix)) {
-        out.push(join(chatsDir, f.name));
-      }
-    }
-  }
-  return out.length > 0 ? out : null;
-}
-
-/**
- * Pull plain text out of a Gemini message's `content` field. Gemini logs the
- * field as EITHER a plain string (the common case) OR an array of
- * `{ text: string }` parts (multi-part content, e.g. when the message bundles
- * a referenced file). We join whatever we find; the live adapter path
- * reconstructs structured blocks.
- */
-function extractGeminiContent(message: Record<string, unknown>): string {
-  const content = message['content'];
-  if (typeof content === 'string') return content.trim();
-  if (Array.isArray(content)) {
-    const chunks: string[] = [];
-    for (const part of content) {
-      const rec = asRecord(part);
-      if (rec && typeof rec['text'] === 'string') chunks.push(rec['text']);
-    }
-    return chunks.join('').trim();
-  }
-  return '';
-}
-
-/**
- * Join Gemini's `thoughts: [{ subject, description, timestamp }, ...]` array
- * into a single reasoning string (each thought becomes one paragraph). Returns
- * `undefined` when there are no thoughts. The Gemini CLI's reasoning stream
- * is structured per-thought (subject + description), so we use the description
- * as the body — the subject is a short heading that's noisy when concatenated.
- */
-function extractGeminiThinking(message: Record<string, unknown>): string | undefined {
-  const thoughts = message['thoughts'];
-  if (!Array.isArray(thoughts) || thoughts.length === 0) return undefined;
-  const chunks: string[] = [];
-  for (const thought of thoughts) {
-    const rec = asRecord(thought);
-    if (!rec) continue;
-    if (typeof rec['description'] === 'string') chunks.push(rec['description']);
-  }
-  const joined = chunks.join('\n\n').trim();
-  return joined.length > 0 ? joined : undefined;
-}
-
-/**
- * Map a Gemini message's `toolCalls: [{ id, name, args, result, status }, ...]`
- * to structured MessageContent blocks. Each entry already carries BOTH the
- * arguments (`args`) and the result (`result`) inline, so no pairing is needed.
- * Internal tools (`update_topic` etc.) are filtered out via {@link isInternalGeminiTool}.
- */
-function extractGeminiBlocks(message: Record<string, unknown>): unknown[] {
-  const calls = message['toolCalls'];
-  if (!Array.isArray(calls) || calls.length === 0) return [];
-  const out: unknown[] = [];
-  for (const call of calls) {
-    const rec = asRecord(call);
-    if (!rec) continue;
-    const name = typeof rec['name'] === 'string' ? rec['name'] : '';
-    if (!name || isInternalGeminiTool(name)) continue;
-    const toolId = typeof rec['id'] === 'string' ? rec['id'] : '';
-    const args = isRecord(rec['args']) ? rec['args'] : {};
-    // The result can be an array of function-response parts (most common) or a
-    // plain string. Join the `output` from each `functionResponse.response`.
-    const output = extractGeminiResultOutput(rec['result']);
-    const isError = rec['status'] === 'error' || rec['status'] === 'failed';
-    out.push(geminiToolBlock(name, toolId, args, output, isError));
-  }
-  return out;
-}
-
-/** Read the tool result text from a Gemini `toolCalls[].result` payload. */
-function extractGeminiResultOutput(result: unknown): string {
-  if (typeof result === 'string') return result;
-  if (!Array.isArray(result)) return '';
-  const chunks: string[] = [];
-  for (const part of result) {
-    const rec = asRecord(part);
-    if (!rec) continue;
-    const fr = isRecord(rec['functionResponse']) ? rec['functionResponse'] : undefined;
-    const response = fr && isRecord(fr['response']) ? fr['response'] : undefined;
-    if (response && typeof response['output'] === 'string') {
-      chunks.push(response['output']);
-    } else if (typeof rec['text'] === 'string') {
-      chunks.push(rec['text']);
-    }
-  }
-  return chunks.join('\n').trim();
 }
 
 // --- pi content extraction (toolCalls inline + toolResult as separate msg) ---

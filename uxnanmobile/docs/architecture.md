@@ -350,9 +350,7 @@ prompts cannot overwrite either the automatic title or a manual rename.
   capabilities; unknown capabilities remain permissive. The shelf starts
   folded beside the visible edit/context indicators; expanding it animates
   those read-only indicators out so the controls can use the full phone-width
-  row, and folding restores them. The deprecated
-  `gemini-cli` is an explicit exception: descriptors, cached threads, metrics and
-  provider usage are filtered before they reach any mobile product surface.
+  row, and folding restores them.
 - **drift migrations** are additive with explicit version bumps; see
   `local_database.dart`.
 

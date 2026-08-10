@@ -1,7 +1,7 @@
 /**
  * Bridge daemon orchestration: wires daemon state, identity, config, the
  * JSON-RPC router and handlers, the agent runtimes (OpenCode/Claude/Codex/pi/
- * Antigravity/Zero/Grok + echo, plus a non-runnable Gemini legacy descriptor),
+ * Antigravity/Zero/Grok + echo),
  * the per-device outbound catch-up log, and
  * the live E2EE transport (relay + direct LAN).
  *
@@ -47,7 +47,6 @@ import { CodexAdapter } from './adapters/codex-adapter.js';
 import { resolveCodexBinary } from './adapters/resolve-codex.js';
 import { PiAdapter } from './adapters/pi-adapter.js';
 import { resolvePiBinary } from './adapters/resolve-pi.js';
-import { GeminiAdapter } from './adapters/gemini-adapter.js';
 import { AntigravityAdapter, antigravityPermissionMode } from './adapters/antigravity-adapter.js';
 import { resolveAntigravityBinary } from './adapters/resolve-antigravity.js';
 import { ZeroAdapter } from './adapters/zero-adapter.js';
@@ -335,23 +334,8 @@ export async function startBridge(options: StartBridgeOptions = {}): Promise<Bri
       ...(piSettings.model !== undefined ? { defaultModel: piSettings.model } : {}),
     },
   );
-  // Deprecated Gemini CLI: keep the identifier registered only so legacy bridge
-  // configurations and stored threads remain readable. Do not resolve the binary
-  // or install hooks. AgentManager reports it unavailable and rejects new work;
-  // clients must hide descriptors marked `deprecated`.
-  const geminiSettings = config.agents['gemini-cli'] ?? {};
-  agentManager.register(
-    new GeminiAdapter({
-      binaryPath: geminiSettings.binaryPath ?? 'gemini',
-    }),
-    {
-      displayName: 'Gemini',
-      available: false,
-      deprecated: true,
-    },
-  );
-  // Antigravity: real agent driven via `agy … -p` (Google's successor to the
-  // deprecated Gemini CLI; models are the Gemini family). See FOR-DEV.md.
+  // Antigravity: real Google agent driven via `agy … -p`; models are discovered
+  // from the CLI and may belong to the Gemini family. See FOR-DEV.md.
   const antigravitySettings = config.agents['antigravity-cli'] ?? {};
   const antigravity = resolveAntigravityBinary(antigravitySettings.binaryPath);
   agentManager.register(

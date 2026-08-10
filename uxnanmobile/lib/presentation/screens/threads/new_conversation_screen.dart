@@ -324,15 +324,10 @@ class _NewConversationScreenState extends ConsumerState<NewConversationScreen> {
                       error: (_, __) =>
                           _Error(message: l10n.newThreadLoadFailed),
                       data: (items) {
-                        // Keep development adapters and every retired wire id
-                        // out even when a test override or an older bridge
-                        // bypasses ThreadManager's application-boundary filter.
+                        // Keep development-only adapters out even when a test
+                        // override bypasses ThreadManager's boundary filter.
                         final visible = items
-                            .where(
-                              (a) =>
-                                  isMobileAgentSupported(a.agentId) &&
-                                  !_hiddenAgentIds.contains(a.agentId),
-                            )
+                            .where((a) => !_hiddenAgentIds.contains(a.agentId))
                             .toList();
                         if (visible.isEmpty) {
                           return _Empty(message: l10n.newThreadNoAgents);

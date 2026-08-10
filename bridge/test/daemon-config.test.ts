@@ -107,3 +107,26 @@ test('overriding one agent does not wipe another agent default', () => {
   // Claude Code's seeded models are still present.
   assert.ok((merged.agents['claude-code']?.models?.length ?? 0) > 0);
 });
+
+test('retired Gemini CLI values are removed from persisted configuration', () => {
+  const legacy = {
+    defaultAgent: 'gemini-cli',
+    agents: {
+      'gemini-cli': { model: 'gemini-2.5-pro' },
+      codex: { permissionMode: 'default' },
+    },
+    projectAgents: [
+      { cwd: 'C:\\legacy', agentId: 'gemini-cli', model: 'gemini-2.5-pro' },
+      { cwd: 'C:\\active', agentId: 'codex', model: 'gpt-5' },
+    ],
+  } as unknown as Parameters<typeof resolveDaemonConfig>[0];
+
+  const resolved = resolveDaemonConfig(legacy);
+
+  assert.equal(resolved.defaultAgent, DEFAULT_DAEMON_CONFIG.defaultAgent);
+  assert.equal('gemini-cli' in resolved.agents, false);
+  assert.deepEqual(resolved.projectAgents, [
+    { cwd: 'C:\\active', agentId: 'codex', model: 'gpt-5' },
+  ]);
+  assert.equal(resolved.agents.codex?.permissionMode, 'default');
+});

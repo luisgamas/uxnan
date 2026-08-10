@@ -145,8 +145,7 @@ available today are:
   [`docs/orchestration.md`](docs/orchestration.md).
 - **AI-provider usage.** A **Providers** settings section shows how much of each
   quota you've consumed — session / weekly / monthly windows (with resets), plan,
-  account and credit balance — for **Codex, Claude, Copilot and Grok** (plus a
-  discontinued **Gemini CLI**, still read but no longer offered). It reads
+  account and credit balance — for **Codex, Claude, Copilot and Grok**. It reads
   each CLI's own signed-in token and calls the provider's official usage API (never
   cookies or pasted keys), polling **only the providers you activate**. A status-bar
   gauge surfaces the meters you pick; startup/focus catch-up and per-provider

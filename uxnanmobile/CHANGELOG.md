@@ -745,6 +745,13 @@ split inside the content actually has.
 Nothing is wired to a route yet — this is the foundation the adaptive layout is
 built on, landing on its own so it can be verified in isolation.
 
+### Changed
+
+- Removed the Gemini-specific compatibility filters from threads, agents,
+  metrics and provider usage now that the shared/bridge contract no longer
+  exposes the standalone Gemini CLI. Generic unknown/deprecated-agent handling
+  remains unchanged.
+
 ## [0.0.18-alpha.20260805] - 2026-08-05
 
 ### Fixed — the thread row shows the agent's latest reply, not its first

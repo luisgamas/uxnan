@@ -48,7 +48,6 @@ function baseCommands() {
       browserShimCmd: '',
       claudeSettingsPath: '',
       codexHooksPath: '',
-      geminiSettingsPath: '',
       opencodePluginPath: '',
       piExtensionPath: '',
       grokHooksPath: '',

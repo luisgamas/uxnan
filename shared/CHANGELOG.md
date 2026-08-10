@@ -17,6 +17,12 @@ has to be told. Any client that guessed from path prefixes was guessing.
 
 `METHOD_NAMES` is now **70** entries.
 
+### Removed
+
+- Removed the standalone Gemini CLI from the shared `AgentId` and
+  `UsageProvider` contracts. Gemini-family model ids supplied by active agents
+  remain ordinary model data.
+
 ## [0.0.13-alpha.20260804] - 2026-08-04
 
 ### Added — a conversation gets a real name, not its opening words

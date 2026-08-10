@@ -106,8 +106,7 @@ These need a real device and/or a live bridge+relay; defer until reachable:
   `git/status`, `agent/*`, and the advanced `approval`/`plan`/`subagent`/
   `compaction`/`assistant_response_boundary` payloads are decoded with
   **tolerant** parsers; confirm field names against a real bridge / a real
-  Codex/Claude turn. Regression tests must also prove legacy Gemini descriptors,
-  threads, metrics and provider usage never regain a mobile surface.
+  Codex/Claude turn.
 - **Native build correctness** beyond compilation (run the APK on a device).
 
 When you add a feature that can only be fully verified this way, leave a

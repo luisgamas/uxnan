@@ -48,7 +48,7 @@ In scope: the E2EE protocol and key handling, the bridge/relay transport, input
 validation at system boundaries, secret storage, and the desktop/mobile clients.
 
 Out of scope: vulnerabilities in third-party agent CLIs themselves (Claude Code,
-Codex, OpenCode, Gemini, pi), and issues that require a already-compromised host.
+Codex, OpenCode, Antigravity, pi), and issues that require an already-compromised host.
 
 ## Our security ground rules
 

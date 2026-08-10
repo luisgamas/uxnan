@@ -862,14 +862,14 @@ export function generateConversationTitle(
   });
 }
 
-/** Which of the supported AI-commit agents (claude/codex/gemini/opencode/pi) are
+/** Which of the supported AI-commit agents are
  *  installed in a runnable shape, so the picker offers only those. */
 export function aiCommitAgents(): Promise<string[]> {
   return invoke<string[]>('ai_commit_agents');
 }
 
 /** The models offered by `agentId` for AI commit messages (static for
- *  Claude/Gemini, a live CLI query for OpenCode/Pi/Codex). */
+ *  Claude, or a live CLI query for OpenCode/Pi/Codex/Antigravity/Grok). */
 export function aiCommitModels(agentId: string): Promise<AgentModel[]> {
   return invoke<AgentModel[]>('ai_commit_models', { agentId });
 }

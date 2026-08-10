@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uxnan/application/managers/thread_manager.dart';
 import 'package:uxnan/application/processors/domain_event.dart';
 import 'package:uxnan/domain/entities/message.dart';
-import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/approval_decision.dart';
 import 'package:uxnan/domain/enums/approval_mode.dart';
 import 'package:uxnan/domain/enums/assistant_response_phase.dart';
@@ -17,7 +16,6 @@ import 'package:uxnan/domain/enums/message_role.dart';
 import 'package:uxnan/domain/enums/system_content_kind.dart';
 import 'package:uxnan/domain/enums/thread_activity.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
-import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/message_content.dart';
 import 'package:uxnan/domain/value_objects/rpc_message.dart';
 import 'package:uxnan/infrastructure/repositories/drift_message_repository.dart';
@@ -1195,30 +1193,6 @@ void main() {
     expect(sentMethods, contains('thread/list'));
   });
 
-  test('threadsStream filters a cached legacy Gemini thread', () async {
-    await threadRepo.saveThread(
-      const Thread(
-        id: 'legacy-gemini',
-        title: 'Legacy',
-        agentId: 'gemini-cli',
-        syncState: ThreadSyncState.synced,
-        status: ThreadStatus.active,
-      ),
-    );
-    await threadRepo.saveThread(
-      const Thread(
-        id: 'visible-codex',
-        title: 'Visible',
-        agentId: 'codex',
-        syncState: ThreadSyncState.synced,
-        status: ThreadStatus.active,
-      ),
-    );
-
-    final threads = await manager.threadsStream.first;
-    expect(threads.map((thread) => thread.id), ['visible-codex']);
-  });
-
   test('loadProjects parses the project list', () async {
     final projects = await manager.loadProjects();
     expect(projects.single.id, 'p1');
@@ -1233,13 +1207,13 @@ void main() {
     expect(sentMethods, contains('agent/list'));
   });
 
-  test('loadAgents filters deprecated and legacy Gemini descriptors', () async {
+  test('loadAgents filters deprecated descriptors', () async {
     agentListResult = {
       'agents': [
         {'agentId': 'codex', 'displayName': 'Codex', 'available': true},
         {
-          'agentId': 'gemini-cli',
-          'displayName': 'Gemini',
+          'agentId': 'retired-agent',
+          'displayName': 'Retired',
           'available': false,
           'deprecated': true,
         },

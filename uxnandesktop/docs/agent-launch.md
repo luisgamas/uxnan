@@ -26,7 +26,7 @@ For getting **precise** working/done states out of an agent, see
 
 In **Settings → Agents**:
 
-- **Available agents** lists the known catalog (Claude Code, Codex, Gemini CLI,
+- **Available agents** lists the known catalog (Claude Code, Codex, Antigravity,
   OpenCode, …). The ADE detects which are **installed** on your `PATH`; click the
   **+** to add an installed one. **Add all installed** adds them in one click.
   Detection re-runs each time you open the pane, and the **refresh** button in the
@@ -183,7 +183,6 @@ Most agent CLIs enumerate their own models and the ADE asks them directly
 hand-kept table — `CLAUDE_MODELS` in
 [`src-tauri/src/agentcli.rs`](../src-tauri/src/agentcli.rs) — that fills the model
 pickers in **Settings → AI commit** and **Settings → GitHub → AI PR body**.
-(`GEMINI_MODELS` sits beside it and is **frozen** — see the note below.)
 
 **That table has a twin in the bridge, and both are maintained by hand.** When
 Anthropic ships or retires a model, update **both** sides in the same change set —
@@ -193,15 +192,6 @@ updating one leaves the other surface a version behind:
 |---|---|---|
 | Desktop Claude | `uxnandesktop/src-tauri/src/agentcli.rs` → `CLAUDE_MODELS` | the ADE's AI commit-message / PR-body pickers |
 | Bridge Claude | `bridge/src/daemon-config.ts` → `DEFAULT_DAEMON_CONFIG.agents['claude-code'].models` | the mobile app's model picker (`agent/models`) |
-
-> **Gemini CLI is deprecated — don't work on it.** `GEMINI_MODELS` (here and in
-> `bridge/src/adapters/gemini-adapter.ts`) is **frozen**: don't add models, don't
-> track upstream changes, don't build against it. The CLI is discontinued
-> upstream; its successor is **Antigravity** (`agy`), which uxnan drives as a real
-> agent and which lists its own models. What remains — the table, the catalog
-> entry, the hook reporter that is no longer auto-installed — exists only so
-> someone who already had it configured keeps working and can turn it off. It will
-> be removed from the project in a later pass.
 
 Keep the **same ids, labels and order** across a pair, newest/most capable first.
 Use canonical ids only: never append a date suffix or a routing variant (`…[1m]`,

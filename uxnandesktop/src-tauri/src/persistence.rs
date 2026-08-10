@@ -109,7 +109,57 @@ fn migrate(mut value: serde_json::Value) -> Result<serde_json::Value, AppError> 
     if let Some(obj) = value.as_object_mut() {
         obj.insert("version".into(), serde_json::json!(SCHEMA_VERSION));
     }
+    remove_retired_gemini_state(&mut value);
     Ok(value)
+}
+
+/// Remove persisted selections owned by the retired standalone Gemini CLI.
+/// This deliberately matches only its exact ids/command; Antigravity's `agy`
+/// profile, `.gemini` storage paths and Gemini-family model ids are untouched.
+fn remove_retired_gemini_state(value: &mut serde_json::Value) {
+    let Some(settings) = value.get_mut("settings") else {
+        return;
+    };
+
+    if let Some(profiles) = settings
+        .get_mut("agentProfiles")
+        .and_then(|v| v.as_array_mut())
+    {
+        profiles.retain(|profile| {
+            profile.get("id").and_then(|v| v.as_str()) != Some("gemini")
+                && profile.get("command").and_then(|v| v.as_str()) != Some("gemini")
+        });
+    }
+    if settings.get("defaultAgentId").and_then(|v| v.as_str()) == Some("gemini") {
+        settings["defaultAgentId"] = serde_json::Value::Null;
+    }
+    if let Some(ai) = settings.get_mut("aiCommit") {
+        if ai.get("agentId").and_then(|v| v.as_str()) == Some("gemini") {
+            ai["agentId"] = serde_json::json!("");
+            ai["model"] = serde_json::json!("");
+            ai["enabled"] = serde_json::json!(false);
+        }
+    }
+    if let Some(github) = settings.get_mut("github") {
+        if github.get("aiAgentId").and_then(|v| v.as_str()) == Some("gemini") {
+            github["aiAgentId"] = serde_json::Value::Null;
+            github["aiModel"] = serde_json::Value::Null;
+            github["aiEnabled"] = serde_json::json!(false);
+        }
+    }
+    if let Some(providers) = settings
+        .get_mut("usageProviders")
+        .and_then(|v| v.as_array_mut())
+    {
+        providers.retain(|entry| entry.get("provider").and_then(|v| v.as_str()) != Some("gemini"));
+    }
+    if let Some(disabled) = settings
+        .get_mut("browser")
+        .and_then(|v| v.get_mut("mcpDisabledAgents"))
+        .and_then(|v| v.as_array_mut())
+    {
+        disabled.retain(|entry| entry.as_str() != Some("gemini"));
+    }
 }
 
 /// Transform a document from `from_version` to `from_version + 1`.
@@ -142,6 +192,40 @@ mod tests {
         let data = mgr.load().unwrap();
         assert_eq!(data.version, SCHEMA_VERSION);
         assert!(data.repos.is_empty());
+    }
+
+    #[test]
+    fn load_removes_only_retired_gemini_cli_state() {
+        let value = serde_json::json!({
+            "version": SCHEMA_VERSION,
+            "settings": {
+                "agentProfiles": [
+                    { "id": "gemini", "command": "gemini" },
+                    { "id": "antigravity", "command": "agy" }
+                ],
+                "defaultAgentId": "gemini",
+                "aiCommit": { "enabled": true, "agentId": "gemini", "model": "gemini-2.5-pro" },
+                "github": { "aiEnabled": true, "aiAgentId": "gemini", "aiModel": "gemini-2.5-pro" },
+                "usageProviders": [{ "provider": "gemini" }, { "provider": "grok" }],
+                "browser": { "mcpDisabledAgents": ["gemini", "qwen"] }
+            }
+        });
+
+        let migrated = migrate(value).unwrap();
+        let settings = &migrated["settings"];
+        assert_eq!(settings["agentProfiles"].as_array().unwrap().len(), 1);
+        assert_eq!(settings["agentProfiles"][0]["command"], "agy");
+        assert!(settings["defaultAgentId"].is_null());
+        assert_eq!(settings["aiCommit"]["enabled"], false);
+        assert_eq!(settings["github"]["aiEnabled"], false);
+        assert_eq!(
+            settings["usageProviders"],
+            serde_json::json!([{ "provider": "grok" }])
+        );
+        assert_eq!(
+            settings["browser"]["mcpDisabledAgents"],
+            serde_json::json!(["qwen"])
+        );
     }
 
     #[test]

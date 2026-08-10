@@ -474,24 +474,6 @@ test('thread/start with an unknown project id is rejected', async () => {
   await rmrf(baseDir);
 });
 
-test('thread/start rejects the deprecated Gemini CLI before creating a thread', async () => {
-  const { bridge, baseDir } = await boot();
-  const projectsRes = await bridge.router.dispatch(makeRequest('0', 'project/list', {}));
-  assert.ok('result' in projectsRes);
-  const projectId = (projectsRes.result as Project[])[0]!.id;
-
-  const res = await bridge.router.dispatch(
-    makeRequest('1', 'thread/start', { projectId, agentId: 'gemini-cli' }),
-  );
-
-  assert.ok('error' in res);
-  assert.equal(res.error.code, -32002);
-  assert.match(res.error.message, /deprecated and cannot start new threads/);
-
-  await bridge.stop();
-  await rmrf(baseDir);
-});
-
 test('thread/read of an unknown id returns -32008', async () => {
   const { bridge, baseDir } = await boot();
   const res = await bridge.router.dispatch(makeRequest('3', 'thread/read', { threadId: 'nope' }));

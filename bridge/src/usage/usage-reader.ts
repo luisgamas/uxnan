@@ -88,8 +88,6 @@ function readOne(provider: UsageProvider, deps: ResolvedDeps): Promise<ProviderU
       return readClaude(deps);
     case 'copilot':
       return readCopilot(deps);
-    case 'gemini':
-      return readGemini(deps);
     case 'grok':
       return readGrok(deps);
   }
@@ -349,65 +347,6 @@ async function githubLogin(token: string, deps: ResolvedDeps): Promise<string | 
     deps,
   );
   return res.ok ? str(asObj(res.body)?.login) : undefined;
-}
-
-// ── Gemini (deprecated; legacy read-only usage compatibility) ────────────────
-
-async function readGemini(deps: ResolvedDeps): Promise<ProviderUsage> {
-  const now = deps.now();
-  const creds = await readJson(join(deps.homeDir, '.gemini', 'oauth_creds.json'), deps);
-  if (!creds) {
-    return withMessage(
-      base('gemini', 'notInstalled', now),
-      'Gemini CLI is not signed in (~/.gemini/oauth_creds.json missing)',
-    );
-  }
-  const token = str(creds.access_token);
-  if (!token) {
-    return withMessage(base('gemini', 'authRequired', now), 'Gemini CLI has no access token');
-  }
-  const account = makeAccount({ email: jwtEmail(creds.id_token) });
-
-  const res = await fetchJson(
-    {
-      url: 'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota',
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: '{}',
-    },
-    deps,
-  );
-  if (!res.ok) {
-    if (res.unauthorized) {
-      return withAccount(
-        withMessage(
-          base('gemini', 'authRequired', now),
-          'Gemini access token expired — re-run the Gemini CLI to refresh it',
-        ),
-        account,
-      );
-    }
-    return httpError('gemini', res, now, account);
-  }
-  const body = asObj(res.body) ?? {};
-
-  const windows: UsageWindow[] = [];
-  const buckets = Array.isArray(body.buckets) ? body.buckets : [];
-  buckets.forEach((item, i) => {
-    const w = asObj(item);
-    if (!w) return;
-    const remaining = num(w.remaining_fraction ?? w.remainingFraction) ?? 0;
-    windows.push({
-      id: `bucket${i}`,
-      label: str(w.model_id ?? w.modelId) ?? 'Quota',
-      usedPercent: clampPct((1 - remaining) * 100),
-      windowMinutes: 1440,
-      ...spreadResets(epochMs(w.reset_time ?? w.resetTime)),
-    });
-  });
-  return finish('gemini', now, windows, account, undefined, {
-    empty: 'signed in, but the quota API returned no buckets',
-  });
 }
 
 // ── Grok ─────────────────────────────────────────────────────────────────────
@@ -682,18 +621,6 @@ function labelForMinutes(minutes: number | undefined): string {
   if (minutes === 10_080) return 'Weekly';
   if (minutes === 43_200) return 'Monthly';
   return `${Math.round(minutes / 60)}h window`;
-}
-
-function jwtEmail(jwt: unknown): string | undefined {
-  if (typeof jwt !== 'string') return undefined;
-  const segment = jwt.split('.')[1];
-  if (!segment) return undefined;
-  try {
-    const payload: unknown = JSON.parse(Buffer.from(segment, 'base64url').toString('utf8'));
-    return str(asObj(payload)?.email);
-  } catch {
-    return undefined;
-  }
 }
 
 function prettifyPlan(value: string): string {

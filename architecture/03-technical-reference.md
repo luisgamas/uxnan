@@ -598,31 +598,6 @@ Claude Code soporta dos mecanismos de autenticacion:
 
 En ambos casos, el bridge maneja el flujo localmente y la app solo recibe el estado sanitizado.
 
-#### 2.2.4 Gemini CLI (Google) — API Key
-
-> **Referencia histórica:** Gemini CLI está retirado. Desde 2026-08 el bridge
-> conserva este flujo solamente como código legacy marcado `deprecated` y no
-> permite iniciar turnos; el móvil descarta sus descriptors, threads, métricas y
-> proveedor de uso. Use Antigravity (`agy`) para conversaciones nuevas.
-
-Gemini CLI utiliza una Google API Key configurada en el entorno de la PC. No tiene flujo de login interactivo.
-
-```
-[App]       getAuthStatus -> { requiresLogin: true, agentId: "gemini-cli" }
-[App]       Muestra: "Configure GOOGLE_API_KEY en su PC"
-                ↓
-[PC]        Usuario configura GOOGLE_API_KEY en su entorno
-[Bridge]    gemini-cli-adapter.js detecta la key
-[Bridge]    Emite: stream/auth/updated {
-              agentId: "gemini-cli",
-              requiresLogin: false,
-              authenticatedProvider: "google",
-              displayName: null
-            }
-```
-
-**Nota:** Gemini CLI es open-source y puede integrarse con Gemini Code Assist. La API key se obtiene desde Google AI Studio o Google Cloud Console.
-
 #### 2.2.5 pi-agent (earendil-works/pi) — API Key multi-proveedor
 
 pi-agent soporta multiples proveedores de LLM (Anthropic, OpenAI, Google, etc.). La API key se configura en la configuracion del proyecto, especificamente en `agentConfig`.
@@ -653,7 +628,6 @@ pi-agent soporta multiples proveedores de LLM (Anthropic, OpenAI, Google, etc.).
 | **Codex** | OAuth (OpenAI) | Si: login en navegador | No, nunca |
 | **OpenCode** | API Key (multi-proveedor) | No interactivo: configurar env var | No, nunca |
 | **Claude Code** | OAuth (claude.ai) o API Key | Si (OAuth) o no (API key) | No, nunca |
-| ~~Gemini CLI~~ | Retirado; contrato legacy solamente | No se permite iniciar sesiones | No, nunca |
 | **pi-agent** | API Key (multi-proveedor) | No interactivo: configurar env var o agentConfig | No, nunca |
 
 ### 2.3 Pantallas y componentes de UI para autenticacion

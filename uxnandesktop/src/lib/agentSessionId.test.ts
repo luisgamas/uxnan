@@ -37,7 +37,7 @@ describe("ownedSession", () => {
   it("leaves alone the CLIs that expose no such flag", () => {
     expect(ownedSession("codex", [], fixed)).toBeNull();
     expect(ownedSession("opencode", [], fixed)).toBeNull();
-    expect(ownedSession("gemini", [], fixed)).toBeNull();
+    expect(ownedSession("unknown", [], fixed)).toBeNull();
     expect(ownedSession("", [], fixed)).toBeNull();
   });
 

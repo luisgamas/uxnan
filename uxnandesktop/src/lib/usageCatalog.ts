@@ -23,22 +23,15 @@ export interface UsageCatalogProvider {
   hasCredit?: boolean;
   /** Whether the provider grants redeemable rate-limit resets (Codex). */
   hasResetCredits?: boolean;
-  /** The provider's CLI is discontinued upstream: it is no longer offered for
-   *  activation, but stays fully readable for anyone who already activated it
-   *  (see {@link activatableUsageProviders}). Re-enable by dropping the flag. */
-  deprecated?: boolean;
 }
 
 export const USAGE_CATALOG: UsageCatalogProvider[] = [
   { id: "codex", name: "Codex", logo: "codex", favicon: "openai.com", hasCredit: true, hasResetCredits: true },
   { id: "claude", name: "Claude Code", logo: "claudecode", favicon: "claude.ai", hasCredit: true },
   { id: "copilot", name: "GitHub Copilot", logo: "copilot", favicon: "github.com" },
-  // Gemini CLI is discontinued upstream in favour of Antigravity (`agy`), so it
-  // is hidden from the picker — the reader stays wired for anyone still on it.
   // FOR-DEV: Antigravity itself is not listed here yet — its quota API is the
   // same Code Assist one, but `agy` keeps its token in the OS keyring instead of
   // on disk. Findings + what unblocks it: FOR-DEV.md → "Providers".
-  { id: "gemini", name: "Gemini CLI", logo: "gemini", favicon: "gemini.google.com", deprecated: true },
   { id: "grok", name: "Grok", logo: "grok", favicon: "x.ai", hasCredit: true },
 ];
 
@@ -46,11 +39,9 @@ export function usageProvider(id: UsageProvider): UsageCatalogProvider | undefin
   return USAGE_CATALOG.find((p) => p.id === id);
 }
 
-/** The providers a user can still activate — the catalog minus the deprecated
- *  ones. Everything that renders an *already activated* provider keeps using
- *  {@link usageProvider}, so a deprecated entry never loses its name or logo. */
+/** The providers a user can activate. */
 export function activatableUsageProviders(): UsageCatalogProvider[] {
-  return USAGE_CATALOG.filter((p) => !p.deprecated);
+  return USAGE_CATALOG;
 }
 
 /** Status-bar defaults when a provider first activates: surface its primary

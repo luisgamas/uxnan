@@ -1,7 +1,7 @@
 /**
  * Discovery + expansion of user-defined "custom" prompt-template commands from
  * disk, shared by the CLI adapters whose headless mode does NOT expand their own
- * slash commands (Codex, Gemini, OpenCode). The bridge scans the command
+ * slash commands (Codex and OpenCode). The bridge scans the command
  * directories, advertises each file as an {@link AgentCommand} (`source:
  * 'custom'`), and — on invocation — expands the template itself (argument
  * substitution) so the final prompt reaches the agent as ordinary text.
@@ -21,12 +21,12 @@ import { join } from 'node:path';
 import type { AgentCommand } from '@uxnan/shared';
 
 /** How a command file encodes its template + metadata. */
-export type CommandFormat = 'markdown' | 'toml';
+export type CommandFormat = 'markdown';
 
 export interface CustomCommandSource {
   /** Directories to scan, highest-priority first (project before user level). */
   dirs: string[];
-  /** File extension including the dot (e.g. `.md`, `.toml`). */
+  /** File extension including the dot (currently `.md`). */
   ext: string;
   /** How to parse a matched file. */
   format: CommandFormat;
@@ -50,7 +50,7 @@ export async function scanCustomCommands(source: CustomCommandSource): Promise<A
   for (const { name, path } of files) {
     let parsed: ParsedCommand;
     try {
-      parsed = parseCommandFile(await readFile(path, 'utf8'), source.format);
+      parsed = parseCommandFile(await readFile(path, 'utf8'));
     } catch {
       continue;
     }
@@ -78,7 +78,7 @@ export async function expandCustomCommand(
   const files = await listCommandFiles(source.dirs, source.ext);
   const match = files.find((f) => f.name === name);
   if (!match) throw new Error(`unknown custom command '${name}'`);
-  const parsed = parseCommandFile(await readFile(match.path, 'utf8'), source.format);
+  const parsed = parseCommandFile(await readFile(match.path, 'utf8'));
   return substituteArgs(parsed.body, args);
 }
 
@@ -111,8 +111,8 @@ async function listCommandFiles(
   return out;
 }
 
-function parseCommandFile(raw: string, format: CommandFormat): ParsedCommand {
-  return format === 'toml' ? parseTomlCommand(raw) : parseMarkdownCommand(raw);
+function parseCommandFile(raw: string): ParsedCommand {
+  return parseMarkdownCommand(raw);
 }
 
 /** Markdown command: YAML-ish front-matter (`description`, `argument-hint`) + body. */
@@ -122,15 +122,6 @@ function parseMarkdownCommand(raw: string): ParsedCommand {
     body,
     ...(fields['description'] ? { description: fields['description'] } : {}),
     ...(fields['argument-hint'] ? { argumentHint: fields['argument-hint'] } : {}),
-  };
-}
-
-/** TOML command (Gemini): a required `prompt` string plus optional `description`. */
-function parseTomlCommand(raw: string): ParsedCommand {
-  const description = extractTomlString(raw, 'description');
-  return {
-    body: extractTomlString(raw, 'prompt') ?? '',
-    ...(description ? { description } : {}),
   };
 }
 
@@ -146,17 +137,6 @@ function extractFrontMatter(raw: string): { fields: Record<string, string>; body
     if (key) fields[key] = stripQuotes(line.slice(idx + 1).trim());
   }
   return { fields, body: raw.slice(match[0].length) };
-}
-
-/** Read a TOML string value, honoring `"""…"""`/`'''…'''` and `"…"`/`'…'` forms. */
-function extractTomlString(raw: string, key: string): string | undefined {
-  const triple = new RegExp(`(?:^|\\n)\\s*${key}\\s*=\\s*("""|''')([\\s\\S]*?)\\1`).exec(raw);
-  if (triple) return triple[2]!.replace(/^\r?\n/, '');
-  const single = new RegExp(
-    `(?:^|\\n)\\s*${key}\\s*=\\s*"([^"]*)"|(?:^|\\n)\\s*${key}\\s*=\\s*'([^']*)'`,
-  ).exec(raw);
-  if (single) return single[1] ?? single[2];
-  return undefined;
 }
 
 /**

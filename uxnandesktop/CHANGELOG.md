@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the standalone Gemini CLI from the agent catalog, headless runner,
+  AI commit/PR authoring, process/resource detection, browser MCP injection,
+  quota providers and hook UI. On upgrade, saved Gemini selections are disabled
+  and only Uxnan-managed stale Gemini hooks are stripped; Antigravity's `agy`
+  integration, `~/.gemini/config` hooks and Gemini-family models are preserved.
+
 ### Added
 
 - **Projects can now be cloned and added from the Add project dialog.** Its single

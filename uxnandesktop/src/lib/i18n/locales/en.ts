@@ -1309,8 +1309,6 @@ export const en = {
     "Adds a `hooks` block to `~/.claude/settings.json` that runs the bundled Node relay on every Claude event (exec-form, so it works from any shell). Existing hooks are preserved.",
   "hooks.desc.codex":
     "Adds managed hooks to `~/.codex/hooks.json` and registers their trust hash in `~/.codex/config.toml` (Codex 0.129+ gates hooks on it), so Codex reports precise states out of the box.",
-  "hooks.desc.gemini":
-    "Adds managed hooks to `~/.gemini/settings.json` that run the bundled relay on every Gemini turn event. Existing hooks are preserved. Discontinued upstream — offered only so you can turn an existing install off.",
   "hooks.desc.opencode":
     "Installs the ADE status plugin into OpenCode's config so it reports working / waiting / done / blocked, and maps its child sessions to sub-agent rows.",
   "hooks.desc.pi":
@@ -1509,7 +1507,7 @@ export const en = {
   "orchestration.kindInteractive": "Interactive",
   "orchestration.kindHeadless": "Headless",
   "orchestration.kindInteractiveHint":
-    "Types the prompt into a live agent's terminal. Output is a short summary — full text only if the agent reports via MCP (Claude / Codex / Gemini / OpenCode). To chain full output, use Headless.",
+    "Types the prompt into a live agent's terminal. Output is a short summary — full text only if the agent reports via MCP (Claude / Codex / OpenCode). To chain full output, use Headless.",
   "orchestration.kindHeadlessHint":
     "Runs an installed CLI in print-mode in a worktree. The ADE owns the process, so the full output is captured and completion is verified by the exit code — best for chaining context between steps.",
   "orchestration.stepModel": "Model",
@@ -1644,7 +1642,7 @@ export const en = {
   "browser.mcpModeOffDesc": "Don't inject anything — wire an agent by hand from the snippet below.",
   "browser.frictionFree": "Frictionless launch",
   "browser.frictionFreeDesc":
-    "Skip the CLI's “trust this folder?” prompt for app-launched agents (Gemini and Codex). Managed mode only.",
+    "Skip the CLI's “trust this folder?” prompt for app-launched agents where supported (currently Codex). Managed mode only.",
   "browser.mcpAgents": "Agents",
   "browser.mcpAgentsDesc": "Which agents get the browser tools set up automatically.",
   "browser.mcpSnippet": "Manual config",

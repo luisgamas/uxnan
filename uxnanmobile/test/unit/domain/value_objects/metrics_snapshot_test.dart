@@ -322,24 +322,6 @@ void main() {
       expect(totalTokensOf([snapA, snapB]), 10504);
     });
 
-    test('retired Gemini never appears in mobile agent metrics', () {
-      final legacy = _snap(
-        byAgentDay: [
-          db(dayMs(2026, 7, 15), const [
-            MetricsAgentDay(
-              agentId: 'gemini-cli',
-              conversations: 7,
-              messages: 11,
-              tokens: 9999,
-            ),
-          ]),
-        ],
-      );
-      expect(agentBreakdown([legacy]), isEmpty);
-      expect(totalTokensOf([legacy]), 0);
-      expect(aggregateTokensByDay([legacy], year: 2026), isEmpty);
-    });
-
     test('aggregateTokensByDay buckets tokens per UTC day across PCs', () {
       final byDay = aggregateTokensByDay([snapA, snapB], year: 2026);
       // Jul 14: opencode 9004 + zero 0. Jul 15: 1000 (A) + 500 (B).

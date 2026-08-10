@@ -25,7 +25,7 @@
 
 ### Qué es un ADE (Agent Development Environment)
 
-Un **Agent Development Environment** es un entorno de escritorio diseñado para que desarrolladores trabajen **en paralelo con múltiples agentes AI de línea de comandos** (Claude Code, Codex CLI, OpenCode, Aider, Gemini CLI, pi-agent, y cualquier agente futuro). A diferencia de un IDE tradicional que se centra en editar código manualmente, un ADE se centra en:
+Un **Agent Development Environment** es un entorno de escritorio diseñado para que desarrolladores trabajen **en paralelo con múltiples agentes AI de línea de comandos** (Claude Code, Codex CLI, OpenCode, Antigravity, pi-agent, y cualquier agente futuro). A diferencia de un IDE tradicional que se centra en editar código manualmente, un ADE se centra en:
 
 - **Orquestar** múltiples agentes ejecutándose simultáneamente.
 - **Aislar** cada tarea en su propio espacio de trabajo (worktree de git).
@@ -184,7 +184,7 @@ La app móvil no ejecuta agentes localmente. Se conecta al bridge (ver siguiente
 
 El **Uxnan Bridge** es un daemon Node.js que corre en la PC del desarrollador y actúa como puente entre la app móvil y los recursos de la computadora (Git, filesystem, terminales, agentes). El bridge:
 
-- Implementa **Agent Adapters** que normalizan las diferencias de protocolo entre agentes (Codex CLI, OpenCode, Claude Code, Gemini CLI, pi-agent) y exponen una interfaz JSON-RPC unificada.
+- Implementa **Agent Adapters** que normalizan las diferencias de protocolo entre agentes (Codex CLI, OpenCode, Claude Code, Antigravity, pi-agent) y exponen una interfaz JSON-RPC unificada.
 - Gestiona sesiones de agentes, operaciones Git, y acceso al workspace.
 - Acepta conexiones WebSocket con E2EE (cifrado de extremo a extremo).
 
@@ -378,7 +378,7 @@ Gracias al principio terminal-céntrico, Uxnan Desktop es compatible con **cualq
 | **Codex CLI** (OpenAI) | CLI interactivo | JSON-RPC 2.0 sobre WebSocket. Arquitectura local-first. |
 | **OpenCode** (opencode.ai) | CLI interactivo | Soporta múltiples LLM providers. Arquitectura cliente/servidor diseñada para conexión remota. |
 | **Aider** | CLI interactivo | Agente open-source popular. Soporta múltiples modelos. Usa git internamente para tracking de cambios. |
-| **Gemini CLI** (Google) | CLI interactivo | Bucle ReAct con herramientas built-in y servidores MCP. Output JSON y stream-json para integración. |
+| **Antigravity** (Google) | CLI interactivo | Conversaciones persistentes, modelos descubiertos en vivo y modo headless. |
 | **pi-agent** | CLI interactivo | Agente minimalista con cuatro herramientas core. Modo RPC con framing JSONL. |
 | **Cualquier agente futuro** | CLI | Por diseño, cualquier agente CLI nuevo funciona sin modificar el ADE. |
 

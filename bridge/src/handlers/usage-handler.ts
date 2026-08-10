@@ -13,7 +13,7 @@ import type { HandlerRouter } from '../handler-router.js';
 import { readUsage } from '../usage/usage-reader.js';
 import { requireArray } from './params.js';
 
-const USAGE_PROVIDERS: readonly UsageProvider[] = ['codex', 'claude', 'copilot', 'gemini', 'grok'];
+const USAGE_PROVIDERS: readonly UsageProvider[] = ['codex', 'claude', 'copilot', 'grok'];
 
 /** Validates `params.providers` into a deduped list of known providers. */
 export function validateProviders(params: unknown): UsageProvider[] {

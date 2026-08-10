@@ -37,10 +37,7 @@ The ADE ships a managed reporter for **twenty-one** agents and installs them
 | Amp | its `plugins/` dir (`~/.config/amp/plugins/`) |
 | OMP | its own extensions dir (`~/.omp/agent/extensions/`) |
 
-The **Gemini CLI** reporter is still wired but no longer installed or offered,
-since Google discontinued that CLI in favour of Antigravity; if you already have
-it installed, its card stays in the panel so you can turn it off. Each reporter
-is picked to be robust across every shell you might launch the agent from (cmd,
+Each reporter is picked to be robust across every shell you might launch the agent from (cmd,
 PowerShell, PowerShell 7, Git Bash, WSL, bash, zsh, fish), because the agent's
 *own* hook runner executes it. Any other agent is **opt-in**: point it at the
 generic wrapper.
@@ -178,8 +175,8 @@ distinct, precise states** plus a derived idle:
 > and a row that confidently shows the wrong task is worse than one that shows
 > none.
 >
-> **Who has no children to report.** Pi has no sub-agent concept at all. Gemini CLI
-> is deprecated. Antigravity and OMP *do* spawn children, but neither exposes them
+> **Who has no children to report.** Pi has no sub-agent concept at all.
+> Antigravity and OMP *do* spawn children, but neither exposes them
 > where we can see: Antigravity's hooks are only its execution loop, and OMP's
 > sub-agents live in its RPC/TUI layer, not in the plugin bus its reporter rides.
 
@@ -221,7 +218,7 @@ The reporters (one per agent, plus the generic wrapper) — full table in
 
 | File | Agent(s) | What it's for |
 |---|---|---|
-| `uxnan-status-relay.cjs` | Claude Code, Gemini CLI | Node relay (both agents *are* Node, so `node` is guaranteed → works from any shell). Forwards the raw event; the server normalizes it. |
+| `uxnan-status-relay.cjs` | Claude Code | Dependency-free Node relay in exec form. Forwards the raw event; the server normalizes it. |
 | `uxnan-codex-hook.{sh,cmd}` | Codex | `curl` hook (Codex is a Rust binary — no Node). Paired with a `trusted_hash` in `~/.codex/config.toml`. |
 | `uxnan-event-hook.{sh,cmd}` | Grok, Antigravity + every declaratively-wired CLI | `curl` reporter with the agent kind as its argument, so one script serves every CLI whose hook runner executes a command and pipes it the raw event JSON. It answers `{}` on stdout, because several of these CLIs parse it and **Cursor gates tool use on it** — a reporter that printed nothing would block the agent's file reads and shell commands, not merely fail to report. On Windows its command is written with **backslashes**: a CLI that hands the command to `cmd.exe` splits a forward-slashed path at the first `/` (`…oaming is not recognized as an internal or external command` — measured against the real Cursor CLI). |
 | `uxnan-opencode-status.js` | OpenCode | In-process plugin. |
@@ -350,7 +347,7 @@ The per-agent notes below are what each CLI made us learn the hard way:
   the panel says so instead of installing a hook that would never fire.
 
 - **Per-event merge, user-preserving.** For every agent whose hooks live in a
-  config file you also own (Claude, Codex, Gemini, OpenClaude, Qwen, Droid,
+  config file you also own (Claude, Codex, OpenClaude, Qwen, Droid,
   Devin, Command Code, Auggie, Cursor), the reporter is merged event by event
   **without touching your existing hooks**. A managed entry is recognised by the
   reporter it references *and* the agent kind passed to it, so re-installing
@@ -607,7 +604,7 @@ the provider's own session identity, the server also extracts it: the id from
 `conversationId` / `conversationID` / `conversation-id`, and an optional
 session/transcript file from `session_file` / `sessionFile` /
 `transcript_path`. The bundled reporters
-forward it themselves: the Claude/Gemini relay passes the raw hook JSON
+forward it themselves: the Claude relay passes the raw hook JSON
 through untouched, the OpenCode plugin attaches the ROOT session's
 `sessionID` to every state event (a sub-agent child session never overwrites
 it), the Pi extension rides the explicit `session_id`/`session_file`
@@ -631,10 +628,9 @@ credentials**; they
 are cached with the agent state in `state.json` (same 7-day TTL) and persisted
 on the owning tab with the terminal layout.
 
-Two wired agents are deliberately **not** resumable: **Gemini CLI** exposes no
-session resume (and is deprecated — see `AGENTS.md`), and **Zero** resumes only in
-its headless one-shot mode (`zero exec --resume [id]`); the interactive TUI a
-terminal tab runs rejects the flag. Both still have their sessions captured.
+Zero is deliberately **not** resumable: it resumes only in its headless one-shot
+mode (`zero exec --resume [id]`); the interactive TUI a terminal tab runs rejects
+the flag. Its session may still be captured.
 
 **Sessions named at launch.** Capture-by-hook only learns an id once the agent
 has done something, so a tab you opened and never wrote to had nothing to bring
@@ -658,7 +654,7 @@ behavior off in **Settings → Agents → Name agent sessions at launch**
 A session **already persisted** under an unusable agent type (see the sweep
 below) is repaired when its tab comes back: the transcript path captured
 alongside it names the CLI it belongs to (`~/.codex/sessions/…`,
-`~/.claude/projects/…`, `~/.pi/…`, `~/.grok/…`, `~/.gemini/…`), which restores
+`~/.claude/projects/…`, `~/.pi/…`, `~/.grok/…`), which restores
 both the agent and its resume command. One that can't be placed is left alone —
 running another CLI's command line on a guess is worse than offering nothing.
 

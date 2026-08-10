@@ -896,13 +896,13 @@ pub struct BrowserSettings {
     pub mcp_injection: McpInjection,
     /// Frictionless agent setup. When on (default) and injection mode is `managed`,
     /// app-launched agents receive first-party trust-skip flags so the CLI never
-    /// prompts to trust the workspace/folder on launch (e.g. Gemini `--skip-trust`),
-    /// and per-folder trust is pre-seeded where the CLI supports it (e.g. Codex
+    /// prompts to trust the workspace/folder on launch, and per-folder trust is
+    /// pre-seeded where the CLI supports it (e.g. Codex
     /// `projects."<cwd>".trust_level`). Turn off to keep the CLIs' native trust
     /// prompts. Applies only in `managed` mode.
     #[serde(default = "default_true")]
     pub friction_free: bool,
-    /// Agent ids (`claude`, `codex`, `gemini`, `opencode`, `pi`) to skip when
+    /// Agent ids (`claude`, `codex`, `opencode`, `pi`, …) to skip when
     /// injecting the MCP config. Empty = every supported agent gets it. Default
     /// empty.
     #[serde(default)]
@@ -1027,7 +1027,7 @@ pub struct AiCommitSettings {
     /// command refuses while this is false.
     #[serde(default)]
     pub enabled: bool,
-    /// Selected agent id: one of `claude`/`codex`/`gemini`/`opencode`/`pi`, or
+    /// Selected agent id: one of `claude`/`codex`/`opencode`/`pi`/`agy`/`grok`, or
     /// empty when none is chosen yet.
     #[serde(default)]
     pub agent_id: String,

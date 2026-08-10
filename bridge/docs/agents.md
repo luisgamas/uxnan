@@ -153,7 +153,6 @@ surface it does not drive.**
 | **Grok** | `grok agent stdio` | ACP (JSON-RPC over stdio) **plus `_x.ai/*` extension methods** | yes — on `_x.ai/session_notification`, **not** on ACP's own `session/update`; the `turn_completed` update carries the `usage` block |
 | **Zero** | `zero acp` | ACP (JSON-RPC over stdio) | **no** — see below |
 | **Antigravity** | `agy -p` | one process per turn, plain text on stdout | **not on this surface** — see below |
-| ~~Gemini CLI~~ | — | non-runnable legacy | — |
 
 Two agents report no usage, and in both cases the CLI *can* report it somewhere
 else — which is exactly the trap:
@@ -184,23 +183,16 @@ hand, and it has a matching half in the desktop app.
 | **Claude Code** | `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages` (prompt on stdin) | `--resume <session_id>` | `permissionMode` → `--permission-mode acceptEdits` / none / `--dangerously-skip-permissions` | `fable`/`opus`/`sonnet`/`haiku` aliases (latest) **+ `agents.claude-code.models`** |
 | **Codex** | long-lived `codex app-server` (JSON-RPC over stdio) | persisted app-server thread id via `thread/start` | `accessMode` → app-server `approvalPolicy` + `sandbox` on `thread/start`; approval requests route to the phone | `model/list` (account-aware) → `~/.codex/config.toml` fallback |
 | **pi** | `pi --mode rpc` (prompt + follow-ups as RPC commands on stdin) | `--session-id <id>` | `permissionMode` → built-in read/bash/edit/write / `--tools read,grep,find,ls` / `--approve` | `pi --list-models` (real list; reasoning knob per model) |
-| ~~Gemini CLI~~ (deprecated legacy) | retained adapter only; new turns rejected | legacy history only | unavailable (`deprecated:true`) | none exposed |
 | **Antigravity** | `agy --conversation <uuid> --add-dir <cwd> (--dangerously-skip-permissions \| --mode plan) -p <text>` | client-owned `--conversation <uuid>` (create + resume) | `accessMode` → `--dangerously-skip-permissions` (approveForMe·fullAccess) / `--mode plan` (requestApproval → read-only, since headless can't prompt) | `agy models` (real list; the Gemini family + hosted others) |
 | **Zero** | `zero acp` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP session mode: `ask` (real `session/request_permission` approvals) / `auto` for approveForMe·fullAccess | `zero models list` (real list; `contextWindow` from `ctx=`) |
 | **Grok** | `grok agent stdio` (ACP JSON-RPC over stdio) | persisted ACP session id (`session/load`) | `accessMode` → ACP `session/request_permission` answered per posture: interactive (asks the phone) / auto for approveForMe·fullAccess | `initialize` `_meta.modelState` (context window + reasoning-effort knob per model) |
 
-Seven agents are active; the eighth registered adapter (Gemini) is non-runnable
-legacy. No further agent is planned right now (the recipe for
+Seven agents are active. No further agent is planned right now (the recipe for
 wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md)).
 
-> **Gemini CLI is deprecated — don't spend work on it.** It is discontinued
-> upstream; its successor is **Antigravity** (`agy`), wired above as a real agent
-> that enumerates its own models. The phone removes every Gemini product surface,
-> and its curated `GEMINI_MODELS` table (`src/adapters/gemini-adapter.ts`) is
-> **frozen**: don't add models, don't track upstream changes, don't build new
-> features against the adapter. What remains is reference/history code only:
-> `agent/list` marks it unavailable/deprecated and `AgentManager` rejects new
-> turns. It will be removed from the project in a later pass.
+> **Do not reintroduce the standalone Gemini CLI.** It was removed in August
+> 2026. Google's supported integration is Antigravity (`agy`). Gemini-family
+> model names returned by Antigravity or Pi remain valid model data.
 
 ### Context compaction
 

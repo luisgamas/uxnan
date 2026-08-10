@@ -150,7 +150,7 @@ export interface TurnSendParams {
    *   wants to handle the busy case itself).
    * - absent — **queue it anyway**. Queueing is the safe default because the
    *   bridge can only drive ONE turn per thread: half the agents run one-shot
-   *   per turn (`claude -p --resume`, gemini, pi, antigravity) and a second
+   *   per turn (`claude -p --resume`, pi, antigravity) and a second
    *   concurrent turn would put two CLI processes on the same session.
    *
    * Ignored when no turn is in flight — the turn simply starts.
@@ -346,7 +346,7 @@ export interface AgentCommandsParams {
   agentId: AgentId;
   /**
    * Thread/project directory, so project-scoped custom commands (e.g.
-   * `<cwd>/.claude/commands`, `<cwd>/.gemini/commands`) are discovered alongside
+   * `<cwd>/.claude/commands`, `<cwd>/.opencode/command`) are discovered alongside
    * the user-level ones. Omitted → only user-level commands are returned.
    */
   cwd?: string;

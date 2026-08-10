@@ -64,7 +64,7 @@ git2 = { version = "0.20", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["json", "tokio", "http1"] }
 # Format-preserving TOML editor, used to merge our MCP server entry into an
 # agent's `config.toml` (Codex) without clobbering the user's other settings or
-# comments. Pure Rust; `serde` handles the JSON-config agents (Claude/Gemini/…).
+# comments. Pure Rust; `serde` handles the JSON-config agents (Claude/Antigravity/…).
 toml_edit = "0.22"
 # SHA-256 (+ hex encoding) used only to reproduce Codex's per-hook `trusted_hash`
 # so the ADE-managed status hook is auto-trusted in `~/.codex/config.toml`

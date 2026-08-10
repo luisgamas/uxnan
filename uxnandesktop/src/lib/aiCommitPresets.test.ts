@@ -49,8 +49,7 @@ describe("the AI-commit agent list", () => {
 
   it("offers exactly the five wired agents", () => {
     // Each of these resolves to a spawnable CLI, answers a model list and
-    // returns its answer on stdout in print mode. Gemini CLI is discontinued
-    // upstream and is deliberately not among them.
+    // returns its answer on stdout in print mode.
     expect(activatableAiCommitAgents().map((a) => a.id)).toEqual([
       "claude",
       "codex",
@@ -60,23 +59,13 @@ describe("the AI-commit agent list", () => {
     ]);
   });
 
-  it("keeps a deprecated agent listed only while it is the saved selection", () => {
-    // The backend runs whatever id the settings hold and never consults this
-    // list, so hiding a still-configured agent would leave the field reading
-    // "none" while that agent kept writing messages.
+  it("returns the same supported choices for every saved selection", () => {
     const offered = activatableAiCommitAgents().map((a) => a.id);
     expect(aiCommitAgentChoices("claude").map((a) => a.id)).toEqual(offered);
     expect(aiCommitAgentChoices("").map((a) => a.id)).toEqual(offered);
     expect(aiCommitAgentChoices(null).map((a) => a.id)).toEqual(offered);
     expect(aiCommitAgentChoices(undefined).map((a) => a.id)).toEqual(offered);
-    expect(aiCommitAgentChoices("gemini").map((a) => a.id)).toEqual([...offered, "gemini"]);
-  });
-
-  it("resolves a deprecated agent so a saved one keeps its name and logo", () => {
-    const gemini = AI_COMMIT_AGENTS.find((a) => a.id === "gemini");
-    expect(gemini?.name).toBe("Gemini CLI");
-    expect(gemini?.logo).toBe("gemini");
-    expect(gemini?.deprecated).toBe(true);
+    expect(aiCommitAgentChoices("retired").map((a) => a.id)).toEqual(offered);
   });
 
   it("uses the command the backend resolves as the id", () => {

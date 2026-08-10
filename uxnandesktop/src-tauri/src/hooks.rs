@@ -114,15 +114,6 @@ pub fn normalize_event(
             "Stop" => Some(AgentStatus::Done),
             _ => None,
         },
-        "gemini" => match event {
-            // Gemini's turn events are Before/After Agent/Tool (it has no
-            // permission hook, so no `waiting`).
-            "BeforeAgent" | "BeforeTool" | "AfterTool" | "PreToolUse" | "PostToolUse" => {
-                Some(AgentStatus::Working)
-            }
-            "AfterAgent" | "SessionEnd" => Some(AgentStatus::Done),
-            _ => None,
-        },
         // Grok's hook vocabulary *is* Claude Code's (it loads a Claude settings
         // file unchanged), plus a `StopFailure` of its own for a turn that died on
         // an API error — which makes Grok the second agent, after OpenCode, that
@@ -389,7 +380,7 @@ fn pascal_case(event: &str) -> String {
 }
 
 /// Extract the provider event name from a raw hook payload, trying every key an
-/// agent might use (`hook_event_name` for Claude/Codex/Gemini, `event`/`type`/
+/// agent might use (`hook_event_name` for Claude/Codex, `event`/`type`/
 /// `name` for others). Returns `None` when the payload carries no event name.
 fn event_name(source: &Value) -> Option<String> {
     for key in ["hook_event_name", "hookEventName", "event", "type", "name"] {
@@ -1226,7 +1217,7 @@ async fn handle_hook(
     StatusCode::NO_CONTENT
 }
 
-/// The placeholder an early build's shared Codex/Gemini bridge reported when its
+/// The placeholder an early build's shared hook bridge reported when its
 /// (since-removed) `UXNAN_AGENT_TYPE` env var was unset. It is not an agent id:
 /// accepting it mislabels the tab's captured session with a type that has no
 /// resume entry, and no `normalize_event` arm matches it, so the state is dropped
@@ -1247,7 +1238,7 @@ fn normalize_agent_type(raw: &str) -> Option<String> {
 }
 
 /// Field names providers use for their session id, across the wired agents
-/// (Claude/Gemini: `session_id`; OpenCode plugin: `sessionID`; Antigravity:
+/// (Claude: `session_id`; OpenCode plugin: `sessionID`; Antigravity:
 /// `conversationId`; other spellings kept for robustness — the value is
 /// sanitized regardless of its source).
 const SESSION_ID_KEYS: [&str; 8] = [
@@ -1401,7 +1392,7 @@ mod tests {
 
     #[test]
     fn extract_session_reads_each_provider_spelling() {
-        // Claude/Gemini: session_id (+ Claude's separately-named transcript).
+        // Claude: session_id (+ its separately-named transcript).
         let claude = json!({
             "session_id": "3f9a1c2e-1111-2222-3333-444455556666",
             "transcript_path": "C:/Users/dev/.claude/projects/x/t.jsonl",
@@ -1677,14 +1668,6 @@ mod tests {
         // busy from the moment its TUI opens until the user finally types.
         assert_eq!(normalize_event("codex", "SessionStart", None), None);
         assert_eq!(normalize_event("grok", "session_start", None), None);
-        assert_eq!(
-            normalize_event("gemini", "BeforeTool", None),
-            Some(AgentStatus::Working)
-        );
-        assert_eq!(
-            normalize_event("gemini", "AfterAgent", None),
-            Some(AgentStatus::Done)
-        );
         assert_eq!(
             normalize_event("opencode", "PermissionRequest", None),
             Some(AgentStatus::Waiting)

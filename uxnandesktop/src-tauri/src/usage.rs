@@ -16,21 +16,16 @@ use std::path::{Path, PathBuf};
 /// A coding CLI whose usage we can read from local files / its stored token.
 ///
 /// FOR-DEV: Antigravity (`agy`) is missing here on purpose. Its quota lives
-/// behind the same Code Assist API [`read_gemini`] already calls, but `agy`
-/// stores its OAuth token in the OS keyring rather than on disk, so there is
+/// behind Code Assist, but `agy` stores its OAuth token in the OS keyring rather
+/// than on disk, so there is
 /// nothing to read without a new keyring dependency and a posture decision — see
 /// `FOR-DEV.md` → "Providers (usage statistics)".
-///
-/// `Gemini` is kept although the Gemini CLI is discontinued upstream: the
-/// frontend hides it from the picker but still reads it for anyone who activated
-/// it before (`src/lib/usageCatalog.ts`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UsageProvider {
     Codex,
     Claude,
     Copilot,
-    Gemini,
     Grok,
 }
 
@@ -260,7 +255,6 @@ async fn read_one(provider: UsageProvider, home: &Path) -> ProviderUsage {
         UsageProvider::Codex => read_codex(home).await,
         UsageProvider::Claude => read_claude(home).await,
         UsageProvider::Copilot => read_copilot().await,
-        UsageProvider::Gemini => read_gemini(home).await,
         UsageProvider::Grok => read_grok(home).await,
     }
 }
@@ -272,7 +266,6 @@ fn is_present(provider: UsageProvider, home: &Path) -> bool {
             home.join(".claude").join(".credentials.json").exists()
                 || home.join(".claude.json").exists()
         }
-        UsageProvider::Gemini => home.join(".gemini").join("oauth_creds.json").exists(),
         UsageProvider::Copilot => crate::which::is_command_available("gh"),
         UsageProvider::Grok => home.join(".grok").join("auth.json").exists(),
     }
@@ -965,96 +958,6 @@ async fn github_login(client: &reqwest::Client, token: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-// --- Gemini -----------------------------------------------------------------
-
-async fn read_gemini(home: &Path) -> ProviderUsage {
-    let creds_path = home.join(".gemini").join("oauth_creds.json");
-    let Some(creds) = read_json(&creds_path) else {
-        return ProviderUsage::base(UsageProvider::Gemini, UsageStatus::NotInstalled)
-            .with_message("Gemini CLI is not signed in (~/.gemini/oauth_creds.json missing)");
-    };
-    let Some(token) = creds.get("access_token").and_then(|v| v.as_str()) else {
-        return ProviderUsage::base(UsageProvider::Gemini, UsageStatus::AuthRequired)
-            .with_message("Gemini CLI has no access token");
-    };
-    // Identity comes from the id_token JWT (no network needed).
-    let email = creds
-        .get("id_token")
-        .and_then(|v| v.as_str())
-        .and_then(jwt_email);
-
-    let client = match http_client() {
-        Ok(c) => c,
-        Err(e) => return errored(UsageProvider::Gemini, e),
-    };
-    // Best-effort: call the quota endpoint with the stored access token. We do
-    // NOT refresh via harvested client secrets (fragile + provider-specific), so
-    // an expired token degrades to `authRequired` rather than silently failing.
-    let req = client
-        .post("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota")
-        .bearer_auth(token)
-        .header("content-type", "application/json")
-        .body("{}".to_string());
-    let body = match fetch_json(req).await {
-        Ok(v) => v,
-        Err(HttpError::Unauthorized) => {
-            return ProviderUsage::base(UsageProvider::Gemini, UsageStatus::AuthRequired)
-                .with_account(Account {
-                    email,
-                    ..Default::default()
-                })
-                .with_message("Gemini access token expired — re-run the Gemini CLI to refresh it");
-        }
-        Err(e) => {
-            return http_error(UsageProvider::Gemini, e).with_account(Account {
-                email,
-                ..Default::default()
-            });
-        }
-    };
-
-    let mut usage = ProviderUsage::base(UsageProvider::Gemini, UsageStatus::Ok);
-    usage.source = Some(UsageSource::Token);
-    usage = usage.with_account(Account {
-        email,
-        ..Default::default()
-    });
-
-    // `buckets[]` carry a remaining fraction per model; keep the lowest per model.
-    if let Some(buckets) = body.get("buckets").and_then(|v| v.as_array()) {
-        for (i, b) in buckets.iter().enumerate() {
-            let remaining = b
-                .get("remaining_fraction")
-                .or_else(|| b.get("remainingFraction"))
-                .and_then(number);
-            if let Some(remaining) = remaining {
-                let model = b
-                    .get("model_id")
-                    .or_else(|| b.get("modelId"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Quota")
-                    .to_string();
-                let resets_at = b
-                    .get("reset_time")
-                    .or_else(|| b.get("resetTime"))
-                    .and_then(epoch_ms);
-                usage.windows.push(UsageWindow {
-                    id: format!("bucket{i}"),
-                    label: model,
-                    used_percent: clamp_pct((1.0 - remaining) * 100.0),
-                    window_minutes: Some(1440),
-                    resets_at,
-                });
-            }
-        }
-    }
-
-    if usage.windows.is_empty() {
-        usage = usage.with_message("signed in, but the quota API returned no buckets");
-    }
-    usage
-}
-
 // --- Shared helpers ---------------------------------------------------------
 
 /// A distinct HTTP failure so callers can map 401 → `authRequired`.
@@ -1269,18 +1172,6 @@ fn prettify_plan(s: &str) -> String {
         .join(" ")
 }
 
-/// Extract the `email` claim from a JWT's payload without verifying it (used only
-/// for display; the token is the CLI's own).
-fn jwt_email(jwt: &str) -> Option<String> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-    let payload = jwt.split('.').nth(1)?;
-    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
-    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    json.get("email")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -1359,7 +1250,6 @@ mod tests {
         // A bogus home has none of the providers present.
         let empty = std::path::Path::new("/nonexistent-uxnan-home-xyz");
         assert!(!is_present(UsageProvider::Codex, empty));
-        assert!(!is_present(UsageProvider::Gemini, empty));
         assert!(!is_present(UsageProvider::Grok, empty));
     }
 

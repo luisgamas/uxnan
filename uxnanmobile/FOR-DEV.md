@@ -196,8 +196,8 @@ connected to live bridge data, validated on-device against a real bridge.
   at their real segment position with localized cause/token metadata. Codex,
   Claude, OpenCode and pi report them; Zero/Grok ACP and Antigravity do not
   expose a trustworthy signal, so mobile never guesses.
-- **Gemini fully retired from mobile** — no agent enum/visual/logo/provider
-  card; legacy descriptors, cached threads and profile activity are filtered.
+- **Active-agent contract only** — the shared contract no longer exposes
+  retired standalone CLIs, so mobile needs no product-specific legacy filters.
 - **Per-agent sign-in status** (`auth/status`) — banner above the composer, red
   dot in the threads list, "Check sign-in" in the new-conversation card,
   auto-refresh on app resume.

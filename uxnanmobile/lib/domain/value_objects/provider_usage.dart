@@ -9,9 +9,6 @@ enum UsageStatus { ok, authRequired, notInstalled, error }
 
 /// Parses a wire provider id, or null when unknown.
 UsageProvider? usageProviderFromWire(String id) {
-  // The bridge may retain the legacy Gemini reader for desktop clients;
-  // mobile deliberately treats it as unsupported and renders no provider card.
-  if (id == 'gemini') return null;
   for (final value in UsageProvider.values) {
     if (value.name == id) return value;
   }

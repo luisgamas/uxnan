@@ -40,8 +40,7 @@ this app:
 - **Provider-agnostic, real multi-agent support.** It is not tied to a single
   vendor. Seven real agents are selectable today — OpenCode, Claude Code, Codex,
   pi, Antigravity, Zero and Grok — and you select the agent and model per
-  conversation. Google's Antigravity CLI replaces the retired Gemini CLI;
-  Gemini has no mobile enum, profile card, logo or conversation surface.
+  conversation. Google's supported surface is Antigravity CLI.
 - **Strong encryption that is never optional.** Every message to and from the PC
   travels through a real end-to-end encrypted channel (X25519 + Ed25519 +
   AES-256-GCM + HKDF). There is no "plaintext mode".

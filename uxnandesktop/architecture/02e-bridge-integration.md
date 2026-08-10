@@ -34,7 +34,7 @@ El bridge gestiona todas las operaciones criticas de la conexion movil-PC:
 - **Handshake E2EE**: Establece la sesion cifrada end-to-end con el telefono. El relay nunca ve contenido en texto claro.
 - **Pairing por QR**: Genera el payload de pairing que el telefono escanea para iniciar la conexion segura.
 - **Ruteo JSON-RPC**: Recibe metodos JSON-RPC del movil y los enruta al handler correspondiente (Git, workspace, threads, agentes).
-- **Agent adapters**: Interactua con los CLI de agentes AI (Claude Code, Codex CLI, OpenCode, Gemini CLI, Aider, pi-agent) a traves de adaptadores que implementan `IAgentAdapter`.
+- **Agent adapters**: Interactua con los CLI de agentes AI soportados a traves de adaptadores que implementan `IAgentAdapter`.
 - **Operaciones Git**: Ejecuta comandos Git localmente via `child_process` (status, diff, commit, push, pull, worktrees).
 - **Gestion de workspace**: Lectura de archivos, listado de directorios, checkpoints, aplicacion de patches.
 
@@ -425,7 +425,7 @@ Cada funcion retorna `{ valid: true, data: T }` o `{ valid: false, errors: Valid
 invocar y que el bridge (standalone o embebido) debe implementar.
 
 > **Fuente de verdad:** `shared/src/jsonrpc/methods.ts`
-> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **68
+> (`JsonRpcMethodRegistry`) y `method-registry.ts` (`METHOD_NAMES`, **70
 > entradas**, bloqueadas entre si en build). El bloque de abajo es una copia de
 > lectura: si discrepa del paquete compartido, manda el paquete. La semantica de
 > cada metodo vive en

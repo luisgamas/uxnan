@@ -28,9 +28,9 @@ background consumers**, `docs/resource-mode.md`), **post-mortem diagnostics**
 the tab strip** (`convtitle.rs`, the agent's own CLI on its cheapest model,
 named from the session's **terminal transcript** — the only material every agent
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
-always wins). 544 Rust tests (515 unit + 29
+always wins). 540 Rust tests (511 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 960 frontend Vitest tests across two
+probe) + 957 frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -119,9 +119,9 @@ started.**
   `SubagentStop` with no child id, so it is ignored rather than shown as a nameless
   row; Pi has no children; Antigravity and OMP have them but expose them only where
   we don't drive (its execution-loop hooks / its RPC layer).
-- **Precise per-agent reporters (auto-installed, multi-shell)** — Claude Code +
-  Gemini CLI use a Node relay (`node` guaranteed; Claude in exec-form so no shell
-  is involved); Codex uses a `curl` hook + a reproduced `trusted_hash` in
+- **Precise per-agent reporters (auto-installed, multi-shell)** — Claude Code
+  uses a Node relay (`node` guaranteed, in exec-form so no shell is involved);
+  Codex uses a `curl` hook + a reproduced `trusted_hash` in
   `~/.codex/config.toml` (golden-vector-tested `codex_trust.rs`); OpenCode a
   plugin, Pi an in-process extension. **Grok** owns a file in `~/.grok/hooks/`
   (Claude's event vocabulary, so it reaches every state incl. a real `blocked`
@@ -130,8 +130,6 @@ started.**
   hook, so it never reports `waiting`); both drive `uxnan-event-hook.{sh,cmd}`,
   and both CLIs parse a hook command as an unquoted literal path, handled by a
   dot-relative command (Antigravity) and an 8.3 short-path fallback (Grok).
-  Gemini CLI is no longer auto-installed (discontinued upstream) but its card
-  still appears while its reporter is present, so it can be removed.
   **Fifteen more agents are wired declaratively** — OpenClaude, Qwen Code,
   Droid, Devin, Command Code, Auggie, Cursor, GitHub Copilot, Kiro, Kimi Code,
   Goose, MiMo Code, Kilo Code, Amp and OMP — as rows in `agent_hooks::TABLE_AGENTS`
@@ -238,9 +236,7 @@ started.**
   status-bar gauge popover. Polling starts at boot, catches up on focus, honors
   each provider's interval, and preserves Codex percentage-point semantics around
   resets. Contract-first (`shared` `agent/usageStats`); the
-  bridge/mobile side is Phase 6 (see below). **Gemini CLI** is still read but
-  **hidden from the picker** (discontinued upstream — `deprecated` in
-  `src/lib/usageCatalog.ts`); **Antigravity** is researched but not wired (its
+  bridge/mobile side is Phase 6 (see below). **Antigravity** is researched but not wired (its
   token lives in the OS keyring, not on disk — see *Providers* below).
 - **User quick commands** — a top-bar ⚡ launcher (in the fixed window-controls
   slot, left of min/max/close, so a hidden panel never covers it) + a Settings →
@@ -722,14 +718,14 @@ clickable terminal links** (`@xterm/addon-web-links`).
 **discoverable** to agents as MCP tools, not just via the `/browser` curl. `mcp.rs`
 serves a minimal Streamable-HTTP MCP endpoint at `/mcp` (control tools
 `browser_open/navigate/reload/back/forward/status`, same hook-server token);
-`mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/Gemini/
+`mcpinject.rs` writes each launched CLI's native MCP config (Claude/Codex/
 OpenCode) into its **user-global** config only (never the project dir) referencing
 the `UXNAN_MCP_TOKEN` env (token never in a file), merging without clobbering and
-cleaning up on exit; Gemini's entry carries `trust: true`. `BrowserSettings.mcp*`
+cleaning up on exit. `BrowserSettings.mcp*`
 (enabled / injection mode `off|managed|global` / `friction_free` / disabled-agents)
 + `mcp_info` command. **Frictionless** (managed + `friction_free`): app-launched
-agents skip the CLI folder-trust prompt — Gemini via `GEMINI_CLI_TRUST_WORKSPACE`
-(`commands.rs`), Codex via `codex_trust::ensure_project_trust` seeding
+agents skip the CLI folder-trust prompt — Codex via
+`codex_trust::ensure_project_trust` seeding
 `[projects."<cwd>"].trust_level`. The legacy project-scoped `workspace` mode was
 removed. See `docs/browser.md` → *Agent browser MCP*.
 
@@ -926,9 +922,8 @@ yet on either side** — the bridge's `desktop/*` handler is also an empty stub
       including **two tabs of the same agent at once** — the case that used to
       restore only the focused one — and a tab opened but never written to (it
       should come back under a fresh pinned id). Bridge/mobile parity rides
-      Phase 6 (the backend capture half is reusable as-is). **Not follow-ups:**
-      Gemini CLI (deprecated — see `AGENTS.md`) and Zero both stay unresumable by
-      design, not for want of checking — Zero resumes only in its headless
+      Phase 6 (the backend capture half is reusable as-is). **Not a follow-up:**
+      Zero stays unresumable by design, not for want of checking — it resumes only in its headless
       one-shot mode (`zero exec --resume [id]`), and the interactive TUI a
       terminal tab runs rejects the flag.
 - [ ] **Resume fallback that reads the CLI's own session store (Codex,
@@ -1038,13 +1033,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       wearing Antigravity's name. Sites when picked up: `src-tauri/src/usage.rs`
       (`UsageProvider`, `read_one`, `is_present`), `src/lib/usageCatalog.ts`,
       `shared/src/models/usage.ts` (contract → bridge + mobile), `docs/providers.md`.
-- [ ] **Retire the Gemini CLI reader once nobody is on it.** Gemini CLI is
-      discontinued upstream, so it is hidden from the "Add a provider" picker
-      (`deprecated: true` in `src/lib/usageCatalog.ts`) while its reader stays wired
-      for anyone who already activated it. When it is time to drop it for good, the
-      removal spans `usage.rs`, the `UsageProvider` union in `shared/`, the bridge
-      reader and the mobile side — a contract change, not a catalog edit.
-
 **File tree / mixed tabs**
 - [ ] Tree virtualization (TanStack Virtual) for very large folders.
 - [ ] Multi-worktree external-change watching (the watcher follows the active
@@ -1223,7 +1211,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 544 Rust + 960 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 540 Rust + 957 Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

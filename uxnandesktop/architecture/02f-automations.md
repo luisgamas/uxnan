@@ -171,7 +171,7 @@ CLI, no supuesta**:
 |---|---|
 | **stdin** (sin limite) | Claude, Codex, OpenCode, Pi |
 | **archivo** (sin limite) | Grok (`--prompt-file`), Zero (`-f`) |
-| **argv** (acotado ~28 KB) | Antigravity, Gemini — no aceptan otra cosa |
+| **argv** (acotado ~28 KB) | Antigravity — no acepta otra cosa |
 
 El archivo temporal se borra al salir de ambito, asi que una corrida que agota su
 tiempo o revienta no deja los prompts del usuario tirados en `%TEMP%`. La tuberia

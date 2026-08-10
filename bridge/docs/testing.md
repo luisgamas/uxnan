@@ -36,8 +36,7 @@ fake backend), lock file; the **autostart** plan per platform; git + workspace +
 the durable metrics ledger (legacy backfill, deletion retention, rotating-file
 recovery, complete same-PC export/import and idempotent merge);
 the AgentManager + echo agent end-to-end; the seven active OpenCode / Claude Code /
-Codex / pi / Antigravity / Zero / Grok adapter parsers + streaming, plus frozen
-legacy Gemini parser regressions (OpenCode against a fake `opencode serve`
+Codex / pi / Antigravity / Zero / Grok adapter parsers + streaming (OpenCode against a fake `opencode serve`
 implementing the `IOpenCodeServer` surface incl. the `permission.asked` → approval
 round-trip; Zero against a fake `zero acp` ACP process incl. a
 `session/request_permission` → approval round-trip; the others against fake spawns);
@@ -107,9 +106,6 @@ reference vector and negative cases); pairing QR = Base64 of the UTF-8 JSON.
   open for their protocol). Adapter unit tests live in `test/adapters/`; Zero was also
   validated end-to-end against the real `zero.exe` (streaming + a real
   shell-command approval + completion).
-- **Gemini CLI (legacy only):** do not perform live-agent validation or add new
-  scenarios. Its parser tests remain as regression coverage for historical data;
-  the descriptor is unavailable/deprecated and new threads and turns are rejected.
 - **No next planned agent.** The wired set is complete for now; the recipe for
   wiring a new one is in [`../FOR-DEV.md`](../FOR-DEV.md).
 

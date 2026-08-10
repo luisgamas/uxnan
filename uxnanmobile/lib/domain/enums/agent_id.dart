@@ -13,7 +13,7 @@ enum AgentId {
   /// Anthropic Claude Code.
   claudeCode,
 
-  /// Google Antigravity CLI (`agy`) — the successor to the Gemini CLI.
+  /// Google Antigravity CLI (`agy`).
   antigravity,
 
   /// earendil-works/pi agent.
@@ -79,10 +79,3 @@ extension AgentIdParsing on AgentId {
     }
   }
 }
-
-/// Agent ids retired from the mobile product surface.
-const Set<String> deprecatedMobileAgentIds = {'gemini-cli'};
-
-/// Whether an agent may be shown or opened by the mobile app.
-bool isMobileAgentSupported(String wireId) =>
-    !deprecatedMobileAgentIds.contains(wireId);
