@@ -96,6 +96,44 @@ spec, the spec wins.
   `LayoutBuilder`. With a 320 dp drawer taken out of a 1280 dp window, the
   content has ~955 dp, and centring against 1280 puts the text off to one side.
 
+- **Two panes is the ceiling. Depth goes into a pane's own navigator.**
+  A tablet does not have room for three columns that anyone enjoys using, so
+  when a surface already sits beside the drawer — or is itself split — the next
+  level down does **not** become another column. It stacks *inside* the pane it
+  came from.
+
+  The mechanism is a nested `Navigator` as the pane's content, keyed by what it
+  is showing:
+
+  ```dart
+  detail: Navigator(
+    key: ValueKey('pane-${selected.id}'),
+    onGenerateRoute: (_) => MaterialPageRoute<void>(
+      builder: (_) => selected.build(),
+    ),
+  )
+  ```
+
+  Everything then falls out for free: a child opened with
+  `Navigator.of(context).push` lands in the pane instead of taking the window;
+  its back arrow returns to the parent rather than leaving the screen; and the
+  key means picking a different parent starts at *its* root instead of
+  inheriting where you wandered in the last one. Settings does this for
+  Personalization → custom themes and About → licences, and any section added
+  later gets it without being touched.
+
+  Without the nested navigator the push resolves to the navigator **above** and
+  covers everything, list included — which is the bug this replaced, not a
+  hypothetical.
+
+  Two rules follow:
+  - A screen rendered as a pane's content takes an `embedded` flag: it keeps
+    its title (the pane must say what it is) and drops the automatic back arrow,
+    because `canPop` would answer for the route still open beside it.
+  - A **destination** is never a pane. Settings and profile are somewhere you
+    *went*, not something you opened from a list, so they own the window and the
+    drawer steps aside — see `AppShell.isFullScreen`.
+
 - **Icons come from the catalogue, never from the package.** `UxIcons`
   (`presentation/theme/icons.dart`) names every glyph for what it MEANS, and
   `UxIcon` (`presentation/widgets/ux_icon.dart`) is the only widget that talks

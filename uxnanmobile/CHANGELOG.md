@@ -6,6 +6,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the file tree measures its own surface, and files stay a stack
+
+The file browser centred its tree against the **window**. Inside the shell's
+content pane a 320 dp drawer is already spent, so it pushed the tree off to one
+side of the space it actually had. It measures its constraints now, like the
+conversation.
+
+**Files is not becoming two panes**, and neither is git. Two panes is the
+ceiling: beside the drawer, a tree plus a viewer would be a third column, and a
+tablet has no room for three that anyone enjoys using. The browser already
+pushes the viewer inside the content pane, which is the right shape — the drawer
+stays put, and back returns to the tree.
+
 ### Added — Settings shows a section beside its list on a wide surface
 
 The list stays on the left and the section fills the right, with the open one

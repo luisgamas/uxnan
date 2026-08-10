@@ -109,6 +109,13 @@ and git screens open with a raw `Navigator.push` — landing above the routed pa
 — `openInPane` empties `shellNavigatorKey` before it navigates; without that,
 `go` swapped the page underneath and left them covering it.
 
+**Two panes is the ceiling.** Where a surface already sits beside the drawer,
+or is itself split, the next level down stacks inside its pane through a nested
+`Navigator` rather than becoming a third column — see `docs/conventions.md`.
+Settings uses it for its sections' own children; the conversation's file browser
+and git screens get the same shape from `shellNavigatorKey`, which is why they
+fill the content pane and leave the drawer alone.
+
 A repository's identity is `repoKeyFor(path)`, namespaced away from the folder
 at the same path: collapse state is a set of these strings, and sharing one made
 collapsing the main folder collapse the whole project.

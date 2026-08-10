@@ -371,75 +371,90 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final tiles = <_TileEntry>[];
     _walk(root, 0, showHidden: showHidden, into: tiles);
 
-    final viewportWidth = MediaQuery.sizeOf(context).width;
-    final horizontalInset = UxnanSpacing.lg +
-        ((viewportWidth - UxnanSpacing.maxContentWidth) / 2).clamp(
-          0.0,
-          double.infinity,
-        );
+    // Measured from THIS surface, not the window. Inside the shell's content
+    // pane a 320 dp drawer is already spent, so centring against the window
+    // pushes the tree off to one side of the space it actually has.
+    //
+    // Safe to wrap here because nothing in this build subscribes: a
+    // `ref.listen` inside a layout callback throws, which is exactly how the
+    // conversation broke when it got the same treatment.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalInset = UxnanSpacing.lg +
+            ((constraints.maxWidth - UxnanSpacing.maxContentWidth) / 2).clamp(
+              0.0,
+              double.infinity,
+            );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: RefreshIndicator(
-        onRefresh: _refresh,
-        child: CustomScrollView(
-          controller: _scrollController,
-          // BouncingScrollPhysics + AlwaysScrollable is the same combo
-          // `NeScaffold` and `ConversationScreen` use, so the list feels
-          // native on both iOS and Android and the user can always
-          // drag-to-refresh even when the tree fits on a single screen.
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(child: SizedBox(height: topInset)),
-            SliverList.builder(
-              itemCount: tiles.length,
-              itemBuilder: (context, index) {
-                final entry = tiles[index];
-                return Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: horizontalInset - UxnanSpacing.lg,
-                  ),
-                  child: FileTreeTile(
-                    key: entry.node.path == _revealedFilePath
-                        ? _revealedFileKey
-                        : null,
-                    node: entry.node,
-                    depth: entry.depth,
-                    showExtension: showExtension,
-                    showDetails: showDetails,
-                    compact: compact,
-                    onTap: () async {
-                      if (entry.node.isDir) {
-                        unawaited(
-                          manager.toggleDirectory(widget.cwd, entry.node.path),
-                        );
-                      } else {
-                        await FileViewerScreen.push(
-                          context,
-                          cwd: widget.cwd,
-                          path: entry.node.path,
-                          node: entry.node,
-                        );
-                        // Returning from the viewer can leave a soft keyboard
-                        // up (e.g. after using its inline editor); drop focus
-                        // dismisses and the read-only path bar never reads as a
-                        // composer.
-                        if (context.mounted) {
-                          FocusManager.instance.primaryFocus?.unfocus();
-                        }
-                      }
-                    },
-                  ),
-                );
-              },
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: CustomScrollView(
+              controller: _scrollController,
+              // BouncingScrollPhysics + AlwaysScrollable is the same combo
+              // `NeScaffold` and `ConversationScreen` use, so the list feels
+              // native on both iOS and Android and the user can always
+              // drag-to-refresh even when the tree fits on a single screen.
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              slivers: [
+                SliverToBoxAdapter(child: SizedBox(height: topInset)),
+                SliverList.builder(
+                  itemCount: tiles.length,
+                  itemBuilder: (context, index) {
+                    final entry = tiles[index];
+                    return Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalInset - UxnanSpacing.lg,
+                      ),
+                      child: FileTreeTile(
+                        key: entry.node.path == _revealedFilePath
+                            ? _revealedFileKey
+                            : null,
+                        node: entry.node,
+                        depth: entry.depth,
+                        showExtension: showExtension,
+                        showDetails: showDetails,
+                        compact: compact,
+                        onTap: () async {
+                          if (entry.node.isDir) {
+                            unawaited(
+                              manager.toggleDirectory(
+                                widget.cwd,
+                                entry.node.path,
+                              ),
+                            );
+                          } else {
+                            await FileViewerScreen.push(
+                              context,
+                              cwd: widget.cwd,
+                              path: entry.node.path,
+                              node: entry.node,
+                            );
+                            // Returning from the viewer can leave a soft
+                            // keyboard up (e.g. after its inline editor);
+                            // dropping focus dismisses it, and the read-only
+                            // path bar never reads as a composer.
+                            if (context.mounted) {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                            }
+                          }
+                        },
+                      ),
+                    );
+                  },
+                ),
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: UxnanSpacing.lg),
+                ),
+              ],
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: UxnanSpacing.lg)),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
