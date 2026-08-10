@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import { DaemonState, DEFAULT_DAEMON_CONFIG, renameWithRetry } from '../src/index.js';
+import { rmrf } from './helpers/fs.js';
 
 function freshState(): DaemonState {
   return new DaemonState(join(tmpdir(), `uxnan-test-${randomUUID()}`));
@@ -13,20 +13,20 @@ function freshState(): DaemonState {
 test('readJson returns null for a missing file', async () => {
   const state = freshState();
   assert.equal(await state.readJson('nope.json'), null);
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('writeJson then readJson round-trips data', async () => {
   const state = freshState();
   await state.writeJson('thing.json', { a: 1, b: 'two' });
   assert.deepEqual(await state.readJson('thing.json'), { a: 1, b: 'two' });
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('readConfig returns defaults when no config exists', async () => {
   const state = freshState();
   assert.deepEqual(await state.readConfig(), DEFAULT_DAEMON_CONFIG);
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('initConfig writes defaults and merges a partial on next read', async () => {
@@ -38,7 +38,7 @@ test('initConfig writes defaults and merges a partial on next read', async () =>
   const merged = await state.readConfig();
   assert.equal(merged.lanPort, 20000);
   assert.equal(merged.relayUrl, DEFAULT_DAEMON_CONFIG.relayUrl);
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('initConfig does not freeze the seeded model lists to disk', async () => {
@@ -54,7 +54,7 @@ test('initConfig does not freeze the seeded model lists to disk', async () => {
     typeof m === 'string' ? m : m.id,
   );
   assert.ok(ids.includes('claude-sonnet-5'));
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('renameWithRetry retries a transient EPERM and eventually succeeds', async () => {
@@ -129,5 +129,5 @@ test('writeJson leaves no temp sibling when the rename ultimately fails', async 
   const left = (await readdir(state.baseDir)).filter((f) => f.endsWith('.tmp'));
   assert.deepEqual(left, [], 'the temp file is cleaned up on failure');
   assert.deepEqual(await state.readJson('threads.json'), { v: 1 });
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });

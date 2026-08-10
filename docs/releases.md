@@ -24,7 +24,7 @@ which files carry a version) and the **machinery** that follows it.
 | Cut a nightly desktop build | Nothing — it happens at 00:20 Mexico City if there is something to ship |
 | Cut anything else | Actions → **Release — cut versions** → tick the components → Run |
 | Publish a stable desktop build | Review the draft release on GitHub and press **Publish** |
-| Bring `main` level after a cut | Merge the `build(release): …` pull request the run opened |
+| Bring `main` level after a cut | Nothing — the run merges its own bump pull request once `verify` is green |
 | Know why a release did not happen | Read the run summary; a component with no real change is skipped on purpose |
 
 ---
@@ -34,8 +34,9 @@ which files carry a version) and the **machinery** that follows it.
 **Automated.** Working out whether a component genuinely changed, computing the
 next version, writing it into every version-bearing file, proving those files
 agree, committing, tagging, pushing the tag, opening the pull request that brings
-all of it into `main`, and — for a desktop **nightly** — writing the release notes
-and publishing.
+all of it into `main` **and merging it once its checks pass**, and — for a desktop
+**nightly** — writing the release notes and publishing. A nightly at 00:20 local
+therefore finishes on its own, with nobody awake.
 
 **Not automated, on purpose.**
 
@@ -43,11 +44,6 @@ and publishing.
   signatures, `latest.json`, and its notes already written. Pressing *Publish* is
   the moment it becomes the default download and the updater starts offering it.
   That is a judgement call, not a build step.
-- **Merging the bump pull request.** `main` is protected and stays that way; the
-  run opens the PR, you merge it. The tags already point at those commits, so the
-  builds never wait for it. **Do not leave it open**: while it is, the tag is not
-  an ancestor of `main`, and that state has bitten once — see *When something goes
-  wrong* → *A version was cut for nothing*.
 - **The CHANGELOG.** The tooling never writes your prose. For a stable release,
   rename `## [Unreleased]` to the version yourself before cutting.
 
@@ -83,27 +79,49 @@ pick `none` / `nightly` / `stable` for the desktop. Two switches matter:
 
 ---
 
-## The credential, and why `main` is never touched
+## The credential, and why `main` is still protected
 
 Two constraints shaped this, and neither is about permissions being convenient.
 
-**The workflow never pushes to `main`.** The bump commit lands on a
-`release/<timestamp>` branch, the tag points at that commit, and a pull request
-brings it into `main` through the same reviewed path as everything else. So the
-`main-protection` ruleset stays exactly as it is: **nothing is added to its
-bypass list**. Granting a bypass to the `github-actions` app would let *any*
-workflow in the repository write to `main`, which is a much larger door than this
-needs.
+**A tag pushed with `GITHUB_TOKEN` starts no build.** GitHub refuses to trigger a
+workflow from an event created with the default token — its anti-recursion rule —
+so `release-desktop.yml` would simply never run.
 
-**But a tag pushed with `GITHUB_TOKEN` starts no build.** GitHub refuses to
-trigger a workflow from an event created with the default token — its
-anti-recursion rule — so `release-desktop.yml` would simply never run. This is
-the one thing the automation cannot do with the permissions it is given.
+**And `main` must not become writable by workflows.** Granting a bypass to
+`github-actions` would let *any* workflow in the repository through, including
+one a future pull request introduces. That door was never opened and is not open
+now.
 
-The fix is a **GitHub App** used only for this, which is narrower than a personal
-token in three ways that matter: its permissions are just `contents: write` and
-`pull requests: write` on this repository, the token it mints **expires in an
-hour**, and it appears in the audit log as itself rather than as you.
+Both are answered by the same thing: a **GitHub App**, `Uxnan Releases`, used
+only for this. It is narrower than a personal token in three ways that matter —
+its permissions are just `contents: write` and `pull requests: write` on this
+repository, the token it mints **expires in an hour**, and it appears in the
+audit log as itself rather than as you.
+
+### How the pull request merges itself
+
+`Uxnan Releases` is a **bypass actor on the `main-protection` ruleset, in
+pull-request mode** (`Allow for pull requests only`). That mode is precise about
+what it grants:
+
+- the app **cannot push to `main`** — it must open a pull request, exactly as
+  before;
+- an operation **authenticated as the app** may merge that pull request without
+  the required approval;
+- **nothing else changes.** `GITHUB_TOKEN` is not this app, so ordinary
+  workflows, and pull requests from forks, are as restricted as they ever were.
+  Your own pull requests still need their approval.
+
+This is why `git config user.name "…[bot]"` is irrelevant to it — that only
+writes commit metadata. What GitHub matches against the bypass list is the
+identity behind the token: `actions/create-github-app-token`, passed to
+`actions/checkout` and to `gh` as `GH_TOKEN`.
+
+The run merges the pull request itself only after its **`verify`** checks pass.
+Deliberately not *every* check on the commit: the release build reports onto the
+same SHA, because the tag points at it, and a macOS leg is allowed to fail there
+on purpose. A red `verify` means `main` itself is red — this pull request adds
+nothing but version numbers — so it is left open and the run goes red with it.
 
 ### Setting it up (once, in a browser — the API cannot create apps)
 
@@ -120,12 +138,17 @@ hour**, and it appears in the audit log as itself rather than as you.
    - **Variables** → `RELEASE_APP_ID` = the App ID
    - **Secrets** → `RELEASE_APP_PRIVATE_KEY` = the whole `.pem`, including the
      `-----BEGIN…` and `-----END…` lines.
+7. **Settings → Rules → Rulesets → `main-protection` → Bypass list → Add
+   bypass** → the app, with **`Allow for pull requests only`**. Not
+   *Repository administrators*, not `github-actions`, and not *Always allow* —
+   pull-request mode is what keeps it unable to push to `main`.
 
 ### Until it exists
 
 The run still does everything else: it plans, refuses empty or backwards
 versions, writes every version file, verifies them, commits, creates the tag
-locally and opens the bump pull request. It stops short of *pushing* the tag and
+locally and opens the bump pull request. It stops short of *pushing* the tag —
+and of merging that pull request, since the bypass belongs to the app — and
 prints the one command to finish:
 
 ```

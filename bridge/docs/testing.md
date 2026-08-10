@@ -43,13 +43,18 @@ round-trip; Zero against a fake `zero acp` ACP process incl. a
 `session/request_permission` → approval round-trip; the others against fake spawns);
 and router-level wiring/error mapping.
 
-### Environment notes / known flakes (Windows)
+### Environment notes / known flakes
 - **Serialized runner:** several suites boot a full bridge or spawn real child
   processes (git, fake agents); running them in parallel starved the conversation
   tests' `waitFor` polling, so `npm test` uses `--test-concurrency=1` and the
   `waitFor` guards are 30 s. Keep new boot/spawn-heavy tests tolerant.
-- **File locking:** a just-spawned `git` briefly holds its cwd; temp cleanup uses
-  the retry helper `test/helpers/fs.ts` (`rmrf`). Use it for new temp-dir cleanup.
+- **File locking:** a just-spawned `git` briefly holds its cwd, and a stopped
+  bridge can still be flushing into its own temp dir — `rm` then fails with EBUSY
+  on Windows or **ENOTEMPTY on Linux**, which is what took a `verify` leg down on
+  2026-08-10. Temp cleanup goes through the retry helper `test/helpers/fs.ts`
+  (`rmrf`) in **every** suite; a raw `rm(dir, { recursive: true, force: true })`
+  is the bug. This is no longer only a Windows concern, and it matters more than
+  it used to: a red `verify` leaves the release bump pull request unmerged.
 - **Line endings:** git tests set `core.autocrlf false` so snapshots compare
   byte-for-byte; the repo itself is `autocrlf=true`, so the Prettier gate is
   effectively content-only (CRLF in the working tree is normalized to LF on commit).

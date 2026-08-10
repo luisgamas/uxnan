@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { ATTACHMENTS_DIRNAME, materializeAttachments } from '../../src/agents/attachments.js';
+import { rmrf } from '../helpers/fs.js';
 
 // A real 1x1 transparent PNG (base64, no data: prefix) — what the phone sends.
 const PNG_1x1 =
@@ -30,7 +31,7 @@ test('materializeAttachments writes the image INSIDE the cwd and references it r
   assert.ok(note.includes(`${ATTACHMENTS_DIRNAME}/turn-1/image-0.png`));
   assert.ok(!note.includes(cwd));
   assert.equal(dir, join(cwd, ATTACHMENTS_DIRNAME, 'turn-1'));
-  await rm(cwd, { recursive: true, force: true });
+  await rmrf(cwd);
 });
 
 test('materializeAttachments falls back to a temp dir (absolute ref) without a cwd', async () => {
@@ -66,7 +67,7 @@ test('materializeAttachments references an existing path without copying', async
   assert.deepEqual(paths, [file]);
   // Referenced relative to cwd.
   assert.ok(note.includes('src/pic.png'));
-  await rm(cwd, { recursive: true, force: true });
+  await rmrf(cwd);
 });
 
 test('materializeAttachments skips entries with empty base64 and no path', async () => {
@@ -79,7 +80,7 @@ test('materializeAttachments skips entries with empty base64 and no path', async
   );
   assert.deepEqual(paths, []);
   assert.equal(note, '');
-  await rm(cwd, { recursive: true, force: true });
+  await rmrf(cwd);
 });
 
 test('materializeAttachments uses the right extension per MIME type', async () => {
@@ -96,5 +97,5 @@ test('materializeAttachments uses the right extension per MIME type', async () =
   assert.equal(paths.length, 2);
   assert.ok(paths[0]!.endsWith('.jpg'));
   assert.ok(paths[1]!.endsWith('.webp'));
-  await rm(cwd, { recursive: true, force: true });
+  await rmrf(cwd);
 });

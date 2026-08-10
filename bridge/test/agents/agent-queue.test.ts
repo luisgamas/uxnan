@@ -10,7 +10,6 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import { JsonRpcErrorCode, StreamNotification } from '@uxnan/shared';
 import type { AgentCapabilities, AgentId, SendTurnOptions } from '@uxnan/shared';
 import {
@@ -20,6 +19,7 @@ import {
   ThreadStore,
   createLogger,
 } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 const CAPS: AgentCapabilities = {
   planMode: false,
@@ -105,7 +105,7 @@ async function harness(): Promise<Harness> {
     threadId: thread.id,
     notifications,
     methods: () => notifications.map((n) => n.method),
-    cleanup: () => rm(baseDir, { recursive: true, force: true }),
+    cleanup: () => rmrf(baseDir),
   };
 }
 

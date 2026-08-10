@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import {
   PushService,
   DaemonState,
@@ -13,6 +12,7 @@ import {
   type PushPayload,
 } from '../../src/index.js';
 import type { PushPlatform } from '@uxnan/shared';
+import { rmrf } from '../helpers/fs.js';
 
 interface Call {
   url: string;
@@ -199,7 +199,7 @@ test('registrations persist across a restart via push-state.json', async () => {
       false,
     );
   } finally {
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   }
 });
 
@@ -251,7 +251,7 @@ test('direct sender: registration survives a restart and pushes via FCM after re
     assert.equal(sent[0]?.token, 'fcm-tok');
     assert.equal(sent[0]?.platform, 'ios');
   } finally {
-    await rm(baseDir, { recursive: true, force: true });
+    await rmrf(baseDir);
   }
 });
 
