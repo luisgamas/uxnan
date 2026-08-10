@@ -53,8 +53,9 @@ export function inspect(id, options = {}) {
   const bookkeeping = (file) =>
     versionFiles.has(file) && isVersionOnlyDiff(since, file, gitOptions);
 
-  const nonShipping = files.filter((file) => isNonShipping(file) || bookkeeping(file));
-  const substantive = files.filter((file) => !isNonShipping(file) && !bookkeeping(file));
+  const skip = (file) => isNonShipping(file, meta) || bookkeeping(file);
+  const nonShipping = files.filter(skip);
+  const substantive = files.filter((file) => !skip(file));
 
   const tags = tagsFor(meta.tagPrefixes, gitOptions);
   const shipped = highestBase(tags);

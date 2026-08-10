@@ -23,9 +23,13 @@ number is the whole point: on 2026-08-06 the only change in `relay/` since its
 tag was `FOR-DEV.md`, and a trigger that fired on "the folder changed" would have
 published an identical package.
 
-Two kinds of file cannot reach a build: **prose** (`*.md`, `docs/`,
+Two kinds of file cannot reach a build anywhere: **prose** (`*.md`, `docs/`,
 `architecture/`, `.github/`) and **tests** (`*.test.*`, `*.spec.*`, `test/`,
-`tests/`). Tests were added to the list when, with 0.0.31 shipped and the only
+`tests/`). A component can add its own — the desktop excludes
+`uxnandesktop/scripts/`, which is check and benchmark tooling that Tauri never
+bundles. That one is deliberately not global: `bridge/package.json` lists
+`scripts` in its `files`, so the bridge's identically-named folder is published
+to npm and does ship. Tests were added to the list when, with 0.0.31 shipped and the only
 desktop change since it being a fix to `setup.dom.ts`, the status still said the
 component owed a release — the next cron would have cut 0.0.32 for a test. A test
 proves something about code that already shipped, and a nightly is four

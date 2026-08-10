@@ -68,6 +68,21 @@ describe('the registry', () => {
   });
 });
 
+describe('isNonShipping — a component that says what does not ship', () => {
+  it("excludes the desktop's own tooling, and only the desktop's", () => {
+    // Tauri bundles no resources from there and its beforeBuildCommand is the
+    // Vite build, so a change under `uxnandesktop/scripts/` cannot reach an
+    // installer. The bridge's identically-named folder is published to npm.
+    const desktop = component('desktop');
+    const bridge = component('bridge');
+    const file = 'uxnandesktop/scripts/check-version-sync.mjs';
+
+    assert.equal(isNonShipping(file, desktop), true);
+    assert.equal(isNonShipping(file), false, 'not a global rule');
+    assert.equal(isNonShipping('bridge/scripts/install-service-linux.sh', bridge), false);
+  });
+});
+
 describe('isNonShipping', () => {
   it('treats prose and specs as unable to change a build', () => {
     for (const file of [
@@ -111,6 +126,10 @@ describe('isNonShipping', () => {
       // Rust keeps its unit tests inline under `#[cfg(test)]`, so a file with
       // tests in it is still a source file. Erring toward releasing is correct.
       'uxnandesktop/src-tauri/src/agentcli.rs',
+      // `bridge/package.json` lists `scripts` in its `files`, so these are
+      // published to npm. A blanket `scripts/` rule would drop real shipped
+      // content — which is why the desktop's exception is per-component.
+      'bridge/scripts/install-service-linux.sh',
       // "latest" is not "test": the rule must match a path segment, not a
       // substring of a longer word.
       'uxnandesktop/src/lib/latest/index.ts',
