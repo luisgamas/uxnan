@@ -65,10 +65,14 @@ marking a row you cannot see while reading it would be marking nothing.
 ### Fixed — back still works after rotating a tablet into a phone shape
 
 The wide layout replaces routes instead of stacking them, so rotating with a
-conversation open left the narrow layout holding a stack of exactly one page:
-back would have left the app from a screen you reached by tapping into it. Back
-now walks the hierarchy the phone would have built — a conversation belongs to
-its PC's list, and everything else to the overview.
+conversation open left the narrow layout holding a stack of exactly one page.
+The system gesture would have left the app from a screen you reached by tapping
+into it, and the bar's own arrow did nothing at all — which reads as broken
+rather than as a dead end. Both now walk the hierarchy the phone would have
+built: a conversation belongs to its PC's list, everything else to the overview.
+
+They go through **one** function. Two paths to the same stack is why the first
+attempt fixed the gesture and left the arrow dead.
 
 ### Added — a permanent drawer on wide windows
 

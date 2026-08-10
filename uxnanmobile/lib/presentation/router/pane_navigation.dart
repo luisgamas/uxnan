@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/theme/breakpoints.dart';
 
@@ -46,9 +48,37 @@ extension PaneNavigation on BuildContext {
   /// pane empties and the drawer, which never moved, is what remains.
   void closePane() {
     if (hasPermanentPane) {
-      go('/');
-    } else {
-      Navigator.of(this).maybePop();
+      go(AppRoutes.home);
+      return;
     }
+    final navigator = Navigator.of(this);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    // Narrow with NOTHING to pop — rotate a tablet with a conversation open
+    // and this is exactly where you land: the wide layout replaced routes, so
+    // the narrow one inherits a stack of one page. `maybePop` then does
+    // nothing at all, and the back button simply looks broken.
+    go(parentOf(GoRouterState.of(this).uri.path, this));
   }
+}
+
+/// One level up from [location], for a back press with nothing to pop.
+///
+/// A conversation belongs to a PC's list; everything else to the overview.
+/// Deliberately not a general router — it answers the one case a rotation
+/// creates, and guessing further would be inventing history the user never
+/// made.
+String parentOf(String location, BuildContext context) {
+  const prefix = '/conversation/';
+  if (!location.startsWith(prefix)) return AppRoutes.home;
+  final rest = location.substring(prefix.length);
+  final end = rest.indexOf('/');
+  final threadId = end == -1 ? rest : rest.substring(0, end);
+  if (threadId.isEmpty) return AppRoutes.home;
+
+  final device =
+      ProviderScope.containerOf(context).read(shellDeviceProvider(threadId));
+  return device == null ? AppRoutes.home : AppRoutes.deviceThreads(device);
 }

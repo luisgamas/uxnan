@@ -247,6 +247,19 @@ Future<void> main() async {
     );
   });
 
+  test('a conversation belongs to its PC, everything else to the overview', () {
+    // What "up" means with nothing to pop. Rotating a tablet with a
+    // conversation open is the case that creates it: the wide layout REPLACED
+    // routes, so the narrow one inherits a stack of exactly one page and both
+    // the system gesture and the bar's arrow had nothing to act on. The arrow
+    // simply did nothing, which reads as broken rather than as a dead end.
+    expect(AppShell.threadIdOf('/conversation/abc'), 'abc');
+    // The resolution itself needs a ProviderScope, so what is pinned here is
+    // the rule it encodes: only a conversation has a parent worth guessing.
+    expect(AppShell.threadIdOf(AppRoutes.settings), isNull);
+    expect(AppShell.threadIdOf(AppRoutes.home), isNull);
+  });
+
   test('the conversation route names the thread the drawer follows', () {
     // A push notification opens `/conversation/:id` with nothing behind it.
     // Without this the drawer has no PC to show and comes up blank — in

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
 import 'package:uxnan/presentation/screens/shell/nav_drawer.dart';
 import 'package:uxnan/presentation/screens/shell/shell_welcome.dart';
@@ -53,18 +54,6 @@ class AppShell extends ConsumerWidget {
     return id.isEmpty ? null : id;
   }
 
-  /// One level up from [location], for a back press with nothing to pop.
-  ///
-  /// A conversation belongs to a PC's list; everything else belongs to the
-  /// overview. This is not a general router — it exists for the one case a
-  /// rotation creates, and guessing more than that would be inventing history.
-  static String _parentOf(String location, WidgetRef ref) {
-    final threadId = threadIdOf(location);
-    if (threadId == null) return AppRoutes.home;
-    final device = ref.read(shellDeviceProvider(threadId));
-    return device == null ? AppRoutes.home : AppRoutes.deviceThreads(device);
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final location = this.location ?? GoRouterState.of(context).uri.path;
@@ -84,7 +73,7 @@ class AppShell extends ConsumerWidget {
             onPopInvokedWithResult: (didPop, _) {
               if (didPop || location == AppRoutes.home) return;
               if (Navigator.of(context).canPop()) return;
-              context.go(_parentOf(location, ref));
+              context.go(parentOf(location, context));
             },
             child: child,
           );
