@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/shell/app_shell_screen.dart';
@@ -52,6 +53,18 @@ class AppShell extends ConsumerWidget {
     return id.isEmpty ? null : id;
   }
 
+  /// One level up from [location], for a back press with nothing to pop.
+  ///
+  /// A conversation belongs to a PC's list; everything else belongs to the
+  /// overview. This is not a general router — it exists for the one case a
+  /// rotation creates, and guessing more than that would be inventing history.
+  static String _parentOf(String location, WidgetRef ref) {
+    final threadId = threadIdOf(location);
+    if (threadId == null) return AppRoutes.home;
+    final device = ref.read(shellDeviceProvider(threadId));
+    return device == null ? AppRoutes.home : AppRoutes.deviceThreads(device);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final location = this.location ?? GoRouterState.of(context).uri.path;
@@ -60,7 +73,31 @@ class AppShell extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final breakpoint = UxnanBreakpoint.fromWidth(constraints.maxWidth);
-        if (!breakpoint.usesPermanentPane) return child;
+        if (!breakpoint.usesPermanentPane) {
+          // Narrow, but the route may have been REPLACED while the window was
+          // wide — rotate a tablet with a conversation open and the phone
+          // layout inherits a stack of exactly one page. Back would leave the
+          // app from a screen you reached by tapping into it, which no phone
+          // does. So back walks the hierarchy the phone would have built.
+          return PopScope(
+            canPop: location == AppRoutes.home,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop || location == AppRoutes.home) return;
+              if (Navigator.of(context).canPop()) return;
+              context.go(_parentOf(location, ref));
+            },
+            child: child,
+          );
+        }
+
+        // Published so the drawer's list can mark the row you are reading.
+        // Beside a permanent drawer the list never leaves the screen, and a
+        // list that never says which row is open makes you hold the answer in
+        // your head.
+        final open = threadIdOf(location);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ref.read(openThreadProvider.notifier).set(open);
+        });
 
         return PopScope(
           // With a drawer up, back must empty the CONTENT, not the app. A deep

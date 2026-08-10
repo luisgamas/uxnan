@@ -9,6 +9,7 @@ import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/router/pane_navigation.dart';
@@ -102,15 +103,22 @@ class _ThreadTileState extends ConsumerState<ThreadTile>
     final status = ref.watch(agentRunStatusProvider(thread.id));
     // Unread agent reply: tint the tile and emphasize it so it stands out.
     final unread = ref.watch(unreadForProvider(thread.id));
+    // The row you are reading, in the layout where the list stays beside it.
+    // `secondaryContainer` is M3's own selected-item role — never a coloured
+    // border, which reads as an error state at this size.
+    final selected = ref.watch(openThreadProvider) == thread.id;
     final card = NeCard(
-      // An unread reply gently tints the card (primary over the calm base) so
-      // it stands out without shouting.
-      color: unread
-          ? Color.alphaBlend(
-              colors.primary.withValues(alpha: 0.10),
-              colors.surfaceContainer,
-            )
-          : null,
+      // Selection outranks unread: a conversation you have open cannot
+      // meaningfully still be asking for attention, and two tints at once
+      // would just muddy each other.
+      color: selected
+          ? colors.secondaryContainer
+          : unread
+              ? Color.alphaBlend(
+                  colors.primary.withValues(alpha: 0.10),
+                  colors.surfaceContainer,
+                )
+              : null,
       padding: compact
           ? const EdgeInsets.symmetric(
               horizontal: UxnanSpacing.md,

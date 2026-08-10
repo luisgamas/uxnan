@@ -1347,35 +1347,59 @@ class _ComposerWidgetState extends ConsumerState<ComposerWidget> {
 
 ### 3.3 Layouts responsive
 
+La app tiene **dos layouts, no tres**, y la frontera esta en 840 dp
+(`UxnanBreakpoint.usesPermanentPane`), no en 600.
+
 ```dart
-// lib/presentation/screens/shell/app_shell_screen.dart
-// La shell detecta el ancho y decide el layout
+// lib/presentation/screens/shell/app_shell.dart
+// Builder de la unica ShellRoute del router.
 
-class AppShellScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-
-    // < 600dp: layout movil (nav drawer o bottom nav)
-    if (width < 600) {
-      return _MobileLayout();
-    }
-    // >= 600dp: layout tablet (NavigationRail + panel lateral)
-    return _TabletLayout();
+class AppShell extends ConsumerWidget {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // compact / medium -> devuelve `child` LITERALMENTE.
+    // expanded+        -> TwoPaneScaffold(pane: NavDrawer, detail: child)
+    //
+    // El ancho se mide con LayoutBuilder, no con MediaQuery: estas
+    // divisiones se anidan (arbol + visor, lista + diff), y dentro de un
+    // panel la ventana no dice nada del sitio disponible.
   }
 }
-
-class _MobileLayout extends StatelessWidget {
-  // Navegacion: Scaffold + Drawer para sidebar
-  // ConversationScreen ocupa toda la pantalla
-}
-
-class _TabletLayout extends StatelessWidget {
-  // NavigationRail lateral fijo (72dp)
-  // SidebarPanel (280dp) + ConversationScreen (resto)
-  // Implementado con Row + Expanded
-}
 ```
+
+**Dos desviaciones respecto al boceto anterior, ambas deliberadas:**
+
+- **No hay `NavigationRail` en medium.** Un rail de 72 dp sobre 600–839 dp
+  se come el 12 % del ancho para mostrar iconos sin etiqueta de destinos que
+  esta app no tiene: sus "destinos" son un arbol de proyectos y carpetas que
+  cambia por PC. Medium se comporta como compact.
+- **No hay bottom navigation en compact.** Decision del maintainer: la app
+  navega con una pila de pantallas, y una barra inferior competiria con el
+  composer, que es la superficie fija de la conversacion.
+
+**Lo que NO cambia con el ancho es la tabla de rutas.** Una sola `ShellRoute`
+envuelve las rutas planas y decide *donde* se dibuja cada pantalla. Un segundo
+navigator, o una rama por panel, daria a las tablets su propio modelo de
+navegacion y cada deep link y cada notificacion push tendria que funcionar en
+los dos.
+
+Lo que si cambia es el **significado de un toque**, y eso vive en
+`presentation/router/pane_navigation.dart`:
+
+- `openInPane(ruta)` — en telefono empuja; en ancho **reemplaza**, porque no
+  fuiste a ningun sitio: el drawer no se movio y lo que cambio es el contenido
+  de un panel. Empujar ahi construye una pila que el layout no deja ver.
+- `closePane()` — "atras" desde la primera pantalla del panel no es "la
+  anterior" sino **cerrar lo abierto**.
+
+`openInPane` vacia antes `shellNavigatorKey`: el visor de archivos y la
+pantalla de git se abren con `Navigator.push` crudo y quedan **encima** de la
+pagina enrutada, asi que `go` por si solo cambiaba la ruta por debajo y las
+dejaba tapandolo todo.
+
+El drawer permanente (`NavDrawer`) son **tres zonas y nada mas** — el PC, su
+trabajo, y tu. Es un `Material`, no un `NavigationDrawer`: ese componente
+modela N destinos fijos con uno seleccionado, y su propio scroll se anidaria
+dentro del arbol de espacios.
 
 ---
 

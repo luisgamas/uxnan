@@ -6,6 +6,10 @@ channel. It is the part of the ecosystem you carry with you: the bridge does the
 work on the PC, and this app is how you watch it, steer it, and review it from
 anywhere.
 
+On a tablet or an unfolded foldable it is not the same screens made wider: past
+840 dp a permanent drawer holds your PCs and their work, and whatever you open
+fills the panel beside it. On a phone nothing changes.
+
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)

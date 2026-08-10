@@ -50,6 +50,26 @@ The keyboard consumes the bottom inset for the whole window, so the drawer's
 pane. `maintainBottomViewPadding` keeps it still. A phone never showed this —
 a phone has no drawer beside the keyboard.
 
+### Added — the list says which conversation you are reading
+
+Beside a permanent drawer the list never leaves the screen, and one that never
+says which of its rows is open makes you hold the answer in your head. The open
+row takes `secondaryContainer` — M3's own selected-item role, never a coloured
+border, which reads as an error state at this size. Selection outranks the
+unread tint: a conversation you have open cannot meaningfully still be asking
+for attention.
+
+Only in that layout. On a phone the open conversation **is** the screen, so
+marking a row you cannot see while reading it would be marking nothing.
+
+### Fixed — back still works after rotating a tablet into a phone shape
+
+The wide layout replaces routes instead of stacking them, so rotating with a
+conversation open left the narrow layout holding a stack of exactly one page:
+back would have left the app from a screen you reached by tapping into it. Back
+now walks the hierarchy the phone would have built — a conversation belongs to
+its PC's list, and everything else to the overview.
+
 ### Added — a permanent drawer on wide windows
 
 On expanded windows and above (≥ 840 dp) the app stops being a stack of screens:

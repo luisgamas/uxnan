@@ -12,12 +12,14 @@ import 'package:uxnan/domain/enums/thread_sync_state.dart';
 import 'package:uxnan/domain/value_objects/thread_queue_state.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/open_thread_provider.dart';
 import 'package:uxnan/presentation/providers/thread_preview_provider.dart';
 import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/threads_screen.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/widgets/agent_logo.dart';
 import 'package:uxnan/presentation/widgets/agent_status_indicator.dart';
+import 'package:uxnan/presentation/widgets/ne_card.dart';
 import '../../support/ux_icon_finder.dart';
 
 Thread _thread(
@@ -43,6 +45,7 @@ Widget _wrap({
   Map<String, ThreadActivity> activity = const {},
   List<Project> projects = const [],
   Map<String, WorkspaceRepo> repos = const {},
+  String? openThread,
 }) {
   final router = GoRouter(
     routes: [
@@ -54,6 +57,9 @@ Widget _wrap({
   );
   return ProviderScope(
     overrides: [
+      // Which conversation the content pane holds — only the wide layout has
+      // one, and it is what the open row is marked from.
+      openThreadProvider.overrideWith(() => _FixedOpenThread(openThread)),
       // The row's reply preview reads the message store; a list test has no
       // database, and pulling the real one in leaves drift timers pending.
       threadPreviewProvider.overrideWith((ref, key) async => null),
@@ -184,6 +190,30 @@ void main() {
       expect(decoration.border, isNull);
       expect(decoration.boxShadow, anyOf(isNull, isEmpty));
     }
+  });
+
+  testWidgets('the row you are reading is marked, and only in that layout',
+      (tester) async {
+    // Beside a permanent drawer the list never leaves the screen, so a list
+    // that never says which row is open makes you hold the answer in your
+    // head. On a phone the open conversation IS the screen — marking a row you
+    // cannot see while reading it would be marking nothing.
+    await tester.pumpWidget(
+      _wrap(
+        threads: [_thread('t1', 'Fix login', 'claude-code')],
+        openThread: 't1',
+      ),
+    );
+    await tester.pump();
+
+    final colors = ThemeData.dark().colorScheme;
+    final card = tester.widget<NeCard>(find.byType(NeCard).first);
+    expect(card.color, isNotNull, reason: 'the open row is not marked at all');
+    expect(
+      card.color,
+      isNot(colors.surfaceContainer),
+      reason: 'the open row looks like every other row',
+    );
   });
 
   group('folders', () {
@@ -419,4 +449,14 @@ void main() {
       expect(findUxIcon(UxIcons.add), findsOneWidget);
     });
   });
+}
+
+/// Pins which conversation the content pane is showing.
+class _FixedOpenThread extends OpenThread {
+  _FixedOpenThread(this.threadId);
+
+  final String? threadId;
+
+  @override
+  String? build() => threadId;
 }
