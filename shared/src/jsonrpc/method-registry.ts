@@ -43,6 +43,7 @@ export const METHOD_NAMES = [
   'git/revert',
   'git/deleteBranch',
   'git/removeWorktree',
+  'git/worktrees',
   'git/log',
   'git/commitShow',
   // Workspace

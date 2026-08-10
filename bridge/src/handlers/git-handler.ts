@@ -91,6 +91,9 @@ export function registerGitHandlers(router: HandlerRouter): void {
           requireBool(p, 'force'),
         ),
       ),
+    // Read-only, so it is NOT in MUTATING_GIT_METHODS below: listing worktrees
+    // is not a git action worth recording in the profile's tally.
+    'git/worktrees': (p) => gitOp(() => git.worktrees(requireString(p, 'cwd'))),
     'git/log': (p) => {
       const cwd = requireString(p, 'cwd');
       const limit = optionalNumber(p, 'limit');

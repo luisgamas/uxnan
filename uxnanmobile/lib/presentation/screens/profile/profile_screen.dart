@@ -1,27 +1,36 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:uxnan/domain/enums/metrics_refresh_interval.dart';
 import 'package:uxnan/domain/value_objects/profile_metrics.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/agent_activity_section.dart';
 import 'package:uxnan/presentation/screens/profile/edit_profile_sheet.dart';
-import 'package:uxnan/presentation/screens/profile/profile_backup_section.dart';
+import 'package:uxnan/presentation/screens/profile/profile_backup_actions.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart';
 import 'package:uxnan/presentation/screens/profile/usage_section.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
-import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
-import 'package:uxnan/presentation/widgets/profile_avatar_view.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Aggregate activity across every paired PC: identity header, headline stats,
 /// a GitHub-style contribution heatmap and a per-agent breakdown — all derived
 /// from the bridge-owned snapshots.
 class ProfileScreen extends ConsumerStatefulWidget {
   /// Creates the [ProfileScreen].
-  const ProfileScreen({super.key});
+  const ProfileScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title but drops the back arrow: `canPop` would
+  /// answer for the Settings route still open on the left, so tapping it would
+  /// leave Settings entirely.
+  final bool embedded;
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
@@ -49,11 +58,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final metricsAsync = ref.watch(profileMetricsProvider);
-    final pcsPaired = ref.watch(trustedDevicesProvider).value?.length ?? 0;
-    final online = ref.watch(connectedDeviceProvider).value != null ? 1 : 0;
 
     return NeScaffold(
+      automaticBackButton: !widget.embedded,
       title: l10n.profileTitle,
+      actions: const [_ProfileMenu()],
       slivers: metricsAsync.when(
         loading: () => const [
           SliverFillRemaining(
@@ -67,13 +76,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Center(child: Text(l10n.profileNoData)),
           ),
         ],
-        data: (metrics) => _content(
-          context,
-          l10n,
-          metrics,
-          pcsPaired: pcsPaired,
-          online: online,
-        ),
+        data: (metrics) => _content(context, l10n, metrics),
       ),
     );
   }
@@ -81,10 +84,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   List<Widget> _content(
     BuildContext context,
     AppLocalizations l10n,
-    ProfileMetrics m, {
-    required int pcsPaired,
-    required int online,
-  }) {
+    ProfileMetrics m,
+  ) {
     final firstYear = m.memberSince?.year ?? DateTime.now().year;
     final titleStyle = Theme.of(context).textTheme.titleLarge;
     return [
@@ -95,37 +96,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           UxnanSpacing.lg,
           UxnanSpacing.xxl,
         ),
+        // **No second clamp here.** [NeScaffold] already stops every screen's
+        // slivers at the window class's [UxnanBreakpoint.maxContentWidth],
+        // measured from its own constraints (so it is right inside Settings'
+        // pane too). This used to add `maxWidth: UxnanSpacing.maxContentWidth`
+        // on top of that — 760 dp is a typographic line length, correct for the
+        // conversation and the file viewer and wrong for a stats grid, provider
+        // cards and a 53-week heatmap. It left a third of a laptop empty while
+        // the heatmap squeezed inside a paragraph's width.
         sliver: SliverToBoxAdapter(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: UxnanSpacing.maxContentWidth,
+          // Staggered by BLOCK, not by widget: the spacers between them are not
+          // things that arrive, and the stats grid is one object even though it
+          // draws several tiles.
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              NeEntranceRow(
+                index: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _StatsHeader(),
+                    const SizedBox(height: UxnanSpacing.sm),
+                    MetricsStatGrid(metrics: m),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _IdentityHeader(
-                    metrics: m,
-                    pcsPaired: pcsPaired,
-                    online: online,
-                  ),
-                  const SizedBox(height: UxnanSpacing.lg),
-                  const _StatsHeader(),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  MetricsStatGrid(metrics: m),
-                  const SizedBox(height: UxnanSpacing.xl),
-                  Text(l10n.profileActivity, style: titleStyle),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  AgentActivitySection(firstYear: firstYear),
-                  const SizedBox(height: UxnanSpacing.xl),
-                  Text(l10n.profileBackupTitle, style: titleStyle),
-                  const SizedBox(height: UxnanSpacing.sm),
-                  const ProfileBackupSection(),
-                  const SizedBox(height: UxnanSpacing.xl),
-                  const UsageSection(),
-                ],
+              const SizedBox(height: UxnanSpacing.xl),
+              NeEntranceRow(
+                index: 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l10n.profileActivity, style: titleStyle),
+                    const SizedBox(height: UxnanSpacing.sm),
+                    AgentActivitySection(firstYear: firstYear),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(height: UxnanSpacing.xl),
+              const NeEntranceRow(index: 2, child: UsageSection()),
+            ],
           ),
         ),
       ),
@@ -157,7 +168,7 @@ class _StatsHeader extends ConsumerWidget {
           )
         else
           IconButton.filledTonal(
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const UxIcon(UxIcons.refresh),
             tooltip: l10n.profileStatsRefreshAction,
             // Nothing to fetch without a live PC; the cached stats stay shown.
             onPressed: connected
@@ -169,89 +180,69 @@ class _StatsHeader extends ConsumerWidget {
   }
 }
 
-class _IdentityHeader extends ConsumerWidget {
-  const _IdentityHeader({
-    required this.metrics,
-    required this.pcsPaired,
-    required this.online,
-  });
-
-  final ProfileMetrics metrics;
-  final int pcsPaired;
-  final int online;
+/// The profile's overflow menu: editing your identity, and the backup of the
+/// stats ledger.
+///
+/// Both used to be inline — the identity as a card at the top (a duplicate of
+/// the overview's header, hidden one screen deeper) and the backup as a card at
+/// the bottom, spending permanent screen space on two buttons pressed once a
+/// year. They are actions, so they live where actions live.
+///
+/// Plain text entries, like every other menu in the app (the pairing menu on
+/// the overview is the reference): no icons, no dividers, no explanatory
+/// paragraph turned into a row. Export and import are sealed and verified BY
+/// THE BRIDGE, so they need a live PC — offline they still open, and say why in
+/// a snackbar, which is a sentence the user can read instead of a greyed row
+/// they have to interpret.
+class _ProfileMenu extends ConsumerWidget {
+  const _ProfileMenu();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final name = ref.watch(profileNameProvider) ?? l10n.profileDisplayName;
-    final avatar = ref.watch(profileAvatarProvider);
-    final since = metrics.memberSince;
-    final subtitle = [
-      if (since != null)
-        l10n.profileMemberSince(DateFormat.yMMM().format(since)),
-      l10n.profilePairedPcs(pcsPaired),
-    ].join(' · ');
 
-    return NeCard(
-      color: colors.surfaceContainerHigh,
-      padding: const EdgeInsets.all(UxnanSpacing.lg),
-      // Tapping anywhere on the header (or the pencil) opens the editor.
-      onTap: () => EditProfileSheet.show(context),
-      child: Row(
-        children: [
-          ProfileAvatarView(avatar: avatar, size: 64),
-          const SizedBox(width: UxnanSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: textTheme.titleLarge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: UxnanSpacing.xs),
-                Row(
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: online > 0
-                            ? colors.primary
-                            : colors.onSurfaceVariant,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: UxnanSpacing.xs),
-                    Text(
-                      l10n.profileActiveSessions(online),
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: l10n.profileEditTitle,
-            onPressed: () => EditProfileSheet.show(context),
-          ),
-        ],
-      ),
+    return IconSurfaceMenu<_ProfileAction>(
+      tooltip: l10n.profileMenuTooltip,
+      icon: UxIcons.moreVert,
+      onSelected: (action) {
+        if (action == _ProfileAction.edit) {
+          EditProfileSheet.show(context);
+          return;
+        }
+        if (ref.read(connectedDeviceProvider).value == null) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(content: Text(l10n.profileBackupOfflineHint)),
+            );
+          return;
+        }
+        switch (action) {
+          case _ProfileAction.export:
+            unawaited(exportMetricsBackup(context, ref));
+          case _ProfileAction.import:
+            unawaited(importMetricsBackup(context, ref));
+          case _ProfileAction.edit:
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _ProfileAction.edit,
+          child: Text(l10n.profileEditTitle),
+        ),
+        PopupMenuItem(
+          value: _ProfileAction.export,
+          child: Text(l10n.profileBackupExport),
+        ),
+        PopupMenuItem(
+          value: _ProfileAction.import,
+          child: Text(l10n.profileBackupImport),
+        ),
+      ],
     );
   }
 }
+
+/// The entries of the profile's overflow menu.
+enum _ProfileAction { edit, export, import }

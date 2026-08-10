@@ -26,6 +26,7 @@
    - [Cards and Lists](#46-cards-and-lists)
    - [Progress Indicators](#47-progress-indicators)
    - [Inline Voice Interface](#48-inline-voice-interface)
+   - [Picker Sheets](#49-picker-sheets)
 5. [Component Decision Matrix](#5-component-decision-matrix)
 6. [Implementation in Flutter](#6-implementation-in-flutter)
    - [M3E Motion Tokens](#61-m3e-motion-tokens)
@@ -134,6 +135,46 @@ A spring is defined by two parameters:
 
 M3E defines two *motion schemes* applicable globally:
 
+> **A list arrives once; it does not animate under your thumb.** Rows enter
+> with a short staggered fade-and-rise (`NeEntranceScope` + `NeEntranceRow`,
+> built on `NeEnterTransition`). The window is deliberately **one frame**, not a
+> duration: a sliver lays out everything the viewport needs in a single pass, so
+> "the rows that arrived together" and "the rows built in one frame" are the
+> same set — including when the data landed asynchronously. Anything built in a
+> later frame is a row you scrolled to, and appears at once. Frames also make it
+> testable; a wall-clock window cannot be (a widget test runs a hundred frames
+> in less real time than any window worth having).
+>
+> **Every `NeScaffold` is a scope**, so a screen wires nothing up: a lazy list's
+> rows pass their own index to `NeEntranceRow`, and a fixed list of children
+> goes through `NeEntranceScope.stagger([...])`. A single block — a form — takes
+> one `NeEnterTransition` and no stagger, so nothing sits between opening the
+> screen and reaching the field. Two surfaces must **not** take an entrance: a
+> live camera preview (fading one in reads as the camera failing) and a scroll
+> affordance.
+>
+> Two traps, both of which cost a real bug here:
+>
+> - **The decision is made once, per row, at creation.** Asking on every build
+>   means the second build answers "no" and returns the bare child — which
+>   changes the subtree's shape, so Flutter unmounts the row's element and
+>   rebuilds it. Every piece of `State` inside the row dies at that moment.
+> - **An entrance never changes its own shape either.** Returning the bare child
+>   once the animation completes has exactly the same effect. Keep the wrappers
+>   and let them settle at `Opacity(1)`; a settled opacity skips its layer and
+>   costs nothing.
+
+> **A spring is not the answer to every animation.** The springs above model
+> something being *grabbed and released* — a press, a drag, a morph — and their
+> stiffness and overshoot are what give that life. Applied to a surface that
+> merely arrives or leaves, the same values read as a snap followed by a bounce
+> off a wall. For revealing and hiding, use the duration-and-curve tokens in
+> `UxnanMotion` (`presentation/theme/motion.dart`): `reveal` = 220 ms
+> `easeOutCubic`, decelerating and **without overshoot**, and `swap` = 180 ms
+> for one surface replacing another in the same slot. Those are the composer
+> control ribbon's values, the smoothest motion in the app; matching them is
+> how a reveal elsewhere ends up feeling the same.
+
 - **Expressive (recommended):** Springs with slight overshoot. For hero moments, FABs,
   main-screen transitions. It is Gemini's default scheme.
 - **Standard:** Springs with critical damping, no bounce. For high-information-density
@@ -210,6 +251,58 @@ ecosystem. Its three axes of variation:
 | `labelLarge` | 14 sp | 500 | Button text |
 | `labelMedium` | 12 sp | 500 | Chip labels, badges |
 
+##### What uxnan actually ships
+
+The table above is the M3 Expressive **reference** scale. uxnan draws a phone
+app, not an editorial page, so it ships a **compressed** version of it — the
+hero is 32 sp, not 57 — and every one of the fifteen slots is set:
+
+| Slot | Size | Weight | What it is for |
+|:---|:---:|:---:|:---|
+| `displayLarge` | 32 | 700 | The single hero a screen is allowed (the home greeting) |
+| `displayMedium` | 28 | 700 | A hero on a surface that is not a whole screen |
+| `displaySmall` | 24 | 700 | A number or short phrase carrying a whole card |
+| `headlineLarge` | 22 | 600 | The top of a screen with no display hero (a commit subject) |
+| `headlineMedium` | 20 | 600 | A screen's own title; the quiet half of a two-line greeting |
+| `headlineSmall` | 18 | 600 | A major region inside a screen |
+| `titleLarge` | 18 | 600 | A card or panel that owns its area |
+| `titleMedium` | 16 | 600 | **A group** — a folder over its conversations, a section over its rows |
+| `titleSmall` | 14 | 500 | A single row's name |
+| `bodyLarge` | 16 | 400 | Long-form reading: the body of an answer |
+| `bodyMedium` | 14 | 400 | Body text; a **group's** supporting line |
+| `bodySmall` | 12 | 400 | A **row's** supporting line. Carries `onSurfaceVariant` itself |
+| `labelLarge` | 14 | 500 | Button and pill text |
+| `labelMedium` | 12 | 500 | Chips, badges, tabs |
+| `labelSmall` | 11 | 500 | Overline, a counter on a glyph. Muted by default |
+
+Two styles sit outside the ladder because they are not rungs of it:
+`UxnanTypography.barTitle` (20/w400 — a top bar's title, pinned so completing
+the scale cannot restyle every bar at once) and `menuItem` (15/w500 — a floating
+menu is a decision surface over everything else, so it earns more presence than
+the control it was opened from).
+
+Three rules follow, and each of them has already been broken once here:
+
+- **Never leave a slot null.** A null slot is not unused — Material fills it
+  from *its* scale (`titleLarge` 22/w400, `headlineSmall` 24/w400, …), so the
+  screens that reach for it follow a different ladder than the screens that do
+  not. That is what made the app's density jump from screen to screen.
+  `test/widget/presentation/type_scale_test.dart` fails if a rung goes missing,
+  stops descending, or stops being compressed.
+- **Levels must step.** A group and the rows inside it may not share a style: a
+  folder took `titleSmall` and so did the conversations under it, and the screen
+  read as a flat list of equals. Each level goes one rung down — 16/600 over
+  14/500, and 14/400 over 12/400 for their supporting lines.
+- **`headlineX` says what a REGION is about; `titleX` names an OBJECT** you can
+  act on. `titleLarge` and `headlineSmall` share metrics on purpose: they sit at
+  the same level of the page and differ in role, not in size. Pick by meaning —
+  the difference shows up the day one of them moves.
+
+Markdown is the one place that needs six strictly descending steps, which the UI
+scale does not have to spare; `theme/markdown.dart` therefore maps h1–h4 onto
+rungs and gives h5/h6 an explicit size (20 → 18 → 16 → 14 → 13 → 12). That is
+the only sanctioned literal.
+
 ---
 
 ### 2.4 HCT Color System
@@ -258,6 +351,33 @@ Expanded → Permanent Standard Navigation Drawer (320 dp, pinned)
 Large    → Permanent Standard Navigation Drawer (320 dp)
 Extra-L  → Permanent Standard Navigation Drawer (can expand to 400 dp)
 ```
+
+#### How uxnan implements this table (two deliberate divergences)
+
+The five classes above are implemented verbatim in
+[`presentation/theme/breakpoints.dart`](../lib/presentation/theme/breakpoints.dart)
+as `UxnanBreakpoint`, which is the **only** place a width becomes a layout
+decision. A widget that compares `MediaQuery` widths itself is a bug: that is
+how two screens end up disagreeing about what a tablet is.
+
+Uxnan diverges from the *navigation* column in two places, on purpose:
+
+1. **No bottom navigation bar on compact, and no navigation rail on medium.**
+   Uxnan has no 3–5 top-level destinations to put in either one; compact windows
+   navigate with a plain screen stack, and the side pane appears only once it can
+   be **permanent** (`UxnanBreakpoint.usesPermanentPane`, expanded and up). A
+   rail on medium would spend 80 dp to duplicate what the back button already
+   does.
+2. **A 320 dp pane does not start at medium.** On a 600–839 dp window it would
+   leave the detail under 300 dp — narrower than the phone layout it replaced —
+   so medium stays single-pane with wider margins.
+
+The *content margins* table below is implemented as-is. Note the distinction it
+does not make: `UxnanBreakpoint.maxContentWidth` is a **layout clamp** for
+single-pane screens (lists, settings, profile), while the conversation column
+keeps `UxnanSpacing.maxContentWidth` (760 dp), which is a **typographic line
+length**. They are different measurements that happen to share a shape, and
+collapsing them would either stretch prose or shrink lists.
 
 ### Content Margins by Breakpoint
 
@@ -359,13 +479,59 @@ Center:  empty (no title on the main screen) or active conversation title
 Right:   [Temporary Chats Icon]  [Avatar/Profile 40 dp]
 ```
 
+#### Icon sizes inside content
+
+The tables above size **chrome** — the app-bar Icon Surfaces (44/22) and the
+composer's compact controls (38/24). They say nothing about the glyphs drawn
+inside a row or a card, which is how those drifted between 13 and 18 dp across
+the app. Two tokens close it:
+
+| Token | dp | Use |
+|:---|:---:|:---|
+| `UxnanSize.iconContentLarge` | 24 | The glyph that *identifies* a row — the folder a group of conversations lives in. Material's own default, and the one place in content where a glyph leads rather than accompanies. |
+| `UxnanSize.iconContent` | 20 | A row's own glyph: an agent's mark, an action on a list row. |
+| `UxnanSize.iconContentSmall` | 18 | The subordinate glyph on the same row: a state mark beside an identity mark, a chevron beside a name. Secondary, but still a shape rather than a dot. |
+
+A row-level action (a "+" on a folder) is an **S button** from §4.5 — 40 dp of
+surface around an `iconContent` glyph, with the usual 48 dp touch target.
+
+**Stroke: `UxnanSize.iconStroke` = 2**, which every `UxIcon` draws at unless it
+asks otherwise. Hugeicons authors at 1.5 on a 24-unit grid and the optical scale
+below thins that a further ~13%, so glyphs arrived about a third lighter than
+the Material ones this app was drawn around and read as faint. `uxnandesktop`
+keeps the vendor's 1.5 — it draws smaller glyphs on a monitor an arm and a half
+away, where the lighter stroke is right.
+
+#### The icon set
+
+Glyphs come from the free **stroke-rounded [Hugeicons](https://hugeicons.com)**
+(MIT) — the same set `uxnandesktop` and the website draw, so a concept looks the
+same wherever you meet it. They author at a **1.5** stroke where Material drew
+2; this app redraws them at `UxnanSize.iconStroke` (above), because at phone
+sizes and phone distance the vendor weight reads faint.
+
+Every glyph is named in the `UxIcons` catalogue and drawn through the `UxIcon`
+primitive; nothing else touches the package. Two consequences worth knowing:
+
+- **A size means what it always meant.** Hugeicons paints its artwork edge to
+  edge, so the same nominal size inks ~15% larger than the Material glyph it
+  replaced. `UxIcon` corrects that and keeps the widget's own footprint at the
+  full size, so the sizes throughout this guide still hold.
+- **There are no filled variants.** A distinction that relied on outline-vs-fill
+  (Material's check-circle) cannot be drawn; use tone or a different glyph.
+
 #### Icon Surfaces in a Transparent AppBar
 
 When the AppBar is transparent, **all action buttons must have a solid surface**.
 They are not icons floating over content — they are *Icon Surfaces*:
 
 - **Shape:** `BoxShape.circle` (not StadiumBorder)
-- **Container size:** 40 dp diameter / Touch area: 48×48 dp (accessibility)
+- **Container size:** 44 dp diameter (glyph 22 dp) / Touch area: 48×48 dp
+  (accessibility). Tokens: `UxnanSize.iconSurface` + `iconSurfaceGlyph`.
+  > The M3E reference figure is 40/20; uxnan settled on **44/22 as the default
+  > and keeps 40/20 as the small variant** for dense contexts. At 44 the actions
+  > hold their own beside the product mark and gain real reach for the thumb;
+  > 40 remains correct where a row is already tight. Same target either way.
 - **Background color:** `surfaceContainerHigh` — never `primary` or `primaryContainer`
   (the neutral color prevents them from competing with the brand mark)
 - **Inner icon:** 20 dp, color `onSurface` or `onSurfaceVariant`
@@ -684,6 +850,18 @@ slightly along the collision axis. This requires coordinated animation with `spa
   circular `surfaceContainerHighest` control with `onSurfaceVariant` glyph,
   subtle `outlineVariant` edge and low elevation. They stay bottom-centered and
   avoid the more prominent brand/secondary tones reserved for primary actions.
+- **A FAB over a long list steps aside while the list moves.** It covers the
+  bottom-right corner, which is where the rows being scrolled toward arrive;
+  while you are scrolling you are reading, not acting. `NeScrollAwareFab`
+  slides, fades and shrinks it out on `ScrollStartNotification` and brings it
+  back on
+  `ScrollEndNotification` — the scroll's own end, not a timer, so the wait is
+  exactly as long as the scroll is, fling included. It stops taking taps while
+  it is gone; an invisible button that still swallows them is worse than none.
+  Opt in with `NeScaffold(hideFabOnScroll: true)`.
+- **The scroll shortcuts above must NOT opt in.** They are affordances *for*
+  scrolling: hiding them during a scroll removes them at the only moment they
+  are wanted. Ask which of the two a FAB is before wiring it.
 
 #### Button Hierarchy by Size
 
@@ -816,6 +994,48 @@ A 64 dp tall **inline pill** is implemented, anchored at the bottom of the scree
 
 Responses spoken by Gemini appear as text in the main space of the screen,
 visible and copyable without closing the voice channel.
+
+---
+
+### 4.9 Picker Sheets
+
+Every "choose one of these" in the app is the **same** bottom sheet. There is
+one composition, and a new picker adopts it rather than inventing a variant —
+two sheets that do the same job in the same app must not be two designs.
+
+Canonical implementations: `model_picker_sheet.dart` (the reference) and
+`workspace_browser_sheet.dart`.
+
+**The composition, top to bottom:**
+
+| Part | Spec |
+| --- | --- |
+| Route | `showModalBottomSheet(isScrollControlled: true, showDragHandle: true)` |
+| Padding | `SafeArea(top: false)` → `EdgeInsets.only(left/right: lg, bottom: lg + viewInsets.bottom)` |
+| Title | `textTheme.titleMedium` in a `Padding(bottom: sm)`; a header action (refresh, up) sits in a `Row` beside it |
+| Search | pill `TextField`: `autofocus`, `isDense`, `prefixIcon: UxIcon(UxIcons.search, size: 20)`, `filled` on `surfaceContainerHighest`, `OutlineInputBorder` at `UxnanRadius.full` with an `outline` side, and the **same border on `enabledBorder`** |
+| Gap | `SizedBox(height: md)` |
+| List | `ConstrainedBox` capped at `(screenHeight − viewInsets.bottom) × 0.5` (`0.45` when the sheet also ends in a button), clamped, over a `ListView.builder(shrinkWrap: true)` |
+| Row | `ListTile(dense: true, shape: RoundedRectangleBorder(UxnanRadius.md))`, title `bodyMedium`, secondary line `UxnanTypography.codeSmall` on `onSurfaceVariant` |
+| Selected row | `selectedTileColor: colors.primaryContainer.withValues(alpha: 0.4)` + a trailing `UxIcon(UxIcons.check, size: 20, color: primary)` |
+| Closing action | optional, after a `SizedBox(height: md)`: `FilledButton` for the affirmative one, `FilledButton.tonal` for an escape hatch (the folder picker's "browse everything") |
+
+**Rules that are easy to get wrong:**
+
+- The search field is a `TextField` styled as above — **never a `SearchBar`**,
+  which brings its own Material-3 elevation, height and shape and reads as a
+  foreign control here.
+- Glyphs come from the catalogue (`UxIcon`/`UxIcons`), never `Icons.*`.
+- Rows are `dense`. A sheet is a list you scan, not a settings screen.
+- The empty state is a single `Text` in a `Padding(all: md)` — no illustration,
+  no card.
+
+**The field that opens one** is a filled tappable surface, not a `ListTile`: a
+`Material(surfaceContainerHighest, UxnanRadius.lg)` + `InkWell`, an 18 dp
+leading glyph, the chosen value in `bodyMedium` — `onSurfaceVariant` while it is
+still the hint — and a trailing `UxIcons.unfoldMore` at 20, replaced by a
+`PolygonLoader(size: 16)` while the choices are still arriving. The
+new-conversation dialog's model field is the reference (`_ModelField`).
 
 ---
 

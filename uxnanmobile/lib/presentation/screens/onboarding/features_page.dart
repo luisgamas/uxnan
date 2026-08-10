@@ -3,8 +3,10 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/onboarding/floating_agents.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_page_layout.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Second onboarding page: the product's key capabilities.
 class FeaturesPage extends StatelessWidget {
@@ -15,7 +17,7 @@ class FeaturesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return OnboardingPageLayout(
-      icon: Icons.auto_awesome_rounded,
+      icon: UxIcons.autoAwesome,
       title: l10n.onboardingFeaturesTitle,
       top: const FloatingAgents(
         assets: [AgentLogos.kimi, AgentLogos.qwen, AgentLogos.opencode],
@@ -24,21 +26,21 @@ class FeaturesPage extends StatelessWidget {
       child: Column(
         children: [
           _FeatureRow(
-            icon: Icons.account_tree_rounded,
+            icon: UxIcons.accountTree,
             color: UxnanColors.codexAgent,
             title: l10n.featureMultiAgentTitle,
             body: l10n.featureMultiAgentBody,
           ),
           const SizedBox(height: UxnanSpacing.lg),
           _FeatureRow(
-            icon: Icons.lock_rounded,
+            icon: UxIcons.lock,
             color: UxnanColors.secondary,
             title: l10n.featureE2eeTitle,
             body: l10n.featureE2eeBody,
           ),
           const SizedBox(height: UxnanSpacing.lg),
           _FeatureRow(
-            icon: Icons.devices_rounded,
+            icon: UxIcons.devices,
             color: UxnanColors.antigravityAgent,
             title: l10n.featureLocalFirstTitle,
             body: l10n.featureLocalFirstBody,
@@ -57,7 +59,7 @@ class _FeatureRow extends StatelessWidget {
     required this.body,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final Color color;
   final String title;
   final String body;
@@ -77,7 +79,7 @@ class _FeatureRow extends StatelessWidget {
             color: colors.surfaceContainerHighest,
             borderRadius: const BorderRadius.all(UxnanRadius.md),
           ),
-          child: Icon(icon, color: color, size: 22),
+          child: UxIcon(icon, color: color, size: 22),
         ),
         const SizedBox(width: UxnanSpacing.lg),
         Expanded(

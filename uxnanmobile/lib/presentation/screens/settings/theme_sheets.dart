@@ -1,13 +1,15 @@
 import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The theme-import editor and the export choice sheet.
 ///
@@ -314,8 +316,8 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _busy ? null : _fromFile,
-                            icon: const Icon(
-                              Icons.folder_open_outlined,
+                            icon: const UxIcon(
+                              UxIcons.folderOpen,
                               size: 18,
                             ),
                             label: Text(l10n.themeImportFromFile),
@@ -327,7 +329,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                             onPressed: _busy ? null : _fromUrl,
                             icon: _busy
                                 ? const PolygonLoader(size: 16)
-                                : const Icon(Icons.link_rounded, size: 18),
+                                : const UxIcon(UxIcons.link, size: 18),
                             label: Text(l10n.themeImportFromUrl),
                           ),
                         ),
@@ -338,7 +340,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                       onPressed: canImport
                           ? () => Navigator.of(context).pop(_controller.text)
                           : null,
-                      icon: const Icon(Icons.file_download_outlined),
+                      icon: const UxIcon(UxIcons.fileDownload),
                       label: Text(l10n.personalizationCustomThemesImportAction),
                     ),
                   ],
@@ -352,7 +354,7 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.close_rounded,
+                icon: UxIcons.close,
                 tooltip: l10n.actionCancel,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
@@ -360,7 +362,9 @@ class _ThemeImportScreenState extends State<ThemeImportScreen> {
                 widget.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: UxnanTypography.barTitle.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ),
@@ -406,13 +410,13 @@ class _ExportChoiceSheet extends StatelessWidget {
             ),
             const SizedBox(height: UxnanSpacing.sm),
             _ExportTile(
-              icon: Icons.copy_rounded,
+              icon: UxIcons.copy,
               label: copyLabel,
               onTap: () => Navigator.of(context).pop(ThemeExportChoice.copy),
             ),
             const SizedBox(height: UxnanSpacing.xs),
             _ExportTile(
-              icon: Icons.save_alt_rounded,
+              icon: UxIcons.saveAlt,
               label: fileLabel,
               onTap: () => Navigator.of(context).pop(ThemeExportChoice.file),
             ),
@@ -430,7 +434,7 @@ class _ExportTile extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String label;
   final VoidCallback onTap;
 
@@ -450,7 +454,7 @@ class _ExportTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, color: colors.onSurfaceVariant),
+              UxIcon(icon, color: colors.onSurfaceVariant),
               const SizedBox(width: UxnanSpacing.md),
               Expanded(
                 child:

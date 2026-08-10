@@ -9,6 +9,8 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 /// Fixed `/` palette templates so the command test doesn't depend on disk/seed.
 const _templates = [
@@ -257,7 +259,7 @@ void main() {
 
     final closers = find.descendant(
       of: find.byKey(const ValueKey('composer-attachments')),
-      matching: find.byIcon(Icons.close_rounded),
+      matching: findUxIcon(UxIcons.close),
     );
     expect(closers, findsNWidgets(3));
 

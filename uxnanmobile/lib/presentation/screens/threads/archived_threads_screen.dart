@@ -1,15 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The archived threads of a paired PC. Archived threads are hidden from the
 /// main threads list but never deleted; from here the user can reopen them,
@@ -46,12 +51,18 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
       actions: [
         ThreadSearchAnchor(
           threads: archived,
-          onSelect: (id) => context.push(AppRoutes.conversation(id)),
+          onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
         ),
         ThreadSortMenu(
-          sort: sort,
-          onChanged: (value) =>
-              ref.read(threadSortProvider.notifier).set(value),
+          // No project or worktree group: the archive is a flat list. And
+          // fewer orderings — see [kArchiveSorts]: archived work is finished by
+          // definition, so "needs attention" and "recent activity" would sort
+          // by a value that can no longer change.
+          agentSort: sort,
+          options: kArchiveSorts,
+          onChanged: (choice) => unawaited(
+            ref.read(threadSortProvider.notifier).set(choice.value),
+          ),
         ),
         ThreadMoreMenu(
           compact: compact,
@@ -78,10 +89,13 @@ class _ArchivedThreadsScreenState extends ConsumerState<ArchivedThreadsScreen> {
               separatorBuilder: (_, __) => SizedBox(
                 height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
               ),
-              itemBuilder: (context, index) => ThreadTile(
-                key: ValueKey('thread-${visible[index].id}'),
-                thread: visible[index],
-                compact: compact,
+              itemBuilder: (context, index) => NeEntranceRow(
+                index: index,
+                child: ThreadTile(
+                  key: ValueKey('thread-${visible[index].id}'),
+                  thread: visible[index],
+                  compact: compact,
+                ),
               ),
             ),
           ),
@@ -104,14 +118,14 @@ class _EmptyArchived extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.inventory_2_outlined,
+            UxIcon(
+              UxIcons.inventory2,
               size: 48,
               color: colors.onSurfaceVariant,
               semanticLabel: 'Archived',
             ),
             const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.archivedEmpty, style: textTheme.titleSmall),
+            Text(l10n.archivedEmpty, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.xs),
             Text(
               l10n.archivedEmptyBody,

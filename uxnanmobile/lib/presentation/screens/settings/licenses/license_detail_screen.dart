@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/package_licenses.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 
 /// Full license text(s) for a single package, one card per registered license.
@@ -40,13 +41,16 @@ class LicenseDetailScreen extends StatelessWidget {
             itemCount: entry.paragraphs.length,
             separatorBuilder: (_, __) =>
                 const SizedBox(height: UxnanSpacing.sm),
-            itemBuilder: (context, i) => ExpressiveCard(
-              color: colors.surfaceContainer,
-              child: SelectableText(
-                entry.paragraphs[i],
-                style: textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  height: 1.5,
+            itemBuilder: (context, i) => NeEntranceRow(
+              index: i,
+              child: ExpressiveCard(
+                color: colors.surfaceContainer,
+                child: SelectableText(
+                  entry.paragraphs[i],
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.5,
+                  ),
                 ),
               ),
             ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/value_objects/git/git_log.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A small pill that renders one [GitRef] (branch / remote branch / tag / HEAD)
 /// with a type-specific icon and color. Used in the history list rows and the
@@ -32,7 +34,7 @@ class CommitRefChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: dense ? 11 : 13, color: fg),
+          UxIcon(icon, size: dense ? 11 : 13, color: fg),
           const SizedBox(width: UxnanSpacing.xs),
           // Flexible + ellipsis so the chip truncates inside a width-capped
           // slot (e.g. the dense graph row) instead of overflowing its row.
@@ -50,25 +52,25 @@ class CommitRefChip extends StatelessWidget {
     );
   }
 
-  (IconData, Color, Color) _visuals(ColorScheme colors) {
+  (UxIconData, Color, Color) _visuals(ColorScheme colors) {
     return switch (refData.type) {
       GitRefType.head => (
-          Icons.my_location_rounded,
+          UxIcons.myLocation,
           colors.primaryContainer,
           colors.onPrimaryContainer,
         ),
       GitRefType.branch => (
-          Icons.call_split_rounded,
+          UxIcons.callSplit,
           colors.tertiaryContainer,
           colors.onTertiaryContainer,
         ),
       GitRefType.remoteBranch => (
-          Icons.cloud_outlined,
+          UxIcons.cloud,
           colors.secondaryContainer,
           colors.onSecondaryContainer,
         ),
       GitRefType.tag => (
-          Icons.sell_outlined,
+          UxIcons.sell,
           colors.surfaceContainerHighest,
           colors.onSurfaceVariant,
         ),

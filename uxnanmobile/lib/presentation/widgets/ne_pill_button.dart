@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A floating labelled action that sits above the composer, on the same layer
 /// and with the same lift as [NeCircularButton] — the elevated
@@ -21,7 +23,7 @@ class NePillButton extends StatelessWidget {
   });
 
   /// The leading glyph.
-  final IconData icon;
+  final UxIconData icon;
 
   /// The action's label; doubles as its accessibility label.
   final String label;
@@ -86,7 +88,7 @@ class NePillButton extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(icon, size: 20, color: foreground),
+                  UxIcon(icon, size: 20, color: foreground),
                   const SizedBox(width: UxnanSpacing.sm),
                   // Animates the tone change instead of snapping between the
                   // idle, selected and emphasized variants.

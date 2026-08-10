@@ -953,92 +953,149 @@ final projectsProvider = StreamProvider<List<Project>>((ref) => ...);
 
 #### 5.4.2 Pantallas principales
 
+> **La lista de conversaciones esta agrupada por la carpeta en la que corren.**
+> Un solo nivel, no dos: `uxnandesktop` dibuja repositorios sobre sus worktrees
+> porque SABE cuales son; el telefono no — el bridge reporta raices planas y
+> nada sobre worktrees, que viven como hermanos del repo. Un nivel "proyecto"
+> construido sobre eso seria un encabezado sobre una sola carpeta mas un cajon
+> "otros" con casi todo el trabajo real. La carpeta es la cima del arbol hasta
+> que el bridge pueda decir mas (`git/worktrees`), momento en el que un nivel de
+> proyecto vuelve significando lo mismo que en desktop. Las raices configuradas
+> aportan su **nombre**, nada mas.
+>
+> **La jerarquia de worktrees SI se dibuja, cuando el bridge la reporta.**
+> `git/worktrees` (§5.8.6) dice que carpetas son worktrees de que repositorio,
+> y solo entonces aparece un nivel de repositorio sobre ellas. Se pregunta por
+> las carpetas **de la lista** (los `cwd` distintos de las conversaciones), no
+> por las raices configuradas: `workspaceRoots` es opcional y suele estar vacio,
+> porque una conversacion puede arrancarse en cualquier carpeta desde el
+> selector. Cada respuesta nombra a todos los hermanos de su repositorio, asi
+> que diez worktrees cuestan una llamada, no diez. Nunca se deduce
+> de prefijos de ruta: los worktrees son **hermanos** en disco, asi que un
+> prefijo comun no dice nada. Y solo se dibuja cuando relaciona **dos o mas**
+> carpetas — un encabezado sobre una sola carpeta es cromo, no estructura, que
+> es exactamente lo que hundio el primer intento. Una carpeta que no se
+> relaciona con nada se queda donde esta; no hay cajon "otros". Con un bridge
+> anterior la tabla llega vacia y la lista es literalmente la de antes.
+>
+> **Cada nivel tiene su propio orden**: proyectos, worktrees y conversaciones,
+> los tres con las mismas cuatro opciones (`ListSort`: estado, actividad,
+> creacion, nombre). Los worktrees **dentro** de un proyecto se ordenan con el
+> mismo ajuste que los de primer nivel — `buildWorkspaceTree` recibe el
+> comparador en vez de ordenarlos por su cuenta, que es lo que antes los dejaba
+> fuera del alcance del menu. `created` de una carpeta es derivado: el bridge
+> reporta una ruta, no una historia, asi que vale la conversacion mas antigua
+> dentro. El archivo ofrece menos (`created` y `name`): el trabajo archivado
+> esta terminado por definicion, asi que estado y actividad ordenarian por un
+> valor que ya no puede cambiar.
+>
+> La fila de carpeta lleva **dos lineas, y la segunda cambia con el pliegue**:
+> abierta dice solo cuantas conversaciones contiene, porque cada una lleva su
+> propia marca de agente y su propio estado una fila mas abajo; cerrada anade
+> las marcas de los agentes que hay dentro y, en la primera linea, el estado mas
+> urgente de todos ellos — esa evidencia desaparece al plegar y la cabecera
+> tiene que suplirla. Es el mismo canje que hace la vista de agentes de
+> `uxnandesktop`.
+
+> **El estado del agente en la lista es DERIVADO, no reportado.** La fila de
+> conversacion muestra los mismos cinco estados que la barra lateral de
+> `uxnandesktop` (working / waiting / blocked / done / idle), pero el bridge no
+> los envia: desktop los arma con su propio hook server sobre las terminales que
+> el mismo lanza, y el telefono no tiene nada de eso. El movil los deriva de lo
+> que el contrato SI da — eventos de turno, estado de la cola, `auth/status`, no
+> leidos, y los bloques `approval`/`question` que el agente emite al detenerse a
+> preguntar. `ThreadManager` registra esos bloques **para todos los threads**,
+> no solo el abierto, que es lo unico que permite distinguir "trabajando" de
+> "te espera" desde una lista. Ese registro es en memoria y se reconstruye en el
+> siguiente resync (`turn/list` reproduce los bloques): un `waiting` exacto tras
+> reinicio requeriria que el bridge lo dijera — una notificacion
+> `stream/thread/state` o un campo en `thread/list` — y esta anotado como
+> trabajo debido en `uxnanmobile/FOR-DEV.md`, no implementado.
+>
+> **Los indicadores de git de cada carpeta** (sin confirmar, ↑adelante /
+> ↓atras) salen de `git/status` por cwd, que ya existia — no hizo falta
+> contrato nuevo. Las reglas son de **coste**, no de dibujo: solo con el PC
+> conectado, solo para carpetas visibles (`autoDispose`: una carpeta plegada no
+> dibuja indicadores, luego nadie observa el provider, luego no se pide), y con
+> un throttle de 15 s. El refresco real llega por el bus de `git/status` tras
+> un commit/push/pull, sin viaje de ida y vuelta. Un cero no se dibuja jamas y
+> la fila corta a tres senales; el desglose (rama, upstream, +/−) vive en la
+> hoja de pulsacion larga. Sin respuesta la fila no dibuja nada — nunca
+> "limpio", que seria una mentira con aspecto de buena noticia.
+
+> **La misma tabla de rutas se dibuja en dos sitios distintos.** A partir de
+> 840 dp de ancho de ventana la app deja de ser una pila de pantallas: una
+> unica `ShellRoute` envuelve las rutas planas y `AppShell` decide si la
+> pantalla enrutada ES la ventana o es el **panel de contenido** junto a un
+> navigation drawer permanente. La tabla no cambia, asi que cada deep link y
+> cada notificacion push siguen funcionando en los dos anchos sin un segundo
+> modelo de navegacion que mantener en paralelo. **El tope son dos paneles**:
+> las divisiones anidadas (ajustes y su seccion) miden sus propias constraints,
+> no la ventana, y una tercera columna en una tablet no le sirve a nadie. Lo
+> que cambia con el ancho es el **significado de un toque** — abrir reemplaza
+> el panel en vez de apilar — y eso vive en `pane_navigation.dart`. El detalle
+> esta en `architecture/02c` §3.3.
+>
+> **`detail` es siempre el `child` del router.** No es estilo: ese `child` es
+> el `Navigator` de la `ShellRoute`, y `GoRouterDelegate.popRoute` — a donde va
+> el boton atras del sistema — lo desreferencia sin comprobar. Sustituirlo por
+> otro widget en alguna ruta rompe el boton atras en TODA la app.
+
 ```
 lib/presentation/
+├── router/
+│   ├── app_router.dart                   # tabla de rutas PLANA + la unica ShellRoute
+│   └── pane_navigation.dart              # openInPane / closePane: que significa un toque
 ├── screens/
 │   ├── shell/
-│   │   ├── app_shell_screen.dart         # scaffold raiz + nav
-│   │   └── session_coordinator_screen.dart
-│   ├── home/
-│   │   ├── home_screen.dart              # estado vacio, banners
-│   │   └── home_view_model.dart
-│   ├── sidebar/
-│   │   ├── sidebar_screen.dart           # lista threads, busqueda, proyectos
-│   │   ├── thread_list_item.dart
-│   │   └── sidebar_view_model.dart
+│   │   ├── app_shell.dart                # builder de la ShellRoute: pantalla o panel
+│   │   ├── app_shell_screen.dart         # TwoPaneScaffold (tambien para splits anidados)
+│   │   ├── nav_drawer.dart               # drawer permanente: PC, su trabajo, y tu
+│   │   └── shell_welcome.dart            # el panel tranquilo, antes de abrir nada
+│   ├── devices/
+│   │   └── my_devices_screen.dart        # portada: identidad, PCs y su trabajo
+│   ├── threads/
+│   │   ├── threads_screen.dart           # Espacios: proyectos > carpetas > conversaciones
+│   │   ├── space_rows.dart               # filas de proyecto y de carpeta
+│   │   ├── thread_tile.dart              # fila de conversacion (estado derivado)
+│   │   ├── thread_list_controls.dart     # orden por nivel (ListSort) + menu en cascada
+│   │   ├── workspace_git_indicators.dart # sin confirmar / adelante / atras por carpeta
+│   │   ├── workspace_details_sheet.dart  # hoja de pulsacion larga: ruta, rama, upstream
+│   │   ├── workspace_browser_sheet.dart  # explorador de carpetas del bridge
+│   │   ├── archived_threads_screen.dart
+│   │   └── new_conversation_screen.dart  # pantalla completa en movil, dialogo en ancho
 │   ├── conversation/
 │   │   ├── conversation_screen.dart      # pantalla de turno activa
-│   │   ├── conversation_view_model.dart
-│   │   ├── timeline/
-│   │   │   ├── timeline_widget.dart
-│   │   │   ├── timeline_reducer.dart
-│   │   │   └── timeline_snapshot.dart
-│   │   ├── messages/
-│   │   │   ├── message_renderer.dart
-│   │   │   ├── markdown_renderer.dart
-│   │   │   ├── mermaid_renderer.dart
-│   │   │   ├── code_block_widget.dart
-│   │   │   ├── command_execution_card.dart
-│   │   │   ├── approval_request_card.dart
-│   │   │   ├── subagent_card.dart
-│   │   │   ├── plan_mode_widget.dart
-│   │   │   └── workspace_preview_widget.dart
-│   │   ├── composer/
-│   │   │   ├── composer_widget.dart
-│   │   │   ├── attachment_picker.dart
-│   │   │   ├── mention_autocomplete.dart
-│   │   │   ├── file_autocomplete.dart
-│   │   │   └── slash_command_menu.dart
-│   │   ├── git/
-│   │   │   ├── git_actions_toolbar.dart
-│   │   │   ├── branch_selector_sheet.dart
-│   │   │   ├── diff_viewer.dart
-│   │   │   ├── revert_sheet.dart
-│   │   │   └── worktree_handoff_overlay.dart
-│   │   └── support/
-│   │       ├── connection_recovery_card.dart
-│   │       ├── error_card.dart
-│   │       ├── status_sheet.dart
-│   │       └── terminal_indicator.dart
+│   │   ├── session_environment.dart
+│   │   ├── messages/                     # render de bloques, markdown, diffs, tarjetas
+│   │   ├── composer/                     # pill flotante, cinta de opciones, adjuntos
+│   │   ├── files/                        # navegador de archivos + visor/editor
+│   │   ├── git/                          # estado, historial, detalle de commit
+│   │   └── support/                      # selector de modelo, recuperacion, errores
 │   ├── onboarding/
-│   │   ├── onboarding_screen.dart
-│   │   ├── welcome_page.dart
-│   │   ├── features_page.dart
-│   │   ├── install_step_page.dart
-│   │   └── command_card_widget.dart
-│   ├── pairing/
-│   │   ├── qr_scanner_screen.dart
-│   │   ├── manual_code_screen.dart
-│   │   ├── pairing_validator.dart
-│   │   └── update_prompt_dialog.dart
-│   ├── devices/
-│   │   ├── my_devices_screen.dart
-│   │   └── device_card.dart
-│   ├── settings/
-│   │   ├── settings_screen.dart
-│   │   ├── connection_settings.dart
-│   │   ├── agent_settings.dart
-│   │   ├── notification_settings.dart
-│   │   └── about_screen.dart
-│   ├── ssh_terminal/
-│   │   ├── terminal_screen.dart
-│   │   ├── connection_editor.dart
-│   │   └── terminal_surface.dart
-│   └── projects/
-│       ├── projects_screen.dart
-│       └── project_editor.dart
-├── widgets/                              # componentes reutilizables
-│   ├── uxnan_button.dart
-│   ├── uxnan_badge.dart
-│   ├── uxnan_card.dart
-│   ├── connection_status_indicator.dart
-│   ├── thread_status_badge.dart
-│   └── adaptive_bottom_sheet.dart
+│   ├── pairing/                          # QR, codigo manual, descubrimiento en LAN
+│   ├── profile/
+│   │   ├── profile_screen.dart           # metricas agregadas + heatmap + uso
+│   │   ├── agent_activity_section.dart
+│   │   ├── usage_section.dart
+│   │   └── pc_details_screen.dart        # ficha por PC
+│   └── settings/
+│       ├── settings_screen.dart          # accesos, y su seccion al lado en ancho
+│       ├── sections/                     # una pantalla por seccion
+│       ├── personalization_screen.dart
+│       ├── theme_manager_screen.dart     # + editor de tema custom
+│       └── licenses/
+├── providers/                            # Riverpod manual (sin codegen)
+├── widgets/                              # primitivas compartidas (NeScaffold, UxIcon, ...)
 └── theme/
     ├── uxnan_theme.dart
+    ├── breakpoints.dart                  # UxnanBreakpoint: la unica frontera responsive
     ├── colors.dart
     ├── typography.dart
-    └── spacing.dart
+    ├── spacing.dart                      # tamanios, radios, y el grosor de trazo de iconos
+    ├── motion.dart                       # muelles M3E + duraciones de entrada
+    ├── icons.dart                        # catalogo UxIcons (Hugeicons)
+    └── markdown.dart
 ```
 
 #### 5.4.3 Navegacion
@@ -1278,9 +1335,19 @@ SessionCoordinator.connect()
 El usuario puede tener N Macs registradas y cambiar entre ellas:
 
 ```dart
-// MyDevicesScreen → Devices AppBar + (PairEmptyState | DeviceCard list)
-// PairEmptyState keeps the screen chrome and uses the Uxnan logo as its hero.
-// DeviceCard → CTA "Conectar"
+// MyDevicesScreen es la superficie "overview":
+//   AppBar: marca (izquierda) · ajustes + avatar (derecha).
+//   Encabezado en dos filas: saludo fijo pequeno sobre el nombre grande, y
+//     debajo badges de "N en linea" (tono live) y "miembro desde…" (neutro).
+//     Hace scroll bajo la barra, no colapsa a titulo.
+//   DeviceCard list → 1 columna; 2 columnas emparejadas desde `expanded`.
+// Cada DeviceCard: fila de identidad (glifo con punto de estado, nombre,
+//   direccion revelable al tocarla, y "Ultima conexion: <hora>" con el reloj
+//   12/24 h del propio telefono; menu ⋮) sobre badges de modo de conexion
+//   (estado y ruta de red en uno solo) y agentes trabajando ahora; abajo,
+//   "Conectar" a la izquierda y el conteo de conversaciones a la derecha. Los
+//   conteos en cero no se dibujan.
+// El PairEmptyState conserva el logo como hero.
 SessionCoordinator.switchMac(device)
 ├── Desconecta sesion actual
 ├── Actualiza activeMac
@@ -1719,6 +1786,18 @@ async function handleGitPull({ cwd, branch }) { ... }
 async function handleGitCheckout({ cwd, branch }) { ... }
 async function handleGitCreateBranch({ cwd, name }) { ... }
 async function handleGitCreateWorktree({ cwd, branch, path, managed }) { ... }
+async function handleGitWorktrees({ cwd }) { ... }
+  // git worktree list --porcelain, parseado (parseWorktreePorcelain).
+  // Devuelve { worktrees: [{ path, branch?, isMain, isLocked? }] }, el
+  //   principal primero — que es lo UNICO que lo distingue: `isMain` es
+  //   posicional, git no lo marca.
+  // Fuera de un repositorio devuelve [] en vez de lanzar: se pregunta por raiz
+  //   configurada, y una raiz que no es repo es un caso normal, no un error.
+  // Existe porque los worktrees son HERMANOS en disco (`repo` y
+  //   `../repo-feature` no comparten relacion de ruta), asi que el cliente no
+  //   puede deducir la jerarquia y hay que decirsela. El movil lo usa para
+  //   agrupar carpetas bajo su repositorio; un bridge anterior responde
+  //   "metodo desconocido" y la lista se queda plana.
 async function handleGitStackedPublish({ cwd, message, remote, branch }) { ... }
 async function handleGitLog({ cwd, limit, cursor, ref }) {
   // git log <ref|HEAD> --date-order --format=...%x1e --decorate=full -z

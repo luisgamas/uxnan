@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:jovial_svg/jovial_svg.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -10,9 +9,11 @@ import 'package:uxnan/core/utils/logger.dart';
 import 'package:uxnan/domain/entities/file_browser.dart';
 import 'package:uxnan/infrastructure/media/remote_resource_service.dart';
 import 'package:uxnan/presentation/screens/conversation/files/file_preview_support.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 import 'package:uxnan/presentation/widgets/zoomable_media.dart';
 
 /// Full-surface raster or SVG preview with pinch-to-zoom.
@@ -416,8 +417,8 @@ class _BrokenImage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (_isCompactSlot(constraints)) {
-          return Icon(
-            Icons.broken_image_outlined,
+          return UxIcon(
+            UxIcons.brokenImage,
             size: _compactGlyphSize(constraints),
             color: colors.error,
           );
@@ -428,7 +429,7 @@ class _BrokenImage extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.broken_image_outlined, color: colors.error),
+              UxIcon(UxIcons.brokenImage, color: colors.error),
               if (message case final message?) ...[
                 const SizedBox(height: UxnanSpacing.xs),
                 Text(message, style: UxnanTypography.codeSmall),

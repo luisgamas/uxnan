@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Neural Expressive building blocks for settings-style screens: a quiet
 /// section label, a one-line hint, and dynamic-corner toggle / navigation rows.
@@ -34,9 +36,10 @@ class NeSectionHeader extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: textTheme.titleSmall?.copyWith(
+        // A section heads a group, so it takes the group rung — the same
+        // one a folder takes over its conversations.
+        style: textTheme.titleMedium?.copyWith(
           color: colors.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
         ),
       ),
@@ -90,7 +93,7 @@ class NeSwitchTile extends StatelessWidget {
   final CardGroupPosition position;
 
   /// Leading icon.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Primary label.
   final String title;
@@ -112,7 +115,7 @@ class NeSwitchTile extends StatelessWidget {
       color: colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: SwitchListTile(
-        secondary: Icon(icon, color: colors.onSurfaceVariant),
+        secondary: UxIcon(icon, color: colors.onSurfaceVariant),
         title: Text(title),
         subtitle: Text(subtitle),
         value: value,
@@ -133,15 +136,20 @@ class NeNavTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.trailing,
+    this.color,
     this.position = CardGroupPosition.single,
     super.key,
   });
+
+  /// Surface tone override — `secondaryContainer` when this row is the one
+  /// filling a pane beside the list. Null keeps the group's own tone.
+  final Color? color;
 
   /// Position within the enclosing group (drives the corner radii).
   final CardGroupPosition position;
 
   /// Leading icon.
-  final IconData icon;
+  final UxIconData icon;
 
   /// Primary label.
   final String title;
@@ -161,14 +169,14 @@ class NeNavTile extends StatelessWidget {
     return ExpressiveCard(
       position: position,
       onTap: onTap,
-      color: colors.surfaceContainer,
+      color: color ?? colors.surfaceContainer,
       padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(icon, color: colors.onSurfaceVariant),
+        leading: UxIcon(icon, color: colors.onSurfaceVariant),
         title: Text(title),
         subtitle: Text(subtitle),
         trailing: trailing ??
-            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
+            UxIcon(UxIcons.chevronRight, color: colors.onSurfaceVariant),
       ),
     );
   }

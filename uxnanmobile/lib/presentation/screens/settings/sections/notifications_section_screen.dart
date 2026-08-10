@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
@@ -13,7 +15,15 @@ import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 /// persist locally and push to the bridge (`notifications/update`).
 class NotificationsSectionScreen extends ConsumerWidget {
   /// Creates the notifications section screen.
-  const NotificationsSectionScreen({super.key});
+  const NotificationsSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route still open on the
+  /// left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -31,6 +41,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
     final notifications = ref.read(notificationPreferencesProvider.notifier);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsNotificationsSection,
       slivers: [
         SliverPadding(
@@ -41,7 +52,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               NeSectionHeader(
                 label: l10n.settingsNotificationsEventsGroup,
                 first: true,
@@ -51,7 +62,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
-                      icon: Icons.check_circle_outline_rounded,
+                      icon: UxIcons.checkCircle,
                       title: l10n.settingsTurnCompletedTitle,
                       subtitle: l10n.settingsTurnCompletedSubtitle,
                       value: prefs.turnCompleted,
@@ -60,7 +71,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
                     ),
                   _ => NeSwitchTile(
                       position: pos,
-                      icon: Icons.error_outline_rounded,
+                      icon: UxIcons.error,
                       title: l10n.settingsTurnErrorTitle,
                       subtitle: l10n.settingsTurnErrorSubtitle,
                       value: prefs.turnError,
@@ -70,7 +81,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
                 },
               ),
               NeSectionHint(text: l10n.settingsNotificationsHint),
-            ],
+            ]),
           ),
         ),
       ],

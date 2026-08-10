@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,11 +12,14 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
 import 'package:uxnan/presentation/screens/pairing/update_prompt_dialog.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/icon_surface.dart';
 import 'package:uxnan/presentation/widgets/ne_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Camera state for the scanner screen.
 enum _CameraAccess {
@@ -176,7 +178,6 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
     final body = switch (_access) {
       _CameraAccess.checking => const Center(
           child: PolygonLoader(size: 36),
@@ -212,7 +213,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
@@ -220,7 +221,9 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
                 l10n.qrScannerTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: textTheme.titleLarge?.copyWith(fontSize: 20),
+                style: UxnanTypography.barTitle.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ),
@@ -346,8 +349,8 @@ class _ScannerError extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.no_photography_rounded,
+              UxIcon(
+                UxIcons.noPhotography,
                 size: 56,
                 color: colors.onSurface,
                 semanticLabel: 'Camera error',
@@ -414,8 +417,8 @@ class _PermissionRequest extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.photo_camera_rounded,
+            UxIcon(
+              UxIcons.photoCamera,
               size: 56,
               color: colorScheme.onSurface,
               semanticLabel: 'Camera',

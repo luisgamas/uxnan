@@ -26,6 +26,7 @@ import type {
   GitPullResult,
   GitPushResult,
   GitRepoStatus,
+  GitWorktreeList,
   GitWorktreeResult,
 } from '../models/git.js';
 import type {
@@ -424,6 +425,8 @@ export interface JsonRpcMethodRegistry {
   'git/revert': { params: GitRevertParams; result: void };
   'git/deleteBranch': { params: GitDeleteBranchParams; result: void };
   'git/removeWorktree': { params: GitRemoveWorktreeParams; result: void };
+  /** Which directories are worktrees of the repository at `cwd`. */
+  'git/worktrees': { params: { cwd: string }; result: GitWorktreeList };
   'git/log': { params: GitLogParams; result: GitLogResult };
   'git/commitShow': { params: GitCommitShowParams; result: GitCommitDetails };
 

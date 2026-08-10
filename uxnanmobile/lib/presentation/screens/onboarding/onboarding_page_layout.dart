@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Shared visual scaffold for an onboarding page: a hero icon, a headline, an
 /// optional body and an optional extra [child] (e.g. a feature list or command
@@ -16,7 +19,7 @@ class OnboardingPageLayout extends StatelessWidget {
   });
 
   /// The hero icon for the page.
-  final IconData icon;
+  final UxIconData icon;
 
   /// The page headline.
   final String title;
@@ -56,7 +59,13 @@ class OnboardingPageLayout extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+              // Only the FIRST page animates, and that falls out of the
+              // one-frame window rather than needing a rule of its own: at
+              // launch this page is the only one built, so its parts rise in.
+              // Every later page is built as you swipe to it — a frame that is
+              // already past the window — so it arrives on the PageView's own
+              // slide instead, and no rise fights that slide sideways.
+              children: NeEntranceScope.stagger([
                 if (top != null) top!,
                 Center(
                   child: Container(
@@ -66,7 +75,7 @@ class OnboardingPageLayout extends StatelessWidget {
                       color: colors.primaryContainer,
                       borderRadius: const BorderRadius.all(UxnanRadius.xl),
                     ),
-                    child: Icon(
+                    child: UxIcon(
                       icon,
                       size: 38,
                       color: colors.onPrimaryContainer,
@@ -93,7 +102,7 @@ class OnboardingPageLayout extends StatelessWidget {
                   const SizedBox(height: UxnanSpacing.xl),
                   child!,
                 ],
-              ],
+              ]),
             ),
           ),
         );

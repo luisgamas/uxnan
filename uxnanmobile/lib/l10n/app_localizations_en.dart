@@ -198,12 +198,207 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String profilePairedPcs(int count) {
-    return '$count PCs';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count PCs',
+      one: '1 PC',
+    );
+    return '$_temp0';
   }
 
   @override
   String profileActiveSessions(int count) {
     return '$count online now';
+  }
+
+  @override
+  String get sortProjectsHeader => 'Projects';
+
+  @override
+  String get sortFoldersHeader => 'Folders';
+
+  @override
+  String get sortConversationsHeader => 'Conversations';
+
+  @override
+  String get sortByAttention => 'Needs attention';
+
+  @override
+  String spacesConversationCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversations',
+      one: '1 conversation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spacesOther => 'Other spaces';
+
+  @override
+  String get spacesNoFolder => 'No folder';
+
+  @override
+  String get spacesNewConversationHere => 'New conversation here';
+
+  @override
+  String workspaceDirty(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count uncommitted files',
+      one: '1 uncommitted file',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceAhead(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commits to push',
+      one: '1 commit to push',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceBehind(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commits to pull',
+      one: '1 commit to pull',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceUpstream(String branch) {
+    return 'Tracking $branch';
+  }
+
+  @override
+  String get workspaceGitUnavailable => 'Git state unavailable';
+
+  @override
+  String get workspaceGitStale => 'Last known state';
+
+  @override
+  String get workspaceNoUpstream => 'No upstream branch';
+
+  @override
+  String get workspaceClean => 'No uncommitted changes';
+
+  @override
+  String spacesWorkspaceCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count folders',
+      one: '1 folder',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spacesDetailsPath => 'Path';
+
+  @override
+  String get shellWelcomeTagline =>
+      'A name with no relation to, or derivation from, any existing product.';
+
+  @override
+  String get shellWelcomeHint =>
+      'Open a conversation from the panel on the left.';
+
+  @override
+  String get shellHowToPair => 'How to link a device';
+
+  @override
+  String get drawerDevices => 'Devices';
+
+  @override
+  String get drawerSwitchDevice => 'Switch PC';
+
+  @override
+  String get drawerNoDevices => 'No PC paired yet';
+
+  @override
+  String get drawerBackToOverview => 'Back to overview';
+
+  @override
+  String get spacesCopyPath => 'Copy path';
+
+  @override
+  String get spacesConversations => 'Conversations';
+
+  @override
+  String get spacesNoMatch => 'No space matches these filters';
+
+  @override
+  String get spacesClearFilters => 'Clear filters';
+
+  @override
+  String get filterByState => 'State';
+
+  @override
+  String get filterStateWorking => 'Working';
+
+  @override
+  String get filterStateWaiting => 'Waiting for you';
+
+  @override
+  String get filterStateUnread => 'Unread';
+
+  @override
+  String get sortByActivity => 'Recent activity';
+
+  @override
+  String get agentStateWorking => 'Working';
+
+  @override
+  String get agentStateWaiting => 'Waiting for you';
+
+  @override
+  String get agentStateBlocked => 'Blocked';
+
+  @override
+  String get agentStateDone => 'Done';
+
+  @override
+  String get agentStateIdle => 'Idle';
+
+  @override
+  String get agentStateStale => 'no update in a while';
+
+  @override
+  String get homeGreeting => 'Welcome back';
+
+  @override
+  String homeDeviceWorking(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count working',
+      one: '1 working',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDeviceThreads(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversations',
+      one: '1 conversation',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -277,6 +472,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get metricWork => 'Work';
 
   @override
+  String get profileMenuTooltip => 'Profile actions';
+
+  @override
   String get profileEditTitle => 'Edit profile';
 
   @override
@@ -293,9 +491,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileAgentConversationsLabel => 'conversations';
-
-  @override
-  String get profileBackupTitle => 'Backup';
 
   @override
   String get profileBackupNote =>
@@ -503,6 +698,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceAddressHide => 'Hide address';
 
   @override
+  String deviceLastConnection(String when) {
+    return 'Last connection: $when';
+  }
+
+  @override
+  String get deviceMenuTooltip => 'Device actions';
+
+  @override
+  String get deviceConnectionLabel => 'Connection';
+
+  @override
+  String get deviceAddressLabel => 'Address';
+
+  @override
   String get deviceNeverConnected => 'Never connected';
 
   @override
@@ -582,9 +791,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get threadsSortName => 'Name';
-
-  @override
-  String get threadsSortFolder => 'Folder';
 
   @override
   String get threadsCompact => 'Compact list';
@@ -2676,7 +2882,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsConversationClaudeGroup => 'Claude';
 
   @override
-  String get settingsConversationPiGroup => 'Pi Agent';
+  String get settingsConversationPiGroup => 'Autonomous agents';
 
   @override
   String get settingsConversationChatGroup => 'Conversation';

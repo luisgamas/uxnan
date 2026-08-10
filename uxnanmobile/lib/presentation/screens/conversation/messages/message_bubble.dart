@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,11 +11,13 @@ import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/composer_handoff_provider.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/message_content_view.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/image_thumb_strip.dart';
 import 'package:uxnan/presentation/widgets/image_viewer_dialog.dart';
 import 'package:uxnan/presentation/widgets/ne_dashed_outline.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Side of a sent-attachment thumbnail above the user bubble — the size the
 /// composer strip used to have, so a sent image stays a compact reference the
@@ -150,7 +151,7 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
     final colors = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final maxWidth = MediaQuery.sizeOf(context).width * 0.82;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final message = widget.message;
     // The BRIDGE owns the queue, so its state is what decides whether this is a
     // waiting message — not the locally-cached delivery state, which can lag a
@@ -278,14 +279,14 @@ class _UserBubbleState extends ConsumerState<_UserBubble> {
                             // action sits before the one that ends the
                             // message.
                             _QueuedActionButton(
-                              icon: Icons.edit_outlined,
+                              icon: UxIcons.edit,
                               tooltip: l10n.queuedMessageEdit,
                               busy: _busy,
                               onTap: _editQueued,
                             ),
                             const SizedBox(width: UxnanSpacing.xs),
                             _QueuedActionButton(
-                              icon: Icons.close_rounded,
+                              icon: UxIcons.close,
                               tooltip: l10n.queuedMessageCancel,
                               busy: _busy,
                               onTap: _cancelQueued,
@@ -346,7 +347,7 @@ class _QueuedActionButton extends StatelessWidget {
     required this.onTap,
   });
 
-  final IconData icon;
+  final UxIconData icon;
   final String tooltip;
   final bool busy;
   final VoidCallback onTap;
@@ -373,7 +374,7 @@ class _QueuedActionButton extends StatelessWidget {
                       semanticsLabel: tooltip,
                     ),
                   )
-                : Icon(icon, size: 16, color: colors.onSurfaceVariant),
+                : UxIcon(icon, size: 16, color: colors.onSurfaceVariant),
           ),
         ),
       ),
@@ -409,8 +410,8 @@ class _QueuedMessageNote extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.schedule_rounded,
+          UxIcon(
+            UxIcons.schedule,
             size: 13,
             color: colors.onSurfaceVariant,
           ),
@@ -443,8 +444,8 @@ class _CancelledMessageNote extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.block_rounded,
+          const UxIcon(
+            UxIcons.block,
             size: 13,
             color: UxnanColors.warning,
           ),
@@ -584,10 +585,8 @@ class _UserMessageBody extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: () => onExpandedChanged(!expanded),
-                  icon: Icon(
-                    expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
+                  icon: UxIcon(
+                    expanded ? UxIcons.expandLess : UxIcons.expandMore,
                     size: 18,
                   ),
                   label: Text(
@@ -620,7 +619,7 @@ class _CopyMessageAction extends StatelessWidget {
       alignment: Alignment.centerRight,
       child: TextButton.icon(
         onPressed: onCopy,
-        icon: const Icon(Icons.copy_rounded, size: 16),
+        icon: const UxIcon(UxIcons.copy, size: 16),
         label: Text(l10n.conversationCopyMessage),
         style: TextButton.styleFrom(
           foregroundColor: colors.onSurfaceVariant,

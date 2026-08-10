@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
 import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 
@@ -11,7 +13,15 @@ import 'package:uxnan/presentation/widgets/settings_tiles.dart';
 /// before push, confirm before opening a pull request).
 class SourceControlSectionScreen extends ConsumerWidget {
   /// Creates the source-control section screen.
-  const SourceControlSectionScreen({super.key});
+  const SourceControlSectionScreen({this.embedded = false, super.key});
+
+  /// Whether this is the **content of a pane** rather than a pushed screen.
+  ///
+  /// Embedded it keeps its title — the pane needs to say which section it is —
+  /// but drops the back arrow: in the two-pane layout there is nothing behind
+  /// it, and `canPop` would answer for the Settings route still open on the
+  /// left, so tapping it would leave Settings entirely.
+  final bool embedded;
 
   /// Pushes the screen onto the navigator.
   static Future<void> push(BuildContext context) {
@@ -27,6 +37,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     return NeScaffold(
+      automaticBackButton: !embedded,
       title: l10n.settingsGitSection,
       slivers: [
         SliverPadding(
@@ -37,7 +48,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
             UxnanSpacing.xxl,
           ),
           sliver: SliverList.list(
-            children: [
+            children: NeEntranceScope.stagger([
               NeSectionHeader(
                 label: l10n.settingsGitConfirmationsGroup,
                 first: true,
@@ -47,7 +58,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
                 itemBuilder: (context, i, pos) => switch (i) {
                   0 => NeSwitchTile(
                       position: pos,
-                      icon: Icons.arrow_upward_rounded,
+                      icon: UxIcons.arrowUpward,
                       title: l10n.settingsConfirmPushTitle,
                       subtitle: l10n.settingsConfirmPushSubtitle,
                       value: ref.watch(confirmBeforePushProvider),
@@ -57,7 +68,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
                     ),
                   _ => NeSwitchTile(
                       position: pos,
-                      icon: Icons.merge_rounded,
+                      icon: UxIcons.merge,
                       title: l10n.settingsConfirmPrTitle,
                       subtitle: l10n.settingsConfirmPrSubtitle,
                       value: ref.watch(confirmBeforePrProvider),
@@ -67,7 +78,7 @@ class SourceControlSectionScreen extends ConsumerWidget {
                     ),
                 },
               ),
-            ],
+            ]),
           ),
         ),
       ],

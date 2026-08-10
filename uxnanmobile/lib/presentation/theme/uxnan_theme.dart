@@ -76,11 +76,19 @@ ThemeData buildUxnanTheme({
     ),
     // Neural Expressive floating menus: rounded, on the same neutral surface as
     // the Icon Surfaces, never the narrow squared-off default.
+    //
+    // `textStyle` is not optional here: without it a menu row takes
+    // `labelLarge` (14), which is button text — and a menu is a decision
+    // surface floating over everything else, so it earns more presence than
+    // the control it was opened from. `menuItem` is 15/w500 for that reason.
     popupMenuTheme: PopupMenuThemeData(
       color: colorScheme.surfaceContainerHigh,
       elevation: 3,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
+      ),
+      textStyle: UxnanTypography.menuItem.copyWith(
+        color: colorScheme.onSurface,
       ),
     ),
     textTheme: _buildTextTheme(colorScheme),
@@ -127,16 +135,31 @@ ColorScheme _buildBrandColorScheme(Brightness brightness) {
 }
 
 TextTheme _buildTextTheme(ColorScheme colorScheme) {
+  // ALL FIFTEEN slots are set. A slot left null does not go unused — it falls
+  // back to Material's own value (titleLarge 22/w400, headlineSmall 24/w400,
+  // …), which is a different ladder from this one, on a different scale. Ten
+  // of them were null, and the ~90 call sites that reached for them were
+  // quietly following that other ladder: that is why the app's density jumped
+  // between screens depending on which slots each one happened to use.
+  final onSurface = colorScheme.onSurface;
+  final muted = colorScheme.onSurfaceVariant;
   return TextTheme(
-    displayLarge:
-        UxnanTypography.displayLarge.copyWith(color: colorScheme.onSurface),
-    headlineMedium:
-        UxnanTypography.headlineMedium.copyWith(color: colorScheme.onSurface),
-    titleSmall:
-        UxnanTypography.titleSmall.copyWith(color: colorScheme.onSurface),
-    bodyMedium:
-        UxnanTypography.bodyMedium.copyWith(color: colorScheme.onSurface),
-    bodySmall:
-        UxnanTypography.bodySmall.copyWith(color: colorScheme.onSurfaceVariant),
+    displayLarge: UxnanTypography.displayLarge.copyWith(color: onSurface),
+    displayMedium: UxnanTypography.displayMedium.copyWith(color: onSurface),
+    displaySmall: UxnanTypography.displaySmall.copyWith(color: onSurface),
+    headlineLarge: UxnanTypography.headlineLarge.copyWith(color: onSurface),
+    headlineMedium: UxnanTypography.headlineMedium.copyWith(color: onSurface),
+    headlineSmall: UxnanTypography.headlineSmall.copyWith(color: onSurface),
+    titleLarge: UxnanTypography.titleLarge.copyWith(color: onSurface),
+    titleMedium: UxnanTypography.titleMedium.copyWith(color: onSurface),
+    titleSmall: UxnanTypography.titleSmall.copyWith(color: onSurface),
+    bodyLarge: UxnanTypography.bodyLarge.copyWith(color: onSurface),
+    bodyMedium: UxnanTypography.bodyMedium.copyWith(color: onSurface),
+    // The one style that carries its own colour: bodySmall IS the supporting
+    // line, and every call site that had to re-mute it was noise.
+    bodySmall: UxnanTypography.bodySmall.copyWith(color: muted),
+    labelLarge: UxnanTypography.labelLarge.copyWith(color: onSurface),
+    labelMedium: UxnanTypography.labelMedium.copyWith(color: onSurface),
+    labelSmall: UxnanTypography.labelSmall.copyWith(color: muted),
   );
 }

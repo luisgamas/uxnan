@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +24,7 @@ import 'package:uxnan/presentation/providers/conversation_scroll_store.dart';
 import 'package:uxnan/presentation/providers/file_browser_providers.dart';
 import 'package:uxnan/presentation/providers/infrastructure_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_bar.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_chrome_visibility.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/composer_commands.dart';
@@ -41,6 +41,7 @@ import 'package:uxnan/presentation/screens/conversation/session_environment.dart
 import 'package:uxnan/presentation/screens/conversation/support/approval_mode_sheet.dart';
 import 'package:uxnan/presentation/screens/conversation/support/model_picker_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
@@ -52,6 +53,7 @@ import 'package:uxnan/presentation/widgets/ne_circular_button.dart';
 import 'package:uxnan/presentation/widgets/ne_enter_transition.dart';
 import 'package:uxnan/presentation/widgets/ne_pill_button.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// How many images one turn may carry. Attachments travel inline (base64) on
 /// `turn/send`, so the queue is bounded rather than left to the picker.
@@ -420,7 +422,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     }
     if (target == null) return;
 
-    if (MediaQuery.of(context).disableAnimations) {
+    if (MediaQuery.disableAnimationsOf(context)) {
       _scroll.jumpTo(target);
       return;
     }
@@ -749,8 +751,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
   }
 
   /// Horizontal inset that centers the conversation content within
-  /// [UxnanSpacing.maxContentWidth] on wide screens (tablets), falling back to
-  /// the normal gutter on phones.
+  /// [UxnanSpacing.maxContentWidth] on wide surfaces, falling back to the
+  /// normal gutter on narrow ones.
+  ///
+  /// [width] is the width of **this surface**, not the window: inside the
+  /// shell's content pane those differ by the whole drawer.
   double _horizontalInset(double width) {
     final inset = (width - UxnanSpacing.maxContentWidth) / 2;
     return inset > UxnanSpacing.lg ? inset : UxnanSpacing.lg;
@@ -782,6 +787,42 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Auto-scroll to the bottom on new content while the user is near it; a
+    // just-sent message (with the setting on) forces the jump even from a
+    // manually-scrolled position.
+    ref.listen(activeTimelineProvider, (previous, next) {
+      final snap = next.value;
+      if (snap == null || snap.messages.isEmpty) return;
+      // First real content for this open: restore the saved scroll position
+      // (or the bottom) instead of leaving it at the top.
+      if (!_restoredScroll) {
+        _restoreScroll();
+        return;
+      }
+      // After the initial restore, keep following the bottom on new content
+      // when the user is already near it (or just sent a message).
+      if (_forceScrollOnSend) {
+        _forceScrollOnSend = false;
+        _autoFollow.resume();
+      }
+      if (_autoFollow.shouldFollow) {
+        _scheduleFollowLatest();
+      }
+    });
+
+    // The conversation is not always the window: inside the shell's content
+    // pane it has the window MINUS a 320 dp drawer. Measuring the window would
+    // centre the text against space it does not own — off to one side, with
+    // the rail hanging in the middle of nothing.
+    //
+    // Only the WIDTH comes from here. A `LayoutBuilder`'s callback runs during
+    // LAYOUT, not build, so `ref.listen` inside it throws — subscriptions stay
+    // in `build` above, where Riverpod can tie them to this element's
+    // lifetime.
+    return LayoutBuilder(builder: _buildWithin);
+  }
+
+  Widget _buildWithin(BuildContext context, BoxConstraints constraints) {
     final l10n = AppLocalizations.of(context);
     final timelineAsync = ref.watch(activeTimelineProvider);
     final thread = ref.watch(threadByIdProvider(widget.threadId));
@@ -846,7 +887,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
     _userMessageKeys.removeWhere(
       (id, _) => !railAnchors.tickForId.containsKey(id),
     );
-    final contentInset = _horizontalInset(MediaQuery.sizeOf(context).width);
+    final contentInset = _horizontalInset(constraints.maxWidth);
     final running = connectedHere && activity == ThreadActivity.running;
 
     // The "+" is reserved for immediate media actions. Persistent turn
@@ -916,29 +957,6 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
       _checkCwd(cwd);
     }
 
-    // Auto-scroll to the bottom on new content while the user is near it; a
-    // just-sent message (with the setting on) forces the jump even from a
-    // manually-scrolled position.
-    ref.listen(activeTimelineProvider, (previous, next) {
-      final snap = next.value;
-      if (snap == null || snap.messages.isEmpty) return;
-      // First real content for this open: restore the saved scroll position
-      // (or the bottom) instead of leaving it at the top.
-      if (!_restoredScroll) {
-        _restoreScroll();
-        return;
-      }
-      // After the initial restore, keep following the bottom on new content
-      // when the user is already near it (or just sent a message).
-      if (_forceScrollOnSend) {
-        _forceScrollOnSend = false;
-        _autoFollow.resume();
-      }
-      if (_autoFollow.shouldFollow) {
-        _scheduleFollowLatest();
-      }
-    });
-
     final topInset = NeTopBar.preferredHeight(context);
 
     return Scaffold(
@@ -980,7 +998,7 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
                             onPressed: () => ref
                                 .read(threadManagerProvider)
                                 .loadMoreHistory(),
-                            icon: const Icon(Icons.history_rounded, size: 18),
+                            icon: const UxIcon(UxIcons.history, size: 18),
                             label: Text(l10n.conversationLoadEarlier),
                           ),
                         ),
@@ -1287,9 +1305,11 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
             right: 0,
             child: NeTopBar(
               leading: IconSurface(
-                icon: Icons.arrow_back_rounded,
+                icon: UxIcons.arrowBack,
                 tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                onPressed: () => Navigator.of(context).maybePop(),
+                // Pops on a phone; empties the pane on a wide window, where
+                // there is nothing behind this to pop back to.
+                onPressed: context.closePane,
               ),
               title: _ModelPill(
                 model: environment.modelName,
@@ -1298,12 +1318,12 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen>
               ),
               actions: [
                 IconSurface(
-                  icon: Icons.folder_open_rounded,
+                  icon: UxIcons.folderOpen,
                   tooltip: l10n.fileBrowserOpenTooltip,
                   onPressed: connectedHere ? () => _openFileBrowser(cwd) : null,
                 ),
                 IconSurface(
-                  icon: Icons.commit_rounded,
+                  icon: UxIcons.commit,
                   tooltip: gitBranch != null
                       ? '${l10n.environmentGit} · $gitBranch'
                       : l10n.environmentCommitOrPush,
@@ -1355,8 +1375,8 @@ class _ModelPill extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.auto_awesome_outlined,
+                  UxIcon(
+                    UxIcons.autoAwesome,
                     size: 16,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1368,8 +1388,8 @@ class _ModelPill extends StatelessWidget {
                       style: textTheme.titleSmall,
                     ),
                   ),
-                  Icon(
-                    Icons.arrow_drop_down_rounded,
+                  UxIcon(
+                    UxIcons.arrowDropDown,
                     size: 18,
                     color: colors.onSurfaceVariant,
                   ),
@@ -1455,8 +1475,8 @@ class _TokenChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.donut_large_outlined,
+              UxIcon(
+                UxIcons.donutLarge,
                 size: 13,
                 color: colors.onSurfaceVariant,
               ),
@@ -1644,14 +1664,14 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.forum_outlined,
+            UxIcon(
+              UxIcons.forum,
               size: 48,
               color: colors.onSurfaceVariant,
               semanticLabel: 'Conversation',
             ),
             const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.conversationEmpty, style: textTheme.titleSmall),
+            Text(l10n.conversationEmpty, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.xs),
             Text(
               l10n.conversationEmptyBody,
@@ -1686,14 +1706,14 @@ class _ConversationMenu extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return IconSurfaceMenu<void>(
       tooltip: l10n.threadsMore,
-      icon: Icons.more_vert_rounded,
+      icon: UxIcons.moreVert,
       constraints: const BoxConstraints(minWidth: 220),
       itemBuilder: (context) => [
         PopupMenuItem<void>(
           onTap: onRename,
           child: Row(
             children: [
-              const Icon(Icons.edit_outlined, size: 18),
+              const UxIcon(UxIcons.edit, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionRename),
             ],
@@ -1703,7 +1723,7 @@ class _ConversationMenu extends StatelessWidget {
           onTap: onSessionInfo,
           child: Row(
             children: [
-              const Icon(Icons.badge_outlined, size: 18),
+              const UxIcon(UxIcons.badge, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionSessionInfo),
             ],
@@ -1713,7 +1733,7 @@ class _ConversationMenu extends StatelessWidget {
           onTap: onFork,
           child: Row(
             children: [
-              const Icon(Icons.call_split_rounded, size: 18),
+              const UxIcon(UxIcons.callSplit, size: 18),
               const SizedBox(width: UxnanSpacing.sm),
               Text(l10n.threadActionFork),
             ],
@@ -1772,7 +1792,7 @@ class _ShortcutSlot extends StatelessWidget {
     final child = switch (slot) {
       _ComposerShortcut.jumpToBottom => NeCircularButton(
           key: const ValueKey('shortcut-jump'),
-          icon: Icons.keyboard_arrow_down_rounded,
+          icon: UxIcons.keyboardArrowDown,
           tooltip: l10n.conversationScrollToBottom,
           onTap: onJumpToBottom,
         ),
@@ -1785,7 +1805,7 @@ class _ShortcutSlot extends StatelessWidget {
           children: [
             if (draftCount > 0)
               NePillButton(
-                icon: Icons.edit_note_rounded,
+                icon: UxIcons.editNote,
                 label: l10n.rescuedDraftsAction(draftCount),
                 selected: draftsOpen,
                 onTap: onToggleDrafts,
@@ -1794,7 +1814,7 @@ class _ShortcutSlot extends StatelessWidget {
               const SizedBox(width: UxnanSpacing.sm),
             if (canQueue)
               NePillButton(
-                icon: Icons.playlist_add_rounded,
+                icon: UxIcons.playlistAdd,
                 label: l10n.composerQueueMessage,
                 emphasized: true,
                 onTap: onQueueMessage,
@@ -1866,8 +1886,8 @@ class _QueuePausedBanner extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.pause_circle_outline_rounded,
+              UxIcon(
+                UxIcons.pauseCircle,
                 size: 18,
                 color: colors.onSurfaceVariant,
               ),
@@ -1948,8 +1968,8 @@ class _SessionInfoSheet extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.terminal_rounded,
+                UxIcon(
+                  UxIcons.terminal,
                   size: 16,
                   color: colors.onSurfaceVariant,
                 ),
@@ -2021,7 +2041,7 @@ class _IdRow extends StatelessWidget {
         ),
         const SizedBox(width: UxnanSpacing.sm),
         IconSurface(
-          icon: Icons.content_copy_outlined,
+          icon: UxIcons.contentCopy,
           tooltip: MaterialLocalizations.of(context).copyButtonLabel,
           onPressed: hasValue
               ? () async {
@@ -2070,8 +2090,8 @@ class _CwdMissingBanner extends StatelessWidget {
           padding: const EdgeInsets.all(UxnanSpacing.sm),
           child: Row(
             children: [
-              Icon(
-                Icons.folder_off_outlined,
+              UxIcon(
+                UxIcons.folderOff,
                 size: 20,
                 color: colors.onErrorContainer,
               ),
@@ -2125,8 +2145,8 @@ class _AutonomousBanner extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.auto_awesome_outlined,
+              UxIcon(
+                UxIcons.autoAwesome,
                 size: 20,
                 color: colors.onSecondaryContainer,
               ),
@@ -2141,7 +2161,7 @@ class _AutonomousBanner extends StatelessWidget {
               ),
               const SizedBox(width: UxnanSpacing.xs),
               IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
+                icon: const UxIcon(UxIcons.close, size: 18),
                 color: colors.onSecondaryContainer,
                 visualDensity: VisualDensity.compact,
                 tooltip: l10n.conversationAutonomousModeDismiss,
@@ -2195,8 +2215,8 @@ class _LoginRequiredBanner extends ConsumerWidget {
               if (loginInProgress)
                 PolygonLoader(color: colors.onErrorContainer)
               else
-                Icon(
-                  Icons.login_rounded,
+                UxIcon(
+                  UxIcons.login,
                   size: 20,
                   color: colors.onErrorContainer,
                 ),

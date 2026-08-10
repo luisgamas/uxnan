@@ -198,4 +198,77 @@ void main() {
     expect(find.text('Gemini CLI'), findsNothing);
     expect(find.text('Echo Agent'), findsNothing);
   });
+
+  group('the container follows the window, the content does not', () {
+    // M3's full-screen dialog is a COMPACT-window pattern. Past `expanded` the
+    // same form becomes a dialog over whatever is there: spreading three
+    // answers across 1600 px makes the eye cross the whole monitor between the
+    // agent list and Start, and covers the drawer it was launched from.
+    Future<void> open(WidgetTester tester, {required double width}) async {
+      tester.view.physicalSize = Size(width, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            projectsProvider.overrideWith(
+              (ref) async =>
+                  const [Project(id: 'p1', name: 'App', cwd: '/app')],
+            ),
+            agentsProvider.overrideWith(
+              (ref) async => const <AgentDescriptor>[],
+            ),
+            agentModelsProvider
+                .overrideWith((ref, id) async => const <AgentModel>[]),
+            authStatusProvider.overrideWith(
+              (ref, agentId) async => AuthStatus(
+                agentId: agentId,
+                requiresLogin: false,
+                loginInProgress: false,
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () => NewConversationScreen.show(context),
+                    child: const Text('open'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a phone gets the full-screen dialog', (tester) async {
+      await open(tester, width: 390);
+
+      expect(find.byType(Dialog), findsNothing);
+      expect(
+        tester.getSize(find.byType(NewConversationScreen)).width,
+        390,
+        reason: 'a phone has no room to bound anything',
+      );
+    });
+
+    testWidgets('a wide window bounds it instead', (tester) async {
+      await open(tester, width: 1280);
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(NewConversationScreen)).width,
+        lessThanOrEqualTo(560),
+        reason: 'the form stretched across the whole window',
+      );
+    });
+  });
 }

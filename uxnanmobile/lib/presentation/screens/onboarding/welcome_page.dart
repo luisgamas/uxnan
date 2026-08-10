@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/screens/onboarding/floating_agents.dart';
 import 'package:uxnan/presentation/screens/onboarding/onboarding_page_layout.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/widgets/agent_logos.dart';
 
 /// First onboarding page: introduces the product.
@@ -13,7 +14,7 @@ class WelcomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return OnboardingPageLayout(
-      icon: Icons.hub_rounded,
+      icon: UxIcons.hub,
       title: l10n.onboardingWelcomeTitle,
       body: l10n.onboardingWelcomeBody,
       top: const FloatingAgents(

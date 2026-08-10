@@ -9,6 +9,9 @@ import 'package:uxnan/presentation/screens/conversation/composer/composer_contex
 import 'package:uxnan/presentation/screens/conversation/composer/turn_control_shelf.dart';
 import 'package:uxnan/presentation/screens/conversation/composer/turn_tools_sheet.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
+import '../../support/ux_icon_finder.dart';
 
 Widget _wrap(Widget child) => ProviderScope(
       child: MaterialApp(
@@ -30,7 +33,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.tap(findUxIcon(UxIcons.add));
     await tester.pumpAndSettle();
     expect(find.text('Photo library'), findsOneWidget);
     expect(find.text('Take a photo'), findsOneWidget);
@@ -77,15 +80,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.psychology_alt_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.lock_open_rounded), findsOneWidget);
+    expect(findUxIcon(UxIcons.psychologyAlt), findsOneWidget);
+    expect(findUxIcon(UxIcons.lockOpen), findsOneWidget);
     expect(find.text('Reasoning effort: Auto'), findsNothing);
     expect(find.text('Full access'), findsNothing);
     final chevronX =
         tester.getCenter(find.byKey(const ValueKey('turn-controls-toggle'))).dx;
-    final reasoningX =
-        tester.getCenter(find.byIcon(Icons.psychology_alt_outlined)).dx;
-    final approvalX = tester.getCenter(find.byIcon(Icons.lock_open_rounded)).dx;
+    final reasoningX = tester.getCenter(findUxIcon(UxIcons.psychologyAlt)).dx;
+    final approvalX = tester.getCenter(findUxIcon(UxIcons.lockOpen)).dx;
     expect(reasoningX - chevronX, lessThanOrEqualTo(52));
     expect(approvalX - reasoningX, lessThanOrEqualTo(52));
     final surfaces = find.byKey(const ValueKey('compact-control-surface'));
@@ -97,17 +99,17 @@ void main() {
       );
     }
     expect(
-      tester.widget<Icon>(find.byIcon(Icons.psychology_alt_outlined)).size,
+      tester.widget<UxIcon>(findUxIcon(UxIcons.psychologyAlt)).size,
       24,
     );
 
-    await tester.tap(find.byIcon(Icons.lock_open_rounded));
+    await tester.tap(findUxIcon(UxIcons.lockOpen));
     expect(approvalTaps, 1);
 
     await tester.tap(find.byKey(const ValueKey('turn-controls-toggle')));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.psychology_alt_outlined), findsNothing);
-    expect(find.byIcon(Icons.lock_open_rounded), findsNothing);
+    expect(findUxIcon(UxIcons.psychologyAlt), findsNothing);
+    expect(findUxIcon(UxIcons.lockOpen), findsNothing);
     expect(find.byKey(const ValueKey('turn-controls-toggle')), findsOneWidget);
   });
 
@@ -186,8 +188,8 @@ void main() {
 
       await tester.pumpAndSettle();
       expect(tester.getSize(transition).width, 0);
-      expect(find.byIcon(Icons.psychology_alt_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.pan_tool_outlined), findsOneWidget);
+      expect(findUxIcon(UxIcons.psychologyAlt), findsOneWidget);
+      expect(findUxIcon(UxIcons.panTool), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byKey(const ValueKey('turn-controls-toggle')));
@@ -233,17 +235,9 @@ void main() {
   testWidgets('approval icon color communicates the selected safety mode',
       (tester) async {
     const cases = [
-      (
-        ApprovalMode.approveForMe,
-        Icons.verified_user_outlined,
-        UxnanColors.success
-      ),
-      (ApprovalMode.fullAccess, Icons.lock_open_rounded, UxnanColors.error),
-      (
-        ApprovalMode.requestApproval,
-        Icons.pan_tool_outlined,
-        UxnanColors.warning
-      ),
+      (ApprovalMode.approveForMe, UxIcons.verifiedUser, UxnanColors.success),
+      (ApprovalMode.fullAccess, UxIcons.lockOpen, UxnanColors.error),
+      (ApprovalMode.requestApproval, UxIcons.panTool, UxnanColors.warning),
     ];
 
     for (final (mode, icon, color) in cases) {
@@ -262,7 +256,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.widget<Icon>(find.byIcon(icon)).color, color);
+      expect(tester.widget<UxIcon>(findUxIcon(icon)).color, color);
     }
   });
 
@@ -303,7 +297,7 @@ void main() {
     await tester.pump();
     expect(focusNode.hasFocus, isTrue);
 
-    await tester.tap(find.byIcon(Icons.psychology_alt_outlined));
+    await tester.tap(findUxIcon(UxIcons.psychologyAlt));
     await tester.pumpAndSettle();
 
     expect(find.text('High'), findsOneWidget);

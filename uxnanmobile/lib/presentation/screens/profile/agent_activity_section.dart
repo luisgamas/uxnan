@@ -10,6 +10,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/profile/profile_metrics_widgets.dart'
     show fmtTokens;
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/widgets/activity_heatmap.dart';
 import 'package:uxnan/presentation/widgets/agent_visuals.dart';
@@ -17,6 +18,7 @@ import 'package:uxnan/presentation/widgets/connected_button_group.dart';
 import 'package:uxnan/presentation/widgets/expressive_card.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
 import 'package:uxnan/presentation/widgets/ne_card.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Which lens the agent-activity block reads through: everyday **activity**
 /// (conversations + messages, the default) or **token throughput**.
@@ -111,10 +113,8 @@ class _AgentActivitySectionState extends ConsumerState<AgentActivitySection> {
           labelBuilder: (lens, _) => Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                lens == _Lens.activity
-                    ? Icons.grid_view_rounded
-                    : Icons.toll_rounded,
+              UxIcon(
+                lens == _Lens.activity ? UxIcons.gridView : UxIcons.toll,
               ),
               const SizedBox(width: UxnanSpacing.sm),
               Text(
@@ -267,8 +267,8 @@ class _AgentCard extends StatelessWidget {
                       height: 24,
                       child: logo != null
                           ? SvgPicture.asset(logo)
-                          : Icon(
-                              Icons.smart_toy_outlined,
+                          : UxIcon(
+                              UxIcons.smartToy,
                               size: 24,
                               color: colors.onSurfaceVariant,
                             ),
@@ -397,8 +397,8 @@ class _TokensNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline_rounded,
+          UxIcon(
+            UxIcons.info,
             size: 18,
             color: colors.onSurfaceVariant,
           ),
@@ -445,7 +445,7 @@ class _YearSelector extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: const Icon(Icons.chevron_left_rounded),
+              icon: const UxIcon(UxIcons.chevronLeft),
               tooltip: MaterialLocalizations.of(context).previousMonthTooltip,
               onPressed: canGoBack ? () => onChange(-1) : null,
               visualDensity: VisualDensity.compact,
@@ -459,7 +459,7 @@ class _YearSelector extends StatelessWidget {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.chevron_right_rounded),
+              icon: const UxIcon(UxIcons.chevronRight),
               tooltip: MaterialLocalizations.of(context).nextMonthTooltip,
               onPressed: canGoForward ? () => onChange(1) : null,
               visualDensity: VisualDensity.compact,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uxnan/domain/enums/network_kind.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// A small pill that labels the network path a live connection is using —
 /// LAN, Tailscale, a direct address, or the relay — following the same
@@ -41,7 +43,7 @@ class TransportBadge extends StatelessWidget {
         dense: dense,
         background: background,
         foreground: foreground,
-        leading: Icon(icon, size: dense ? 11 : 13, color: foreground),
+        leading: UxIcon(icon, size: dense ? 11 : 13, color: foreground),
         label: label,
       );
     }
@@ -57,18 +59,8 @@ class TransportBadge extends StatelessWidget {
     );
   }
 
-  (IconData, String) _labelFor(NetworkKind kind, AppLocalizations l10n) {
-    return switch (kind) {
-      NetworkKind.lan => (Icons.router_rounded, l10n.transportLan),
-      NetworkKind.tailscale => (
-          Icons.shield_rounded,
-          l10n.transportTailscale,
-        ),
-      NetworkKind.direct => (Icons.link_rounded, l10n.connectionDirect),
-      NetworkKind.relay => (Icons.cloud_outlined, l10n.connectionRelay),
-      NetworkKind.unknown => (Icons.help_outline_rounded, ''),
-    };
-  }
+  (UxIconData, String) _labelFor(NetworkKind kind, AppLocalizations l10n) =>
+      (networkKindIcon(kind), networkKindLabel(kind, l10n));
 
   (Color, Color) _colorsFor(NetworkKind kind, ColorScheme colors) {
     return switch (kind) {
@@ -139,3 +131,30 @@ class _Pill extends StatelessWidget {
     );
   }
 }
+
+/// The human name of a network path, shared by the badge and any surface that
+/// spells the path out in words (the device card's connection cell). One
+/// mapping, so a rename cannot leave the two disagreeing. Empty for
+/// [NetworkKind.unknown] — callers decide what an unclassified live channel
+/// should say.
+String networkKindLabel(NetworkKind kind, AppLocalizations l10n) {
+  return switch (kind) {
+    NetworkKind.lan => l10n.transportLan,
+    NetworkKind.tailscale => l10n.transportTailscale,
+    NetworkKind.direct => l10n.connectionDirect,
+    NetworkKind.relay => l10n.connectionRelay,
+    NetworkKind.unknown => '',
+  };
+}
+
+/// The glyph for a network path, shared by the badge and any surface that shows
+/// the path on its own (the device card's connection badge). A LAN, a Tailscale
+/// tunnel and the relay are different journeys, and one generic aerial for all
+/// three told the reader nothing they did not already know.
+UxIconData networkKindIcon(NetworkKind kind) => switch (kind) {
+      NetworkKind.lan => UxIcons.router,
+      NetworkKind.tailscale => UxIcons.shield,
+      NetworkKind.direct => UxIcons.link,
+      NetworkKind.relay => UxIcons.cloud,
+      NetworkKind.unknown => UxIcons.help,
+    };

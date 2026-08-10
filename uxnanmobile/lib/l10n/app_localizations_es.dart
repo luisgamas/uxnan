@@ -199,12 +199,207 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String profilePairedPcs(int count) {
-    return '$count PCs';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count PCs',
+      one: '1 PC',
+    );
+    return '$_temp0';
   }
 
   @override
   String profileActiveSessions(int count) {
     return '$count en línea';
+  }
+
+  @override
+  String get sortProjectsHeader => 'Proyectos';
+
+  @override
+  String get sortFoldersHeader => 'Carpetas';
+
+  @override
+  String get sortConversationsHeader => 'Conversaciones';
+
+  @override
+  String get sortByAttention => 'Requiere atención';
+
+  @override
+  String spacesConversationCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversaciones',
+      one: '1 conversación',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spacesOther => 'Otros espacios';
+
+  @override
+  String get spacesNoFolder => 'Sin carpeta';
+
+  @override
+  String get spacesNewConversationHere => 'Nueva conversación aquí';
+
+  @override
+  String workspaceDirty(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count archivos sin confirmar',
+      one: '1 archivo sin confirmar',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceAhead(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commits por subir',
+      one: '1 commit por subir',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceBehind(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count commits por bajar',
+      one: '1 commit por bajar',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String workspaceUpstream(String branch) {
+    return 'Siguiendo a $branch';
+  }
+
+  @override
+  String get workspaceGitUnavailable => 'Estado de git no disponible';
+
+  @override
+  String get workspaceGitStale => 'Último estado conocido';
+
+  @override
+  String get workspaceNoUpstream => 'Sin rama remota';
+
+  @override
+  String get workspaceClean => 'Sin cambios sin confirmar';
+
+  @override
+  String spacesWorkspaceCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count carpetas',
+      one: '1 carpeta',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get spacesDetailsPath => 'Ruta';
+
+  @override
+  String get shellWelcomeTagline =>
+      'Un nombre sin relación ni derivación de ningún producto existente.';
+
+  @override
+  String get shellWelcomeHint =>
+      'Abre una conversación desde el panel de la izquierda.';
+
+  @override
+  String get shellHowToPair => 'Cómo enlazar un dispositivo';
+
+  @override
+  String get drawerDevices => 'Dispositivos';
+
+  @override
+  String get drawerSwitchDevice => 'Cambiar de PC';
+
+  @override
+  String get drawerNoDevices => 'Aún no hay ningún PC emparejado';
+
+  @override
+  String get drawerBackToOverview => 'Volver al resumen';
+
+  @override
+  String get spacesCopyPath => 'Copiar ruta';
+
+  @override
+  String get spacesConversations => 'Conversaciones';
+
+  @override
+  String get spacesNoMatch => 'Ningún espacio coincide con estos filtros';
+
+  @override
+  String get spacesClearFilters => 'Limpiar filtros';
+
+  @override
+  String get filterByState => 'Estado';
+
+  @override
+  String get filterStateWorking => 'Trabajando';
+
+  @override
+  String get filterStateWaiting => 'Te espera';
+
+  @override
+  String get filterStateUnread => 'Sin leer';
+
+  @override
+  String get sortByActivity => 'Actividad reciente';
+
+  @override
+  String get agentStateWorking => 'Trabajando';
+
+  @override
+  String get agentStateWaiting => 'Te espera';
+
+  @override
+  String get agentStateBlocked => 'Bloqueado';
+
+  @override
+  String get agentStateDone => 'Terminó';
+
+  @override
+  String get agentStateIdle => 'En reposo';
+
+  @override
+  String get agentStateStale => 'sin novedades hace rato';
+
+  @override
+  String get homeGreeting => 'Hola de nuevo';
+
+  @override
+  String homeDeviceWorking(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trabajando',
+      one: '1 trabajando',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String homeDeviceThreads(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversaciones',
+      one: '1 conversación',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -278,6 +473,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get metricWork => 'Trabajo';
 
   @override
+  String get profileMenuTooltip => 'Acciones de perfil';
+
+  @override
   String get profileEditTitle => 'Editar perfil';
 
   @override
@@ -294,9 +492,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get profileAgentConversationsLabel => 'conversaciones';
-
-  @override
-  String get profileBackupTitle => 'Respaldo';
 
   @override
   String get profileBackupNote =>
@@ -505,6 +700,20 @@ class AppLocalizationsEs extends AppLocalizations {
   String get deviceAddressHide => 'Ocultar dirección';
 
   @override
+  String deviceLastConnection(String when) {
+    return 'Última conexión: $when';
+  }
+
+  @override
+  String get deviceMenuTooltip => 'Acciones del dispositivo';
+
+  @override
+  String get deviceConnectionLabel => 'Conexión';
+
+  @override
+  String get deviceAddressLabel => 'Dirección';
+
+  @override
   String get deviceNeverConnected => 'Nunca conectado';
 
   @override
@@ -584,9 +793,6 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get threadsSortName => 'Nombre';
-
-  @override
-  String get threadsSortFolder => 'Carpeta';
 
   @override
   String get threadsCompact => 'Lista compacta';
@@ -2691,7 +2897,7 @@ class AppLocalizationsEs extends AppLocalizations {
   String get settingsConversationClaudeGroup => 'Claude';
 
   @override
-  String get settingsConversationPiGroup => 'Pi Agent';
+  String get settingsConversationPiGroup => 'Agentes autónomos';
 
   @override
   String get settingsConversationChatGroup => 'Conversación';

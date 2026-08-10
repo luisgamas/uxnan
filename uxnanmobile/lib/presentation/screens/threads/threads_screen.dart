@@ -1,75 +1,79 @@
 import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uxnan/application/services/workspace_grouping.dart';
 import 'package:uxnan/domain/entities/thread.dart';
 import 'package:uxnan/domain/entities/trusted_device.dart';
-import 'package:uxnan/domain/enums/agent_id.dart';
+import 'package:uxnan/domain/enums/agent_run_state.dart';
 import 'package:uxnan/domain/enums/thread_status.dart';
 import 'package:uxnan/domain/value_objects/app_update_status.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
+import 'package:uxnan/presentation/providers/agent_run_state_provider.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
+import 'package:uxnan/presentation/providers/shell_device_provider.dart';
 import 'package:uxnan/presentation/providers/update_providers.dart';
 import 'package:uxnan/presentation/router/app_router.dart';
+import 'package:uxnan/presentation/router/pane_navigation.dart';
 import 'package:uxnan/presentation/screens/threads/new_conversation_screen.dart';
+import 'package:uxnan/presentation/screens/threads/space_rows.dart';
 import 'package:uxnan/presentation/screens/threads/thread_list_controls.dart';
 import 'package:uxnan/presentation/screens/threads/thread_tile.dart';
+import 'package:uxnan/presentation/screens/threads/workspace_details_sheet.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
-import 'package:uxnan/presentation/widgets/agent_visuals.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/icon_surface.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// The threads of a connected PC (spec 02a §5.4.2). Lists the active bridge's
 /// threads with per-agent filter chips, and opens a thread's conversation.
 class ThreadsScreen extends ConsumerStatefulWidget {
   /// Creates a [ThreadsScreen] for the device with [deviceId].
-  const ThreadsScreen({required this.deviceId, super.key});
+  const ThreadsScreen({
+    required this.deviceId,
+    this.embedded = false,
+    super.key,
+  });
 
   /// The PC whose threads are shown (used for the title).
   final String deviceId;
+
+  /// Whether this is the **content** of a surface that already provides its
+  /// own chrome — the permanent drawer's middle zone.
+  ///
+  /// Embedded it drops the app bar (the drawer has its own header above it),
+  /// the pull-to-refresh (a drawer is not a page you pull) and the extended
+  /// FAB (which would float over a 320 dp column). The list itself, its
+  /// controls and every behaviour around them are identical: this is one
+  /// screen shown two ways, not two screens to keep in step.
+  final bool embedded;
 
   @override
   ConsumerState<ThreadsScreen> createState() => _ThreadsScreenState();
 }
 
 class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
-  /// Which dimension the chip bar filters on. The scope selector on the left
-  /// of the bar switches between agent and project; the filter chips to the
-  /// right of it change to match. One scope is active at a time — switching
-  /// clears the other filter so the state stays consistent.
-  _ThreadScope _scope = _ThreadScope.agent;
-
-  /// The selected agent filter; null means "all agents".
-  AgentId? _agentFilter;
-
-  /// The selected project filter (a project key — `projectId` or `cwd`); null
-  /// means "all projects". In-memory, like the agent filter. Only consulted
-  /// while [_scope] is [_ThreadScope.project].
-  String? _projectFilter;
-
-  /// Switches the active scope. Clears the other dimension's filter so the
-  /// two stay independent — a previously-selected project filter has no
-  /// meaning under the agent scope and vice versa.
-  void _setScope(_ThreadScope scope) {
-    if (scope == _scope) return;
-    setState(() {
-      _scope = scope;
-      if (scope == _ThreadScope.agent) {
-        _projectFilter = null;
-      } else {
-        _agentFilter = null;
-      }
-    });
-  }
-
   @override
   void initState() {
     super.initState();
     // Pull this PC's threads on open so they get tagged with the device and the
     // list reflects the connected bridge.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refresh();
+      // Remembered for the permanent drawer, which on a cold start or a deep
+      // link has no route to read the PC from — see [shellDeviceProvider].
+      // Not recorded when this list IS the drawer's own content: that would be
+      // the drawer telling itself what it already decided.
+      if (!widget.embedded) {
+        unawaited(
+          ref.read(lastVisitedDeviceProvider.notifier).visited(widget.deviceId),
+        );
+      }
+    });
   }
 
   /// Whether the live session is actually connected to THIS PC (not merely some
@@ -114,13 +118,15 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     }
   }
 
-  Future<void> _newConversation() async {
-    final threadId = await NewConversationScreen.show(context);
+  Future<void> _newConversation({String? cwd}) async {
+    final threadId = await NewConversationScreen.show(context, initialCwd: cwd);
     if (threadId == null || !mounted) return;
     await ref
         .read(threadManagerProvider)
         .loadThreads(deviceId: widget.deviceId);
-    if (mounted) unawaited(context.push(AppRoutes.conversation(threadId)));
+    if (mounted) {
+      context.openInPane(AppRoutes.conversation(threadId));
+    }
   }
 
   String _title(List<TrustedDevice> devices) {
@@ -152,396 +158,386 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
         ref.watch(connectingDeviceProvider).value?.macDeviceId ==
             widget.deviceId;
 
-    final agents = _agentsPresent(threads);
-    // Project chips are computed only when the project scope is active.
-    final projects = _scope == _ThreadScope.project
-        ? _projectsPresent(threads)
-        : const <_ProjectChip>[];
-    // Only the active scope's filter is consulted; the other dimension's
-    // filter is cleared on scope change so the two stay independent.
-    final filtered = threads.where((t) {
-      if (_scope == _ThreadScope.agent) {
-        return _agentFilter == null ||
-            AgentIdParsing.fromWireId(t.agentId) == _agentFilter;
-      }
-      return _projectFilter == null || _projectKeyOf(t) == _projectFilter;
-    }).toList();
-    final visible = sortThreads(filtered, sort);
+    final worktreeSort = ref.watch(worktreeSortProvider);
+    final projectSort = ref.watch(projectSortProvider);
+    // Conversations are sorted BEFORE grouping — the grouping keeps the order
+    // it is given, so one setting decides the order inside every folder.
+    final groups = groupThreadsByWorkspace(
+      threads: sortThreads(threads, sort, statusRank: _threadRank),
+      projects: ref.watch(projectsProvider).value ?? const [],
+      // Empty on a bridge without `git/worktrees`, which is exactly the
+      // fallback: no table, no repository nodes, the flat list as before.
+      repos: ref.watch(workspaceRepoTableProvider).value ?? const {},
+    );
+    final collapsed = ref.watch(collapsedProjectsProvider);
+    // Each level is ordered by its OWN setting, including the worktrees inside
+    // a project — the one list the menu could not reach while the tree sorted
+    // them itself.
+    final rows = _flatten(
+      _sortNodes(
+        buildWorkspaceTree(
+          groups,
+          orderWorkspaces: (a, b) => _compareGroups(a, b, worktreeSort),
+        ),
+        projectSort,
+        worktreeSort,
+      ),
+      collapsed: collapsed,
+    );
 
     final l10n = AppLocalizations.of(context);
+    final actions = [
+      // Search all of this PC's threads (ignores the agent filter).
+      ThreadSearchAnchor(
+        threads: threads,
+        onSelect: (id) => context.openInPane(AppRoutes.conversation(id)),
+      ),
+      ThreadSortMenu(
+        // The project group only appears when there IS one to order — a PC
+        // whose folders never group would otherwise get a menu entry that
+        // moves nothing it can see.
+        projectSort: rows.any((r) => r is _RepoRow) ? projectSort : null,
+        worktreeSort: worktreeSort,
+        agentSort: sort,
+        onChanged: (choice) {
+          switch (choice.level) {
+            case SortLevel.projects:
+              ref.read(projectSortProvider.notifier).set(choice.value);
+            case SortLevel.worktrees:
+              ref.read(worktreeSortProvider.notifier).set(choice.value);
+            case SortLevel.agents:
+              unawaited(
+                ref.read(threadSortProvider.notifier).set(choice.value),
+              );
+          }
+        },
+      ),
+      ThreadMoreMenu(
+        compact: compact,
+        onCompactChanged: (value) =>
+            ref.read(threadDensityCompactProvider.notifier).set(value: value),
+        onArchived: () =>
+            context.push(AppRoutes.deviceArchived(widget.deviceId)),
+      ),
+    ];
+
+    final slivers = <Widget>[
+      // App-update notice (Play In-App Update on Android / App Store on iOS).
+      // Renders nothing unless an update is available and undismissed.
+      const SliverToBoxAdapter(child: _UpdateBanner()),
+      // Bridge-update notice: the paired PC's bridge reports it's outdated
+      // (`bridge/status.updateAvailable`). Informational + dismissible.
+      const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
+      if (!connectedHere)
+        SliverToBoxAdapter(
+          child: _OfflineBanner(
+            connecting: connectingHere,
+            onConnect: _connectHere,
+          ),
+        ),
+      if (rows.isEmpty)
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: _EmptyThreads(),
+        )
+      else
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            widget.embedded ? UxnanSpacing.sm : UxnanSpacing.lg,
+            UxnanSpacing.sm,
+            widget.embedded ? UxnanSpacing.sm : UxnanSpacing.lg,
+            UxnanSpacing.xxl,
+          ),
+          // Flattened rather than nested so the list stays lazy: a PC with
+          // two hundred conversations builds the handful on screen, not the
+          // whole tree.
+          sliver: SliverList.builder(
+            itemCount: rows.length,
+            itemBuilder: (context, index) => NeEntranceRow(
+              index: index,
+              child: _buildRow(context, rows[index], compact: compact),
+            ),
+          ),
+        ),
+    ];
+
+    if (widget.embedded) {
+      return _EmbeddedSpaces(
+        actions: actions,
+        slivers: slivers,
+        onNewConversation: connectedHere ? _newConversation : null,
+      );
+    }
 
     return NeScaffold(
       title: _title(devices),
       onRefresh: _refresh,
-      actions: [
-        // Search all of this PC's threads (ignores the agent filter).
-        ThreadSearchAnchor(
-          threads: threads,
-          onSelect: (id) => context.push(AppRoutes.conversation(id)),
-        ),
-        ThreadSortMenu(
-          sort: sort,
-          onChanged: (value) =>
-              ref.read(threadSortProvider.notifier).set(value),
-        ),
-        ThreadMoreMenu(
-          compact: compact,
-          onCompactChanged: (value) =>
-              ref.read(threadDensityCompactProvider.notifier).set(value: value),
-          onArchived: () =>
-              context.push(AppRoutes.deviceArchived(widget.deviceId)),
-        ),
-      ],
+      actions: actions,
+      // The list is long and the button covers its bottom-right corner, which
+      // is where the rows you are scrolling toward arrive.
+      hideFabOnScroll: true,
       floatingActionButton: FloatingActionButton.extended(
         // New conversations only make sense against the live PC.
         onPressed: connectedHere ? _newConversation : null,
-        icon: const Icon(Icons.add_comment_outlined),
+        icon: const UxIcon(UxIcons.addComment),
         label: Text(l10n.newThreadAction),
         backgroundColor: connectedHere
             ? null
             : Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      slivers: [
-        // App-update notice (Play In-App Update on Android / App Store on iOS).
-        // Renders nothing unless an update is available and undismissed.
-        const SliverToBoxAdapter(child: _UpdateBanner()),
-        // Bridge-update notice: the paired PC's bridge reports it's outdated
-        // (`bridge/status.updateAvailable`). Informational + dismissible.
-        const SliverToBoxAdapter(child: _BridgeUpdateBanner()),
-        // Filter bar: a scope selector on the left (Agent / Project) and the
-        // matching chip bar to the right. The scope is always visible; the
-        // chip bar only appears when there's more than one option to choose
-        // from in the active scope (multiple agents or multiple projects).
-        if (agents.length > 1 || projects.length > 1)
-          SliverToBoxAdapter(
-            child: _FilterBar(
-              scope: _scope,
-              onScopeChanged: _setScope,
-              // Each bar's chips are spread into the parent ListView so the
-              // whole bar scrolls as one unit (nesting a horizontal ListView
-              // inside another would give the inner one unbounded width).
-              chips: _scope == _ThreadScope.agent && agents.length > 1
-                  ? _AgentFilterBar(
-                      agents: agents,
-                      selected: _agentFilter,
-                      onSelected: (agent) =>
-                          setState(() => _agentFilter = agent),
-                    ).chips(l10n)
-                  : _scope == _ThreadScope.project && projects.length > 1
-                      ? _ProjectFilterBar(
-                          projects: projects,
-                          selected: _projectFilter,
-                          onSelected: (key) =>
-                              setState(() => _projectFilter = key),
-                        ).chips(l10n)
-                      : const <Widget>[],
-            ),
-          ),
-        if (!connectedHere)
-          SliverToBoxAdapter(
-            child: _OfflineBanner(
-              connecting: connectingHere,
-              onConnect: _connectHere,
-            ),
-          ),
-        if (visible.isEmpty)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: _EmptyThreads(),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              UxnanSpacing.lg,
-              UxnanSpacing.sm,
-              UxnanSpacing.lg,
-              UxnanSpacing.lg,
-            ),
-            sliver: SliverList.separated(
-              itemCount: visible.length,
-              separatorBuilder: (_, __) => SizedBox(
-                height: compact ? UxnanSpacing.sm : UxnanSpacing.md,
-              ),
-              itemBuilder: (context, index) => ThreadTile(
-                key: ValueKey('thread-${visible[index].id}'),
-                thread: visible[index],
-                compact: compact,
-              ),
-            ),
-          ),
-      ],
+      slivers: slivers,
     );
   }
 
-  List<AgentId> _agentsPresent(List<Thread> threads) {
-    final seen = <AgentId>{};
-    for (final thread in threads) {
-      seen.add(AgentIdParsing.fromWireId(thread.agentId));
+  /// Orders the top level: projects by their own setting, lone worktrees by
+  /// the worktree setting, and the two interleaved so the list reads as one.
+  ///
+  /// A project and a lone worktree are peers on screen even though they are
+  /// different things, so they cannot be sorted into two blocks — that would
+  /// put every project above every folder regardless of what either setting
+  /// says.
+  List<WorkspaceTreeNode> _sortNodes(
+    List<WorkspaceTreeNode> nodes,
+    ListSort projectSort,
+    ListSort worktreeSort,
+  ) {
+    final list = [...nodes]..sort((a, b) {
+        final sort = a is RepoWithWorktrees && b is RepoWithWorktrees
+            ? projectSort
+            : worktreeSort;
+        return _compareNodes(a, b, sort);
+      });
+    return list;
+  }
+
+  int _compareNodes(WorkspaceTreeNode a, WorkspaceTreeNode b, ListSort sort) {
+    return switch (sort) {
+      ListSort.name =>
+        _nodeLabel(a).toLowerCase().compareTo(_nodeLabel(b).toLowerCase()),
+      ListSort.activity => compareByDate(
+          _nodeActivity(a),
+          _nodeActivity(b),
+          _nodeLabel(a),
+          _nodeLabel(b),
+        ),
+      ListSort.created => compareByDate(
+          _nodeCreated(a),
+          _nodeCreated(b),
+          _nodeLabel(a),
+          _nodeLabel(b),
+        ),
+      ListSort.status => () {
+          final byState = _nodeRank(a).compareTo(_nodeRank(b));
+          // Within the same urgency, what moved last is what you were most
+          // likely looking at.
+          return byState != 0
+              ? byState
+              : compareByDate(
+                  _nodeActivity(a),
+                  _nodeActivity(b),
+                  _nodeLabel(a),
+                  _nodeLabel(b),
+                );
+        }(),
+    };
+  }
+
+  int _compareGroups(WorkspaceGroup a, WorkspaceGroup b, ListSort sort) {
+    return switch (sort) {
+      ListSort.name => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+      ListSort.activity => compareByDate(
+          workspaceLastActivity(a),
+          workspaceLastActivity(b),
+          a.label,
+          b.label,
+        ),
+      ListSort.created => compareByDate(
+          workspaceCreatedAt(a),
+          workspaceCreatedAt(b),
+          a.label,
+          b.label,
+        ),
+      ListSort.status => () {
+          final byState = _groupRank(a).compareTo(_groupRank(b));
+          return byState != 0
+              ? byState
+              : compareByDate(
+                  workspaceLastActivity(a),
+                  workspaceLastActivity(b),
+                  a.label,
+                  b.label,
+                );
+        }(),
+    };
+  }
+
+  List<WorkspaceGroup> _workspacesOf(WorkspaceTreeNode node) => switch (node) {
+        LoneWorkspace(:final workspace) => [workspace],
+        RepoWithWorktrees(:final repo) => repo.workspaces,
+      };
+
+  String _nodeLabel(WorkspaceTreeNode node) => switch (node) {
+        LoneWorkspace(:final workspace) => workspace.label,
+        RepoWithWorktrees(:final repo) => repo.label,
+      };
+
+  DateTime? _nodeActivity(WorkspaceTreeNode node) {
+    DateTime? newest;
+    for (final group in _workspacesOf(node)) {
+      final at = workspaceLastActivity(group);
+      if (at == null) continue;
+      if (newest == null || at.isAfter(newest)) newest = at;
     }
-    return seen.toList();
+    return newest;
   }
 
-  /// A thread's project identity: its `projectId` when set, else its `cwd`
-  /// (the folder is the user-facing "project"). Empty when neither is known —
-  /// such threads only appear under the "All" chip.
-  String _projectKeyOf(Thread thread) {
-    final projectId = thread.projectId;
-    if (projectId != null && projectId.isNotEmpty) return projectId;
-    return thread.cwd ?? '';
-  }
-
-  /// The distinct projects present in [threads], each as a `(key, label)`
-  /// where the label is the folder basename (falling back to the key).
-  /// Sorted alphabetically by label.
-  List<_ProjectChip> _projectsPresent(List<Thread> threads) {
-    final byKey = <String, String>{};
-    for (final thread in threads) {
-      final key = _projectKeyOf(thread);
-      if (key.isEmpty) continue;
-      final cwd = thread.cwd;
-      final label = (cwd != null && cwd.isNotEmpty)
-          ? cwd.split(RegExp(r'[\\/]')).last
-          : key;
-      byKey.putIfAbsent(key, () => label);
+  DateTime? _nodeCreated(WorkspaceTreeNode node) {
+    DateTime? oldest;
+    for (final group in _workspacesOf(node)) {
+      final at = workspaceCreatedAt(group);
+      if (at == null) continue;
+      if (oldest == null || at.isBefore(oldest)) oldest = at;
     }
-    final chips = byKey.entries
-        .map((e) => _ProjectChip(key: e.key, label: e.value))
-        .toList()
-      ..sort(
-        (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
-      );
-    return chips;
-  }
-}
-
-/// A distinct project present in the list: its filter [key] (`projectId` or
-/// `cwd`) and the human [label] shown on the chip (the folder basename).
-class _ProjectChip {
-  const _ProjectChip({required this.key, required this.label});
-  final String key;
-  final String label;
-}
-
-/// Which dimension the filter bar is currently scoping on. The selector on the
-/// left of the bar switches between these; the chip bar to the right of it
-/// changes to match.
-enum _ThreadScope { agent, project }
-
-/// The full filter bar: a scope selector on the left (Agent / Project) and the
-/// matching chip bar to the right. The scope is always visible; the chip bar
-/// is passed in as a list of widgets (or empty when the active scope has only
-/// one option to pick from, in which case the bar collapses to just the
-/// selector). The whole bar is a single horizontal scroller — nesting another
-/// horizontal `ListView` inside this one would give the inner viewport an
-/// unbounded width.
-class _FilterBar extends StatelessWidget {
-  const _FilterBar({
-    required this.scope,
-    required this.onScopeChanged,
-    this.chips = const [],
-  });
-
-  final _ThreadScope scope;
-  final ValueChanged<_ThreadScope> onScopeChanged;
-  final List<Widget> chips;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: UxnanSpacing.lg,
-          vertical: UxnanSpacing.sm,
-        ),
-        children: [
-          _ScopeSelector(scope: scope, onChanged: onScopeChanged),
-          ...chips,
-        ],
-      ),
-    );
-  }
-}
-
-/// A chip-styled menu trigger on the left of the filter bar that shows the
-/// active scope (Agent / Project) and opens a small popup to switch between
-/// them. Same visual language as the filter chips to its right.
-class _ScopeSelector extends StatelessWidget {
-  const _ScopeSelector({required this.scope, required this.onChanged});
-
-  final _ThreadScope scope;
-  final ValueChanged<_ThreadScope> onChanged;
-
-  /// Opens the scope picker anchored under the chip. We drive the menu from
-  /// the chip's own `onPressed` (via [showMenu]) rather than wrapping it in a
-  /// `PopupMenuButton`: a bare `ActionChip` with `onPressed: null` is rendered
-  /// in Flutter's *disabled* visual state (`isEnabled = onPressed != null`),
-  /// which is the washed-out grey look we want to avoid. Keeping `onPressed`
-  /// non-null makes the chip read as a live, tappable control.
-  Future<void> _openMenu(BuildContext context, AppLocalizations l10n) async {
-    final button = context.findRenderObject()! as RenderBox;
-    final overlay =
-        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(
-          Offset(0, button.size.height),
-          ancestor: overlay,
-        ),
-        button.localToGlobal(
-          button.size.bottomRight(Offset.zero),
-          ancestor: overlay,
-        ),
-      ),
-      Offset.zero & overlay.size,
-    );
-    final selected = await showMenu<_ThreadScope>(
-      context: context,
-      position: position,
-      items: [
-        CheckedPopupMenuItem<_ThreadScope>(
-          value: _ThreadScope.agent,
-          checked: scope == _ThreadScope.agent,
-          child: Row(
-            children: [
-              const Icon(Icons.person_outline, size: 18),
-              const SizedBox(width: UxnanSpacing.sm),
-              Text(l10n.threadsFilterByAgent),
-            ],
-          ),
-        ),
-        CheckedPopupMenuItem<_ThreadScope>(
-          value: _ThreadScope.project,
-          checked: scope == _ThreadScope.project,
-          child: Row(
-            children: [
-              const Icon(Icons.folder_outlined, size: 18),
-              const SizedBox(width: UxnanSpacing.sm),
-              Text(l10n.threadsFilterByProject),
-            ],
-          ),
-        ),
-      ],
-    );
-    if (selected != null) onChanged(selected);
+    return oldest;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final isAgent = scope == _ThreadScope.agent;
-    final label =
-        isAgent ? l10n.threadsFilterByAgent : l10n.threadsFilterByProject;
-    final icon = isAgent ? Icons.person_outline : Icons.folder_outlined;
-    return Padding(
-      padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-      child: ActionChip(
-        tooltip: l10n.threadsFilterScopeTooltip,
-        onPressed: () => _openMenu(context, l10n),
-        label: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: UxnanSpacing.xs),
-            Text(label),
-            const SizedBox(width: UxnanSpacing.xs),
-            const Icon(Icons.arrow_drop_down_rounded, size: 18),
-          ],
-        ),
-      ),
-    );
+  int _nodeRank(WorkspaceTreeNode node) {
+    var best = 5;
+    for (final group in _workspacesOf(node)) {
+      final rank = _groupRank(group);
+      if (rank < best) best = rank;
+    }
+    return best;
   }
-}
 
-class _AgentFilterBar {
-  const _AgentFilterBar({
-    required this.agents,
-    required this.selected,
-    required this.onSelected,
-  });
+  int _groupRank(WorkspaceGroup group) =>
+      _rankOf(aggregateStatus(ref, group.threads).state);
 
-  final List<AgentId> agents;
-  final AgentId? selected;
-  final ValueChanged<AgentId?> onSelected;
+  int _threadRank(Thread thread) =>
+      _rankOf(ref.watch(agentRunStatusProvider(thread.id)).state);
 
-  /// Builds the horizontal list of chips for the agent scope. The caller is
-  /// responsible for placing these in a horizontally-scrolling container
-  /// (the [_FilterBar]'s `ListView`).
-  List<Widget> chips(AppLocalizations l10n) {
-    return [
-      Padding(
-        padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-        child: ChoiceChip(
-          label: Text(l10n.threadsFilterAll),
-          selected: selected == null,
-          onSelected: (_) => onSelected(null),
-        ),
-      ),
-      for (final agent in agents)
-        Padding(
-          padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-          child: ChoiceChip(
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AgentChipAvatar(agent: agent),
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(AgentVisuals.labelFor(agent)),
-              ],
+  static int _rankOf(AgentRunState state) => switch (state) {
+        AgentRunState.waiting => 0,
+        AgentRunState.blocked => 1,
+        AgentRunState.working => 2,
+        AgentRunState.done => 3,
+        AgentRunState.idle => 4,
+      };
+
+  /// Turns the folders into the flat run of rows the sliver builds from.
+  ///
+  /// Flat, not nested: a nested tree would build every conversation the moment
+  /// the screen appears, and this list is the one place a PC with hundreds of
+  /// them has to stay responsive.
+  List<_SpaceRow> _flatten(
+    List<WorkspaceTreeNode> nodes, {
+    required Set<String> collapsed,
+  }) {
+    final rows = <_SpaceRow>[];
+
+    void addWorkspace(WorkspaceGroup group, {required int depth}) {
+      // A conversation with no folder of its own has nothing to head; it
+      // stands on its own rather than under an empty heading.
+      final headed = group.key.isNotEmpty;
+      final open = !collapsed.contains(group.key);
+      if (headed) {
+        rows.add(_WorkspaceRow(group, expanded: open, depth: depth));
+      }
+      if (headed && !open) return;
+      for (final thread in group.threads) {
+        rows.add(
+          _ThreadRow(thread, depth: headed ? depth + 1 : depth),
+        );
+      }
+    }
+
+    for (final node in nodes) {
+      switch (node) {
+        case LoneWorkspace(:final workspace):
+          addWorkspace(workspace, depth: 0);
+        case RepoWithWorktrees(:final repo):
+          final open = !collapsed.contains(repo.key);
+          rows.add(_RepoRow(repo, expanded: open));
+          if (!open) continue;
+          for (final workspace in repo.workspaces) {
+            addWorkspace(workspace, depth: 1);
+          }
+      }
+    }
+    return rows;
+  }
+
+  Widget _buildRow(
+    BuildContext context,
+    _SpaceRow row, {
+    required bool compact,
+  }) {
+    switch (row) {
+      case _RepoRow(:final repo, :final expanded):
+        return RepoGroupRow(
+          key: ValueKey('repo-${repo.key}'),
+          repo: repo,
+          expanded: expanded,
+          onToggle: () =>
+              ref.read(collapsedProjectsProvider.notifier).toggle(repo.key),
+        );
+      case _WorkspaceRow(:final group, :final expanded, :final depth):
+        return Padding(
+          padding: EdgeInsets.only(left: depth * kSpaceIndent),
+          child: WorkspaceGroupRow(
+            key: ValueKey('workspace-${group.key}'),
+            group: group,
+            expanded: expanded,
+            onToggle: () =>
+                ref.read(collapsedProjectsProvider.notifier).toggle(group.key),
+            onDetails: () => showWorkspaceDetails(
+              context,
+              group,
+              fullPath: group.path,
+              onOpenThread: (id) =>
+                  context.openInPane(AppRoutes.conversation(id)),
             ),
-            selected: selected == agent,
-            onSelected: (_) => onSelected(agent),
+            onNewConversation: () => _newConversation(cwd: group.path),
           ),
-        ),
-    ];
+        );
+      case _ThreadRow(:final thread, :final depth):
+        return Padding(
+          padding: EdgeInsets.only(
+            left: depth * kSpaceIndent,
+            bottom: compact ? UxnanSpacing.xs : UxnanSpacing.sm,
+          ),
+          child: ThreadTile(
+            key: ValueKey('thread-${thread.id}'),
+            thread: thread,
+            compact: compact,
+          ),
+        );
+    }
   }
 }
 
-/// Horizontal chips that scope the list to one project (working folder).
-/// Mirrors [_AgentFilterBar]; shown only when the PC hosts more than one
-/// project.
-class _ProjectFilterBar {
-  const _ProjectFilterBar({
-    required this.projects,
-    required this.selected,
-    required this.onSelected,
-  });
+/// A row in the flattened spaces list.
+sealed class _SpaceRow {
+  const _SpaceRow();
+}
 
-  final List<_ProjectChip> projects;
-  final String? selected;
-  final ValueChanged<String?> onSelected;
+class _RepoRow extends _SpaceRow {
+  const _RepoRow(this.repo, {required this.expanded});
+  final RepoGroup repo;
+  final bool expanded;
+}
 
-  /// Builds the horizontal list of chips for the project scope. The caller is
-  /// responsible for placing these in a horizontally-scrolling container.
-  List<Widget> chips(AppLocalizations l10n) {
-    return [
-      Padding(
-        padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-        child: ChoiceChip(
-          label: Text(l10n.threadsFilterAll),
-          selected: selected == null,
-          onSelected: (_) => onSelected(null),
-        ),
-      ),
-      for (final project in projects)
-        Padding(
-          padding: const EdgeInsets.only(right: UxnanSpacing.sm),
-          child: ChoiceChip(
-            label: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.folder_outlined, size: 16),
-                const SizedBox(width: UxnanSpacing.xs),
-                Text(project.label),
-              ],
-            ),
-            selected: selected == project.key,
-            onSelected: (_) => onSelected(project.key),
-          ),
-        ),
-    ];
-  }
+class _WorkspaceRow extends _SpaceRow {
+  const _WorkspaceRow(this.group, {required this.expanded, this.depth = 0});
+  final WorkspaceGroup group;
+  final bool expanded;
+  final int depth;
+}
+
+class _ThreadRow extends _SpaceRow {
+  const _ThreadRow(this.thread, {required this.depth});
+  final Thread thread;
+  final int depth;
 }
 
 /// Shown above the list when we are NOT connected to this PC: the threads are a
@@ -570,8 +566,8 @@ class _OfflineBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.cloud_off_outlined,
+          UxIcon(
+            UxIcons.cloudOff,
             size: 18,
             color: colors.onSurfaceVariant,
           ),
@@ -634,8 +630,8 @@ class _UpdateBanner extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.system_update_outlined,
+              UxIcon(
+                UxIcons.systemUpdate,
                 size: 18,
                 color: colors.onPrimaryContainer,
               ),
@@ -777,8 +773,8 @@ class _BridgeUpdateBanner extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.dns_outlined,
+                UxIcon(
+                  UxIcons.dns,
                   size: 18,
                   color: colors.onTertiaryContainer,
                 ),
@@ -796,7 +792,7 @@ class _BridgeUpdateBanner extends ConsumerWidget {
                   onPressed: () => ref
                       .read(bridgeUpdateDismissalProvider.notifier)
                       .dismiss(latest),
-                  icon: const Icon(Icons.close_rounded, size: 18),
+                  icon: const UxIcon(UxIcons.close, size: 18),
                   color: colors.onTertiaryContainer,
                   tooltip: l10n.bridgeUpdateDismiss,
                   visualDensity: VisualDensity.compact,
@@ -833,14 +829,14 @@ class _EmptyThreads extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.forum_outlined,
+            UxIcon(
+              UxIcons.forum,
               size: 48,
               color: colors.onSurfaceVariant,
               semanticLabel: 'Threads',
             ),
             const SizedBox(height: UxnanSpacing.md),
-            Text(l10n.threadsEmpty, style: textTheme.titleSmall),
+            Text(l10n.threadsEmpty, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.xs),
             Text(
               l10n.threadsEmptyBody,
@@ -851,6 +847,67 @@ class _EmptyThreads extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The spaces tree as the **content** of the permanent drawer's middle zone.
+///
+/// The same list, its controls and its behaviours — only the chrome differs.
+/// A drawer already has a header above and a profile row below, so the app bar
+/// would be a third; and an extended FAB floating over a 320 dp column would
+/// cover the very rows it sits on. The action that FAB carries moves to a plain
+/// button under the list, where it cannot obscure anything.
+class _EmbeddedSpaces extends StatelessWidget {
+  const _EmbeddedSpaces({
+    required this.actions,
+    required this.slivers,
+    required this.onNewConversation,
+  });
+
+  final List<Widget> actions;
+  final List<Widget> slivers;
+
+  /// Null when this PC is not the connected one — a new conversation only
+  /// makes sense against a live bridge.
+  final VoidCallback? onNewConversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    // The list rises into place here exactly as it does full-screen; the scope
+    // comes free from NeScaffold there and has to be declared here.
+    return NeEntranceScope(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UxnanSpacing.sm,
+              vertical: UxnanSpacing.xs,
+            ),
+            child: Row(
+              children: [
+                // Leads the row, and it is the only PRIMARY-toned control in
+                // the drawer: everything else here finds or reorders what
+                // already exists, and this is the one that makes something.
+                // A full-width button under the list read as the drawer's
+                // conclusion rather than as its main action.
+                IconSurface(
+                  icon: UxIcons.addComment,
+                  tooltip: l10n.newThreadAction,
+                  onPressed: onNewConversation,
+                  background: colors.primaryContainer,
+                  foreground: colors.onPrimaryContainer,
+                ),
+                const Spacer(),
+                ...actions,
+              ],
+            ),
+          ),
+          Expanded(child: CustomScrollView(slivers: slivers)),
+        ],
       ),
     );
   }

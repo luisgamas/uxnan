@@ -8,6 +8,8 @@ import 'package:uxnan/domain/value_objects/git/git_diff_totals.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/git_screen.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
+import '../../support/ux_icon_finder.dart';
 
 /// A fixture repo state for these widget tests (kept out of production code).
 GitRepoState _sampleState() => const GitRepoState(
@@ -74,11 +76,11 @@ void main() {
     await tester.pump();
 
     // Every file row's `_NeCheckbox` is initially selected →
-    // `Icons.check_rounded` (the on-state glyph). The selection-bar checkbox
+    // `UxIcons.check` (the on-state glyph). The selection-bar checkbox
     // (tristate) lives separately as the all-on glyph too, but tapping the
     // second per-file
     // checkbox is what flips one file's selection state.
-    final checks = find.byIcon(Icons.check_rounded);
+    final checks = findUxIcon(UxIcons.check);
     expect(checks, findsAtLeastNWidgets(3));
     await tester.tap(checks.at(1));
     await tester.pump();
@@ -169,9 +171,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // The pull-to-refresh gesture lives on the timeline; the app bar no
-    // longer carries a dedicated refresh action. The `Icons.refresh_rounded`
+    // longer carries a dedicated refresh action. The `UxIcons.refresh`
     // glyph must not appear anywhere on screen.
-    expect(find.byIcon(Icons.refresh_rounded), findsNothing);
+    expect(findUxIcon(UxIcons.refresh), findsNothing);
 
     // And the RefreshIndicator must be wired into the scroll surface.
     expect(find.byType(RefreshIndicator), findsOneWidget);

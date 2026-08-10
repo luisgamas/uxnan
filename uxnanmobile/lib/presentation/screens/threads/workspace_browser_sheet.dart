@@ -4,9 +4,11 @@ import 'package:uxnan/domain/entities/browse_result.dart';
 import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Bottom sheet that browses the bridge's configured roots
 /// (`workspace/browseDirs`): pick a root, descend into sub-folders (with
@@ -107,8 +109,8 @@ class _WorkspaceBrowserSheetState extends ConsumerState<WorkspaceBrowserSheet> {
                   IconButton(
                     tooltip: l10n.workspaceBrowseUp,
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(
-                      Icons.drive_folder_upload_outlined,
+                    icon: const UxIcon(
+                      UxIcons.driveFolderUpload,
                       size: 20,
                     ),
                     onPressed: current.path.isEmpty
@@ -157,7 +159,7 @@ class _WorkspaceBrowserSheetState extends ConsumerState<WorkspaceBrowserSheet> {
               onPressed: current == null
                   ? null
                   : () => Navigator.of(context).pop(current.cwd),
-              icon: const Icon(Icons.check_rounded, size: 18),
+              icon: const UxIcon(UxIcons.check, size: 18),
               label: Text(l10n.workspaceBrowseOpenHere),
             ),
           ],
@@ -196,7 +198,7 @@ class _RootPicker extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(right: UxnanSpacing.sm),
               child: ChoiceChip(
-                avatar: const Icon(Icons.folder_special_outlined, size: 16),
+                avatar: const UxIcon(UxIcons.folderSpecial, size: 16),
                 label: Text(root.name),
                 selected: root.id == selected,
                 onSelected: (_) => onSelected(root.id),
@@ -251,8 +253,8 @@ class _CrumbSeparator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Icon(
-      Icons.chevron_right_rounded,
+    return UxIcon(
+      UxIcons.chevronRight,
       size: 16,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
     );
@@ -304,8 +306,8 @@ class _DirList extends StatelessWidget {
           shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.all(UxnanRadius.md),
           ),
-          leading: Icon(
-            dir.isGitRepo ? Icons.source_outlined : Icons.folder_outlined,
+          leading: UxIcon(
+            dir.isGitRepo ? UxIcons.source : UxIcons.folder,
             color:
                 dir.isGitRepo ? UxnanColors.connected : colors.onSurfaceVariant,
           ),
@@ -318,7 +320,7 @@ class _DirList extends StatelessWidget {
                   ),
                 )
               : null,
-          trailing: Icon(Icons.chevron_right_rounded, color: colors.outline),
+          trailing: UxIcon(UxIcons.chevronRight, color: colors.outline),
           onTap: () => onOpen(dir),
         );
       },

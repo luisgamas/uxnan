@@ -280,7 +280,7 @@ export { OutboundLog, type OutboundLogEntry } from './transport/outbound-log.js'
 export { SessionRegistry, type SessionSink } from './transport/session-registry.js';
 
 // Git + workspace services
-export { GitService } from './git/git-service.js';
+export { GitService, parseWorktreePorcelain } from './git/git-service.js';
 export { runGit, GitCommandError, sanitizePaths, type RunGitResult } from './git/git-runner.js';
 export { WorkspaceService } from './workspace/workspace-service.js';
 export { BrowseService, browseRootIdFor } from './workspace/browse-service.js';

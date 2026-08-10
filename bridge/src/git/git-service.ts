@@ -23,9 +23,75 @@ import type {
   GitPushResult,
   GitRef,
   GitRepoStatus,
+  GitWorktreeEntry,
+  GitWorktreeList,
   GitWorktreeResult,
 } from '@uxnan/shared';
 import { GitCommandError, runGh, runGit } from './git-runner.js';
+
+/**
+ * Parses `git worktree list --porcelain`.
+ *
+ * The format is blank-line-separated blocks of `key value` (or a bare keyword),
+ * always opening with `worktree <path>`:
+ *
+ * ```
+ * worktree /home/me/repo
+ * HEAD 8f3c…
+ * branch refs/heads/main
+ *
+ * worktree /home/me/repo-feature
+ * HEAD 1a2b…
+ * detached
+ * locked being rebased
+ * ```
+ *
+ * Exported and pure so the parsing is tested without a repository on disk —
+ * detached heads, locked worktrees and bare repos are all shapes that are
+ * tedious to stage and easy to get wrong.
+ *
+ * `git` documents the first block as the main worktree, and that is the only
+ * thing that distinguishes it: `isMain` is positional, not a flag in the
+ * output. A `bare` block is still the main entry (a bare repo has no checkout,
+ * but it is what the linked worktrees belong to).
+ */
+export function parseWorktreePorcelain(stdout: string): GitWorktreeEntry[] {
+  const entries: GitWorktreeEntry[] = [];
+  let current: GitWorktreeEntry | null = null;
+
+  const flush = () => {
+    if (current) entries.push(current);
+    current = null;
+  };
+
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trimEnd();
+    if (line === '') {
+      flush();
+      continue;
+    }
+    const space = line.indexOf(' ');
+    const key = space === -1 ? line : line.slice(0, space);
+    const value = space === -1 ? '' : line.slice(space + 1).trim();
+
+    if (key === 'worktree') {
+      flush();
+      if (value) current = { path: value, isMain: entries.length === 0 };
+      continue;
+    }
+    if (!current) continue;
+    // `branch refs/heads/x` — the short name is what a person reads. A branch
+    // whose own name contains `/` (release/1.2) must survive, so only the
+    // known prefix is stripped, never everything up to the last slash.
+    if (key === 'branch' && value) {
+      current.branch = value.startsWith('refs/heads/') ? value.slice('refs/heads/'.length) : value;
+    } else if (key === 'locked') {
+      current.isLocked = true;
+    }
+  }
+  flush();
+  return entries;
+}
 
 export class GitService {
   async status(cwd: string): Promise<GitRepoStatus> {
@@ -488,6 +554,26 @@ export class GitService {
     await runGit(runFrom, args);
     // Best-effort: drop any now-stale worktree admin files.
     await runGit(runFrom, ['worktree', 'prune']).catch(() => undefined);
+  }
+
+  /**
+   * Every worktree of the repository at [cwd], main one first.
+   *
+   * A repository's worktrees are SIBLINGS on disk — a checkout of `repo` at
+   * `../repo-feature` is a peer directory with no path relationship to its
+   * main worktree — so a client cannot infer this hierarchy and has to be
+   * told. Returns an empty list outside a repository rather than throwing:
+   * the caller asks per configured root, and a root that is not a repo is an
+   * ordinary case, not an error.
+   */
+  async worktrees(cwd: string): Promise<GitWorktreeList> {
+    let stdout: string;
+    try {
+      ({ stdout } = await runGit(cwd, ['worktree', 'list', '--porcelain']));
+    } catch {
+      return { worktrees: [] };
+    }
+    return { worktrees: parseWorktreePorcelain(stdout) };
   }
 
   /** The repo's primary worktree path (the first `worktree list` entry), or [cwd]. */

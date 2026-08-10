@@ -8,10 +8,13 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/screens/conversation/git/widgets/commit_ref_chip.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
+import 'package:uxnan/presentation/theme/icons.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 import 'package:uxnan/presentation/widgets/expressive_progress.dart';
+import 'package:uxnan/presentation/widgets/ne_entrance_scope.dart';
 import 'package:uxnan/presentation/widgets/ne_top_bar.dart';
+import 'package:uxnan/presentation/widgets/ux_icon.dart';
 
 /// Full-screen detail for a single commit, backed by `git/commitShow`.
 ///
@@ -111,12 +114,15 @@ class _GitCommitDetailScreenState extends ConsumerState<GitCommitDetailScreen> {
     if (commit != null) {
       slivers.add(
         SliverToBoxAdapter(
-          child: _Header(
-            commit: commit,
-            onCopySha: () => _copy(commit.sha, l10n.gitHistoryCopiedSha),
-            onCopyMessage: () => _copy(
-              '${commit.messageTitle}\n\n${commit.messageBody}'.trim(),
-              l10n.gitHistoryCopiedMessage,
+          child: NeEntranceRow(
+            index: 0,
+            child: _Header(
+              commit: commit,
+              onCopySha: () => _copy(commit.sha, l10n.gitHistoryCopiedSha),
+              onCopyMessage: () => _copy(
+                '${commit.messageTitle}\n\n${commit.messageBody}'.trim(),
+                l10n.gitHistoryCopiedMessage,
+              ),
             ),
           ),
         ),
@@ -147,10 +153,13 @@ class _GitCommitDetailScreenState extends ConsumerState<GitCommitDetailScreen> {
     } else if (details != null) {
       slivers.add(
         SliverToBoxAdapter(
-          child: _FilesSection(
-            files: details.files,
-            diffByPath: _splitDiffByPath(details.diff),
-            diffTruncated: details.diffTruncated,
+          child: NeEntranceRow(
+            index: 1,
+            child: _FilesSection(
+              files: details.files,
+              diffByPath: _splitDiffByPath(details.diff),
+              diffTruncated: details.diffTruncated,
+            ),
           ),
         ),
       );
@@ -198,7 +207,9 @@ class _Header extends StatelessWidget {
             children: [
               SelectableText(
                 commit.messageTitle,
-                style: textTheme.headlineSmall
+                // The subject is what this screen is about — everything else
+                // on it describes this one line.
+                style: textTheme.headlineLarge
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               if (commit.refs.isNotEmpty) ...[
@@ -262,7 +273,7 @@ class _Header extends StatelessWidget {
                     IconButton(
                       tooltip: l10n.gitHistoryCopySha,
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.content_copy_rounded, size: 18),
+                      icon: const UxIcon(UxIcons.contentCopy, size: 18),
                       onPressed: onCopySha,
                     ),
                   ],
@@ -315,7 +326,7 @@ class _Header extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   onPressed: onCopyMessage,
-                  icon: const Icon(Icons.copy_all_rounded, size: 18),
+                  icon: const UxIcon(UxIcons.copyAll, size: 18),
                   label: Text(l10n.gitHistoryCopyMessage),
                 ),
               ),
@@ -437,7 +448,7 @@ class _CommitFileCardState extends State<_CommitFileCard> {
             ),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: color),
+                UxIcon(icon, size: 18, color: color),
                 const SizedBox(width: UxnanSpacing.sm),
                 Expanded(
                   child: Column(
@@ -489,10 +500,8 @@ class _CommitFileCardState extends State<_CommitFileCard> {
                   ],
                 ],
                 const SizedBox(width: UxnanSpacing.xs),
-                Icon(
-                  _expanded
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
+                UxIcon(
+                  _expanded ? UxIcons.expandLess : UxIcons.expandMore,
                   size: 20,
                   color: colors.onSurfaceVariant,
                 ),
@@ -696,9 +705,13 @@ class _InlineError extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(Icons.error_outline_rounded, size: 48, color: colors.error),
+          UxIcon(UxIcons.error, size: 48, color: colors.error),
           const SizedBox(height: UxnanSpacing.md),
-          Text(title, style: textTheme.titleSmall, textAlign: TextAlign.center),
+          Text(
+            title,
+            style: textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: UxnanSpacing.md),
           FilledButton.tonal(onPressed: onRetry, child: Text(retryLabel)),
         ],
@@ -707,22 +720,22 @@ class _InlineError extends StatelessWidget {
   }
 }
 
-(IconData, Color) _statusVisual(GitFileStatus status) {
+(UxIconData, Color) _statusVisual(GitFileStatus status) {
   // The mobile enum has no `conflicted` (the bridge maps such files to
   // `modified` on the wire), so these five cases are exhaustive.
   return switch (status) {
-    GitFileStatus.added => (Icons.add_circle_outline, UxnanColors.gitAdded),
-    GitFileStatus.modified => (Icons.edit_outlined, UxnanColors.gitModified),
+    GitFileStatus.added => (UxIcons.addCircle, UxnanColors.gitAdded),
+    GitFileStatus.modified => (UxIcons.edit, UxnanColors.gitModified),
     GitFileStatus.deleted => (
-        Icons.remove_circle_outline,
+        UxIcons.removeCircle,
         UxnanColors.gitDeleted,
       ),
     GitFileStatus.renamed => (
-        Icons.drive_file_move_outline,
+        UxIcons.driveFileMove,
         UxnanColors.gitModified,
       ),
     GitFileStatus.untracked => (
-        Icons.fiber_new_outlined,
+        UxIcons.fiberNew,
         UxnanColors.gitUntracked,
       ),
   };
