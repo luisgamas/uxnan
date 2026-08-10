@@ -341,6 +341,18 @@ so there is nothing to generate or paste; it appears by itself.
 
 ## When something goes wrong
 
+**The build compiled everything and then failed to create the release** —
+*"Resource not accessible by integration"*, every leg, `create-a-release`. The
+Actions token can upload assets to a release that exists and be refused when
+creating one, with `Contents: write` granted; it happened on 0.0.36, twenty-four
+minutes after the identical call succeeded for 0.0.35, with nothing changed in
+between that anyone could name. Release creation now runs as the **app** rather
+than as Actions, which is what every other release operation here already does.
+To recover a build already in this state, create the draft yourself
+(`gh api --method POST repos/OWNER/REPO/releases -f tag_name=… -F draft=true -F
+prerelease=true`) and re-run the failed jobs: `tauri-action` finds the existing
+draft and uploads into it.
+
 **A release is public but the updater does not offer it.** `latest.json` on the
 rolling channel was not rolled, because the publish event came from
 `GITHUB_TOKEN` — the same anti-recursion rule that stops a tag from starting a
