@@ -949,6 +949,14 @@ export function githubRepoContext(worktreePath: string): Promise<RepoContext | n
   return invoke<RepoContext | null>('github_repo_context', { worktreePath });
 }
 
+/** Resolve a project-scoped number to the GitHub work-item kind it identifies. */
+export function githubWorkItemKind(
+  worktreePath: string,
+  number: string,
+): Promise<'pr' | 'issue'> {
+  return invoke<'pr' | 'issue'>('github_work_item_kind', { worktreePath, number });
+}
+
 /** List PRs for the worktree's repo. `state` is `open|closed|merged|all`. */
 export function githubPrList(
   worktreePath: string,

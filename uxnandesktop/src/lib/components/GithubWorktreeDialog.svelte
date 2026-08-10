@@ -2,28 +2,23 @@
   // Settings + confirmation for the two worktree-native GitHub flows:
   // "Check out to worktree" (a PR) and "Start work" (an issue). Both used to be a
   // single click with a hard-coded branch name and no agent — unlike every other
-  // worktree in the app, which is born from NewWorktreeDialog with a name, a
-  // folder preview and an agent. This is that dialog's sibling: same shape, same
-  // affordances, with the branch name pre-filled to the old generic default so
-  // pressing Enter reproduces the previous behavior.
+  // worktree in the app. Naming is automatic from the selected GitHub item; the
+  // only remaining choice is what agent, if any, should start there.
   import * as Dialog from "$lib/components/ui/dialog";
   import Combobox, { type ComboGroup } from "./Combobox.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
-  import { Input } from "$lib/components/ui/input";
   import { projects } from "$lib/state/projects.svelte";
   import { app } from "$lib/state/app.svelte";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { toast, toastError } from "$lib/toast";
-  import { githubPrCheckout, githubIssueDevelop } from "$lib/api";
-  import { branchSlug, worktreeFolderFor } from "$lib/branchName";
+  import { worktreeFolderFor } from "$lib/branchName";
+  import { githubWorkItemBranch } from "$lib/githubInput";
   import AgentLogo from "./AgentLogo.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
   import { Icon } from "$lib/components/ui/icon";
-  import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-  import FolderIcon from "@hugeicons/core-free-icons/Folder01Icon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
 
   let {
@@ -32,6 +27,7 @@
     kind,
     number,
     title = "",
+    headRefName = null,
     onDone,
   }: {
     open?: boolean;
@@ -41,11 +37,12 @@
     number: number | null;
     /** The PR/issue title — seeds the suggested slug branch name. */
     title?: string;
+    /** The PR's real head branch; issues derive one from their number/title. */
+    headRefName?: string | null;
     onDone?: () => void;
   } = $props();
 
   const NONE = "__none__";
-  let branch = $state("");
   let agentId = $state<string>(NONE);
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -61,15 +58,8 @@
     },
   ]);
 
-  /** The generic name these flows always used: `pr-42` / `issue-17`. */
-  const defaultBranch = $derived(number === null ? "" : `${kind}-${number}`);
-  /** What `gh issue develop` itself would name the branch (`17-fix-the-login`).
-   *  Offered as a one-click alternative, never forced — switching the default
-   *  would silently change where existing users' worktrees land. */
-  const suggested = $derived(
-    kind === "issue" && number !== null && title.trim()
-      ? `${number}-${branchSlug(title)}`
-      : "",
+  const branch = $derived(
+    number === null ? "" : githubWorkItemBranch(kind, number, title, headRefName),
   );
 
   const previewPath = $derived(
@@ -84,7 +74,6 @@
 
   $effect(() => {
     if (!open) return;
-    branch = defaultBranch;
     error = null;
     const def = app.defaultAgent();
     agentId = def ? def.id : NONE;
@@ -95,12 +84,18 @@
     busy = true;
     error = null;
     try {
-      const entry =
-        kind === "pr"
-          ? await githubPrCheckout(repoId, String(number), branch.trim())
-          : await githubIssueDevelop(repoId, String(number), branch.trim());
-      // Same landing as a hand-made worktree: listed, active, agent launched.
-      await projects.adoptWorktree(repoId, entry, agentId === NONE ? null : agentId);
+      const path = await projects.createGitHubWorktree(
+        repoId,
+        kind,
+        number,
+        branch.trim(),
+        agentId === NONE ? null : agentId,
+      );
+      if (!path) {
+        error = projects.error;
+        return;
+      }
+      if (title.trim()) projects.setNote(path, title.trim());
       toast.success(
         i18n.t(kind === "pr" ? "github.toast.checkedOut" : "github.toast.branchCreated"),
       );
@@ -136,33 +131,6 @@
     </Dialog.Header>
 
     <div class="flex flex-col gap-4 py-1">
-      <div class="flex flex-col gap-1.5">
-        <label for="gh-wt-branch" class={cn("font-medium", text.body)}>
-          {i18n.t("newWorktree.branch")}
-        </label>
-        <div class="relative">
-          <Icon icon={GitBranchIcon}
-            class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
-          />
-          <Input
-            id="gh-wt-branch"
-            class="pl-8"
-            bind:value={branch}
-            autocomplete="off"
-            onkeydown={(e) => e.key === "Enter" && submit()}
-          />
-        </div>
-        {#if suggested && branch.trim() !== suggested}
-          <button
-            type="button"
-            class={cn("self-start text-muted-foreground underline-offset-2 hover:underline", text.meta)}
-            onclick={() => (branch = suggested)}
-          >
-            {i18n.t("github.worktree.useSuggested", { name: suggested })}
-          </button>
-        {/if}
-      </div>
-
       {#if launchable.length > 0}
         <div class="flex flex-col gap-1.5">
           <span class={cn("font-medium", text.body)}>{i18n.t("newWorktree.agent")}</span>
@@ -175,13 +143,6 @@
             onChange={(v) => (agentId = v)}
           />
           <p class={text.meta}>{i18n.t("newWorktree.agentDesc")}</p>
-        </div>
-      {/if}
-
-      {#if previewPath}
-        <div class="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2.5">
-          <Icon icon={FolderIcon} class={cn(icon.decorative, "mt-px shrink-0 text-muted-foreground")} />
-          <code class="break-all text-[11px] leading-5 text-muted-foreground">{previewPath}</code>
         </div>
       {/if}
 

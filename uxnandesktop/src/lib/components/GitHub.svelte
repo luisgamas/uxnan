@@ -566,18 +566,25 @@
     }
   }
 
-  // PR/issue → worktree. Both open GithubWorktreeDialog (branch name, agent,
-  // folder preview) rather than acting on one click, and it owns the call.
+  // PR/issue → worktree. Both open GithubWorktreeDialog for the agent choice;
+  // naming comes from the selected GitHub item and the dialog owns the call.
   let worktreeDialogOpen = $state(false);
   let worktreeDialogKind = $state<"pr" | "issue">("pr");
   let worktreeDialogNumber = $state<number | null>(null);
   let worktreeDialogTitle = $state("");
+  let worktreeDialogHeadRef = $state<string | null>(null);
 
-  function requestWorktree(kind: "pr" | "issue", n: number, title: string) {
+  function requestWorktree(
+    kind: "pr" | "issue",
+    n: number,
+    title: string,
+    headRefName: string | null = null,
+  ) {
     if (!selectedRepoId()) return;
     worktreeDialogKind = kind;
     worktreeDialogNumber = n;
     worktreeDialogTitle = title;
+    worktreeDialogHeadRef = headRefName;
     worktreeDialogOpen = true;
   }
 
@@ -1196,6 +1203,7 @@
     kind={worktreeDialogKind}
     number={worktreeDialogNumber}
     title={worktreeDialogTitle}
+    headRefName={worktreeDialogHeadRef}
     onDone={close}
   />
 {/if}
@@ -1730,7 +1738,7 @@
               {i18n.t("github.pr.postComment")}
             </Button>
             <div class="flex-1"></div>
-            <Button variant="outline" size="sm" disabled={busy} onclick={() => requestWorktree("pr", pr.number, pr.title)}>
+            <Button variant="outline" size="sm" disabled={busy} onclick={() => requestWorktree("pr", pr.number, pr.title, pr.headRefName)}>
               <Icon icon={GitBranchIcon} class={icon.button} />{i18n.t("github.pr.checkout")}
             </Button>
             <!-- Draft ⇄ ready. A draft opened from here used to be a one-way door:

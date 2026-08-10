@@ -13,7 +13,7 @@
     "accounts/hardware."
   ],
   "version": 1,
-  "updated": "2026-07-31",
+  "updated": "2026-08-08",
   "layers": {
     "L1": {
       "name": "unit",
@@ -138,14 +138,14 @@
       "owner": "desktop",
       "covered": [
         "L1",
+        "L2",
         "L3",
         "L4"
       ],
-      "planned": [
-        "L2"
-      ],
+      "planned": [],
       "evidence": {
-        "L1": "src/lib/branchName.test.ts, src/lib/pathid.test.ts",
+        "L1": "src/lib/branchName.test.ts, src/lib/pathid.test.ts, src/lib/githubInput.test.ts",
+        "L2": "src/lib/components/DirectoryPicker.svelte.test.ts, src/lib/components/LauncherDialog.svelte.test.ts, src/lib/state/projects.svelte.test.ts",
         "L3": "src-tauri/src/git.rs #[cfg(test)] against throwaway repos",
         "L4": "tests/e2e/specs/worktree.e2e.mjs"
       },
@@ -155,7 +155,7 @@
         "linux": "untested",
         "wsl": "untested"
       },
-      "gaps": "Creating a worktree from the UI is not covered; the journey asserts an existing repository is recognised, listed and read. WSL path routing has no test."
+      "gaps": "Clone-and-register and PR/issue adoption are covered at L1/L2; manual branch creation through the UI and WSL path routing still have no automated interaction test."
     },
     {
       "id": "git-review",
@@ -278,14 +278,15 @@
       "owner": "desktop",
       "covered": [
         "L1",
+        "L2",
         "L3"
       ],
       "planned": [
-        "L2",
         "L4"
       ],
       "evidence": {
         "L1": "src/lib/markdown.test.ts, src/lib/diffParse.test.ts (contract tests against captured real gh output in tests/fixtures/github/), scripts/github/lib.test.mjs (the sandbox allowlist + capture sanitizer), tests/github-command-inventory.test.mjs (the command inventory vs the source)",
+        "L2": "src/lib/components/GithubPanel.svelte.test.ts, src/lib/components/GitHubWorkItemPicker.svelte.test.ts, src/lib/components/GithubWorktreeDialog.svelte.test.ts, src/lib/state/projects.svelte.test.ts",
         "L3": "src-tauri/src/github/fixture_tests.rs (production parsers against the captured real payloads), src-tauri/tests/github_cli.rs (the production runner through real child processes: merge refusals, degraded environments, .cmd resolution, env hygiene), tests/fixtures/fixtures.test.mjs (the fake gh itself, incl. scripted outcomes)"
       },
       "platforms": {

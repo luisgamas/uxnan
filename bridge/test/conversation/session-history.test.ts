@@ -5,12 +5,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { SessionHistoryReader } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 /** Build a throwaway fake-home tree and return its path + a cleanup fn. */
 async function fakeHome(): Promise<{ home: string; cleanup: () => Promise<void> }> {
   const home = join(tmpdir(), `uxnan-hist-${randomUUID()}`);
   await mkdir(home, { recursive: true });
-  return { home, cleanup: () => rm(home, { recursive: true, force: true }) };
+  return { home, cleanup: () => rmrf(home) };
 }
 
 async function writeLines(file: string, objs: unknown[]): Promise<void> {

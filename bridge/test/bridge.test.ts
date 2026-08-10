@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import { JsonRpcErrorCode, makeRequest, validatePairingPayload } from '@uxnan/shared';
 import { InMemorySecretStore, startBridge, type Bridge } from '../src/index.js';
+import { rmrf } from './helpers/fs.js';
 
 const NOW = 1_700_000_000_000;
 
@@ -25,7 +25,7 @@ test('startBridge wires bridge/status through the router', async () => {
   const res = await bridge.router.dispatch(makeRequest('1', 'bridge/status'));
   assert.ok('result' in res);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('startBridge generates a valid pairing payload via the router', async () => {
@@ -35,7 +35,7 @@ test('startBridge generates a valid pairing payload via the router', async () =>
   const validation = validatePairingPayload(res.result, NOW);
   assert.ok(validation.valid);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('stubbed domain methods return a bridge error, not a crash', async () => {
@@ -43,7 +43,7 @@ test('stubbed domain methods return a bridge error, not a crash', async () => {
   const res = await bridge.router.dispatch(makeRequest('3', 'auth/login', { provider: 'x' }));
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.BridgeError);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('auth/status returns a sanitized per-agent snapshot (no tokens)', async () => {
@@ -64,7 +64,7 @@ test('auth/status returns a sanitized per-agent snapshot (no tokens)', async () 
   assert.ok('error' in bad && bad.error.code === JsonRpcErrorCode.InvalidParams);
 
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('bridge/disconnectPhone validates its params', async () => {
@@ -72,7 +72,7 @@ test('bridge/disconnectPhone validates its params', async () => {
   const res = await bridge.router.dispatch(makeRequest('4', 'bridge/disconnectPhone', {}));
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.InvalidParams);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('bridge/status reports the real relay-connection state (false when idle)', async () => {
@@ -81,7 +81,7 @@ test('bridge/status reports the real relay-connection state (false when idle)', 
   assert.ok('result' in res);
   assert.equal((res.result as { relayConnected: boolean }).relayConnected, false);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('bridge/status advertises the message-queue feature', async () => {
@@ -94,7 +94,7 @@ test('bridge/status advertises the message-queue feature', async () => {
   const features = (res.result as { features?: { messageQueue?: boolean } }).features;
   assert.equal(features?.messageQueue, true);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('bridge/removeTrustedDevice revokes trust and is idempotent', async () => {
@@ -119,7 +119,7 @@ test('bridge/removeTrustedDevice revokes trust and is idempotent', async () => {
   );
   assert.ok('result' in again);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('bridge/removeTrustedDevice validates its params', async () => {
@@ -127,5 +127,5 @@ test('bridge/removeTrustedDevice validates its params', async () => {
   const res = await bridge.router.dispatch(makeRequest('8', 'bridge/removeTrustedDevice', {}));
   assert.ok('error' in res && res.error.code === JsonRpcErrorCode.InvalidParams);
   await bridge.stop();
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

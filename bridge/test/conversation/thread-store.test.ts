@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import { RpcError, type Turn } from '@uxnan/shared';
 import { DaemonState, ThreadStore } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 function newStore(): { store: ThreadStore; baseDir: string } {
   const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
@@ -24,7 +24,7 @@ test('start/list/read threads', async () => {
 
   const read = await store.getThread(created.id);
   assert.equal(read.id, created.id);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('turn lifecycle: start, delta, complete', async () => {
@@ -42,7 +42,7 @@ test('turn lifecycle: start, delta, complete', async () => {
   assert.equal(assistant?.content, 'answer');
   const user = turn.messages.find((m) => m.role === 'user');
   assert.equal(user?.content, 'ask');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('reconcileNativeHistory links bridge turns and imports only native-only completed turns', async () => {
@@ -94,7 +94,7 @@ test('reconcileNativeHistory links bridge turns and imports only native-only com
   );
   assert.deepEqual(again, { changed: false, importedTurnIds: [] });
   assert.equal((await store.listTurns(thread.id)).total, 2);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('reconcileNativeHistory ignores an in-progress native user-only turn and refreshes an import', async () => {
@@ -133,7 +133,7 @@ test('reconcileNativeHistory ignores an in-progress native user-only turn and re
   assert.equal((await store.reconcileNativeHistory(thread.id, [complete], 14)).changed, true);
   const assistant = (await store.listTurns(thread.id)).turns[0]?.messages[1];
   assert.equal(assistant?.content, 'final answer');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('appendThinking accumulates reasoning and surfaces it on the message', async () => {
@@ -150,7 +150,7 @@ test('appendThinking accumulates reasoning and surfaces it on the message', asyn
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'Answer');
   assert.equal(assistant?.thinking, 'Let me think.');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('setUsage records token usage on the assistant message (context meter)', async () => {
@@ -165,7 +165,7 @@ test('setUsage records token usage on the assistant message (context meter)', as
   const turn = await store.getTurn(turnId);
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.deepEqual(assistant?.usage, { tokens: 1234, contextWindow: 1_000_000 });
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('appendBlock accumulates structured blocks and surfaces them on the message', async () => {
@@ -183,7 +183,7 @@ test('appendBlock accumulates structured blocks and surfaces them on the message
     { type: 'command_execution', command: 'ls' },
     { type: 'diff', filename: 'a.dart' },
   ]);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('segments preserve the interleaved text↔block order for re-sync', async () => {
@@ -210,7 +210,7 @@ test('segments preserve the interleaved text↔block order for re-sync', async (
     { type: 'command_execution', command: 'ls' },
     { type: 'text', text: 'Done — all good.' },
   ]);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('a plain-text turn ships no segments (lean wire shape)', async () => {
@@ -225,7 +225,7 @@ test('a plain-text turn ships no segments (lean wire shape)', async () => {
   // No structured block landed → no `segments` (rendering from `content` alone
   // is already correct), keeping the wire shape unchanged for text-only turns.
   assert.equal(assistant?.segments, undefined);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('completeTurn with no streamed deltas appends the final text after blocks', async () => {
@@ -242,7 +242,7 @@ test('completeTurn with no streamed deltas appends the final text after blocks',
     { type: 'command_execution', command: 'pwd' },
     { type: 'text', text: 'Here is the answer.' },
   ]);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('listTurns paginates with a cursor', async () => {
@@ -260,7 +260,7 @@ test('listTurns paginates with a cursor', async () => {
   assert.equal(page2.turns.length, 1);
   assert.equal(page2.nextCursor, undefined);
   assert.equal(page2.total, 3);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('listTurns fromEnd returns the newest page', async () => {
@@ -286,7 +286,7 @@ test('listTurns fromEnd returns the newest page', async () => {
     older.turns.map((t) => t.messages[0]?.content),
     ['q1', 'q2'],
   );
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('setAccessMode persists the mode, is idempotent, and surfaces it', async () => {
@@ -312,7 +312,7 @@ test('setAccessMode persists the mode, is idempotent, and surfaces it', async ()
   assert.equal(changed.updatedAt, 3);
   // The runtime the AgentManager reads per turn carries the mode (enforcement).
   assert.equal((await store.getThreadRuntime(thread.id)).accessMode, 'fullAccess');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('rename/archive/unarchive update the thread; delete removes it', async () => {
@@ -330,7 +330,7 @@ test('rename/archive/unarchive update the thread; delete removes it', async () =
 
   await store.deleteThread(thread.id);
   assert.equal((await store.listThreads('p')).threads.length, 0);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('rename/archive/unarchive/delete reject unknown ids', async () => {
@@ -339,7 +339,7 @@ test('rename/archive/unarchive/delete reject unknown ids', async () => {
   await assert.rejects(store.archiveThread('nope', 1), RpcError);
   await assert.rejects(store.unarchiveThread('nope', 1), RpcError);
   await assert.rejects(store.deleteThread('nope'), RpcError);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('delete preserves mutable history if its final metrics projection fails', async () => {
@@ -356,7 +356,7 @@ test('delete preserves mutable history if its final metrics projection fails', a
 
   await assert.rejects(store.deleteThread(thread.id), /ledger unavailable/);
   assert.equal((await store.getThread(thread.id)).id, thread.id);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('agent session id: persisted, idempotent, surfaced via getHistorySource', async () => {
@@ -386,7 +386,7 @@ test('agent session id: persisted, idempotent, surfaced via getHistorySource', a
 
   // Unknown thread is a silent no-op (no throw).
   await store.setAgentSession('nope', 'x', 3);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('fork copies a thread; unknown ids reject', async () => {
@@ -399,7 +399,7 @@ test('fork copies a thread; unknown ids reject', async () => {
 
   await assert.rejects(store.getThread('nope'), RpcError);
   await assert.rejects(store.getTurn('nope'), RpcError);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('appendBlock beforeText slots the block before the open text run', async () => {
@@ -430,7 +430,7 @@ test('appendBlock beforeText slots the block before the open text run', async ()
     { type: 'tool', name: 'Read' },
     { type: 'tool', name: 'Bash' },
   ]);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('appendBlock beforeText with no open text run appends normally', async () => {
@@ -447,7 +447,7 @@ test('appendBlock beforeText with no open text run appends normally', async () =
     { type: 'tool', name: 'Read' },
     { type: 'text', text: 'after' },
   ]);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('completeTurn extends the trailing run when the final text has an unstreamed tail', async () => {
@@ -470,7 +470,7 @@ test('completeTurn extends the trailing run when the final text has an unstreame
     { type: 'text', text: 'second and tail' },
   ]);
   assert.equal(assistant?.content, 'first second and tail');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('completeTurn never erases streamed responses when terminal text diverges', async () => {
@@ -496,7 +496,7 @@ test('completeTurn never erases streamed responses when terminal text diverges',
     { type: 'assistant_response_boundary', phase: 'final_answer' },
     { type: 'text', text: 'Final answer.' },
   ]);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 // --- a turn that has ended stays ended ---
@@ -523,7 +523,7 @@ test('output arriving after a turn ended is ignored, not appended', async () => 
   assert.equal(assistant?.content, 'the answer');
   assert.equal(assistant?.thinking ?? '', '');
   assert.equal((assistant?.blocks ?? []).length, 0);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('a second completion cannot overwrite the reply the user already read', async () => {
@@ -538,7 +538,7 @@ test('a second completion cannot overwrite the reply the user already read', asy
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'the real answer');
   assert.equal(turn.completedAt, 3, 'the original end time stands');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('an aborted turn does not accept late output either', async () => {
@@ -556,5 +556,5 @@ test('an aborted turn does not accept late output either', async () => {
   assert.equal(turn.status, 'aborted');
   const assistant = turn.messages.find((m) => m.role === 'assistant');
   assert.equal(assistant?.content, 'partial');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

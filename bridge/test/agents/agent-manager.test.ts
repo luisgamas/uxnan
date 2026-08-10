@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import type { AgentCapabilities, AgentCommand, AgentId, SendTurnOptions } from '@uxnan/shared';
 import { StreamNotification } from '@uxnan/shared';
 import {
@@ -15,6 +15,7 @@ import {
   ThreadStore,
   createLogger,
 } from '../../src/index.js';
+import { rmrf } from '../helpers/fs.js';
 
 /** Caps for the controllable test adapter (streaming, no approvals/images). */
 const CONTROLLED_CAPS: AgentCapabilities = {
@@ -112,7 +113,7 @@ test('sendTurn drives the echo agent: persists the reply and broadcasts stream e
   assert.ok(methods.includes(StreamNotification.TurnStarted));
   assert.ok(methods.includes(StreamNotification.MessageDelta));
   assert.ok(methods.includes(StreamNotification.TurnCompleted));
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 baseTest('a failed turn persists an error content block into history', async () => {
@@ -147,7 +148,7 @@ baseTest('a failed turn persists an error content block into history', async () 
   assert.ok(!notifications.some((n) => n.method === StreamNotification.ContentBlock));
   assert.ok(notifications.some((n) => n.method === StreamNotification.TurnError));
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 baseTest('activeTurnId reflects the in-flight turn and clears when it ends', async () => {
@@ -176,7 +177,7 @@ baseTest('activeTurnId reflects the in-flight turn and clears when it ends', asy
   // Cleared on completion — authoritative "nothing is running now".
   assert.equal(manager.activeTurnId(thread.id), undefined);
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('sendTurn delivers an image-only turn: placeholder user text + attachment path in the prompt', async () => {
@@ -214,8 +215,8 @@ test('sendTurn delivers an image-only turn: placeholder user text + attachment p
   assert.ok(!assistant.includes(cwd));
   // The temp dir is cleaned up once the turn ends (best-effort, async).
   await waitFor(async () => !existsSync(join(cwd, '.uxnan-attachments', turnId)));
-  await rm(cwd, { recursive: true, force: true });
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(cwd);
+  await rmrf(baseDir);
 });
 
 test('a turn without a cwd writes the attachment into the ADAPTER working dir', async () => {
@@ -254,8 +255,8 @@ test('a turn without a cwd writes the attachment into the ADAPTER working dir', 
   assert.ok(!assistant.includes(adapterCwd));
 
   await waitFor(async () => !existsSync(join(adapterCwd, '.uxnan-attachments', turnId)));
-  await rm(adapterCwd, { recursive: true, force: true });
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(adapterCwd);
+  await rmrf(baseDir);
 });
 
 test('an adapter that takes attachments natively gets no file and no path note', async () => {
@@ -290,8 +291,8 @@ test('an adapter that takes attachments natively gets no file and no path note',
   // …and nothing was written to disk.
   assert.equal(existsSync(join(cwd, '.uxnan-attachments')), false);
 
-  await rm(cwd, { recursive: true, force: true });
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(cwd);
+  await rmrf(baseDir);
 });
 
 test('respondApproval drives the echo demo approval to completion', async () => {
@@ -324,7 +325,7 @@ test('respondApproval drives the echo demo approval to completion', async () => 
     String(turn.messages.find((m) => m.role === 'assistant')?.content ?? ''),
     /Approved/,
   );
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('requestApproval emits an approval block and resolves on respondApproval (hook flow)', async () => {
@@ -367,7 +368,7 @@ test('requestApproval emits an approval block and resolves on respondApproval (h
   await manager.respondApproval(thread.id, approvalId, 'approve');
   assert.equal(await decisionPromise, 'approve');
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('requestQuestion emits a question block and resolves on respondQuestion', async () => {
@@ -407,7 +408,7 @@ test('requestQuestion emits a question block and resolves on respondQuestion', a
   await manager.respondQuestion(thread.id, questionId, [['Python']]);
   assert.deepEqual(await answersPromise, [['Python']]);
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('requestApproval resolves deny on rejection', async () => {
@@ -441,7 +442,7 @@ test('requestApproval resolves deny on rejection', async () => {
   await manager.respondApproval(thread.id, approvalId, 'reject');
   assert.equal(await decisionPromise, 'reject');
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('approval waits while no phone is connected, then times out once one connects', async () => {
@@ -484,7 +485,7 @@ test('approval waits while no phone is connected, then times out once one connec
   await decisionPromise;
   assert.equal(settled, 'reject', 'times out to reject once a phone can see it');
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('a disconnect pauses the approval countdown so it never fires offline', async () => {
@@ -523,7 +524,7 @@ test('a disconnect pauses the approval countdown so it never fires offline', asy
   await new Promise((resolve) => setTimeout(resolve, 200)); // > window
   assert.equal(settled, undefined, 'paused countdown must not fire while offline');
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('respondApproval rejects when the thread has no agent', async () => {
@@ -538,7 +539,7 @@ test('respondApproval rejects when the thread has no agent', async () => {
   });
   manager.register(new EchoAgentAdapter());
   await assert.rejects(manager.respondApproval('no-such-thread', 'appr-x', 'approve'));
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('sendTurn for an unregistered agent rejects with AgentNotRunning', async () => {
@@ -553,7 +554,7 @@ test('sendTurn for an unregistered agent rejects with AgentNotRunning', async ()
   });
   const thread = await store.startThread({ projectId: 'p' }, 1);
   await assert.rejects(manager.sendTurn(thread.id, 'hi'));
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('deprecated agents are unavailable, undiscoverable for models, and cannot run turns', async () => {
@@ -583,7 +584,7 @@ test('deprecated agents are unavailable, undiscoverable for models, and cannot r
   assert.deepEqual(await manager.getCommands('echo', baseDir), []);
   const thread = await store.startThread({ projectId: 'p' }, 1);
   await assert.rejects(manager.sendTurn(thread.id, 'hi'), /deprecated and cannot run new turns/);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 /**
@@ -637,7 +638,7 @@ test('cancelTurn routes to the THREAD’s agent, not the default (global stop-tu
 
   assert.deepEqual(other.canceled, [{ threadId: thread.id, turnId }]);
   assert.deepEqual(def.canceled, []);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 /**
@@ -723,7 +724,7 @@ test('getCommands returns the adapter’s advertised commands (empty for one wit
   // The Echo agent has no listCommands → empty, never throws.
   const none = await manager.getCommands('codex');
   assert.deepEqual(none, []);
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('command invocation with an expander: the agent runs the EXPANDED text; history shows /name', async () => {
@@ -750,7 +751,7 @@ test('command invocation with an expander: the agent runs the EXPANDED text; his
   // History persists the command form, not the (potentially huge) expansion.
   const turn = await store.getTurn(turnId);
   assert.equal(turn.messages.find((m) => m.role === 'user')?.content, '/refactor auth.ts');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 test('command invocation without an expander: the agent runs the native /name args form', async () => {
@@ -774,7 +775,7 @@ test('command invocation without an expander: the agent runs the native /name ar
 
   // No expander → the CLI's native slash form is sent (Claude/ACP interpret it).
   assert.equal(adapter.lastText, '/compact');
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 /** ControlledAdapter that can also stream deltas and (flagged) blocks. */
@@ -831,7 +832,7 @@ baseTest('a beforeText block is stored before the open run and flagged on the wi
   assert.equal(blockNotes[0]?.params?.['beforeText'], true);
   assert.equal('beforeText' in (blockNotes[1]?.params ?? {}), false);
 
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });
 
 baseTest('a terminal event that throws ends the turn instead of hanging it', async () => {
@@ -873,5 +874,5 @@ baseTest('a terminal event that throws ends the turn instead of hanging it', asy
   assert.match(JSON.stringify(errorNote?.params ?? {}), /could not be finalized/);
 
   Object.defineProperty(store, 'completeTurn', { configurable: true, value: original });
-  await rm(baseDir, { recursive: true, force: true });
+  await rmrf(baseDir);
 });

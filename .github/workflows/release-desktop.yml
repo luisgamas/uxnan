@@ -107,6 +107,22 @@ jobs:
           cache: npm
           cache-dependency-path: uxnandesktop/package-lock.json
 
+      # The release is CREATED with the app's token, not with GITHUB_TOKEN.
+      # Measured on 0.0.36: the Actions token uploaded assets to an existing
+      # release perfectly well and was refused when creating one — "Resource not
+      # accessible by integration", on all four legs, with `Contents: write`
+      # granted and 24 minutes after the identical call had succeeded for 0.0.35.
+      # Whatever moved underneath, release creation is the one release operation
+      # this workflow cannot afford to lose, and every other one here already
+      # runs as the app. So it runs as the app too.
+      - name: Mint a release token
+        id: token
+        if: vars.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Resolve and validate release channel from tag
         id: meta
         shell: bash
@@ -147,7 +163,7 @@ jobs:
       - name: Build installers + draft release
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token || secrets.GITHUB_TOKEN }}
           # Updater signature (free minisign key). When set, tauri-action emits a
           # `.sig` per installer and a merged `latest.json`; when unset it builds
           # the same installers without them. NOT OS code-signing.

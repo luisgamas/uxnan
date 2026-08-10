@@ -46,6 +46,28 @@ Lanzar agente             Diffs en sidebar dcha    Limpiar rama (opcional)
 
 ## 2. Flujos Core de Worktrees
 
+### 2.0 Project registration
+
+The Projects sidebar registers folders through one **Add project** dialog. A
+single primary input starts in automatic mode and distinguishes explicit local
+paths from `owner/repository`, HTTPS, and SSH repository references; Local and
+GitHub tabs can force the interpretation. Local input drives the adjacent folder
+list and keeps the existing single-folder or detected sub-repository selection.
+A recognized GitHub input replaces that list with the repository result, rejects
+other hosts at the input boundary, derives an editable destination under the
+user's home directory, and executes
+`github_clone` followed by the normal `repo_add` path. Successful registration
+loads the canonical worktree list and focuses the primary worktree. A failed
+clone is reported without deleting a partial destination automatically.
+The default destination is `<home>/uxnan/<repository>`; the backend creates its
+missing parent directories. A native OS directory picker can replace that parent
+without introducing a second project-import dialog. Clone transfers use a bounded
+15-minute timeout rather than the one-minute budget used by API-shaped GitHub
+queries. Clones retain full history while using `--filter=blob:none`, deferring file
+objects until a checkout needs them instead of paying the full object transfer up
+front. They are deliberately not shallow clones, because later branch, diff, and
+worktree operations require complete history.
+
 ### 2.1 Creación de Worktree
 
 La creación se hace desde dos accesos —el **diálogo dedicado** (`NewWorktreeDialog`,
@@ -86,13 +108,32 @@ opcionales) tiene varias garantías:
 
 7. **Lanzar agente** (opcional): Si el worktree fue creado con un agente predefinido, se lanza automáticamente en un terminal nuevo.
 
-Los flujos **worktree-native de GitHub** (*checkout* de un PR e *iniciar trabajo* sobre
-un issue; ver `docs/github.md`) construyen su worktree en el backend — `git worktree add`
-sobre `pull/<n>/head` y sobre la rama ligada de `gh issue develop`, respectivamente — pero
-**terminan por este mismo camino**: el usuario confirma en un diálogo hermano del de
-*Nuevo worktree* (nombre de rama editable, agente a lanzar, previsualización de la carpeta)
-y el resultado se adopta con los pasos 6–7 compartidos, de modo que un worktree nacido de
-GitHub queda registrado, activo y **con su agente lanzado** igual que cualquier otro.
+GitHub-native worktree flows are available both from item details and from the
+project-card **+** launcher. New, Worktree, PR, and Issue tabs replace one source
+area instead of nesting separate forms. New is first and selected by default for
+git projects, preserving the existing name-first creation path. The launcher lists open pull requests or issues and
+accepts a scoped number or full URL; full URLs must belong to the launcher's
+repository. GitHub item naming is automatic: PRs keep their real head branch
+and issues use `<number>-<title-slug>`; the filesystem destination is not
+exposed in this flow. The user chooses zero or more post-create actions
+(terminal profiles, agents, browser). The backend
+checks out `pull/<n>/head` or runs the linked `gh issue develop` flow, then both
+results enter the same frontend adoption path as manual creation. Targeted fetches
+use `--no-tags` because tags are unrelated to materializing the selected ref. The
+frontend refreshes the canonical list, activates the new workspace, saves the item
+title as its note, and runs the selected actions without awaiting project-wide status
+hydration; the new worktree's badge refresh continues in the background. Remote item bodies are never forwarded to an
+agent implicitly. If GitHub explicitly refuses linked-branch creation because
+the account lacks mutation rights, the issue flow creates the same branch as a
+local worktree instead; unrelated GitHub failures are not swallowed.
+
+The name-first New field also acts as a source router for GitHub work-item
+references. Full PR/issue URLs and labeled references carry their source type;
+neutral `<number>` / `#<number>` input is resolved once through the active
+repository's shared issue endpoint, whose response identifies whether the item is
+a PR or an issue, and then switches to the appropriate source. Item-list filtering treats a lone `#` as incomplete input, resolves
+complete numeric references exactly, and otherwise searches the title, author,
+branch, and metadata shown by each row.
 
 ### 2.2 Cambio de Worktree
 

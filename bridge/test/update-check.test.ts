@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
 import {
   DaemonState,
   DAEMON_FILES,
@@ -14,6 +13,7 @@ import {
   updateNoticeMessage,
   type UpdateCheckCache,
 } from '../src/index.js';
+import { rmrf } from './helpers/fs.js';
 
 function freshState(): DaemonState {
   return new DaemonState(join(tmpdir(), `uxnan-update-test-${randomUUID()}`));
@@ -77,7 +77,7 @@ test('ensureUpdateStatus fetches when the cache is missing and persists it', asy
   const cache = await state.readJson<UpdateCheckCache>(DAEMON_FILES.updateCheck);
   assert.equal(cache?.latestVersion, '0.0.3-alpha.20260805');
   assert.equal(cache?.checkedAt, 1_000);
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('ensureUpdateStatus serves a fresh cache without hitting the network', async () => {
@@ -97,7 +97,7 @@ test('ensureUpdateStatus serves a fresh cache without hitting the network', asyn
   });
   assert.equal(called, false);
   assert.equal(status.latestVersion, '0.0.3-alpha.20260805');
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('ensureUpdateStatus re-checks once the cache is stale', async () => {
@@ -113,7 +113,7 @@ test('ensureUpdateStatus re-checks once the cache is stale', async () => {
   });
   assert.equal(status.latestVersion, '0.0.4-alpha.20260901');
   assert.equal(status.updateAvailable, true);
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('ensureUpdateStatus keeps the last known latest when a re-check fails offline', async () => {
@@ -130,7 +130,7 @@ test('ensureUpdateStatus keeps the last known latest when a re-check fails offli
   // Offline: we keep the previously-cached latest (don't clobber to unknown).
   assert.equal(status.latestVersion, '0.0.4-alpha.20260901');
   assert.equal(status.updateAvailable, true);
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('cachedUpdateStatus never touches the network', async () => {
@@ -143,7 +143,7 @@ test('cachedUpdateStatus never touches the network', async () => {
   const status = await cachedUpdateStatus(state, '0.0.3-alpha.20260702');
   assert.equal(status.updateAvailable, true);
   assert.equal(status.latestVersion, '0.0.5-alpha.20261001');
-  await rm(state.baseDir, { recursive: true, force: true });
+  await rmrf(state.baseDir);
 });
 
 test('updateNoticeMessage is null when up to date and set when outdated', () => {

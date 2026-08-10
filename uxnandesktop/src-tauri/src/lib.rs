@@ -431,6 +431,7 @@ pub fn run() {
             updater::updater_install,
             commands::github_status,
             commands::github_repo_context,
+            commands::github_work_item_kind,
             commands::github_pr_list,
             commands::github_pr_view,
             commands::github_pr_diff,

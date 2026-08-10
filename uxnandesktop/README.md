@@ -75,7 +75,14 @@ available today are:
   stash` / `git checkout` cycle. Create a worktree on a **new branch** (with an
   auto-name generator) or by **checking out any existing local or remote branch**,
   and optionally pick a **custom location** — the automatic sibling folder is used
-  otherwise.
+  otherwise. Add projects from a local folder or by cloning a pasted GitHub
+  repository reference (full history, with file objects transferred on demand),
+  then use the project-card **+** launcher to start from a
+  new/existing branch, a pull request, or an issue and open the selected terminals,
+  agents, and browser as soon as the resulting worktree is adopted; status badges
+  hydrate without delaying that launch. Its first field also recognizes a full
+  PR/issue URL, a labeled reference, or simply `#42` / `42`; neutral numbers are
+  resolved in the active repository and routed to the matching source.
 - **A sidebar you can order your way.** Sort the project cards and the worktree
   rows independently — manually (**drag to reorder**), by name, by most-recent, or
   by **agent activity** (workspaces whose agents are blocked/waiting bubble to the

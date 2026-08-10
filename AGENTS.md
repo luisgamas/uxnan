@@ -584,9 +584,12 @@ carry a version, the release matrix and the full step-by-step are in
    `release-*.yml` run is green and the artifact landed (npm published to the
    `latest` dist-tag / the Play **open-testing** (beta) build uploaded / the
    desktop GitHub **Release** draft exists). A red or half-finished release run is
-   **not** a release. Then **merge the bump pull request the run opened** — while
-   it sits there the tag is not an ancestor of `main`, which is the state that cut
-   desktop 0.0.34 for nothing. (npm's `latest` dist-tag always tracks the newest
+   **not** a release. The bump pull request the run opened **merges itself** once
+   its `verify` checks pass — the release app is a bypass actor on
+   `main-protection` in pull-request mode. If it is still open, its checks went
+   red: fix that rather than merging past it, because an unmerged tag is not an
+   ancestor of `main`, which is the state that cut desktop 0.0.34 for nothing.
+   (npm's `latest` dist-tag always tracks the newest
    release; `alpha`/`beta` channels are opt-in, added manually per build — see
    `docs/releases.md`.) There is no history file to update: `VERSIONS.md` was
    removed on 2026-08-10, because git tags and GitHub releases already are that

@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { BrowseService, browseRootIdFor } from '../../src/index.js';
 import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
+import { rmrf } from '../helpers/fs.js';
 
 async function makeTree(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'uxnan-browse-'));
@@ -25,7 +26,7 @@ test('listRoots reports the configured roots with stable ids', async () => {
     assert.equal(roots[0]!.cwd, root);
     assert.equal(roots[0]!.id, browseRootIdFor(root));
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rmrf(root);
   }
 });
 
@@ -45,7 +46,7 @@ test('browse lists sub-directories, marks git repos, and excludes .git/sensitive
     // the roots list is included so the phone can offer a picker
     assert.equal(res.roots.length, 1);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rmrf(root);
   }
 });
 
@@ -63,7 +64,7 @@ test('browse descends into a sub-directory with correct path/parent/cwd', async 
       ['nested'],
     );
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rmrf(root);
   }
 });
 
@@ -77,7 +78,7 @@ test('browse rejects an attempt to escape above the root', async () => {
         err instanceof RpcError && err.code === JsonRpcErrorCode.WorkspaceAccessDenied,
     );
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rmrf(root);
   }
 });
 
@@ -90,7 +91,7 @@ test('browse with an unknown root id is rejected', async () => {
       (err: unknown) => err instanceof RpcError && err.code === JsonRpcErrorCode.ResourceNotFound,
     );
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rmrf(root);
   }
 });
 
