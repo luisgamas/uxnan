@@ -197,8 +197,10 @@ connected to live bridge data, validated on-device against a real bridge:
 pairing + E2EE transport, live streaming conversations with structured agent
 turns, a message queue for follow-ups sent while the agent is working, the model
 picker and run-option knobs, context-usage and sign-in indicators, interactive
-approvals, voice and image input, per-PC threads, a full Git screen, and Android
-push.
+approvals, voice and image input, a Spaces list that groups work by project and
+folder with per-folder git indicators, a full Git screen, and Android push. On
+tablets and other large screens the same routes render beside a permanent
+navigation drawer instead of as a stack of screens.
 
 The detailed, always-current feature inventory and what's left (Bug A relink
 latency, OpenCode/pi interactive approvals — a bridge-side gap — the automated

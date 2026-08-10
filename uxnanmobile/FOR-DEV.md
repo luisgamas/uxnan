@@ -17,18 +17,41 @@ connected to live bridge data, validated on-device against a real bridge.
 
 **Built (DONE):**
 
-- **Adaptive layout foundations + overview + precise agent state.**
+- **Large screens: one route table, two layouts.** Past 840 dp the app stops
+  being a stack of screens — a **permanent navigation drawer** (the PC, its
+  work, and you) with the routed screen as the content pane beside it. The
+  route table does not change: a single `ShellRoute` wraps the flat routes and
+  `AppShell` decides *where* each screen draws, so every deep link and push
+  notification keeps working at both widths. What changes is the meaning of a
+  tap (`pane_navigation.dart`: opening **replaces** the pane instead of
+  stacking). **Two panes is the ceiling** — Settings splits internally into its
+  own two, and nested splits measure their own constraints rather than the
+  window. Files and git deliberately stay a stack inside the pane: a third
+  column helps nobody on a tablet. The new-conversation form is a full-screen
+  dialog on a phone and a bounded 560×720 one on a wide window.
+
   `UxnanBreakpoint` implements the guide's five window classes and is the single
-  place a width becomes a layout decision; `NeScaffold` clamps content past
-  840 dp and `TwoPaneScaffold` is ready for the drawer that lands with the
-  large-screen work. The home screen is an **overview** (brand + avatar in the
-  bar, a two-row greeting over live badges, PC cards built from `NeBadge`), and
-  the profile screen no longer duplicates its identity card. The thread row now
-  shows the desktop's five agent states — **derived** from turn events, queue
-  state, sign-in and the pending approval/question blocks, never reported by the
-  bridge (see `architecture/02a` §5.4.2). Icons throughout are Hugeicons via the
-  `UxIcons` catalogue and the `UxIcon` primitive, matching the desktop app and
-  the website.
+  place a width becomes a layout decision; `NeScaffold` clamps every screen to
+  its class's content width, and `TwoPaneScaffold` serves both the shell and the
+  nested splits.
+
+- **Spaces: projects ▸ worktrees ▸ conversations, with per-folder git.** The
+  conversation list is grouped by the folder work runs in, and a **repository**
+  level appears over folders that `git/worktrees` relates to each other (never
+  guessed from path prefixes — worktrees are siblings on disk). Each level has
+  its own ordering (status / activity / created / name) through a routed
+  cascading menu. Folder rows carry git indicators (uncommitted, ahead, behind)
+  from `git/status` per cwd, throttled and only while visible; the breakdown
+  lives in the long-press sheet.
+
+- **Overview + precise agent state.** The home screen is an **overview** (brand
+  + avatar in the bar, a two-row greeting over live badges, PC cards built from
+  `NeBadge`), and the profile screen no longer duplicates its identity card. The
+  thread row shows the desktop's five agent states — **derived** from turn
+  events, queue state, sign-in and the pending approval/question blocks, never
+  reported by the bridge (see `architecture/02a` §5.4.2). Icons throughout are
+  Hugeicons via the `UxIcons` catalogue and the `UxIcon` primitive, matching the
+  desktop app and the website.
 
 - **E2EE crypto + secure transport** (X25519 + Ed25519 + HKDF + AES-256-GCM,
   handshake, seq/replay, outbound buffer, reconnect loop).
