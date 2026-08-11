@@ -12,7 +12,8 @@
 // cramped grid:
 //   - text  : 11px meta-labels/sections · 12px metadata · 13px body/menus · 14px titles
 //   - icons  : 14px decorative · 16px in controls/nav · 32px empty-state
-//   - rows   : ~32-36px nav/list rows, 10px horizontal rhythm
+//   - controls: 36px standard · 32px compact · 28px dense chrome
+//   - rows   : 32px sidebar · 36px content/list rows, 8px horizontal rhythm
 //
 // See docs/design-tokens.md.
 
@@ -40,14 +41,48 @@ export const icon = {
 
 /** Footprint of a ghost icon-button (the clickable square). */
 export const iconButton = {
-  /** Compact action in a dense row / card (24px). */
-  xs: "size-6",
-  /** Slightly roomier action (28px). */
-  sm: "size-7",
-  /** Toolbar / header / card / row action buttons (28px). Canonical alias. */
-  action: "size-7",
-  /** Primary toolbar button (32px). */
-  toolbar: "size-8",
+  /** Dense terminal-tab / panel-header action (28px). */
+  xs: "size-7",
+  /** Standard icon action (32px). */
+  sm: "size-8",
+  /** Standard icon action (32px). Canonical alias. */
+  action: "size-8",
+  /** Standard toolbar button (36px). */
+  toolbar: "size-9",
+} as const;
+
+/** Density contract for controls and overlay composition. */
+export const control = {
+  standard: "h-9",
+  compact: "h-8",
+  dense: "h-7",
+  /** Default icon button role when a control is intentionally 36px. */
+  iconDefault: "size-9",
+  icon: "size-8",
+  iconDense: "size-7",
+} as const;
+
+/** Shared overlay row and container recipes. */
+export const overlay = {
+  item: "min-h-8 px-2 py-1.5 text-[13px]",
+  label: "min-h-8 px-2 py-1.5 text-[11px]",
+  popover: "rounded-lg p-3",
+  infoWidth: "w-72 max-w-[calc(100vw-1rem)]",
+  formWidth: "w-80 max-w-[calc(100vw-1rem)]",
+  commandWidth: "w-80 max-w-[calc(100vw-1rem)]",
+  statusWidth: "w-96 max-w-[calc(100vw-1rem)]",
+} as const;
+
+/** Dialog section rhythm and width roles. */
+export const dialog = {
+	content: "px-5 py-0",
+	header: "py-4",
+	body: "py-4",
+  footer: "p-3",
+  smallWidth: "sm:max-w-sm",
+  mediumWidth: "sm:max-w-lg",
+  largeWidth: "sm:max-w-2xl",
+  workspaceWidth: "sm:max-w-4xl",
 } as const;
 
 /** Text roles. Informational text stays muted and un-bold on purpose — only

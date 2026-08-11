@@ -15,6 +15,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- Established the desktop density contract across shared UI primitives: standard
+  controls are 36px, compact controls 32px, dense chrome 28px, overlay rows are
+  at least 32px, and popover/dialog widths are named, viewport-clamped roles.
+  This aligns primitive sizing and spacing without migrating product screens.
+
 - **Projects can now be cloned and added from the Add project dialog.** Its single
   input automatically distinguishes local paths from an `owner/repository`
   reference or GitHub HTTPS/SSH URL, with Local/GitHub tabs for ambiguous input.

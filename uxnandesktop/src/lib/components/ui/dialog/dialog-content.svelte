@@ -16,11 +16,13 @@
 		portalProps,
 		children,
 		showCloseButton = true,
+		size = "medium",
 		...restProps
 	}: WithoutChildrenOrChild<DialogPrimitive.ContentProps> & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof DialogPortal>>;
 		children: Snippet;
 		showCloseButton?: boolean;
+		size?: "small" | "medium" | "large" | "workspace";
 	} = $props();
 </script>
 
@@ -29,8 +31,10 @@
 	<DialogPrimitive.Content
 		bind:ref
 		data-slot="dialog-content"
+		data-size={size}
 		class={cn(
-			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-w-[calc(100%-2rem)] gap-4 rounded-xl p-4 text-sm shadow-[0_16px_48px_rgb(0_0_0/0.18)] ring-1 duration-100 sm:max-w-sm dark:shadow-[0_16px_48px_rgb(0_0_0/0.45)] fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
+			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-w-[calc(100%-2rem)] gap-4 rounded-xl px-5 py-0 text-sm shadow-[0_16px_48px_rgb(0_0_0/0.18)] ring-1 duration-100 dark:shadow-[0_16px_48px_rgb(0_0_0/0.45)] fixed top-1/2 left-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 outline-none",
+			size === "small" ? "sm:max-w-sm" : size === "large" ? "sm:max-w-2xl" : size === "workspace" ? "sm:max-w-4xl" : "sm:max-w-lg",
 			className
 		)}
 		{...restProps}

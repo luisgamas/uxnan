@@ -12,8 +12,8 @@
 
 <div
 	bind:this={ref}
-	data-slot="dialog-header"
-	class={cn("gap-2 flex flex-col py-4", className)}
+	data-slot="dialog-body"
+	class={cn("py-4", className)}
 	{...restProps}
 >
 	{@render children?.()}

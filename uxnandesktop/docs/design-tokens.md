@@ -49,6 +49,65 @@ Hugeicons strokes at **1.5** where lucide stroked at 2 — deliberately lighter 
 the 12-16px sizes this UI uses. `strokeWidth` on `Icon` overrides it when a glyph
 needs to hold its own against heavier neighbours.
 
+## The density contract
+
+Density is role-based and applies to every primitive, not a screen-specific
+preference:
+
+| Role | Contract | Examples |
+|---|---:|---|
+| Standard control | 36px (`h-9`) | Button, Input, Select trigger |
+| Compact control | 32px (`h-8`) | compact Input (`density="compact"`), Select `size="compact"` |
+| Dense chrome | 28px (`h-7`) | terminal tabs and constrained panel-header actions only |
+| Sidebar row | min 32px (`min-h-8`) | navigation and project/worktree rows |
+| Content/list row | min 36px (`min-h-9`) | file and status lists |
+| Standard icon button | 32px (`size-8`) | icon-only toolbar and row action |
+| Dense icon button | 28px (`size-7`) | terminal-tab and panel-header action |
+
+Generic 24px interactive targets are not part of the contract. A platform-native
+exception must retain an effective hit area of at least 28px and be documented
+at its call site. Paint-only controls such as checkboxes may render smaller when
+their effective target remains at least 32px.
+
+Use the role tokens from `src/lib/design.ts` and let a local class override a
+token only when the component has a named, constrained role. Do not resize
+arbitrary markup globally.
+
+```svelte
+<Button size="default">Run</Button>       <!-- 36px standard -->
+<Button size="sm">Filter</Button>         <!-- 32px compact -->
+<Button size="icon-xs" aria-label="Close">…</Button> <!-- 28px dense chrome -->
+<Input density="compact" aria-label="Search" />
+<Select.Trigger size="compact">Compact</Select.Trigger>
+```
+
+## Overlay and dialog roles
+
+Menus, selects, and command items use a minimum 32px row, 8px horizontal
+padding, and readable 13px text. Popovers use 12px default padding; composed
+command/list bodies may intentionally own their internal sections and use
+`p-0`. Width is chosen by information structure and is viewport-clamped:
+
+| Role | Width | Use |
+|---|---:|---|
+| Informational popover | about 288px (`overlay.infoWidth`) | short status or help |
+| Form/command popover | about 320px (`overlay.formWidth`) | fields and command lists |
+| Command popover | about 320px (`overlay.commandWidth`) | command palette/list body |
+| Data-rich status popover | 352–384px (`overlay.statusWidth`) | multi-column status details |
+
+Dialogs use named `small`, `medium`, `large`, and `workspace` width roles. Their
+content shell has 20px horizontal padding and no forced vertical padding. Use
+`Dialog.Header` and `Dialog.Body` for the named 16px (`py-4`) header/body rhythm;
+`Dialog.Footer` owns its 12px (`p-3`) section padding. Existing composed dialogs
+may opt into `p-0` on `Dialog.Content` without fighting a negative margin. The
+close target is a 32px icon button. Footer sections stay composable inside the
+content padding (no negative-margin hacks). Outside-pointer dismissal must preserve
+the pointer sequence for the newly targeted underlying control; keyboard close
+may restore the trigger, while navigation must not restore stale chrome.
+Tooltip coordination is provider-owned by Bits UI: one tooltip is open per root
+provider, trigger clicks close it, unrelated pointer/focus and Escape dismiss it,
+and keyboard focus remains supported without global document listeners.
+
 ## The scale
 
 ### Icons (`icon`)
@@ -64,10 +123,14 @@ needs to hold its own against heavier neighbours.
 ### Icon buttons (`iconButton`)
 | Token | Size | Use |
 |---|---|---|
-| `iconButton.xs` | 24px (`size-6`) | Compact action in a dense row / card |
-| `iconButton.sm` | 28px (`size-7`) | Slightly roomier action |
-| `iconButton.action` | 28px (`size-7`) | Canonical ghost icon button in toolbars, cards and rows |
-| `iconButton.toolbar` | 32px (`size-8`) | Primary toolbar button |
+| `iconButton.xs` | 28px (`size-7`) | Dense terminal-tab / panel-header action |
+| `iconButton.sm` | 32px (`size-8`) | Standard icon action |
+| `iconButton.action` | 32px (`size-8`) | Canonical ghost icon button in toolbars, cards and rows |
+| `iconButton.toolbar` | 36px (`size-9`) | Standard toolbar button |
+
+`control.icon` / `iconButton.sm` are the standard 32px icon target; the explicit
+`control.iconDefault` / `iconButton.toolbar` roles are 36px only where a default
+button-sized icon control is desired.
 
 ### Text (`text`)
 | Token | Size / style | Use |
@@ -107,13 +170,13 @@ on top of the base.
 
 | Token | Use |
 |---|---|
-| `row.sidebar` + `row.sidebarInactive` / `row.sidebarActive` | Sidebar nav / project / worktree / settings-nav row (~28px) |
+| `row.sidebar` + `row.sidebarInactive` / `row.sidebarActive` | Sidebar nav / project / worktree / settings-nav row (min 32px) |
 | `row.list` + `row.listInactive` / `row.listActive` | A list row in a content panel (file tree, changes, …) |
 
 ### Fields & containers (`field`, `panel`, `focus`)
 | Token | Use |
 |---|---|
-| `field.input` | A text input |
+| `field.input` | A standard 36px text input |
 | `field.search` | The compact, field-like search button |
 | `panel.settingsBody` | A settings section body band (controls inside; no card-in-card) |
 | `panel.sectionHeader` | A settings section header (title + description over a divider) |
