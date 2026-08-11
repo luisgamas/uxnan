@@ -1752,4 +1752,60 @@ void main() {
     // It is control data, not chat: no text is sent.
     expect(turnSendParams?.containsKey('text'), isFalse);
   });
+
+  test('a local echo without a turn id is adopted, not duplicated', () async {
+    // Reported from a PHONE, first message of a conversation, no thread
+    // switching: the message came back doubled and survived a reopen, so both
+    // copies were really in the store.
+    //
+    // Opening a conversation starts a re-sync, and the echo written the moment
+    // you hit send carries no turn id until `turn/send` answers. The by-turn
+    // lookup could not see it, so the bridge's copy of the same message was
+    // inserted beside it. The second message of a conversation never duplicated
+    // because by then no re-sync was in flight — which is exactly the clue that
+    // pinned this.
+    await messageRepo.saveMessages([
+      Message(
+        id: 'local-1',
+        threadId: 'th1',
+        turnId: '',
+        role: MessageRole.user,
+        contents: const [TextContent('hola')],
+        deliveryState: MessageDeliveryState.sent,
+        orderIndex: 0,
+        createdAt: DateTime(2026, 8, 11),
+      ),
+    ]);
+
+    turnListResult = <String, dynamic>{
+      'turns': [
+        {
+          'id': 't1',
+          'status': 'completed',
+          'messages': [
+            {'role': 'user', 'content': 'hola', 'createdAt': 0},
+          ],
+        },
+      ],
+      'total': 1,
+    };
+
+    await manager.selectThread('th1');
+    await _settle();
+
+    final stored = await messageRepo.getMessages('th1');
+    final users = stored.where((m) => m.role == MessageRole.user).toList();
+    expect(
+      users,
+      hasLength(1),
+      reason: 'the re-sync inserted a second copy of the same message',
+    );
+    expect(users.single.id, 'local-1', reason: 'the local row must survive');
+    expect(
+      users.single.turnId,
+      't1',
+      reason: 'and adopt the turn it belongs to',
+    );
+  });
+
 }

@@ -6,6 +6,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — the first message of a conversation came back doubled
+
+Reported from a phone, in a fresh conversation, with no thread switching: the
+message you sent appeared twice, and both copies survived closing and reopening
+— so both were really in the store.
+
+Opening a conversation starts a re-sync against the bridge, and the echo written
+the moment you hit send carries **no turn id** until `turn/send` answers. The
+re-sync decides what it already has by turn id, so for those few milliseconds
+the echo was invisible to it and the bridge's copy of the same message was
+inserted beside it.
+
+The clue that pinned it was that the **second** message of a conversation never
+duplicated: by then no re-sync is in flight, so there is no window to land in.
+
+The re-sync now adopts a local echo that has no turn id yet — same row, stamped
+with the turn it turned out to belong to — instead of inserting next to it.
+Matched on the text the bridge echoes back and consumed on first match, so two
+identical sends still reconcile one each.
+
 ### Changed — the empty drawer offers onboarding, not the camera
 
 With no PC paired, the drawer header's button went straight to the QR scanner.

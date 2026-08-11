@@ -1055,6 +1055,24 @@ class ThreadManager {
         if (message.role == MessageRole.user && message.turnId.isNotEmpty)
           message.turnId: message,
     };
+    // The user's own message is echoed locally the moment they hit send —
+    // BEFORE `turn/send` comes back with the turn it belongs to, so it sits
+    // there with an empty `turnId` for a few milliseconds. The lookup above
+    // cannot see it, and a re-sync landing inside that window (opening a
+    // conversation starts one) would insert the bridge's copy of the very same
+    // message: the duplicated FIRST message of a conversation, reported from a
+    // phone with no thread switching involved. Keyed by text, which is what
+    // the bridge echoes back, and consumed on first match so two identical
+    // sends still reconcile one each.
+    final orphanUsers = <String, List<Message>>{};
+    for (final message in existing) {
+      if (message.role != MessageRole.user || message.turnId.isNotEmpty) {
+        continue;
+      }
+      final text =
+          message.contents.whereType<TextContent>().map((c) => c.text).join();
+      orphanUsers.putIfAbsent(text, () => []).add(message);
+    }
     final toSave = <Message>[];
     // New (not-yet-stored) messages collected in document order
     // (oldest→newest);
@@ -1081,6 +1099,15 @@ class ThreadManager {
           // attachments, and delivery state. A missing user is genuinely from
           // another client and gets a deterministic local id.
           if (userByTurn.containsKey(turnId)) continue;
+          // Adopt the local echo instead of inserting beside it: same row, now
+          // stamped with the turn it turned out to belong to.
+          final orphans = orphanUsers[content];
+          if (orphans != null && orphans.isNotEmpty) {
+            final adopted = orphans.removeAt(0).copyWith(turnId: turnId);
+            toSave.add(adopted);
+            userByTurn[turnId] = adopted;
+            continue;
+          }
           final message = Message(
             id: _streamUserId(turnId),
             threadId: threadId,
