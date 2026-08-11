@@ -192,7 +192,8 @@ Task-focused guides live in [`docs/`](docs/):
   12 streaming notifications** (see `shared/src/jsonrpc/`); the mobile app keeps
   manually-synced Dart equivalents of the same shapes.
 - **State.** Non-secret JSON under `~/.uxnan/` (atomic writes) —
-  `daemon-config.json`, `pairing-session.json`, `threads.json`, `metrics.json`,
+  `daemon-config.json`, `pairing-session.json`, `threads/<threadId>.json`,
+  `metrics.json`,
   `trusted-phones.json`, `push-state.json`, `update-check.json`, `agent-cache/`,
   `logs/`. `metrics.json` is the complete historical activity ledger; it keeps
   five rotating `.bak1` … `.bak5` generations and is not pruned when a thread is

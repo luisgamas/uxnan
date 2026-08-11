@@ -1,12 +1,19 @@
 /**
- * Persistent conversation store (threads → turns → messages) under
- * `~/.uxnan/threads.json`. Mutations are serialized through a mutex so concurrent
- * turn/delta updates don't corrupt the read-modify-write cycle.
+ * Persistent conversation store (threads → turns → messages), one file per
+ * conversation under `~/.uxnan/threads/<threadId>.json`. Mutations are
+ * serialized through a mutex so concurrent turn/delta updates don't corrupt the
+ * read-modify-write cycle, and the conversations are held in memory between
+ * them (this process is their only reader and writer).
+ *
+ * The layout is load-bearing, not housekeeping. Every streamed token mutates a
+ * conversation, and while all of them shared one `threads.json` each token
+ * re-read, re-serialized and rewrote the entire store: 93 ms per delta on a
+ * real 8.4 MB one, which queued up behind the mutex and throttled a reply to a
+ * quarter of its natural speed (measured: the same answer took 116 s against
+ * that store and 26 s against an empty one). Per conversation the median write
+ * is a few KB, and one conversation's size no longer taxes every other.
  *
  * Source: architecture/02a-system-architecture.md §6 (domain models).
- *
- * FOR-DEV: a single JSON file is fine for the MVP; move to a per-thread or SQLite
- * store if conversation volume grows (src/conversation/thread-store.ts).
  */
 import { randomUUID } from 'node:crypto';
 import type {
@@ -25,6 +32,18 @@ import { JsonRpcErrorCode, RpcError } from '@uxnan/shared';
 import { DAEMON_FILES, type DaemonState } from '../daemon-state.js';
 import { utcDayKey } from '../metrics/day.js';
 import type { ConversationMetricEvent, TurnMetricEvent } from '../metrics/metrics-store.js';
+
+/**
+ * What a mutation changed, so only those conversation files are rewritten.
+ * Both lists are thread ids; omitting them writes nothing.
+ */
+interface MutationScope<T> {
+  result: T;
+  /** Conversations whose file must be (re)written. */
+  write?: readonly string[];
+  /** Conversations whose file must be deleted. */
+  remove?: readonly string[];
+}
 
 interface StoredMessage {
   id: string;
@@ -221,7 +240,7 @@ export class ThreadStore {
     nativeTurns: Turn[],
     now: number,
   ): Promise<NativeHistoryReconcileResult> {
-    const captured = await this.#mutateMaybe(async (threads) => {
+    const captured = await this.#mutate(async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const candidates = nativeTurns.filter(
         (turn) => turn.threadId === threadId && importableNativeTurn(turn),
@@ -232,7 +251,7 @@ export class ThreadStore {
             reconcile: { changed: false, importedTurnIds: [] },
             thread: undefined,
           },
-          persist: false,
+          write: [],
         };
       }
 
@@ -304,7 +323,7 @@ export class ThreadStore {
           reconcile: { changed, importedTurnIds },
           thread: changed ? structuredCloneThread(thread) : undefined,
         },
-        persist: changed || linked,
+        write: changed || linked ? [threadId] : [],
       };
     });
     if (captured.thread) await this.#captureMetrics(captured.thread);
@@ -313,7 +332,7 @@ export class ThreadStore {
 
   async startThread(input: StartThreadInput, now: number): Promise<Thread> {
     const created = await this.#mutate(async (threads) => {
-      const thread: StoredThread = {
+      const created: StoredThread = {
         id: randomUUID(),
         projectId: input.projectId,
         title: input.title ?? 'New thread',
@@ -325,8 +344,8 @@ export class ThreadStore {
         ...(input.model !== undefined ? { model: input.model } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
       };
-      threads.push(thread);
-      return structuredCloneThread(thread);
+      threads.push(created);
+      return { result: structuredCloneThread(created), write: [created.id] };
     });
     await this.#captureMetrics(created);
     return toThread(created);
@@ -360,7 +379,7 @@ export class ThreadStore {
    * the adapter reports it, so the on-disk history fallback can find the log.
    */
   setAgentSession(threadId: string, agentSessionId: string, now: number): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = threads.find((t) => t.id === threadId);
       if (!thread || thread.agentSessionId === agentSessionId) return;
       thread.agentSessionId = agentSessionId;
@@ -369,7 +388,7 @@ export class ThreadStore {
   }
 
   resumeThread(threadId: string, now: number): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.status = 'active';
       thread.updatedAt = now;
@@ -377,7 +396,7 @@ export class ThreadStore {
   }
 
   async setModel(threadId: string, model: string, now: number): Promise<void> {
-    const updated = await this.#mutate(async (threads) => {
+    const updated = await this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.model = model;
       thread.updatedAt = now;
@@ -399,7 +418,7 @@ export class ThreadStore {
     now: number,
     source: ThreadTitleSource = 'user',
   ): Promise<Thread> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.title = title;
       thread.titleSource = source;
@@ -418,7 +437,7 @@ export class ThreadStore {
    * which is also the signal not to notify anyone.
    */
   applyGeneratedTitle(threadId: string, title: string, now: number): Promise<Thread | undefined> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = threads.find((t) => t.id === threadId);
       if (!thread) return undefined;
       // Absent means it predates `titleSource`, and those are all `prompt`.
@@ -436,7 +455,7 @@ export class ThreadStore {
    * same mode is a no-op (does not bump `updatedAt`). Returns the updated Thread.
    */
   setAccessMode(threadId: string, mode: AccessMode, now: number): Promise<Thread> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       if (thread.accessMode !== mode) {
         thread.accessMode = mode;
@@ -472,11 +491,12 @@ export class ThreadStore {
         );
       }
       threads.splice(index, 1);
+      return { result: undefined, remove: [threadId] };
     });
   }
 
   #setStatus(threadId: string, status: ThreadStatus, now: number): Promise<Thread> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       thread.status = status;
       thread.updatedAt = now;
@@ -495,7 +515,7 @@ export class ThreadStore {
         updatedAt: now,
       };
       threads.push(copy);
-      return structuredCloneThread(copy);
+      return { result: structuredCloneThread(copy), write: [copy.id] };
     });
     await this.#captureMetrics(fork);
     return toThread(fork);
@@ -546,7 +566,7 @@ export class ThreadStore {
     intoTurnId: string,
     now: number,
   ): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const turn = thread.turns.find((t) => t.id === turnId);
       if (!turn) return;
@@ -575,15 +595,18 @@ export class ThreadStore {
   async cancelOrphanedQueuedTurns(now: number): Promise<number> {
     return this.#mutate(async (threads) => {
       let cancelled = 0;
+      const write: string[] = [];
       for (const thread of threads) {
+        const before = cancelled;
         for (const turn of thread.turns) {
           if (turn.status !== 'queued') continue;
           turn.status = 'cancelled';
           turn.completedAt = now;
           cancelled += 1;
         }
+        if (cancelled !== before) write.push(thread.id);
       }
-      return cancelled;
+      return { result: cancelled, write };
     });
   }
 
@@ -593,7 +616,7 @@ export class ThreadStore {
     status: TurnStatus,
     now: number,
   ): Promise<StartTurnResult> {
-    const captured = await this.#mutate(async (threads) => {
+    const captured = await this.#mutateThread(threadId, async (threads) => {
       const thread = await this.#requireThread(threads, threadId);
       const turnId = randomUUID();
       const userMessage: StoredMessage = {
@@ -628,7 +651,7 @@ export class ThreadStore {
   }
 
   appendDelta(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.text += delta;
@@ -639,7 +662,7 @@ export class ThreadStore {
 
   /** Appends a reasoning ("thinking") chunk to the turn's assistant message. */
   appendThinking(threadId: string, turnId: string, delta: string, now: number): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.thinking = (assistant.thinking ?? '') + delta;
@@ -665,7 +688,7 @@ export class ThreadStore {
     now: number,
     beforeText = false,
   ): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       if (this.#isTerminal(threads, threadId, turnId)) return;
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.blocks = [...(assistant.blocks ?? []), content];
@@ -687,7 +710,7 @@ export class ThreadStore {
     usage: { tokens: number; contextWindow?: number },
     now: number,
   ): Promise<void> {
-    const updated = await this.#mutate(async (threads) => {
+    const updated = await this.#mutateThread(threadId, async (threads) => {
       const assistant = this.#assistantMessage(threads, threadId, turnId);
       assistant.usage = usage;
       this.#touch(threads, threadId, now);
@@ -702,7 +725,7 @@ export class ThreadStore {
     finalText: string | undefined,
     now: number,
   ): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const turn = this.#turn(threads, threadId, turnId);
       // A turn only ends once. An adapter whose CLI keeps running past its own
       // end-of-turn event can emit a second completion for the same turn; taking
@@ -747,7 +770,7 @@ export class ThreadStore {
   }
 
   #setTurnStatus(threadId: string, turnId: string, status: TurnStatus, now: number): Promise<void> {
-    return this.#mutate(async (threads) => {
+    return this.#mutateThread(threadId, async (threads) => {
       const turn = this.#turn(threads, threadId, turnId);
       turn.status = status;
       // Only a terminal status stamps `completedAt`. `beginQueuedTurn` moves a
@@ -809,17 +832,71 @@ export class ThreadStore {
       .catch(() => undefined);
   }
 
-  async #read(): Promise<StoredThread[]> {
-    return (await this.#state.readJson<StoredThread[]>(DAEMON_FILES.threads)) ?? [];
+  /**
+   * The conversations, held in memory and loaded once.
+   *
+   * Re-reading them from disk per call bought nothing — this process is the
+   * only reader and writer of that state (a single-instance lock guarantees
+   * it), and on a real 8.4 MB store the read cost 36 ms of the 93 ms every
+   * streamed token spent here. The cache changes no durability guarantee:
+   * every mutation still writes before it resolves.
+   *
+   * Memoized as the in-flight PROMISE, never as the resolved value: reads do not
+   * take the write lock, so two that arrive before the first load finishes would
+   * otherwise each load their own array, and every mutation applied to whichever
+   * one lost the race would be silently dropped. The suite caught exactly that —
+   * queue tests failing about one run in three.
+   */
+  #threads: Promise<StoredThread[]> | undefined;
+
+  #read(): Promise<StoredThread[]> {
+    this.#threads ??= this.#load();
+    return this.#threads;
   }
 
-  /** Run `fn` under the write lock with the current threads, then persist. */
-  #mutate<T>(fn: (threads: StoredThread[]) => Promise<T>): Promise<T> {
+  /**
+   * Loads every conversation, migrating a legacy single-file store on the way.
+   *
+   * The old `threads.json` is read once, split into one file per conversation,
+   * and then kept under `.migrated` rather than deleted — it is the user's only
+   * copy of their history until the new files are proven on disk.
+   */
+  async #load(): Promise<StoredThread[]> {
+    const legacy = await this.#state.readJson<StoredThread[]>(DAEMON_FILES.threads);
+    if (legacy === null) return this.#state.readThreadFiles<StoredThread>();
+    // A legacy file alongside per-thread files means a previous migration was
+    // interrupted; the per-thread files are the newer truth, so they win and
+    // the legacy one is only retired.
+    const migrated = await this.#state.readThreadFiles<StoredThread>();
+    const known = new Set(migrated.map((thread) => thread.id));
+    for (const thread of legacy) {
+      if (known.has(thread.id)) continue;
+      await this.#state.writeThreadFile(thread.id, thread);
+      migrated.push(thread);
+    }
+    await this.#state.retireLegacyThreads();
+    return migrated;
+  }
+
+  /**
+   * Runs `fn` under the write lock with the current conversations, then writes
+   * only the files it reports as touched.
+   *
+   * Naming them is deliberately explicit and required: writing the whole store
+   * on every mutation is what made a streamed token cost 93 ms, and a mutation
+   * that silently forgot to name its thread would lose that write instead —
+   * so the type makes it impossible to omit.
+   */
+  #mutate<T>(fn: (threads: StoredThread[]) => Promise<MutationScope<T>>): Promise<T> {
     const run = this.#lock.then(async () => {
       const threads = await this.#read();
-      const result = await fn(threads);
-      await this.#state.writeJson(DAEMON_FILES.threads, threads);
-      return result;
+      const scope = await fn(threads);
+      for (const id of scope.remove ?? []) await this.#state.removeThreadFile(id);
+      for (const id of scope.write ?? []) {
+        const thread = threads.find((t) => t.id === id);
+        if (thread) await this.#state.writeThreadFile(id, thread);
+      }
+      return scope.result;
     });
     // Keep the chain alive regardless of individual failures.
     this.#lock = run.then(
@@ -829,21 +906,12 @@ export class ThreadStore {
     return run;
   }
 
-  /** Serialized mutation that may prove to be a no-op and skip the disk write. */
-  #mutateMaybe<T>(
-    fn: (threads: StoredThread[]) => Promise<{ result: T; persist: boolean }>,
-  ): Promise<T> {
-    const run = this.#lock.then(async () => {
-      const threads = await this.#read();
-      const outcome = await fn(threads);
-      if (outcome.persist) await this.#state.writeJson(DAEMON_FILES.threads, threads);
-      return outcome.result;
-    });
-    this.#lock = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+  /** {@link #mutate} for the common case: one conversation changed. */
+  #mutateThread<T>(threadId: string, fn: (threads: StoredThread[]) => Promise<T>): Promise<T> {
+    return this.#mutate(async (threads) => ({
+      result: await fn(threads),
+      write: [threadId],
+    }));
   }
 }
 

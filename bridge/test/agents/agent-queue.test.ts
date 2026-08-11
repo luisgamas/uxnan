@@ -250,7 +250,10 @@ test('stopping the running turn holds the queue until it is resumed', async () =
   const second = await h.manager.sendTurn(h.threadId, 'second');
 
   h.adapter.abort(h.threadId, first.turnId);
-  await waitFor(async () => (await h.store.getTurn(first.turnId)).status === 'aborted');
+  // Wait for the queue state this asserts, not for the turn status: the store
+  // records the abort BEFORE the manager pauses the queue, so waiting on the
+  // stored status can observe the gap between the two.
+  await waitFor(() => h.manager.queueState(h.threadId).paused);
 
   const paused = h.manager.queueState(h.threadId);
   assert.equal(paused.paused, true);
@@ -393,11 +396,15 @@ test('a duplicate completion for the same turn does not drain the queue twice', 
   const third = await h.manager.sendTurn(h.threadId, 'third');
 
   h.adapter.complete(h.threadId, first.turnId);
-  await waitFor(async () => (await h.store.getTurn(second.turnId)).status === 'streaming');
+  // Wait for the delivery this asserts, not for the turn status: the store marks
+  // a queued turn `streaming` BEFORE the adapter is handed its text, so waiting
+  // on the stored status can observe the gap between the two.
+  await waitFor(() => h.adapter.delivered.length === 2);
   assert.deepEqual(
     h.adapter.delivered.map((d) => d.text),
     ['first', 'second'],
   );
+  assert.equal((await h.store.getTurn(second.turnId)).status, 'streaming');
 
   // The same turn reports completion again.
   h.adapter.complete(h.threadId, first.turnId, 'late text');

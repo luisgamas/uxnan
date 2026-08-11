@@ -1738,7 +1738,8 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── trusted-phones.json            # telefonos de confianza registrados
 ├── managed-worktrees.json         # worktrees administrados
 ├── push-state.json                # estado de push notifications
-├── threads.json                   # historial mutable de conversaciones
+├── threads/                       # historial mutable, un fichero por conversacion
+│   └── <threadId>.json            #   reescrito solo cuando ESA conversacion cambia
 ├── metrics.json                   # ledger historico completo (version 2)
 ├── metrics.json.bak1..bak5        # generaciones locales del ledger
 ├── checkpoints.json               # metadata de checkpoints
@@ -1749,6 +1750,25 @@ El bridge mantiene estado en `~/.uxnan/`:
 
 The bridge Ed25519 identity and the metrics sealing key live in the OS keychain,
 not in these JSON files.
+
+**Conversations are stored one per file, and that is load-bearing.** Every
+streamed token mutates a conversation, so while they shared a single
+`threads.json` each token re-read, re-serialized and rewrote the whole store.
+Measured on a real 8.4 MB one: 36 ms to read and parse, 33 ms to serialize
+(blocking the event loop) and 24 ms to write — **93 ms per delta**, which queued
+behind the store mutex and throttled delivery to the phone to 5.8 deltas/s with
+gaps of 109 ms (p50) and 573 ms (max). The same reply took 116 s against that
+store and 26 s against an empty one: the cost scaled with the user's whole
+history, so it got worse on its own. Per conversation the median write is a few
+KB, and one conversation's size no longer taxes every other.
+
+The conversations are also held in memory between mutations — this process is
+their only reader and writer, guaranteed by the single-instance lock. **No
+durability guarantee changes: every mutation still writes its file before it
+resolves**, so nothing is deferred and no window of loss is opened. A legacy
+`threads.json` is split into per-conversation files on first read and kept as
+`threads.json.migrated` (a backup, not a deletion — it is the user's only copy
+of that history until the new files are proven).
 
 #### 5.8.4 Autostart del bridge
 

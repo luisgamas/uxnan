@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { RpcError, type Turn } from '@uxnan/shared';
 import { DaemonState, ThreadStore } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
@@ -284,6 +286,124 @@ test('reconcileNativeHistory drops a duplicate turn imported before it could be 
   const turns = await store.listTurns(thread.id);
   assert.equal(turns.total, 1, 'the stray import is gone');
   assert.equal(turns.turns[0]?.id, local.turnId, 'the bridge copy is the one kept');
+  await rmrf(baseDir);
+});
+
+/**
+ * One file per conversation is what keeps a streamed token cheap: while every
+ * thread shared one `threads.json`, each delta re-read and rewrote the whole
+ * store (93 ms on a real 8.4 MB one) and throttled the reply behind the mutex.
+ */
+const legacyThread = (id: string, title: string) => ({
+  id,
+  projectId: 'p',
+  title,
+  status: 'active',
+  createdAt: 1,
+  updatedAt: 1,
+  turns: [],
+});
+
+async function seedLegacy(baseDir: string, threads: unknown[]): Promise<void> {
+  await mkdir(baseDir, { recursive: true });
+  await writeFile(join(baseDir, 'threads.json'), JSON.stringify(threads), 'utf-8');
+}
+
+test('a legacy single-file store migrates to one file per conversation', async () => {
+  const { store, baseDir } = newStore();
+  await seedLegacy(baseDir, [legacyThread('t-one', 'First'), legacyThread('t-two', 'Second')]);
+
+  const list = await store.listThreads('p');
+  assert.deepEqual(
+    list.threads.map((t) => t.id).sort(),
+    ['t-one', 't-two'],
+    'the history must survive the move',
+  );
+
+  const files = (await readdir(join(baseDir, 'threads'))).sort();
+  assert.deepEqual(files, ['t-one.json', 't-two.json']);
+  assert.equal(
+    existsSync(join(baseDir, 'threads.json')),
+    false,
+    'the legacy file is retired, not left to be re-migrated',
+  );
+  assert.equal(
+    existsSync(join(baseDir, 'threads.json.migrated')),
+    true,
+    'and kept as a backup rather than deleted — it is the only copy of the history',
+  );
+  await rmrf(baseDir);
+});
+
+test('an interrupted migration keeps the newer per-thread file and never duplicates', async () => {
+  const { store, baseDir } = newStore();
+  await seedLegacy(baseDir, [
+    legacyThread('t-one', 'Stale title'),
+    legacyThread('t-two', 'Second'),
+  ]);
+  // A migration that died after writing one file: that copy is the newer truth.
+  await mkdir(join(baseDir, 'threads'), { recursive: true });
+  await writeFile(
+    join(baseDir, 'threads', 't-one.json'),
+    JSON.stringify({ ...legacyThread('t-one', 'Renamed since'), updatedAt: 99 }),
+    'utf-8',
+  );
+
+  const list = await store.listThreads('p');
+  assert.equal(list.threads.length, 2, 'no conversation is imported twice');
+  assert.equal(
+    list.threads.find((t) => t.id === 't-one')?.title,
+    'Renamed since',
+    'the per-thread file wins over the legacy copy',
+  );
+  await rmrf(baseDir);
+});
+
+test('a mutation rewrites only the conversation it touched', async () => {
+  const { store, baseDir } = newStore();
+  const one = await store.startThread({ projectId: 'p', title: 'One' }, 1);
+  const two = await store.startThread({ projectId: 'p', title: 'Two' }, 2);
+
+  // Mark the other conversation's file by hand: if the store rewrites it, the
+  // marker is gone — which is exactly the cost this layout exists to avoid.
+  const otherFile = join(baseDir, 'threads', `${two.id}.json`);
+  const stored = JSON.parse(await readFile(otherFile, 'utf-8')) as Record<string, unknown>;
+  await writeFile(otherFile, JSON.stringify({ ...stored, marker: 'untouched' }), 'utf-8');
+
+  const { turnId } = await store.startTurn(one.id, 'ask', 3);
+  await store.appendDelta(one.id, turnId, 'answer', 4);
+  await store.completeTurn(one.id, turnId, undefined, 5);
+
+  const after = JSON.parse(await readFile(otherFile, 'utf-8')) as Record<string, unknown>;
+  assert.equal(after['marker'], 'untouched');
+  await rmrf(baseDir);
+});
+
+test('deleting a conversation removes its file', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const file = join(baseDir, 'threads', `${thread.id}.json`);
+  assert.equal(existsSync(file), true);
+
+  await store.deleteThread(thread.id);
+  assert.equal(existsSync(file), false);
+  assert.equal((await store.listThreads('p')).threads.length, 0);
+  await rmrf(baseDir);
+});
+
+test('a stored conversation survives a fresh store over the same directory', async () => {
+  const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
+  const first = new ThreadStore(new DaemonState(baseDir));
+  const thread = await first.startThread({ projectId: 'p', title: 'Kept' }, 1);
+  const { turnId } = await first.startTurn(thread.id, 'ask', 2);
+  await first.appendDelta(thread.id, turnId, 'answer', 3);
+  await first.completeTurn(thread.id, turnId, undefined, 4);
+
+  // The in-memory cache must be a cache, not the only copy.
+  const second = new ThreadStore(new DaemonState(baseDir));
+  const turns = await second.listTurns(thread.id);
+  assert.equal(turns.total, 1);
+  assert.equal(turns.turns[0]?.messages.find((m) => m.role === 'assistant')?.content, 'answer');
   await rmrf(baseDir);
 });
 

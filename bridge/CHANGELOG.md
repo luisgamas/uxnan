@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — one file per conversation, so a streamed reply stops fighting the disk
+
+Replies arrived on the phone in lurches, and the longer your history got the
+worse it was. The cause was not the phone: every streamed token mutates a
+conversation, and while all of them lived in a single `threads.json` each token
+re-read, re-serialized and rewrote the **entire** store.
+
+Measured on a real 8.4 MB one: 36 ms to read and parse, 33 ms to serialize
+(blocking the event loop) and 24 ms to write — **93 ms per delta**. Those calls
+queue behind the store's mutex, and the notification to the phone is sent only
+after the write, so the disk — not the agent — set the pace. Driving the real
+OpenCode adapter with the same prompt against that store and against an empty
+one: **116 s versus 26 s**, 5.8 deltas/s versus 24.5, with gaps between deltas
+of 109 ms (p50) and 573 ms (max) versus 4 ms and 89 ms.
+
+Conversations now live one per file under `~/.uxnan/threads/<threadId>.json`,
+and only the conversation that changed is rewritten — a few KB in the median
+case instead of the whole history. They are also held in memory between
+mutations (this process is their only reader and writer, guaranteed by the
+single-instance lock), which removes the re-read entirely.
+
+**No durability guarantee changes:** every mutation still writes its file before
+it resolves. Nothing is deferred, so there is no window in which a crash could
+lose a reply.
+
+The same measurement after the change: **19.2 s**, 38 deltas/s, gaps of 2.8 ms
+(p50) and 161 ms (max) — the real store now performs like an empty one, which
+was the whole point. A legacy `threads.json` is split into per-conversation
+files on first read and kept as `threads.json.migrated`; verified against a real
+store (79 conversations, 116 turns, 249 messages, byte-identical after the move).
+
 ### Fixed — a whole exchange stored twice after reading the agent's own log
 
 A conversation came back doubled on the phone — the prompt **and** the reply,
