@@ -240,22 +240,27 @@ export class ThreadStore {
       const importedTurnIds: string[] = [];
       let refreshed = false;
       let linked = false;
+      let pruned = false;
 
       for (const native of candidates) {
         let stored = thread.turns.find(
           (turn) =>
             !claimed.has(turn) && (turn.nativeHistoryTurnId === native.id || turn.id === native.id),
         );
-        if (!stored) {
-          const fingerprint = nativeTurnFingerprint(native);
-          stored = thread.turns.find(
-            (turn) =>
-              !claimed.has(turn) &&
-              turn.status !== 'queued' &&
-              turn.status !== 'cancelled' &&
-              storedTurnFingerprint(turn) === fingerprint,
-          );
+        // Heal a turn imported before the identity match below could recognize
+        // it: that row and the bridge's own record of the same exchange are the
+        // same turn, shown twice. Only ever drops an imported row (its id IS the
+        // native id) that has a bridge-created twin — a genuinely external turn
+        // has none, so it is never touched.
+        if (stored !== undefined && stored.id === native.id) {
+          const twin = findNativeTwin(thread.turns, native, claimed, stored);
+          if (twin) {
+            thread.turns.splice(thread.turns.indexOf(stored), 1);
+            pruned = true;
+            stored = twin;
+          }
         }
+        stored ??= findNativeTwin(thread.turns, native, claimed, undefined);
 
         if (stored) {
           claimed.add(stored);
@@ -286,7 +291,7 @@ export class ThreadStore {
         importedTurnIds.push(imported.id);
       }
 
-      const changed = importedTurnIds.length > 0 || refreshed;
+      const changed = importedTurnIds.length > 0 || refreshed || pruned;
       if (changed) {
         // Native timestamps let an external turn land between two bridge turns
         // if both clients wrote before the next refresh. V8's stable sort keeps
@@ -976,23 +981,102 @@ function importableNativeTurn(turn: Turn): boolean {
   );
 }
 
-/** Content identity used to link a bridge UUID to the same native-log turn. */
-function nativeTurnFingerprint(turn: Turn): string {
-  return turn.messages
-    .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map((message) => `${message.role}\u0000${normalizeHistoryText(message.content)}`)
-    .join('\u0001');
+/**
+ * Content identity of a turn: its prompt and its reply, each concatenated
+ * across however many messages carry it, compared ignoring whitespace.
+ *
+ * Concatenating per role is what makes the two sides comparable at all. The
+ * bridge accumulates ONE assistant message per turn; a native transcript splits
+ * that same reply across several — one per tool step, most of them carrying no
+ * prose whatsoever (OpenCode writes a text-less message per tool call, Claude
+ * Code likewise). Comparing message-by-message therefore mismatched every turn
+ * in which the agent used a tool, and the unmatched native turn was imported
+ * beside the bridge's own record: the whole exchange, prompt included, stored
+ * and shown twice on the phone.
+ *
+ * Whitespace is dropped rather than normalized because each native run is
+ * already trimmed as it is read, so only a whitespace-insensitive comparison
+ * can recover the bridge's accumulated text from those pieces.
+ */
+interface TurnIdentity {
+  readonly user: string;
+  readonly assistant: string;
 }
 
-function storedTurnFingerprint(turn: StoredTurn): string {
-  return turn.messages
-    .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map((message) => `${message.role}\u0000${normalizeHistoryText(message.text)}`)
-    .join('\u0001');
+/** Clock/rounding tolerance when testing a native turn against a run window. */
+const NATIVE_TWIN_CLOCK_SLACK_MS = 5_000;
+
+function turnIdentity(messages: readonly { role: MessageRole; text: unknown }[]): TurnIdentity {
+  const joined = (role: MessageRole): string =>
+    withoutWhitespace(
+      messages
+        .filter((message) => message.role === role)
+        .map((message) => (typeof message.text === 'string' ? message.text : ''))
+        .join(''),
+    );
+  return { user: joined('user'), assistant: joined('assistant') };
 }
 
-function normalizeHistoryText(value: unknown): string {
-  return typeof value === 'string' ? value.trim().replace(/\r\n/g, '\n') : '';
+function nativeTurnIdentity(turn: Turn): TurnIdentity {
+  return turnIdentity(turn.messages.map((m) => ({ role: m.role, text: m.content })));
+}
+
+function storedTurnIdentity(turn: StoredTurn): TurnIdentity {
+  return turnIdentity(turn.messages.map((m) => ({ role: m.role, text: m.text })));
+}
+
+function withoutWhitespace(value: string): string {
+  return value.replace(/\s+/gu, '');
+}
+
+/**
+ * The already-stored turn that records the same exchange as [native], or
+ * `undefined` when this really is a turn Uxnan has never seen.
+ *
+ * Queued and cancelled turns are never twins (they hold no reply yet), and a
+ * turn already claimed by an earlier native turn cannot be claimed twice, so
+ * two identical exchanges in one thread still reconcile one each.
+ */
+function findNativeTwin(
+  turns: readonly StoredTurn[],
+  native: Turn,
+  claimed: ReadonlySet<StoredTurn>,
+  exclude: StoredTurn | undefined,
+): StoredTurn | undefined {
+  const wanted = nativeTurnIdentity(native);
+  const eligible = turns.filter(
+    (turn) =>
+      turn !== exclude &&
+      !claimed.has(turn) &&
+      turn.status !== 'queued' &&
+      turn.status !== 'cancelled',
+  );
+  const exact = eligible.find((turn) => {
+    const identity = storedTurnIdentity(turn);
+    return identity.user === wanted.user && identity.assistant === wanted.assistant;
+  });
+  if (exact) return exact;
+  // Some agents keep a different rendition of the same reply in their own log
+  // than the one they streamed — Zero's transcript holds the final answer
+  // without the preamble the bridge received. Same prompt, one reply containing
+  // the other, AND the native turn starting inside the bridge turn's own run
+  // window: only all three together identify the same turn. A turn genuinely
+  // written elsewhere fails the window, so it still imports.
+  return eligible.find((turn) => {
+    const identity = storedTurnIdentity(turn);
+    if (identity.user !== wanted.user) return false;
+    if (identity.assistant.length === 0 || wanted.assistant.length === 0) return false;
+    if (
+      !identity.assistant.includes(wanted.assistant) &&
+      !wanted.assistant.includes(identity.assistant)
+    ) {
+      return false;
+    }
+    return (
+      native.createdAt >= turn.createdAt - NATIVE_TWIN_CLOCK_SLACK_MS &&
+      native.createdAt <= (turn.completedAt ?? turn.createdAt) + NATIVE_TWIN_CLOCK_SLACK_MS
+    );
+  });
 }
 
 function structuredCloneValue<T>(value: T): T {

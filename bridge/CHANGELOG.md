@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Fixed — a whole exchange stored twice after reading the agent's own log
+
+A conversation came back doubled on the phone — the prompt **and** the reply,
+identical copies that survived reopening it. The duplicate carried a second turn
+id: the agent's own session id. `turn/list` reconciles the agent-owned
+transcript on every idle read, and that turn was failing to match the bridge's
+own record of the same exchange, so it was imported beside it.
+
+The match compared the two turns message by message. They never line up: the
+bridge accumulates **one** assistant message per turn, while these logs split
+the same reply across several — one per tool step, most of them carrying no
+prose at all (OpenCode writes a text-less message per tool call, Claude Code
+likewise; Zero keeps the final answer without the preamble it streamed). So
+every turn in which the agent used a tool mismatched and was imported a second
+time. Turns that used no tool matched fine, which is why a short "hola" never
+duplicated and a real question always did.
+
+A turn is now identified by its content: prompt and reply, each concatenated
+across however many messages carry it, compared ignoring whitespace — and, for a
+log holding a different rendition of the same reply, by the same prompt plus one
+reply containing the other plus a native start inside that turn's own run
+window, all three required so a turn genuinely written elsewhere still imports.
+
+Stores that already hold such a pair converge on the next idle read: the
+imported copy is dropped once its bridge-created twin is recognized. Verified
+against a real store — 12 duplicated turns removed across OpenCode, Claude Code
+and Zero threads, with every bridge-created turn left intact.
+
 ## [0.0.19-alpha.20260810] - 2026-08-10
 
 ### Added — `git/worktrees`

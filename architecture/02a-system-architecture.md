@@ -1988,6 +1988,18 @@ then follows these rules:
   segments, queue state, usage and delivery status;
 - a matching native turn is linked by a private deterministic history id rather
   than inserted twice;
+- **a turn is matched by content identity — its prompt and its reply, each
+  concatenated across however many messages carry it, compared ignoring
+  whitespace.** Per-message comparison is wrong: the bridge accumulates one
+  assistant message per turn while a native transcript splits the same reply
+  across several, one per tool step and most with no prose at all. Where an
+  agent's log keeps a different rendition of the reply than the one it streamed
+  (Zero drops the preamble), the same prompt plus one reply containing the other
+  plus a native start inside the bridge turn's own run window identify it — all
+  three together, so a turn genuinely written elsewhere still imports;
+- a turn imported before it could be matched is **dropped** once its
+  bridge-created twin is recognized, which is what converges a store that
+  already holds the same exchange twice;
 - completed native-only user/assistant pairs are imported and can be refreshed
   on a later read;
 - user-only/in-progress native turns are ignored until an assistant result is

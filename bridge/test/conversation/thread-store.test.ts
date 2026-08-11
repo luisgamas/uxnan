@@ -136,6 +136,157 @@ test('reconcileNativeHistory ignores an in-progress native user-only turn and re
   await rmrf(baseDir);
 });
 
+/**
+ * Shapes taken from real transcripts. A native log splits one reply across
+ * several assistant messages — a text-less one per tool step, and sometimes the
+ * prose itself in runs — where the bridge accumulated a single message. These
+ * turns were being imported beside the bridge's own copy, so the phone showed
+ * the whole exchange (prompt included) twice, permanently.
+ */
+function nativeTurn(
+  threadId: string,
+  id: string,
+  at: number,
+  messages: readonly { role: 'user' | 'assistant'; content: string; blocks?: unknown[] }[],
+): Turn {
+  return {
+    id,
+    threadId,
+    status: 'completed',
+    createdAt: at,
+    completedAt: at + 1,
+    messages: messages.map((message, index) => ({
+      id: `${id}#m${index}`,
+      turnId: id,
+      role: message.role,
+      content: message.content,
+      ...(message.blocks !== undefined ? { blocks: message.blocks } : {}),
+      createdAt: at + index,
+    })),
+  };
+}
+
+test('reconcileNativeHistory links a tool-using turn split across native messages', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
+  const local = await store.startTurn(thread.id, 'how many folders?', 10);
+  await store.appendDelta(thread.id, local.turnId, '24 folders.', 11);
+  await store.completeTurn(thread.id, local.turnId, undefined, 12);
+
+  // OpenCode records the tool call as its own assistant message with no prose.
+  const native = nativeTurn(thread.id, 'ses_abc#t0', 12, [
+    { role: 'user', content: 'how many folders?' },
+    { role: 'assistant', content: '', blocks: [{ type: 'command_execution' }] },
+    { role: 'assistant', content: '24 folders.' },
+  ]);
+
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 20), {
+    changed: false,
+    importedTurnIds: [],
+  });
+  const turns = await store.listTurns(thread.id);
+  assert.equal(turns.total, 1, 'the turn is linked, not imported a second time');
+  assert.equal(turns.turns[0]?.id, local.turnId);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory links a reply the native log split into several prose runs', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
+  const local = await store.startTurn(thread.id, 'explain this repo', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Let me look.', 11);
+  await store.appendDelta(thread.id, local.turnId, 'Reading the docs.', 12);
+  await store.appendDelta(thread.id, local.turnId, 'Here is the answer.', 13);
+  await store.completeTurn(thread.id, local.turnId, undefined, 14);
+
+  const native = nativeTurn(thread.id, 'ses_def#t0', 14, [
+    { role: 'user', content: 'explain this repo' },
+    { role: 'assistant', content: 'Let me look.', blocks: [{ type: 'read' }] },
+    { role: 'assistant', content: '', blocks: [{ type: 'read' }] },
+    { role: 'assistant', content: 'Reading the docs.' },
+    { role: 'assistant', content: 'Here is the answer.' },
+  ]);
+
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 20), {
+    changed: false,
+    importedTurnIds: [],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 1);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory links a native reply contained in the streamed one, within its window', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'zero' }, 1);
+  const local = await store.startTurn(thread.id, 'what is this?', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Let me read the README. ', 11);
+  await store.appendDelta(thread.id, local.turnId, 'It is a monorepo.', 12);
+  await store.completeTurn(thread.id, local.turnId, undefined, 10_000);
+
+  // Zero's transcript keeps the final answer without the preamble it streamed.
+  const inWindow = nativeTurn(thread.id, 'zero_1#t0', 9_000, [
+    { role: 'user', content: 'what is this?' },
+    { role: 'assistant', content: 'It is a monorepo.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [inWindow], 20_000), {
+    changed: false,
+    importedTurnIds: [],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 1);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory still imports a contained reply written outside the turn window', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'zero' }, 1);
+  const local = await store.startTurn(thread.id, 'what is this?', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Let me read the README. ', 11);
+  await store.appendDelta(thread.id, local.turnId, 'It is a monorepo.', 12);
+  await store.completeTurn(thread.id, local.turnId, undefined, 100);
+
+  // Same prompt and a contained answer, but written long after this turn ended:
+  // that is somebody working in the CLI, and it must still reach the phone.
+  const later = nativeTurn(thread.id, 'zero_1#t9', 900_000, [
+    { role: 'user', content: 'what is this?' },
+    { role: 'assistant', content: 'It is a monorepo.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [later], 900_100), {
+    changed: true,
+    importedTurnIds: ['zero_1#t9'],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory drops a duplicate turn imported before it could be recognized', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
+  const local = await store.startTurn(thread.id, 'how many folders?', 10);
+
+  // Read before the turn produced any prose: there is no reply to match yet, so
+  // the native turn is imported — which is exactly the duplicate already sitting
+  // in stores written before this fix.
+  const native = nativeTurn(thread.id, 'ses_ghi#t0', 12, [
+    { role: 'user', content: 'how many folders?' },
+    { role: 'assistant', content: '', blocks: [{ type: 'command_execution' }] },
+    { role: 'assistant', content: '24 folders.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 13), {
+    changed: true,
+    importedTurnIds: ['ses_ghi#t0'],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+
+  await store.appendDelta(thread.id, local.turnId, '24 folders.', 14);
+  await store.completeTurn(thread.id, local.turnId, undefined, 15);
+
+  assert.equal((await store.reconcileNativeHistory(thread.id, [native], 16)).changed, true);
+  const turns = await store.listTurns(thread.id);
+  assert.equal(turns.total, 1, 'the stray import is gone');
+  assert.equal(turns.turns[0]?.id, local.turnId, 'the bridge copy is the one kept');
+  await rmrf(baseDir);
+});
+
 test('appendThinking accumulates reasoning and surfaces it on the message', async () => {
   const { store, baseDir } = newStore();
   const thread = await store.startThread({ projectId: 'p' }, 1);
