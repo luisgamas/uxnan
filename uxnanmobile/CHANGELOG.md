@@ -6,6 +6,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the empty drawer offers onboarding, not the camera
+
+With no PC paired, the drawer header's button went straight to the QR scanner.
+Whoever sees that button usually has no bridge installed either, and a camera
+pointed at nothing explains none of that. It opens onboarding now, which
+installs the bridge and then hands off to the very same scanner — so nobody who
+already has one loses a step worth mentioning. The overview's "pair another PC"
+menu is unchanged: it names both the scanner and the manual code, and it is
+asked by someone who already has a PC.
+
 ### Fixed — opening a second conversation in the same pane
 
 On a tablet, picking another conversation changed the app bar while the body
