@@ -623,7 +623,7 @@
               </Button>
             {/snippet}
           </DropdownMenu.Trigger>
-          <DropdownMenu.Content width="simple" align="end">
+          <DropdownMenu.Content width="standard" align="end">
             <!-- New file/folder land in the selected folder (or a selected file's
                  parent), else the worktree root — see `toolbarTargetDir`. -->
             <DropdownMenu.Item

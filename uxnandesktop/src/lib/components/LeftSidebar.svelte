@@ -19,7 +19,7 @@
   import type { SidebarGroupBy, SortMode } from "$lib/types";
   import { Icon } from "$lib/components/ui/icon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
-  import { divider, icon, iconButton, text } from "$lib/design";
+  import { control, divider, field, focus, icon, row, shell, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -50,9 +50,8 @@
 
   // Borderless nav button (mirrors the Settings section nav): no chrome until
   // hover, a quiet accent fill when "active".
-  const navBase =
-    "group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
-  const navIdle = "text-muted-foreground hover:bg-accent/60 hover:text-foreground";
+  const navBase = cn(row.sidebar, focus.ring);
+  const navIdle = row.sidebarInactive;
 
   /** Shell/args for a region-level new terminal (blank command → backend default). */
   function profileLabel(name: string): string {
@@ -144,12 +143,12 @@
   }
 </script>
 
-<div class="scrollbar-sleek-parent flex h-full min-h-0 flex-col">
+<div class={cn("scrollbar-sleek-parent flex h-full min-h-0 flex-col", shell.sidebar)}>
   <!-- Region: Brand header — app identity; also the window's drag handle (there
        is no title bar). -->
   <div
     data-tauri-drag-region
-    class={cn("flex h-9 shrink-0 select-none items-center gap-2 px-3", divider.bottom)}
+    class={cn(shell.sidebarBrand, divider.bottom)}
   >
     <img
       src="/logo_nb.svg"
@@ -187,13 +186,13 @@
       {#snippet children(props)}
         <button
           {...props}
-          class={cn(navBase, navIdle)}
+          class={cn(field.search, focus.ring, "w-full")}
           onclick={() => (projects.paletteOpen = true)}
         >
-          <Icon icon={SearchIcon} class={icon.button} />
-          <span class="flex-1 truncate text-left">{i18n.t("sidebar.search")}</span>
+          <Icon icon={SearchIcon} class={field.searchIcon} />
+          <span class={field.searchLabel}>{i18n.t("sidebar.search")}</span>
           {#if searchBinding}
-            <KeyChord chord={searchBinding} />
+            <KeyChord class={field.searchShortcut} chord={searchBinding} />
           {/if}
         </button>
       {/snippet}
@@ -201,7 +200,7 @@
   </div>
 
   <!-- Region: Projects — header (label + actions) and the project tree. -->
-  <header class="flex h-8 shrink-0 items-center gap-0.5 px-2.5">
+  <header class={shell.sidebarSectionHeader}>
     <span class={cn("flex-1 truncate", text.section)}>
       {i18n.t("sidebar.projects")}
       <span class="text-muted-foreground/60">({projects.filteredRepos.length})</span>
@@ -215,7 +214,9 @@
           <button
             {...props}
             class={cn(
-              "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 px-1.5 py-px font-medium tabular-nums text-orange-600 transition-colors hover:bg-orange-500/25 dark:text-orange-400",
+              control.dense,
+              "mr-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-500/15 font-medium tabular-nums text-orange-600 transition-colors hover:bg-orange-500/25 dark:text-orange-400",
+              focus.ring,
               text.indicator,
             )}
             onclick={() => projects.revealNeedsYou()}
@@ -237,8 +238,7 @@
         <Button
           {...props}
           variant="ghost"
-          size="icon"
-          class={iconButton.xs}
+          size="icon-xs"
           onclick={() => (projects.pickerOpen = true)}
         >
           <Icon icon={FolderPlusIcon} class={icon.action} />
@@ -250,8 +250,7 @@
         <Button
           {...props}
           variant="ghost"
-          size="icon"
-          class={iconButton.xs}
+          size="icon-xs"
           onclick={() => void projects.init()}
         >
           <Icon icon={RefreshCwIcon} class={icon.action} />
@@ -263,7 +262,7 @@
         {#snippet child({ props })}
           <TooltipSimple title={i18n.t("sidebar.sort")}>
             {#snippet children(tp)}
-              <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} {...props}>
+              <Button variant="ghost" size="icon-xs" {...tp} {...props}>
                 <Icon icon={ArrowUpDownIcon} class={icon.action} />
               </Button>
             {/snippet}
@@ -309,14 +308,14 @@
         {#snippet child({ props })}
           <TooltipSimple title={i18n.t("terminal.newTerminal")}>
             {#snippet children(tp)}
-              <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} {...props}>
+              <Button variant="ghost" size="icon-xs" {...tp} {...props}>
                 <Icon icon={PlusIcon} class={icon.action} />
               </Button>
             {/snippet}
           </TooltipSimple>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content width="simple" align="end">
+      <DropdownMenu.Content width="standard" align="end">
         <DropdownMenu.Item class={text.menu} onclick={() => app.openTerminal()}>
           <Icon icon={TerminalIcon} class={icon.button} />
           {i18n.t("terminal.newDefault")}
@@ -370,11 +369,11 @@
                    it never sits next to the lanes that are still working. -->
               <div class="flex items-center gap-1">
                 <button
-                  class="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
+                  class={cn(shell.laneHeader, focus.ring, "transition-colors hover:bg-accent/40")}
                   onclick={() => projects.toggleLane(lane.attention)}
                 >
                   <Icon icon={ChevronRightIcon}
-                    class={cn("size-3 shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
+                    class={cn(icon.status, "shrink-0 text-muted-foreground/70 transition-transform", !projects.isLaneCollapsed(lane.attention) && "rotate-90")}
                   />
                   <span class={cn("flex-1 truncate", text.section)}>{laneLabel(lane.attention)}</span>
                   <span class="text-xs tabular-nums text-muted-foreground/60">{lane.items.length}</span>
@@ -385,7 +384,9 @@
                       <button
                         {...props}
                         class={cn(
-                          "shrink-0 rounded px-1.5 py-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground focus-visible:opacity-100 group-hover/lane:opacity-100",
+                          shell.laneAction,
+                          focus.ring,
+                          "text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground focus-visible:opacity-100 group-hover/lane:opacity-100",
                           text.indicator,
                         )}
                         onclick={() => {
@@ -422,12 +423,13 @@
           {#each lanes as lane (lane.group)}
             <div class="flex flex-col">
               <button
-                class="flex w-full items-center gap-1 rounded px-1 py-1 text-left transition-colors hover:bg-accent/40"
+                class={cn(shell.laneHeader, focus.ring, "w-full transition-colors hover:bg-accent/40")}
                 onclick={() => projects.toggleReviewLane(lane.group)}
               >
                 <Icon icon={ChevronRightIcon}
                   class={cn(
-                    "size-3 shrink-0 text-muted-foreground/70 transition-transform",
+                    icon.status,
+                    "shrink-0 text-muted-foreground/70 transition-transform",
                     !projects.isReviewLaneCollapsed(lane.group) && "rotate-90",
                   )}
                 />

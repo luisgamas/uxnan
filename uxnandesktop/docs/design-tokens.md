@@ -184,8 +184,16 @@ from the theme palette so they follow every theme — see
 | `surface.panel` | A content panel |
 | `surface.panelMuted` | A subtly distinct panel band (e.g. a toolbar over a panel) |
 | `surface.elevated` | An elevated overlay (menu / popover body) |
-| `surface.active` | Selected project / worktree card (strongest selection) |
-| `surface.activeNested` | Selected agent row nested under a worktree (lighter, subordinate) |
+| `surface.active` | Selected project / worktree card (strongest background/text selection, without an outline ring) |
+
+### Shell chrome (`shell`)
+
+Structural shell bands use named roles so navigation, terminal and status chrome
+share geometry without making work-surface components depend on one another.
+`shell.root`, `shell.sidebar`, `shell.statusBar`, `shell.terminalStrip`,
+`shell.rightPanelHeader`, `shell.laneHeader`, `shell.laneAction`, and
+`shell.titlebar` are reserved for those regions;
+they do not replace `surface.*` on content surfaces.
 
 ### Rows (`row`)
 Dense, breathable list/nav rows. Compose `*Inactive` / `*Active` state classes
@@ -195,12 +203,27 @@ on top of the base.
 |---|---|
 | `row.sidebar` + `row.sidebarInactive` / `row.sidebarActive` | Sidebar nav / project / worktree / settings-nav row (min 32px) |
 | `row.list` + `row.listInactive` / `row.listActive` | A list row in a content panel (file tree, changes, …) |
+| `row.agent` | Nested agent row (min 32px) |
+| `row.projectHeader` | Project identity header (min 36px) |
+| `row.searchResult` | Worktree palette result (exact 52px virtual-list row) |
+| `row.agentModel` / `row.agentSpaceHeader` / `row.agentAvatarStrip` / `row.agentOverflow` / `row.agentLeading` / `row.agentActiveIndicator` / `row.agentDetail` / `row.agentSpaceDetail` | Agent model truncation, responsive single-line agent-space strip with measured avatar capacity and stable +N footprint, centered leading glyphs, active-agent marker, subagent relationship rail, and borderless expanded-agent inset |
+| `row.projectSummary` | Collapsed project summary insets |
+
+`row.searchResult` is the one intentional list-row exception to the 36px content
+row contract: the worktree switcher presents branch and path on two lines, so
+its `h-[52px]` is coupled to `VirtualList estimateSize={52}` and must remain
+pixel-exact for virtualization and keyboard highlighting.
+
+The shell also names repeated chrome geometry: `shell.sidebarBrand` and
+`shell.sidebarSectionHeader`; `overlay.paletteViewport` owns the palette's
+viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
+`tab.terminalTrigger` owns terminal tab trigger geometry.
 
 ### Fields & containers (`field`, `panel`, `focus`)
 | Token | Use |
 |---|---|
 | `field.input` | A standard 36px text input |
-| `field.search` | The compact, field-like search button |
+| `field.search` / `field.searchIcon` / `field.searchLabel` / `field.searchShortcut` | The compact search trigger and its stable leading icon, truncating label and trailing keycaps |
 | `panel.settingsBody` | A settings section body band (controls inside; no card-in-card) |
 | `panel.sectionHeader` | A settings section header (title + description over a divider) |
 | `panel.card` | A standalone content card |

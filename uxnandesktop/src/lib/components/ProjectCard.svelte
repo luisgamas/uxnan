@@ -19,7 +19,7 @@
   import { revealPath } from "$lib/api";
   import { cn } from "$lib/utils";
   import { deferModalOpen } from "$lib/utils/pointerLock";
-  import { icon, iconButton, surface, text } from "$lib/design";
+  import { control, focus, icon, row, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -189,7 +189,7 @@
     isGit && !isExpanded && (projectAgents.length > 0 || worktreeCount > 1),
   );
 
-  const hoverReveal = "opacity-0 group-hover/header:opacity-100";
+  const hoverReveal = "opacity-0 group-hover/header:opacity-100 group-focus-within/header:opacity-100 focus-visible:opacity-100";
 
   function onHeaderActivate() {
     // Swallow the click that a just-finished drag would otherwise fire.
@@ -229,17 +229,22 @@
     data-drag-key={repo.id}
     data-drag-index={index}
     class={cn(
-      "group/header flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 transition-colors",
+      row.projectHeader,
       drag.draggingKey === repo.id && "opacity-40",
     )}
-    role="button"
-    tabindex="0"
+    role="group"
     onpointerdown={(e) => drag.pointerDown(e, repo.id)}
     onpointermove={drag.pointerMove}
     onpointerup={drag.pointerUp}
-    onclick={onHeaderActivate}
-    onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onHeaderActivate()}
   >
+    <!-- Identity/drag region is the only activatable element. Actions remain
+         siblings, so the project control never contains nested buttons. -->
+    <button
+      type="button"
+      class={cn("flex min-w-0 flex-1 items-center gap-2 bg-transparent text-left", focus.ring)}
+      aria-label={repo.name}
+      onclick={onHeaderActivate}
+    >
     <TooltipSimple title={repo.path}>
       {#snippet children(tp)}
         <EntityIcon {...tp} value={repo.icon} class={cn(icon.nav, "rounded-[4px]")} fallback={projectGlyph} />
@@ -270,11 +275,13 @@
             {...tp2}
             class={cn("inline-flex shrink-0 items-center gap-0.5 text-muted-foreground", text.indicator)}
           >
-            <Icon icon={TerminalIcon} class="size-3" />{termCount}
+            <Icon icon={TerminalIcon} class={icon.status} />{termCount}
           </span>
         {/snippet}
       </TooltipSimple>
     {/if}
+
+    </button>
 
     <div class="flex shrink-0 items-center gap-0.5">
       {#if isGit}
@@ -283,8 +290,8 @@
             <Button
               {...tp}
               variant="ghost"
-              size="icon"
-              class={cn(iconButton.xs, hoverReveal)}
+              size="icon-xs"
+              class={hoverReveal}
               aria-label={isExpanded ? i18n.t("project.collapse") : i18n.t("project.expand")}
               onclick={(e) => {
                 e.stopPropagation();
@@ -301,8 +308,8 @@
           <Button
             {...tp}
             variant="ghost"
-            size="icon"
-            class={cn(iconButton.xs, hoverReveal)}
+            size="icon-xs"
+            class={hoverReveal}
             onclick={(e) => {
               e.stopPropagation();
               launcherOpen = true;
@@ -320,8 +327,8 @@
           {#snippet child({ props })}
             <Button
               variant="ghost"
-              size="icon"
-              class={cn(iconButton.xs, hoverReveal, "data-[state=open]:opacity-100")}
+              size="icon-xs"
+              class={cn(hoverReveal, "data-[state=open]:opacity-100")}
               aria-label={i18n.t("project.menu")}
               onclick={(e: MouseEvent) => e.stopPropagation()}
               {...props}
@@ -429,7 +436,12 @@
        is drawn outside the circle), and clawing back the header's padding is how
        they end up crowding the project title. -->
   {#if showCollapsedSummary}
-    <div class="flex min-h-5 items-center gap-2 pb-1.5 pl-8 pr-2">
+    <button
+      type="button"
+      class={cn(row.projectSummary, "bg-transparent", control.dense, focus.ring, "focus-within:opacity-100")}
+      aria-label={repo.name}
+      onclick={onHeaderActivate}
+    >
       <TooltipSimple
         title={i18n.t(
           worktreeCount === 1 ? "project.worktreeOne" : "project.worktreeOther",
@@ -444,7 +456,7 @@
               text.indicator,
             )}
           >
-            <Icon icon={GitBranchIcon} class="size-3" />{worktreeCount}
+            <Icon icon={GitBranchIcon} class={icon.status} />{worktreeCount}
           </span>
         {/snippet}
       </TooltipSimple>
@@ -469,7 +481,7 @@
           {/if}
         </div>
       {/if}
-    </div>
+    </button>
   {/if}
   </div>
 

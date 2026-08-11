@@ -139,7 +139,7 @@
             <Icon icon={PawPrintIcon} class={cn(icon.button, "opacity-0")} />
             <span class="flex-1">{i18n.t("pets.choose")}</span>
           </DropdownMenu.SubTrigger>
-          <DropdownMenu.SubContent width="simple" viewport="compact">
+          <DropdownMenu.SubContent width="standard" viewport="compact">
             {#each pets.library as p (p.id)}
               <DropdownMenu.Item
                 class={cn(text.menu, "gap-2")}

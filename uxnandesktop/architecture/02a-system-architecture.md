@@ -235,6 +235,15 @@ Cada worktree se muestra como una tarjeta compacta que presenta:
 - **Indicador de no-leido**: Cuando el agente termino y el usuario no ha revisado los cambios.
 - **Acciones rapidas**: Fijar/desfijar, menu contextual (eliminar, renombrar, archivar, relanzar agente).
 
+La seleccion conserva una jerarquia visual unica: la tarjeta de proyecto o
+worktree activa usa un fondo semantico discreto, sin contorno de color, y no se
+anida otro fondo para el agente activo. En la lista expandida, ese agente se
+identifica mediante una marca vertical corta a la izquierda de su indicador de
+estado; solo las filas de subagentes conservan una linea vertical de relacion.
+Cuando la lista de agentes esta contraida, los avatares permanecen en una sola
+fila y los que no caben se resumen en `+N`, calculado contra el ancho real de la
+sidebar para evitar wrap y desbordamiento.
+
 ### 3.2 Modos de Agrupacion
 
 El usuario puede agrupar los worktrees de varias formas:

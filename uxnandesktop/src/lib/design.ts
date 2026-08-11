@@ -76,6 +76,7 @@ export const overlay = {
   menuViewport: "uxnan-scroll max-h-[24rem] overflow-x-hidden overflow-y-auto",
   menuSubViewport: "uxnan-scroll max-h-[20rem] overflow-y-auto",
   menuCompactViewport: "uxnan-scroll max-h-72 overflow-y-auto",
+  paletteViewport: "max-h-[22rem]",
   menuSeparator: "-mx-1 my-1 h-px bg-border/70",
   infoWidth: "w-72 max-w-[calc(100vw-1rem)]",
   formWidth: "w-80 max-w-[calc(100vw-1rem)]",
@@ -148,10 +149,25 @@ export const surface = {
   /** An elevated overlay (menu / popover body). */
   elevated: "border border-border/70 bg-[var(--ux-elevated)] shadow-md",
   /** A selected project / worktree card (the strongest selection). */
-  active: "bg-[var(--ux-sidebar-accent)] text-sidebar-foreground ring-1 ring-inset ring-sidebar-border/80",
-  /** A selected agent row nested under a worktree — same neutral language,
-   *  lighter, so it always reads as subordinate to its parent card. */
-  activeNested: "bg-foreground/[0.055] text-foreground",
+  active: "bg-[var(--ux-sidebar-accent)] text-sidebar-foreground",
+} as const;
+
+/** Named shell chrome roles. These are deliberately limited to structural
+ * surfaces so callers do not grow screen-specific geometry recipes. */
+export const shell = {
+  root: "bg-[var(--ux-shell)] text-foreground",
+  sidebar: "bg-sidebar text-sidebar-foreground",
+  statusBar: "flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground",
+  terminalStrip: "flex h-9 shrink-0 items-center bg-sidebar",
+  rightPanelHeader: "h-9 shrink-0",
+  rightPanelTabs: "h-8 shrink-0",
+  laneHeader: "flex min-h-7 min-w-0 flex-1 items-center gap-1 rounded px-1 text-left",
+  laneAction: "min-h-7 shrink-0 rounded px-1.5 py-0.5",
+  sidebarBrand: "flex h-9 shrink-0 select-none items-center gap-2 px-3",
+  sidebarSectionHeader: "flex h-8 shrink-0 items-center gap-0.5 px-2.5",
+  titlebar: "fixed right-0 top-0 z-50 flex select-none items-center",
+  titlebarControl: "flex h-9 w-11 items-center justify-center",
+  titlebarLauncher: "flex h-9 w-12 items-center justify-center",
 } as const;
 
 /** Row recipes — comfortable, breathable list/nav rows. `*Inactive` /
@@ -168,6 +184,21 @@ export const row = {
     "group flex min-h-9 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors",
   listInactive: "text-muted-foreground hover:bg-accent hover:text-foreground",
   listActive: "bg-accent text-accent-foreground",
+  /** Agent rows nested below a worktree. */
+  agent: "relative flex min-h-8 w-full items-start gap-2 rounded-md px-1 py-1 text-left transition-colors",
+  /** Project identity header; shared by project cards and future sidebar shells. */
+  projectHeader: "flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+  agentModel: "max-w-28 shrink-0 truncate font-mono text-[10px] text-muted-foreground/70",
+  agentDetail: "ml-[1.375rem] mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2",
+  agentSpaceHeader: "flex w-full min-w-0 items-center gap-1 pr-1",
+  agentAvatarStrip: "flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-hidden py-1",
+  agentOverflow: "flex size-7 shrink-0 items-center justify-center text-[10px] tabular-nums text-muted-foreground/70",
+  agentLeading: "flex shrink-0 self-center items-center justify-center",
+  agentActiveIndicator: "absolute -left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-foreground",
+  agentSpaceDetail: "ml-2 flex min-w-0 flex-col pl-1.5",
+  projectSummary: "flex w-full items-center gap-2 pb-1.5 pl-8 pr-2 text-left",
+  /** Virtualized worktree-switcher result; kept at the exact 52px estimate. */
+  searchResult: "flex h-[52px] w-full items-center gap-3 rounded-lg px-2.5 text-left transition-colors",
 } as const;
 
 /** Field controls — text inputs and the compact, field-like search button. */
@@ -175,7 +206,10 @@ export const field = {
   input:
     "h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-colors placeholder:text-muted-foreground/70 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
   search:
-    "h-8 rounded-md border border-sidebar-border/70 bg-sidebar-foreground/5 pl-8 pr-2.5 text-[13px] font-medium text-sidebar-foreground/60 transition-colors hover:border-sidebar-border hover:bg-sidebar-foreground/8",
+    "flex h-8 w-full min-w-0 items-center gap-2 rounded-md border border-sidebar-border/70 bg-sidebar-foreground/5 px-2.5 text-left text-[13px] font-medium text-sidebar-foreground/60 transition-colors hover:border-sidebar-border hover:bg-sidebar-foreground/8",
+  searchIcon: "size-4 shrink-0",
+  searchLabel: "min-w-0 flex-1 truncate text-left",
+  searchShortcut: "shrink-0",
 } as const;
 
 /** Container surfaces — settings bodies, section headers and cards. */
@@ -214,6 +248,8 @@ export const divider = {
  *  never shifts content. Shared by the center terminal tabs and the right panel. */
 export const tab = {
   base: "border-b-2 border-transparent transition-colors",
+  panelTrigger: "shrink-0 whitespace-nowrap px-3 text-[13px]",
+  terminalTrigger: "flex h-full shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[13px]",
   /** Filled tabs (center terminal strip): quiet fill + firm underline. */
   active: "bg-[var(--ux-sidebar-accent)] border-foreground text-foreground",
   inactive: "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",

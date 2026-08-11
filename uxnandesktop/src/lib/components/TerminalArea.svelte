@@ -22,7 +22,7 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
-  import { divider, icon, iconButton, overlay, tab, text } from "$lib/design";
+  import { divider, focus, icon, iconButton, overlay, shell, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -483,11 +483,6 @@
 
 </script>
 
-<svelte:window
-  onpointerdown={() => (menu = null)}
-  onkeydown={(e) => e.key === "Escape" && (menu = null)}
-/>
-
 <div class="flex h-full flex-col">
   <!-- Region: Center workspace — the per-region tab strips sit at the very top
        now. The "new terminal" launcher (default + profiles) moved to the left
@@ -529,13 +524,14 @@
                        scrollbar is hidden (`.uxnan-scrollbar-none`) so grabbing
                        it never starts a window drag; the strip scrolls only via
                        the edge chevrons and the mouse wheel. -->
-                  <div class="flex h-9 shrink-0 items-center bg-sidebar {divider.bottom}">
+                  <div class={cn(shell.terminalStrip, divider.bottom)} role="group" aria-label={i18n.t("terminal.tabs")}>
                     {#if stripOverflow[g.group.id]?.hasOverflow}
                       <button
                         type="button"
                         class={cn(
-                          iconButton.action,
-                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          iconButton.xs,
+                          focus.ring,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                           stripOverflow[g.group.id]?.canScrollStart ? "opacity-100" : "pointer-events-none opacity-0",
                         )}
                         title={i18n.t("tab.scrollLeft")}
@@ -574,7 +570,7 @@
                       ></div>
                       <div
                         class={cn(
-                          "flex h-full shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[13px]",
+                          tab.terminalTrigger,
                           tab.base,
                           activeChip ? tab.active : tab.inactive,
                           tabDrag?.dragging && tabDrag.tabId === t.id && "opacity-40",
@@ -643,7 +639,7 @@
                           {#snippet children(tp)}
                             <button
                               {...tp}
-                              class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
+                              class={cn(iconButton.xs, focus.ring, "flex shrink-0 items-center justify-center rounded text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100")}
                               aria-label={i18n.t("terminal.closeTab")}
                               data-tab-close
                               onclick={() => terminals.closeTab(g.group.id, t.id)}
@@ -677,7 +673,7 @@
                           ? () => (projects.newWorktreeOpen = true)
                           : undefined}
                         align="start"
-                        triggerClass={cn("ml-0.5", iconButton.xs)}
+                        triggerClass="ml-0.5"
                         title={i18n.t("launcher.openHere")}
                       />
                     {:else}
@@ -685,7 +681,7 @@
                         {#snippet children(tp)}
                           <button
                             {...tp}
-                            class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            class={cn("ml-0.5 shrink-0", iconButton.xs, focus.ring, "flex items-center justify-center rounded text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground")}
                             aria-label={i18n.t("terminal.newTerminal")}
                             onclick={() =>
                               terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
@@ -703,8 +699,9 @@
                       <button
                         type="button"
                         class={cn(
-                          iconButton.action,
-                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          iconButton.xs,
+                          focus.ring,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                           stripOverflow[g.group.id]?.canScrollEnd ? "opacity-100" : "pointer-events-none opacity-0",
                         )}
                         title={i18n.t("tab.scrollRight")}
@@ -744,7 +741,7 @@
                               <Button
                                 variant="outline"
                                 size="sm"
-                                class="h-6"
+                                class="shrink-0"
                                 onclick={() => terminals.wakeWorkspace(wsKey)}
                               >
                                 {i18n.t("workspace.wake")}
@@ -767,7 +764,7 @@
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  class="h-6 shrink-0 gap-1 px-2"
+                                  class="shrink-0 gap-1 px-2"
                                   onclick={() => void terminals.restartTab(t.id)}
                                 >
                                   <Icon icon={RotateCcwIcon} class="size-3" />
@@ -776,7 +773,7 @@
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  class="h-6 shrink-0 px-2"
+                                  class="shrink-0 px-2"
                                   onclick={() => void terminals.closeTabAnywhere(t.id)}
                                 >
                                   {i18n.t("common.close")}
@@ -868,41 +865,38 @@
             })}
           </div>
           <div class="flex flex-wrap items-center justify-center gap-2">
-            <button
-              class={cn(
-                "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
-                text.body,
-              )}
+            <Button
+              variant="outline"
+              size="default"
+              class="font-medium"
               onclick={() => app.openTerminal()}
             >
               <Icon icon={PlusIcon} class={icon.button} />
               {i18n.t("terminal.newTerminal")}
-            </button>
+            </Button>
             {#if activeRepoIsGit}
-              <button
-                class={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
-                  text.body,
-                )}
+              <Button
+                variant="outline"
+                size="default"
+                class="font-medium"
                 onclick={() => (projects.newWorktreeOpen = true)}
               >
                 <Icon icon={GitBranchIcon} class={icon.button} />
                 {i18n.t("newWorktree.title")}
-              </button>
+              </Button>
             {:else}
               <TooltipSimple title={activeRepo ? i18n.t("terminal.worktreeNeedsGitRepo") : i18n.t("terminal.worktreeNeedsRepo")}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    class={cn(
-                      "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
-                      text.body,
-                    )}
+                    variant="outline"
+                    size="default"
+                    class="cursor-not-allowed border-dashed font-medium text-muted-foreground/70"
                     disabled
                   >
                     <Icon icon={GitBranchIcon} class={icon.button} />
                     {i18n.t("newWorktree.title")}
-                  </button>
+                  </Button>
                 {/snippet}
               </TooltipSimple>
             {/if}

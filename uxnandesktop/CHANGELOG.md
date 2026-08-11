@@ -15,6 +15,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Phase 3 shell/navigation pass:** named shell, row, tab, search-field and
+  palette roles now govern the status bar, sidebar hierarchy, terminal strip,
+  right-panel header and native window controls. Project identity is separated
+  from its actions to avoid nested interactive elements; the worktree palette
+  exposes valid combobox/listbox semantics, preserves its exact 52px virtual row,
+  and safely represents an empty result set.
+
+- Refined the sidebar's responsive agent presentation: 28px toggle/avatar
+  targets stay on one line, a measured `+N` absorbs agents that do not fit, and
+  expanded agents no longer inherit an outer relationship rail. Selected
+  project/worktree cards use a quiet semantic fill without an outline, while the
+  active agent uses a short vertical marker instead of a second filled surface;
+  its status and logo remain centered against two-line text.
+
+- Normalized remaining shell callers onto shared roles: the search trigger keeps
+  a stable icon/label/keycap composition, audited terminal/profile/file-tree/pet
+  menus use the standard width, and terminal tabs retain a compact reddish close
+  action with a 28px hit target. Terminal menus also rely on the shared overlay
+  lifecycle rather than a competing Escape/outside-pointer listener.
+
 - Migrated dialogs, command popovers, menus, selects and status surfaces to the
   shared overlay density contract. Dialogs consume named width roles, menus use
   semantic width variants, and Backend/Usage status popovers use the data-rich

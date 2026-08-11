@@ -10,7 +10,7 @@
   import { app } from "$lib/state/app.svelte";
   import { rightPanel } from "$lib/state/rightPanel.svelte";
   import { i18n } from "$lib/i18n";
-  import { divider, icon, tab as tabStyle } from "$lib/design";
+  import { divider, focus, icon, shell, tab as tabStyle } from "$lib/design";
   import { cn } from "$lib/utils";
   import { Icon } from "$lib/components/ui/icon";
   import FolderTreeIcon from "@hugeicons/core-free-icons/FolderTreeIcon";
@@ -70,7 +70,7 @@
 <div class="flex h-full min-h-0 w-full flex-col">
   <!-- Region: Window-controls header — a drag strip; the min/max/close controls
        float over its right (fixed overlay rendered in +page.svelte). -->
-  <div data-tauri-drag-region class={cn("h-9 shrink-0", divider.bottom)}></div>
+  <div data-tauri-drag-region class={cn(shell.rightPanelHeader, divider.bottom)}></div>
   <Tabs.Root bind:value={tab} class="flex min-h-0 w-full flex-1 flex-col gap-0">
   <!-- Tabs never wrap or get clipped: the shell floors the panel width at this
        strip's measured width, so all tabs always fit. `justify-start` keeps them
@@ -80,25 +80,25 @@
        Each trigger keeps its width (`shrink-0`) instead of shrinking away. -->
   <Tabs.List
     bind:ref={tabStripEl}
-    class={cn("scrollbar-sleek h-8 shrink-0 justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-2 py-0", divider.bottom)}
+    class={cn("scrollbar-sleek justify-start gap-1 overflow-x-auto rounded-none bg-transparent px-2 py-0", shell.rightPanelTabs, divider.bottom)}
   >
     <Tabs.Trigger
       value="files"
-      class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "files" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      class={cn(tabStyle.panelTrigger, focus.ring, tabStyle.base, tab === "files" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <Icon icon={FolderTreeIcon} data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("fileTree.tab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="changes"
-      class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "changes" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      class={cn(tabStyle.panelTrigger, focus.ring, tabStyle.base, tab === "changes" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <Icon icon={GitCompareIcon} data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("rightPanel.changesTab")}
     </Tabs.Trigger>
     <Tabs.Trigger
       value="history"
-      class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "history" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+      class={cn(tabStyle.panelTrigger, focus.ring, tabStyle.base, tab === "history" ? tabStyle.activeLine : tabStyle.inactiveLine)}
     >
       <Icon icon={GitBranchIcon} data-icon="inline-start" class={cn(icon.decorative)} />
       {i18n.t("history.tab")}
@@ -106,7 +106,7 @@
     {#if showGithub}
       <Tabs.Trigger
         value="github"
-        class={cn("shrink-0 whitespace-nowrap px-3 text-[13px]", tabStyle.base, tab === "github" ? tabStyle.activeLine : tabStyle.inactiveLine)}
+        class={cn(tabStyle.panelTrigger, focus.ring, tabStyle.base, tab === "github" ? tabStyle.activeLine : tabStyle.inactiveLine)}
       >
         <Icon icon={GithubIcon} data-icon="inline-start" class={cn(icon.decorative)} />
         {i18n.t("github.panel.tab")}
