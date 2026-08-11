@@ -6,6 +6,120 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — a long reply no longer slows itself down while it streams
+
+Past a few thousand characters an answer started arriving in small jerks, and
+the longer it got the worse it was. The whole accumulated reply was re-parsed
+and re-laid-out on every delta, so showing a turn cost time that grew with the
+turn's own length.
+
+Measured on a real phone in a profile build: under 4 500 characters the reply
+cost 5.4 ms per frame at p95 and dropped 4 janky frames out of 2 761; past that
+it cost 28.1 ms and dropped 97 out of 1 381 — one frame in fourteen. The raster
+stayed at 3.7 ms throughout, so nothing was slow to draw; it was slow to build.
+
+The prose is now cut at boundaries that can never move again, and every finished
+piece keeps its widget, which Flutter skips instead of rebuilding. Only the part
+still being written is rebuilt.
+
+The cut is deliberately timid, because Markdown split in the wrong place renders
+differently: it only ever cuts at a blank line outside a fenced code block that
+is followed by a line which unmistakably starts a new block. It never cuts
+between the items of a list, inside a quote, a table, indented code, or a code
+fence — so a list-heavy answer simply does not split, which costs a missed
+optimization and never costs fidelity. That it looks identical is not an
+assertion: the same Markdown is rendered whole and split and compared pixel by
+pixel, which is how the 8 px of block spacing lost at each seam was caught.
+
+Measured again on the same phone afterwards, over 4 500 characters: p95 down
+from 28.1 ms to **11.0 ms**, worst frame from 64.0 ms to 21.9 ms, and dropped
+frames from 97 in 1 381 (7.0%) to 16 in 1 317 (**1.2%**). The shape matters more
+than the totals — the cost stopped growing with the reply:
+
+```
+before   5k:18ms → 6k:22ms → 8k:30ms → 10k:35ms → 11k:36ms
+after    4k:12ms → 5k:12ms →  7k:11ms →  8k:9ms
+```
+
+### Fixed — a whole exchange shown twice, and it stayed that way
+
+A conversation showed the same exchange twice — your message and the reply —
+and reopening it changed nothing, because both copies really were in the
+phone's store. Measured on the device: the second copy carried a **different
+turn id**, the agent's own session id, so this was never the phone duplicating
+anything. The bridge had stored the same turn twice after reading the agent's
+own transcript, and the phone faithfully rendered both. That is fixed on the
+bridge side.
+
+The phone's part was that it could never let go: a re-sync only ever inserted
+and updated, so a turn the bridge had dropped stayed on screen forever. It now
+removes what the bridge no longer reports, which is also what makes a
+conversation converge after it is cleaned up on the PC.
+
+Deliberately narrow, so a re-sync can never eat real history: only inside the
+window the fetched page covers — an older page loaded by scrolling up is left
+alone — never the turn streaming right now, one still waiting in the queue, or
+the echo that has no turn id yet, and never a message written after the sync
+began, which is what lets a message sent while the page was in flight survive.
+
+### Fixed — the first message of a conversation came back doubled
+
+Reported from a phone, in a fresh conversation, with no thread switching: the
+message you sent appeared twice, and both copies survived closing and reopening
+— so both were really in the store.
+
+Opening a conversation starts a re-sync against the bridge, and the echo written
+the moment you hit send carries **no turn id** until `turn/send` answers. The
+re-sync decides what it already has by turn id, so for those few milliseconds
+the echo was invisible to it and the bridge's copy of the same message was
+inserted beside it.
+
+The clue that pinned it was that the **second** message of a conversation never
+duplicated: by then no re-sync is in flight, so there is no window to land in.
+
+The re-sync now adopts a local echo that has no turn id yet — same row, stamped
+with the turn it turned out to belong to — instead of inserting next to it.
+Matched on the text the bridge echoes back and consumed on first match, so two
+identical sends still reconcile one each.
+
+### Changed — the empty drawer offers onboarding, not the camera
+
+With no PC paired, the drawer header's button went straight to the QR scanner.
+Whoever sees that button usually has no bridge installed either, and a camera
+pointed at nothing explains none of that. It opens onboarding now, which
+installs the bridge and then hands off to the very same scanner — so nobody who
+already has one loses a step worth mentioning. The overview's "pair another PC"
+menu is unchanged: it names both the scanner and the manual code, and it is
+asked by someone who already has a PC.
+
+### Fixed — opening a second conversation in the same pane
+
+On a tablet, picking another conversation changed the app bar while the body
+kept rendering the one you left — and the agent's answer would hang on
+"responding", or arrive duplicated.
+
+One cause for all three. go_router keys a page by the route **pattern**
+(`/conversation/:threadId`), not by the location it matched, so every thread
+produced the same page: replacing one with another handed Flutter a page it
+considered identical, the element was reused, and `initState` never ran again.
+The screen's whole per-thread startup lives there — `selectThread`,
+`resumeThread`, the foreground marker — so the ThreadManager was never told to
+switch. The app bar still looked right because it reads `widget.threadId`
+directly; the body follows the *manager's* active thread. And streaming deltas,
+which do not all carry a threadId of their own, kept being attributed to the
+thread you had left — hence the turn that never finished, and the turn that
+reappeared once the real thread re-synced against the bridge.
+
+Every parameterised route now keys its screen by its parameter, so a different
+thread (or PC) is a different element and restarts exactly as it does on a
+phone. It was **four** routes, not one: the per-PC threads list, its archive and
+the PC details screen had the same latent bug, and the threads list also starts
+per-PC work in `initState`.
+
+A phone was never affected: there opening pushes, which always builds a new
+element. Nothing outside the app changed — no bridge or contract work — so this
+runs against any bridge the app already worked with.
+
 ## [0.0.19-alpha.20260810+20260810] - 2026-08-10
 
 ### Fixed — the profile stopped being clamped to a paragraph's width

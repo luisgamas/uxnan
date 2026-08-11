@@ -21,6 +21,7 @@ import 'package:uxnan/l10n/app_localizations.dart';
 import 'package:uxnan/presentation/providers/application_providers.dart';
 import 'package:uxnan/presentation/providers/approval_providers.dart';
 import 'package:uxnan/presentation/providers/question_providers.dart';
+import 'package:uxnan/presentation/screens/conversation/messages/streaming_markdown_split.dart';
 import 'package:uxnan/presentation/screens/conversation/messages/workspace_path_links.dart';
 import 'package:uxnan/presentation/theme/colors.dart';
 import 'package:uxnan/presentation/theme/icons.dart';
@@ -2147,11 +2148,70 @@ class _AgentRespondingStatus extends StatelessWidget {
 /// Keeping one renderer for both states prevents completed Markdown syntax from
 /// flashing as source text until the turn finishes. The loader remains beside
 /// the live block without becoming part of the selectable response.
-class _StreamingProse extends StatelessWidget {
+///
+/// **Only the part still being written is rebuilt.** Rendering the whole
+/// accumulated reply on every delta made a turn cost time quadratic in its own
+/// length: measured on a real device in a profile build, a reply under 4 500
+/// characters cost 5.4 ms per frame at p95 and dropped 4 janky frames out of
+/// 2 761, while past that it cost 28.1 ms and dropped 97 out of 1 381 — one
+/// frame in fourteen, which is what reads as the answer stalling. So the prose
+/// is cut at boundaries that can never move again (see
+/// [splitStreamingMarkdown]) and each finished chunk keeps its widget instance;
+/// Flutter skips an identical widget without rebuilding or re-laying it out.
+class _StreamingProse extends StatefulWidget {
   const _StreamingProse({required this.text, required this.onTapLink});
 
   final String text;
   final ValueChanged<String>? onTapLink;
+
+  @override
+  State<_StreamingProse> createState() => _StreamingProseState();
+}
+
+class _StreamingProseState extends State<_StreamingProse> {
+  /// The chunk text behind each cached widget, so an unchanged chunk is
+  /// recognized without rebuilding it.
+  List<String> _chunks = const <String>[];
+  final List<Widget> _rendered = <Widget>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_StreamingProse oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text ||
+        oldWidget.onTapLink != widget.onTapLink) {
+      _sync();
+    }
+  }
+
+  /// Rebuilds only the chunks whose text actually changed — in practice the
+  /// last one, since a settled chunk is by construction final.
+  void _sync() {
+    final next = splitStreamingMarkdown(widget.text);
+    for (var i = 0; i < next.length; i += 1) {
+      final unchanged =
+          i < _chunks.length && i < _rendered.length && _chunks[i] == next[i];
+      if (unchanged) continue;
+      final block = _TextBlock(
+        content: TextContent(next[i]),
+        onTapLink: widget.onTapLink,
+      );
+      if (i < _rendered.length) {
+        _rendered[i] = block;
+      } else {
+        _rendered.add(block);
+      }
+    }
+    if (_rendered.length > next.length) {
+      _rendered.removeRange(next.length, _rendered.length);
+    }
+    _chunks = next;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2160,9 +2220,20 @@ class _StreamingProse extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Flexible(
-          child: _TextBlock(
-            content: TextContent(text),
-            onTapLink: onTapLink,
+          // One Markdown body per chunk. Separate bodies have no gap between
+          // them, so the renderer's own block spacing is put back here —
+          // without it the answer visibly tightens as it is cut (32 px over
+          // three paragraphs, caught by the pixel comparison in
+          // `streaming_markdown_fidelity_test.dart`).
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < _rendered.length; i += 1) ...[
+                if (i > 0) SizedBox(height: uxnanMarkdownBlockSpacing(context)),
+                _rendered[i],
+              ],
+            ],
           ),
         ),
         Padding(

@@ -5,6 +5,93 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ## [Unreleased]
 
+### Changed — streamed prose is coalesced before it leaves the bridge
+
+Agents emit text in bursts, not at a steady rate: on a real OpenCode turn, 60%
+of deltas arrived within 5 ms of the previous one (911 deltas, gaps p10 1.4 ms /
+p50 3.0 ms / p90 27.7 ms). Each one was paying a JSON serialization, an AES-GCM
+seal and a WebSocket frame for a handful of characters, and the phone paid the
+mirror of that to open them.
+
+Text deltas are now batched over a 25 ms window, or 512 characters, whichever
+comes first. `stream/message/delta` carries the accumulated run, so nothing
+changes shape on the wire or in the app — there are simply fewer, larger
+deltas. Replayed over that recording the policy cut 911 notifications to 244
+(3.7x); driven live it carried the same prose at 22.1 characters per
+notification instead of 4.1. The window is the worst case a character can wait,
+well under the ~100 ms at which a person notices a pause.
+
+**Order is preserved, and that is the part with teeth.** Any non-delta event
+flushes the open batch first, so a content block still lands against the text
+run it belongs to (`beforeText`) and a turn's completion never overtakes the
+prose before it. Adapters emit events without awaiting the handler, so only each
+handler's synchronous prefix runs in arrival order — the delta is buffered
+there, before its store write. Buffering it after that write let the completion
+flush an empty buffer and arrive first, which the suite caught.
+
+Durability is untouched: every delta is still persisted individually as it
+arrives. The batching decides how often the phone is told, never when the
+conversation becomes durable.
+
+### Changed — one file per conversation, so a streamed reply stops fighting the disk
+
+Replies arrived on the phone in lurches, and the longer your history got the
+worse it was. The cause was not the phone: every streamed token mutates a
+conversation, and while all of them lived in a single `threads.json` each token
+re-read, re-serialized and rewrote the **entire** store.
+
+Measured on a real 8.4 MB one: 36 ms to read and parse, 33 ms to serialize
+(blocking the event loop) and 24 ms to write — **93 ms per delta**. Those calls
+queue behind the store's mutex, and the notification to the phone is sent only
+after the write, so the disk — not the agent — set the pace. Driving the real
+OpenCode adapter with the same prompt against that store and against an empty
+one: **116 s versus 26 s**, 5.8 deltas/s versus 24.5, with gaps between deltas
+of 109 ms (p50) and 573 ms (max) versus 4 ms and 89 ms.
+
+Conversations now live one per file under `~/.uxnan/threads/<threadId>.json`,
+and only the conversation that changed is rewritten — a few KB in the median
+case instead of the whole history. They are also held in memory between
+mutations (this process is their only reader and writer, guaranteed by the
+single-instance lock), which removes the re-read entirely.
+
+**No durability guarantee changes:** every mutation still writes its file before
+it resolves. Nothing is deferred, so there is no window in which a crash could
+lose a reply.
+
+The same measurement after the change: **19.2 s**, 38 deltas/s, gaps of 2.8 ms
+(p50) and 161 ms (max) — the real store now performs like an empty one, which
+was the whole point. A legacy `threads.json` is split into per-conversation
+files on first read and kept as `threads.json.migrated`; verified against a real
+store (79 conversations, 116 turns, 249 messages, byte-identical after the move).
+
+### Fixed — a whole exchange stored twice after reading the agent's own log
+
+A conversation came back doubled on the phone — the prompt **and** the reply,
+identical copies that survived reopening it. The duplicate carried a second turn
+id: the agent's own session id. `turn/list` reconciles the agent-owned
+transcript on every idle read, and that turn was failing to match the bridge's
+own record of the same exchange, so it was imported beside it.
+
+The match compared the two turns message by message. They never line up: the
+bridge accumulates **one** assistant message per turn, while these logs split
+the same reply across several — one per tool step, most of them carrying no
+prose at all (OpenCode writes a text-less message per tool call, Claude Code
+likewise; Zero keeps the final answer without the preamble it streamed). So
+every turn in which the agent used a tool mismatched and was imported a second
+time. Turns that used no tool matched fine, which is why a short "hola" never
+duplicated and a real question always did.
+
+A turn is now identified by its content: prompt and reply, each concatenated
+across however many messages carry it, compared ignoring whitespace — and, for a
+log holding a different rendition of the same reply, by the same prompt plus one
+reply containing the other plus a native start inside that turn's own run
+window, all three required so a turn genuinely written elsewhere still imports.
+
+Stores that already hold such a pair converge on the next idle read: the
+imported copy is dropped once its bridge-created twin is recognized. Verified
+against a real store — 12 duplicated turns removed across OpenCode, Claude Code
+and Zero threads, with every bridge-created turn left intact.
+
 ## [0.0.19-alpha.20260810] - 2026-08-10
 
 ### Added — `git/worktrees`

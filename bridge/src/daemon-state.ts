@@ -8,9 +8,25 @@
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_DAEMON_CONFIG, resolveDaemonConfig, type DaemonConfig } from './daemon-config.js';
+
+export const DAEMON_DIRS = {
+  threads: 'threads',
+} as const;
+
+/**
+ * File name for one conversation. Thread ids are generated with `randomUUID`,
+ * so this only has to refuse anything that is not one — a value that reached
+ * the store from elsewhere must never be able to name a path.
+ */
+export function threadFileName(threadId: string): string {
+  if (!/^[A-Za-z0-9._-]+$/.test(threadId) || threadId === '.' || threadId === '..') {
+    throw new Error(`unsafe thread id: ${threadId}`);
+  }
+  return `${threadId}.json`;
+}
 
 export const DAEMON_FILES = {
   config: 'daemon-config.json',
@@ -112,6 +128,73 @@ export class DaemonState {
       await rm(tmp, { force: true }).catch(() => undefined);
       throw err;
     }
+  }
+
+  /**
+   * Directory holding one file per conversation (`threads/<id>.json`).
+   *
+   * Conversations live one-per-file rather than in a single `threads.json`
+   * because that file is rewritten on **every streamed token**: at 8.4 MB the
+   * read+serialize+write round trip measured 93 ms per delta, which throttled
+   * the agent's reply to a quarter of its natural speed and made it arrive in
+   * lurches. Per thread the same write is a few KB.
+   */
+  get threadsDir(): string {
+    return join(this.baseDir, DAEMON_DIRS.threads);
+  }
+
+  /**
+   * Reads every stored conversation. Order is not meaningful — the caller sorts.
+   * A file that is unreadable or not valid JSON is skipped rather than failing
+   * the whole load: one damaged conversation must not cost the user the rest.
+   */
+  async readThreadFiles<T>(): Promise<T[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.threadsDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    }
+    const out: T[] = [];
+    for (const name of names) {
+      if (!name.endsWith('.json')) continue;
+      try {
+        out.push(JSON.parse(await readFile(join(this.threadsDir, name), 'utf-8')) as T);
+      } catch {
+        continue;
+      }
+    }
+    return out;
+  }
+
+  /** Atomically writes one conversation's file. */
+  async writeThreadFile(threadId: string, data: unknown): Promise<void> {
+    await mkdir(this.threadsDir, { recursive: true });
+    const target = join(this.threadsDir, threadFileName(threadId));
+    const tmp = `${target}.${randomUUID()}.tmp`;
+    await writeFile(tmp, JSON.stringify(data), 'utf-8');
+    try {
+      await renameWithRetry(tmp, target);
+    } catch (err) {
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /** Removes one conversation's file. Missing is success. */
+  async removeThreadFile(threadId: string): Promise<void> {
+    await rm(join(this.threadsDir, threadFileName(threadId)), { force: true });
+  }
+
+  /**
+   * Retires the legacy single-file store once its conversations have been
+   * written out one per file. Renamed rather than deleted: until the new files
+   * have proven themselves this is the user's only copy of their history.
+   */
+  async retireLegacyThreads(): Promise<void> {
+    const from = this.pathFor(DAEMON_FILES.threads);
+    await rename(from, `${from}.migrated`).catch(() => undefined);
   }
 
   async readConfig(): Promise<DaemonConfig> {

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { RpcError, type Turn } from '@uxnan/shared';
 import { DaemonState, ThreadStore } from '../../src/index.js';
 import { rmrf } from '../helpers/fs.js';
@@ -133,6 +135,275 @@ test('reconcileNativeHistory ignores an in-progress native user-only turn and re
   assert.equal((await store.reconcileNativeHistory(thread.id, [complete], 14)).changed, true);
   const assistant = (await store.listTurns(thread.id)).turns[0]?.messages[1];
   assert.equal(assistant?.content, 'final answer');
+  await rmrf(baseDir);
+});
+
+/**
+ * Shapes taken from real transcripts. A native log splits one reply across
+ * several assistant messages — a text-less one per tool step, and sometimes the
+ * prose itself in runs — where the bridge accumulated a single message. These
+ * turns were being imported beside the bridge's own copy, so the phone showed
+ * the whole exchange (prompt included) twice, permanently.
+ */
+function nativeTurn(
+  threadId: string,
+  id: string,
+  at: number,
+  messages: readonly { role: 'user' | 'assistant'; content: string; blocks?: unknown[] }[],
+): Turn {
+  return {
+    id,
+    threadId,
+    status: 'completed',
+    createdAt: at,
+    completedAt: at + 1,
+    messages: messages.map((message, index) => ({
+      id: `${id}#m${index}`,
+      turnId: id,
+      role: message.role,
+      content: message.content,
+      ...(message.blocks !== undefined ? { blocks: message.blocks } : {}),
+      createdAt: at + index,
+    })),
+  };
+}
+
+test('reconcileNativeHistory links a tool-using turn split across native messages', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
+  const local = await store.startTurn(thread.id, 'how many folders?', 10);
+  await store.appendDelta(thread.id, local.turnId, '24 folders.', 11);
+  await store.completeTurn(thread.id, local.turnId, undefined, 12);
+
+  // OpenCode records the tool call as its own assistant message with no prose.
+  const native = nativeTurn(thread.id, 'ses_abc#t0', 12, [
+    { role: 'user', content: 'how many folders?' },
+    { role: 'assistant', content: '', blocks: [{ type: 'command_execution' }] },
+    { role: 'assistant', content: '24 folders.' },
+  ]);
+
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 20), {
+    changed: false,
+    importedTurnIds: [],
+  });
+  const turns = await store.listTurns(thread.id);
+  assert.equal(turns.total, 1, 'the turn is linked, not imported a second time');
+  assert.equal(turns.turns[0]?.id, local.turnId);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory links a reply the native log split into several prose runs', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
+  const local = await store.startTurn(thread.id, 'explain this repo', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Let me look.', 11);
+  await store.appendDelta(thread.id, local.turnId, 'Reading the docs.', 12);
+  await store.appendDelta(thread.id, local.turnId, 'Here is the answer.', 13);
+  await store.completeTurn(thread.id, local.turnId, undefined, 14);
+
+  const native = nativeTurn(thread.id, 'ses_def#t0', 14, [
+    { role: 'user', content: 'explain this repo' },
+    { role: 'assistant', content: 'Let me look.', blocks: [{ type: 'read' }] },
+    { role: 'assistant', content: '', blocks: [{ type: 'read' }] },
+    { role: 'assistant', content: 'Reading the docs.' },
+    { role: 'assistant', content: 'Here is the answer.' },
+  ]);
+
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 20), {
+    changed: false,
+    importedTurnIds: [],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 1);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory links a native reply contained in the streamed one, within its window', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'zero' }, 1);
+  const local = await store.startTurn(thread.id, 'what is this?', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Let me read the README. ', 11);
+  await store.appendDelta(thread.id, local.turnId, 'It is a monorepo.', 12);
+  await store.completeTurn(thread.id, local.turnId, undefined, 10_000);
+
+  // Zero's transcript keeps the final answer without the preamble it streamed.
+  const inWindow = nativeTurn(thread.id, 'zero_1#t0', 9_000, [
+    { role: 'user', content: 'what is this?' },
+    { role: 'assistant', content: 'It is a monorepo.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [inWindow], 20_000), {
+    changed: false,
+    importedTurnIds: [],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 1);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory still imports a contained reply written outside the turn window', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'zero' }, 1);
+  const local = await store.startTurn(thread.id, 'what is this?', 10);
+  await store.appendDelta(thread.id, local.turnId, 'Let me read the README. ', 11);
+  await store.appendDelta(thread.id, local.turnId, 'It is a monorepo.', 12);
+  await store.completeTurn(thread.id, local.turnId, undefined, 100);
+
+  // Same prompt and a contained answer, but written long after this turn ended:
+  // that is somebody working in the CLI, and it must still reach the phone.
+  const later = nativeTurn(thread.id, 'zero_1#t9', 900_000, [
+    { role: 'user', content: 'what is this?' },
+    { role: 'assistant', content: 'It is a monorepo.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [later], 900_100), {
+    changed: true,
+    importedTurnIds: ['zero_1#t9'],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+  await rmrf(baseDir);
+});
+
+test('reconcileNativeHistory drops a duplicate turn imported before it could be recognized', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p', agentId: 'opencode' }, 1);
+  const local = await store.startTurn(thread.id, 'how many folders?', 10);
+
+  // Read before the turn produced any prose: there is no reply to match yet, so
+  // the native turn is imported — which is exactly the duplicate already sitting
+  // in stores written before this fix.
+  const native = nativeTurn(thread.id, 'ses_ghi#t0', 12, [
+    { role: 'user', content: 'how many folders?' },
+    { role: 'assistant', content: '', blocks: [{ type: 'command_execution' }] },
+    { role: 'assistant', content: '24 folders.' },
+  ]);
+  assert.deepEqual(await store.reconcileNativeHistory(thread.id, [native], 13), {
+    changed: true,
+    importedTurnIds: ['ses_ghi#t0'],
+  });
+  assert.equal((await store.listTurns(thread.id)).total, 2);
+
+  await store.appendDelta(thread.id, local.turnId, '24 folders.', 14);
+  await store.completeTurn(thread.id, local.turnId, undefined, 15);
+
+  assert.equal((await store.reconcileNativeHistory(thread.id, [native], 16)).changed, true);
+  const turns = await store.listTurns(thread.id);
+  assert.equal(turns.total, 1, 'the stray import is gone');
+  assert.equal(turns.turns[0]?.id, local.turnId, 'the bridge copy is the one kept');
+  await rmrf(baseDir);
+});
+
+/**
+ * One file per conversation is what keeps a streamed token cheap: while every
+ * thread shared one `threads.json`, each delta re-read and rewrote the whole
+ * store (93 ms on a real 8.4 MB one) and throttled the reply behind the mutex.
+ */
+const legacyThread = (id: string, title: string) => ({
+  id,
+  projectId: 'p',
+  title,
+  status: 'active',
+  createdAt: 1,
+  updatedAt: 1,
+  turns: [],
+});
+
+async function seedLegacy(baseDir: string, threads: unknown[]): Promise<void> {
+  await mkdir(baseDir, { recursive: true });
+  await writeFile(join(baseDir, 'threads.json'), JSON.stringify(threads), 'utf-8');
+}
+
+test('a legacy single-file store migrates to one file per conversation', async () => {
+  const { store, baseDir } = newStore();
+  await seedLegacy(baseDir, [legacyThread('t-one', 'First'), legacyThread('t-two', 'Second')]);
+
+  const list = await store.listThreads('p');
+  assert.deepEqual(
+    list.threads.map((t) => t.id).sort(),
+    ['t-one', 't-two'],
+    'the history must survive the move',
+  );
+
+  const files = (await readdir(join(baseDir, 'threads'))).sort();
+  assert.deepEqual(files, ['t-one.json', 't-two.json']);
+  assert.equal(
+    existsSync(join(baseDir, 'threads.json')),
+    false,
+    'the legacy file is retired, not left to be re-migrated',
+  );
+  assert.equal(
+    existsSync(join(baseDir, 'threads.json.migrated')),
+    true,
+    'and kept as a backup rather than deleted — it is the only copy of the history',
+  );
+  await rmrf(baseDir);
+});
+
+test('an interrupted migration keeps the newer per-thread file and never duplicates', async () => {
+  const { store, baseDir } = newStore();
+  await seedLegacy(baseDir, [
+    legacyThread('t-one', 'Stale title'),
+    legacyThread('t-two', 'Second'),
+  ]);
+  // A migration that died after writing one file: that copy is the newer truth.
+  await mkdir(join(baseDir, 'threads'), { recursive: true });
+  await writeFile(
+    join(baseDir, 'threads', 't-one.json'),
+    JSON.stringify({ ...legacyThread('t-one', 'Renamed since'), updatedAt: 99 }),
+    'utf-8',
+  );
+
+  const list = await store.listThreads('p');
+  assert.equal(list.threads.length, 2, 'no conversation is imported twice');
+  assert.equal(
+    list.threads.find((t) => t.id === 't-one')?.title,
+    'Renamed since',
+    'the per-thread file wins over the legacy copy',
+  );
+  await rmrf(baseDir);
+});
+
+test('a mutation rewrites only the conversation it touched', async () => {
+  const { store, baseDir } = newStore();
+  const one = await store.startThread({ projectId: 'p', title: 'One' }, 1);
+  const two = await store.startThread({ projectId: 'p', title: 'Two' }, 2);
+
+  // Mark the other conversation's file by hand: if the store rewrites it, the
+  // marker is gone — which is exactly the cost this layout exists to avoid.
+  const otherFile = join(baseDir, 'threads', `${two.id}.json`);
+  const stored = JSON.parse(await readFile(otherFile, 'utf-8')) as Record<string, unknown>;
+  await writeFile(otherFile, JSON.stringify({ ...stored, marker: 'untouched' }), 'utf-8');
+
+  const { turnId } = await store.startTurn(one.id, 'ask', 3);
+  await store.appendDelta(one.id, turnId, 'answer', 4);
+  await store.completeTurn(one.id, turnId, undefined, 5);
+
+  const after = JSON.parse(await readFile(otherFile, 'utf-8')) as Record<string, unknown>;
+  assert.equal(after['marker'], 'untouched');
+  await rmrf(baseDir);
+});
+
+test('deleting a conversation removes its file', async () => {
+  const { store, baseDir } = newStore();
+  const thread = await store.startThread({ projectId: 'p' }, 1);
+  const file = join(baseDir, 'threads', `${thread.id}.json`);
+  assert.equal(existsSync(file), true);
+
+  await store.deleteThread(thread.id);
+  assert.equal(existsSync(file), false);
+  assert.equal((await store.listThreads('p')).threads.length, 0);
+  await rmrf(baseDir);
+});
+
+test('a stored conversation survives a fresh store over the same directory', async () => {
+  const baseDir = join(tmpdir(), `uxnan-ts-${randomUUID()}`);
+  const first = new ThreadStore(new DaemonState(baseDir));
+  const thread = await first.startThread({ projectId: 'p', title: 'Kept' }, 1);
+  const { turnId } = await first.startTurn(thread.id, 'ask', 2);
+  await first.appendDelta(thread.id, turnId, 'answer', 3);
+  await first.completeTurn(thread.id, turnId, undefined, 4);
+
+  // The in-memory cache must be a cache, not the only copy.
+  const second = new ThreadStore(new DaemonState(baseDir));
+  const turns = await second.listTurns(thread.id);
+  assert.equal(turns.total, 1);
+  assert.equal(turns.turns[0]?.messages.find((m) => m.role === 'assistant')?.content, 'answer');
   await rmrf(baseDir);
 });
 

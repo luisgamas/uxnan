@@ -1177,7 +1177,7 @@ class TurnTimelineSnapshot {
 
 #### 5.4.7 Markdown y contenido enriquecido
 
-- **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Partial streaming prose and settled prose use the same `MarkdownBody` renderer and shared style sheet, preventing a source-text-to-formatted-layout swap when a turn completes. Explicit Markdown links, bare local paths and inline-code paths share one tap callback: local paths open the workspace file viewer, remote links are copied rather than launched. Workspace previews target GitHub-flavored Markdown as GitHub renders it, without embedding a WebView: GitHub **alerts** (`> [!NOTE]` …) and **`<details>` disclosures** are extracted as blocks and given their own chrome, common README HTML (including rectangular tables, `<kbd>`, `<sub>`/`<sup>`) is normalized, and the renderer runs the `gitHubWeb` extension set with a checkbox builder and a syntax-highlighted, horizontally scrollable code-block builder. An HTTPS resource is decoded by the media type its **response** declares (`content-type` + payload signature), never by its URL, because README shields are served from extensionless endpoints as `image/svg+xml`.
+- **Markdown:** `flutter_markdown_plus` — Android + iOS renderer for messages and workspace documents. Partial streaming prose and settled prose use the same `MarkdownBody` renderer and shared style sheet, preventing a source-text-to-formatted-layout swap when a turn completes. **A reply that is still streaming is rendered as several bodies, not one:** it is cut at boundaries that can no longer move (a blank line outside a code fence, followed by a line that unmistakably starts a new block — never between list items, inside a quote, table, indented code or a fence), and each settled chunk keeps its widget instance so Flutter skips it instead of rebuilding. Rendering the whole accumulated reply on every delta made a turn cost time quadratic in its own length: measured on device, p95 per frame went 5.4 ms under 4 500 characters to 28.1 ms past it, with the raster flat at 3.7 ms; after the split, 11.0 ms past 4 500 and no longer growing with the reply. Separate bodies lose the renderer's inter-block spacing, so it is restored explicitly (`uxnanMarkdownBlockSpacing`) and the two renderings are compared pixel by pixel in `streaming_markdown_fidelity_test.dart`. Explicit Markdown links, bare local paths and inline-code paths share one tap callback: local paths open the workspace file viewer, remote links are copied rather than launched. Workspace previews target GitHub-flavored Markdown as GitHub renders it, without embedding a WebView: GitHub **alerts** (`> [!NOTE]` …) and **`<details>` disclosures** are extracted as blocks and given their own chrome, common README HTML (including rectangular tables, `<kbd>`, `<sub>`/`<sup>`) is normalized, and the renderer runs the `gitHubWeb` extension set with a checkbox builder and a syntax-highlighted, horizontally scrollable code-block builder. An HTTPS resource is decoded by the media type its **response** declares (`content-type` + payload signature), never by its URL, because README shields are served from extensionless endpoints as `image/svg+xml`.
 - **SVG:** two renderers by design. `flutter_svg` draws the app's own bundled assets; **`jovial_svg`** draws documents the user did not author (workspace previews, README shields), because `vector_graphics` does not apply transforms to `<text>` and every badge service scales its label down with one.
 - **Mermaid:** represented as structured message content and rendered as an explicit diagram placeholder; no WebView dependency is part of the current mobile UI stack.
 - **Code highlighting:** `flutter_highlight` — puro Dart.
@@ -1425,6 +1425,16 @@ IncomingMessageProcessor
 ```
 
 Reglas de streaming:
+- **The bridge coalesces text deltas over a 25 ms window (or 512 characters,
+  whichever comes first) before notifying.** `stream/message/delta` carries the
+  accumulated run, so nothing on the wire or in the app changes shape — there
+  are simply fewer, larger deltas. Agents emit prose in bursts (measured: 60% of
+  a real turn's deltas arrived within 5 ms of the previous one), and one
+  serialization + AES-GCM seal + WebSocket frame per handful of characters was
+  paid on both ends; batching that recording cut 911 notifications to 244.
+  **Order is the invariant:** any non-delta event — a content block, a turn
+  ending — flushes the open batch first, so a block still lands against the text
+  run it belongs to and a completion never overtakes the prose before it.
 - El auto-scroll esta activo mientras el usuario no haya scrolleado hacia arriba.
 - Si el usuario scrollea durante streaming, el auto-scroll se pausa.
 - Al completar el turno, si el usuario esta cerca del fondo, auto-scroll se reactiva.
@@ -1738,7 +1748,8 @@ El bridge mantiene estado en `~/.uxnan/`:
 ├── trusted-phones.json            # telefonos de confianza registrados
 ├── managed-worktrees.json         # worktrees administrados
 ├── push-state.json                # estado de push notifications
-├── threads.json                   # historial mutable de conversaciones
+├── threads/                       # historial mutable, un fichero por conversacion
+│   └── <threadId>.json            #   reescrito solo cuando ESA conversacion cambia
 ├── metrics.json                   # ledger historico completo (version 2)
 ├── metrics.json.bak1..bak5        # generaciones locales del ledger
 ├── checkpoints.json               # metadata de checkpoints
@@ -1749,6 +1760,25 @@ El bridge mantiene estado en `~/.uxnan/`:
 
 The bridge Ed25519 identity and the metrics sealing key live in the OS keychain,
 not in these JSON files.
+
+**Conversations are stored one per file, and that is load-bearing.** Every
+streamed token mutates a conversation, so while they shared a single
+`threads.json` each token re-read, re-serialized and rewrote the whole store.
+Measured on a real 8.4 MB one: 36 ms to read and parse, 33 ms to serialize
+(blocking the event loop) and 24 ms to write — **93 ms per delta**, which queued
+behind the store mutex and throttled delivery to the phone to 5.8 deltas/s with
+gaps of 109 ms (p50) and 573 ms (max). The same reply took 116 s against that
+store and 26 s against an empty one: the cost scaled with the user's whole
+history, so it got worse on its own. Per conversation the median write is a few
+KB, and one conversation's size no longer taxes every other.
+
+The conversations are also held in memory between mutations — this process is
+their only reader and writer, guaranteed by the single-instance lock. **No
+durability guarantee changes: every mutation still writes its file before it
+resolves**, so nothing is deferred and no window of loss is opened. A legacy
+`threads.json` is split into per-conversation files on first read and kept as
+`threads.json.migrated` (a backup, not a deletion — it is the user's only copy
+of that history until the new files are proven).
 
 #### 5.8.4 Autostart del bridge
 
@@ -1988,6 +2018,18 @@ then follows these rules:
   segments, queue state, usage and delivery status;
 - a matching native turn is linked by a private deterministic history id rather
   than inserted twice;
+- **a turn is matched by content identity — its prompt and its reply, each
+  concatenated across however many messages carry it, compared ignoring
+  whitespace.** Per-message comparison is wrong: the bridge accumulates one
+  assistant message per turn while a native transcript splits the same reply
+  across several, one per tool step and most with no prose at all. Where an
+  agent's log keeps a different rendition of the reply than the one it streamed
+  (Zero drops the preamble), the same prompt plus one reply containing the other
+  plus a native start inside the bridge turn's own run window identify it — all
+  three together, so a turn genuinely written elsewhere still imports;
+- a turn imported before it could be matched is **dropped** once its
+  bridge-created twin is recognized, which is what converges a store that
+  already holds the same exchange twice;
 - completed native-only user/assistant pairs are imported and can be refreshed
   on a later read;
 - user-only/in-progress native turns are ignored until an assistant result is

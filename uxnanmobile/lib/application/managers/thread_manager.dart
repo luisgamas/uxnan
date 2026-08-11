@@ -843,6 +843,9 @@ class ThreadManager {
   }
 
   Future<void> _performResyncThread(String threadId) async {
+    // Taken before the request so anything the user sends while it is in flight
+    // is newer than the page, and is therefore never mistaken for a leftover.
+    final syncedAt = DateTime.now();
     final page = await _fetchTurns(
       threadId,
       limit: _turnPageSize,
@@ -894,7 +897,12 @@ class ThreadManager {
       _turnStateKnown.add({..._turnStateKnown.value, threadId});
     }
     await _reconcileQueuedMessages(threadId, page.queue.turnIds, page.turns);
-    await _persistTurns(threadId, page.turns, trackLatestUsage: true);
+    await _persistTurns(
+      threadId,
+      page.turns,
+      trackLatestUsage: true,
+      staleBefore: syncedAt,
+    );
     if (threadId != _activeThreadId) return;
     final total = page.total;
     if (total == null) {
@@ -1047,6 +1055,7 @@ class ThreadManager {
     List<Object?> turns, {
     required bool trackLatestUsage,
     bool olderPage = false,
+    DateTime? staleBefore,
   }) async {
     final existing = await _messageRepository.getMessages(threadId);
     final byId = {for (final m in existing) m.id: m};
@@ -1055,6 +1064,24 @@ class ThreadManager {
         if (message.role == MessageRole.user && message.turnId.isNotEmpty)
           message.turnId: message,
     };
+    // The user's own message is echoed locally the moment they hit send —
+    // BEFORE `turn/send` comes back with the turn it belongs to, so it sits
+    // there with an empty `turnId` for a few milliseconds. The lookup above
+    // cannot see it, and a re-sync landing inside that window (opening a
+    // conversation starts one) would insert the bridge's copy of the very same
+    // message: the duplicated FIRST message of a conversation, reported from a
+    // phone with no thread switching involved. Keyed by text, which is what
+    // the bridge echoes back, and consumed on first match so two identical
+    // sends still reconcile one each.
+    final orphanUsers = <String, List<Message>>{};
+    for (final message in existing) {
+      if (message.role != MessageRole.user || message.turnId.isNotEmpty) {
+        continue;
+      }
+      final text =
+          message.contents.whereType<TextContent>().map((c) => c.text).join();
+      orphanUsers.putIfAbsent(text, () => []).add(message);
+    }
     final toSave = <Message>[];
     // New (not-yet-stored) messages collected in document order
     // (oldest→newest);
@@ -1081,6 +1108,15 @@ class ThreadManager {
           // attachments, and delivery state. A missing user is genuinely from
           // another client and gets a deterministic local id.
           if (userByTurn.containsKey(turnId)) continue;
+          // Adopt the local echo instead of inserting beside it: same row, now
+          // stamped with the turn it turned out to belong to.
+          final orphans = orphanUsers[content];
+          if (orphans != null && orphans.isNotEmpty) {
+            final adopted = orphans.removeAt(0).copyWith(turnId: turnId);
+            toSave.add(adopted);
+            userByTurn[turnId] = adopted;
+            continue;
+          }
           final message = Message(
             id: _streamUserId(turnId),
             threadId: threadId,
@@ -1181,6 +1217,9 @@ class ThreadManager {
       }
     }
     if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
+    if (staleBefore != null) {
+      await _pruneStaleTurns(threadId, existing, turns, staleBefore);
+    }
     // Restore the context meter from the latest turn's stored usage, unless a
     // live turn already set a fresher value for this thread. Only the newest
     // page carries the *current* usage — older pages must never overwrite it.
@@ -1191,6 +1230,56 @@ class ThreadManager {
         _contextUsage.value,
       )..[threadId] = latestUsage;
       _contextUsage.add(next);
+    }
+  }
+
+  /// Deletes the messages left behind by a turn the bridge no longer reports.
+  ///
+  /// The bridge owns which turns a thread has, and it now drops a turn its own
+  /// native-history import had stored twice. Since a re-sync otherwise only
+  /// inserts and updates, without this the phone would keep rendering that
+  /// duplicated exchange from its own store forever — reopening the
+  /// conversation included, which is exactly how it was reported.
+  ///
+  /// Deliberately narrow, so a re-sync can never eat real history:
+  ///  - only inside the window this page actually covers, leaving an older page
+  ///    loaded by scrolling up untouched;
+  ///  - never the turn streaming right now, one still waiting in the queue, or
+  ///    the local echo that has no turn id yet;
+  ///  - never a message written after this sync began, which is what lets a
+  ///    message sent while the page was in flight survive.
+  Future<void> _pruneStaleTurns(
+    String threadId,
+    List<Message> existing,
+    List<Object?> turns,
+    DateTime staleBefore,
+  ) async {
+    final pageTurnIds = <String>{
+      for (final rawTurn in turns)
+        if (rawTurn is Map && rawTurn['id'] is String) rawTurn['id'] as String,
+    };
+    if (pageTurnIds.isEmpty) return;
+    // The page's own oldest message marks where its authority begins.
+    int? windowStart;
+    for (final message in existing) {
+      if (!pageTurnIds.contains(message.turnId)) continue;
+      if (windowStart == null || message.orderIndex < windowStart) {
+        windowStart = message.orderIndex;
+      }
+    }
+    if (windowStart == null) return;
+    final liveTurnId = _live[threadId]?.turnId;
+    final queued = queueOf(threadId).turnIds.toSet();
+    for (final message in existing) {
+      if (message.turnId.isEmpty ||
+          pageTurnIds.contains(message.turnId) ||
+          message.turnId == liveTurnId ||
+          queued.contains(message.turnId) ||
+          message.orderIndex < windowStart ||
+          !message.createdAt.isBefore(staleBefore)) {
+        continue;
+      }
+      await _messageRepository.deleteMessage(message.id);
     }
   }
 
@@ -1966,9 +2055,13 @@ class ThreadManager {
   /// re-parses ALL of it — so a turn costs time quadratic in its own length,
   /// which is what made streaming feel slower than the unformatted text the app
   /// used to show. Rebuilding less often is the whole fix, but a fixed window
-  /// is the wrong shape for it: agents emit a delta roughly every 20 ms, so a
-  /// one-frame window collapses almost nothing, while a window wide enough to
-  /// help a long reply would make a short one look chunky for no gain.
+  /// is the wrong shape for it: deltas land in bursts (the bridge coalesces the
+  /// agent's own output over 25 ms before sending, and even so 60% of an
+  /// agent's deltas arrive within 5 ms of the previous one), so a one-frame
+  /// window collapses almost nothing, while a window wide enough to help a long
+  /// reply would make a short one look chunky for no gain. This window is not
+  /// redundant with the bridge's: that one saves frames and encryptions on the
+  /// wire, this one saves *rebuilds*, and the rebuild is what costs 43–49 ms.
   ///
   /// So the window grows with the reply, exactly where the cost is. Measured on
   /// a realistic 6000-character reply (prose, list, inline code, fenced block)
@@ -1988,6 +2081,13 @@ class ThreadManager {
   /// Only deltas go through here. Every other event (a turn completing, a block
   /// landing, a re-sync) still rebuilds immediately: those are one-off and the
   /// user must see them at once.
+  ///
+  /// FOR-DEV (optional, nothing is broken): text lands at ~6 repaints/s on a
+  /// long reply because that is how fast it ARRIVES — a display buffer consumed
+  /// at a steady rate, draining hard on `turn/completed`, is the one lever left
+  /// for smoothness. Perception, not throughput. Do NOT instead shrink
+  /// [_streamCoalesceWindow]: measured, the repaint rate already sits well
+  /// under what it allows. See `FOR-DEV.md` and `docs/testing.md` to measure.
   void _rebuildActiveTimelineCoalesced(int streamedLength) {
     if (_streamRebuildTimer?.isActive ?? false) return;
     _streamRebuildTimer = Timer(_streamCoalesceWindow(streamedLength), () {

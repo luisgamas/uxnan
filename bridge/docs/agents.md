@@ -248,6 +248,16 @@ link, preventing the same turn from being imported twice. Native-only turns are
 refreshed on later reads, but absent native rows never delete bridge history.
 This is completed-turn convergence: external token deltas are not streamed.
 
+**A turn is recognized by content identity, not message-by-message.** The prompt
+and the reply are each concatenated across however many messages carry them and
+compared ignoring whitespace, because these logs split one reply into several
+messages — one per tool step, most carrying no prose — where the bridge
+accumulated a single message. Comparing them one to one mismatched every turn
+that used a tool and imported it a second time, so the phone showed the whole
+exchange twice, permanently. A store already holding such a pair converges on
+the next idle read: the imported copy is dropped once its bridge-created twin is
+recognized.
+
 Each agent runs in the thread's `cwd`. Codex turns and model discovery both use
 the long-lived `codex app-server` (`thread/start` / `turn/start` and
 `initialize` → `model/list`). Binary resolution

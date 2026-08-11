@@ -125,7 +125,7 @@ interface RawMessage {
    */
   blocks?: unknown[];
   // FOR-DEV: this fallback emits `text` + `blocks` separately, so a turn
-  // recovered after a bridge restart (empty `threads.json`) renders blocks-first
+  // recovered after a bridge restart (an empty conversation store) renders blocks-first
   // — the phone falls back to its blocks-first layout. The live/stored path
   // (`thread-store.ts`) already emits the ordered `Message.segments` interleave;
   // reconstruct the same here from each CLI log's real text↔tool order and emit

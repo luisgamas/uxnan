@@ -133,7 +133,14 @@ class _DeviceHeader extends ConsumerWidget {
             Text(l10n.drawerNoDevices, style: textTheme.titleMedium),
             const SizedBox(height: UxnanSpacing.sm),
             FilledButton.icon(
-              onPressed: () => context.push(AppRoutes.pairing),
+              // Onboarding, NOT the scanner. Whoever reaches this button has no
+              // PC paired, which means there may well be no bridge installed
+              // either — and a camera pointed at nothing is a dead end that
+              // explains none of that. Onboarding installs the bridge, then
+              // hands off to the same scanner (its own "scan" step pushes
+              // `AppRoutes.pairing`), so nobody who already has one loses a
+              // step worth mentioning.
+              onPressed: () => context.push(AppRoutes.onboarding),
               icon: const UxIcon(UxIcons.addLink),
               label: Text(l10n.actionPairDevice),
             ),

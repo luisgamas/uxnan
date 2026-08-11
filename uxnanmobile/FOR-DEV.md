@@ -296,6 +296,25 @@ shipping.
       (`architecture/02a` §5.4.7).
 - [ ] **Project drift repository** — the `projects` table exists; the repository +
       `AgentConfig` wiring lands with the projects module.
+- [ ] **OPTIONAL — a display buffer for streamed prose, decoupled from arrival.**
+      Nothing is broken; this is *perception*, not throughput, and it is written
+      down only so the reasoning is not lost. On a long reply the text lands at
+      roughly **6 repaints per second**, because that is how fast it arrives, and
+      that can read as slightly stepped even though each repaint is now cheap.
+      The idea: put incoming deltas in a queue and consume it at a steady rate,
+      taking more characters per frame as the backlog grows (e.g. 2 under 30
+      queued chars, 7 at 80, 12 at 200, 20+ past 500) — and **drain the queue
+      hard on `turn/completed`**, so the UI never mimes typing an answer that
+      already finished, which is the failure mode this pattern usually ships
+      with. Site: `ThreadManager._rebuildActiveTimelineCoalesced` /
+      `_streamCoalesceWindow` (`application/managers/thread_manager.dart`).
+      **Prerequisite met:** it was correctly deferred until a rebuild was cheap,
+      and after the settled-chunk split (2026-08-11) it is — p95 11 ms and flat
+      in reply length. **Do not instead lower the coalescing window:** measured
+      across twelve samples the repaint rate already sits well under what the
+      window allows, so that change buys nothing (see `docs/architecture.md`).
+      Decide it with the app in hand, and re-measure with the recipe in
+      [`docs/testing.md`](docs/testing.md).
 - [ ] **Work-log auto-expand while streaming; tap Last-edits strip to jump.** Low.
 - [ ] **Arbitrary (non-image) file attach** — deferred; no bridge contract/model
       exists for it yet.

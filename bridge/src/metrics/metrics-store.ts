@@ -10,7 +10,7 @@
  *
  * Deleting mutable conversation history never removes rows from this ledger.
  * Export/import therefore restores the complete activity history instead of
- * combining a partial backup with whatever `threads.json` happens to contain.
+ * combining a partial backup with whatever the conversation store happens to hold.
  *
  * Mutations are serialized through a mutex so concurrent writes cannot corrupt
  * the read-modify-write cycle.
