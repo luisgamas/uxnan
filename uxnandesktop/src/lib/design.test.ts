@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { control, dialog, field, iconButton, overlay, row, shell, surface, tab } from "$lib/design";
+import { control, dialog, field, iconButton, overlay, panel, row, shell, surface, tab } from "$lib/design";
 
 describe("desktop density tokens", () => {
 	it("keeps interactive roles at or above the 28px floor", () => {
@@ -10,6 +10,7 @@ describe("desktop density tokens", () => {
 		expect(iconButton.xs).toContain("size-7");
 		expect(iconButton.sm).toContain("size-8");
 		expect(iconButton.action).toContain("size-8");
+		expect(control.entityPicker).toContain("size-12");
 	});
 
 	it("uses viewport-clamped overlay widths and composable dialog spacing", () => {
@@ -61,5 +62,29 @@ describe("desktop density tokens", () => {
 		expect(field.searchIcon).toContain("shrink-0");
 		expect(field.searchLabel).toContain("flex-1");
 		expect(field.searchShortcut).toContain("shrink-0");
+	});
+
+	it("exposes shared settings and editor roles", () => {
+		expect(row.settings).toContain("md:grid-cols-[minmax(0,1fr)_auto]");
+		expect(row.settingsNav).toContain("min-h-8");
+		expect(row.settingsList).toContain("min-h-9");
+		expect(row.settingsListLabel).toContain("truncate");
+		expect(row.settingsListLabel).toContain("justify-start");
+		expect(row.editorDisclosure).toContain("min-h-8");
+		expect(row.choice).toContain("min-h-9");
+		expect(row.choiceActive).toContain("bg-accent");
+		expect(row.settingsChoiceCard).toContain("min-h-20");
+		expect(field.editor).toContain("font-mono");
+		expect(field.editorNumber).toContain("w-24");
+		expect(field.editorSelect).toContain("min-w-0");
+		expect(field.editorLabel).toContain("truncate");
+		expect(field.editorLabelShort).toContain("w-24");
+		expect(field.selectNarrow).toContain("max-w-full");
+		expect(field.selectStandard).toContain("w-56");
+		expect(field.selectWide).toContain("w-72");
+		expect(tab.segmentedList).toContain("min-h-8");
+		expect(tab.segmentedTrigger).toContain("min-h-7");
+		expect(panel.settingsPreview).toContain("h-60");
+		expect(panel.settingsBody).toContain("px-7");
 	});
 });

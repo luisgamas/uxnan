@@ -737,6 +737,19 @@ Los componentes de shadcn-svelte que el ADE utiliza como base:
 - **Tooltip** - Informacion contextual en iconos y badges compactos
 - **Sheet** - Paneles deslizantes para configuracion y detalles extendidos
 
+#### Shared density and settings composition
+
+Component geometry is role-driven through `src/lib/design.ts`. Callers must use
+an existing role or extend that module before introducing repeated dimensions;
+locally reproducing the same pixels does not satisfy the component contract.
+Settings pages compose `SettingsSection`, `SettingsRow`, and
+`panel.settingsBody`; editor mode switches use the shared Bits UI-backed tabs,
+and repeated rows, fields, choices, entity pickers, and preview surfaces consume
+their named `row`, `field`, `control`, `tab`, and `panel` roles. Standard,
+compact, and dense interactive targets remain 36px, 32px, and 28px
+respectively. Fixed-width controls must clamp to their pane, and multi-column
+editors must stack before they overflow.
+
 #### Accesibilidad
 
 Todos los componentes de shadcn-svelte estan construidos sobre **Bits UI** (el equivalente de Radix UI para Svelte). Esto proporciona accesibilidad integrada de forma predeterminada:

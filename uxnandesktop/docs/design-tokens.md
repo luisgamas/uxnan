@@ -73,6 +73,11 @@ Use the role tokens from `src/lib/design.ts` and let a local class override a
 token only when the component has a named, constrained role. Do not resize
 arbitrary markup globally.
 
+Settings and editors follow the same rule. `SettingsSection` owns the header and
+canonical `panel.settingsBody` band, `SettingsRow` consumes `row.settings`, and
+editor/list callers compose the named `row.*`, `field.*`, `tab.*`, and `control.*`
+roles. A pixel-equivalent local class is not a substitute for the shared role.
+
 ```svelte
 <Button size="default">Run</Button>       <!-- 36px standard -->
 <Button size="sm">Filter</Button>         <!-- 32px compact -->
@@ -208,6 +213,11 @@ on top of the base.
 | `row.searchResult` | Worktree palette result (exact 52px virtual-list row) |
 | `row.agentModel` / `row.agentSpaceHeader` / `row.agentAvatarStrip` / `row.agentOverflow` / `row.agentLeading` / `row.agentActiveIndicator` / `row.agentDetail` / `row.agentSpaceDetail` | Agent model truncation, responsive single-line agent-space strip with measured avatar capacity and stable +N footprint, centered leading glyphs, active-agent marker, subagent relationship rail, and borderless expanded-agent inset |
 | `row.projectSummary` | Collapsed project summary insets |
+| `row.settings` / `row.settingsNav` | Responsive settings control row and settings navigation item |
+| `row.settingsList` / `row.settingsListLabel` | Settings selection row and its left-aligned, truncating primary action |
+| `row.editorDisclosure` | Text-bearing disclosure in a profile/editor row |
+| `row.choice` + `row.choiceActive` / `row.choiceInactive` | Selectable preview/list row with quiet state treatment |
+| `row.settingsChoiceCard` | Large descriptive radio-style choice in settings |
 
 `row.searchResult` is the one intentional list-row exception to the 36px content
 row contract: the worktree switcher presents branch and path on two lines, so
@@ -224,13 +234,18 @@ viewport cap; `tab.panelTrigger` owns the right-panel trigger padding/type; and
 |---|---|
 | `field.input` | A standard 36px text input |
 | `field.search` / `field.searchIcon` / `field.searchLabel` / `field.searchShortcut` | The compact search trigger and its stable leading icon, truncating label and trailing keycaps |
+| `field.editor` / `field.editorNumber` / `field.editorSelect` | Compact editor values, repeated numeric fields, and selects that cannot force overflow |
+| `field.editorLabel` / `field.editorLabelShort` | Stable, truncating labels in repeated editor grids |
+| `field.selectCompact` / `field.selectNarrow` / `field.selectStandard` / `field.selectComfortable` / `field.selectWide` | Named, pane-clamped widths for repeated settings selectors |
 | `panel.settingsBody` | A settings section body band (controls inside; no card-in-card) |
+| `panel.settingsPreview` | Equal-height, overflow-safe list/preview surface for settings pickers |
 | `panel.sectionHeader` | A settings section header (title + description over a divider) |
 | `panel.card` | A standalone content card |
 | `panel.sidebarCard` | A selectable sidebar card (project/worktree outer shell) |
 | `focus.ring` | The shared focus-visible ring |
 | `divider.bottom` / `divider.top` | The subtle hairline section divider (top band of each panel, the status bar) — one reusable softened `border-border/60` hairline so every structural seam reads quiet (never a hard, crisp full-strength line) and they all match |
 | `tab.base` + `tab.active` / `tab.inactive` | Active tab = a quiet sidebar-accent fill (like a selected worktree) + a firm foreground underline; shared by the center terminal tabs and the right panel |
+| `tab.segmentedList` / `tab.segmentedTrigger` | Compact Bits UI-backed mode switch used by settings editors |
 
 ## Principles
 - **Emphasis is earned.** Informational text (paths, counts, hints) stays

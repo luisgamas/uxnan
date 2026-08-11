@@ -39,7 +39,7 @@
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
   import { clipboardWrite } from "$lib/clipboard";
-  import { icon, iconButton, text } from "$lib/design";
+  import { focus, icon, iconButton, row, text } from "$lib/design";
   import AgentLogo from "./AgentLogo.svelte";
   import { Icon } from "$lib/components/ui/icon";
   import CopyIcon from "@hugeicons/core-free-icons/CopyIcon";
@@ -251,11 +251,13 @@
     type="button"
     onclick={() => selectAgent(entry.id)}
     class={cn(
-      "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+      row.settingsNav,
+      focus.ring,
       activeAgent === entry.id
         ? "bg-accent text-accent-foreground"
         : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
     )}
+    aria-current={activeAgent === entry.id ? "page" : undefined}
   >
     <AgentLogo logo={agentLogo(entry.id)} class={icon.decorative} />
     <span class="min-w-0 flex-1 truncate">{agentName(entry.id)}</span>
@@ -294,10 +296,10 @@
     </Card.Header>
 
     <Card.Content>
-      <div class="flex gap-4">
+      <div class="flex min-w-0 flex-col gap-4 md:flex-row">
         <!-- Agent list: the ones on this machine first, everything else after. -->
         <nav
-          class="scrollbar-sleek max-h-[26rem] w-44 shrink-0 overflow-y-auto border-r border-border/50 pr-2"
+          class="scrollbar-sleek max-h-[26rem] w-full min-w-0 overflow-y-auto md:w-44 md:shrink-0 md:border-r md:border-border/50 md:pr-2"
           aria-label={i18n.t("hooks.agentListLabel")}
         >
           {#if mine.length > 0}
@@ -344,7 +346,7 @@
 
             <div class="flex flex-wrap items-center gap-2">
               <Button
-                size="xs"
+                size="sm"
                 variant={selected.status.installed ? "outline" : "secondary"}
                 disabled={busy !== null || !featureOn}
                 onclick={() => act(selected.id, "install")}
@@ -355,7 +357,7 @@
                 {busy === selected.id ? i18n.t("hooks.installing") : i18n.t("hooks.install")}
               </Button>
               <Button
-                size="xs"
+                size="sm"
                 variant="ghost"
                 disabled={busy !== null || !selected.status.installed}
                 onclick={() => act(selected.id, "uninstall")}
@@ -376,7 +378,8 @@
             <Collapsible.Root open={configOpen} onOpenChange={toggleConfig}>
               <Collapsible.Trigger
                 class={cn(
-                  "flex items-center gap-1 self-start rounded-md px-1.5 py-1 hover:bg-muted",
+                  "flex min-h-8 items-center gap-1 self-start rounded-md px-1.5 hover:bg-muted",
+                  focus.ring,
                   text.meta,
                 )}
               >
@@ -440,7 +443,7 @@
         {#each PLATFORMS as p (p.id)}
           <Button
             variant={platform === p.id ? "secondary" : "outline"}
-            size="xs"
+            size="sm"
             onclick={() => (platform = p.id)}
           >
             {p.label}

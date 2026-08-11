@@ -9,7 +9,7 @@
   import { Input } from "$lib/components/ui/input";
   import { app } from "$lib/state/app.svelte";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { control, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import EntityIcon from "./EntityIcon.svelte";
   import IconPicker from "./IconPicker.svelte";
@@ -49,21 +49,23 @@
 
     <div class="flex min-w-0 flex-col gap-5 py-1">
       <!-- Identity: avatar (click to change) + display name. -->
-      <div class="flex items-center gap-3">
-        <button
+      <div class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <Button
+          variant="outline"
+          size="icon"
           type="button"
-          class="group relative flex size-12 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40 transition-colors hover:border-border hover:bg-muted"
+          class={cn(control.entityPicker, "group relative flex items-center justify-center border border-border/60 bg-muted/40 transition-colors hover:border-border hover:bg-muted")}
           title={i18n.t("sidebarProfile.changeIcon")}
           aria-label={i18n.t("sidebarProfile.changeIcon")}
           onclick={() => (iconPickerOpen = true)}
         >
           <EntityIcon value={app.sidebarProfile.icon} class="size-6" fallback={avatarGlyph} />
           <span
-            class="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs group-hover:text-foreground"
+            class={cn(control.entityPickerBadge, "group-hover:text-foreground")}
           >
             <Icon icon={PencilIcon} class="size-3" />
           </span>
-        </button>
+        </Button>
         <div class="flex min-w-0 flex-1 flex-col gap-1.5">
           <label for="profile-name" class={cn("font-medium", text.body)}>
             {i18n.t("sidebarProfile.name")}

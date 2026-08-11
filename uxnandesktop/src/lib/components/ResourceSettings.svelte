@@ -15,7 +15,7 @@
   import type { ResourceExport, ResourceSettings } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { field, panel, text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
   import DownloadIcon from "@hugeicons/core-free-icons/Download01Icon";
 
@@ -79,7 +79,7 @@
   bare
 >
   <div class="space-y-6">
-    <div class="divide-y divide-border/50 rounded-xl border border-border/60 bg-muted/20 px-4 py-1">
+    <div class={cn(panel.settingsBody, "divide-y divide-border/60")}>
       <SettingsRow label={i18n.t("resources.enable")} description={i18n.t("resources.enableDesc")}>
         {#snippet control()}
           <Switch
@@ -111,7 +111,8 @@
           <Input
             id="resource-sweep-interval"
             type="number"
-            class="w-20 text-right tabular-nums"
+            density="compact"
+            class={field.editorNumber}
             min={15}
             max={30}
             disabled={settings.enabled === false || settings.orphanSweep !== true}
@@ -128,7 +129,7 @@
     </div>
 
     <!-- What the confidences mean — the vocabulary every row in the popover uses. -->
-    <div class="space-y-2 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+    <div class={cn(panel.settingsBody, "space-y-2")}>
       <span class={text.section}>{i18n.t("resources.confidenceTitle")}</span>
       <ul class={cn("space-y-1.5", text.meta)}>
         <li>
@@ -150,7 +151,7 @@
       </ul>
     </div>
 
-    <div class="divide-y divide-border/50 rounded-xl border border-border/60 bg-muted/20 px-4 py-1">
+    <div class={cn(panel.settingsBody, "divide-y divide-border/60")}>
       <SettingsRow label={i18n.t("resources.export")} description={i18n.t("resources.exportDesc")}>
         {#snippet control()}
           <Button

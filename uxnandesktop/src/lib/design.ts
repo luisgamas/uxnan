@@ -60,6 +60,11 @@ export const control = {
   iconDefault: "size-9",
   icon: "size-8",
   iconDense: "size-7",
+  /** Large entity/avatar picker used by settings identity dialogs. */
+  entityPicker: "size-12 shrink-0 rounded-lg",
+  /** Paint-only edit badge inside an entity picker. */
+  entityPickerBadge:
+    "absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-xs",
 } as const;
 
 /** Shared overlay row and container recipes. */
@@ -133,10 +138,9 @@ export const text = {
 
 /** Surfaces & selection — a single *neutral* language for layering and for
  *  "this is the active thing", shared across the left panel (project/worktree
- *  cards), the nested agent rows and the panel tabs, so a selection reads the
- *  same everywhere. Selection uses the sidebar-accent fill (a quiet neutral
- *  delta), never a saturated tint; the nested variant is deliberately lighter
- *  than its parent. */
+ *  cards) and the panel tabs, so a selection reads the same everywhere.
+ *  Selection uses the sidebar-accent fill (a quiet neutral delta), never a
+ *  saturated tint. */
 export const surface = {
   /** App canvas / shell root. */
   shell: "bg-[var(--ux-shell)] text-foreground",
@@ -199,6 +203,27 @@ export const row = {
   projectSummary: "flex w-full items-center gap-2 pb-1.5 pl-8 pr-2 text-left",
   /** Virtualized worktree-switcher result; kept at the exact 52px estimate. */
   searchResult: "flex h-[52px] w-full items-center gap-3 rounded-lg px-2.5 text-left transition-colors",
+  /** Settings control row: label/description left, control right on wide panes. */
+  settings:
+    "grid gap-x-6 gap-y-2 py-3.5 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center",
+  /** Settings navigation item. */
+  settingsNav:
+    "group flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+  /** Selectable preview/list row used by settings editors. */
+  settingsList:
+    "group flex min-h-9 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors",
+  settingsListLabel:
+    "min-w-0 flex-1 justify-start truncate text-left text-[13px] text-foreground",
+  /** Text-bearing disclosure in a profile/editor row. */
+  editorDisclosure: "min-h-8 min-w-0 flex-1 rounded-md px-1 text-left",
+  /** A selectable settings choice row with quiet active/hover surfaces. */
+  choice:
+    "group flex min-h-9 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors",
+  choiceActive: "bg-accent/60",
+  choiceInactive: "hover:bg-foreground/[0.04]",
+  /** Large descriptive radio choice in settings. */
+  settingsChoiceCard:
+    "flex min-h-20 flex-col items-start gap-1.5 p-3.5 text-left transition-colors",
 } as const;
 
 /** Field controls — text inputs and the compact, field-like search button. */
@@ -210,12 +235,29 @@ export const field = {
   searchIcon: "size-4 shrink-0",
   searchLabel: "min-w-0 flex-1 truncate text-left",
   searchShortcut: "shrink-0",
+  /** Compact editor value field; pair with Input density="compact". */
+  editor: "min-w-0 font-mono text-[11px]",
+  /** Repeated narrow numeric editor field. */
+  editorNumber: "w-24 text-right tabular-nums",
+  /** A select filling its editor grid cell without forcing overflow. */
+  editorSelect: "w-full min-w-0",
+  /** Stable labels in repeated color/value editor rows. */
+  editorLabel: "w-28 min-w-0 shrink-0 truncate",
+  editorLabelShort: "w-24 min-w-0 shrink-0 truncate",
+  /** Repeated settings-select widths; every role clamps at the pane width. */
+  selectCompact: "w-36 max-w-full",
+  selectNarrow: "w-44 max-w-full",
+  selectStandard: "w-56 max-w-full",
+  selectComfortable: "w-64 max-w-full",
+  selectWide: "w-72 max-w-full",
 } as const;
 
 /** Container surfaces — settings bodies, section headers and cards. */
 export const panel = {
   /** A settings section body band (controls live inside; avoid card-in-card). */
   settingsBody: "rounded-xl border border-border/50 bg-card/50 px-7 py-6 shadow-xs",
+  /** Equal-height list/preview surface used by settings pickers. */
+  settingsPreview: "h-60 min-h-0 overflow-hidden rounded-lg border border-border/50",
   /** A settings section header (title + description over a divider). */
   sectionHeader: "flex flex-wrap items-start justify-between gap-4 border-b border-border/60 pb-5",
   /** A standalone content card. */
@@ -257,4 +299,8 @@ export const tab = {
    *  on small view tabs. */
   activeLine: "border-foreground text-foreground",
   inactiveLine: "text-muted-foreground hover:text-foreground",
+  /** Small accessible Visual/JSON editor switcher. */
+  segmentedList:
+    "inline-flex min-h-8 shrink-0 self-start overflow-hidden rounded-md border border-border bg-muted/30",
+  segmentedTrigger: "min-h-7 rounded-none px-2 text-[11px]",
 } as const;

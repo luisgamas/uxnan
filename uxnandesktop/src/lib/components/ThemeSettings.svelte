@@ -37,7 +37,7 @@
   import { fsReadFile, fsWriteFile } from "$lib/api";
   import { clipboardWrite } from "$lib/clipboard";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { field, icon, iconButton, panel, row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import ThemeEditor from "./ThemeEditor.svelte";
   import TerminalThemeEditor from "./TerminalThemeEditor.svelte";
@@ -428,7 +428,7 @@
               placeholder={DEFAULT_FONTS[k].split(",")[0].replace(/"/g, "")}
               bundled={k === "mono" ? [] : [...BUNDLED_FONTS]}
               clearLabel={i18n.t("appearance.fontDefault")}
-              triggerClass="w-64"
+              triggerClass={field.selectComfortable}
               onChange={(v) => { ensureFonts()[k] = v; persist(); }}
             />
           {/snippet}
@@ -453,8 +453,8 @@
     </div>
 
     <!-- Theme name list (scrolls) + a live color preview -->
-    <div class="mt-4 grid items-start gap-3 lg:grid-cols-2">
-      <div class="uxnan-scroll max-h-80 overflow-y-auto rounded-lg border border-border/50 bg-background/40">
+    <div class="mt-4 grid items-stretch gap-3 lg:grid-cols-2">
+      <div class={cn(panel.settingsPreview, "uxnan-scroll overflow-y-auto bg-background/40")}>
         <div class="divide-y divide-border/50">
           {@render themeRow(SYSTEM_ID, i18n.t("settings.theme.system"), null)}
           {#each app.allThemes() as theme (theme.id)}
@@ -476,14 +476,14 @@
             value={tf.fontFamily ?? undefined}
             placeholder={termFontBase.fontFamily.split(",")[0].replace(/"/g, "")}
             clearLabel={i18n.t("appearance.fontInherit")}
-            triggerClass="w-64"
+            triggerClass={field.selectComfortable}
             onChange={(v) => setTermFontStr("fontFamily", v ?? "")}
           />
         {/snippet}
       </SettingsRow>
       <SettingsRow label={i18n.t("terminalTheme.size")} description={i18n.t("appearance.termSizeDesc")}>
         {#snippet control()}
-          <Input type="number" class="w-24" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
+          <Input density="compact" class={field.editorNumber} type="number" value={tf.fontSize ?? ""} placeholder={String(termFontBase.fontSize)} oninput={(e) => setTermFontNum("fontSize", e.currentTarget.value)} />
         {/snippet}
       </SettingsRow>
       <SettingsRow label={i18n.t("terminalTheme.bold")} description={i18n.t("appearance.termBoldDesc")}>
@@ -493,12 +493,12 @@
       </SettingsRow>
       <SettingsRow label={i18n.t("terminalTheme.lineHeight")} description={i18n.t("appearance.termLineHeightDesc")}>
         {#snippet control()}
-          <Input type="number" step="0.05" class="w-24" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
+          <Input density="compact" class={field.editorNumber} type="number" step="0.05" value={tf.lineHeight ?? ""} placeholder={String(termFontBase.lineHeight)} oninput={(e) => setTermFontNum("lineHeight", e.currentTarget.value)} />
         {/snippet}
       </SettingsRow>
       <SettingsRow label={i18n.t("terminalTheme.letterSpacing")} description={i18n.t("appearance.termLetterSpacingDesc")}>
         {#snippet control()}
-          <Input type="number" step="0.5" class="w-24" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
+          <Input density="compact" class={field.editorNumber} type="number" step="0.5" value={tf.letterSpacing ?? ""} placeholder={String(termFontBase.letterSpacing)} oninput={(e) => setTermFontNum("letterSpacing", e.currentTarget.value)} />
         {/snippet}
       </SettingsRow>
       <SettingsRow label={i18n.t("terminalTheme.ligatures")} description={i18n.t("appearance.termLigaturesDesc")}>
@@ -552,7 +552,7 @@
 {#snippet appPreview()}
   {@const c = previewAppColors}
   {#if c}
-    <div class="overflow-hidden rounded-lg border" style:background-color={c.background} style:border-color={c.border} style:color={c.foreground}>
+    <div class={panel.settingsPreview} style:background-color={c.background} style:border-color={c.border} style:color={c.foreground}>
       <div class="flex flex-col gap-3.5 p-4">
         <div class="flex items-center justify-between gap-2">
           <span class="truncate text-sm font-semibold" style:color={c.foreground}>{previewAppName}</span>
@@ -570,7 +570,7 @@
       </div>
     </div>
   {:else}
-    <p class={cn("rounded-lg border border-border/50 py-10 text-center", text.meta)}>{i18n.t("appearance.selectToPreview")}</p>
+    <p class={cn(panel.settingsPreview, "flex items-center justify-center text-center", text.meta)}>{i18n.t("appearance.selectToPreview")}</p>
   {/if}
 {/snippet}
 
@@ -615,7 +615,7 @@
 
 {#snippet termPreview(scope: TermScope)}
   {@const t = termColorsFor(termPreviewId(scope))}
-  <div class="overflow-hidden rounded-lg border border-border/50 font-mono text-[11px] leading-5" style:background-color={t.background} style:color={t.foreground}>
+  <div class={cn(panel.settingsPreview, "font-mono text-[11px] leading-5")} style:background-color={t.background} style:color={t.foreground}>
     <div class="flex items-center gap-1.5 border-b px-3 py-1.5" style="border-color: color-mix(in srgb, currentColor 15%, transparent)">
       <span class="size-2 rounded-full" style:background-color={t.red}></span>
       <span class="size-2 rounded-full" style:background-color={t.yellow}></span>
@@ -635,10 +635,10 @@
 
 {#snippet termRow(scope: TermScope, id: string, name: string, preset: TerminalThemePreset | null)}
   {@const isActive = termActiveId(scope) === id}
-  <div class={cn("flex items-center gap-2 px-3 py-2 transition-colors", termPreviewId(scope) === id ? "bg-accent/60" : "hover:bg-foreground/[0.04]")}>
-    <button type="button" class="min-w-0 flex-1 truncate text-left text-[13px] text-foreground" onclick={() => setTermPreview(scope, id)}>{name}</button>
+  <div class={cn(row.choice, termPreviewId(scope) === id ? row.choiceActive : row.choiceInactive)}>
+    <Button variant="ghost" size="sm" class={row.settingsListLabel} onclick={() => setTermPreview(scope, id)}>{name}</Button>
     {#if isActive}<Icon icon={CheckIcon} class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-    <Button variant={isActive ? "ghost" : "outline"} size="sm" class="h-7 shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => useTerm(scope, id)}>
+    <Button variant={isActive ? "ghost" : "outline"} size="sm" class="shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => useTerm(scope, id)}>
       {i18n.t(isActive ? "appearance.inUse" : "appearance.use")}
     </Button>
     {#if preset}{@render termMenu(preset)}{/if}
@@ -647,10 +647,10 @@
 
 {#snippet themeRow(id: string, name: string, theme: Theme | null)}
   {@const isActive = activeId === id}
-  <div class={cn("flex items-center gap-2 px-3 py-2 transition-colors", previewThemeId === id ? "bg-accent/60" : "hover:bg-foreground/[0.04]")}>
-    <button type="button" class="min-w-0 flex-1 truncate text-left text-[13px] text-foreground" onclick={() => (previewThemeId = id)}>{name}</button>
+  <div class={cn(row.choice, previewThemeId === id ? row.choiceActive : row.choiceInactive)}>
+    <Button variant="ghost" size="sm" class={row.settingsListLabel} onclick={() => (previewThemeId = id)}>{name}</Button>
     {#if isActive}<Icon icon={CheckIcon} class={cn(icon.decorative, "shrink-0 text-primary")} />{/if}
-    <Button variant={isActive ? "ghost" : "outline"} size="sm" class="h-7 shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => { selectTheme(id); previewThemeId = id; }}>
+    <Button variant={isActive ? "ghost" : "outline"} size="sm" class="shrink-0 px-2.5 text-xs" disabled={isActive} onclick={() => { selectTheme(id); previewThemeId = id; }}>
       {i18n.t(isActive ? "appearance.inUse" : "appearance.use")}
     </Button>
     {#if theme}{@render themeMenu(theme)}{/if}
@@ -658,8 +658,8 @@
 {/snippet}
 
 {#snippet termBlock(scope: TermScope, presets: TerminalThemePreset[])}
-  <div class="grid items-start gap-3 lg:grid-cols-2">
-    <div class="uxnan-scroll max-h-80 overflow-y-auto rounded-lg border border-border/50 bg-background/40">
+  <div class="grid items-stretch gap-3 lg:grid-cols-2">
+    <div class={cn(panel.settingsPreview, "uxnan-scroll overflow-y-auto bg-background/40")}>
       <div class="divide-y divide-border/50">
         {@render termRow(scope, TERMINAL_INHERIT_ID, i18n.t("appearance.inherit"), null)}
         {#each presets as preset (preset.id)}

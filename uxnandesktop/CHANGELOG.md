@@ -15,6 +15,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Phase 4 settings/editor pass:** Settings navigation, control rows, profile
+  editors, hooks, providers, quick commands, external-editor choices, resources,
+  pets, and project/profile dialogs now consume shared row, field, container,
+  choice, and entity-picker roles instead of recreating equivalent geometry.
+  Theme editors share a Bits UI-backed Visual/JSON tab component; compact form
+  controls keep a 32px target, dense icon affordances keep a 28px floor, fixed
+  selector widths clamp to the pane, and multi-column editors stack safely at
+  narrow widths. Theme and terminal-theme lists align their labels to the left
+  and share an equal-height scroll/preview surface, configured-agent logos are
+  centered consistently, and Pets/Resources use the canonical settings body
+  padding.
+
 - **Phase 3 shell/navigation pass:** named shell, row, tab, search-field and
   palette roles now govern the status bar, sidebar hierarchy, terminal strip,
   right-panel header and native window controls. Project identity is separated

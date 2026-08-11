@@ -5,7 +5,7 @@
   // parent — no per-row card — so divisions read only where they matter.
   import type { Snippet } from "svelte";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { row, text } from "$lib/design";
 
   let {
     label,
@@ -32,7 +32,7 @@
 
 <div
   class={cn(
-    "grid gap-x-6 gap-y-2 py-3.5 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto] md:items-center",
+    row.settings,
     className,
   )}
 >

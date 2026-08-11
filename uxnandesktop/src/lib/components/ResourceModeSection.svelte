@@ -24,7 +24,7 @@
   } from "$lib/resources/policy";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { field, focus, icon, iconButton, panel, row, surface, text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
   import LeafIcon from "@hugeicons/core-free-icons/Leaf01Icon";
   import ScaleIcon from "@hugeicons/core-free-icons/BalanceScaleIcon";
@@ -201,11 +201,12 @@
           data-resource-profile={p}
           onkeydown={onGroupKeydown}
           class={cn(
-            "flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-colors",
-            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+            row.settingsChoiceCard,
+            panel.card,
+            focus.ring,
             checked
-              ? "border-foreground/25 bg-[var(--ux-sidebar-accent)]"
-              : "border-border/50 bg-muted/20 hover:bg-accent/50",
+              ? surface.active
+              : "bg-muted/20 hover:bg-accent/50",
           )}
           onclick={() => resourceMode.setProfile(p)}
         >
@@ -221,7 +222,7 @@
     </div>
 
     <!-- Effects view: what the SELECTED profile (with overrides) actually does. -->
-    <div class="space-y-2 rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+    <div class={cn(panel.settingsBody, "space-y-2")}>
       <span class={text.section}>{i18n.t("resourceMode.effectsTitle")}</span>
       <ul class="space-y-1.5">
         {#each effects as line (line.key)}
@@ -244,7 +245,7 @@
 
     <!-- Workspace auto-sleep feature flag (the capability level lives in the
          preset / its advanced override; this switch gates everything). -->
-    <div class="divide-y divide-border/50 rounded-xl border border-border/60 bg-muted/20 px-4 py-1">
+    <div class={cn(panel.settingsBody, "divide-y divide-border/60")}>
       <SettingsRow
         label={i18n.t("resourceMode.autoSleepFlag")}
         description={i18n.t("resourceMode.autoSleepFlagDesc")}
@@ -263,9 +264,8 @@
     <Collapsible.Root bind:open={advancedOpen}>
       <Collapsible.Trigger
         class={cn(
-          "flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left",
-          "text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          row.list,
+          "justify-start font-medium text-muted-foreground hover:text-foreground",
         )}
       >
         <Icon icon={ChevronDownIcon}
@@ -276,9 +276,7 @@
       <Collapsible.Content>
         <div class="mt-2 space-y-3">
           <p class={text.meta}>{i18n.t("resourceMode.advancedDesc")}</p>
-          <div
-            class="divide-y divide-border/50 rounded-xl border border-border/60 bg-muted/20 px-4 py-1"
-          >
+          <div class={cn(panel.settingsBody, "divide-y divide-border/60")}>
             <SettingsRow
               label={i18n.t("resourceMode.override.gitSweep")}
               description={i18n.t("resourceMode.override.gitSweepDesc")}
@@ -290,7 +288,8 @@
                   <Input
                     id="rm-git-sweep"
                     type="number"
-                    class="w-20 text-right tabular-nums"
+                    density="compact"
+                    class={field.editorNumber}
                     min={LIMITS.gitSweepIntervalMs.min / 1000}
                     max={LIMITS.gitSweepIntervalMs.max / 1000}
                     value={Math.round(caps.gitSweepIntervalMs / 1000)}
@@ -316,7 +315,8 @@
                   <Input
                     id="rm-concurrency"
                     type="number"
-                    class="w-20 text-right tabular-nums"
+                    density="compact"
+                    class={field.editorNumber}
                     min={LIMITS.orchestrationConcurrency.min}
                     max={LIMITS.orchestrationConcurrency.max}
                     value={caps.orchestrationConcurrency}
@@ -341,7 +341,8 @@
                   <Input
                     id="rm-history"
                     type="number"
-                    class="w-20 text-right tabular-nums"
+                    density="compact"
+                    class={field.editorNumber}
                     min={LIMITS.resourceHistorySeconds.min}
                     max={LIMITS.resourceHistorySeconds.max}
                     value={caps.resourceHistorySeconds}
@@ -387,7 +388,7 @@
                         v as WorkspaceAutoSleepLevel,
                       )}
                   >
-                    <Select.Trigger size="compact" class="w-36 text-xs" disabled={!policy.autoSleepEnabled}>
+                    <Select.Trigger size="compact" class={cn(field.selectCompact, "text-xs")} disabled={!policy.autoSleepEnabled}>
                       {autoSleepLevelLabel}
                     </Select.Trigger>
                     <Select.Content>
@@ -413,7 +414,8 @@
                   <Input
                     id="rm-idle"
                     type="number"
-                    class="w-20 text-right tabular-nums"
+                    density="compact"
+                    class={field.editorNumber}
                     min={LIMITS.autoSleepIdleMinutes.min}
                     max={LIMITS.autoSleepIdleMinutes.max}
                     disabled={!policy.autoSleepEnabled}
@@ -450,7 +452,7 @@
           {...tp}
           variant="ghost"
           size="icon-sm"
-          class="size-6"
+          class={iconButton.sm}
           aria-label={i18n.t("resourceMode.usePreset")}
           onclick={() => resourceMode.clearOverride(key)}
         >

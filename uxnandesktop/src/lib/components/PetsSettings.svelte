@@ -15,7 +15,7 @@
   import type { ImportablePet, PetCorner } from "$lib/types";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { field, icon, iconButton, panel, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
   import * as Dialog from "$lib/components/ui/dialog";
@@ -131,7 +131,7 @@
 <SettingsSection title={i18n.t("settings.pets")} description={i18n.t("settings.pets.desc")} bare>
   <div class="space-y-6">
     <!-- Behaviour -->
-    <div class="divide-y divide-border/50 rounded-xl border border-border/60 bg-muted/20 px-4 py-1">
+    <div class={cn(panel.settingsBody, "divide-y divide-border/60")}>
       <SettingsRow label={i18n.t("pets.enable")} description={i18n.t("pets.enableDesc")}>
         {#snippet control()}
           <Switch
@@ -174,7 +174,7 @@
             value={settings.corner ?? "bottom-right"}
             groups={cornerGroups}
             disabled={settings.enabled !== true || settings.overlay !== false}
-            triggerClass="w-56"
+            triggerClass={field.selectStandard}
             searchPlaceholder={i18n.t("common.search")}
             onChange={(v) => set({ corner: v as PetCorner, offsetX: 16, offsetY: 16 })}
           />
@@ -187,7 +187,7 @@
             value={String(nearestPetSize(settings.size))}
             groups={sizeGroups}
             disabled={settings.enabled !== true}
-            triggerClass="w-56"
+            triggerClass={field.selectStandard}
             searchPlaceholder={i18n.t("common.search")}
             onChange={(v) => set({ size: Number(v) })}
           />
@@ -251,14 +251,15 @@
           <p class="text-[12px] leading-5 text-muted-foreground">
             {i18n.t("pets.provenanceNotice")}
           </p>
-          <button
-            type="button"
-            class="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            class={cn(iconButton.sm, "absolute right-1 top-1 text-muted-foreground hover:bg-accent hover:text-foreground")}
             aria-label={i18n.t("common.close")}
             onclick={dismissNotice}
           >
             <Icon icon={XIcon} class="size-3.5" />
-          </button>
+          </Button>
         </div>
       {/if}
 
@@ -307,15 +308,16 @@
               {/if}
             </button>
             {#if p.source === "imported"}
-              <button
-                type="button"
-                class="absolute right-1.5 top-1.5 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class={cn(iconButton.sm, "absolute right-1 top-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100")}
                 aria-label={i18n.t("pets.remove")}
                 title={i18n.t("pets.remove")}
                 onclick={() => void pets.remove(p.id)}
               >
                 <Icon icon={Trash2Icon} class="size-3.5" />
-              </button>
+              </Button>
             {/if}
           </div>
         {/each}
@@ -325,18 +327,17 @@
       <div class="flex flex-wrap items-center gap-1.5 pt-1">
         <span class="text-[12px] text-muted-foreground">{i18n.t("pets.preview")}</span>
         {#each ["idle", "working", "waiting", "done", "blocked"] as const as s (s)}
-          <button
-            type="button"
+          <Button
+            size="xs"
+            variant={previewState === s ? "secondary" : "ghost"}
             class={cn(
-              "rounded-md px-2 py-1 text-[12px] transition-colors",
-              previewState === s
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+              "text-[12px]",
+              previewState !== s && "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
             )}
             onclick={() => (previewState = s)}
           >
             {i18n.t(`pets.state.${s}`)}
-          </button>
+          </Button>
         {/each}
       </div>
     </div>

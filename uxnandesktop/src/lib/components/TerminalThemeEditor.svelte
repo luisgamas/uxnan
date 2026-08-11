@@ -5,6 +5,7 @@
   // placeholder), and an "overrides" dot marks the ones you've set.
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Select from "$lib/components/ui/select";
+  import * as Tabs from "$lib/components/ui/tabs";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -20,13 +21,12 @@
     type TerminalThemePreset,
   } from "$lib/theme";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { field, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { Icon } from "$lib/components/ui/icon";
-  import CodeIcon from "@hugeicons/core-free-icons/CodeIcon";
-  import SlidersIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
   import FontPicker from "./FontPicker.svelte";
+  import EditorModeTabs from "./EditorModeTabs.svelte";
 
   let {
     open = $bindable(false),
@@ -121,19 +121,12 @@
       <Dialog.Description>{i18n.t("terminalTheme.overrideNote")}</Dialog.Description>
     </Dialog.Header>
 
-    <div class="inline-flex shrink-0 self-start overflow-hidden rounded-md border border-border">
-      <button type="button" class={cn("flex items-center gap-1 px-2 py-0.5", text.indicator, mode === "visual" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => (mode = "visual")}>
-        <Icon icon={SlidersIcon} class="size-3.5" />{i18n.t("appearance.visual")}
-      </button>
-      <button type="button" class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")} onclick={() => { jsonText = terminalThemeToJson(preset); mode = "json"; }}>
-        <Icon icon={CodeIcon} class="size-3.5" />JSON
-      </button>
-    </div>
-
-    <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto pr-1">
-      {#if mode === "visual"}
+    <EditorModeTabs bind:value={mode} onJsonSelect={() => (jsonText = terminalThemeToJson(preset))}>
+      {#snippet children()}
+      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+      <Tabs.Content value="visual">
         <div class="flex flex-col gap-3">
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid gap-2 sm:grid-cols-2">
             <div class="flex flex-col gap-1">
               <Label class={text.meta}>{i18n.t("appearance.name")}</Label>
               <Input bind:value={preset.name} />
@@ -141,7 +134,7 @@
             <div class="flex flex-col gap-1">
               <Label class={text.meta}>{i18n.t("appearance.base")}</Label>
               <Select.Root type="single" value={preset.base ?? "dark"} onValueChange={(v) => { if (v === "light" || v === "dark") preset.base = v; }}>
-                <Select.Trigger>{(preset.base ?? "dark") === "dark" ? i18n.t("settings.theme.dark") : i18n.t("settings.theme.light")}</Select.Trigger>
+                <Select.Trigger class={field.editorSelect}>{(preset.base ?? "dark") === "dark" ? i18n.t("settings.theme.dark") : i18n.t("settings.theme.light")}</Select.Trigger>
                 <Select.Content>
                   <Select.Item value="dark" label={i18n.t("settings.theme.dark")}>{i18n.t("settings.theme.dark")}</Select.Item>
                   <Select.Item value="light" label={i18n.t("settings.theme.light")}>{i18n.t("settings.theme.light")}</Select.Item>
@@ -150,7 +143,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <div class="col-span-2 flex flex-col gap-1 sm:col-span-3">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("fontFamily"))}{i18n.t("terminalTheme.font")}</Label>
               <FontPicker
@@ -162,24 +155,24 @@
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("fontSize"))}{i18n.t("terminalTheme.size")}</Label>
-              <Input type="number" value={preset.fontSize ?? ""} placeholder={String(inherited.fontSize)} oninput={(e) => setNum("fontSize", e.currentTarget.value)} />
+              <Input density="compact" class={field.editorNumber} type="number" value={preset.fontSize ?? ""} placeholder={String(inherited.fontSize)} oninput={(e) => setNum("fontSize", e.currentTarget.value)} />
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("lineHeight"))}{i18n.t("terminalTheme.lineHeight")}</Label>
-              <Input type="number" step="0.05" value={preset.lineHeight ?? ""} placeholder={String(inherited.lineHeight)} oninput={(e) => setNum("lineHeight", e.currentTarget.value)} />
+              <Input density="compact" class={field.editorNumber} type="number" step="0.05" value={preset.lineHeight ?? ""} placeholder={String(inherited.lineHeight)} oninput={(e) => setNum("lineHeight", e.currentTarget.value)} />
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("letterSpacing"))}{i18n.t("terminalTheme.letterSpacing")}</Label>
-              <Input type="number" step="0.5" value={preset.letterSpacing ?? ""} placeholder={String(inherited.letterSpacing)} oninput={(e) => setNum("letterSpacing", e.currentTarget.value)} />
+              <Input density="compact" class={field.editorNumber} type="number" step="0.5" value={preset.letterSpacing ?? ""} placeholder={String(inherited.letterSpacing)} oninput={(e) => setNum("letterSpacing", e.currentTarget.value)} />
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("fontWeight"))}{i18n.t("terminalTheme.weight")}</Label>
-              <Input value={preset.fontWeight != null ? String(preset.fontWeight) : ""} placeholder={String(inherited.fontWeight)} oninput={(e) => setStr("fontWeight", e.currentTarget.value)} />
+              <Input density="compact" class={field.editor} value={preset.fontWeight != null ? String(preset.fontWeight) : ""} placeholder={String(inherited.fontWeight)} oninput={(e) => setStr("fontWeight", e.currentTarget.value)} />
             </div>
             <div class="flex flex-col gap-1">
               <Label class={cn("flex items-center gap-1", text.meta)}>{@render overrideDot(isSet("cursorStyle"))}{i18n.t("terminalTheme.cursorStyle")}</Label>
               <Select.Root type="single" value={preset.cursorStyle ?? "block"} onValueChange={(v) => setStr("cursorStyle", v ?? "block")}>
-                <Select.Trigger>{cursorLabel}</Select.Trigger>
+              <Select.Trigger size="compact" class={field.editorSelect}>{cursorLabel}</Select.Trigger>
                 <Select.Content>
                   <Select.Item value="block" label={i18n.t("terminalTheme.cursorBlock")}>{i18n.t("terminalTheme.cursorBlock")}</Select.Item>
                   <Select.Item value="underline" label={i18n.t("terminalTheme.cursorUnderline")}>{i18n.t("terminalTheme.cursorUnderline")}</Select.Item>
@@ -208,8 +201,8 @@
                 <div class="flex items-center gap-1.5">
                   {@render overrideDot(isSet(key))}
                   <span class="size-5 shrink-0 rounded border border-border" style:background-color={(inherited.theme as Record<string, string>)[key]}></span>
-                  <span class={cn("w-24 shrink-0 truncate", text.indicator)}>{i18n.t(labelKey)}</span>
-                  <Input class="h-7 min-w-0 flex-1 font-mono text-[11px]" value={(preset as unknown as Record<string, string>)[key] ?? ""} placeholder={(inherited.theme as Record<string, string>)[key]} oninput={(e) => setStr(key as keyof TerminalTheme, e.currentTarget.value)} />
+                  <span class={cn(field.editorLabelShort, text.indicator)}>{i18n.t(labelKey)}</span>
+                  <Input density="compact" class={cn(field.editor, "flex-1")} value={(preset as unknown as Record<string, string>)[key] ?? ""} placeholder={(inherited.theme as Record<string, string>)[key]} oninput={(e) => setStr(key as keyof TerminalTheme, e.currentTarget.value)} />
                 </div>
               {/each}
             </div>
@@ -224,24 +217,27 @@
                   <span class="size-5 shrink-0 rounded border border-border" style:background-color={(inherited.theme as Record<string, string>)[token]}></span>
                   <TooltipSimple title={token}>
                     {#snippet children(tp)}
-                      <span {...tp} class={cn("w-24 shrink-0 truncate font-mono", text.indicator)}>{token}</span>
+                      <span {...tp} class={cn(field.editorLabelShort, "font-mono", text.indicator)}>{token}</span>
                     {/snippet}
                   </TooltipSimple>
-                  <Input class="h-7 min-w-0 flex-1 font-mono text-[11px]" value={(preset as unknown as Record<string, string>)[token] ?? ""} placeholder={(inherited.theme as Record<string, string>)[token]} oninput={(e) => setStr(token, e.currentTarget.value)} />
+                  <Input density="compact" class={cn(field.editor, "flex-1")} value={(preset as unknown as Record<string, string>)[token] ?? ""} placeholder={(inherited.theme as Record<string, string>)[token]} oninput={(e) => setStr(token, e.currentTarget.value)} />
                 </div>
               {/each}
             </div>
           </div>
         </div>
-      {:else}
+      </Tabs.Content>
+      <Tabs.Content value="json">
         <div class="flex flex-col gap-2">
           <p class={text.meta}>{i18n.t("appearance.jsonHelp")}</p>
           <Textarea class="h-72 font-mono text-[11px]" bind:value={jsonText} spellcheck={false} />
           {#if jsonError}<p class={cn("text-destructive", text.body)}>{jsonError}</p>{/if}
           <Button variant="outline" size="sm" class="self-start" onclick={applyJson}>{i18n.t("appearance.applyJson")}</Button>
         </div>
-      {/if}
-    </div>
+      </Tabs.Content>
+      </div>
+      {/snippet}
+    </EditorModeTabs>
 
     <Dialog.Footer>
       <Button variant="outline" onclick={oncancel}>{i18n.t("common.cancel")}</Button>
