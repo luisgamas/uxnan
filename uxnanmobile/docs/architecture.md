@@ -307,6 +307,16 @@ and composed in `application_providers.dart`. The important ones:
    Nothing is dropped: whatever lands inside the window renders together on the
    next frame. Only deltas coalesce — a completed turn, a content block or a
    re-sync still renders immediately.
+   **A settled paragraph is no longer rebuilt at all.** Streaming prose is cut
+   at boundaries that cannot move again (`streaming_markdown_split.dart`) and
+   each finished chunk keeps its widget instance, which Flutter skips rather
+   than rebuilding; only the chunk still growing is rebuilt. The cut refuses any
+   blank line inside a code fence or before a line that could continue the block
+   above it, and the two renderings are compared **pixel by pixel** in
+   `streaming_markdown_fidelity_test.dart` — Markdown split in the wrong place
+   renders differently, so "it looks the same" is asserted, not assumed.
+   Measured on device before this: 5.4 ms per frame at p95 under 4 500
+   characters against 28.1 ms past it, with the raster flat at 3.7 ms.
 4. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.

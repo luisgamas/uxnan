@@ -6,6 +6,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — a long reply no longer slows itself down while it streams
+
+Past a few thousand characters an answer started arriving in small jerks, and
+the longer it got the worse it was. The whole accumulated reply was re-parsed
+and re-laid-out on every delta, so showing a turn cost time that grew with the
+turn's own length.
+
+Measured on a real phone in a profile build: under 4 500 characters the reply
+cost 5.4 ms per frame at p95 and dropped 4 janky frames out of 2 761; past that
+it cost 28.1 ms and dropped 97 out of 1 381 — one frame in fourteen. The raster
+stayed at 3.7 ms throughout, so nothing was slow to draw; it was slow to build.
+
+The prose is now cut at boundaries that can never move again, and every finished
+piece keeps its widget, which Flutter skips instead of rebuilding. Only the part
+still being written is rebuilt.
+
+The cut is deliberately timid, because Markdown split in the wrong place renders
+differently: it only ever cuts at a blank line outside a fenced code block that
+is followed by a line which unmistakably starts a new block. It never cuts
+between the items of a list, inside a quote, a table, indented code, or a code
+fence — so a list-heavy answer simply does not split, which costs a missed
+optimization and never costs fidelity. That it looks identical is not an
+assertion: the same Markdown is rendered whole and split and compared pixel by
+pixel, which is how the 8 px of block spacing lost at each seam was caught.
+
+Measured again on the same phone afterwards, over 4 500 characters: p95 down
+from 28.1 ms to **11.0 ms**, worst frame from 64.0 ms to 21.9 ms, and dropped
+frames from 97 in 1 381 (7.0%) to 16 in 1 317 (**1.2%**). The shape matters more
+than the totals — the cost stopped growing with the reply:
+
+```
+before   5k:18ms → 6k:22ms → 8k:30ms → 10k:35ms → 11k:36ms
+after    4k:12ms → 5k:12ms →  7k:11ms →  8k:9ms
+```
+
 ### Fixed — a whole exchange shown twice, and it stayed that way
 
 A conversation showed the same exchange twice — your message and the reply —
