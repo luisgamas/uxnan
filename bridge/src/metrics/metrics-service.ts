@@ -58,7 +58,7 @@ export class MetricsService {
   }
 
   /** Repair crash leftovers and idempotently seed the v2 conversation ledger
-   * from existing `threads.json`. Run before the bridge begins serving. */
+   * from the existing conversation store. Run before the bridge begins serving. */
   async initialize(): Promise<void> {
     await this.#store.closeDanglingSessions();
     await this.#threadStore.captureAllMetrics();

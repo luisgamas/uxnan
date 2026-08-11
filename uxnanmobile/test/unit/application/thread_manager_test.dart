@@ -1752,4 +1752,189 @@ void main() {
     // It is control data, not chat: no text is sent.
     expect(turnSendParams?.containsKey('text'), isFalse);
   });
+
+  test('a local echo without a turn id is adopted, not duplicated', () async {
+    // Reported from a PHONE, first message of a conversation, no thread
+    // switching: the message came back doubled and survived a reopen, so both
+    // copies were really in the store.
+    //
+    // Opening a conversation starts a re-sync, and the echo written the moment
+    // you hit send carries no turn id until `turn/send` answers. The by-turn
+    // lookup could not see it, so the bridge's copy of the same message was
+    // inserted beside it. The second message of a conversation never duplicated
+    // because by then no re-sync was in flight — which is exactly the clue that
+    // pinned this.
+    await messageRepo.saveMessages([
+      Message(
+        id: 'local-1',
+        threadId: 'th1',
+        turnId: '',
+        role: MessageRole.user,
+        contents: const [TextContent('hola')],
+        deliveryState: MessageDeliveryState.sent,
+        orderIndex: 0,
+        createdAt: DateTime(2026, 8, 11),
+      ),
+    ]);
+
+    turnListResult = <String, dynamic>{
+      'turns': [
+        {
+          'id': 't1',
+          'status': 'completed',
+          'messages': [
+            {'role': 'user', 'content': 'hola', 'createdAt': 0},
+          ],
+        },
+      ],
+      'total': 1,
+    };
+
+    await manager.selectThread('th1');
+    await _settle();
+
+    final stored = await messageRepo.getMessages('th1');
+    final users = stored.where((m) => m.role == MessageRole.user).toList();
+    expect(
+      users,
+      hasLength(1),
+      reason: 'the re-sync inserted a second copy of the same message',
+    );
+    expect(users.single.id, 'local-1', reason: 'the local row must survive');
+    expect(
+      users.single.turnId,
+      't1',
+      reason: 'and adopt the turn it belongs to',
+    );
+  });
+
+  group('a turn the bridge no longer reports', () {
+    // The whole exchange came back doubled — the user's bubble AND the reply —
+    // and survived a reopen. Measured on the device: the copy carried a second
+    // turn id, the agent's own session id, because the bridge had imported its
+    // native transcript beside its own record of the same turn. The bridge now
+    // drops that duplicate, and the phone, which until now only ever inserted
+    // and updated, has to let it go too.
+    Future<void> seedDuplicate({int base = 0}) => messageRepo.saveMessages([
+          _msg(
+            'u1',
+            order: base,
+            role: MessageRole.user,
+            text: 'hola',
+            turnId: 't1',
+          ),
+          _msg(
+            'stream-t1',
+            order: base + 1,
+            role: MessageRole.assistant,
+            text: 'respuesta',
+            turnId: 't1',
+          ),
+          _msg(
+            'stream-user-ses_x#t0',
+            order: base + 2,
+            role: MessageRole.user,
+            text: 'hola',
+            turnId: 'ses_x#t0',
+          ),
+          _msg(
+            'stream-ses_x#t0',
+            order: base + 3,
+            role: MessageRole.assistant,
+            text: 'respuesta',
+            turnId: 'ses_x#t0',
+          ),
+        ]);
+
+    Map<String, dynamic> pageWithT1() => <String, dynamic>{
+          'turns': [
+            {
+              'id': 't1',
+              'status': 'completed',
+              'messages': [
+                {'role': 'user', 'content': 'hola', 'createdAt': 1000},
+                {
+                  'role': 'assistant',
+                  'content': 'respuesta',
+                  'createdAt': 1001,
+                },
+              ],
+            },
+          ],
+          'total': 1,
+        };
+
+    test('is dropped on a re-sync', () async {
+      await seedDuplicate();
+      turnListResult = pageWithT1();
+
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(
+        stored.map((m) => m.id),
+        ['u1', 'stream-t1'],
+        reason: 'the duplicated exchange must not survive the re-sync',
+      );
+    });
+
+    test('never takes an older page loaded by scrolling with it', () async {
+      await messageRepo.saveMessages([
+        _msg(
+          'old-u',
+          order: 0,
+          role: MessageRole.user,
+          text: 'antes',
+          turnId: 't0',
+        ),
+        _msg(
+          'stream-t0',
+          order: 1,
+          role: MessageRole.assistant,
+          text: 'anterior',
+          turnId: 't0',
+        ),
+      ]);
+      await seedDuplicate(base: 2);
+      // The newest page reports `t1` only: `t0` is older history the phone
+      // paged in by scrolling up, and the page says nothing about it.
+      turnListResult = pageWithT1();
+
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(
+        stored.map((m) => m.id),
+        ['old-u', 'stream-t0', 'u1', 'stream-t1'],
+      );
+    });
+
+    test('never takes a message written after the sync began with it',
+        () async {
+      await seedDuplicate();
+      await messageRepo.saveMessage(
+        Message(
+          id: 'in-flight',
+          threadId: 'th1',
+          turnId: 'sent-while-syncing',
+          role: MessageRole.user,
+          contents: const [TextContent('y esto?')],
+          deliveryState: MessageDeliveryState.sent,
+          orderIndex: 4,
+          // A send that lands while the page is still on the wire: the page
+          // cannot know about it, so it is not evidence that the turn is gone.
+          createdAt: DateTime.now().add(const Duration(hours: 1)),
+        ),
+      );
+      turnListResult = pageWithT1();
+
+      await manager.selectThread('th1');
+      await _settle();
+
+      final stored = await messageRepo.getMessages('th1');
+      expect(stored.map((m) => m.id), ['u1', 'stream-t1', 'in-flight']);
+    });
+  });
 }

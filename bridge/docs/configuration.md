@@ -114,13 +114,13 @@ only write-bounded by its `permissionMode` — see
 ## State files in `~/.uxnan/`
 
 `daemon-config.json`, `pairing-session.json`, `trusted-phones.json`,
-`threads.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
+`threads/<threadId>.json`, `metrics.json`, `checkpoints.json`, `bridge.lock`,
 `logs/bridge-YYYY-MM-DD.log`. The Ed25519 identity and the metrics sealing key
 live in the OS keychain, not on disk.
 
 `metrics.json` is a versioned, global-per-PC activity ledger. It retains
 conversation, message/day, reported-token, connection-session and mutating-Git
-rows even after mutable thread history is deleted. Existing `threads.json`
+rows even after mutable thread history is deleted. Existing conversation
 history is backfilled idempotently at startup and before reads/exports. Five
 local generations (`metrics.json.bak1` … `.bak5`) are rotated on writes and the
 newest readable generation is used if the primary is missing or malformed.

@@ -300,12 +300,31 @@ and composed in `application_providers.dart`. The important ones:
    that grows with the reply** (`_streamCoalesceWindow`, 16→100 ms): the reply
    is rendered as Markdown while it streams, so rebuilding per delta re-parsed
    all of it every time, making a turn quadratic in its own length. A fixed
-   one-frame window does not help — agents emit a delta about every 20 ms — so
+   one-frame window does not help — deltas land in bursts, even after the
+   bridge coalesces the agent's output over 25 ms before sending — so
    the window widens as the text grows, which is where the cost is (measured on
    a 6 000-char reply: 18.9 s of rebuild work per delta, 3.4 s at 100 ms).
    Nothing is dropped: whatever lands inside the window renders together on the
    next frame. Only deltas coalesce — a completed turn, a content block or a
    re-sync still renders immediately.
+   **A settled paragraph is no longer rebuilt at all.** Streaming prose is cut
+   at boundaries that cannot move again (`streaming_markdown_split.dart`) and
+   each finished chunk keeps its widget instance, which Flutter skips rather
+   than rebuilding; only the chunk still growing is rebuilt. The cut refuses any
+   blank line inside a code fence or before a line that could continue the block
+   above it, and the two renderings are compared **pixel by pixel** in
+   `streaming_markdown_fidelity_test.dart` — Markdown split in the wrong place
+   renders differently, so "it looks the same" is asserted, not assumed.
+   Measured on device before this: 5.4 ms per frame at p95 under 4 500
+   characters against 28.1 ms past it, with the raster flat at 3.7 ms.
+   **Do not lower the coalescing window to chase more smoothness.** Once a
+   rebuild became cheap it looked like the obvious next step, and it is a dead
+   end: measured across twelve samples the actual repaint rate always sat well
+   under what the window already allows (17 per 3 s where 100 ms permits 30).
+   The rate is limited by how fast text arrives, not by the window. The lever
+   that IS left is a display buffer decoupled from arrival — see `FOR-DEV.md`,
+   and note it is perception rather than throughput. How to re-measure any of
+   this is in [`testing.md`](testing.md).
 4. `assistant_response_boundary` metadata keeps those native messages ordered;
    `compaction` metadata marks only protocol-confirmed context compactions. Both
    survive `turn/list` re-sync and are excluded from copy text and previews.
@@ -315,6 +334,14 @@ and composed in `application_providers.dart`. The important ones:
    supported client arrive as ordinary user + assistant messages. Concurrent
    reconnect/navigation/resume reads are deduplicated, local user messages are
    matched by turn id, and no polling occurs while the bridge owns a live turn.
+   A newest-page read also **drops the messages of a turn the bridge no longer
+   reports** — the bridge owns which turns a thread has, and without this a turn
+   it removed (a duplicate its own history import had created) would render from
+   the phone's store forever. Deliberately narrow: only inside the window that
+   page covers, so an older page loaded by scrolling up is untouched; never the
+   streaming turn, a queued one, or an echo that has no turn id yet; and never a
+   message written after the read began, so a send that lands while the page is
+   in flight survives.
 6. The UI watches the derived stream providers and rebuilds reactively. Partial
    assistant prose and settled prose both pass through the shared
    `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch

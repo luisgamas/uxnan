@@ -3,6 +3,23 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:uxnan/presentation/theme/spacing.dart';
 import 'package:uxnan/presentation/theme/typography.dart';
 
+/// The gap the Markdown renderer leaves between two blocks of the same body.
+///
+/// A reply that is still streaming is rendered as SEVERAL bodies, one per
+/// settled chunk, so that only the chunk still growing is rebuilt. Separate
+/// bodies have no gap between them, so it has to be put back by hand or the
+/// answer visibly tightens as it is cut — measured at 8 logical pixels per
+/// boundary, which is 32 px of drift over three paragraphs.
+///
+/// Resolved exactly the way the renderer resolves it — the theme's sheet merged
+/// with ours — so a future override of `blockSpacing` is followed automatically
+/// instead of silently disagreeing with a hard-coded copy.
+double uxnanMarkdownBlockSpacing(BuildContext context) =>
+    MarkdownStyleSheet.fromTheme(Theme.of(context))
+        .merge(uxnanMarkdownStyleSheet(context))
+        .blockSpacing ??
+    0;
+
 MarkdownStyleSheet uxnanMarkdownStyleSheet(BuildContext context) {
   final colors = Theme.of(context).colorScheme;
   final textTheme = Theme.of(context).textTheme;

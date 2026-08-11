@@ -112,3 +112,50 @@ These need a real device and/or a live bridge+relay; defer until reachable:
 When you add a feature that can only be fully verified this way, leave a
 `FOR-DEV:` marker and note it in [`../FOR-DEV.md`](../FOR-DEV.md) rather than
 claiming it verified.
+
+## Measuring how a reply renders while it streams
+
+Streaming smoothness cannot be asserted from a widget test — it is frames on a
+real phone. Whenever you touch the conversation's render path, measure it the
+same way, or the numbers below mean nothing.
+
+**Never measure this in a debug build.** Debug runs the JIT with assertions on,
+so its build times are not the app's. This is not a technicality: the stutter was
+once assumed to be "just debug", and it was not.
+
+1. **Add a probe** (it is deliberately not kept in the tree — a probe that
+   reports per frame doubles the work it measures). Gate it on `!kReleaseMode`,
+   register `SchedulerBinding.instance.addTimingsCallback`, count one rebuild per
+   call to `ThreadManager._rebuildActiveTimeline` with the live turn's
+   `streamedLength`, and print **one line every 3 s**:
+
+   ```
+   UXPROBE mode=profile window=3s rebuilds=17 chars=8639
+           build p50=1.3 p95=8.8 max=18.4 raster p50=3.8 janky=3/344
+   ```
+
+2. **Build and install** — profile signs with the debug keystore, so it upgrades
+   over the installed app and the local database survives:
+
+   ```bash
+   flutter build apk --profile --dart-define=ENABLE_LOGGING=true
+   adb install -r build/app/outputs/flutter-apk/app-profile.apk
+   ```
+
+3. **Capture** `adb logcat -s flutter` while asking for **one long reply
+   containing code** — the most expensive shape, since it pays Markdown and
+   syntax highlighting. Aim past 5 000 characters: below that nothing has ever
+   shown up.
+
+4. **Read it by reply length, not in aggregate.** The failure mode this path is
+   prone to is cost that *grows with the reply*, which an average hides.
+
+**Baseline to compare against** (Galaxy A55, profile, replies over 4 500 chars,
+after the settled-chunk split of 2026-08-11): build p95 ≈ **11 ms**, worst frame
+≈ 22 ms, dropped frames ≈ **1.2 %**, raster flat at ≈ 3.7 ms, and — the part that
+matters — p95 **flat or falling** as the reply grows. Before that change the same
+phone gave p95 28.1 ms, 7.0 % dropped, and p95 climbing 18 → 36 ms from 5 k to
+11 k characters.
+
+A raster time that stays near 3.7 ms while build time climbs means the cost is
+building and laying out widgets, not drawing them — do not go looking at the GPU.
