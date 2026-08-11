@@ -5,7 +5,7 @@
   import { untrack } from "svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, panel, text } from "$lib/design";
+  import { field, icon, panel, text } from "$lib/design";
   import { automations } from "$lib/state/automations.svelte";
   import { aiCommitAgents } from "$lib/api";
   import type { Automation } from "$lib/automations/types";
@@ -100,7 +100,7 @@
     <div class={cn("divide-y divide-border/50", panel.settingsBody)}>
       <SettingsRow label={i18n.t("automations.name")}>
         {#snippet control()}
-          <Input class="w-72" bind:value={draft.name} />
+          <Input class={cn(field.selectWide, "min-w-0")} bind:value={draft.name} />
         {/snippet}
       </SettingsRow>
       <SettingsRow
@@ -108,7 +108,7 @@
         description={i18n.t("automations.tagsDesc")}
       >
         {#snippet control()}
-          <Input class="w-72" bind:value={tagsText} placeholder="review, nightly" />
+          <Input class={cn(field.selectWide, "min-w-0")} bind:value={tagsText} placeholder="review, nightly" />
         {/snippet}
       </SettingsRow>
       <SettingsRow label={i18n.t("automations.description")}>
@@ -127,7 +127,7 @@
       <SettingsRow label={i18n.t("automations.folder")}>
         {#snippet children()}
           <div class="flex items-center gap-2">
-            <Input class="flex-1 font-mono text-xs" bind:value={draft.workingDir} />
+            <Input class="min-w-0 flex-1 font-mono text-xs" bind:value={draft.workingDir} />
             <Button variant="outline" size="sm" onclick={() => (folderOpen = true)}>
               <Icon icon={FolderIcon} class={icon.action} />
               {i18n.t("automations.browse")}
@@ -190,7 +190,7 @@
           <Combobox
             value={draft.policy.overlap}
             groups={overlapGroups}
-            triggerClass="w-56"
+            triggerClass={field.selectStandard}
             searchPlaceholder={i18n.t("common.search")}
             onChange={(v) => (draft.policy.overlap = v as typeof draft.policy.overlap)}
           />
@@ -219,7 +219,7 @@
           <Input
             type="number"
             min="1"
-            class="w-24"
+            class={field.editorNumber}
             value={String(draft.policy.maxRunMinutes)}
             oninput={(e) => {
               const n = Number((e.currentTarget as HTMLInputElement).value);
@@ -236,7 +236,7 @@
           <Input
             type="number"
             min="1"
-            class="w-24"
+            class={field.editorNumber}
             value={String(draft.policy.keepRuns)}
             oninput={(e) => {
               const n = Number((e.currentTarget as HTMLInputElement).value);

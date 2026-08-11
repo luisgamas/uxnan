@@ -207,15 +207,16 @@
           <div class="flex items-center gap-2.5 px-1 py-3">
             <TooltipSimple title={i18n.t("openWith.changeIcon")}>
               {#snippet children(tp)}
-                <button
+                <Button
                   {...tp}
-                  type="button"
-                  class="flex size-7 shrink-0 items-center justify-center rounded-md border border-transparent transition-colors hover:border-border/60 hover:bg-foreground/[0.05]"
+                  variant="ghost"
+                  size="icon-sm"
+                  class="shrink-0 border border-transparent hover:border-border/60 hover:bg-foreground/[0.05]"
                   aria-label={i18n.t("openWith.changeIcon")}
                   onclick={() => openIconPicker("detected", ed.id)}
                 >
                   <EntityIcon value={ow.detectedIcons?.[ed.id] ?? openWith.favicon(ed)} class="size-5" fallback={editorGlyph} />
-                </button>
+                </Button>
               {/snippet}
             </TooltipSimple>
             <div class="min-w-0 flex-1">
@@ -257,20 +258,23 @@
             <div class="flex items-center gap-2">
               <TooltipSimple title={i18n.t("openWith.changeIcon")}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    type="button"
-                    class="flex size-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background transition-colors hover:bg-foreground/[0.05]"
+                    variant="outline"
+                    size="icon-sm"
+                    class="shrink-0 bg-background hover:bg-foreground/[0.05]"
                     aria-label={i18n.t("openWith.changeIcon")}
                     onclick={() => openIconPicker("custom", ed.id)}
                   >
                     <EntityIcon value={ed.icon ?? openWith.favicon(ed)} class="size-5" fallback={editorGlyph} />
-                  </button>
+                  </Button>
                 {/snippet}
               </TooltipSimple>
               <Input
-                class="h-8 flex-1"
+                density="compact"
+                class="flex-1"
                 placeholder={i18n.t("openWith.namePlaceholder")}
+                aria-label={i18n.t("openWith.namePlaceholder")}
                 value={ed.name}
                 oninput={(e) => { updateEditor(ed.id, { name: e.currentTarget.value }); schedulePersist(); }}
                 onchange={persistNow}
@@ -292,15 +296,19 @@
             </div>
             <div class="flex flex-col gap-2 sm:flex-row">
               <Input
-                class="h-8 flex-1 font-mono text-xs"
+                density="compact"
+                class="flex-1 font-mono text-xs"
                 placeholder={i18n.t("openWith.commandPlaceholder")}
+                aria-label={i18n.t("openWith.commandPlaceholder")}
                 value={ed.command}
                 oninput={(e) => { updateEditor(ed.id, { command: e.currentTarget.value }); schedulePersist(); }}
                 onchange={persistNow}
               />
               <Input
-                class="h-8 flex-1 font-mono text-xs"
+                density="compact"
+                class="flex-1 font-mono text-xs"
                 placeholder={i18n.t("openWith.argsPlaceholder")}
+                aria-label={i18n.t("openWith.argsPlaceholder")}
                 value={argsValue(ed)}
                 oninput={(e) => (argsDraft[ed.id] = e.currentTarget.value)}
                 onchange={() => commitArgs(ed.id)}

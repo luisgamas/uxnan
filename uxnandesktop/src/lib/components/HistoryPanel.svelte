@@ -11,7 +11,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { focus, icon, iconButton, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { clipboardWrite } from "$lib/clipboard";
   import { toast } from "$lib/toast";
@@ -207,53 +207,54 @@
 
 {#snippet commitRow(commit: CommitInfo, cindex: number)}
   {@const expanded = history.isExpanded(commit.hash)}
-  <TooltipSimple title={i18n.t("history.showFiles")}>
-    {#snippet children(tp)}
-      <div
-        {...tp}
-        class="group flex h-11 cursor-pointer items-center gap-1.5 rounded-md pr-1"
-        role="button"
-        tabindex="0"
-        onclick={() => toggleCommit(commit)}
-        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && toggleCommit(commit)}
-      >
+  <div class={cn("group flex min-h-11 items-center gap-1.5 rounded-md pr-1", focus.ring)}>
     {#if layout && layout.rows[cindex]}
       {@render graphGutter(layout.rows[cindex])}
     {/if}
-    <Icon icon={ChevronRightIcon}
-      class={cn(icon.decorative, "shrink-0 text-muted-foreground/70 transition-transform", expanded && "rotate-90")}
-    />
     <HoverCard.Root>
       <HoverCard.Trigger>
         {#snippet child({ props })}
-          <div {...props} class="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-1">
-            <div class="flex min-w-0 items-center gap-1.5">
-              {#each commit.refs as ref, i (i)}
-                {@const kind = refKind(ref)}
-                <span
-                  class={cn(
-                    "inline-flex shrink-0 items-center gap-0.5 rounded-sm px-1 py-px font-medium",
-                    text.indicator,
-                    kind === "head"
-                      ? "bg-primary/20 text-primary"
-                      : kind === "tag"
-                        ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
-                        : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {#if kind === "tag"}<Icon icon={TagIcon} class="size-2.5" />{/if}
-                  {refLabel(ref)}
-                </span>
-              {/each}
-              <span class={cn("min-w-0 flex-1 truncate font-medium", text.body)}>{commit.subject}</span>
+          <button
+            {...props}
+            type="button"
+            class={cn("flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left", focus.ring)}
+            title={i18n.t("history.showFiles")}
+            aria-label={commit.subject}
+            aria-expanded={expanded}
+            onclick={() => toggleCommit(commit)}
+          >
+            <Icon icon={ChevronRightIcon}
+              class={cn(icon.decorative, "shrink-0 text-muted-foreground/70 transition-transform", expanded && "rotate-90")}
+            />
+            <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-1">
+              <div class="flex min-w-0 items-center gap-1.5">
+                {#each commit.refs as ref, i (i)}
+                  {@const kind = refKind(ref)}
+                  <span
+                    class={cn(
+                      "inline-flex shrink-0 items-center gap-0.5 rounded-sm px-1 py-px font-medium",
+                      text.indicator,
+                      kind === "head"
+                        ? "bg-primary/20 text-primary"
+                        : kind === "tag"
+                          ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                          : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {#if kind === "tag"}<Icon icon={TagIcon} class="size-2.5" />{/if}
+                    {refLabel(ref)}
+                  </span>
+                {/each}
+                <span class={cn("min-w-0 flex-1 truncate font-medium", text.body)}>{commit.subject}</span>
+              </div>
+              <div class={cn("flex items-center gap-1.5", text.meta)}>
+                <span class="shrink-0 font-mono">{commit.shortHash}</span>
+                <span class="min-w-0 truncate">{commit.authorName}</span>
+                <span class="shrink-0">·</span>
+                <span class="shrink-0">{relativeTime(commit.timestamp)}</span>
+              </div>
             </div>
-            <div class={cn("flex items-center gap-1.5", text.meta)}>
-              <span class="shrink-0 font-mono">{commit.shortHash}</span>
-              <span class="min-w-0 truncate">{commit.authorName}</span>
-              <span class="shrink-0">·</span>
-              <span class="shrink-0">{relativeTime(commit.timestamp)}</span>
-            </div>
-          </div>
+          </button>
         {/snippet}
       </HoverCard.Trigger>
       <HoverCard.Content>
@@ -265,8 +266,9 @@
         <Button
           {...tp}
           variant="ghost"
-          size="icon"
-          class="size-6 shrink-0 opacity-0 group-hover:opacity-100"
+          size="icon-xs"
+          class={cn(iconButton.xs, focus.ring, "shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100")}
+          aria-label={i18n.t("history.copyHash")}
           onclick={(e) => {
             e.stopPropagation();
             void copyHash(commit.hash);
@@ -277,8 +279,6 @@
       {/snippet}
     </TooltipSimple>
   </div>
-  {/snippet}
-</TooltipSimple>
 {/snippet}
 
 {#snippet commitDetails(commit: CommitInfo)}
@@ -339,33 +339,29 @@
     history.path != null && terminals.isCommitOpen(history.path, entry.commit.hash, entry.file.path)}
   <TooltipSimple title={i18n.t("history.viewFileDiff")}>
     {#snippet children(tp)}
-      <div
+      <button
         {...tp}
+        type="button"
         class={cn(
-          "group flex h-7 cursor-pointer items-center rounded-md",
-          isOpen ? "bg-primary/15 ring-1 ring-inset ring-primary/25" : "hover:bg-accent/40",
+          row.list,
+          focus.ring,
+          isOpen ? row.listActive : "hover:bg-accent/40",
         )}
-        role="button"
-        tabindex="0"
+        aria-label={entry.file.path}
         onclick={() => openFile(entry.commit, entry.file)}
-        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && openFile(entry.commit, entry.file)}
       >
-    {#if graphOn}
-      <div class="shrink-0" style="width:{gutterWidth}px" aria-hidden="true"></div>
-    {/if}
-    <div class="flex min-w-0 flex-1 items-center gap-1.5 pl-6 pr-1">
-      <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, s.class)}>
-        {s.letter}
-      </span>
-      <TooltipSimple title={entry.file.path}>
-        {#snippet children(tp)}
-          <span {...tp} class={cn("min-w-0 flex-1 truncate", text.body)}>
+        {#if graphOn}
+          <div class="shrink-0" style="width:{gutterWidth}px" aria-hidden="true"></div>
+        {/if}
+        <div class="flex min-w-0 flex-1 items-center gap-1.5 pl-6 pr-1">
+          <span class={cn("w-3 shrink-0 text-center font-mono font-semibold", text.indicator, s.class)}>
+            {s.letter}
+          </span>
+          <span title={entry.file.path} class={cn("min-w-0 flex-1 truncate", text.body)}>
             {#if p.dir}<span class="text-muted-foreground">{p.dir}</span>{/if}{p.name}
           </span>
-        {/snippet}
-      </TooltipSimple>
-    </div>
-  </div>
+        </div>
+      </button>
   {/snippet}
 </TooltipSimple>
 {/snippet}
@@ -388,6 +384,7 @@
         autofocus
         type="text"
         placeholder={i18n.t("history.searchPlaceholder")}
+        aria-label={i18n.t("history.searchPlaceholder")}
         bind:value={history.query}
         class={cn(
           "min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60",
@@ -397,7 +394,14 @@
       />
       <TooltipSimple title={i18n.t("common.close")}>
         {#snippet children(tp)}
-          <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+          <Button
+            variant="ghost"
+            size="icon"
+            class={iconButton.xs}
+            aria-label={i18n.t("common.close")}
+            {...tp}
+            onclick={toggleSearch}
+          >
             <Icon icon={XIcon} class={icon.action} />
           </Button>
         {/snippet}
@@ -416,6 +420,7 @@
               variant="ghost"
               size="icon"
               aria-pressed={history.showGraph}
+              aria-label={i18n.t(history.showGraph ? "history.hideGraph" : "history.showGraph")}
               class={cn(
                 iconButton.xs,
                 history.showGraph &&
@@ -429,7 +434,14 @@
         </TooltipSimple>
         <TooltipSimple title={i18n.t("history.search")}>
           {#snippet children(tp)}
-            <Button variant="ghost" size="icon" class={iconButton.xs} {...tp} onclick={toggleSearch}>
+            <Button
+              variant="ghost"
+              size="icon"
+              class={iconButton.xs}
+              aria-label={i18n.t("history.search")}
+              {...tp}
+              onclick={toggleSearch}
+            >
               <Icon icon={SearchIcon} class={icon.action} />
             </Button>
           {/snippet}
@@ -441,6 +453,8 @@
               variant="ghost"
               size="icon"
               class={iconButton.xs}
+              aria-label={i18n.t("history.refresh")}
+              disabled={history.loading}
               onclick={() => void history.refresh()}
             >
               <Icon icon={RefreshCwIcon} class={cn(icon.action, history.loading && "animate-spin")} />

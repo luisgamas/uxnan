@@ -118,7 +118,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[460px]">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>
         {kind === "pr" ? i18n.t("github.worktree.prTitle") : i18n.t("github.worktree.issueTitle")}

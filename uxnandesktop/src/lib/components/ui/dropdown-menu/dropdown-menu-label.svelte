@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { cn, type WithElementRef } from "$lib/utils.js";
 	import type { HTMLAttributes } from "svelte/elements";
+	import { overlay } from "$lib/design";
 
 	let {
 		ref = $bindable(null),
@@ -17,7 +18,7 @@
 	bind:this={ref}
 	data-slot="dropdown-menu-label"
 	data-inset={inset}
-	class={cn("text-muted-foreground px-1.5 py-1 text-xs font-medium data-inset:pl-7 data-[inset]:pl-8", className)}
+	class={cn("text-muted-foreground font-medium data-inset:pl-7 data-[inset]:pl-8", overlay.label, className)}
 	{...restProps}
 >
 	{@render children?.()}

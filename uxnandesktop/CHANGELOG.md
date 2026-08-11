@@ -15,6 +15,78 @@ Format: [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](ht
 
 ### Added
 
+- **Final work-surface and chrome density pass:** file, diff, GitHub, browser,
+  automation and orchestration surfaces now consume the shared row, field,
+  panel, tab and control roles instead of carrying pixel-equivalent local
+  geometry. The top-level appbar is one 40px contract across the three-panel
+  shell, Settings and Automations; its icon actions are square 40px targets and
+  share one bottom hairline. The intentionally quieter terminal-tab close
+  remains the sole 24px nested action.
+- Dialog headers, full-bleed footers and hint bars now share one composition:
+  form dialogs use the named 560px role, palettes use 600px, and keyboard-only
+  footers retain the same 56px minimum band as action footers. Worktree search,
+  project launch, profile editing and avatar/color editing therefore keep the
+  same breathing room instead of shrinking around their contents.
+- macOS now keeps native left-side traffic-light controls through a
+  platform-specific Tauri overlay-titlebar configuration; Windows and Linux
+  retain the aligned custom controls. Native time inputs also advertise the
+  active light/dark color scheme so Chromium's clock glyph follows the theme.
+
+- **Phase 4 settings/editor pass:** Settings navigation, control rows, profile
+  editors, hooks, providers, quick commands, external-editor choices, resources,
+  pets, and project/profile dialogs now consume shared row, field, container,
+  choice, and entity-picker roles instead of recreating equivalent geometry.
+  Theme editors share a Bits UI-backed Visual/JSON tab component; compact form
+  controls keep a 32px target, dense icon affordances keep a 28px floor, fixed
+  selector widths clamp to the pane, and multi-column editors stack safely at
+  narrow widths. Theme and terminal-theme lists align their labels to the left
+  and share an equal-height scroll/preview surface, configured-agent logos are
+  centered consistently, and Pets/Resources use the canonical settings body
+  padding.
+
+- **Phase 3 shell/navigation pass:** named shell, row, tab, search-field and
+  palette roles now govern the status bar, sidebar hierarchy, terminal strip,
+  right-panel header and window chrome. Project identity is separated
+  from its actions to avoid nested interactive elements; the worktree palette
+  exposes valid combobox/listbox semantics, preserves its exact 52px virtual row,
+  and safely represents an empty result set.
+
+- Refined the sidebar's responsive agent presentation: 28px toggle/avatar
+  targets stay on one line, a measured `+N` absorbs agents that do not fit, and
+  expanded agents no longer inherit an outer relationship rail. Selected
+  project/worktree cards use a quiet semantic fill without an outline, while the
+  active agent uses a short vertical marker instead of a second filled surface;
+  its status and logo remain centered against two-line text.
+
+- Normalized remaining shell callers onto shared roles: the search trigger keeps
+  a stable icon/label/keycap composition, audited terminal/profile/file-tree/pet
+  menus use the standard width, and terminal tabs retain a compact reddish close
+  action with a deliberately nested 24px target. Terminal menus also rely on the shared overlay
+  lifecycle rather than a competing Escape/outside-pointer listener.
+
+- Migrated dialogs, command popovers, menus, selects and status surfaces to the
+  shared overlay density contract. Dialogs consume named width roles, menus use
+  semantic width variants, and Backend/Usage status popovers use the data-rich
+  width and label/value grid. Outside and Escape close paths preserve Bits UI
+  focus behavior without blurring the active terminal or restoring stale
+  navigation chrome.
+
+- Consolidated overlay geometry in the shared design tokens, including menu
+  surfaces/rows, context-menu rendering, hover-card width roles, and composed
+  dialog widths. Terminal context menus now use the reusable menu surface while
+  retaining their existing pointer, keyboard, and command behavior.
+
+- Context and programmatic menus now expose shared `simple`, `standard`, and
+  `wide` width roles with explicit call-site assignments and 36px rows. The
+  terminal menu's shared primitive now handles measured viewport clamping,
+  keyboard roving focus, Escape/Tab dismissal, outside-pointer dismissal, and
+  documented keyboard focus return while preserving existing actions.
+
+- Established the desktop density contract across shared UI primitives: standard
+  controls are 36px, compact controls 32px, dense chrome 28px, overlay rows are
+  36px, and popover/dialog widths are named, viewport-clamped roles.
+  This aligns primitive sizing and spacing without migrating product screens.
+
 - **Projects can now be cloned and added from the Add project dialog.** Its single
   input automatically distinguishes local paths from an `owner/repository`
   reference or GitHub HTTPS/SSH URL, with Local/GitHub tabs for ambiguous input.

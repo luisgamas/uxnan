@@ -5,7 +5,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, iconButton, row, text } from "$lib/design";
   import type { TerminalProfile } from "$lib/types";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Icon } from "$lib/components/ui/icon";
@@ -44,7 +44,8 @@
     </span>
     <button
       type="button"
-      class="min-w-0 flex-1 text-left"
+      class={cn(row.editorDisclosure, focus.ring)}
+      aria-expanded={expanded}
       onclick={() => (expanded = !expanded)}
     >
       <span class={cn("block truncate font-medium text-foreground", text.body)}>
@@ -58,7 +59,7 @@
       {#snippet children(tp)}
         <Collapsible.Trigger
           {...tp}
-          class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          class={cn(iconButton.xs, "text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground")}
         >
           <Icon icon={ChevronDownIcon} class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
         </Collapsible.Trigger>
@@ -79,20 +80,23 @@
   </div>
   <Collapsible.Content class="flex flex-col gap-2.5 pt-1.5">
     <Input
-      class="h-8 text-xs"
+      density="compact"
+      class="text-xs"
       placeholder={i18n.t("profileEditor.namePlaceholder")}
       bind:value={profile.name}
       oninput={onchange}
     />
     <div class="flex flex-col gap-2 sm:flex-row">
     <Input
-      class="h-8 flex-1 font-mono text-xs"
+      density="compact"
+      class="flex-1 font-mono text-xs"
       placeholder={i18n.t("profileEditor.commandPlaceholder")}
       bind:value={profile.command}
       oninput={onchange}
     />
     <Input
-      class="h-8 flex-1 font-mono text-xs"
+      density="compact"
+      class="flex-1 font-mono text-xs"
       placeholder={i18n.t("profileEditor.argsPlaceholder")}
       bind:value={argsText}
       oninput={commitArgs}

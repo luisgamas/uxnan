@@ -8,7 +8,8 @@
   import { fileParentDirectory, type FilePreviewKind } from "$lib/filePreview";
   import { terminals } from "$lib/state/terminals.svelte";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, text } from "$lib/design";
+  import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import MarkdownView from "./MarkdownView.svelte";
@@ -167,55 +168,59 @@
         >
           <TooltipSimple title={i18n.t("preview.zoomOut")}>
             {#snippet children(tp)}
-              <button
+              <Button
                 {...tp}
-                type="button"
-                class={cn(iconButton.xs, "flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground")}
+                variant="ghost"
+                size="icon-xs"
+                class="text-muted-foreground hover:bg-accent hover:text-foreground"
                 aria-label={i18n.t("preview.zoomOut")}
                 onclick={() => zoomBy(-1)}
               >
                 <Icon icon={ZoomOutIcon} class={icon.action} />
-              </button>
+              </Button>
             {/snippet}
           </TooltipSimple>
           <TooltipSimple title={i18n.t("preview.zoomIn")}>
             {#snippet children(tp)}
-              <button
+              <Button
                 {...tp}
-                type="button"
-                class={cn(iconButton.xs, "flex items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground")}
+                variant="ghost"
+                size="icon-xs"
+                class="text-muted-foreground hover:bg-accent hover:text-foreground"
                 aria-label={i18n.t("preview.zoomIn")}
                 onclick={() => zoomBy(1)}
               >
                 <Icon icon={ZoomInIcon} class={icon.action} />
-              </button>
+              </Button>
             {/snippet}
           </TooltipSimple>
           <span class="mx-0.5 h-4 w-px bg-border/70" aria-hidden="true"></span>
           <TooltipSimple title={i18n.t("preview.fit")}>
             {#snippet children(tp)}
-              <button
+              <Button
                 {...tp}
-                type="button"
-                class={cn(iconButton.xs, "flex items-center justify-center rounded hover:bg-accent hover:text-foreground", zoom === null ? "text-foreground" : "text-muted-foreground")}
+                variant="ghost"
+                size="icon-xs"
+                class={cn("hover:bg-accent hover:text-foreground", zoom === null ? "text-foreground" : "text-muted-foreground")}
                 aria-label={i18n.t("preview.fit")}
                 onclick={() => (zoom = null)}
               >
                 <Icon icon={MaximizeIcon} class={icon.action} />
-              </button>
+              </Button>
             {/snippet}
           </TooltipSimple>
           <TooltipSimple title={i18n.t("preview.actualSize")}>
             {#snippet children(tp)}
-              <button
+              <Button
                 {...tp}
-                type="button"
-                class={cn(iconButton.xs, "flex items-center justify-center rounded hover:bg-accent hover:text-foreground", zoom === 1 ? "text-foreground" : "text-muted-foreground")}
+                variant="ghost"
+                size="icon-xs"
+                class={cn("hover:bg-accent hover:text-foreground", zoom === 1 ? "text-foreground" : "text-muted-foreground")}
                 aria-label={i18n.t("preview.actualSize")}
                 onclick={() => (zoom = 1)}
               >
                 <Icon icon={ScanIcon} class={icon.action} />
-              </button>
+              </Button>
             {/snippet}
           </TooltipSimple>
           {#if natW > 0}

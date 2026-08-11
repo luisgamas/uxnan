@@ -22,7 +22,7 @@
   import CommitPane from "./CommitPane.svelte";
   import { resolveAgentDisplay } from "$lib/state/agentDisplay";
   import AgentStatusIndicator from "./AgentStatusIndicator.svelte";
-  import { divider, icon, iconButton, tab, text } from "$lib/design";
+  import { divider, focus, icon, iconButton, overlay, shell, tab, text } from "$lib/design";
   import { cn } from "$lib/utils";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
@@ -40,6 +40,7 @@
   import ChevronLeftIcon from "@hugeicons/core-free-icons/ChevronLeftIcon";
   import ChevronRightIcon from "@hugeicons/core-free-icons/ChevronRightIcon";
   import LauncherMenu from "./LauncherMenu.svelte";
+  import MenuSurface from "$lib/components/ui/menu-surface.svelte";
   import TabRenameDialog from "./TabRenameDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
 
@@ -196,12 +197,22 @@
         /** Raw chord for the trailing keycap hint (e.g. "Ctrl+C", "Mod+W"). */
         chord?: string;
       };
-  let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  let menu = $state<{
+    x: number;
+    y: number;
+    items: MenuItem[];
+    focusReturn: HTMLElement | null;
+  } | null>(null);
 
   function openMenu(e: MouseEvent, items: MenuItem[]) {
     e.preventDefault();
     e.stopPropagation();
-    menu = { x: e.clientX, y: e.clientY, items };
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      focusReturn: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    };
   }
 
   function splitItems(groupId: string): MenuItem[] {
@@ -472,11 +483,6 @@
 
 </script>
 
-<svelte:window
-  onpointerdown={() => (menu = null)}
-  onkeydown={(e) => e.key === "Escape" && (menu = null)}
-/>
-
 <div class="flex h-full flex-col">
   <!-- Region: Center workspace — the per-region tab strips sit at the very top
        now. The "new terminal" launcher (default + profiles) moved to the left
@@ -518,13 +524,14 @@
                        scrollbar is hidden (`.uxnan-scrollbar-none`) so grabbing
                        it never starts a window drag; the strip scrolls only via
                        the edge chevrons and the mouse wheel. -->
-                  <div class="flex h-9 shrink-0 items-center bg-sidebar {divider.bottom}">
+                  <div class={cn(shell.appBar, shell.terminalStrip)} role="group" aria-label={i18n.t("terminal.tabs")}>
                     {#if stripOverflow[g.group.id]?.hasOverflow}
                       <button
                         type="button"
                         class={cn(
-                          iconButton.action,
-                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          shell.appBarCompactAction,
+                          focus.ring,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                           stripOverflow[g.group.id]?.canScrollStart ? "opacity-100" : "pointer-events-none opacity-0",
                         )}
                         title={i18n.t("tab.scrollLeft")}
@@ -563,7 +570,7 @@
                       ></div>
                       <div
                         class={cn(
-                          "flex h-full shrink-0 cursor-pointer items-center gap-1.5 px-3 text-[13px]",
+                          tab.terminalTrigger,
                           tab.base,
                           activeChip ? tab.active : tab.inactive,
                           tabDrag?.dragging && tabDrag.tabId === t.id && "opacity-40",
@@ -587,7 +594,7 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class="max-w-[120px] truncate {t.exited ? 'line-through' : ''}"
+                                class={cn(tab.terminalLabel, t.exited && "line-through")}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
@@ -599,7 +606,7 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class="max-w-[120px] truncate"
+                                class={tab.terminalLabel}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
@@ -621,7 +628,7 @@
                             {#snippet children(tp)}
                               <span
                                 {...tp}
-                                class="max-w-[120px] truncate font-mono"
+                                class={cn(tab.terminalLabel, "font-mono")}
                               >
                                 {tabDisplayTitle(t)}
                               </span>
@@ -632,7 +639,7 @@
                           {#snippet children(tp)}
                             <button
                               {...tp}
-                              class="rounded px-0.5 text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100"
+                              class={cn(iconButton.tabClose, focus.ring, "flex shrink-0 items-center justify-center rounded text-[12px] leading-none text-muted-foreground opacity-60 hover:bg-destructive/20 hover:text-foreground hover:opacity-100")}
                               aria-label={i18n.t("terminal.closeTab")}
                               data-tab-close
                               onclick={() => terminals.closeTab(g.group.id, t.id)}
@@ -666,7 +673,7 @@
                           ? () => (projects.newWorktreeOpen = true)
                           : undefined}
                         align="start"
-                        triggerClass="ml-0.5 size-6"
+                        triggerClass={cn(shell.appBarCompactAction, "ml-0.5")}
                         title={i18n.t("launcher.openHere")}
                       />
                     {:else}
@@ -674,7 +681,7 @@
                         {#snippet children(tp)}
                           <button
                             {...tp}
-                            class="ml-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            class={cn("ml-0.5", shell.appBarCompactAction, focus.ring, "text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground")}
                             aria-label={i18n.t("terminal.newTerminal")}
                             onclick={() =>
                               terminals.create({ groupId: g.group.id, ...defaultShellArgs() })}
@@ -692,8 +699,9 @@
                       <button
                         type="button"
                         class={cn(
-                          iconButton.action,
-                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                          shell.appBarCompactAction,
+                          focus.ring,
+                          "no-drag z-[1] flex shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
                           stripOverflow[g.group.id]?.canScrollEnd ? "opacity-100" : "pointer-events-none opacity-0",
                         )}
                         title={i18n.t("tab.scrollRight")}
@@ -733,7 +741,7 @@
                               <Button
                                 variant="outline"
                                 size="sm"
-                                class="h-6"
+                                class="shrink-0"
                                 onclick={() => terminals.wakeWorkspace(wsKey)}
                               >
                                 {i18n.t("workspace.wake")}
@@ -756,7 +764,7 @@
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  class="h-6 shrink-0 gap-1 px-2"
+                                  class="shrink-0 gap-1 px-2"
                                   onclick={() => void terminals.restartTab(t.id)}
                                 >
                                   <Icon icon={RotateCcwIcon} class="size-3" />
@@ -765,7 +773,7 @@
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  class="h-6 shrink-0 px-2"
+                                  class="shrink-0 px-2"
                                   onclick={() => void terminals.closeTabAnywhere(t.id)}
                                 >
                                   {i18n.t("common.close")}
@@ -857,41 +865,38 @@
             })}
           </div>
           <div class="flex flex-wrap items-center justify-center gap-2">
-            <button
-              class={cn(
-                "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
-                text.body,
-              )}
+            <Button
+              variant="outline"
+              size="default"
+              class="font-medium"
               onclick={() => app.openTerminal()}
             >
               <Icon icon={PlusIcon} class={icon.button} />
               {i18n.t("terminal.newTerminal")}
-            </button>
+            </Button>
             {#if activeRepoIsGit}
-              <button
-                class={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 font-medium text-foreground hover:bg-accent hover:text-accent-foreground",
-                  text.body,
-                )}
+              <Button
+                variant="outline"
+                size="default"
+                class="font-medium"
                 onclick={() => (projects.newWorktreeOpen = true)}
               >
                 <Icon icon={GitBranchIcon} class={icon.button} />
                 {i18n.t("newWorktree.title")}
-              </button>
+              </Button>
             {:else}
               <TooltipSimple title={activeRepo ? i18n.t("terminal.worktreeNeedsGitRepo") : i18n.t("terminal.worktreeNeedsRepo")}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    class={cn(
-                      "inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border px-3 py-1.5 font-medium text-muted-foreground/70",
-                      text.body,
-                    )}
+                    variant="outline"
+                    size="default"
+                    class="cursor-not-allowed border-dashed font-medium text-muted-foreground/70"
                     disabled
                   >
                     <Icon icon={GitBranchIcon} class={icon.button} />
                     {i18n.t("newWorktree.title")}
-                  </button>
+                  </Button>
                 {/snippet}
               </TooltipSimple>
             {/if}
@@ -946,20 +951,23 @@
      match the app's other menus (ring + soft popover, rounded rows); items with a
      keyboard equivalent show it as a trailing keycap hint. -->
 {#if menu}
-  <div
-    class="fixed z-50 min-w-44 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
-    style="left:{menu.x}px; top:{menu.y}px"
-    role="menu"
-    tabindex="-1"
-    onpointerdown={(e) => e.stopPropagation()}
+  {@const currentMenu = menu}
+  <MenuSurface
+    x={currentMenu.x}
+    y={currentMenu.y}
+    width="standard"
+    focusReturn={currentMenu.focusReturn}
+    onClose={() => (menu = null)}
   >
-    {#each menu.items as item, i (i)}
+    {#snippet children()}
+    {#each currentMenu.items as item, i (i)}
       {#if "separator" in item}
-        <div class="-mx-1 my-1 h-px bg-border"></div>
+        <div class={overlay.menuSeparator}></div>
       {:else}
         <button
           class={cn(
-            "flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm disabled:pointer-events-none disabled:opacity-50",
+            "flex w-full items-center gap-2 rounded-md text-left disabled:pointer-events-none disabled:opacity-50",
+            overlay.item,
             item.danger
               ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
               : "hover:bg-accent hover:text-accent-foreground",
@@ -978,7 +986,8 @@
         </button>
       {/if}
     {/each}
-  </div>
+    {/snippet}
+  </MenuSurface>
 {/if}
 
 <!-- Tab rename (label for terminals/diffs, on-disk rename for files). Mounted

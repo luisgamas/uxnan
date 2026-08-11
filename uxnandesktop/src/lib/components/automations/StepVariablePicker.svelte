@@ -13,7 +13,7 @@
   import { untrack } from "svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { row, text } from "$lib/design";
   import type { Step } from "$lib/automations/types";
   import { Button } from "$lib/components/ui/button";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
@@ -67,7 +67,8 @@
       <div class="overflow-hidden rounded-md border border-border/60 bg-background">
         <button
           type="button"
-          class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+          class={cn(row.list, "rounded-none gap-1.5")}
+          aria-expanded={isOpen}
           onclick={() => toggle("steps")}
         >
           <Icon icon={ChevronRightIcon}
@@ -107,7 +108,7 @@
                         {...tp}
                         variant="outline"
                         size="sm"
-                        class="h-6 px-2 text-[11px]"
+                        class="shrink-0"
                         onclick={() => oninsert(`{{steps.${s.id}.output}}`, s.id)}
                       >
                         <Icon icon={CornerDownLeftIcon} class="mr-1 size-3" />
@@ -121,7 +122,7 @@
                         {...tp}
                         variant="ghost"
                         size="sm"
-                        class="h-6 px-2 text-[11px]"
+                        class="shrink-0"
                         onclick={() => oninsert(`{{steps.${s.id}.title}}`, s.id)}
                       >
                         {i18n.t("automations.varItsName")}
@@ -144,7 +145,8 @@
       <div class="overflow-hidden rounded-md border border-border/60 bg-background">
         <button
           type="button"
-          class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+          class={cn(row.list, "rounded-none gap-1.5")}
+          aria-expanded={isOpen}
           onclick={() => toggle("prev")}
         >
           <Icon icon={ChevronRightIcon}
@@ -177,7 +179,7 @@
                       {...tp}
                       variant="outline"
                       size="sm"
-                      class="h-6 shrink-0 px-2 text-[11px]"
+                      class="shrink-0"
                       onclick={() => oninsert(`{{prev.${s.id}.output}}`)}
                     >
                       <Icon icon={CornerDownLeftIcon} class="mr-1 size-3" />
@@ -196,7 +198,8 @@
     <div class="overflow-hidden rounded-md border border-border/60 bg-background">
       <button
         type="button"
-        class="flex w-full items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+        class={cn(row.list, "rounded-none gap-1.5")}
+        aria-expanded={runOpen}
         onclick={() => toggle("run")}
       >
         <Icon icon={ChevronRightIcon}
@@ -223,7 +226,7 @@
                 {...tp}
                 variant="outline"
                 size="sm"
-                class="h-6 shrink-0 px-2 text-[11px]"
+                class="shrink-0"
                 onclick={() => oninsert("{{workingDir}}")}
               >
                 <Icon icon={CornerDownLeftIcon} class="mr-1 size-3" />

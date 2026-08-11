@@ -13,9 +13,10 @@
   import { isImagePath } from "$lib/diff";
   import { filePreviewKind } from "$lib/filePreview";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, tab as tabStyle, text } from "$lib/design";
   import { Button } from "$lib/components/ui/button";
   import { Spinner } from "$lib/components/ui/spinner";
+  import * as Tabs from "$lib/components/ui/tabs";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import FileEditor from "./FileEditor.svelte";
@@ -86,8 +87,6 @@
     terminals.setFileChangesStaged(tab.id, staged);
   }
 
-  const segBase =
-    "flex items-center gap-1 px-2 py-0.5 transition-colors " + text.indicator;
   const segActive = "bg-accent text-foreground";
   const segIdle = "text-muted-foreground hover:text-foreground";
 </script>
@@ -118,63 +117,73 @@
             {...tp}
             variant="ghost"
             size="sm"
-            class={cn("h-6", text.body)}
+            class={text.body}
             disabled={!fileState.dirty || fileState.saving}
             onclick={() => void fileState.save(fileState.content)}
           >
             {#if fileState.saving}
               <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
             {:else}
-              <Icon icon={SaveIcon} data-icon="inline-start" />
+              <Icon icon={SaveIcon} class={icon.button} data-icon="inline-start" />
             {/if}
             {fileState.saving ? i18n.t("editor.saving") : i18n.t("editor.save")}
           </Button>
         {/snippet}
       </TooltipSimple>
     {:else if shown === "changes"}
-      <div class="inline-flex shrink-0 overflow-hidden rounded-md border border-border">
-        <button
-          type="button"
-          class={cn(segBase, "border-r border-border/60", !tab.staged ? segActive : segIdle)}
-          onclick={() => setStaged(false)}
-        >
-          {i18n.t("preview.unstaged")}
-        </button>
-        <button
-          type="button"
-          class={cn(segBase, tab.staged ? segActive : segIdle)}
-          onclick={() => setStaged(true)}
-        >
-          {i18n.t("preview.staged")}
-        </button>
-      </div>
+      <Tabs.Root
+        value={tab.staged ? "staged" : "unstaged"}
+        onValueChange={(value) => setStaged(value === "staged")}
+        class="shrink-0"
+      >
+        <Tabs.List class={tabStyle.segmentedList}>
+          <Tabs.Trigger
+            value="unstaged"
+            class={cn(tabStyle.segmentedTrigger, !tab.staged ? segActive : segIdle)}
+          >
+            {i18n.t("preview.unstaged")}
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="staged"
+            class={cn(tabStyle.segmentedTrigger, tab.staged ? segActive : segIdle)}
+          >
+            {i18n.t("preview.staged")}
+          </Tabs.Trigger>
+        </Tabs.List>
+      </Tabs.Root>
     {/if}
 
     <!-- View switch (only when this file offers more than one view). -->
     {#if views.length > 1}
-      <div class="inline-flex shrink-0 overflow-hidden rounded-md border border-border">
+      <Tabs.Root
+        value={shown}
+        onValueChange={(value) => {
+          if (value) switchView(value as FileView);
+        }}
+        class="shrink-0"
+      >
+        <Tabs.List class={tabStyle.segmentedList}>
         {#each views as v, i (v.view)}
           {@const glyph = v.icon}
           <TooltipSimple title={v.label}>
             {#snippet children(tp)}
-              <button
+              <Tabs.Trigger
                 {...tp}
-                type="button"
+                value={v.view}
                 class={cn(
-                  segBase,
+                  tabStyle.segmentedTrigger,
                   i > 0 && "border-l border-border/60",
                   shown === v.view ? segActive : segIdle,
                 )}
-                aria-pressed={shown === v.view}
-                onclick={() => switchView(v.view)}
               >
-                <Icon icon={glyph} class="size-3.5" />
+                <Icon icon={glyph} class={icon.action} />
                 {v.label}
-              </button>
+              </Tabs.Trigger>
             {/snippet}
           </TooltipSimple>
         {/each}
-      </div>
+        </Tabs.List>
+      </Tabs.Root>
     {/if}
   </header>
 

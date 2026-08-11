@@ -9,7 +9,7 @@
   // silently run out of order.
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, panel, text } from "$lib/design";
+  import { field, icon, iconButton, panel, text } from "$lib/design";
   import { nextStepId, newStep, type Step } from "$lib/automations/types";
   import { insertToken } from "$lib/automations/insert";
   import Combobox, { type ComboGroup } from "$lib/components/Combobox.svelte";
@@ -118,7 +118,8 @@
           {step.id}
         </span>
         <Input
-          class="h-8 flex-1"
+          class="min-w-0 flex-1"
+          density="compact"
           placeholder={i18n.t("automations.stepTitlePlaceholder")}
           value={step.title}
           oninput={(e) =>
@@ -131,7 +132,7 @@
         <Combobox
           value={step.agent}
           groups={agentGroups}
-          triggerClass="w-40"
+          triggerClass={field.selectCompact}
           placeholder={i18n.t("automations.pickAgent")}
           searchPlaceholder={i18n.t("common.search")}
           onChange={(v) =>
@@ -177,10 +178,13 @@
         <div class="flex flex-wrap items-center gap-1.5">
           <span class={text.section}>{i18n.t("automations.runsAfter")}</span>
           {#each deps as dep (dep.id)}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={step.dependsOn.includes(dep.id)}
               class={cn(
-                "rounded-full border px-2 py-0.5 transition-colors",
+                "rounded-full border px-2",
                 text.indicator,
                 step.dependsOn.includes(dep.id)
                   ? "border-primary/40 bg-primary/10 text-foreground"
@@ -189,7 +193,7 @@
               onclick={() => toggleDep(step, dep.id)}
             >
               {dep.id}
-            </button>
+            </Button>
           {/each}
         </div>
       {/if}
@@ -234,7 +238,7 @@
           <Button
             variant="outline"
             size="sm"
-            class="h-6"
+            class="shrink-0"
             onclick={() =>
               (steps = steps.map((s) =>
                 s.id === step.id

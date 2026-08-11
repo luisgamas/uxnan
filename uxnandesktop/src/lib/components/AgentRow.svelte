@@ -6,7 +6,7 @@
   // hook data already in `agentStatus` (or Zero's on-disk session) via
   // `resolveAgentView`.
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { focus, icon, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { clock, relTime } from "$lib/time.svelte";
@@ -49,15 +49,19 @@
         <button
           {...tp}
           class={cn(
-            "flex w-full items-start gap-2 rounded-md py-1 pl-1 pr-1 text-left transition-colors hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]",
-            active && "bg-foreground/[0.05] dark:bg-foreground/[0.06]",
+            row.agent,
+            focus.ring,
+            "hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.05]",
           )}
           onclick={onreveal}
         >
-          <span class="mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+          {#if active}
+            <span class={row.agentActiveIndicator} aria-hidden="true"></span>
+          {/if}
+          <span class={cn(row.agentLeading, icon.status)}>
             <AgentStatusIndicator status={view.status} stale={view.stale} />
           </span>
-          <AgentLogo logo={tab.agentIcon} class="mt-0.5 size-3.5 shrink-0" />
+          <AgentLogo logo={tab.agentIcon} class={cn(row.agentLeading, icon.status)} />
           <span class="flex min-w-0 flex-1 flex-col leading-tight">
             <span class="flex items-baseline gap-1.5">
               <span
@@ -85,7 +89,7 @@
                 <!-- Only shown when the launch profile pinned a model; uxnan can't
                      see a model the CLI picked on its own, so it doesn't claim one. -->
                 <span
-                  class="shrink-0 truncate font-mono text-[10px] text-muted-foreground/70"
+                  class={row.agentModel}
                   title={tab.agentModel}
                 >
                   {tab.agentModel}
@@ -111,10 +115,10 @@
       {/snippet}
     </TooltipSimple>
     {#if activeSubs.length}
-      <div class="ml-[1.375rem] mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2">
+      <div class={row.agentDetail}>
         {#each activeSubs as sub (sub.id)}
           <div class="flex items-center gap-1.5">
-            <span class="flex size-3.5 shrink-0 items-center justify-center">
+            <span class={cn("flex shrink-0 items-center justify-center", icon.status)}>
               <AgentStatusIndicator status={sub.status} stale={false} />
             </span>
             {#if sub.agentType}

@@ -132,12 +132,12 @@
             </Button>
           {/snippet}
         </DropdownMenu.Trigger>
-        <DropdownMenu.Content align="end" class="w-80">
+        <DropdownMenu.Content width="wide" align="end">
           <DropdownMenu.Label class="text-[11px] font-normal text-muted-foreground">
             {i18n.t("orchestration.examplesHint")}
           </DropdownMenu.Label>
           {#each templates as t (t.id)}
-            <DropdownMenu.Item class="flex flex-col items-start gap-0.5 py-1.5" onclick={() => addExample(t)}>
+            <DropdownMenu.Item class="flex flex-col items-start gap-0.5" onclick={() => addExample(t)}>
               <span class="text-[13px] font-medium">{t.title}</span>
               <span class="text-xs text-muted-foreground">{t.description}</span>
             </DropdownMenu.Item>

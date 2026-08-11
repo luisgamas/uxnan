@@ -8,6 +8,8 @@
 		side = "top",
 		sideOffset = 4,
 		delayDuration = 700,
+		ignoreNonKeyboardFocus = undefined,
+		disableCloseOnTriggerClick = undefined,
 		children,
 	}: {
 		open?: boolean;
@@ -15,11 +17,18 @@
 		side?: "top" | "right" | "bottom" | "left";
 		sideOffset?: number;
 		delayDuration?: number;
+		ignoreNonKeyboardFocus?: boolean;
+		disableCloseOnTriggerClick?: boolean;
 		children: import("svelte").Snippet<[Record<string, unknown>]>;
 	} = $props();
 </script>
 
-<TooltipPrimitive.Root bind:open {delayDuration}>
+<TooltipPrimitive.Root
+	bind:open
+	{delayDuration}
+	{ignoreNonKeyboardFocus}
+	{disableCloseOnTriggerClick}
+>
 	<TooltipPrimitive.Trigger>
 		{#snippet child({ props })}
 			{@render children(props)}

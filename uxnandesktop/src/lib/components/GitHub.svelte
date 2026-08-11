@@ -10,7 +10,7 @@
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text, divider, panel } from "$lib/design";
+  import { field, icon, iconButton, panel, row, tab as tabStyle, text, divider } from "$lib/design";
   import { toast, toastError } from "$lib/toast";
   import {
     githubPrView,
@@ -121,6 +121,8 @@
   }
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "Escape" && app.githubInline) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-bits-floating-content-wrapper], input, textarea")) return;
       e.preventDefault();
       // If a detail view is open, go back to its list first.
       if (prDetail || issueDetail || runLog !== null || prError || issueError) {
@@ -1152,7 +1154,7 @@
         <Combobox
           value={app.githubSection}
           groups={sectionGroups}
-          triggerClass="w-44"
+          triggerClass={field.selectNarrow}
           align="start"
           searchPlaceholder={i18n.t("common.search")}
           itemPrefix={sectionPrefix}
@@ -1350,12 +1352,12 @@
   {@const ciGlyph = ciIcon(summary.state)}
   <Popover.Root>
     <Popover.Trigger
-      class={cn("inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:bg-accent", ciToneClass(summary.state))}
+      class={cn(iconButton.xs, "inline-flex shrink-0 items-center gap-1 rounded-md transition-colors hover:bg-accent", ciToneClass(summary.state))}
       aria-label={i18n.t("github.pr.checks")}
     >
       <Icon icon={ciGlyph} class="size-4" />
     </Popover.Trigger>
-    <Popover.Content align="end" side="bottom" class="w-[24rem] max-w-[calc(100vw-3rem)] overflow-hidden p-0">
+    <Popover.Content width="status" padding="none" align="end" side="bottom" class="overflow-hidden">
       <div class={cn("flex items-center gap-2 border-b border-border/50 px-3.5 py-2.5", text.section)}>
         <Icon icon={ciGlyph} class={cn("size-4", ciToneClass(summary.state))} />{checksHeadline(summary)}
       </div>
@@ -1455,7 +1457,7 @@
           <Combobox
             value={prState}
             groups={stateFilterGroups("pr")}
-            triggerClass="w-36"
+            triggerClass={field.selectCompact}
             onChange={(v) => { prState = v; void github.loadPrs(v); }}
           />
           <Button
@@ -1499,9 +1501,9 @@
               {@const prGlyph = prStateIcon(pr.state, pr.isDraft)}
               <!-- Row is a div (not a button) so the CI popover trigger can be a real
                    sibling button — the title area handles opening the PR. -->
-              <div class="group flex w-full items-center gap-3 px-4 py-3.5 transition-colors hover:bg-accent/50">
+              <div class={cn(row.list, "group rounded-none gap-3")}>
                 <Icon icon={prGlyph} class={cn("size-4 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
-                <button class="min-w-0 flex-1 space-y-0.5 text-left" onclick={() => selectPr(pr.number)}>
+                <button class="min-w-0 flex-1 text-left" onclick={() => selectPr(pr.number)}>
                   <div class={cn("truncate", text.bodyStrong)}>{pr.title}</div>
                   <div class={cn("truncate text-muted-foreground", text.meta)}>
                     #{pr.number}{pr.author ? ` · ${pr.author}` : ""}{pr.headRefName ? ` · ${pr.headRefName}` : ""}{pr.updatedAt ? ` · ${agoLong(pr.updatedAt)}` : ""}
@@ -1516,9 +1518,16 @@
                 {#if pr.checksSummary.total > 0}
                   {@render checksBadgeFull(pr.checksSummary, pr.checks)}
                 {/if}
-                <button class="shrink-0" onclick={() => selectPr(pr.number)} aria-label={pr.title} tabindex="-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class={iconButton.xs}
+                  onclick={() => selectPr(pr.number)}
+                  aria-label={pr.title}
+                  tabindex={-1}
+                >
                   <Icon icon={ChevronRightIcon} class="size-4 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
-                </button>
+                </Button>
               </div>
             {/each}
           </div>
@@ -1591,12 +1600,13 @@
           {#if isOpen}
             <div class="flex items-center gap-1">
               <Input
-                class="h-7 w-52"
+                class={cn(field.selectStandard, "min-w-0")}
+                density="compact"
                 placeholder={i18n.t("github.pr.addReviewerPlaceholder")}
                 bind:value={reviewerInput}
                 onkeydown={(e) => e.key === "Enter" && requestReviewers()}
               />
-              <Button variant="outline" size="sm" class="h-7" disabled={busy || !reviewerInput.trim()} onclick={requestReviewers}>
+              <Button variant="outline" size="sm" disabled={busy || !reviewerInput.trim()} onclick={requestReviewers}>
                 {#if busyAction === "reviewers"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {/if}
@@ -1614,11 +1624,10 @@
         {#each [{ id: "conversation", label: i18n.t("github.pr.conversation"), icon: MessageSquareIcon, n: null }, { id: "files", label: i18n.t("github.pr.filesChanged"), icon: FileDiffIcon, n: pr.changedFiles }] as t (t.id)}
           <button
             class={cn(
-              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 transition-colors",
-              text.body,
-              prTab === t.id
-                ? "border-primary font-medium text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+              tabStyle.base,
+              tabStyle.panelTrigger,
+              "-mb-px flex min-h-8 items-center gap-1.5",
+              prTab === t.id ? tabStyle.activeLine : tabStyle.inactiveLine,
             )}
             onclick={() => (prTab = t.id as typeof prTab)}
           >
@@ -1650,7 +1659,11 @@
       {#if pr.checks.length > 0}
         {@const ciGlyph = ciIcon(pr.checksSummary.state)}
         <div class={cn("overflow-hidden", panel.card)}>
-          <button class="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30" onclick={() => (ciOpen = !ciOpen)}>
+          <button
+            class="flex min-h-12 w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30"
+            aria-expanded={ciOpen}
+            onclick={() => (ciOpen = !ciOpen)}
+          >
             <span class={cn("flex size-9 shrink-0 items-center justify-center rounded-full border border-border", ciToneClass(pr.checksSummary.state))}>
               <Icon icon={ciGlyph} class="size-5" />
             </span>
@@ -1678,8 +1691,8 @@
           </span>
           {#if prFiles.length > 1}
             <div class="flex gap-1">
-              <Button variant="ghost" size="sm" class="h-6" onclick={() => setAllFiles(true)}>{i18n.t("github.pr.expandAll")}</Button>
-              <Button variant="ghost" size="sm" class="h-6" onclick={() => setAllFiles(false)}>{i18n.t("github.pr.collapseAll")}</Button>
+              <Button variant="ghost" size="sm" onclick={() => setAllFiles(true)}>{i18n.t("github.pr.expandAll")}</Button>
+              <Button variant="ghost" size="sm" onclick={() => setAllFiles(false)}>{i18n.t("github.pr.collapseAll")}</Button>
             </div>
           {/if}
         </div>
@@ -1691,7 +1704,11 @@
           <div class="divide-y divide-border/50">
             {#each prFiles as f, fi (fi)}
               <div>
-                <button class="flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-accent/40" onclick={() => toggleFile(f.path)}>
+                <button
+                  class={cn(row.list, "rounded-none")}
+                  aria-expanded={Boolean(expandedFiles[f.path])}
+                  onclick={() => toggleFile(f.path)}
+                >
                   {#if expandedFiles[f.path]}
                     <Icon icon={ChevronDownIcon} class="size-3.5 shrink-0 text-muted-foreground" />
                   {:else}
@@ -1821,7 +1838,7 @@
               <Icon icon={ClockIcon} class="mt-px size-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
               <span class="flex-1">{i18n.t("github.merge.autoArmed")}</span>
               <!-- Armed auto-merge was a one-way door: this turns it back off. -->
-              <Button variant="ghost" size="sm" class="-my-1 h-6" disabled={busy} onclick={() => prAction(githubPrDisableAutoMerge, "github.toast.autoMergeOff")}>
+              <Button variant="ghost" size="sm" disabled={busy} onclick={() => prAction(githubPrDisableAutoMerge, "github.toast.autoMergeOff")}>
                 {#if busyAction === "github.toast.autoMergeOff"}
                   <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                 {/if}
@@ -1861,7 +1878,7 @@
                    Update-branch button; without this the message was a dead end. -->
               {#if mergeStatus === "BEHIND"}
                 <div class="ml-5 flex gap-2 pt-0.5">
-                  <Button variant="outline" size="sm" class="h-6 gap-1" disabled={busy} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, false), "github.toast.branchUpdated", "branch-update")}>
+                  <Button variant="outline" size="sm" class="gap-1" disabled={busy} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, false), "github.toast.branchUpdated", "branch-update")}>
                     {#if busyAction === "branch-update"}
                       <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                     {:else}
@@ -1869,7 +1886,7 @@
                     {/if}
                     {i18n.t("github.merge.updateBranch")}
                   </Button>
-                  <Button variant="ghost" size="sm" class="h-6" disabled={busy} title={i18n.t("github.merge.updateRebaseTip")} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, true), "github.toast.branchUpdated", "branch-rebase")}>
+                  <Button variant="ghost" size="sm" disabled={busy} title={i18n.t("github.merge.updateRebaseTip")} onclick={() => prAction((p, n) => githubPrUpdateBranch(p, n, true), "github.toast.branchUpdated", "branch-rebase")}>
                     {#if busyAction === "branch-rebase"}
                       <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />
                     {/if}
@@ -1884,7 +1901,7 @@
             <Combobox
               value={mergeMethod}
               groups={[{ items: mergeMethodItems }]}
-              triggerClass="w-52"
+              triggerClass={field.selectStandard}
               onChange={(v) => (mergeMethod = v as typeof mergeMethod)}
             />
             <label class="flex items-center gap-1.5 text-[13px]">
@@ -1956,7 +1973,7 @@
           <Combobox
             value={issueState}
             groups={stateFilterGroups("issue")}
-            triggerClass="w-36"
+            triggerClass={field.selectCompact}
             onChange={(v) => { issueState = v; void github.loadIssues(v); }}
           />
           <Button size="sm" onclick={openCreateIssue}>
@@ -2049,7 +2066,7 @@
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.issues as issue (issue.number)}
               {@const issueGlyph = issueStateIcon(issue.state)}
-              <button class="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-accent/50" onclick={() => selectIssue(issue.number)}>
+              <button class={cn(row.list, "group rounded-none gap-3")} onclick={() => selectIssue(issue.number)}>
                 <Icon icon={issueGlyph} class={cn("size-4 shrink-0", issueStateIconClass(issue.state))} />
                 <div class="min-w-0 flex-1 space-y-0.5">
                   <div class={cn("truncate", text.bodyStrong)}>{issue.title}</div>
@@ -2179,9 +2196,9 @@
 {#snippet actionsPane()}
   {#if runLog !== null || runError}
     <div class="space-y-3">
-      <button class={cn("flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground", text.meta)} onclick={clearDetail}>
+      <Button variant="ghost" size="sm" class="text-muted-foreground hover:text-foreground" onclick={clearDetail}>
         <Icon icon={ArrowLeftIcon} class="size-3.5" /> {i18n.t("github.actions.title")}
-      </button>
+      </Button>
       {#if selectedRunTitle}<h2 class={cn(text.subheading, "truncate")}>{selectedRunTitle}</h2>{/if}
       {#if selectedRunId}
         <div class="flex flex-wrap gap-2">
@@ -2223,7 +2240,7 @@
         {:else}
           <div class={cn("divide-y divide-border/50 overflow-hidden", panel.card)}>
             {#each github.runs as run (run.databaseId)}
-              <div class="flex items-center gap-3 px-3.5 py-2.5">
+              <div class={cn(row.list, "rounded-none gap-3")}>
                 <span
                   class={cn("size-2.5 shrink-0 rounded-full", run.conclusion === "success" ? "bg-emerald-500" : run.conclusion === "failure" || run.conclusion === "cancelled" ? "bg-red-500" : run.status === "completed" ? "bg-muted-foreground/50" : "bg-amber-500 animate-pulse")}
                 ></span>

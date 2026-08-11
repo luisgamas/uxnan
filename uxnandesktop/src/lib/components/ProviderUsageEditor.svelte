@@ -10,7 +10,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, text } from "$lib/design";
   import { usageProvider } from "$lib/usageCatalog";
   import {
     accountTypeLabelKey,
@@ -213,7 +213,13 @@
     </TooltipSimple>
     <TooltipSimple title={i18n.t("providers.removeProvider")}>
       {#snippet children(tp)}
-        <Button {...tp} variant="ghost" size="icon-sm" onclick={onremove}>
+        <Button
+          {...tp}
+          variant="ghost"
+          size="icon-sm"
+          aria-label={i18n.t("providers.removeProvider")}
+          onclick={onremove}
+        >
           <Icon icon={Trash2Icon} class={icon.button} />
         </Button>
       {/snippet}
@@ -262,7 +268,8 @@
               {#if config.provider === "codex" && snapshot.resetCredits.available > 0}
                 <Button
                   variant="outline"
-                  class="h-6 px-2 text-xs"
+                  size="sm"
+                  class="px-2 text-xs"
                   onclick={() => (confirmRedeemOpen = true)}
                 >
                   {i18n.t("providers.redeemReset")}
@@ -287,9 +294,11 @@
         <div class={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1", (snapshot.windows.length > 0 || snapshot.credit || snapshot.resetCredits) && "border-t border-border/40 pt-3", text.meta)}>
           {#if snapshot.account?.email}
             <span>{i18n.t("providers.authenticatedAs")}</span>
-            <button
-              type="button"
-              class="flex min-w-0 items-center gap-1 rounded text-muted-foreground transition-colors hover:text-foreground"
+            <Button
+              variant="ghost"
+              size="sm"
+              class={cn("min-w-0 max-w-full justify-start gap-1 px-1 text-muted-foreground transition-colors hover:text-foreground", focus.ring)}
+              aria-label={i18n.t(accountRevealed ? "providers.hideAccount" : "providers.revealAccount")}
               title={i18n.t(accountRevealed ? "providers.hideAccount" : "providers.revealAccount")}
               onclick={() => (accountRevealed = !accountRevealed)}
             >
@@ -301,7 +310,7 @@
               <span class={cn("truncate transition-[filter] duration-150", !accountRevealed && "select-none blur-[5px]")}>
                 {snapshot.account.email}
               </span>
-            </button>
+            </Button>
           {/if}
           {#if snapshot.account?.plan}
             <span class="whitespace-nowrap">{#if snapshot.account?.email}·&nbsp;{/if}{snapshot.account.plan}</span>
@@ -327,7 +336,7 @@
   <div class="flex items-center gap-2">
     <span class={cn("shrink-0", text.meta)}>{i18n.t("providers.refreshInterval")}</span>
     <Select.Root type="single" value={intervalValue} onValueChange={setInterval}>
-      <Select.Trigger class="h-8 flex-1 text-xs">{intervalLabel}</Select.Trigger>
+      <Select.Trigger size="compact" class="flex-1 text-xs">{intervalLabel}</Select.Trigger>
       <Select.Content>
         {#each intervalOptions as opt (opt.value)}
           <Select.Item value={opt.value} label={i18n.t(opt.key)}>{i18n.t(opt.key)}</Select.Item>
@@ -339,9 +348,10 @@
   <!-- Status bar: whether (and what of) this provider surfaces in the bottom
        status-bar popover. -->
   <div class="flex flex-col gap-2.5 border-t border-border/50 pt-3.5">
-    <label class="flex cursor-pointer items-center justify-between gap-2">
+    <label class="flex min-h-8 cursor-pointer items-center justify-between gap-2 py-1">
       <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showInStatusBar")}</span>
       <Switch
+        aria-label={i18n.t("providers.showInStatusBar")}
         checked={config.statusBar.show}
         onCheckedChange={(c) => {
           config.statusBar.show = c;
@@ -353,8 +363,9 @@
       <div class="flex flex-col gap-2 pl-1">
         {#if snapshot && snapshot.windows.length > 0}
           {#each snapshot.windows as w (w.id)}
-            <label class="flex cursor-pointer items-center gap-2">
+            <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
               <Checkbox
+                aria-label={w.label}
                 checked={isWindowPicked(w.id)}
                 onCheckedChange={(c) => toggleWindow(w.id, c === true)}
               />
@@ -364,8 +375,9 @@
         {:else}
           <span class={text.meta}>{i18n.t("providers.noWindowsToPick")}</span>
         {/if}
-        <label class="flex cursor-pointer items-center gap-2">
+        <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
           <Checkbox
+            aria-label={i18n.t("providers.showPlan")}
             checked={config.statusBar.showPlan === true}
             onCheckedChange={(c) => {
               config.statusBar.showPlan = c === true;
@@ -375,8 +387,9 @@
           <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showPlan")}</span>
         </label>
         {#if meta?.hasCredit}
-          <label class="flex cursor-pointer items-center gap-2">
+          <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
             <Checkbox
+              aria-label={i18n.t("providers.showCredit")}
               checked={config.statusBar.showCredit === true}
               onCheckedChange={(c) => {
                 config.statusBar.showCredit = c === true;
@@ -386,8 +399,9 @@
             <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showCredit")}</span>
           </label>
         {/if}
-        <label class="flex cursor-pointer items-center gap-2">
+        <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
           <Checkbox
+            aria-label={i18n.t("providers.showResetTime")}
             checked={config.statusBar.showResetTime === true}
             onCheckedChange={(c) => {
               config.statusBar.showResetTime = c === true;
@@ -397,8 +411,9 @@
           <span class={cn("text-foreground", text.body)}>{i18n.t("providers.showResetTime")}</span>
         </label>
         {#if meta?.hasResetCredits}
-          <label class="flex cursor-pointer items-center gap-2">
+          <label class="flex min-h-8 cursor-pointer items-center gap-2 py-1">
             <Checkbox
+              aria-label={i18n.t("providers.showResets")}
               checked={config.statusBar.showResetCredits === true}
               onCheckedChange={(c) => {
                 config.statusBar.showResetCredits = c === true;

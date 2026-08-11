@@ -10,7 +10,7 @@
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, iconButton, row, text } from "$lib/design";
   import type { AgentProfile, EnvVar } from "$lib/types";
   import AgentLogo from "./AgentLogo.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
@@ -98,10 +98,11 @@
     <div class="relative shrink-0">
       <TooltipSimple title={i18n.t("agentEditor.chooseLogo")}>
         {#snippet children(tp)}
-          <button
+          <Button
             {...tp}
-            type="button"
-            class="flex size-7 items-center justify-center rounded-md border border-border/60 hover:bg-accent/50"
+            variant="ghost"
+            size="icon-xs"
+            class="border border-border/60 hover:bg-accent/50"
             aria-label={i18n.t("agentEditor.chooseLogo")}
             disabled={processingLogo}
             onclick={() => fileInput?.click()}
@@ -109,9 +110,9 @@
             {#if processingLogo}
               <Spinner aria-label={i18n.t("common.loading")} />
             {:else}
-              <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} />
+              <AgentLogo logo={agentLogoKey(agent.icon, agent.command)} class="size-5" />
             {/if}
-          </button>
+          </Button>
         {/snippet}
       </TooltipSimple>
       {#if hasCustomLogo}
@@ -120,7 +121,7 @@
             <button
               {...tp}
               type="button"
-              class="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:text-foreground"
+              class={cn(iconButton.xs, "absolute -right-2 -top-2 rounded-full border border-border bg-background p-0 text-muted-foreground hover:text-foreground")}
               aria-label={i18n.t("agentEditor.resetLogo")}
               onclick={resetLogo}
             >
@@ -139,7 +140,8 @@
     </div>
     <button
       type="button"
-      class="min-w-0 flex-1 text-left"
+      class={cn(row.editorDisclosure, focus.ring)}
+      aria-expanded={expanded}
       onclick={() => (expanded = !expanded)}
     >
       <span class={cn("block truncate font-medium text-foreground", text.body)}>
@@ -153,7 +155,7 @@
       {#snippet children(tp)}
         <Collapsible.Trigger
           {...tp}
-          class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          class={cn(iconButton.xs, "text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground")}
         >
           <Icon icon={ChevronDownIcon} class={cn(icon.button, "transition-transform", expanded && "rotate-180")} />
         </Collapsible.Trigger>
@@ -174,20 +176,23 @@
   </div>
   <Collapsible.Content class="flex flex-col gap-2.5 pt-1.5">
   <Input
-    class="h-8 text-xs"
+    density="compact"
+    class="text-xs"
     placeholder={i18n.t("agentEditor.namePlaceholder")}
     bind:value={agent.name}
     oninput={onchange}
   />
   <div class="flex flex-col gap-2 sm:flex-row">
     <Input
-      class="h-8 flex-1 font-mono text-xs"
+      density="compact"
+      class="flex-1 font-mono text-xs"
       placeholder={i18n.t("agentEditor.commandPlaceholder")}
       bind:value={agent.command}
       oninput={onchange}
     />
     <Input
-      class="h-8 flex-1 font-mono text-xs"
+      density="compact"
+      class="flex-1 font-mono text-xs"
       placeholder={i18n.t("agentEditor.argsPlaceholder")}
       bind:value={argsText}
       oninput={commitArgs}
@@ -203,7 +208,7 @@
         onchange();
       }}
     >
-      <Select.Trigger class="h-8 flex-1 text-xs">{shellLabel}</Select.Trigger>
+      <Select.Trigger size="compact" class="flex-1 text-xs">{shellLabel}</Select.Trigger>
       <Select.Content>
         <Select.Item value={DEFAULT} label={i18n.t("agentEditor.defaultShell")}>
           {i18n.t("agentEditor.defaultShell")}
@@ -237,14 +242,16 @@
     {#each envVars as envVar, i (i)}
       <div class="flex items-center gap-1.5">
         <Input
-          class="h-8 flex-1 font-mono text-xs"
+          density="compact"
+          class="flex-1 font-mono text-xs"
           placeholder={i18n.t("agentEditor.envKeyPlaceholder")}
           bind:value={envVar.key}
           oninput={onchange}
         />
         <span class={text.meta}>=</span>
         <Input
-          class="h-8 flex-1 font-mono text-xs"
+          density="compact"
+          class="flex-1 font-mono text-xs"
           placeholder={i18n.t("agentEditor.envValuePlaceholder")}
           bind:value={envVar.value}
           oninput={onchange}

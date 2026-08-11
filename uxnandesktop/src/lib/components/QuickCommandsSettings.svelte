@@ -9,7 +9,7 @@
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { focus, icon, iconButton, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import type { MessageKey } from "$lib/i18n/locales/en";
   import type {
@@ -293,7 +293,9 @@
 <Dialog.Root bind:open={editorOpen}>
   <Dialog.Content
     showCloseButton={false}
-    class="flex max-h-[85vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+    size="medium"
+    composition="sectioned"
+    class="flex max-h-[85vh] w-full flex-col gap-0 overflow-hidden"
   >
     <div class="flex shrink-0 items-center border-b border-border/60 px-5 py-3.5">
       <Dialog.Title class={text.title}>
@@ -310,7 +312,7 @@
             <Button
               variant="outline"
               size="icon"
-              class="size-9 shrink-0"
+              class="shrink-0"
               aria-label={i18n.t("commands.fieldIcon")}
               onclick={() => (iconPickerOpen = true)}
             >
@@ -318,7 +320,12 @@
                 {#snippet fallback()}<Icon icon={EnergyIcon} class="size-4 text-muted-foreground" />{/snippet}
               </EntityIcon>
             </Button>
-            <Input bind:value={draft.name} placeholder={i18n.t("commands.namePlaceholder")} class="flex-1" />
+            <Input
+              bind:value={draft.name}
+              placeholder={i18n.t("commands.namePlaceholder")}
+              aria-label={i18n.t("commands.fieldName")}
+              class="flex-1"
+            />
           </div>
         </div>
 
@@ -331,20 +338,22 @@
             spellcheck={false}
             class="h-20 font-mono text-[12px]"
             placeholder="npm run dev"
+            aria-label={i18n.t("commands.fieldCommand")}
           />
           <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
             <span class={text.meta}>{i18n.t("commands.variablesLabel")}</span>
             {#each VARIABLES as v (v.token)}
               <TooltipSimple title={i18n.t(v.descKey)}>
                 {#snippet children(tp)}
-                  <button
+                  <Button
                     {...tp}
-                    type="button"
-                    class="rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    variant="outline"
+                    size="sm"
+                    class={cn("font-mono text-[11px]", focus.ring)}
                     onclick={() => insertVariable(v.token)}
                   >
                     {v.token}
-                  </button>
+                  </Button>
                 {/snippet}
               </TooltipSimple>
             {/each}
@@ -352,7 +361,7 @@
         </div>
 
         <!-- Scope -->
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
             <span class={text.body}>{i18n.t("commands.fieldScope")}</span>
             <Combobox
@@ -393,13 +402,13 @@
              with the same styling as the section above, no nested card. -->
         <Collapsible.Root bind:open={advancedOpen} class="space-y-4">
           <Collapsible.Trigger
-            class="flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground {text.body}"
+            class="flex min-h-8 items-center gap-1.5 rounded-md px-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground {text.body} {focus.ring}"
           >
             <Icon icon={ChevronRightIcon} class={cn("size-4 transition-transform", advancedOpen && "rotate-90")} />
             {i18n.t("commands.advanced")}
           </Collapsible.Trigger>
           <Collapsible.Content class="space-y-4">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div class="space-y-1.5">
                 <span class={text.body}>{i18n.t("commands.fieldTarget")}</span>
                 <Combobox
@@ -421,7 +430,7 @@
             </div>
 
             {#if draft.target === "newTab"}
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div class="space-y-1.5">
                   <span class={text.body}>{i18n.t("commands.fieldCwd")}</span>
                   <Combobox
@@ -434,7 +443,12 @@
                 {#if draft.cwd === "custom"}
                   <div class="space-y-1.5">
                     <span class={text.body}>{i18n.t("commands.fieldCustomCwd")}</span>
-                    <Input value={draft.customCwd ?? ""} oninput={(e) => (draft && (draft.customCwd = e.currentTarget.value || null))} placeholder="C:\\path\\to\\dir" />
+                    <Input
+                      value={draft.customCwd ?? ""}
+                      oninput={(e) => (draft && (draft.customCwd = e.currentTarget.value || null))}
+                      placeholder="C:\\path\\to\\dir"
+                      aria-label={i18n.t("commands.fieldCustomCwd")}
+                    />
                   </div>
                 {/if}
               </div>
@@ -456,7 +470,11 @@
                 <div class={text.body}>{i18n.t("commands.fieldConfirm")}</div>
                 <p class={text.meta}>{i18n.t("commands.confirmHint")}</p>
               </div>
-              <Switch checked={draft.confirm} onCheckedChange={(v) => (draft && (draft.confirm = v))} />
+              <Switch
+                checked={draft.confirm}
+                aria-label={i18n.t("commands.fieldConfirm")}
+                onCheckedChange={(v) => (draft && (draft.confirm = v))}
+              />
             </div>
           </Collapsible.Content>
         </Collapsible.Root>

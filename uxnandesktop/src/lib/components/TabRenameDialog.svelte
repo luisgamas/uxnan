@@ -77,7 +77,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[440px]">
+  <Dialog.Content size="small">
     <Dialog.Header>
       <Dialog.Title>
         {isFile ? i18n.t("tab.renameFileTitle") : i18n.t("tab.renameTabTitle")}

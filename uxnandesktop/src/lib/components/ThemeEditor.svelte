@@ -5,6 +5,7 @@
   // color inputs + fonts + base) plus a raw JSON tab.
   import * as Dialog from "$lib/components/ui/dialog";
   import * as Select from "$lib/components/ui/select";
+  import * as Tabs from "$lib/components/ui/tabs";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -19,12 +20,11 @@
     type ThemeColors,
   } from "$lib/theme";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { field, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import FontPicker from "./FontPicker.svelte";
+  import EditorModeTabs from "./EditorModeTabs.svelte";
   import { Icon } from "$lib/components/ui/icon";
-  import CodeIcon from "@hugeicons/core-free-icons/CodeIcon";
-  import SlidersIcon from "@hugeicons/core-free-icons/SlidersHorizontalIcon";
 
   let {
     open = $bindable(false),
@@ -83,32 +83,17 @@
 </script>
 
 <Dialog.Root bind:open onOpenChange={(o) => { if (!o) oncancel(); }}>
-  <Dialog.Content class="flex max-h-[85vh] flex-col gap-3 sm:max-w-[560px]">
+  <Dialog.Content size="large" class="flex max-h-[85vh] flex-col">
     <Dialog.Header>
       <Dialog.Title>{title}</Dialog.Title>
     </Dialog.Header>
 
-    <div class="inline-flex shrink-0 self-start overflow-hidden rounded-md border border-border">
-      <button
-        type="button"
-        class={cn("flex items-center gap-1 px-2 py-0.5", text.indicator, mode === "visual" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
-        onclick={() => (mode = "visual")}
-      >
-        <Icon icon={SlidersIcon} class="size-3.5" />{i18n.t("appearance.visual")}
-      </button>
-      <button
-        type="button"
-        class={cn("flex items-center gap-1 border-l border-border/60 px-2 py-0.5", text.indicator, mode === "json" ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
-        onclick={() => { jsonText = themeToJson(theme); mode = "json"; }}
-      >
-        <Icon icon={CodeIcon} class="size-3.5" />JSON
-      </button>
-    </div>
-
-    <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto pr-1">
-      {#if mode === "visual"}
+    <EditorModeTabs bind:value={mode} onJsonSelect={() => (jsonText = themeToJson(theme))}>
+      {#snippet children()}
+      <div class="uxnan-scroll min-h-0 flex-1 overflow-y-auto pr-1">
+      <Tabs.Content value="visual">
         <div class="flex flex-col gap-3">
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid gap-2 sm:grid-cols-2">
             <div class="flex flex-col gap-1">
               <Label class={text.meta}>{i18n.t("appearance.name")}</Label>
               <Input bind:value={theme.name} />
@@ -120,7 +105,7 @@
                 value={theme.base}
                 onValueChange={(v) => { if (v === "light" || v === "dark") theme.base = v; }}
               >
-                <Select.Trigger>{baseLabel}</Select.Trigger>
+                <Select.Trigger class={field.editorSelect}>{baseLabel}</Select.Trigger>
                 <Select.Content>
                   <Select.Item value="light" label={i18n.t("settings.theme.light")}>{i18n.t("settings.theme.light")}</Select.Item>
                   <Select.Item value="dark" label={i18n.t("settings.theme.dark")}>{i18n.t("settings.theme.dark")}</Select.Item>
@@ -129,7 +114,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-3 gap-2">
+          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {#each [["title", "appearance.fontTitle"], ["body", "appearance.fontBody"], ["mono", "appearance.fontMono"]] as [key, labelKey] (key)}
               {@const k = key as "title" | "body" | "mono"}
               <div class="flex min-w-0 flex-col gap-1">
@@ -153,28 +138,31 @@
                   <span class="size-5 shrink-0 rounded border border-border" style:background-color={theme.colors[token]}></span>
                   <TooltipSimple title={token}>
                     {#snippet children(tp)}
-                      <span {...tp} class={cn("w-28 shrink-0 truncate font-mono", text.indicator)}>{token}</span>
+                      <span {...tp} class={cn(field.editorLabel, "font-mono", text.indicator)}>{token}</span>
                     {/snippet}
                   </TooltipSimple>
-                  <Input class="h-7 min-w-0 flex-1 font-mono text-[11px]" bind:value={theme.colors[token as keyof ThemeColors]} />
+                  <Input density="compact" class={cn(field.editor, "flex-1")} bind:value={theme.colors[token as keyof ThemeColors]} />
                 </div>
               {/each}
             </div>
             <div class="mt-1 flex items-center gap-2">
-              <span class={cn("w-28 shrink-0", text.meta)}>{i18n.t("appearance.radius")}</span>
-              <Input class="h-7 flex-1" value={theme.radius ?? ""} oninput={(e) => (theme.radius = e.currentTarget.value || undefined)} />
+              <span class={cn(field.editorLabel, text.meta)}>{i18n.t("appearance.radius")}</span>
+              <Input density="compact" class={cn(field.editor, "flex-1")} value={theme.radius ?? ""} oninput={(e) => (theme.radius = e.currentTarget.value || undefined)} />
             </div>
           </div>
         </div>
-      {:else}
+      </Tabs.Content>
+      <Tabs.Content value="json">
         <div class="flex flex-col gap-2">
           <p class={text.meta}>{i18n.t("appearance.jsonHelp")}</p>
           <Textarea class="h-72 font-mono text-[11px]" bind:value={jsonText} spellcheck={false} />
           {#if jsonError}<p class={cn("text-destructive", text.body)}>{jsonError}</p>{/if}
           <Button variant="outline" size="sm" class="self-start" onclick={applyJson}>{i18n.t("appearance.applyJson")}</Button>
         </div>
-      {/if}
-    </div>
+      </Tabs.Content>
+      </div>
+      {/snippet}
+    </EditorModeTabs>
 
     <Dialog.Footer>
       <Button variant="outline" onclick={oncancel}>{i18n.t("common.cancel")}</Button>

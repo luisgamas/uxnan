@@ -312,7 +312,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[600px]">
+  <Dialog.Content size="large">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("launcher.dialogTitle", { name: repo.name })}</Dialog.Title>
       <Dialog.Description>{i18n.t("launcher.dialogDesc")}</Dialog.Description>
@@ -469,8 +469,10 @@
     </div>
 
     <Dialog.Footer class="items-center sm:justify-between">
-      <button
-        class={cn("inline-flex items-center gap-1.5 text-left transition-colors hover:text-foreground", text.meta)}
+      <Button
+        variant="ghost"
+        size="sm"
+        class={cn("justify-start", text.meta)}
         onclick={() => {
           open = false;
           app.openSettings("agents");
@@ -478,7 +480,7 @@
       >
         <Icon icon={SettingsIcon} class={icon.decorative} />
         {i18n.t("agent.configure")}
-      </button>
+      </Button>
       <Button onclick={submit} disabled={!canSubmit || busy || (isNew && wtLoading)}>
         {#if busy}
           <Spinner data-icon="inline-start" aria-label={i18n.t("common.loading")} />

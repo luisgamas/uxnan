@@ -6,7 +6,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, overlay, row as rowStyle, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import VirtualList from "./VirtualList.svelte";
   import DialogHints from "./DialogHints.svelte";
@@ -41,7 +41,7 @@
 
   // Keep the highlight within range as the filtered list changes.
   $effect(() => {
-    if (activeIdx >= items.length) activeIdx = Math.max(0, items.length - 1);
+    activeIdx = items.length === 0 ? -1 : Math.min(activeIdx, items.length - 1);
   });
 
   function choose(i: number) {
@@ -54,10 +54,10 @@
   function onkeydown(e: KeyboardEvent) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      activeIdx = Math.min(items.length - 1, activeIdx + 1);
+      if (items.length > 0) activeIdx = Math.min(items.length - 1, Math.max(0, activeIdx + 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      activeIdx = Math.max(0, activeIdx - 1);
+      if (items.length > 0) activeIdx = Math.max(0, activeIdx - 1);
     } else if (e.key === "Enter") {
       e.preventDefault();
       choose(activeIdx);
@@ -66,21 +66,25 @@
 </script>
 
 <Dialog.Root bind:open={projects.paletteOpen}>
-  <Dialog.Content class="gap-0 overflow-hidden p-0 sm:max-w-xl">
+  <Dialog.Content size="palette" composition="sectioned" class="overflow-hidden">
     <Dialog.Title class="sr-only">{i18n.t("palette.title")}</Dialog.Title>
     <Dialog.Description class="sr-only">{i18n.t("palette.placeholder")}</Dialog.Description>
 
     <!-- Search: the field is the focal point — a roomy input row over a hairline. -->
-    <div class="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
+    <div class="flex items-center gap-3 border-b border-border/60 px-5 py-4 pr-12">
       <Icon icon={SearchIcon} class={cn(icon.button, "shrink-0 text-muted-foreground")} />
       <input
         bind:this={inputEl}
         bind:value={query}
         {onkeydown}
         placeholder={i18n.t("palette.placeholder")}
-        class="min-w-0 flex-1 bg-transparent text-[15px] leading-6 outline-none placeholder:text-muted-foreground/60"
+        class="min-w-0 flex-1 bg-transparent text-[15px] leading-6 outline-none placeholder:text-muted-foreground/60 {focus.ring}"
         autocomplete="off"
         spellcheck="false"
+        role="combobox"
+        aria-controls="worktree-search-results"
+        aria-expanded={projects.paletteOpen}
+        aria-activedescendant={activeIdx >= 0 ? `worktree-search-result-${activeIdx}` : undefined}
       />
       {#if items.length > 0}
         <span class={cn("shrink-0 tabular-nums text-muted-foreground/60", text.indicator)}>
@@ -91,19 +95,24 @@
 
     <!-- Listing: two-line rows (branch over its path) with a soft leading glyph
          chip and the repo as a trailing tag, so each result reads at a glance. -->
+    <div id="worktree-search-results" role="listbox" aria-label={i18n.t("palette.title")}>
     {#if items.length === 0}
       <div class="flex flex-col items-center gap-2.5 px-4 py-12 text-center">
         <Icon icon={SearchIcon} class="size-6 text-muted-foreground/40" />
         <p class={text.meta}>{i18n.t("palette.empty")}</p>
       </div>
     {:else}
-      <VirtualList {items} estimateSize={52} activeIndex={activeIdx} class="max-h-[22rem] p-2">
-        {#snippet row(w, i)}
+        <VirtualList {items} estimateSize={52} activeIndex={activeIdx} class={cn(overlay.paletteViewport, "p-2")}>
+          {#snippet row(w, i)}
           <button
             class={cn(
-              "flex h-[52px] w-full items-center gap-3 rounded-lg px-2.5 text-left transition-colors",
+              rowStyle.searchResult,
+              focus.ring,
               i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
             )}
+            id={`worktree-search-result-${i}`}
+            role="option"
+            aria-selected={i === activeIdx}
             onmouseenter={() => (activeIdx = i)}
             onclick={() => choose(i)}
           >
@@ -127,10 +136,11 @@
               {w.repoName}
             </span>
           </button>
-        {/snippet}
-      </VirtualList>
+          {/snippet}
+        </VirtualList>
     {/if}
+    </div>
 
-    <DialogHints class="border-t border-border/60 bg-muted/30 px-4 py-2.5" />
+    <DialogHints />
   </Dialog.Content>
 </Dialog.Root>

@@ -110,7 +110,7 @@
         </Button>
       {/snippet}
     </Popover.Trigger>
-    <Popover.Content class={cn("w-72 p-0", contentClass)} {align}>
+    <Popover.Content width="command" padding="none" class={contentClass} {align}>
       <Command.Root>
         <Command.Input placeholder={searchPlaceholder} />
         <Command.List class="uxnan-scroll max-h-72">

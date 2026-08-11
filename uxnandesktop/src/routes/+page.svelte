@@ -16,7 +16,7 @@
   import { runAppAction } from "$lib/keyactions";
   import { isUntestedPlatform, osLabel } from "$lib/platform";
   import { cn } from "$lib/utils";
-  import { divider } from "$lib/design";
+  import { control, divider, focus, icon as iconSize, iconButton, shell } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
   import WebhookIcon from "@hugeicons/core-free-icons/WebhookIcon";
@@ -288,7 +288,7 @@
   </div>
 {/snippet}
 
-<div class="flex h-screen w-screen flex-col bg-background text-foreground">
+<div class={cn("flex h-screen w-screen flex-col", shell.root)}>
   <!-- Non-blocking toasts (errors + successes) -->
   <Toaster position="bottom-right" />
 
@@ -327,7 +327,7 @@
       {#if app.settings.leftSidebarOpen}
         <!-- Region: Left sidebar (Projects panel) — brand · quick actions · projects. -->
         <aside
-          class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+          class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
           style="width: {app.settings.leftSidebarWidth}px"
         >
           <LeftSidebar />
@@ -355,7 +355,7 @@
           {@render resizeHandle("right")}
 
           <aside
-            class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+            class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
             style="width: {clamp(app.settings.rightSidebarWidth, rightPanel.min, RIGHT_MAX)}px"
           >
             <RightPanel />
@@ -369,7 +369,7 @@
         <!-- 4th panel: the integrated developer browser. The toolbar is here; the
              page is a docked WebviewWindow positioned over the panel's content. -->
         <aside
-          class="flex shrink-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground"
+          class={cn("flex shrink-0 flex-col overflow-hidden", shell.sidebar)}
           style="width: {browserWidth()}px"
         >
           <BrowserPanel />
@@ -380,13 +380,13 @@
     <!-- Status bar: breadcrumb (left) · backend + panel toggles (right) -->
     <!-- Region: Status bar — breadcrumb (left) · backend + panel toggles (right). -->
     <footer
-      class={cn("flex h-7 shrink-0 items-center gap-2 px-2 text-xs text-muted-foreground", divider.top)}
+      class={cn(shell.statusBar, divider.top)}
     >
       <!-- Active workspace breadcrumb -->
       <TooltipSimple title={i18n.t("terminal.context")}>
         {#snippet children(props)}
           <div {...props} class="inline-flex min-w-0 items-center gap-1">
-            <Icon icon={LayersIcon} class="size-3 shrink-0" />
+            <Icon icon={LayersIcon} class={cn(iconSize.decorative, "shrink-0")} />
             {#if ctx.repo}
               <span class="truncate">{ctx.repo}</span>
               <span class="text-muted-foreground/50">/</span>
@@ -405,7 +405,7 @@
               {...props}
               class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
             >
-              <Icon icon={TriangleAlertIcon} class="size-3.5" />
+              <Icon icon={TriangleAlertIcon} class={iconSize.decorative} />
               {i18n.t("status.untested", { os: osLabel() })}
             </span>
           {/snippet}
@@ -416,10 +416,11 @@
           {#snippet children(props)}
             <button
               {...props}
-              class="inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400"
+              class={cn(control.dense, "inline-flex items-center gap-1 text-amber-600 hover:text-amber-500 dark:text-amber-400", focus.ring)}
+              aria-label={i18n.t("status.hooksIssue")}
               onclick={() => app.openSettings("hooks")}
             >
-              <Icon icon={WebhookIcon} class="size-3.5" />
+              <Icon icon={WebhookIcon} class={iconSize.action} />
               {i18n.t("status.hooksIssue")}
             </button>
           {/snippet}
@@ -434,7 +435,9 @@
             <button
               {...props}
               class={cn(
+                control.dense,
                 "inline-flex items-center gap-1 rounded px-1 transition-colors",
+                focus.ring,
                 orchestrationAttention
                   ? "text-foreground ring-1 ring-primary/40 bg-primary/5"
                   : "text-muted-foreground hover:text-foreground",
@@ -442,7 +445,7 @@
               aria-label={i18n.t("orchestration.open")}
               onclick={openOrchestration}
             >
-              <Icon icon={WorkflowIcon} class="size-3.5" />
+              <Icon icon={WorkflowIcon} class={iconSize.action} />
               {liveAgents.length}
               {#if orchestration.pendingTotal > 0}
                 <span class="size-1.5 shrink-0 rounded-full bg-primary"></span>
@@ -465,7 +468,9 @@
           <button
             {...props}
             class={cn(
-              "flex size-6 items-center justify-center rounded",
+              iconButton.xs,
+              "flex items-center justify-center rounded",
+              focus.ring,
               app.settings.leftSidebarOpen
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -474,7 +479,7 @@
             aria-pressed={app.settings.leftSidebarOpen}
             onclick={toggleLeftSidebar}
           >
-            <Icon icon={PanelLeftIcon} class="size-3.5" />
+            <Icon icon={PanelLeftIcon} class={iconSize.action} />
           </button>
         {/snippet}
       </TooltipSimple>
@@ -483,7 +488,9 @@
           <button
             {...props}
             class={cn(
-              "flex size-6 items-center justify-center rounded",
+              iconButton.xs,
+              "flex items-center justify-center rounded",
+              focus.ring,
               app.settings.rightSidebarOpen
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -492,7 +499,7 @@
             aria-pressed={app.settings.rightSidebarOpen}
             onclick={toggleRightSidebar}
           >
-            <Icon icon={PanelRightIcon} class="size-3.5" />
+            <Icon icon={PanelRightIcon} class={iconSize.action} />
           </button>
         {/snippet}
       </TooltipSimple>
@@ -502,7 +509,9 @@
             <button
               {...props}
               class={cn(
-                "flex size-6 items-center justify-center rounded",
+                iconButton.xs,
+                "flex items-center justify-center rounded",
+                focus.ring,
                 app.browserOpen
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -511,7 +520,7 @@
               aria-pressed={app.browserOpen}
               onclick={() => app.toggleBrowser()}
             >
-              <Icon icon={GlobeIcon} class="size-3.5" />
+              <Icon icon={GlobeIcon} class={iconSize.action} />
             </button>
           {/snippet}
         </TooltipSimple>

@@ -15,7 +15,7 @@
     if (!o) saveDiscard.choose("cancel");
   }}
 >
-  <Dialog.Content class="sm:max-w-[440px]">
+  <Dialog.Content size="small">
     <Dialog.Header>
       <Dialog.Title>{saveDiscard.title}</Dialog.Title>
       {#if saveDiscard.description}

@@ -6,8 +6,9 @@
   // commits on Enter/blur (when non-empty and changed), cancels on Escape, and keeps
   // the field focused on a failed Enter so the error can be fixed.
   import { untrack, type Snippet } from "svelte";
+  import { Input } from "$lib/components/ui/input";
   import { cn } from "$lib/utils";
-  import { text } from "$lib/design";
+  import { row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
 
   let {
@@ -40,11 +41,14 @@
   let value = $state(untrack(() => initial));
   let busy = $state(false);
   let error = $state<string | null>(null);
+  let inputRef = $state<HTMLInputElement | null>(null);
   // Guards against a late blur firing after Enter/Escape already resolved the input.
   let settled = false;
 
   /** Focus + reveal the input once it mounts (the menu that opened it has closed). */
-  function focusInput(el: HTMLInputElement) {
+  $effect(() => {
+    if (!inputRef) return;
+    const el = inputRef;
     queueMicrotask(() => {
       el.focus();
       el.scrollIntoView({ block: "nearest" });
@@ -54,7 +58,7 @@
         el.setSelectionRange(0, dot > 0 ? dot : el.value.length);
       }
     });
-  }
+  });
 
   async function commit(fromBlur: boolean) {
     if (busy || settled) return;
@@ -89,25 +93,20 @@
 
 <div class="flex flex-col">
   <div
-    class="flex h-7 w-full items-center gap-1 rounded-md pr-1"
+    class={cn(row.list, "gap-1 pr-1")}
     style="padding-left: {indent}px"
   >
     {@render icon?.()}
-    <input
-      use:focusInput
+    <Input
+      bind:ref={inputRef}
       bind:value
+      density="compact"
       spellcheck={false}
       autocomplete="off"
       {placeholder}
       aria-label={ariaLabel}
       aria-invalid={error ? "true" : undefined}
-      class={cn(
-        "min-w-0 flex-1 rounded-sm border bg-background px-1.5 py-0.5 outline-none placeholder:text-muted-foreground/50",
-        text.body,
-        error
-          ? "border-destructive focus-visible:ring-2 focus-visible:ring-destructive/30"
-          : "border-ring/50 focus-visible:ring-2 focus-visible:ring-ring/30",
-      )}
+      class={cn("min-w-0 flex-1 rounded-sm px-1.5", text.body)}
       onkeydown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();

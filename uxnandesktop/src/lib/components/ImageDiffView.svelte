@@ -14,14 +14,14 @@
     $props();
 </script>
 
-<div class="grid h-full min-h-0 grid-cols-2 gap-2">
+<div class="grid h-full min-h-0 min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
   <!-- Before (HEAD / index). -->
   <figure class="flex min-h-0 flex-col gap-1.5">
     <figcaption class={cn("flex items-center gap-1.5", text.section)}>
       <Icon icon={ImageIcon} class="size-3.5 text-muted-foreground" />
       {i18n.t("diff.imageBefore")}
     </figcaption>
-    <div class="ux-checker flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-md border border-border p-2">
+    <div class="ux-checker flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto rounded-md border border-border/60 p-2">
       {#if oldSrc}
         <img src={oldSrc} alt={i18n.t("diff.imageBefore")} class="max-h-full max-w-full object-contain" />
       {:else}
@@ -39,7 +39,7 @@
       <Icon icon={ImageIcon} class="size-3.5 text-muted-foreground" />
       {i18n.t("diff.imageAfter")}
     </figcaption>
-    <div class="ux-checker flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-md border border-border p-2">
+    <div class="ux-checker flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto rounded-md border border-border/60 p-2">
       {#if newSrc}
         <img src={newSrc} alt={i18n.t("diff.imageAfter")} class="max-h-full max-w-full object-contain" />
       {:else}

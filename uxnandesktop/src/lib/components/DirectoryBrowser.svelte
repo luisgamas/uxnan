@@ -15,7 +15,7 @@
   import { Spinner } from "$lib/components/ui/spinner";
   import { browseDirs, browseSetWatch } from "$lib/api";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { icon, row, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import type { BrowseChangedEvent, DirEntry, DirListing } from "$lib/types";
@@ -222,7 +222,7 @@
         {...tp}
         variant="outline"
         size="icon-sm"
-        class="size-8 shrink-0"
+        class="shrink-0"
         disabled={!listing?.parent || loading}
         onclick={() => listing?.parent && go(listing.parent)}
       >
@@ -235,7 +235,8 @@
       class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80"
     />
     <Input
-      class="h-8 w-full pl-8 font-mono text-xs"
+      density="compact"
+      class="w-full pl-8 font-mono text-xs"
       placeholder={i18n.t("picker.pathPlaceholder")}
       bind:value={pathInput}
       spellcheck={false}
@@ -248,7 +249,7 @@
         {...tp}
         variant="outline"
         size="icon-sm"
-        class="size-8 shrink-0"
+        class="shrink-0"
         disabled={!listing || loading}
         onclick={refresh}
       >
@@ -280,7 +281,7 @@
       <div
         data-active={i === activeIdx}
         class={cn(
-          "group flex h-9 items-center gap-2.5 rounded-md px-2",
+          row.list,
           i === activeIdx ? "bg-accent" : "hover:bg-accent/50",
         )}
         onmouseenter={() => (activeIdx = i)}

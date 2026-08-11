@@ -29,7 +29,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[460px]">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("worktree.noteTitle")}</Dialog.Title>
       <Dialog.Description class="break-words">

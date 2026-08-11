@@ -848,6 +848,8 @@ export const es: Record<MessageKey, string> = {
   "titlebar.minimize": "Minimizar",
   "titlebar.maximize": "Maximizar",
   "titlebar.close": "Cerrar",
+  "titlebar.controls": "Controles de ventana",
+  "terminal.tabs": "Pestañas de terminal",
 
   // Right panel (changes / review)
   "rightPanel.changes": "Cambios",

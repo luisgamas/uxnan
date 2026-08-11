@@ -23,6 +23,8 @@
   import { runAppAction } from "$lib/keyactions";
   import { terminalKeyboard } from "$lib/state/terminalKeyboard.svelte";
   import { agentStatus } from "$lib/state/agentStatus.svelte";
+  import { control, focus } from "$lib/design";
+  import { cn } from "$lib/utils";
 
   // This component is the VIEW of a terminal: it adopts the persistent xterm
   // instance for `id` (see `$lib/terminal/instances`), parents its element into
@@ -819,7 +821,7 @@
     <!-- Focus mode: every key goes to the TUI/agent. Click to turn it back off. -->
     <button
       type="button"
-      class="absolute right-2 top-1.5 z-10 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 py-[3px] text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-amber-500"
+      class={cn("absolute right-2 top-1.5 z-10 flex items-center gap-1 rounded-full bg-amber-500/90 px-2 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-amber-500", control.dense, focus.ring)}
       title={i18n.t("terminal.focusModeOn")}
       onclick={() => terminalKeyboard.toggle(id)}
     >

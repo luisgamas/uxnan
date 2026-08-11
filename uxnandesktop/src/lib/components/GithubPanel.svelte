@@ -12,7 +12,7 @@
   import { resourceMode } from "$lib/state/resourceMode.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { iconButton, text, surface } from "$lib/design";
+  import { iconButton, row, text, surface } from "$lib/design";
   import { githubRunList, githubPrList, githubIssueList, openExternal } from "$lib/api";
   import { relTimeLong } from "$lib/relTime";
   import {
@@ -259,7 +259,7 @@
           <Button
             variant="outline"
             size="sm"
-            class="h-7 flex-1"
+            class="flex-1"
             onclick={() => openSection("pulls", { kind: "pr", number: pr.number })}
           >
             {i18n.t("github.pr.review")}
@@ -315,7 +315,7 @@
         {#each prs as pr (pr.number)}
           {@const glyph = prStateIcon(pr.state, pr.isDraft)}
           <button
-            class="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/50"
+            class={cn(row.list, row.listInactive)}
             onclick={() => openSection("pulls", { kind: "pr", number: pr.number })}
           >
             <Icon icon={glyph} class={cn("size-3.5 shrink-0", prStateIconClass(pr.state, pr.isDraft))} />
@@ -340,7 +340,7 @@
       <div class="mb-3 flex flex-col gap-px">
         {#each runs as run (run.databaseId)}
           <button
-            class="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/50"
+            class={cn(row.list, row.listInactive)}
             onclick={() =>
               openSection("actions", {
                 kind: "run",
@@ -370,9 +370,9 @@
       <div class="flex flex-col gap-px">
         {#each issues as issue (issue.number)}
           {@const glyph = issueStateIcon(issue.state)}
-          <div class="group flex items-center gap-1 rounded-md pr-1 hover:bg-accent/50">
+          <div class={cn("group", row.list, "pr-1")}>
             <button
-              class="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1.5 text-left"
+              class="min-w-0 flex-1 text-left"
               onclick={() => openSection("issues", { kind: "issue", number: issue.number })}
             >
               <Icon icon={glyph} class={cn("size-3.5 shrink-0", issueStateIconClass(issue.state))} />

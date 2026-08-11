@@ -10,7 +10,7 @@
   import { projects } from "$lib/state/projects.svelte";
   import { agentLogoKey } from "$lib/agentCatalog";
   import { cn } from "$lib/utils";
-  import { icon, iconButton, text } from "$lib/design";
+  import { icon, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import type { RepoData } from "$lib/types";
@@ -70,8 +70,8 @@
     {#snippet child({ props })}
       <Button
         variant="ghost"
-        size="icon"
-        class={cn(iconButton.xs, triggerClass)}
+        size="icon-xs"
+        class={triggerClass}
         title={title ?? i18n.t("launcher.open", { name: repo.name })}
         onclick={(e: MouseEvent) => e.stopPropagation()}
         {...props}
@@ -80,7 +80,7 @@
       </Button>
     {/snippet}
   </DropdownMenu.Trigger>
-  <DropdownMenu.Content {align} class="min-w-56">
+  <DropdownMenu.Content width="wide" {align}>
     {#if target}
       {@const t = target}
       <!-- Single-worktree mode (center "+"): sections by type. -->

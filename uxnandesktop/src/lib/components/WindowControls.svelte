@@ -7,6 +7,10 @@
   import MinusIcon from "@hugeicons/core-free-icons/MinusSignIcon";
   import SquareIcon from "@hugeicons/core-free-icons/SquareIcon";
   import XIcon from "@hugeicons/core-free-icons/Cancel01Icon";
+  import { focus, shell } from "$lib/design";
+  import { icon as iconSize } from "$lib/design";
+  import { isMac } from "$lib/keybindings";
+  import { cn } from "$lib/utils";
 
   // Window controls degrade gracefully in a plain browser (no Tauri runtime).
   function windowAction(fn: (w: ReturnType<typeof getCurrentWindow>) => void) {
@@ -18,18 +22,20 @@
   }
 
   const btn =
-    "flex h-9 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+    `${shell.titlebarControl} ${focus.ring} text-muted-foreground transition-colors hover:bg-accent hover:text-foreground`;
 </script>
 
-<!-- Window controls. The OS chrome is disabled (`decorations: false`), so these
-     are the only minimize/maximize/close affordance. They're fixed to the
+<!-- Windows/Linux use custom controls because their OS chrome is disabled.
+     macOS keeps its native traffic lights and only renders Quick Commands here.
+     The controls are fixed to the
      top-right of the viewport — not nested inside the right panel — so they stay
      reachable even when that panel is hidden (otherwise hiding it would leave no
      way to close the window). -->
-<div class="fixed right-0 top-0 z-50 flex select-none items-center">
+<div class={cn(shell.appBarOverlay, shell.titlebar)} role="toolbar" aria-label={i18n.t("titlebar.controls")}>
   <!-- Quick-commands launcher: its own slot to the left of the window controls,
        so a hidden panel never covers it (same rationale as the controls). -->
   <QuickCommandsMenu />
+  {#if !isMac}
   <TooltipSimple title={i18n.t("titlebar.minimize")}>
     {#snippet children(tp)}
       <button
@@ -38,7 +44,7 @@
         aria-label={i18n.t("titlebar.minimize")}
         onclick={() => windowAction((w) => w.minimize())}
       >
-        <Icon icon={MinusIcon} class="size-4" />
+        <Icon icon={MinusIcon} class={iconSize.windowControl} />
       </button>
     {/snippet}
   </TooltipSimple>
@@ -50,7 +56,7 @@
         aria-label={i18n.t("titlebar.maximize")}
         onclick={() => windowAction((w) => w.toggleMaximize())}
       >
-        <Icon icon={SquareIcon} class="size-3.5" />
+        <Icon icon={SquareIcon} class={iconSize.windowMaximize} />
       </button>
     {/snippet}
   </TooltipSimple>
@@ -58,12 +64,13 @@
     {#snippet children(tp)}
       <button
         {...tp}
-        class="flex h-9 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
+        class={`${shell.titlebarControl} ${focus.ring} text-muted-foreground transition-colors hover:bg-destructive hover:text-white`}
         aria-label={i18n.t("titlebar.close")}
         onclick={() => windowAction((w) => w.close())}
       >
-        <Icon icon={XIcon} class="size-4" />
+        <Icon icon={XIcon} class={iconSize.windowControl} />
       </button>
     {/snippet}
   </TooltipSimple>
+  {/if}
 </div>

@@ -56,7 +56,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="flex min-w-0 flex-col gap-4 sm:max-w-[520px]" showCloseButton={false}>
+  <Dialog.Content size="medium" class="flex min-w-0 flex-col" showCloseButton={false}>
     <div class="flex min-w-0 gap-3">
       <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10">
         <Icon icon={CircleCheckIcon} class={cn(icon.button, "text-sky-500")} />

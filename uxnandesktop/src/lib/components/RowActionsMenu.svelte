@@ -100,7 +100,7 @@
   }
 </script>
 
-<ContextMenu.Content>
+<ContextMenu.Content width="wide">
   <!-- Terminals -->
   <ContextMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path)}>
     <Icon icon={TerminalIcon} />
@@ -113,7 +113,7 @@
         <Icon icon={TerminalIcon} />
         {i18n.t("ctx.terminalProfiles")}
       </ContextMenu.SubTrigger>
-      <ContextMenu.SubContent>
+      <ContextMenu.SubContent width="standard">
         {#each profiles as p (p.id)}
           <ContextMenu.Item class={text.menu} onclick={() => projects.openTerminalAt(path, p.id)}>
             <Icon icon={TerminalIcon} />
@@ -132,7 +132,7 @@
       <Icon icon={BotIcon} />
       {i18n.t("ctx.launchAgent")}
     </ContextMenu.SubTrigger>
-    <ContextMenu.SubContent>
+    <ContextMenu.SubContent width="standard">
       {#if launchable.length}
         {#each launchable as a (a.id)}
           <ContextMenu.Item class={text.menu} onclick={() => projects.launchAgentAt(path, a)}>
@@ -151,7 +151,7 @@
         <Icon icon={ActivityIcon} />
         {i18n.t("ctx.activeAgents")}
       </ContextMenu.SubTrigger>
-      <ContextMenu.SubContent>
+      <ContextMenu.SubContent width="standard">
         {#each activeAgents as t (t.id)}
           {@const d = resolveAgentDisplay(t)}
           <ContextMenu.Item
@@ -230,7 +230,7 @@
       <Icon icon={SettingsIcon} />
       {i18n.t("ctx.configure")}
     </ContextMenu.SubTrigger>
-    <ContextMenu.SubContent>
+    <ContextMenu.SubContent width="standard">
       <ContextMenu.Item class={text.menu} onclick={() => app.openSettings("agents")}>
         <Icon icon={BotIcon} />
         {i18n.t("agent.configure")}
@@ -252,7 +252,7 @@
         <Icon icon={GitPullRequestIcon} />
         {i18n.t("github.title")}
       </ContextMenu.SubTrigger>
-      <ContextMenu.SubContent>
+      <ContextMenu.SubContent width="standard">
         <!-- The heading MUST sit inside a Group: bits-ui resolves it through the
              group context and throws without one, which silently kills the whole
              submenu (it never renders). -->

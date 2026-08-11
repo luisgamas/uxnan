@@ -23,7 +23,7 @@
   import { terminals } from "$lib/state/terminals.svelte";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, panel, row as designRow, text } from "$lib/design";
   import { removalDefaults, type RemovalWarning } from "$lib/worktree-removal";
   import { Icon } from "$lib/components/ui/icon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
@@ -121,7 +121,7 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="flex min-w-0 flex-col gap-4 sm:max-w-[460px]" showCloseButton={false}>
+  <Dialog.Content size="small" class="flex min-w-0 flex-col" showCloseButton={false}>
     <div class="flex min-w-0 gap-3">
       <div
         class={cn(
@@ -158,13 +158,9 @@
 
     <!-- Opt-in branch cleanup (only when the worktree is on a branch). -->
     {#if row.branch}
-      <div class="flex flex-col gap-1 rounded-lg border border-border/60 p-1.5">
-        <button
-          type="button"
-          class="flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/40"
-          onclick={toggleLocal}
-        >
-          <Checkbox checked={deleteLocal} tabindex={-1} class="pointer-events-none" />
+      <div class={cn(panel.card, "flex flex-col gap-1 p-1.5 shadow-none")}>
+        <label class={cn(designRow.choice, "cursor-pointer justify-start")}>
+          <Checkbox checked={deleteLocal} onCheckedChange={toggleLocal} />
           <span class={cn("min-w-0 flex-1", text.body)}>
             {i18n.t("worktree.deleteLocalBranch")}
             <code class="ml-0.5 break-all text-[11px] text-muted-foreground">{row.branch}</code>
@@ -172,20 +168,16 @@
               <span class="block {text.meta}">{i18n.t("close.safeDelete")}</span>
             {/if}
           </span>
-        </button>
+        </label>
 
         {#if remoteExists}
-          <button
-            type="button"
-            class="flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/40"
-            onclick={() => (deleteRemote = !deleteRemote)}
-          >
-            <Checkbox checked={deleteRemote} tabindex={-1} class="pointer-events-none" />
+          <label class={cn(designRow.choice, "cursor-pointer justify-start")}>
+            <Checkbox checked={deleteRemote} onCheckedChange={() => (deleteRemote = !deleteRemote)} />
             <span class={cn("min-w-0 flex-1", text.body)}>
               {i18n.t("worktree.deleteRemoteBranch")}
               <code class="ml-0.5 break-all text-[11px] text-muted-foreground">origin/{row.branch}</code>
             </span>
-          </button>
+          </label>
         {/if}
       </div>
     {/if}
@@ -206,7 +198,9 @@
     <Collapsible.Root bind:open={advancedOpen}>
       <Collapsible.Trigger
         class={cn(
-          "flex w-full items-center gap-1 rounded-md px-1 py-1 text-left text-muted-foreground transition-colors hover:text-foreground",
+          designRow.editorDisclosure,
+          focus.ring,
+          "flex w-full items-center gap-1 text-muted-foreground transition-colors hover:text-foreground",
           text.body,
         )}
       >
@@ -216,34 +210,29 @@
         {i18n.t("worktree.advanced")}
       </Collapsible.Trigger>
       <Collapsible.Content>
-        <div class="mt-1 flex flex-col gap-1 rounded-lg border border-border/60 p-1.5">
+        <div class={cn(panel.card, "mt-1 flex flex-col gap-1 p-1.5 shadow-none")}>
           {#if row.branch}
-            <button
-              type="button"
-              class="flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/40"
-              onclick={() => {
-                forceLocal = !forceLocal;
-                if (forceLocal) deleteLocal = true;
-              }}
-            >
-              <Checkbox checked={forceLocal} tabindex={-1} class="pointer-events-none" />
+            <label class={cn(designRow.choice, "cursor-pointer justify-start")}>
+              <Checkbox
+                checked={forceLocal}
+                onCheckedChange={() => {
+                  forceLocal = !forceLocal;
+                  if (forceLocal) deleteLocal = true;
+                }}
+              />
               <span class={cn("min-w-0 flex-1", text.body)}>
                 {i18n.t("worktree.forceDeleteBranch")}
                 <span class="block {text.meta}">{i18n.t("worktree.forceDeleteBranchWhy")}</span>
               </span>
-            </button>
+            </label>
           {/if}
-          <button
-            type="button"
-            class="flex w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left hover:bg-accent/40"
-            onclick={() => (forceRemove = !forceRemove)}
-          >
-            <Checkbox checked={forceRemove} tabindex={-1} class="pointer-events-none" />
+          <label class={cn(designRow.choice, "cursor-pointer justify-start")}>
+            <Checkbox checked={forceRemove} onCheckedChange={() => (forceRemove = !forceRemove)} />
             <span class={cn("min-w-0 flex-1", text.body)}>
               {i18n.t("worktree.forceRemoveOption")}
               <span class="block {text.meta}">{i18n.t("worktree.forceRemoveOptionWhy")}</span>
             </span>
-          </button>
+          </label>
         </div>
       </Collapsible.Content>
     </Collapsible.Root>

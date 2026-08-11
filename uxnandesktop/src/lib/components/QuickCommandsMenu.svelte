@@ -9,7 +9,7 @@
   import { app } from "$lib/state/app.svelte";
   import { projects } from "$lib/state/projects.svelte";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, shell, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { contextualQuickCommands, globalQuickCommands } from "$lib/quickCommands";
   import type { QuickCommand } from "$lib/types";
@@ -53,15 +53,15 @@
     {#snippet child({ props })}
       <button
         {...props}
-        class="flex h-9 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+        class={`${shell.titlebarLauncher} ${focus.ring} text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground`}
         aria-label={i18n.t("commands.menuTitle")}
         title={i18n.t("commands.menuTitle")}
       >
-        <Icon icon={EnergyIcon} class="size-4" />
+        <Icon icon={EnergyIcon} class={icon.button} />
       </button>
     {/snippet}
   </DropdownMenu.Trigger>
-  <DropdownMenu.Content align="end" class="min-w-56">
+  <DropdownMenu.Content width="wide" align="end">
     {#if isEmpty}
       <div class={cn("px-2 py-1.5", text.meta)}>{i18n.t("commands.empty")}</div>
       <DropdownMenu.Separator />

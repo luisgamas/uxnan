@@ -846,6 +846,8 @@ export const en = {
   "titlebar.minimize": "Minimize",
   "titlebar.maximize": "Maximize",
   "titlebar.close": "Close",
+  "titlebar.controls": "Window controls",
+  "terminal.tabs": "Terminal tabs",
 
   // Right panel (changes / review)
   "rightPanel.changes": "Changes",

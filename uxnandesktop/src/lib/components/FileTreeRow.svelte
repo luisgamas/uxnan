@@ -6,7 +6,7 @@
   // is pointer-based and the panel owns the gesture state, passing begin/move/end here.
   import type { FsEntry } from "$lib/types";
   import { cn } from "$lib/utils";
-  import { icon, text } from "$lib/design";
+  import { focus, icon, row, text } from "$lib/design";
   import { i18n } from "$lib/i18n";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import * as ContextMenu from "$lib/components/ui/context-menu";
@@ -113,7 +113,9 @@
             type="button"
             data-path={entry.path}
             class={cn(
-              "flex h-7 w-full items-center gap-1 rounded-md pr-1 text-left",
+              row.list,
+              focus.ring,
+              "gap-1 pr-1",
               // Two independent marks, in priority order. The *selection* (last-clicked
               // row) is the loud one and clears on Esc / a click in the empty area —
               // VSCode-style. Under it, the file the center area is currently showing
@@ -121,11 +123,13 @@
               // you opened lives without it competing with the selection. Merely being
               // open in some tab still gets nothing but bolder text (below).
               selected
-                ? "bg-primary/15 ring-1 ring-inset ring-primary/25"
+                ? row.listActive
                 : activeFile
                   ? "bg-foreground/[0.055] hover:bg-foreground/[0.075]"
                   : "hover:bg-accent/40",
             )}
+            aria-label={rel}
+            aria-expanded={entry.isDir ? isExpanded : undefined}
             style="padding-left: {depth * 12 + 2}px"
             onpointerdown={(e) => {
               dragged = false;

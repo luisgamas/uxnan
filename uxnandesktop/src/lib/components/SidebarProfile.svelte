@@ -94,7 +94,7 @@
     </DropdownMenu.Trigger>
     <!-- Opens to the right of the sidebar, bottom-aligned so it grows upward and
          never runs off the bottom of the window. -->
-    <DropdownMenu.Content side="right" align="end" sideOffset={8} class="min-w-56">
+    <DropdownMenu.Content width="wide" side="right" align="end" sideOffset={8}>
       <!-- Identity header (mirrors the card, anchors the menu). -->
       <div class="flex items-center gap-2.5 px-2 py-1.5">
         <span
@@ -139,7 +139,7 @@
             <Icon icon={PawPrintIcon} class={cn(icon.button, "opacity-0")} />
             <span class="flex-1">{i18n.t("pets.choose")}</span>
           </DropdownMenu.SubTrigger>
-          <DropdownMenu.SubContent class="max-h-72 min-w-48 overflow-y-auto">
+          <DropdownMenu.SubContent width="standard" viewport="compact">
             {#each pets.library as p (p.id)}
               <DropdownMenu.Item
                 class={cn(text.menu, "gap-2")}

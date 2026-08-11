@@ -13,11 +13,8 @@
   import { aiCommitAgents } from "$lib/api";
   import { i18n } from "$lib/i18n";
   import { cn } from "$lib/utils";
-  import { divider, icon, iconButton, text } from "$lib/design";
-  import { Button } from "$lib/components/ui/button";
-  import { TooltipSimple } from "$lib/components/ui/tooltip";
+  import { icon, row, text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
-  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import LayoutDashboardIcon from "@hugeicons/core-free-icons/DashboardSquare01Icon";
   import CalendarClockIcon from "@hugeicons/core-free-icons/CalendarClockIcon";
   import HistoryIcon from "@hugeicons/core-free-icons/HistoryIcon";
@@ -28,6 +25,7 @@
   import AutomationRuns from "./automations/AutomationRuns.svelte";
   import AutomationTemplates from "./automations/AutomationTemplates.svelte";
   import AutomationSettings from "./automations/AutomationSettings.svelte";
+  import WorkspaceAppBar from "./WorkspaceAppBar.svelte";
 
   const navGroups = [
     {
@@ -83,26 +81,7 @@
     <!-- Header. Draggable like the Settings one; the button inside is not part
          of the drag region. The right padding clears the floating window
          controls. -->
-    <header
-      data-tauri-drag-region
-      class={cn("flex h-9 shrink-0 items-center gap-2 px-3 pr-[140px]", divider.bottom)}
-    >
-      <TooltipSimple title={i18n.t("common.close")}>
-        {#snippet children(tp)}
-          <Button
-            {...tp}
-            variant="ghost"
-            size="icon-sm"
-            class={iconButton.action}
-            aria-label={i18n.t("common.close")}
-            onclick={close}
-          >
-            <Icon icon={ArrowLeftIcon} class={icon.button} />
-          </Button>
-        {/snippet}
-      </TooltipSimple>
-      <h1 class="text-sm font-semibold tracking-tight">{i18n.t("automations.title")}</h1>
-    </header>
+    <WorkspaceAppBar title={i18n.t("automations.title")} onback={close} />
 
     <div class="flex min-h-0 flex-1">
       <!-- Section rail: titled groups + settings-nav rows, the same recipe the
@@ -118,7 +97,7 @@
               {@const glyph = item.icon}
               <button
                 class={cn(
-                  "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+                  row.settingsNav,
                   app.automationsSection === item.id
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",

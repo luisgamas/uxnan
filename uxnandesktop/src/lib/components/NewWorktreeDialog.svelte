@@ -73,7 +73,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="sm:max-w-[460px]">
+  <Dialog.Content size="medium">
     <Dialog.Header>
       <Dialog.Title>{i18n.t("newWorktree.title")}</Dialog.Title>
       <Dialog.Description>

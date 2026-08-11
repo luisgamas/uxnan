@@ -30,7 +30,7 @@ named from the session's **terminal transcript** — the only material every age
 has, since only Claude reports a prompt through the hook; a hand-renamed tab
 always wins). 540 Rust tests (511 unit + 29
 integration; +7 ignored supervised live GitHub tests + 1 ignored real-scheduler
-probe) + 957 frontend Vitest tests across two
+probe) + 1,017 passing frontend Vitest tests across two
 projects — pure logic and **Svelte
 component tests** — plus a **real E2E suite** (WebdriverIO + tauri-driver: 8
 journeys, 24 tests, green on Windows, plus an opt-in GitHub journey pending its
@@ -1054,14 +1054,6 @@ durable persistence, orchestration MCP tools) — are **done** (see `CHANGELOG.m
       list in the reference UI. Needs the sanitized per-agent `auth/status` (it
       lives on the bridge side today) surfaced to the desktop settings; never show
       tokens. Where status is unknown, fall back to the command.
-- [ ] **Settings list-body polish (optional follow-up).** The section-shell
-      refactor is done — all nine sections use `SettingsSection` (consistent
-      header), settings-style sections use the `panel.settingsBody` band of
-      `SettingsRow`s, every on/off is a `Switch`, and list/editor-heavy sections
-      use the `bare` header with softened borders. Optional next polish: tighten
-      the inner list sub-content (agents catalog cards, terminal profile editors,
-      shortcut keycaps) further into the row/density recipes. Visual, review on
-      device.
 - [ ] Sidebar project-tree virtualization (worktree lists already virtualized).
 - [ ] Stronghold/keyring for any secret (never plaintext JSON) — needed with Phase 6.
 - [ ] **Grow the component and E2E layers.** Both harnesses exist and work; what
@@ -1211,7 +1203,7 @@ when an announced state exceeds the evidence. Announced today: **Windows
   (Vitest) + vite build + cargo fmt/clippy/test. CI covers `{ubuntu, windows,
   macos-14}` (via `verify-desktop.yml`'s `os-list` input; one Apple Silicon leg —
   Intel runners are being retired and the code is arch-identical); the release gate
-  keeps the default `{ubuntu, windows}`. 540 Rust + 957 Vitest tests (both
+  keeps the default `{ubuntu, windows}`. 540 Rust + 1,017 passing Vitest tests (both
   projects: pure logic and components). E2E has its own **dispatch-only** Windows
   workflow (`e2e-desktop.yml`), outside the required gate — and it does not pass
   on a hosted runner at all: E2E is a local layer, for the measured reason in the

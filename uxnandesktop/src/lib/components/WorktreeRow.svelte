@@ -17,7 +17,7 @@
   import { agentStatus as agentReports } from "$lib/state/agentStatus.svelte";
   import { clock, relTime } from "$lib/time.svelte";
   import { cn } from "$lib/utils";
-  import { icon, surface, text } from "$lib/design";
+  import { focus, icon, row as rowStyle, surface, text } from "$lib/design";
   import { TooltipSimple } from "$lib/components/ui/tooltip";
   import { i18n } from "$lib/i18n";
   import AgentSpace from "./AgentSpace.svelte";
@@ -187,7 +187,7 @@
   <div class="flex flex-col gap-2.5">
     <div class="flex flex-col gap-0.5">
       <div class="flex items-center gap-1.5">
-        <Icon icon={GitBranchIcon} class="size-3 shrink-0 text-muted-foreground" />
+        <Icon icon={GitBranchIcon} class={cn(icon.status, "shrink-0 text-muted-foreground")} />
         <span class={cn("min-w-0 flex-1 truncate", text.bodyStrong)}>{label}</span>
         {#if row.isMain}
           <span
@@ -227,7 +227,7 @@
         <div class="flex items-center gap-1.5">
           <Icon icon={GitPullRequestIcon}
             class={cn(
-              "size-3 shrink-0",
+              cn(icon.status, "shrink-0"),
               prBadge.checks.state === "failure"
                 ? "text-red-500"
                 : prBadge.checks.state === "pending"
@@ -259,7 +259,7 @@
           {#if v}
             <div class="flex items-center gap-1.5">
               <AgentStatusIndicator status={v.status} stale={v.stale} />
-              <AgentLogo logo={t.agentIcon} class="size-3 shrink-0" />
+              <AgentLogo logo={t.agentIcon} class={cn(icon.status, "shrink-0")} />
               <span class={cn("min-w-0 flex-1 truncate", text.meta)}>{v.title}</span>
               {#if v.lastUpdate}
                 <span class={cn("shrink-0 tabular-nums", text.meta)}>
@@ -297,7 +297,9 @@
               data-drag-key={drag ? row.path : undefined}
               data-drag-index={drag ? dragIndex : undefined}
               class={cn(
-                "group flex items-center gap-2 rounded-md py-1 pl-2 pr-2 transition-colors",
+                rowStyle.sidebar,
+                focus.ring,
+                "group",
                 !active && "hover:bg-foreground/[0.05]",
                 // A finished space steps back so the work still in flight reads
                 // first. Full opacity returns on hover and while it's selected —
@@ -314,9 +316,14 @@
               onpointermove={drag ? drag.pointerMove : undefined}
               onpointerup={drag ? drag.pointerUp : undefined}
               onclick={activate}
-              onkeydown={(e) => (e.key === "Enter" || e.key === " ") && activate()}
+              onkeydown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  activate();
+                }
+              }}
             >
-              <span class="flex size-4 shrink-0 items-center justify-center">
+              <span class={cn("flex shrink-0 items-center justify-center", icon.decorative)}>
                 {#if agentStatus}
                   <AgentStatusIndicator status={agentStatus.status} stale={agentStatus.stale} />
                 {:else}
@@ -385,7 +392,7 @@
                             text.indicator,
                           )}
                         >
-                          {#if wsAsleep}<Icon icon={MoonIcon} class="size-3" />{:else}<Icon icon={TerminalIcon} class="size-3" />{/if}{termCount}
+                          {#if wsAsleep}<Icon icon={MoonIcon} class={icon.status} />{:else}<Icon icon={TerminalIcon} class={icon.status} />{/if}{termCount}
                         </span>
                       {/snippet}
                     </TooltipSimple>
@@ -437,7 +444,7 @@
                                     : "text-emerald-500",
                           )}
                         >
-                          <Icon icon={GitPullRequestIcon} class="size-3" />{prBadge.number}
+                          <Icon icon={GitPullRequestIcon} class={icon.status} />{prBadge.number}
                         </span>
                       {/snippet}
                     </TooltipSimple>
@@ -459,7 +466,7 @@
         </div>
             {/snippet}
           </HoverCard.Trigger>
-          <HoverCard.Content side="right" align="start" class="w-80">
+          <HoverCard.Content side="right" align="start" width="form">
             {@render worktreeDetails()}
           </HoverCard.Content>
         </HoverCard.Root>
@@ -479,7 +486,7 @@
     />
   </ContextMenu.Root>
 
-  <div class="pl-6 pr-1 pb-1">
+  <div class="w-full min-w-0 pl-6 pr-1 pb-1">
     <AgentSpace path={row.path} />
   </div>
 </div>

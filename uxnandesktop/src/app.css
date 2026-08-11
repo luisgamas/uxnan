@@ -14,6 +14,16 @@
    hover-reveal controls never get stuck visible on touch. */
 @custom-variant can-hover (@media (hover: hover));
 
+/* Chromium paints the native clock affordance from `color-scheme`, not from
+   the input's foreground color. Keep it synchronized with the app theme. */
+input[type="time"] {
+  color-scheme: light;
+}
+
+.dark input[type="time"] {
+  color-scheme: dark;
+}
+
 :root {
   --radius: 0.625rem;
   /* Themeable font families (overridden at runtime by `applyTheme`). Geist (a

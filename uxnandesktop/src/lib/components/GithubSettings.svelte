@@ -199,6 +199,7 @@
       {#snippet control()}
         <Switch
           checked={app.settings.github?.rightPanelTab ?? true}
+          aria-label={i18n.t("github.settings.rightPanelTab")}
           onCheckedChange={(v) => { ensureGithub().rightPanelTab = v; persist(); }}
         />
       {/snippet}
@@ -207,6 +208,7 @@
       {#snippet control()}
         <Switch
           checked={app.settings.github?.statusBarEnabled ?? true}
+          aria-label={i18n.t("github.settings.statusBar")}
           onCheckedChange={(v) => { ensureGithub().statusBarEnabled = v; persist(); }}
         />
       {/snippet}
@@ -216,6 +218,7 @@
         <Input
           type="number"
           class="w-24"
+          aria-label={i18n.t("github.settings.poll")}
           value={String(app.settings.github?.pollSeconds ?? 45)}
           onchange={(e) => { ensureGithub().pollSeconds = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0); persist(); github.startPolling(); }}
         />
@@ -225,6 +228,7 @@
       {#snippet control()}
         <Switch
           checked={app.settings.github?.notificationsEnabled ?? false}
+          aria-label={i18n.t("github.settings.notifications")}
           onCheckedChange={(v) => { ensureGithub().notificationsEnabled = v; persist(); if (v) void github.refreshNotifications(); }}
         />
       {/snippet}
@@ -233,6 +237,7 @@
       {#snippet control()}
         <Switch
           checked={app.settings.github?.confirmPr ?? true}
+          aria-label={i18n.t("github.settings.confirmPr")}
           onCheckedChange={(v) => { ensureGithub().confirmPr = v; persist(); }}
         />
       {/snippet}
@@ -246,6 +251,7 @@
         {#snippet control()}
           <Switch
             checked={app.settings.github?.aiEnabled ?? false}
+            aria-label={i18n.t("github.settings.aiEnabled")}
             onCheckedChange={(v) => { ensureGithub().aiEnabled = v; persist(); }}
           />
         {/snippet}
@@ -308,6 +314,7 @@
             class="mt-1 min-h-0 resize-none text-xs"
             rows={2}
             placeholder={i18n.t("github.settings.aiInstructionsPlaceholder")}
+            aria-label={i18n.t("settings.aiCommitInstructions")}
             value={app.settings.github?.aiInstructions ?? ""}
             onchange={(e) => { ensureGithub().aiInstructions = (e.currentTarget as HTMLTextAreaElement).value; persist(); }}
           />

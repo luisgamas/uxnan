@@ -74,7 +74,7 @@
     type TerminalPolicy,
   } from "$lib/keybindings";
   import { cn } from "$lib/utils";
-  import { divider, icon, iconButton, panel, tab, text } from "$lib/design";
+  import { divider, field, focus, icon, iconButton, panel, row, tab, text } from "$lib/design";
   import { Icon } from "$lib/components/ui/icon";
   import PaletteIcon from "@hugeicons/core-free-icons/PaintBoardIcon";
   import TerminalIcon from "@hugeicons/core-free-icons/TerminalIcon";
@@ -88,7 +88,6 @@
   import PlusIcon from "@hugeicons/core-free-icons/PlusSignIcon";
   import RefreshCwIcon from "@hugeicons/core-free-icons/RefreshIcon";
   import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
-  import ArrowLeftIcon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
   import RotateCcwIcon from "@hugeicons/core-free-icons/Rotate01Icon";
   import LoaderIcon from "@hugeicons/core-free-icons/Loading01Icon";
   import TriangleAlertIcon from "@hugeicons/core-free-icons/Alert01Icon";
@@ -104,6 +103,7 @@
   import FileTextIcon from "@hugeicons/core-free-icons/Doc01Icon";
   import EnergyIcon from "@hugeicons/core-free-icons/EnergyIcon";
   import PawPrintIcon from "@hugeicons/core-free-icons/CatIcon";
+  import WorkspaceAppBar from "./WorkspaceAppBar.svelte";
 
   // Persist (debounced for typing; immediate for discrete actions).
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -193,6 +193,7 @@
       }
       return;
     }
+    if (e.defaultPrevented) return;
     if (e.key === "Escape" && app.settingsOpen) {
       e.preventDefault();
       close();
@@ -804,28 +805,7 @@
   <div class="flex h-full w-full flex-col bg-background text-foreground">
     <!-- Header (draggable on Tauri via the title bar; the buttons inside are
          not part of the drag region). -->
-    <header
-      data-tauri-drag-region
-      class={cn("flex h-9 shrink-0 items-center gap-2 px-3", divider.bottom)}
-    >
-      <TooltipSimple title={i18n.t("common.close")}>
-        {#snippet children(tp)}
-          <Button
-            {...tp}
-            variant="ghost"
-            size="icon-sm"
-            class={iconButton.action}
-            aria-label={i18n.t("common.close")}
-            onclick={close}
-          >
-            <Icon icon={ArrowLeftIcon} class={icon.button} />
-          </Button>
-        {/snippet}
-      </TooltipSimple>
-      <h1 class="text-sm font-semibold tracking-tight">
-        {i18n.t("settings.title")}
-      </h1>
-    </header>
+    <WorkspaceAppBar title={i18n.t("settings.title")} onback={close} />
 
     <div class="flex min-h-0 flex-1">
       <!-- Section nav (left sidebar): titled groups + settings-nav rows. -->
@@ -839,12 +819,15 @@
             {#each group.items as item (item.id)}
               {@const glyph = item.icon}
               <button
+                type="button"
                 class={cn(
-                  "flex h-8 items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium tracking-tight transition-colors",
+                  row.settingsNav,
+                  focus.ring,
                   app.settingsSection === item.id
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                 )}
+                aria-current={app.settingsSection === item.id ? "page" : undefined}
                 onclick={() => (app.settingsSection = item.id)}
               >
                 <Icon icon={glyph} class={icon.button} />
@@ -878,7 +861,7 @@
                 <Combobox
                   value={app.settings.language}
                   groups={languageGroups}
-                  triggerClass="w-56"
+                  triggerClass={field.selectStandard}
                   searchPlaceholder={i18n.t("common.search")}
                   onChange={(v) => { app.settings.language = v; persistNow(); }}
                 />
@@ -899,11 +882,13 @@
                     </div>
                     <TooltipSimple title={i18n.t("shortcuts.rebind")}>
                       {#snippet children(tp)}
-                        <button
+                        <Button
                           {...tp}
-                          type="button"
+                          variant="outline"
+                          size="sm"
                           class={cn(
-                            "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                            "min-w-24 shrink-0 font-mono",
+                            focus.ring,
                             text.body,
                             capturing === LEADER_ID
                               ? "border-primary text-primary"
@@ -918,7 +903,7 @@
                           {:else}
                             <span class="text-muted-foreground">{i18n.t("shortcuts.leaderOff")}</span>
                           {/if}
-                        </button>
+                        </Button>
                       {/snippet}
                     </TooltipSimple>
                     <TooltipSimple title={i18n.t("shortcuts.disable")}>
@@ -953,11 +938,13 @@
                       {#if action.id !== "toggleTerminalPassthrough"}
                         <TooltipSimple title={i18n.t("shortcuts.terminalPolicyHint")}>
                           {#snippet children(tp)}
-                            <button
+                            <Button
                               {...tp}
-                              type="button"
+                              variant="outline"
+                              size="sm"
                               class={cn(
-                                "inline-flex h-7 shrink-0 items-center justify-center rounded-md border px-2",
+                                "shrink-0",
+                                focus.ring,
                                 text.meta,
                                 resolveTerminalPolicy(action.id) === "app"
                                   ? "border-primary/40 text-primary"
@@ -972,17 +959,19 @@
                               {resolveTerminalPolicy(action.id) === "app"
                                 ? i18n.t("shortcuts.termWinsUxnan")
                                 : i18n.t("shortcuts.termWinsTui")}
-                            </button>
+                            </Button>
                           {/snippet}
                         </TooltipSimple>
                       {/if}
                       <TooltipSimple title={i18n.t("shortcuts.rebind")}>
                         {#snippet children(tp)}
-                          <button
+                          <Button
                             {...tp}
-                            type="button"
+                            variant="outline"
+                            size="sm"
                             class={cn(
-                              "inline-flex h-7 min-w-24 shrink-0 items-center justify-center rounded-md border px-2 font-mono",
+                              "min-w-24 shrink-0 font-mono",
+                              focus.ring,
                               text.body,
                               isCapturing
                                 ? "border-primary text-primary"
@@ -997,7 +986,7 @@
                             {:else}
                               <span class="text-muted-foreground">{i18n.t("shortcuts.disabled")}</span>
                             {/if}
-                          </button>
+                          </Button>
                         {/snippet}
                       </TooltipSimple>
                       <TooltipSimple title={i18n.t("shortcuts.disable")}>
@@ -1048,7 +1037,7 @@
                     <Combobox
                       value={app.settings.defaultAgentId ?? NO_DEFAULT_AGENT}
                       groups={defaultAgentGroups}
-                      triggerClass="w-56"
+                      triggerClass={field.selectStandard}
                       searchPlaceholder={i18n.t("common.search")}
                       itemPrefix={agentPrefix}
                       onChange={(v) => {
@@ -1064,7 +1053,7 @@
                     <Combobox
                       value={app.settings.agentShellProfileId ?? AGENT_SHELL_DEFAULT}
                       groups={agentShellGroups}
-                      triggerClass="w-72 max-w-full"
+                      triggerClass={field.selectWide}
                       searchPlaceholder={i18n.t("common.search")}
                       onChange={(v) => {
                         app.settings.agentShellProfileId = v === AGENT_SHELL_DEFAULT ? null : v;
@@ -1165,7 +1154,7 @@
                         <div class="truncate font-mono text-[11px] leading-4 text-muted-foreground">{c.command}</div>
                       </div>
                       {#if inst}
-                        <Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
+                        <Button variant="ghost" size="sm" class="shrink-0 gap-1" onclick={() => addCatalogAgent(c)}>
                           <Icon icon={PlusIcon} class={icon.button} />
                           {i18n.t("common.add")}
                         </Button>
@@ -1188,7 +1177,7 @@
                     <Combobox
                       value={String(app.settings.usageRefreshMinutes ?? 5)}
                       groups={usageRefreshGroups}
-                      triggerClass="w-44"
+                      triggerClass={field.selectNarrow}
                       onChange={(v) => {
                         app.settings.usageRefreshMinutes = Number(v);
                         persistNow();
@@ -1229,7 +1218,7 @@
                   <Combobox
                     value=""
                     groups={addProviderGroups}
-                    triggerClass="w-56"
+                    triggerClass={field.selectStandard}
                     placeholder={i18n.t("providers.addPick")}
                     searchPlaceholder={i18n.t("common.search")}
                     itemPrefix={providerPrefix}
@@ -1243,14 +1232,23 @@
                     <p class={cn("py-2 text-center", text.meta)}>{i18n.t("providers.empty")}</p>
                   {:else}
                     <Tabs.Root bind:value={activeProviderTab} class="flex flex-col gap-5">
-                      <Tabs.List class={cn("h-8 shrink-0 justify-start gap-1 rounded-none bg-transparent p-0", divider.bottom)}>
+                      <Tabs.List
+                        class={cn(
+                          "h-8 max-w-full shrink-0 justify-start gap-1 overflow-x-auto scrollbar-sleek rounded-none bg-transparent p-0",
+                          divider.bottom,
+                        )}
+                      >
                         {#each usageConfigs as config (config.provider)}
                           {@const m = usageProvider(config.provider)}
                           {@const snap = usage.byProvider[config.provider]}
                           {@const st = statusMeta(snap?.status ?? "notInstalled")}
                           <Tabs.Trigger
                             value={config.provider}
-                            class={cn("gap-1.5 px-3 text-[13px]", tab.base, activeProviderTab === config.provider ? tab.activeLine : tab.inactiveLine)}
+                            class={cn(
+                              "shrink-0 gap-1.5 px-3 text-[13px]",
+                              tab.base,
+                              activeProviderTab === config.provider ? tab.activeLine : tab.inactiveLine,
+                            )}
                           >
                             <AgentLogo logo={m?.logo ?? config.provider} class="size-4" />
                             {m?.name ?? config.provider}
@@ -1300,7 +1298,7 @@
                     groups={aiAgentGroups}
                     placeholder={i18n.t("settings.aiCommitAgentNone")}
                     searchPlaceholder={i18n.t("common.search")}
-                    triggerClass="w-56"
+                    triggerClass={field.selectStandard}
                     itemPrefix={aiAgentPrefix}
                     onChange={(v) => selectAiAgent(v)}
                   />
@@ -1325,7 +1323,7 @@
                   <Combobox
                     value={ai.language}
                     groups={aiLanguageGroups}
-                    triggerClass="w-56"
+                    triggerClass={field.selectStandard}
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => { setAi({ language: v }); persistNow(); }}
                   />
@@ -1462,7 +1460,7 @@
                   <Combobox
                     value={up.channel}
                     groups={channelGroups}
-                    triggerClass="w-56"
+                    triggerClass={field.selectStandard}
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => {
                       setUp({ channel: v as UpdateChannel });
@@ -1499,14 +1497,14 @@
                         <button
                           {...props}
                           type="button"
-                          class="inline-flex text-muted-foreground/70 transition-colors hover:text-foreground"
+                          class={cn(iconButton.xs, "inline-flex items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:text-foreground", focus.ring)}
                           aria-label={i18n.t("updates.installPolicyHelpTitle")}
                         >
                           <Icon icon={CircleHelpIcon} class="size-3.5" />
                         </button>
                       {/snippet}
                     </HoverCard.Trigger>
-                    <HoverCard.Content class="w-80">
+                        <HoverCard.Content width="form">
                       <p class={cn("mb-2 font-medium text-foreground", text.body)}>{i18n.t("updates.installPolicyHelpTitle")}</p>
                       <dl class="space-y-2">
                         {#each [["updates.policyAsk", "updates.policyAskHelp"], ["updates.policyWhenIdle", "updates.policyWhenIdleHelp"], ["updates.policyManual", "updates.policyManualHelp"]] as [nameKey, helpKey] (nameKey)}
@@ -1523,7 +1521,7 @@
                   <Combobox
                     value={up.installPolicy}
                     groups={installPolicyGroups}
-                    triggerClass="w-56"
+                    triggerClass={field.selectStandard}
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => { setUp({ installPolicy: v as InstallPolicy }); persistNow(); }}
                   />
@@ -1554,7 +1552,7 @@
                       value={br.linkPolicy}
                       groups={linkPolicyGroups}
                       disabled={!br.enabled}
-                      triggerClass="w-56"
+                      triggerClass={field.selectStandard}
                       searchPlaceholder={i18n.t("common.search")}
                       onChange={(v) => { setBr({ linkPolicy: v as BrowserLinkPolicy }); persistNow(); }}
                     />
@@ -1617,7 +1615,7 @@
                         value={br.mcpInjection}
                         groups={mcpModeGroups}
                         disabled={!br.enabled || !br.mcpEnabled}
-                        triggerClass="w-56"
+                        triggerClass={field.selectStandard}
                         searchPlaceholder={i18n.t("common.search")}
                         onChange={(v) => { setBr({ mcpInjection: v as McpInjection }); persistNow(); }}
                       />
@@ -1660,7 +1658,7 @@
                           <Button
                             variant="ghost"
                             size="sm"
-                            class="absolute right-1.5 top-1.5 h-6 gap-1 px-1.5 text-[11px]"
+                            class="absolute right-1.5 top-1.5 gap-1 px-1.5 text-[11px]"
                             onclick={copyMcpSnippet}
                           >
                             {#if mcpCopied}
@@ -1755,7 +1753,7 @@
                     value={app.settings.defaultProfileId ?? undefined}
                     groups={profileGroups}
                     placeholder={i18n.t("terminal.chooseProfile")}
-                    triggerClass="w-56"
+                    triggerClass={field.selectStandard}
                     searchPlaceholder={i18n.t("common.search")}
                     onChange={(v) => { app.settings.defaultProfileId = v; persistNow(); }}
                   />
@@ -1766,7 +1764,7 @@
                   <Combobox
                     value={String(app.terminalScrollback)}
                     groups={scrollbackGroups}
-                    triggerClass="w-44"
+                    triggerClass={field.selectNarrow}
                     onChange={(v) => { app.settings.terminalScrollback = Number(v); persistNow(); }}
                   />
                 {/snippet}
@@ -1794,7 +1792,7 @@
                       </Button>
                     {/snippet}
                   </DropdownMenu.Trigger>
-                  <DropdownMenu.Content align="end" class="min-w-52">
+                  <DropdownMenu.Content width="standard" align="end">
                     {#each TERMINAL_TEMPLATES as group (group.os)}
                       <DropdownMenu.Group>
                         <DropdownMenu.GroupHeading class={text.menuLabel}>
