@@ -6,6 +6,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — a whole exchange shown twice, and it stayed that way
+
+A conversation showed the same exchange twice — your message and the reply —
+and reopening it changed nothing, because both copies really were in the
+phone's store. Measured on the device: the second copy carried a **different
+turn id**, the agent's own session id, so this was never the phone duplicating
+anything. The bridge had stored the same turn twice after reading the agent's
+own transcript, and the phone faithfully rendered both. That is fixed on the
+bridge side.
+
+The phone's part was that it could never let go: a re-sync only ever inserted
+and updated, so a turn the bridge had dropped stayed on screen forever. It now
+removes what the bridge no longer reports, which is also what makes a
+conversation converge after it is cleaned up on the PC.
+
+Deliberately narrow, so a re-sync can never eat real history: only inside the
+window the fetched page covers — an older page loaded by scrolling up is left
+alone — never the turn streaming right now, one still waiting in the queue, or
+the echo that has no turn id yet, and never a message written after the sync
+began, which is what lets a message sent while the page was in flight survive.
+
 ### Fixed — the first message of a conversation came back doubled
 
 Reported from a phone, in a fresh conversation, with no thread switching: the

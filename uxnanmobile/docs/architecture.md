@@ -315,6 +315,14 @@ and composed in `application_providers.dart`. The important ones:
    supported client arrive as ordinary user + assistant messages. Concurrent
    reconnect/navigation/resume reads are deduplicated, local user messages are
    matched by turn id, and no polling occurs while the bridge owns a live turn.
+   A newest-page read also **drops the messages of a turn the bridge no longer
+   reports** — the bridge owns which turns a thread has, and without this a turn
+   it removed (a duplicate its own history import had created) would render from
+   the phone's store forever. Deliberately narrow: only inside the window that
+   page covers, so an older page loaded by scrolling up is untouched; never the
+   streaming turn, a queued one, or an echo that has no turn id yet; and never a
+   message written after the read began, so a send that lands while the page is
+   in flight survives.
 6. The UI watches the derived stream providers and rebuilds reactively. Partial
    assistant prose and settled prose both pass through the shared
    `MarkdownBody` + `uxnanMarkdownStyleSheet` path, so formatting does not switch

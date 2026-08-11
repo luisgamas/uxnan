@@ -843,6 +843,9 @@ class ThreadManager {
   }
 
   Future<void> _performResyncThread(String threadId) async {
+    // Taken before the request so anything the user sends while it is in flight
+    // is newer than the page, and is therefore never mistaken for a leftover.
+    final syncedAt = DateTime.now();
     final page = await _fetchTurns(
       threadId,
       limit: _turnPageSize,
@@ -894,7 +897,12 @@ class ThreadManager {
       _turnStateKnown.add({..._turnStateKnown.value, threadId});
     }
     await _reconcileQueuedMessages(threadId, page.queue.turnIds, page.turns);
-    await _persistTurns(threadId, page.turns, trackLatestUsage: true);
+    await _persistTurns(
+      threadId,
+      page.turns,
+      trackLatestUsage: true,
+      staleBefore: syncedAt,
+    );
     if (threadId != _activeThreadId) return;
     final total = page.total;
     if (total == null) {
@@ -1047,6 +1055,7 @@ class ThreadManager {
     List<Object?> turns, {
     required bool trackLatestUsage,
     bool olderPage = false,
+    DateTime? staleBefore,
   }) async {
     final existing = await _messageRepository.getMessages(threadId);
     final byId = {for (final m in existing) m.id: m};
@@ -1208,6 +1217,9 @@ class ThreadManager {
       }
     }
     if (toSave.isNotEmpty) await _messageRepository.saveMessages(toSave);
+    if (staleBefore != null) {
+      await _pruneStaleTurns(threadId, existing, turns, staleBefore);
+    }
     // Restore the context meter from the latest turn's stored usage, unless a
     // live turn already set a fresher value for this thread. Only the newest
     // page carries the *current* usage — older pages must never overwrite it.
@@ -1218,6 +1230,56 @@ class ThreadManager {
         _contextUsage.value,
       )..[threadId] = latestUsage;
       _contextUsage.add(next);
+    }
+  }
+
+  /// Deletes the messages left behind by a turn the bridge no longer reports.
+  ///
+  /// The bridge owns which turns a thread has, and it now drops a turn its own
+  /// native-history import had stored twice. Since a re-sync otherwise only
+  /// inserts and updates, without this the phone would keep rendering that
+  /// duplicated exchange from its own store forever — reopening the
+  /// conversation included, which is exactly how it was reported.
+  ///
+  /// Deliberately narrow, so a re-sync can never eat real history:
+  ///  - only inside the window this page actually covers, leaving an older page
+  ///    loaded by scrolling up untouched;
+  ///  - never the turn streaming right now, one still waiting in the queue, or
+  ///    the local echo that has no turn id yet;
+  ///  - never a message written after this sync began, which is what lets a
+  ///    message sent while the page was in flight survive.
+  Future<void> _pruneStaleTurns(
+    String threadId,
+    List<Message> existing,
+    List<Object?> turns,
+    DateTime staleBefore,
+  ) async {
+    final pageTurnIds = <String>{
+      for (final rawTurn in turns)
+        if (rawTurn is Map && rawTurn['id'] is String) rawTurn['id'] as String,
+    };
+    if (pageTurnIds.isEmpty) return;
+    // The page's own oldest message marks where its authority begins.
+    int? windowStart;
+    for (final message in existing) {
+      if (!pageTurnIds.contains(message.turnId)) continue;
+      if (windowStart == null || message.orderIndex < windowStart) {
+        windowStart = message.orderIndex;
+      }
+    }
+    if (windowStart == null) return;
+    final liveTurnId = _live[threadId]?.turnId;
+    final queued = queueOf(threadId).turnIds.toSet();
+    for (final message in existing) {
+      if (message.turnId.isEmpty ||
+          pageTurnIds.contains(message.turnId) ||
+          message.turnId == liveTurnId ||
+          queued.contains(message.turnId) ||
+          message.orderIndex < windowStart ||
+          !message.createdAt.isBefore(staleBefore)) {
+        continue;
+      }
+      await _messageRepository.deleteMessage(message.id);
     }
   }
 
